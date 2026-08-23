@@ -95,11 +95,11 @@ const defaultExpandedSections = (): Set<PlanCategory> => new Set<PlanCategory>([
 
 /**
  * Review-then-commit for one recipe, the single-recipe sibling of
- * AddWeekToListSheet — same classifyPlanned pantry-awareness (needToBuy /
+ * AddMealsToListSheet — same classifyPlanned pantry-awareness (needToBuy /
  * alreadyOnList / inCart / probablyHave) instead of RecipeDetailScreen's
  * old blind addFromPlan over every ingredient.
  *
- * Two row actions, shared with AddWeekToListSheet and documented here because
+ * Two row actions, shared with AddMealsToListSheet and documented here because
  * this is where they were written:
  *
  * - **"In pantry"** on every needToBuy row. It says the app's own word for

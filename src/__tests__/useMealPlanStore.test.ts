@@ -172,7 +172,7 @@ beforeEach(() => {
   useGroceryStore.setState({ items: [] });
   useMealPlanStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
-    lastAction: null, cookedOffer: null, plannedSlotCounts: {}, cookingCounts: null,
+    lastAction: null, cookedOffer: null, leftoverOffer: null, plannedSlotCounts: {}, cookingCounts: null,
   });
 });
 
@@ -1393,6 +1393,101 @@ describe('cookedOffer', () => {
     useMealPlanStore.getState().clearCookedOffer();
 
     expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+  });
+});
+
+describe('leftoverOffer', () => {
+  const chili = () => recipeWith('Chili', ['soy sauce']);
+
+  /** A dinner in the loaded week, ready to be ticked either way. */
+  function dinner(overrides: Partial<MealPlanEntry> = {}) {
+    mockRecipeState.recipes = [chili()];
+    const e = entry('2026-08-05', 'dinner', { recipeId: 'r-Chili', title: 'Chili', ...overrides });
+    loadWeek([e]);
+    return e;
+  }
+
+  it('is raised by ticking the cook task, naming the meal and where it came from', () => {
+    const e = dinner();
+
+    useMealPlanStore.getState().setCookedPaired(e.id, true);
+
+    expect(useMealPlanStore.getState().leftoverOffer).toEqual({
+      entryId: e.id,
+      title: 'Chili',
+      recipeId: 'r-Chili',
+      choices: [],
+    });
+  });
+
+  // The meal plan already puts "Log leftovers" on the entry's own sheet, and
+  // that placement is deliberate — nothing about marking a meal cooked there
+  // should assume it left anything.
+  it('is not raised by marking cooked on the plan', () => {
+    const e = dinner();
+
+    useMealPlanStore.getState().setCooked(e.id, true);
+
+    expect(useMealPlanStore.getState().leftoverOffer).toBeNull();
+  });
+
+  it('carries the cooking’s own picks, so a losing component is never offered', () => {
+    const e = dinner({ recipeChoices: ['c-1'] });
+
+    useMealPlanStore.getState().setCookedPaired(e.id, true);
+
+    expect(useMealPlanStore.getState().leftoverOffer?.choices).toEqual(['c-1']);
+  });
+
+  it('is raised by a free-text meal, which leaves leftovers like any other', () => {
+    mockRecipeState.recipes = [];
+    const e = entry('2026-08-05', 'dinner', { title: 'Takeout curry' });
+    loadWeek([e]);
+
+    useMealPlanStore.getState().setCookedPaired(e.id, true);
+
+    expect(useMealPlanStore.getState().leftoverOffer?.title).toBe('Takeout curry');
+  });
+
+  // Eating a tub of chilli closes that container out; it doesn't fill a new one.
+  it('is not raised by a meal that is itself leftovers', () => {
+    mockRecipeState.recipes = [];
+    const e = entry('2026-08-05', 'dinner', { title: 'Chilli', leftoverId: 'lo-1' });
+    loadWeek([e]);
+
+    useMealPlanStore.getState().setCookedPaired(e.id, true);
+
+    expect(useMealPlanStore.getState().leftoverOffer).toBeNull();
+  });
+
+  it('is retracted by un-ticking, and by a cook marked anywhere else', () => {
+    const e = dinner();
+    useMealPlanStore.getState().setCookedPaired(e.id, true);
+    expect(useMealPlanStore.getState().leftoverOffer).not.toBeNull();
+
+    useMealPlanStore.getState().setCookedPaired(e.id, false);
+
+    expect(useMealPlanStore.getState().leftoverOffer).toBeNull();
+  });
+
+  it('is never raised by a bulk mark', () => {
+    mockRecipeState.recipes = [chili()];
+    const a = entry('2026-08-05', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
+    const b = entry('2026-08-06', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
+    loadWeek([a, b]);
+
+    useMealPlanStore.getState().bulkSetCooked([a.id, b.id], true);
+
+    expect(useMealPlanStore.getState().leftoverOffer).toBeNull();
+  });
+
+  it('is cleared on request — dismissed, or logged out', () => {
+    const e = dinner();
+    useMealPlanStore.getState().setCookedPaired(e.id, true);
+
+    useMealPlanStore.getState().clearLeftoverOffer();
+
+    expect(useMealPlanStore.getState().leftoverOffer).toBeNull();
   });
 });
 

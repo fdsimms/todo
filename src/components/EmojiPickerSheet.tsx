@@ -19,6 +19,7 @@ import { spacing, radius, font, fontWeight, border, animation, interaction, type
 import { haptics } from '../utils/haptics';
 import { EMOJI_GROUPS, searchEmoji } from '../utils/emojiCatalog';
 import { firstEmoji } from '../utils/emojiInput';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -58,7 +59,9 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
   const results = useMemo(() => (query.trim() ? searchEmoji(query) : null), [query]);
   const shown = results ?? EMOJI_GROUPS[groupIndex].entries;
 
-  const translateY = useRef(new Animated.Value(700)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   // The sheet lifts as a whole so the grid stays visible while the search field
   // (or the keyboard fallback) has focus.
@@ -84,7 +87,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
     if (!visible) return;
     setQuery('');
     setGroupIndex(0);
-    translateY.setValue(700);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     keyboardOffset.setValue(0);
     Animated.parallel([
@@ -96,10 +99,10 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 800, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(700);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
       after?.();
     });

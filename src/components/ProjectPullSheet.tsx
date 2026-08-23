@@ -27,6 +27,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { WhenPicker } from './WhenPicker';
 import type { Task } from '../types';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -76,7 +77,9 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
   const [overrides, setOverrides] = useState<Record<string, Date>>({});
   const [pickerTarget, setPickerTarget] = useState<ProjectPullProposal | null>(null);
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -87,7 +90,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
     setCandidateIndex({});
     setOverrides({});
     setPickerTarget(null);
-    translateY.setValue(600);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -98,10 +101,10 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
 
   const dismiss = () => {
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
     });
   };
@@ -111,7 +114,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
   const openPicker = (proposal: ProjectPullProposal) => {
     haptics.tap();
     Animated.spring(translateY, {
-      toValue: 700,
+      toValue: hiddenY,
       ...animation.spring.sheetDismiss,
       useNativeDriver: true,
     }).start(() => setPickerTarget(proposal));

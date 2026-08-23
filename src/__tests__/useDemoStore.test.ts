@@ -52,7 +52,7 @@ import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
-import { freshnessOf, isLiveLeftover, needsAttention } from '../utils/leftovers';
+import { freshnessOf, isLiveLeftover, needsAttention, suggestableLeftovers } from '../utils/leftovers';
 import { liveExpiresAt, openShelfLifeDaysFor } from '../utils/groceryShelfLife';
 import {
   cookingWindow,
@@ -1297,6 +1297,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     )).toBe(true);
   });
 
+  it('leaves the suggestion sheet a fridge to offer, minus the container the week already eats', () => {
+    const { leftovers } = useLeftoverStore.getState();
+    const { entries } = useMealPlanStore.getState();
+    const plannedIds = entries.map(e => e.leftoverId).filter((id): id is string => !!id);
+
+    expect(plannedIds.length).toBeGreaterThan(0);
+    const offered = suggestableLeftovers(leftovers, plannedIds);
+    // Containers to fill a night with, and the one already planned isn't
+    // among them — both halves of the rule, on data the seed already had.
+    expect(offered.length).toBeGreaterThan(0);
+    expect(offered.some(l => plannedIds.includes(l.id))).toBe(false);
+  });
+
   it('seeds a plan with history, a scaled meal, a picked side and a doubled-up night', () => {
     const { entries } = useMealPlanStore.getState();
 
@@ -1594,6 +1607,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const cheddar = items.find(i => i.nameKey === 'cheddar')!;
     expect(cheddar.shelfLifeDays).not.toBeNull();
     expect(cheddar.expiresAt).toBeNull();
+  });
+
+  it('seeds one cooking split between the fridge and the freezer', () => {
+    const { leftovers } = useLeftoverStore.getState();
+
+    // The log sheet's "Both": two containers of one dish, put away together,
+    // one counting down and one not. Invisible until something uses it — a
+    // fridge with no such pair reads as an app that can't split a batch.
+    const frozenOnLog = leftovers.filter(l => l.frozenAt === l.storedAt);
+    expect(frozenOnLog.length).toBeGreaterThan(0);
+    const twin = leftovers.find(l =>
+      frozenOnLog.some(f => f.title === l.title && f.storedAt === l.storedAt && !l.frozenAt)
+    );
+    expect(twin).toBeDefined();
   });
 
   it('seeds a kitchen that answers the merged question — pantry and fridge on one ladder', () => {

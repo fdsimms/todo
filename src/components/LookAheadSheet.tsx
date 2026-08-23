@@ -52,6 +52,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { Task } from '../types';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -121,7 +122,9 @@ export function LookAheadSheet({ visible, onClose }: Props) {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  const translateY = useRef(new Animated.Value(700)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   /** What a fresh opening starts on. */
@@ -139,7 +142,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
     setMode('read');
     setPicking(null);
     setExpanded(new Set());
-    translateY.setValue(700);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -179,7 +182,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
   const dismiss = () => {
     Animated.parallel([
       Animated.spring(translateY, {
-        toValue: 800,
+        toValue: hiddenY,
         ...animation.spring.sheetDismiss,
         useNativeDriver: true,
       }),
@@ -189,7 +192,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
         useNativeDriver: true,
       }),
     ]).start(() => {
-      translateY.setValue(700);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
     });
   };

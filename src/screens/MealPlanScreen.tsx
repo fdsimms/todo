@@ -19,18 +19,19 @@ import { format } from 'date-fns/format';
 import { isToday } from 'date-fns/isToday';
 import { isSameWeek } from 'date-fns/isSameWeek';
 import { isBefore } from 'date-fns/isBefore';
-import type { Leftover, MealPlanEntry, MealSlot, Recipe } from '../types';
+import { MEAL_SLOTS, type Leftover, type MealPlanEntry, type MealSlot, type Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { InlineAction } from '../components/InlineAction';
 import { SegmentedControl } from '../components/SegmentedControl';
+import { PeriodNav } from '../components/PeriodNav';
 import { WeekPlanOverview } from '../components/WeekPlanOverview';
 import { MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
-import { AddWeekToListSheet } from '../components/AddWeekToListSheet';
+import { AddMealsToListSheet } from '../components/AddMealsToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { CookedOfferBanner } from '../components/CookedOfferBanner';
 import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
@@ -61,12 +62,18 @@ import {
 import { LeftoverSheet, type LeftoverSeed } from '../components/LeftoverSheet';
 import { PlanMealSheet } from '../components/PlanMealSheet';
 import { FridgeHistorySheet } from '../components/FridgeHistorySheet';
-import { isLiveLeftover, leftoverKeepDaysFor, leftoverPartsFor, mealTitleForLeftover } from '../utils/leftovers';
+import {
+  isLiveLeftover,
+  leftoverKeepDaysFor,
+  leftoverPartsFor,
+  mealTitleForLeftover,
+  suggestableLeftovers,
+} from '../utils/leftovers';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, border, animation, interaction, iconSize, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, border, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -99,6 +106,7 @@ import {
   describeWeekRange,
   entriesForDay,
   recipeIndex,
+  slotLabel,
   titleForEntry,
 } from '../utils/mealPlan';
 import { liveGeneratedTask } from '../utils/generatedTasks';
@@ -107,6 +115,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import {
   classifyPlanned,
   collectPlannedIngredients,
+  hasShoppableMeals,
   plannedIngredientsForRecipe,
   restockRows,
 } from '../utils/mealPlanGroceries';
@@ -126,9 +135,23 @@ import { describeWeekCost, estimateWeekCost } from '../utils/recipeCost';
  * flush against this screen's own card rather than traced off
  * `TaskGroupTray`'s margins, since a day section carries no tray of its own to
  * match.
+ *
+ * **It also draws the day's four meals as columns across the band**, with the
+ * one a release would land in filled. That's the whole of the "which meal"
+ * affordance: across the band picks the meal exactly as down the list picks the
+ * day (see slotAtX in fabDrop.ts), so the day being aimed at is also the only
+ * place the columns need to exist. `slot` is null when the drag is aimed
+ * somewhere else, which is what fades the whole thing back out.
+ *
+ * The labels are bottom-aligned rather than centred so they sit in the
+ * section's own `paddingBottom` — the one strip of a day band that is empty on
+ * every day, planned or not. Centred, they landed on top of the day name on a
+ * bare day and on top of a meal title on a full one, and translucent text over
+ * text is unreadable in a way a tint over a card is not.
  */
-function DayDropHighlight({ active, children }: { active: boolean; children: React.ReactNode }) {
+function DayDropHighlight({ slot, children }: { slot: MealSlot | null; children: React.ReactNode }) {
   const colors = useColors();
+  const active = slot !== null;
   const progress = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -146,9 +169,32 @@ function DayDropHighlight({ active, children }: { active: boolean; children: Rea
         pointerEvents="none"
         style={[
           dropHighlightStyles.highlight,
-          { borderColor: colors.accent, backgroundColor: colors.accentSubtle, opacity: progress },
+          { borderColor: colors.accent, opacity: progress },
         ]}
-      />
+      >
+        {MEAL_SLOTS.map((s, i) => (
+          <View
+            key={s}
+            style={[
+              dropHighlightStyles.lane,
+              i > 0 && { borderLeftWidth: border.hairline, borderLeftColor: colors.accent },
+              s === slot && { backgroundColor: colors.accentSubtle },
+            ]}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                dropHighlightStyles.laneLabel,
+                s === slot
+                  ? { color: colors.accent, fontWeight: fontWeight.semibold }
+                  : { color: colors.textTertiary },
+              ]}
+            >
+              {slotLabel(s)}
+            </Text>
+          </View>
+        ))}
+      </Animated.View>
     </View>
   );
 }
@@ -161,6 +207,17 @@ const dropHighlightStyles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     borderRadius: radius.md,
     borderWidth: border.md,
+    flexDirection: 'row',
+    overflow: 'hidden',
+  },
+  lane: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+  },
+  laneLabel: {
+    fontSize: font.xs,
+    lineHeight: lineHeight.xs,
   },
 });
 
@@ -169,6 +226,11 @@ const dropHighlightStyles = StyleSheet.create({
 // same reason TodayScreen's GroupDropTargetRow does — the target changes
 // several times a second while the finger moves, and re-rendering the whole
 // day list on every sample is what that channel exists to avoid.
+//
+// The selected value is the aimed *slot* rather than a boolean, so a finger
+// crossing from Lunch into Dinner within one day re-renders that day and only
+// that day — still a plain comparable string, which is what the channel's
+// selector contract asks for.
 function DayDropTargetRow({
   channel,
   dayKey,
@@ -178,8 +240,9 @@ function DayDropTargetRow({
   dayKey: string;
   children: React.ReactNode;
 }) {
-  const aimed = useFabIntentSelector(channel, intent => intent?.kind === 'day' && intent.dayKey === dayKey);
-  return <DayDropHighlight active={aimed}>{children}</DayDropHighlight>;
+  const slot = useFabIntentSelector(channel, intent =>
+    intent?.kind === 'day' && intent.dayKey === dayKey ? intent.slot : null);
+  return <DayDropHighlight slot={slot}>{children}</DayDropHighlight>;
 }
 
 /**
@@ -209,6 +272,13 @@ function DayDropTargetRow({
  * above light one up, and the autoscroll controller still runs so a card
  * lifted from above Monday can reach Sunday. Only the button-specific pieces
  * left with the button: `fabDragging`, the cancel well, `dragHint`.
+ *
+ * **It answers "which meal" too, across the band rather than down it.** The
+ * band is divided into one column per meal (`slotAtX` in fabDrop.ts), which is
+ * the one axis a day section had spare: it is a full screen wide and, before
+ * this, said the same thing at every point of that width. Down the list still
+ * picks the day, so nothing about reaching Sunday changed, and aiming at the
+ * middle of a day is still dinner.
  *
  * **No drag *between* days either.** Moving a planned meal is a row action
  * opening a compact 7-day chip row plus an "Another date…" escape (see
@@ -362,7 +432,32 @@ export function MealPlanScreen() {
   // just made — the row itself is re-read from the store on every render.
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = entries.find(e => e.id === selectedId) ?? null;
-  const [addingToList, setAddingToList] = useState(false);
+  /**
+   * What an "add these to the list" tap asked for — the whole week, or one
+   * day. Three scopes exist (a meal, a day, a week) and the other two share
+   * one sheet, so what varies is held as data at the tap: the range the sheet
+   * shops, the header naming it, and whether the add stamps the week as
+   * shopped (only a whole-week add does — see AddMealsToListSheet).
+   *
+   * Kept alongside its own visibility flag rather than nulled on close, the
+   * same pair `restockOffer`/`restockSheetVisible` below use: the sheet is a
+   * real Modal that slides out, and clearing the scope on close would blank
+   * its title and rows mid-animation.
+   */
+  const [addToListScope, setAddToListScope] =
+    useState<{ range: { startKey: string; endKey: string }; title: string; stampWeekKey: string | null } | null>(null);
+  const [addToListVisible, setAddToListVisible] = useState(false);
+  /**
+   * The one meal being shopped for, snapshotted at the tap — the third scope,
+   * and the one that goes to RecipeToListSheet instead: at a single meal the
+   * useful controls are the recipe's scale and either/or chips, which that
+   * sheet has and AddMealsToListSheet doesn't. Starts on this meal's own
+   * answers, and like the restock offer nothing the sheet does is written
+   * back to the entry.
+   */
+  const [mealShop, setMealShop] =
+    useState<{ recipe: Recipe; choices: string[]; scale: number } | null>(null);
+  const [mealShopVisible, setMealShopVisible] = useState(false);
   // What the suggestion shelf was opened with — the ranked recipes and the
   // nights they may land on, captured at open rather than re-read while it's
   // up. Held as a snapshot for the same reason `cookedRecipeForList` and
@@ -370,7 +465,12 @@ export function MealPlanScreen() {
   // sheet whose contents are recomputed from the week rewrites itself under
   // the finger that just tapped it. Null closes it.
   const [suggesting, setSuggesting] =
-    useState<{ recipes: Recipe[]; cookAgainRecipes: Recipe[]; days: Date[] } | null>(null);
+    useState<{
+      recipes: Recipe[];
+      cookAgainRecipes: Recipe[];
+      leftovers: Leftover[];
+      days: Date[];
+    } | null>(null);
   // Per-day collapse, local-only — folding one away is just less to scroll
   // past, not a decision worth persisting. Days before today are already
   // folded away wholesale by `previousDaysExpanded` below, so this starts
@@ -578,10 +678,14 @@ export function MealPlanScreen() {
   };
 
   /**
-   * What a release over the week means. Dinner, for the same reason the
-   * picker defaults to it — a week plan is mostly about dinners, and a drop is
-   * a one-gesture decision with nowhere to say otherwise. The row's calendar
-   * button still opens the sheet for anyone who wants lunch.
+   * What a release over the week means: the day from where down the list it
+   * landed, the meal from where across that day's band it landed (slotAtX).
+   *
+   * A drop used to always mean dinner, on the grounds that a week plan is
+   * mostly dinners and a one-gesture decision has nowhere to say otherwise. The
+   * band had somewhere to say it all along — it is a full screen wide and only
+   * ever asked one question of that width. The columns cost no layout and no
+   * extra step: aim at the middle of Thursday and it is still dinner.
    *
    * `planMeal` registers its own undo, so a mis-drop is a shake away.
    */
@@ -592,7 +696,7 @@ export function MealPlanScreen() {
     animateLayout();
     planMeal({
       date: intent.dayKey,
-      slot: 'dinner',
+      slot: intent.slot,
       leftoverId: leftover.id,
       title: mealTitleForLeftover(leftover),
     });
@@ -610,20 +714,26 @@ export function MealPlanScreen() {
       setFridgeDrag({ leftover, top: frame.top - dragLayerTopRef.current });
       dropZonesRef.current?.begin();
     },
-    onMove: (pageY, translation) => {
+    onMove: (page, translation) => {
       ghostX.setValue(translation.x);
       ghostY.setValue(translation.y);
-      // No `home` argument: with no corner to come back to, every sample is
-      // "out over the list", which is also the only state that autoscrolls —
-      // and autoscroll is what puts Sunday within reach of a card lifted from
-      // above Monday.
-      dropZonesRef.current?.moveTo(pageY);
+      // `home` is always 'outside': with no corner to come back to, every
+      // sample is out over the list, which is also the only state that
+      // autoscrolls — and autoscroll is what puts Sunday within reach of a card
+      // lifted from above Monday. Both axes go through: the x is what picks the
+      // meal once a day band has been found.
+      dropZonesRef.current?.moveTo(page.y, 'outside', page.x);
     },
-    onEnd: pageY => {
+    onEnd: page => {
       const leftover = draggedLeftoverRef.current;
       draggedLeftoverRef.current = null;
       setFridgeDragging(false);
-      const intent = dropZonesRef.current?.end(pageY) ?? { kind: 'plain' as const };
+      // The release carries its own x as well, rather than leaning on the last
+      // move: a hold that lifts a row and releases without travelling never
+      // moves at all, and a release resolved without one would silently mean
+      // whichever meal the default is.
+      const intent = dropZonesRef.current?.end(page.y, 'outside', page.x)
+        ?? { kind: 'plain' as const };
       settleFridgeDrag();
       if (leftover) planLeftoverOnDrop(leftover, intent);
     },
@@ -769,6 +879,33 @@ export function MealPlanScreen() {
   const reviewingRecipe = reviewingEntry?.recipeId ? recipesById.get(reviewingEntry.recipeId) ?? null : null;
 
   // ==== acting on the plan: prep tasks, the list, moves and replacements ====
+  /**
+   * Opens the review sheet on a range of the week. `useCallback` because the
+   * day renderer holds it — see renderDay's deps.
+   */
+  const openAddToList = useCallback(
+    (scope: { range: { startKey: string; endKey: string }; title: string; stampWeekKey: string | null }) => {
+      haptics.tap();
+      setAddToListScope(scope);
+      setAddToListVisible(true);
+    },
+    []
+  );
+
+  /**
+   * The day scope, named once — both surfaces that offer it (a day header in
+   * the list, a night row in the week lens) shop the same range under the same
+   * title, so neither gets to word it differently.
+   */
+  const openDayAddToList = useCallback(
+    (dayKey: string) => openAddToList({
+      range: { startKey: dayKey, endKey: dayKey },
+      title: `Add ${format(dayKeyToDate(dayKey), 'EEEE')} to list`,
+      stampWeekKey: null,
+    }),
+    [openAddToList]
+  );
+
   const addChosenPrepTasks = (chosen: FlatPrepTask[]) => {
     if (!reviewingEntry) return;
     const mealDate = dayKeyToDate(reviewingEntry.date);
@@ -999,6 +1136,9 @@ export function MealPlanScreen() {
     const zone: DropZone = { kind: 'day', key, dayKey: key, dayLabel: weekdayName };
     const isPrevious = key < todayKey;
     const isFirstPrevious = isPrevious && previousDaysInfo.firstKey === key;
+    // Whether this day has anything a shop could find — the same gate the
+    // week's own pill is behind, read over one day instead of seven.
+    const shoppable = hasShoppableMeals(dayEntries, recipesById, { startKey: key, endKey: key });
     // Folded into the "Previous days" header rendered by the first previous
     // day below — every other previous day renders nothing of its own while
     // that section is collapsed.
@@ -1091,17 +1231,53 @@ export function MealPlanScreen() {
                       color={colors.textTertiary}
                     />
                   </TouchableOpacity>
+                  {/*
+                    Shops this day and nothing else, sitting beside the day's
+                    own + rather than under its meals: the header is the row
+                    that exists whether or not the day has anything in it, so
+                    a second button there costs no vertical space on a week
+                    that already fights for it (#1374).
+
+                    Only rendered when the day has something to shop, the same
+                    restraint "Add week to list" takes — an always-present cart
+                    that opens on "Nothing to add" is a button that lies. Grey
+                    and a size down from the +, because planning a meal is
+                    still the thing you came to a day header to do.
+                  */}
                   {!selectionMode && (
-                    <TouchableOpacity
-                      style={styles.dayAdd}
-                      onPress={() => { haptics.tap(); setPlanningDay(key); }}
-                      activeOpacity={interaction.activeOpacity}
-                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Plan a meal on ${dayLabel}`}
-                    >
-                      <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
-                    </TouchableOpacity>
+                    /*
+                      Both trailing buttons in one group, spaced `md` rather
+                      than the row's own `sm`. Two 20-24pt glyphs need their
+                      hitSlop to reach a thumb-sized target, and at an 8pt gap
+                      those targets overlap — where the + wins, being the later
+                      sibling, and the cart's trailing half quietly opens the
+                      meal picker instead. 16pt is exactly the two 8pt slops
+                      meeting, with nothing shared.
+                    */
+                    <View style={styles.dayActions}>
+                      {shoppable && (
+                        <TouchableOpacity
+                          style={styles.dayAdd}
+                          onPress={() => openDayAddToList(key)}
+                          activeOpacity={interaction.activeOpacity}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 8 }}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Add ${dayLabel}'s ingredients to the grocery list`}
+                        >
+                          <Ionicons name="cart-outline" size={iconSize.md} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      )}
+                      <TouchableOpacity
+                        style={styles.dayAdd}
+                        onPress={() => { haptics.tap(); setPlanningDay(key); }}
+                        activeOpacity={interaction.activeOpacity}
+                        hitSlop={{ top: 10, bottom: 10, left: 8, right: 10 }}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Plan a meal on ${dayLabel}`}
+                      >
+                        <Ionicons name="add-circle" size={iconSize.lg} color={colors.accent} />
+                      </TouchableOpacity>
+                    </View>
                   )}
                 </View>
 
@@ -1159,12 +1335,18 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
-  // collection just to light up a header icon.
-  const hasPlannableEntries = entries.some(e => e.recipeId && recipesById.has(e.recipeId));
+  // collection just to light up a header icon. Shares one rule with the day
+  // headers' cart button and with the sheet both open — including that a meal
+  // already marked cooked counts for nothing, which this used to miss: a week
+  // whose meals were all ticked off still offered the pill, and the sheet it
+  // opened said "Nothing to add".
+  const hasPlannableEntries = range
+    ? hasShoppableMeals(entries, recipesById, range)
+    : false;
 
   // Counted over the whole component tree, so a dish whose only prep steps
   // live on one of its parts still offers the action.
@@ -1248,6 +1430,28 @@ export function MealPlanScreen() {
     return map;
   }, [mealSuggestions, recipes, groceryItems, itemSubs]);
 
+  // What the fridge can fill a night with, for the same sheet. Live containers
+  // minus the ones this week already points at — the rule and its reasons live
+  // in suggestableLeftovers, so the sheet gets a list it can render in order
+  // rather than a fridge it has to think about.
+  const fridgeSuggestions = useMemo(
+    () => suggestableLeftovers(
+      leftovers,
+      entries.map(e => e.leftoverId).filter((id): id is string => !!id),
+    ),
+    [leftovers, entries],
+  );
+
+  // The overview's shelf is three rows, and the fridge takes the first of
+  // them — at most two, so a full fridge can't crowd the ranking out of a
+  // card whose whole job is the short answer. The sheet behind it is where
+  // the rest of both lists live.
+  const overviewFridge = useMemo(() => fridgeSuggestions.slice(0, 2), [fridgeSuggestions]);
+  const overviewRecipes = useMemo(
+    () => mealSuggestions.slice(0, 3 - overviewFridge.length),
+    [mealSuggestions, overviewFridge],
+  );
+
   // Offered whenever there's a night to fill and something to fill it with —
   // a ranked recipe, or a key for the generation half to invent one (#1063).
   //
@@ -1257,7 +1461,8 @@ export function MealPlanScreen() {
   // with every dinner spoken for still offers nothing, since there is nowhere
   // for an acceptance to land.
   const canSuggestMeals = openDinnerDays.length > 0
-    && (mealSuggestions.length > 0 || cookAgainSuggestions.length > 0 || !!anthropicApiKey);
+    && (mealSuggestions.length > 0 || cookAgainSuggestions.length > 0
+      || fridgeSuggestions.length > 0 || !!anthropicApiKey);
 
   // Context for the AI half of that sheet (#1063), so an invented idea isn't
   // something already on the week or something cooked last Tuesday. Both are
@@ -1273,6 +1478,28 @@ export function MealPlanScreen() {
     () => expiringItemHints(useUpEntries(kitchenInventory(groceryItems, leftovers, new Date()))),
     [groceryItems, leftovers]
   );
+
+  /**
+   * A container accepted from the suggestion sheet — the same
+   * planMeal({ leftoverId, title }) write the fridge card's plan action and its
+   * drag onto the week make, down to the captured title.
+   *
+   * Dinner, because that is what the sheet's nights *are*: `decidableNights`
+   * reads the dinner slot, so there's no other slot a pick from it could mean.
+   * A drag is where a container lands on some other slot, since it has a target
+   * under the finger to say which one (see planLeftoverOnDrop).
+   *
+   * No prep-task offer: a leftover has no recipe behind it to have any.
+   */
+  const planLeftoverSuggestion = (leftover: Leftover, dateKey: string) => {
+    animateLayout();
+    planMeal({
+      date: dateKey,
+      slot: 'dinner',
+      leftoverId: leftover.id,
+      title: mealTitleForLeftover(leftover),
+    });
+  };
 
   const planSuggestion = (recipe: Recipe, dateKey: string) => {
     animateLayout();
@@ -1298,9 +1525,10 @@ export function MealPlanScreen() {
   }, [weekShareText]);
 
   const headerActions = useMemo<ScreenHeaderAction[]>(() => {
+    // No week chevrons here: paging the week is PeriodNav's job, in its own
+    // row under the header (see the render). What's left is the three things
+    // you do *to* the week on screen rather than to pick which week that is.
     const actions: ScreenHeaderAction[] = [
-      { icon: 'chevron-back', onPress: () => page(-1), accessibilityLabel: 'Previous week' },
-      { icon: 'chevron-forward', onPress: () => page(1), accessibilityLabel: 'Next week' },
       {
         icon: copiedWeek ? 'checkmark' : 'copy-outline',
         onPress: () => copyWeekText(weekShareText),
@@ -1409,9 +1637,11 @@ export function MealPlanScreen() {
   // ==== render. Everything below is JSX ====
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* No overline: the week range is PeriodNav's label below, and naming it
+          twice on the same screen is what a caption above the title becomes
+          once the arrows that move it are no longer beside the title. */}
       <ScreenHeader
         title="Meal plan"
-        overline={describeWeekRange(days)}
         subtitle={subtitle}
         actions={headerActions}
       />
@@ -1426,8 +1656,22 @@ export function MealPlanScreen() {
       )}
 
       {/*
-        A track, not a second row of pills. The hub's own pills sit directly
-        above it and *navigate*; these switch a lens on the week already on
+        Widest scope first: the hub pills above pick a section, this picks the
+        week, the track below picks a lens on it. Under the trip banner rather
+        than over it, so the two week controls stay adjacent when a trip is
+        running.
+      */}
+      <PeriodNav
+        label={describeWeekRange(days)}
+        onPrev={() => page(-1)}
+        onNext={() => page(1)}
+        prevAccessibilityLabel="Previous week"
+        nextAccessibilityLabel="Next week"
+      />
+
+      {/*
+        A track, not a second row of pills. The hub's own pills sit a couple of
+        rows above and *navigate*; these switch a lens on the week already on
         screen, and two rows of the same accent-filled pill would read as one
         confused eight-item row. A `SegmentedControl` is what the app reaches
         for to pick one of a small closed set, and `surface="page"` is what
@@ -1482,21 +1726,32 @@ export function MealPlanScreen() {
           recipesById={recipesById}
           hint={describeBareWeek(entries.length, recipes.length)}
           onPlanDay={setPlanningDay}
+          onAddDayToList={openDayAddToList}
           shopping={weekShopping}
-          onAddWeekToList={() => setAddingToList(true)}
+          onAddWeekToList={() => range && openAddToList({
+            range,
+            title: 'Add week to list',
+            stampWeekKey: range.startKey,
+          })}
           // The same ranking the day list's own shelf is built from, capped at
           // what a glance can carry — the full set is one tap away in the sheet
           // below.
-          suggestions={mealSuggestions.slice(0, 3)}
+          suggestions={overviewRecipes}
+          leftovers={overviewFridge}
           pantryByRecipeId={suggestionPantryCoverage}
           planTarget={openDinnerDays[0] ?? null}
           onPlanSuggestion={recipe => {
             const target = openDinnerDays[0];
             if (target) planSuggestion(recipe, dayKeyOf(target));
           }}
+          onPlanLeftover={leftover => {
+            const target = openDinnerDays[0];
+            if (target) planLeftoverSuggestion(leftover, dayKeyOf(target));
+          }}
           onSuggestMeals={canSuggestMeals ? () => setSuggesting({
             recipes: mealSuggestions,
             cookAgainRecipes: cookAgainSuggestions,
+            leftovers: fridgeSuggestions,
             days: openDinnerDays,
           }) : null}
           copyWeekLabel={copySourceKey ? copySourceLabel : null}
@@ -1604,7 +1859,11 @@ export function MealPlanScreen() {
                       <InlineAction
                         label="Add week to list"
                         icon="cart-outline"
-                        onPress={() => { haptics.tap(); setAddingToList(true); }}
+                        onPress={() => range && openAddToList({
+                          range,
+                          title: 'Add week to list',
+                          stampWeekKey: range.startKey,
+                        })}
                         accessibilityLabel="Add this week's ingredients to the grocery list"
                       />
                     )}
@@ -1619,6 +1878,7 @@ export function MealPlanScreen() {
                           setSuggesting({
                             recipes: mealSuggestions,
                             cookAgainRecipes: cookAgainSuggestions,
+                            leftovers: fridgeSuggestions,
                             days: openDinnerDays,
                           });
                         }}
@@ -1818,6 +2078,18 @@ export function MealPlanScreen() {
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })
             : undefined
         }
+        onAddToList={
+          selectedRecipe
+            ? () => {
+                setMealShop({
+                  recipe: selectedRecipe,
+                  choices: selected?.recipeChoices ?? [],
+                  scale: selected?.recipeScale ?? 1,
+                });
+                setMealShopVisible(true);
+              }
+            : undefined
+        }
         onAddPrepTasks={
           selectedPrepTaskCount > 0
             ? () => selected && setReviewingPrepTasksFor(selected.id)
@@ -1844,13 +2116,15 @@ export function MealPlanScreen() {
         onClose={() => setSelectedId(null)}
       />
 
-      {range && (
-        <AddWeekToListSheet
-          visible={addingToList}
+      {addToListScope && (
+        <AddMealsToListSheet
+          visible={addToListVisible}
           entries={entries}
           recipesById={recipesById}
-          range={range}
-          onClose={() => setAddingToList(false)}
+          range={addToListScope.range}
+          title={addToListScope.title}
+          stampWeekKey={addToListScope.stampWeekKey}
+          onClose={() => setAddToListVisible(false)}
         />
       )}
 
@@ -1858,6 +2132,7 @@ export function MealPlanScreen() {
         visible={suggesting !== null}
         recipes={suggesting?.recipes ?? []}
         cookAgainRecipes={suggesting?.cookAgainRecipes ?? []}
+        leftovers={suggesting?.leftovers ?? []}
         pantryByRecipeId={suggestionPantryCoverage}
         openDays={suggesting?.days ?? []}
         aiIdeasEnabled={!!anthropicApiKey}
@@ -1866,7 +2141,23 @@ export function MealPlanScreen() {
         expiringItemHints={expiringMealHints}
         slotsToFill={suggesting?.days.length ?? 0}
         onPlan={planSuggestion}
+        onPlanLeftover={planLeftoverSuggestion}
         onClose={() => setSuggesting(null)}
+      />
+
+      {/*
+        One meal's shop, asked for from its own sheet. `initialSelection` is
+        the default "all": the user named the action, so every line they still
+        need starts ticked — where the restock offer below has to stay inside
+        what its banner counted.
+      */}
+      <RecipeToListSheet
+        visible={mealShopVisible}
+        recipe={mealShop?.recipe ?? null}
+        recipesById={recipesById}
+        initialChoices={mealShop?.choices}
+        initialScale={mealShop?.scale}
+        onClose={() => setMealShopVisible(false)}
       />
 
       {/* Ticks stay scoped to what the banner claimed — see initialSelection. */}
@@ -1933,6 +2224,7 @@ export function MealPlanScreen() {
           title: pick.title,
           storedAt,
           keepDays,
+          frozen: pick.frozen,
           recipeId: pick.recipeId,
           sourceEntryId: loggingLeftover?.sourceEntryId ?? null,
         }))}
@@ -1968,12 +2260,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   // Name, date and chevron in one group at the leading edge; the trailing
-  // edge carries the add button and nothing else.
+  // edge carries the day's buttons (see dayActions) and nothing else.
   dayHeader: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: spacing.xs,
+  },
+  dayActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
   },
   dayAdd: {
     alignItems: 'center',

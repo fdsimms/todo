@@ -15,6 +15,7 @@ import { spacing, radius, font, fontWeight, interaction, animation, type Colors 
 import { haptics } from '../utils/haptics';
 import { tagColor } from '../utils/tagColor';
 import { toggleRecipeTag } from '../utils/recipeTags';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -45,12 +46,14 @@ export function RecipeTagFilterSheet({ visible, onClose, tags, counts, selected,
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     if (visible) {
-      translateY.setValue(600);
+      translateY.setValue(hiddenY);
       backdropOpacity.setValue(0);
       Animated.parallel([
         Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -61,10 +64,10 @@ export function RecipeTagFilterSheet({ visible, onClose, tags, counts, selected,
 
   const dismiss = () => {
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
     });
   };

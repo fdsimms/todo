@@ -30,14 +30,19 @@ import { SafeBlurView } from './SafeBlurView';
 import { CountStepper } from './CountStepper';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetActionRow } from './SheetActionRow';
+import { SegmentedControl } from './SegmentedControl';
 import {
   cleanLeftoverTitle,
   describeLeftover,
   describeOutcome,
   isLiveLeftover,
   keepDaysBetween,
+  leftoverContainersFor,
+  type LeftoverDestination,
   type LeftoverPart,
+  type LeftoverPick,
 } from '../utils/leftovers';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 /** Kept clear above the sheet so its first row never slides under the status bar. */
 const TOP_INSET = 72;
@@ -61,6 +66,20 @@ const PUT_AWAY_SPOKEN: Record<number, string> = {
   2: '2 days ago',
   3: '3 days ago',
 };
+
+/**
+ * Where it's going, asked once at log time.
+ *
+ * A closed set of three with exactly one chosen, so it's a `SegmentedControl`
+ * rather than the chip row above it — the same rule that keeps "Put away" as
+ * chips, read the other way: those are four points on one dial, these are
+ * three different places.
+ */
+const DESTINATIONS: { value: LeftoverDestination; label: string; spoken: string }[] = [
+  { value: 'fridge', label: 'Fridge', spoken: 'In the fridge' },
+  { value: 'freezer', label: 'Freezer', spoken: 'In the freezer' },
+  { value: 'both', label: 'Both', spoken: 'Some in the fridge and some in the freezer' },
+];
 
 export interface LeftoverSeed {
   /** Prefills the title — the dish the "Log leftovers" action came from. */
@@ -88,12 +107,6 @@ export interface LeftoverSeed {
   keepDays?: number;
 }
 
-/** One container to log: what to call it, and what it was made from. */
-export interface LeftoverPick {
-  title: string;
-  recipeId: string | null;
-}
-
 interface Props {
   visible: boolean;
   /**
@@ -109,6 +122,9 @@ interface Props {
    * keep-for window — they came out of the same oven at the same moment. Each
    * still becomes its own row with its own clock, so the mash can be finished
    * off on Thursday and the steak thrown out on Friday.
+   *
+   * A pick carries its own `frozen`, already multiplied out from the sheet's
+   * fridge/freezer/both answer, so a caller only ever writes one row per pick.
    */
   onLog: (picks: LeftoverPick[], storedAt: string, keepDays: number) => void;
   onRename: (title: string) => void;
@@ -159,7 +175,9 @@ export function LeftoverSheet({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { height: windowHeight } = useWindowDimensions();
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   // The sheet is bottom-anchored, the same edge the keyboard docks to — with
   // nothing accounting for it, an autofocused TextInput (fresh, unseeded
@@ -203,6 +221,9 @@ export function LeftoverSheet({
   const [draftDaysAgo, setDraftDaysAgo] = useState(0);
   const [draftKeepDays, setDraftKeepDays] = useState<number | null>(LEFTOVER_KEEP_DAYS_DEFAULT);
   const [pickedKeys, setPickedKeys] = useState<string[]>([]);
+  // Opens on the fridge, which is where most of a week's leftovers go, so the
+  // ordinary log still costs the taps it always did.
+  const [destination, setDestination] = useState<LeftoverDestination>('fridge');
 
   const parts = seed?.parts ?? [];
   // One part is not a choice — that's every uncomposed recipe, and every
@@ -216,7 +237,7 @@ export function LeftoverSheet({
 
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(600);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -231,15 +252,16 @@ export function LeftoverSheet({
     // tap the simple one does. Falls back to the first part for a seed that
     // somehow carries only components.
     setPickedKeys(seed?.parts?.length ? [(seed.parts.find(p => p.whole) ?? seed.parts[0]).key] : []);
+    setDestination('fridge');
   }, [visible, leftover?.id]);
 
   const dismiss = (after?: () => void) => {
     Keyboard.dismiss();
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
       after?.();
     });
@@ -262,12 +284,16 @@ export function LeftoverSheet({
   const cleanTitle = cleanLeftoverTitle(title);
 
   // What "Log it" is about to write: the ticked parts, or the one thing that's
-  // been typed. Empty means the button is inert rather than writing nothing.
-  const picks: LeftoverPick[] = choosing
-    ? parts.filter(p => pickedKeys.includes(p.key)).map(p => ({ title: p.title, recipeId: p.recipeId }))
-    : cleanTitle
-      ? [{ title: cleanTitle, recipeId: seed?.recipeId ?? null }]
-      : [];
+  // been typed, each multiplied out by where it's going. Empty means the button
+  // is inert rather than writing nothing.
+  const picks: LeftoverPick[] = leftoverContainersFor(
+    choosing
+      ? parts.filter(p => pickedKeys.includes(p.key))
+      : cleanTitle
+        ? [{ title: cleanTitle, recipeId: seed?.recipeId ?? null }]
+        : [],
+    destination
+  );
 
   const togglePart = (key: string) => {
     haptics.tap();
@@ -377,7 +403,7 @@ export function LeftoverSheet({
             <>
               <Text style={styles.label}>What's left</Text>
               <Text style={styles.hintBlock}>
-                Each one goes in the fridge as its own container.
+                Each one becomes its own container.
               </Text>
               <View style={styles.parts}>
                 {parts.map((part, i) => {
@@ -459,11 +485,43 @@ export function LeftoverSheet({
             <Text style={styles.hint}>{`Put away ${storedDaysAgo} days ago`}</Text>
           )}
 
+          {/* Only while logging. An existing container moves between the two
+              with the "Put in the freezer" action further down, which is a
+              different question — that one restarts a clock that has been
+              running, this one says where the container starts. */}
+          {!editing && (
+            <>
+              <Text style={styles.label}>Where it's going</Text>
+              <View style={styles.destination}>
+                <SegmentedControl
+                  options={DESTINATIONS.map(d => ({
+                    value: d.value,
+                    label: d.label,
+                    accessibilityLabel: d.spoken,
+                  }))}
+                  value={destination}
+                  onChange={setDestination}
+                  label="Where it's going"
+                />
+              </View>
+              {destination === 'both' && (
+                <Text style={styles.hint}>
+                  Each one is logged twice, once for the fridge and once for the freezer.
+                </Text>
+              )}
+            </>
+          )}
+
           <View style={styles.keepRow}>
             <View style={styles.keepText}>
               <Text style={styles.keepLabel}>Keep for</Text>
               <Text style={styles.hintInline}>
-                {frozen
+                {/* A container logged straight into the freezer is asking the
+                    same question a frozen row does: the window isn't running
+                    yet, it's what it gets when it comes back out. "Both" keeps
+                    the fridge wording, because one of the two is counting down
+                    from today and that's the half worth naming. */}
+                {frozen || (!editing && destination === 'freezer')
                   ? 'How long it keeps once it comes out of the freezer'
                   : 'How long before it should be used or tossed'}
               </Text>
@@ -674,6 +732,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
+  },
+  destination: {
+    paddingHorizontal: spacing.md,
   },
   hintBlock: {
     color: colors.textTertiary,

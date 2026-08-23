@@ -74,6 +74,66 @@ export interface LeftoverPart {
 export const WHOLE_PART_KEY = 'whole';
 
 /**
+ * Where a container is going the moment it's logged.
+ *
+ * Two places, plus the answer that is genuinely both. Batch cooking is the
+ * ordinary case this exists for — one pot becomes some of this week's dinner
+ * and some of a night in November — and until this it had to be logged as one
+ * container and then split by hand, which nothing in the app could do: a
+ * `Leftover` has one `frozenAt` and one clock, so half of it going in the
+ * freezer is a *second container*, not a second state on the first.
+ *
+ * **There is deliberately no pantry option**, though plenty of leftovers live
+ * in a cupboard. The kitchen's vocabulary is settled (see kitchenInventory.ts):
+ * the pantry is the grocery half, the fridge is the leftovers half, and the
+ * freezer cuts across both. A third location here would be a fourth word for
+ * the same shelf, and every caption the row already carries ("In the fridge
+ * today", "Back in the fridge") would have to grow a case that changes nothing
+ * about what the container does.
+ */
+export type LeftoverDestination = 'fridge' | 'freezer' | 'both';
+
+/**
+ * One container the log sheet is about to write: what to call it, what it was
+ * made from, and which side of the kitchen it's going in.
+ *
+ * A UI-facing shape like `LeftoverPart` above, and one step further along —
+ * a part is something that *could* be logged, a pick is a row that will be.
+ */
+export interface LeftoverPick {
+  title: string;
+  recipeId: string | null;
+  /** True for the container going straight in the freezer. */
+  frozen: boolean;
+}
+
+/**
+ * The containers a set of ticked parts turns into, under one destination.
+ *
+ * `both` doubles each part rather than doubling the list, so a dish and its
+ * two components come out as three adjacent pairs instead of three fridge rows
+ * followed by three freezer ones. What that buys is the count on the log
+ * button reading as the number of tubs actually going in the kitchen, which is
+ * the only place the user ever sees how the answer multiplied out.
+ *
+ * The fridge half comes first in each pair for the same reason "Fridge" is the
+ * first segment: it's the answer for most cookings, and the one the sheet
+ * opens on.
+ */
+export function leftoverContainersFor(
+  parts: readonly { title: string; recipeId: string | null }[],
+  destination: LeftoverDestination,
+): LeftoverPick[] {
+  const picks: LeftoverPick[] = [];
+  for (const part of parts) {
+    const base = { title: part.title, recipeId: part.recipeId };
+    if (destination !== 'freezer') picks.push({ ...base, frozen: false });
+    if (destination !== 'fridge') picks.push({ ...base, frozen: true });
+  }
+  return picks;
+}
+
+/**
  * What a cooking of `recipe` could have left in the fridge: the meal itself,
  * then each component it actually cooked.
  *
@@ -284,6 +344,46 @@ export function attentionLeftovers(
   now: Date = new Date()
 ): Leftover[] {
   return liveLeftovers(leftovers).filter(l => needsAttention(l, now));
+}
+
+/**
+ * The containers `SuggestMealsSheet` may offer for a night with no dinner on
+ * it — live ones, most urgent first, minus any the week already points at.
+ *
+ * The sheet used to answer "what could I make this week" purely out of the
+ * recipe box and the grocery catalog, so a fridge holding two containers and a
+ * week holding four empty nights got four proposals to *cook* and no mention
+ * of the two dinners that already existed. A container is the cheapest meal in
+ * the house and the only one with a clock on it, which is why it leads the
+ * sheet rather than sitting among the ranked recipes.
+ *
+ * **Not the same question `attentionLeftovers` asks.** That one drives a nudge,
+ * so it fires only for what's nearly out of time. This one is filling a night,
+ * and a stew with three days left is a perfectly good Tuesday — the urgency
+ * decides the *order* here (`sortLeftovers`, which also files the frozen ones
+ * last), never whether a container is offered at all.
+ *
+ * **`plannedLeftoverIds` is what the week already spoke for.** Pointing a meal
+ * at a container isn't eating all of it (see `Leftover.finishedAt`), so a big
+ * pot genuinely can cover two nights — but that's a decision to make in front
+ * of the fridge card, which is where planning a container onto a specific night
+ * lives. A list of proposals offering the same chilli for Tuesday *and*
+ * Thursday, in a sheet that assigns days by itself, is just a double-booking
+ * with extra steps.
+ *
+ * Capped for the reason `suggestRecipesForEmptyNight` is: this is a shelf to
+ * read, not the fridge in full, and the whole fridge is one tap away on the
+ * card behind the sheet.
+ */
+export function suggestableLeftovers(
+  leftovers: readonly Leftover[],
+  plannedLeftoverIds: readonly string[] = [],
+  limit: number = 5
+): Leftover[] {
+  const planned = new Set(plannedLeftoverIds);
+  return liveLeftovers(leftovers)
+    .filter(l => !planned.has(l.id))
+    .slice(0, limit);
 }
 
 /**

@@ -25,6 +25,7 @@ import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
 import type { ChoiceGroup } from '../utils/recipeComponents';
 import { RecipeScaleChips } from './RecipeScaleChips';
+import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
   visible: boolean;
@@ -79,6 +80,14 @@ interface Props {
   onStartCooking?: () => void;
   /** Present only while the entry's recipe still resolves. */
   onOpenRecipe?: () => void;
+  /**
+   * Shops this one meal — opens the review sheet on its recipe, at this
+   * meal's own scale and either/or picks. Present only while the entry's
+   * recipe resolves, and present whether or not the meal is cooked: unlike
+   * the week and day adds, which skip a cooked meal because nobody asked
+   * about it, this one was asked for by name.
+   */
+  onAddToList?: () => void;
   /** Present only while the entry's recipe still resolves and has prep tasks. */
   onAddPrepTasks?: () => void;
   /**
@@ -130,7 +139,8 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onRemove, onRename, choiceGroups = [], onChoose,
-  onScale, baseServings, baseServingsMax, onSetCooked, onStartCooking, onOpenRecipe, onAddPrepTasks, onLogLeftovers,
+  onScale, baseServings, baseServingsMax, onSetCooked, onStartCooking, onOpenRecipe, onAddToList, onAddPrepTasks,
+  onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
 }: Props) {
   const colors = useColors();
@@ -139,7 +149,9 @@ export function MealEntrySheet({
   const { height: windowHeight } = useWindowDimensions();
   const cooked = !!entry?.cookedAt;
 
-  const translateY = useRef(new Animated.Value(600)).current;
+  const hiddenY = useSheetHiddenOffset();
+
+  const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
 
   const [editingTitle, setEditingTitle] = useState(false);
@@ -147,7 +159,7 @@ export function MealEntrySheet({
 
   useEffect(() => {
     if (!visible) return;
-    translateY.setValue(600);
+    translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -168,10 +180,13 @@ export function MealEntrySheet({
 
   const dismiss = (after?: () => void) => {
     Animated.parallel([
-      Animated.spring(translateY, { toValue: 700, ...animation.spring.sheetDismiss, useNativeDriver: true }),
+      Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
     ]).start(() => {
-      translateY.setValue(600);
+      // No re-arming setValue here — see useSheetHiddenOffset. "Open recipe"
+      // is the call site that made this visible: the card was put back on
+      // screen at the bottom of the meal plan and stayed there until
+      // RecipeDetail had finished rendering.
       onClose();
       after?.();
     });
@@ -411,6 +426,26 @@ export function MealEntrySheet({
                 label="Open recipe"
                 onPress={() => { haptics.tap(); dismiss(onOpenRecipe); }}
                 accessibilityLabel="Open this recipe"
+              />
+            </>
+          )}
+
+          {/*
+            The one-meal end of the same three-scope shortcut the day headers'
+            cart button and the week's own pill sit at the other end of: a
+            meal, a day, a week. Directly under "Open recipe" because it's the
+            other thing this sheet can do with the recipe behind the meal,
+            where the two rows below it both write a task.
+          */}
+          {!!onAddToList && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="cart-outline"
+                color={colors.accent}
+                label="Add ingredients to list"
+                onPress={() => { haptics.tap(); dismiss(onAddToList); }}
+                accessibilityLabel="Add this meal's ingredients to the grocery list"
               />
             </>
           )}

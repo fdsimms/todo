@@ -1876,6 +1876,15 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   });
   if (frozenChilli) setLeftoverFrozen(frozenChilli.id, true);
 
+  // The other way into the freezer, and the one the log sheet asks about: a
+  // batch cooked and split at the sink, half for this week and half for a
+  // night in November. Two rows rather than one, because a container has one
+  // clock — the fridge half counts down and the freezer half doesn't, which is
+  // the whole reason "Both" writes twice instead of writing a flag.
+  const batchStoredAt = subDays(today, 2).toISOString();
+  logLeftover({ title: 'Sausage ragù', storedAt: batchStoredAt, keepDays: 4 });
+  logLeftover({ title: 'Sausage ragù', storedAt: batchStoredAt, keepDays: 4, frozen: true });
+
   // Closed out, so the fridge history has both endings in it. "We ate it" and
   // "it went off" are the two things the feature exists to tell apart.
   const eaten = logLeftover({
