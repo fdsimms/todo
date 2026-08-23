@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where deleting a project left its \"Review\" task sitting on Today until the app was next reopened",
+  "date": "2026-08-23"
+}

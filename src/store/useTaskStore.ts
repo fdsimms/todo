@@ -4566,6 +4566,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     });
     useProjectStore.getState().removeProjectRow(projectId);
+    // Not part of `members`: a review task carries no `projectId` (see
+    // projectReviewTasks.ts), so the loop above never touches it and a
+    // deleted project's "Review <title>" row was otherwise left sitting on
+    // Today until the next foreground sweep. dropGeneratedTask, not
+    // deleteGeneratedTaskQuietly: the project row is already gone, so an
+    // opt-out write would have nothing to land on anyway, same reasoning
+    // checkProjectReviewTasks itself follows. Called before setLastAction
+    // below, since dropGeneratedTask clears any pending lastAction.
+    dropGeneratedTask('projectReview', projectId);
     if (!project) return;
     get().setLastAction({
       label: opts.cascade ? 'Project and its tasks deleted' : 'Project deleted',

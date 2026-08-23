@@ -7005,6 +7005,20 @@ describe('deleteProject', () => {
     expect(useProjectStore.getState().projects.map(p => p.id)).toEqual(['p1']);
     expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.projectId).toBe('p1');
   });
+
+  // The review task carries no `projectId` (see projectReviewTasks.ts), so it
+  // isn't in `members` and the cascade above never reaches it — it used to sit
+  // on Today until the next foreground sweep even though its project was gone.
+  it('drops the project’s own review task, which the member loop never touches', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', title: 'Kitchen renovation' })] });
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'review', projectId: null, generatedKind: 'projectReview', generatedSourceId: 'p1' }),
+      ],
+    });
+    useTaskStore.getState().deleteProject('p1', { cascade: false });
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
 });
 
 // ─── bulkDeleteProjects ─────────────────────────────────────────────────────
