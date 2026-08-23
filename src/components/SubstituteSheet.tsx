@@ -246,14 +246,13 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   // left field hasn't produced a usable amount+unit yet.
   const fromUnit = parseQuantity(ratioFrom).rest || null;
 
-  // Two illustrative outcomes rather than the three the mock shows for
-  // garlic specifically: a believable "wrong but plausible unit" example
-  // (garlic's cloves-vs-bulbs) can't be synthesized generically for whatever
-  // item the user is naming a ratio for without guessing at units the way
-  // every refusal rule in this app already declines to. Doubling the typed
-  // `ratioFrom` itself demonstrates the arithmetic; a fixed unparseable
-  // amount demonstrates the refusal — both true for any ratio, not just this
-  // one's motivating example.
+  // Doubling the typed `ratioFrom` demonstrates the arithmetic without
+  // asserting a specific recipe line exists — a fixed second example ("a
+  // pinch of butter") used to fill that role, but a made-up quantity read as
+  // the app claiming that's a real amount, for whatever item the user
+  // happened to be naming a ratio for. The refusal case (a line measured a
+  // different way) is already stated in the hint above, so it doesn't need a
+  // demonstration line of its own.
   const previewRows = useMemo(() => {
     if (!item || !picked || !ratioFrom.trim() || !ratioTo.trim()) return null;
     const doubled = scaleQuantity(ratioFrom, 2);
@@ -268,10 +267,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
       };
     };
 
-    return [
-      build(doubled.text, `${doubled.text} ${item.name.toLowerCase()}`),
-      build('a pinch', `a pinch of ${item.name.toLowerCase()}`),
-    ];
+    return [build(doubled.text, `${doubled.text} ${item.name.toLowerCase()}`)];
   }, [item, picked, ratioFrom, ratioTo]);
 
   const handleConfirm = () => {
@@ -480,13 +476,13 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
               </View>
             </TouchableOpacity>
 
-            {/* Outcomes, not rules — showing what "3 cloves" and "a pinch" turn
-                into is what should stop "the ratio doesn't work on my bulb"
-                being filed as a bug, rather than stating the refusal as a
+            {/* An outcome, not a rule — showing what "3 cloves" turns into is
+                what should stop "the ratio doesn't work on my bulb" being
+                filed as a bug, rather than stating the arithmetic as a
                 sentence someone has to read and remember. */}
             {!!previewRows && (
               <View style={styles.previewCard}>
-                <Text style={styles.label}>PREVIEW</Text>
+                <Text style={[styles.label, styles.previewLabel]}>PREVIEW</Text>
                 {previewRows.map((row, i) => (
                   <View key={i} style={styles.previewRow}>
                     <Text style={styles.previewQuantity} numberOfLines={1}>{row.quantity}</Text>
@@ -813,6 +809,10 @@ function makeStyles(colors: Colors) {
       padding: spacing.md,
       marginTop: spacing.lg,
     },
+    // `label`'s own marginTop separates it from whatever sits above it in the
+    // flow — inside this card that's the card's top padding, so the two
+    // would otherwise stack and read as too much space above "PREVIEW".
+    previewLabel: { marginTop: 0 },
     previewRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
