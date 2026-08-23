@@ -6,7 +6,8 @@ import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors }
 import { PressableScale } from './PressableScale';
 import { haptics } from '../utils/haptics';
 import { formatStopwatch } from '../utils/effort';
-import { displayTitleFor } from '../utils/visibilityUtils';
+import { displayTitleFor, isQuotaTask } from '../utils/visibilityUtils';
+import { formatQuotaProgress } from '../utils/quotaUnit';
 import {
   currentFocusStep,
   isFocusRunning,
@@ -64,6 +65,13 @@ export function FocusBar({ onOpen }: Props) {
         ? displayTitleFor(task)
         : 'Focusing';
 
+  // A daily target's count, so the strip says which of the ten glasses the
+  // session is on. Bare "4/10" without the unit: the title is right beside it
+  // and the strip is one line that a long title already competes for.
+  const quotaCount = !finished && task && isQuotaTask(task) && !task.completed
+    ? formatQuotaProgress(task.progressCount, task.targetCount!, null)
+    : null;
+
   // An over-run step counts up rather than sitting at 0:00, so the strip says
   // how long it's been waiting on you rather than just that it is.
   const clock = finished
@@ -85,7 +93,7 @@ export function FocusBar({ onOpen }: Props) {
         accessibilityLabel={
           finished
             ? 'Focus session finished. Open it'
-            : `Focusing on ${label}, ${clock} ${stepDone ? 'over' : 'left'}. Open the session`
+            : `Focusing on ${label}${quotaCount ? `, ${quotaCount} logged` : ''}, ${clock} ${stepDone ? 'over' : 'left'}. Open the session`
         }
       >
         <Ionicons
@@ -94,6 +102,7 @@ export function FocusBar({ onOpen }: Props) {
           color={stepDone && !finished ? colors.orange : colors.accent}
         />
         <Text style={styles.text} numberOfLines={1}>{label}</Text>
+        {quotaCount !== null && <Text style={styles.count}>{quotaCount}</Text>}
         {clock !== null && (
           <Text style={[styles.clock, stepDone && styles.clockDone]}>{clock}</Text>
         )}
@@ -138,6 +147,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.xs,
   },
   text: { flexShrink: 1, color: colors.text, fontSize: font.md },
+  count: {
+    color: colors.accent,
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums'],
+  },
   clock: {
     color: colors.textSecondary,
     fontSize: font.sm,

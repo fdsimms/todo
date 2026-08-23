@@ -16,6 +16,8 @@ import { spacing, radius, font, fontWeight, lineHeight, border, animation, inter
 import { haptics } from '../utils/haptics';
 import { formatClockDuration, formatDuration } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
+import { isQuotaTask } from '../utils/visibilityUtils';
+import { formatQuotaProgress } from '../utils/quotaUnit';
 import { buildFocusPlan, focusPlanTotals } from '../utils/focusPlan';
 import { focusPlanOptionsFrom } from '../utils/focusSettings';
 import {
@@ -303,6 +305,13 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
   const renderRow = (task: Task) => {
     const checked = selectedIds.has(task.id);
     const reason = ctx ? focusReason(task, companyFor(task.id), ctx) : null;
+    // A daily target is logged a unit at a time rather than ticked off once, so
+    // its count goes in front of the reason: it's the difference between a
+    // stretch that finishes the task and one that gets you two glasses closer.
+    const count = isQuotaTask(task) && !task.completed
+      ? formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)
+      : null;
+    const sub = [count, reason].filter((part): part is string => part !== null).join(' · ');
 
     return (
       <View key={task.id} style={styles.row}>
@@ -312,7 +321,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="checkbox"
           accessibilityState={{ checked }}
-          accessibilityLabel={`${task.title}${reason ? `, ${reason}` : ''}`}
+          accessibilityLabel={`${task.title}${sub ? `, ${sub}` : ''}`}
         >
           <Ionicons
             name={checked ? 'checkmark-circle' : 'ellipse-outline'}
@@ -323,7 +332,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
             <Text style={[styles.rowTitle, !checked && styles.rowTitleUnchecked]} numberOfLines={1}>
               {task.title}
             </Text>
-            {reason !== null && <Text style={styles.rowSub} numberOfLines={1}>{reason}</Text>}
+            {sub !== '' && <Text style={styles.rowSub} numberOfLines={1}>{sub}</Text>}
           </View>
         </TouchableOpacity>
 

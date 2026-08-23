@@ -41,6 +41,30 @@ export function formatQuotaProgress(
 }
 
 /**
+ * The line under a daily target's meter in a focus session, saying what one
+ * more log gets you.
+ *
+ * A focus session is the one place a target is worked without its own row in
+ * front of you, so the two numbers a row makes obvious by sitting on Today (or
+ * by not) have to be said out loud: how many logs put it back on pace, at which
+ * point it leaves Today until the next one is due, and how many finish it for
+ * the day. They're only the same number as the day's span closes.
+ *
+ * `toPace` comes from `quotaUnitsToPace`, which reads the clock and the
+ * settings; this half is pure so the wording is testable.
+ */
+export function formatQuotaCatchUp(logged: number, target: number, toPace: number): string {
+  const remaining = target - logged;
+  // Only reachable in overshoot mode, where logging past the target is the
+  // point and no number of units puts it back on pace.
+  if (remaining <= 0) return `Past the target of ${target} for the day.`;
+  if (remaining === 1) return 'One more finishes it for the day.';
+  if (toPace <= 0) return `On pace for now. ${remaining} more to finish for the day.`;
+  if (toPace >= remaining) return `${remaining} more to finish for the day.`;
+  return `${toPace} more to catch up and leave Today. All ${remaining} to finish for the day.`;
+}
+
+/**
  * The target on its own, for the editor row's value and the quick-add summary.
  * Without a unit it keeps the bare "12×" it has always shown — the × is what
  * makes a naked number read as "twelve times" rather than as a quantity.

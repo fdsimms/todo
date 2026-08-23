@@ -16,6 +16,7 @@ import {
   isUpcomingToday,
   isQuotaTask,
   quotaExpectedByNow,
+  quotaUnitsToPace,
   isQuotaOnPace,
   quotaLeavesTodayAfterLog,
   quotaNextDueAt,
@@ -1422,6 +1423,35 @@ describe('quota tasks', () => {
 
     it('owes nothing for a task that is not a quota', () => {
       expect(quotaExpectedByNow(baseTask)).toBe(0);
+    });
+  });
+
+  describe('quotaUnitsToPace', () => {
+    it('counts the units between here and back on pace', () => {
+      // 10:00, so two are owed of the eight.
+      expect(quotaUnitsToPace({ ...quotaTask, progressCount: 0 })).toBe(2);
+      expect(quotaUnitsToPace({ ...quotaTask, progressCount: 1 })).toBe(1);
+    });
+
+    it('is zero once you are on pace, and never negative when ahead', () => {
+      expect(quotaUnitsToPace({ ...quotaTask, progressCount: 2 })).toBe(0);
+      expect(quotaUnitsToPace({ ...quotaTask, progressCount: 6 })).toBe(0);
+    });
+
+    it('never asks for more than the target once the span has closed', () => {
+      jest.setSystemTime(new Date(2025, 5, 10, 23, 0, 0));
+      expect(quotaUnitsToPace({ ...quotaTask, progressCount: 0 })).toBe(8);
+    });
+
+    it('asks for nothing of an overshoot target already past its target', () => {
+      // isQuotaOnPace deliberately reads false there; no number of units would
+      // change that, so the catch-up count must not invent one.
+      const over = { ...quotaTask, allowOvershoot: true, progressCount: 9 };
+      expect(quotaUnitsToPace(over)).toBe(0);
+    });
+
+    it('is zero for a task that is not a quota', () => {
+      expect(quotaUnitsToPace(baseTask)).toBe(0);
     });
   });
 

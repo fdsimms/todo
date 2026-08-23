@@ -480,6 +480,22 @@ export function isQuotaOnPace(task: Task): boolean {
   return task.progressCount >= quotaExpectedByNow(task);
 }
 
+// How many units it would take to be back on pace right now — i.e. how many
+// logs stand between this task and dropping off Today until the next one falls
+// due. 0 once it's on pace. This is the number the focus session shows, because
+// "how many more before this goes quiet" is a different question from "how many
+// before it's finished for the day" (target - progressCount) and the two only
+// coincide at the end of the span.
+//
+// Capped at the target for the same reason quotaExpectedByNow caps: an
+// allowOvershoot task past its target is deliberately not on pace, and there is
+// no number of units that would put it back.
+export function quotaUnitsToPace(task: Task): number {
+  if (!isQuotaTask(task)) return 0;
+  const owed = Math.min(task.targetCount!, quotaExpectedByNow(task));
+  return Math.max(0, owed - task.progressCount);
+}
+
 // The moment quotaExpectedByNow ticks up to progressCount + 1 — i.e. when the
 // next unit comes due. Places an on-pace quota task in Later's running order.
 export function quotaNextDueAt(task: Task): Date {

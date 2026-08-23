@@ -7,7 +7,8 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, intera
 import { haptics } from '../utils/haptics';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
-import { displayTitleFor } from '../utils/visibilityUtils';
+import { displayTitleFor, isQuotaTask, quotaUnitsToPace } from '../utils/visibilityUtils';
+import { formatQuotaCatchUp, formatQuotaProgress, formatQuotaTarget } from '../utils/quotaUnit';
 import {
   currentFocusStep,
   focusPlanTotals,
@@ -64,6 +65,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const { session, now } = useFocusSession();
   const tasks = useTaskStore(s => s.tasks);
   const completeTask = useTaskStore(s => s.completeTask);
+  const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
   const pause = useFocusStore(s => s.pause);
   const resume = useFocusStore(s => s.resume);
   const advance = useFocusStore(s => s.advance);
@@ -91,6 +93,23 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const upcoming = session.steps.slice(session.stepIndex + 1);
   const nextStep: FocusStep | undefined = upcoming[0];
 
+  // A daily target is logged a unit at a time, exactly as its meter on Today
+  // is, so the tick action here says "Log one" and does that rather than
+  // completing the whole quota. Ticking one off used to run straight through
+  // completeTask, which fills progressCount to the target: the session's Done
+  // finished all ten glasses in a tap while the same task's row on Today only
+  // ever added one.
+  const quotaTask = currentTask && isQuotaTask(currentTask) && !currentTask.completed
+    ? currentTask
+    : undefined;
+  const quotaToPace = quotaTask ? quotaUnitsToPace(quotaTask) : 0;
+  // The unit that meets the target completes the task (logQuotaUnit hands off),
+  // so it earns the completion haptic rather than the log one. An overshoot
+  // target never reaches that: logging past its target is the point.
+  const quotaLogFinishes = quotaTask
+    ? !quotaTask.allowOvershoot && quotaTask.progressCount + 1 >= quotaTask.targetCount!
+    : false;
+
   const handleEnd = () => {
     haptics.warning();
     endSession();
@@ -100,6 +119,16 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const handleAdvance = () => {
     haptics.impactLight();
     advance();
+  };
+
+  const handleLog = () => {
+    if (!quotaTask) return;
+    if (quotaLogFinishes) haptics.success();
+    else haptics.impactLight();
+    // Same store action the row's meter tap uses, so the unit that meets the
+    // target still completes through completeTask and takes recurrence,
+    // streaks and the Logbook with it.
+    logQuotaUnit(quotaTask.id);
   };
 
   const handleDone = () => {
@@ -166,6 +195,23 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
             {isRest ? 'Step away' : titleOf(step.taskId)}
           </Text>
 
+          {/* The count and what one more log does with it. A target's row on
+              Today answers both by being there or not; in a session there is no
+              row, so the numbers are spelled out. */}
+          {quotaTask && (
+            <>
+              <View style={styles.quotaChip}>
+                <Ionicons name="speedometer-outline" size={iconSize.sm} color={colors.accent} />
+                <Text style={styles.quotaProgress}>
+                  {formatQuotaProgress(quotaTask.progressCount, quotaTask.targetCount!, quotaTask.targetUnit)}
+                </Text>
+              </View>
+              <Text style={styles.quotaNote}>
+                {formatQuotaCatchUp(quotaTask.progressCount, quotaTask.targetCount!, quotaToPace)}
+              </Text>
+            </>
+          )}
+
           {/* The over-run counts up, and says so with a sign: the caption
               below carries "over 15m", but the number is what the eye lands
               on and 2:07 alone reads as time remaining. */}
@@ -217,13 +263,17 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
             {!isRest && currentTask && (
               <TouchableOpacity
                 style={styles.secondaryBtn}
-                onPress={handleDone}
+                onPress={quotaTask ? handleLog : handleDone}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
-                accessibilityLabel={`Mark ${titleOf(step.taskId)} done`}
+                accessibilityLabel={
+                  quotaTask
+                    ? `Log one of ${formatQuotaTarget(quotaTask.targetCount!, quotaTask.targetUnit)}, ${formatQuotaProgress(quotaTask.progressCount, quotaTask.targetCount!, quotaTask.targetUnit)} done, ${titleOf(step.taskId)}`
+                    : `Mark ${titleOf(step.taskId)} done`
+                }
               >
                 <Ionicons name="checkmark-circle-outline" size={iconSize.md} color={colors.green} />
-                <Text style={styles.secondaryLabel}>Done</Text>
+                <Text style={styles.secondaryLabel}>{quotaTask ? 'Log one' : 'Done'}</Text>
               </TouchableOpacity>
             )}
 
@@ -344,6 +394,25 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.xxl,
     textAlign: 'center',
     marginTop: spacing.sm,
+  },
+  quotaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
+  quotaProgress: {
+    color: colors.accent,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
+    fontVariant: ['tabular-nums'],
+  },
+  quotaNote: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    lineHeight: lineHeight.sm,
+    textAlign: 'center',
+    marginTop: 2,
   },
   clock: {
     color: colors.text,
