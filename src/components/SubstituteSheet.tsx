@@ -59,11 +59,14 @@ interface Props {
  * what you already answered.
  *
  * The offline half (#1578) is a search over your own catalog that also adds —
- * always there, key or none. **Suggested** sits on top of it, fetched on open
- * rather than behind a button (opening this sheet *is* the ask), and is
- * additive by construction: no key or the `substitutes` AI feature off, and
- * the section is simply absent — the app can't require a key, so what remains
- * has to be a working answer to "what instead?", just not a proposed one.
+ * always there, key or none. **Suggested** sits on top of it, behind an
+ * explicit "Suggest alternatives", and is additive by construction: no key or
+ * the `substitutes` AI feature off, and the section is simply absent — the app
+ * can't require a key, so what remains has to be a working answer to "what
+ * instead?", just not a proposed one. It used to fire on open, on the grounds
+ * that opening this sheet *was* the ask; the grocery row's swap glyph landing
+ * here is what ended that, since half the opens are now someone reaching for
+ * an answer they already recorded.
  * Picking a suggestion mints or finds its catalog row the same way typing one
  * in does, and seeds the ratio fields when the model offered one. The two
  * lists never repeat each other — a name already in Suggested is filtered out
@@ -116,6 +119,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   const [suggested, setSuggested] = useState<SuggestedSubstitute[]>([]);
   const [suggestLoading, setSuggestLoading] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  const [suggestAsked, setSuggestAsked] = useState(false);
 
   const existing = useMemo(
     () => (itemId ? substitutesFor(itemId, itemSubs, items) : []),
@@ -145,27 +149,33 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, editingSubItemId, reviewingId]);
 
-  // Fetch on open, not behind a Suggest button — opening this sheet *is* the
-  // ask. Only in picker mode (reviewing a link has nothing to suggest), and
-  // only with a key and the feature on: "no fetch when the feature is off or
-  // there's no key" is the whole safety argument for firing this
-  // automatically at all. One-shot per opening, same reasoning as the seeding
-  // effect above — a link written while this is up must not restart the call.
+  // Cleared whenever the sheet opens or the item changes, so a previous item's
+  // proposals can't be read as this one's.
   useEffect(() => {
-    if (!visible || editing || !item) return;
-    if (!apiKey || !substitutesFeature?.enabled) return;
-    let cancelled = false;
     setSuggested([]);
     setSuggestError(null);
+    setSuggestLoading(false);
+    setSuggestAsked(false);
+  }, [visible, itemId]);
+
+  // Asked for, never fired on open. This sheet is now the grocery row's swap
+  // glyph as well as the authoring funnel, so opening it stopped meaning "I
+  // want a proposal" — half the opens are someone reaching for the substitute
+  // they recorded months ago, and every one of those was spending a request.
+  // The key and the feature switch still gate it; the button is simply absent
+  // without them, so "no key, no traffic" needs no second reading here.
+  const handleSuggest = () => {
+    if (!item) return;
+    haptics.tap();
+    setSuggestError(null);
+    setSuggestAsked(true);
     setSuggestLoading(true);
     const excluded = [item.name, ...existing.map(s => s.item.name)];
     suggestSubstitutes(item.name, excluded)
-      .then(result => { if (!cancelled) setSuggested(result); })
-      .catch(e => { if (!cancelled) setSuggestError(describeAIError(e)); })
-      .finally(() => { if (!cancelled) setSuggestLoading(false); });
-    return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, editingSubItemId, itemId]);
+      .then(setSuggested)
+      .catch(e => setSuggestError(describeAIError(e)))
+      .finally(() => setSuggestLoading(false));
+  };
 
   const picked = items.find(i => i.id === pickedId) ?? null;
 
@@ -566,42 +576,64 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
 
             {/* AI is additive, never required: absent with no key or the
                 feature off, and never the only way to answer even when it's
-                there — see the fetch effect above. */}
-            {!!apiKey && !!substitutesFeature?.enabled
-              && (suggestLoading || suggested.length > 0 || !!suggestError) && (
+                there. Behind a tap rather than fired on open, because this
+                sheet is the swap glyph's destination now — see handleSuggest. */}
+            {!!apiKey && !!substitutesFeature?.enabled && (
               <View style={styles.suggestedSection}>
-                <Text style={styles.label}>SUGGESTED</Text>
-                {suggestLoading && (
-                  <ActivityIndicator style={styles.suggestSpinner} color={colors.textTertiary} />
+                {suggested.length > 0 ? (
+                  <>
+                    <Text style={styles.label}>SUGGESTED</Text>
+                    {suggested.map(s => {
+                      const resolvedKey = groceryNameKey(s.name) || s.name.toLowerCase();
+                      const resolved = items.find(it => it.nameKey === resolvedKey);
+                      const onHand = resolved ? probablyHaveReason(resolved, new Date()) : null;
+                      return (
+                        <TouchableOpacity
+                          key={s.name}
+                          style={styles.row}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => handlePickSuggested(s)}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Use ${s.name} instead of ${item.name}`}
+                        >
+                          <Text style={styles.rowName} numberOfLines={1}>{s.name}</Text>
+                          {!!s.ratioFrom && !!s.ratioTo && (
+                            <Text style={styles.rowMeta} numberOfLines={1}>
+                              {s.ratioFrom} → {s.ratioTo}
+                            </Text>
+                          )}
+                          {!!onHand && (
+                            <Text style={styles.rowMeta} numberOfLines={1}>
+                              {onHand}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </>
+                ) : (
+                  <View style={styles.suggestAsk}>
+                    {!!suggestError && <Text style={styles.suggestError}>{suggestError}</Text>}
+                    {/* An answered ask that came back empty says so, rather than
+                        leaving a button that looks like it did nothing. */}
+                    {suggestAsked && !suggestLoading && !suggestError && (
+                      <Text style={styles.suggestError}>
+                        Nothing to suggest for {item.name.toLowerCase()}.
+                      </Text>
+                    )}
+                    {suggestLoading ? (
+                      <ActivityIndicator style={styles.suggestSpinner} color={colors.textTertiary} />
+                    ) : (
+                      <InlineAction
+                        label="Suggest alternatives"
+                        icon="sparkles-outline"
+                        tint={colors.purple}
+                        onPress={handleSuggest}
+                        accessibilityLabel={`Suggest what to use instead of ${item.name}`}
+                      />
+                    )}
+                  </View>
                 )}
-                {!!suggestError && <Text style={styles.suggestError}>{suggestError}</Text>}
-                {suggested.map(s => {
-                  const resolvedKey = groceryNameKey(s.name) || s.name.toLowerCase();
-                  const resolved = items.find(it => it.nameKey === resolvedKey);
-                  const onHand = resolved ? probablyHaveReason(resolved, new Date()) : null;
-                  return (
-                    <TouchableOpacity
-                      key={s.name}
-                      style={styles.row}
-                      activeOpacity={interaction.activeOpacity}
-                      onPress={() => handlePickSuggested(s)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Use ${s.name} instead of ${item.name}`}
-                    >
-                      <Text style={styles.rowName} numberOfLines={1}>{s.name}</Text>
-                      {!!s.ratioFrom && !!s.ratioTo && (
-                        <Text style={styles.rowMeta} numberOfLines={1}>
-                          {s.ratioFrom} → {s.ratioTo}
-                        </Text>
-                      )}
-                      {!!onHand && (
-                        <Text style={styles.rowMeta} numberOfLines={1}>
-                          {onHand}
-                        </Text>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
               </View>
             )}
 
@@ -730,6 +762,9 @@ function makeStyles(colors: Colors) {
     },
     recordedBody: { flex: 1 },
     suggestedSection: { paddingHorizontal: spacing.md },
+    // The label carries the top margin when there are results; without one
+    // this block is the first thing under the section above and needs its own.
+    suggestAsk: { marginTop: spacing.lg, alignItems: 'flex-start' },
     suggestSpinner: { marginBottom: spacing.sm },
     suggestError: { color: colors.textTertiary, fontSize: font.sm, marginBottom: spacing.sm },
     footnote: {

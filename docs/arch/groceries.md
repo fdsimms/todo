@@ -791,6 +791,13 @@ plumbing through the recipes JSON blob.
   and `GroceryItemSheet`'s field is where you *review* what you already answered.
   Deliberately **not** `RecipeIngredientSheet`, which owns `choiceGroup` — putting
   substitutes there is how the two merge into one confused control.
+- **Suggestions are asked for, never fetched on open.** They were, on the
+  grounds that opening the sheet was itself the ask — true while the only door
+  was the field's "Add substitute". The swap glyph landing here ended it: half
+  the opens are now someone reaching for an answer they recorded months ago, and
+  each was spending a request on a proposal nobody asked for. "Suggest
+  alternatives" is the ask now, in both doors. The key and the feature switch
+  still gate the button's existence, so "no key, no traffic" reads the same.
 - **The grocery row's swap glyph opens that sheet directly**, and its "already recorded"
   section is why. It used to open `GroceryItemSheet` with `initialField: 'substitutes'` —
   a ~900-line editor scrolled to one collapsed field, in answer to a one-line question
