@@ -27,6 +27,22 @@ private struct TripRunPayload: Codable {
   let startedAtMs: Double
 }
 
+// Mirrors the FocusRun shape written by src/utils/focusLiveActivity.ts.
+private struct FocusRunPayload: Codable {
+  let key: String
+  let title: String
+  let subtitle: String
+  let symbolName: String
+  let startedAtMs: Double
+  let targetEndMs: Double
+  let paused: Bool
+  let pausedRemaining: String
+  let primaryLabel: String
+  let primaryUrl: String
+  let advanceLabel: String
+  let advanceUrl: String
+}
+
 public class TodoWidgetBridgeModule: Module {
   public func definition() -> ModuleDefinition {
     Name("TodoWidgetBridge")
@@ -229,6 +245,88 @@ public class TodoWidgetBridgeModule: Module {
         }
         let attributes = TripActivityAttributes(shopName: run.shopName, startedAt: startedAt)
         let content = ActivityContent(state: TripActivityAttributes.ContentState(), staleDate: nil)
+        _ = try? Activity.request(attributes: attributes, content: content, pushType: nil)
+
+        succeeded = true
+      }
+      return succeeded
+    }
+    .runOnQueue(.main)
+
+    // ─── Live Activity (focus session) ────────────────────────────────────
+    // Same iOS 17.0 gate and same zero-or-one reconciliation as
+    // syncTripLiveActivity above; an empty string means "no session wanted".
+    // What differs is the comparison and the stale date:
+    //
+    //  • The existing activity is kept when its `key` matches, and `key` is
+    //    the whole payload JSON-encoded (see src/utils/focusLiveActivity.ts),
+    //    so any change at all — the step, the clock, the paused state, the
+    //    task's title — restarts it. Nothing about a focus step is ever
+    //    pushed as an update, same rule the other two activities keep.
+    //  • `staleDate` is the step's own end, which is what makes
+    //    `context.isStale` flip at the moment the step runs out with nothing
+    //    pushed to it. FocusLiveActivity.swift draws its two states off that
+    //    flag. A step that has already run out gets a stale date a second out
+    //    rather than one in the past, so the flip is something ActivityKit is
+    //    still going to do rather than something it may have missed; a paused
+    //    step has no end to go stale at.
+    AsyncFunction("syncFocusLiveActivity") { (jsonString: String) -> Bool in
+      var succeeded = false
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard #available(iOS 17.0, *) else { return }
+
+        let existing = Activity<FocusActivityAttributes>.activities
+
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+          for activity in existing {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        guard
+          !jsonString.isEmpty,
+          let data = jsonString.data(using: .utf8),
+          let run = try? JSONDecoder().decode(FocusRunPayload.self, from: data)
+        else {
+          for activity in existing {
+            Task { await activity.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        if let current = existing.first, current.attributes.key == run.key {
+          for stale in existing.dropFirst() {
+            Task { await stale.end(nil, dismissalPolicy: .immediate) }
+          }
+          succeeded = true
+          return
+        }
+
+        for activity in existing {
+          Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        }
+
+        let startedAt = Date(timeIntervalSince1970: run.startedAtMs / 1000)
+        let targetEndAt = Date(timeIntervalSince1970: run.targetEndMs / 1000)
+        let attributes = FocusActivityAttributes(
+          key: run.key,
+          title: run.title,
+          subtitle: run.subtitle,
+          symbolName: run.symbolName,
+          startedAt: startedAt,
+          targetEndAt: targetEndAt,
+          paused: run.paused,
+          pausedRemaining: run.pausedRemaining,
+          primaryLabel: run.primaryLabel,
+          primaryUrl: run.primaryUrl,
+          advanceLabel: run.advanceLabel,
+          advanceUrl: run.advanceUrl
+        )
+        let staleDate: Date? = run.paused ? nil : max(targetEndAt, Date().addingTimeInterval(1))
+        let content = ActivityContent(state: FocusActivityAttributes.ContentState(), staleDate: staleDate)
         _ = try? Activity.request(attributes: attributes, content: content, pushType: nil)
 
         succeeded = true

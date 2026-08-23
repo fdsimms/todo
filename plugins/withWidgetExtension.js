@@ -31,6 +31,7 @@ const SWIFT_FILES = [
   'CompleteTaskIntent.swift',
   'TimerLiveActivity.swift',
   'TripLiveActivity.swift',
+  'FocusLiveActivity.swift',
 ];
 // Files that must compile into BOTH this extension and the app. The
 // canonical copy lives with the bridge module, where TodoWidgetBridge.podspec's
@@ -41,7 +42,11 @@ const SWIFT_FILES = [
 // so any drift between two hand-maintained copies would show up only as a
 // Live Activity that starts and then never appears. One file, copied.
 const BRIDGE_SOURCE_DIR = path.join(__dirname, '..', 'modules', 'todo-widget-bridge', 'ios');
-const SHARED_SWIFT_FILES = ['TimerActivityAttributes.swift', 'TripActivityAttributes.swift'];
+const SHARED_SWIFT_FILES = [
+  'TimerActivityAttributes.swift',
+  'TripActivityAttributes.swift',
+  'FocusActivityAttributes.swift',
+];
 
 const ALL_SWIFT_FILES = [
   ...SWIFT_FILES.map(name => ({ dir: SOURCE_DIR, name })),

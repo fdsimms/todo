@@ -215,8 +215,8 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * can't be mistaken for something the code enforces:
  *
  * - `hapticsEnabled`, `shakeToUndoEnabled`, `timerLiveActivity`,
- *   `tripLiveActivity`, `fabHand` — capabilities and ergonomics of one
- *   device. A Mac has no haptics and no thumb reach.
+ *   `tripLiveActivity`, `focusLiveActivity`, `fabHand` — capabilities and
+ *   ergonomics of one device. A Mac has no haptics and no thumb reach.
  * - `appLockEnabled`, `appLockGraceSeconds` — syncing these would let a
  *   device turn the lock off on another one. Security settings are per-device
  *   by design.

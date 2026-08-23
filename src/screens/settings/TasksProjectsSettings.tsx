@@ -100,6 +100,8 @@ export function TasksProjectsSettings() {
   const setFocusLongRestEvery = useSettingsStore(s => s.setFocusLongRestEvery);
   const focusLongRestMinutes = useSettingsStore(s => s.focusLongRestMinutes);
   const setFocusLongRestMinutes = useSettingsStore(s => s.setFocusLongRestMinutes);
+  const focusLiveActivity = useSettingsStore(s => s.focusLiveActivity);
+  const setFocusLiveActivity = useSettingsStore(s => s.setFocusLiveActivity);
   const noBreaks = focusRestsDisabled({ focusRestAfterTasks, focusRestAfterMinutes });
   const setPostponeCheckThreshold = useSettingsStore(s => s.setPostponeCheckThreshold);
   const hideCategories = useSettingsStore(s => s.hideCategories);
@@ -317,9 +319,10 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Focus sessions"
-        footer={noBreaks
+        footer={`${noBreaks
           ? 'Both break triggers are off, so a session runs straight through with no breaks in it.'
-          : 'Both triggers run at once and whichever comes first inserts the break. Start a session from Today’s … menu.'}
+          : 'Both triggers run at once and whichever comes first inserts the break. Start a session from Today’s … menu.'}${
+          Platform.OS === 'ios' ? ' The Lock Screen activity requires iOS 17.' : ''}`}
       >
         <SettingsRow
           icon="hourglass-outline"
@@ -462,6 +465,22 @@ export function TasksProjectsSettings() {
                 </View>
               </>
             )}
+          </>
+        )}
+
+        {Platform.OS === 'ios' && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              icon="phone-portrait-outline"
+              iconColor={focusLiveActivity ? colors.accent : undefined}
+              label="Live Activity while focusing"
+              hint={focusLiveActivity
+                ? 'The step you’re on shows on the Lock Screen and Dynamic Island, with a button to pause it or move to the next one'
+                : 'Sessions stay in the app only'}
+              toggle={focusLiveActivity}
+              onPress={() => setFocusLiveActivity(!focusLiveActivity)}
+            />
           </>
         )}
       </SettingsSection>

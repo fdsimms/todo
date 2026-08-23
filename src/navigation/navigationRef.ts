@@ -123,6 +123,20 @@ export function resetToKitchen(focusEntryId?: string | null): void {
 // a board-management one — the same call the Today options row's "Pull from
 // projects" already makes. A null id opens it unscoped, over every quiet
 // project.
+// Where `dundundun://focus[?do=…]` lands — every tap on the focus session's
+// Live Activity (see utils/focusLiveActivity.ts). Lands on Today and asks it to
+// pop `FocusSessionSheet` open, the same stamped-param handoff
+// resetToProjectPull uses, and for the same reason: that sheet is mounted by
+// TodayScreen, along with the strip that says a session is running.
+//
+// Unstamped params would make the second tap in a row do nothing, which is
+// exactly the case this has: pause it from the Lock Screen, resume it from the
+// Lock Screen.
+export function resetToFocusSession(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({ name: 'Today', params: { openFocusSession: Date.now() } });
+}
+
 export function resetToProjectPull(projectId?: string | null): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate({

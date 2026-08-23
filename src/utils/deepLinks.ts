@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Linking } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useFocusStore } from '../store/useFocusStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { haptics } from './haptics';
 import {
@@ -11,6 +12,7 @@ import {
   resetToMealPlan,
   resetToKitchen,
   resetToProjectPull,
+  resetToFocusSession,
   openQuickAddFromShortcut,
 } from '../navigation/navigationRef';
 import { MEAL_SLOTS, type MealSlot } from '../types';
@@ -276,6 +278,45 @@ export function stopTimerUrlKey(url: string): string | null {
   return key || null;
 }
 
+// `dundundun://focus[?do=next|pause|resume]` — the focus session's Live
+// Activity (targets/todo-widget/FocusLiveActivity.swift). One host with an
+// action param rather than four hosts, the same shape `groceries?finish=1`
+// uses: they all land in the same place, and the bare link is the plain "open
+// the session" a tap anywhere non-interactive on the activity gives.
+//
+// The action is applied *and* the session opens, unlike the trip activity's
+// Finish link, which only opens a sheet: pausing or moving to the next step is
+// a verb the store can answer on its own, and the session sheet arriving on
+// top is how you see that it did. Every one of these opens the app either way
+// — a Live Activity button's intent can only run in the background, which is
+// the constraint TimerLiveActivity.swift's header spells out.
+const FOCUS_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?focus\\/?(?:\\?(.*))?$`, 'i');
+
+export type FocusLinkAction = 'next' | 'pause' | 'resume';
+
+const FOCUS_ACTIONS: readonly FocusLinkAction[] = ['next', 'pause', 'resume'];
+
+export function isFocusUrl(url: string): boolean {
+  return typeof url === 'string' && FOCUS_RE.test(url.trim());
+}
+
+/**
+ * What a focus link asks the session to do before it opens, or null when it
+ * only asks to be opened.
+ *
+ * Validated against the three actions rather than passed through, same rule
+ * `mealPlanUrlPickSlot` follows: an unknown verb is answered as "just open the
+ * session", which is what the bare link does and the only safe reading — a
+ * focus link is the one deep link in here that *changes* the thing it opens.
+ */
+export function focusUrlAction(url: string): FocusLinkAction | null {
+  if (typeof url !== 'string') return null;
+  const match = FOCUS_RE.exec(url.trim());
+  if (!match) return null;
+  const action = (parseQuery(match[1] ?? '').do ?? '').trim();
+  return (FOCUS_ACTIONS as readonly string[]).includes(action) ? (action as FocusLinkAction) : null;
+}
+
 /**
  * The specific pantry item or fridge container a kitchen link asks to open,
  * or null for the bare link.
@@ -337,6 +378,19 @@ export function openInAppUrl(url: string | null | undefined): boolean {
       useWidgetCompletionStore.getState().enqueue([id]);
       resetToToday();
     }
+    return true;
+  }
+  if (isFocusUrl(url)) {
+    const action = focusUrlAction(url);
+    const focus = useFocusStore.getState();
+    if (action === 'next') focus.advance();
+    else if (action === 'pause') focus.pause();
+    else if (action === 'resume') focus.resume();
+    // Opened whatever the action was, including when there's no session left
+    // to act on — every one of these arrives from a tap on the session's own
+    // Live Activity, so landing anywhere else would be a tap that appeared to
+    // do nothing.
+    resetToFocusSession();
     return true;
   }
   if (isStopTimerUrl(url)) {

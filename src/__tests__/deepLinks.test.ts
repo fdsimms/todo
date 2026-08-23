@@ -13,6 +13,10 @@ const mockOpenQuickAdd = jest.fn();
 const mockEnqueueWidgetCompletion = jest.fn();
 const mockStopCookTimer = jest.fn();
 const mockStopPrepTimer = jest.fn();
+const mockResetToFocusSession = jest.fn();
+const mockFocusAdvance = jest.fn();
+const mockFocusPause = jest.fn();
+const mockFocusResume = jest.fn();
 
 jest.mock('react-native', () => ({
   Linking: {
@@ -29,6 +33,11 @@ jest.mock('../store/useWidgetCompletionStore', () => ({
 jest.mock('../store/useRecipeStore', () => ({
   useRecipeStore: { getState: () => ({ stopCookTimer: mockStopCookTimer, stopPrepTimer: mockStopPrepTimer }) },
 }));
+jest.mock('../store/useFocusStore', () => ({
+  useFocusStore: {
+    getState: () => ({ advance: mockFocusAdvance, pause: mockFocusPause, resume: mockFocusResume }),
+  },
+}));
 jest.mock('../utils/haptics', () => ({
   // Read mockSuccess lazily: jest hoists jest.mock above the const inits, so
   // capturing the fn directly would grab `undefined`.
@@ -41,6 +50,7 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToMealPlan: (...args: unknown[]) => mockResetToMealPlan(...args),
   resetToKitchen: (...args: unknown[]) => mockResetToKitchen(...args),
   resetToProjectPull: (...args: unknown[]) => mockResetToProjectPull(...args),
+  resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
   openQuickAddFromShortcut: (...args: unknown[]) => mockOpenQuickAdd(...args),
 }));
 
@@ -56,6 +66,8 @@ import {
   isProjectsUrl,
   projectsUrlPullId,
   isQuickAddUrl,
+  isFocusUrl,
+  focusUrlAction,
   openInAppUrl,
   mealPlanUrlPickSlot,
   isCompleteTaskUrl,
@@ -405,6 +417,38 @@ describe('isQuickAddUrl', () => {
   });
 });
 
+describe('isFocusUrl', () => {
+  it('accepts every spelling of the focus link', () => {
+    expect(isFocusUrl('dundundun://focus')).toBe(true);
+    expect(isFocusUrl('dundundun:///focus')).toBe(true);
+    expect(isFocusUrl('dundundun://focus?do=next')).toBe(true);
+    expect(isFocusUrl('DUNDUNDUN://FOCUS')).toBe(true);
+  });
+
+  it('rejects anything else, including its neighbours', () => {
+    expect(isFocusUrl('dundundun://')).toBe(false);
+    expect(isFocusUrl('dundundun://focusing')).toBe(false);
+    expect(isFocusUrl('')).toBe(false);
+  });
+});
+
+describe('focusUrlAction', () => {
+  it('reads the three actions the Live Activity buttons write', () => {
+    expect(focusUrlAction('dundundun://focus?do=next')).toBe('next');
+    expect(focusUrlAction('dundundun://focus?do=pause')).toBe('pause');
+    expect(focusUrlAction('dundundun://focus?do=resume')).toBe('resume');
+  });
+
+  it('is null for the bare link, an unknown verb, or a different link', () => {
+    // An unknown verb reads as "just open it" rather than as something to
+    // guess at — this is the one deep link that changes what it opens.
+    expect(focusUrlAction('dundundun://focus')).toBeNull();
+    expect(focusUrlAction('dundundun://focus?do=end')).toBeNull();
+    expect(focusUrlAction('dundundun://focus?do=')).toBeNull();
+    expect(focusUrlAction('dundundun://groceries?do=next')).toBeNull();
+  });
+});
+
 describe('openInAppUrl', () => {
   beforeEach(() => {
     mockResetToToday.mockClear();
@@ -418,6 +462,10 @@ describe('openInAppUrl', () => {
     mockEnqueueWidgetCompletion.mockClear();
     mockStopCookTimer.mockClear();
     mockStopPrepTimer.mockClear();
+    mockResetToFocusSession.mockClear();
+    mockFocusAdvance.mockClear();
+    mockFocusPause.mockClear();
+    mockFocusResume.mockClear();
   });
 
   it('opens the grocery list for the bare link, without asking for the sheet', () => {
@@ -436,6 +484,27 @@ describe('openInAppUrl', () => {
     expect(openInAppUrl('dundundun://completeTask?id=task-1')).toBe(true);
     expect(mockEnqueueWidgetCompletion).toHaveBeenCalledWith(['task-1']);
     expect(mockResetToToday).toHaveBeenCalledTimes(1);
+  });
+
+  // The focus session's Live Activity — see FocusLiveActivity.swift.
+  it('opens the session for the bare focus link, touching nothing', () => {
+    expect(openInAppUrl('dundundun://focus')).toBe(true);
+    expect(mockResetToFocusSession).toHaveBeenCalledTimes(1);
+    expect(mockFocusAdvance).not.toHaveBeenCalled();
+    expect(mockFocusPause).not.toHaveBeenCalled();
+    expect(mockFocusResume).not.toHaveBeenCalled();
+  });
+
+  it('applies the action and then opens the session, so the result is visible', () => {
+    expect(openInAppUrl('dundundun://focus?do=next')).toBe(true);
+    expect(mockFocusAdvance).toHaveBeenCalledTimes(1);
+    expect(mockResetToFocusSession).toHaveBeenCalledTimes(1);
+
+    expect(openInAppUrl('dundundun://focus?do=pause')).toBe(true);
+    expect(mockFocusPause).toHaveBeenCalledTimes(1);
+
+    expect(openInAppUrl('dundundun://focus?do=resume')).toBe(true);
+    expect(mockFocusResume).toHaveBeenCalledTimes(1);
   });
 
   it('claims a complete-task link with no id but does nothing with it', () => {

@@ -118,6 +118,10 @@ struct WidgetPalette {
     let textSecondary: Color
     let textTertiary: Color
     let accent: Color
+    // The over-run tint, matching colors.orange in src/theme/index.ts — what
+    // FocusLiveActivity draws a focus step that has run past its target in,
+    // the same signal FocusBar and the session sheet give it in the app.
+    let orange: Color
     let separator: Color
 
     static let dark = WidgetPalette(
@@ -127,6 +131,7 @@ struct WidgetPalette {
         textSecondary: Color(hex: "8E8E93"),
         textTertiary: Color(hex: "636366"),
         accent: Color(hex: "0A84FF"),
+        orange: Color(hex: "FF9F0A"),
         separator: Color(hex: "38383A")
     )
 
@@ -137,6 +142,7 @@ struct WidgetPalette {
         textSecondary: Color(hex: "6C6C70"),
         textTertiary: Color(hex: "8A8A8E"),
         accent: Color(hex: "007AFF"),
+        orange: Color(hex: "FF9500"),
         separator: Color(hex: "C6C6C8")
     )
 
