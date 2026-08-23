@@ -4385,6 +4385,41 @@ describe('use-up tasks', () => {
     expect(useUpTaskFor(spinach.id)).toBeDefined();
   });
 
+  // #1953. reconcileUseUpTask fires on mutations that leave expiresAt exactly
+  // where it was, and it used to recompute the day anyway — so a task the user
+  // had deferred snapped back to the lead-time date on the strength of an
+  // unrelated edit.
+  it('leaves a task the user re-dated alone when the use-by has not moved', () => {
+    mockUseUpTasks = true;
+    const salsa = makeItem({ name: 'Salsa', expiresAt: '2026-08-17', openedAt: '2026-08-14T09:00:00.000Z' });
+    seed([salsa]);
+    useGroceryStore.getState().setUseUpTask(salsa.id, true);
+
+    const deferred = '2099-06-01T12:00:00.000Z';
+    mockTaskState.updateTask(useUpTaskFor(salsa.id)!.id, { dueDate: deferred });
+
+    // Un-opening re-dates nothing (`reDated ?? item.expiresAt`), and the item's
+    // own switch re-dates nothing either.
+    useGroceryStore.getState().setOpened(salsa.id, false);
+    useGroceryStore.getState().setUseUpTask(salsa.id, null);
+
+    expect(useUpTaskFor(salsa.id)!.dueDate).toBe(deferred);
+    expect(mockTaskState.tasks.filter(t => t.generatedSourceId === salsa.id)).toHaveLength(1);
+  });
+
+  it('still re-dates a deferred task when the use-by itself moves', () => {
+    mockUseUpTasks = true;
+    mockUseUpLeadDays = 2;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+    mockTaskState.updateTask(useUpTaskFor(spinach.id)!.id, { dueDate: '2099-06-01T12:00:00.000Z' });
+
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-24');
+
+    expect(new Date(useUpTaskFor(spinach.id)!.dueDate!).getDate()).toBe(22);
+  });
+
   it('moves the existing task rather than adding a second when the date changes', () => {
     mockUseUpTasks = true;
     const spinach = makeItem({ name: NAME });

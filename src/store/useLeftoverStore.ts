@@ -16,7 +16,7 @@ import {
   leftoverPurgeCutoff,
   sortLeftovers,
 } from '../utils/leftovers';
-import { useUpTaskDraft, useUpTaskFields, useUpTaskNeedsUpdate, wantsUseUpTask } from '../utils/leftoverTasks';
+import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftoverTasks';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
@@ -175,7 +175,7 @@ function reconcileLeftoverTask(leftover: Leftover): void {
     kind: 'leftoverUseUp',
     sourceId: leftover.id,
     wanted: wantsUseUpTask(leftover, leftoverUseUpTasks),
-    drift: existing => (useUpTaskNeedsUpdate(existing, leftover) ? useUpTaskFields(leftover) : null),
+    drift: existing => useUpTaskDrift(existing, leftover),
     draft: () => useUpTaskDraft(leftover, leftoverUseUpTaskCategory),
     useUpCap: useUpTaskCap,
   });

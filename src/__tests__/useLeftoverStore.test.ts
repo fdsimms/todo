@@ -536,6 +536,44 @@ describe('use-up tasks', () => {
     expect(mockTaskState.tasks.some(t => t.generatedSourceId === 'fresh')).toBe(false);
     expect(mockTaskState.tasks.some(t => t.generatedSourceId === 'closed')).toBe(false);
   });
+
+  // #1953. The sweep above runs on startup and on every app foreground, because
+  // needsAttention is a function of the wall clock. It used to rewrite dueDate
+  // to *today* each time, so a use-up task deferred to tomorrow was pulled back
+  // onto Today the next time the app came up, over and over, for as long as the
+  // container was still in the fridge.
+  it('leaves a use-up task the user re-dated where they put it, sweep after sweep', () => {
+    seed([makeLeftover({ id: 'chilli', title: 'Chilli', keepUntil: '2026-08-10' })]);
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+
+    const task = mockTaskState.tasks.find(t => t.generatedSourceId === 'chilli')!;
+    const tomorrow = '2099-06-01T12:00:00.000Z';
+    mockTaskState.updateTask(task.id, { dueDate: tomorrow });
+
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+
+    const after = mockTaskState.tasks.find(t => t.generatedSourceId === 'chilli')!;
+    expect(after.dueDate).toBe(tomorrow);
+    // And exactly one row — the deferred one is still the live task, so no
+    // second copy is spawned underneath it.
+    expect(mockTaskState.tasks.filter(t => t.generatedSourceId === 'chilli')).toHaveLength(1);
+  });
+
+  it('still chases the deadline onto a re-dated task when keep-for is edited', () => {
+    seed([makeLeftover({ id: 'chilli', title: 'Chilli', keepUntil: '2026-08-10' })]);
+    useLeftoverStore.getState().reconcileAllLeftoverTasks();
+
+    const task = mockTaskState.tasks.find(t => t.generatedSourceId === 'chilli')!;
+    const deferred = '2099-06-01T12:00:00.000Z';
+    mockTaskState.updateTask(task.id, { dueDate: deferred });
+
+    useLeftoverStore.getState().setKeepDays('chilli', 6);
+
+    const after = mockTaskState.tasks.find(t => t.generatedSourceId === 'chilli')!;
+    expect(after.deadline).toBe(useLeftoverStore.getState().leftoverById('chilli')!.keepUntil);
+    expect(after.dueDate).toBe(deferred);
+  });
 });
 
 describe('leftoverById', () => {

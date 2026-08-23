@@ -1,0 +1,4 @@
+{
+  "message": "A \"Use up X\" task you move to another day now stays there. Leftover ones were being pulled back onto Today every time the app opened, and grocery ones lost the new date when the item was edited for an unrelated reason.",
+  "date": "2026-08-23"
+}
