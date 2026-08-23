@@ -202,10 +202,6 @@ export function GroceryScreen() {
     } | null
   >(null);
   const [tripOpen, setTripOpen] = useState(false);
-  // Which verb ShoppingTripSheet's header button should be, since the sheet
-  // is opened both from "plan a trip" and "start shopping" entry points and
-  // they promise different things — see the prop's own doc comment.
-  const [tripIntent, setTripIntent] = useState<'plan' | 'start'>('plan');
   const [editingId, setEditingId] = useState<string | null>(null);
   // Which field the item sheet should open pre-expanded to — the swap glyph's
   // whole point is skipping the ellipsis-then-scroll-to-Substitutes path an
@@ -940,22 +936,6 @@ export function GroceryScreen() {
     [addTask]
   );
 
-  const handleCreateGroceryTask = useCallback(() => {
-    // With no suggestable stores configured there's nothing to pick between,
-    // so the sheet would be a whole screen for a question with one answer —
-    // that's the only case this skips straight to a plain task. One store is
-    // still a real choice (plan a task for later, or say you're shopping
-    // there right now), so the sheet has to open for it too: treated the
-    // same as "none", nobody with a single default store could ever reach
-    // "Start shopping at X" from here.
-    if (suggestableShops.length === 0) {
-      createGroceryTasks([]);
-      return;
-    }
-    setTripIntent('plan');
-    setTripOpen(true);
-  }, [suggestableShops, createGroceryTasks]);
-
   const actions = useMemo<ScreenHeaderAction[]>(() => {
     // Clear list is deliberately NOT here. It's destructive-looking, rarely
     // used, and the header is where you're tapping one-handed while walking —
@@ -967,12 +947,6 @@ export function GroceryScreen() {
       onPress: () => setBuyAgainOpen(true),
       disabled: selectionMode,
       accessibilityLabel: 'Buy again',
-    });
-    list.push({
-      icon: 'walk-outline',
-      onPress: handleCreateGroceryTask,
-      disabled: selectionMode,
-      accessibilityLabel: 'Shopping trip — plan for later or start one now',
     });
     list.push({
       icon: 'options-outline',
@@ -999,7 +973,7 @@ export function GroceryScreen() {
     // `ActiveTripBanner` during a trip, `StartTripPrompt` when rows have been
     // ticked without one. Both put it where the cart count already is.
     return list;
-  }, [selectionMode, handleCreateGroceryTask, handleShare, shareText, copied, copy, copyText]);
+  }, [selectionMode, handleShare, shareText, copied, copy, copyText]);
 
   // Bottom-up: "Add an item" ends up closest to the button. The recipe entry
   // no longer needs a key by itself — a saved recipe imports nothing over the
@@ -1137,10 +1111,7 @@ export function GroceryScreen() {
     selectionMode || activeTripShop ? null : (
       <StartTripPrompt
         suggestable={suggestableShops}
-        onOpenSheet={() => {
-          setTripIntent('start');
-          setTripOpen(true);
-        }}
+        onOpenSheet={() => setTripOpen(true)}
         checkedCount={checkedCount}
         onFinish={() => setFinishOpen(true)}
       />
@@ -1175,10 +1146,7 @@ export function GroceryScreen() {
       {!selectionMode && !!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}
-          onChange={() => {
-            setTripIntent('start');
-            setTripOpen(true);
-          }}
+          onChange={() => setTripOpen(true)}
           onFinish={() => setFinishOpen(true)}
           onClear={handleClearTrip}
         />
@@ -1389,7 +1357,7 @@ export function GroceryScreen() {
         onClose={() => setTripOpen(false)}
         onCreate={createGroceryTasks}
         onStart={handleStartTrip}
-        intent={tripIntent}
+        intent="start"
       />
       <GroceryItemSheet
         visible={editingId !== null}
