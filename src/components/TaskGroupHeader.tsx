@@ -10,6 +10,7 @@ import { haptics } from '../utils/haptics';
 import { WhenPicker } from './WhenPicker';
 import { SpotlightScrim } from './SpotlightOverlay';
 import { SwipeableRow } from './SwipeableRow';
+import { AnimatedCollapsible } from './AnimatedCollapsible';
 
 interface Props {
   group: TaskGroup;
@@ -183,8 +184,21 @@ export function TaskGroupHeader({
                   )}
                   <Ionicons name={group.collapsed ? 'chevron-forward' : 'chevron-down'} size={13} color={colors.textTertiary} />
                 </View>
-                {group.collapsed && summary !== null && (
-                  <Text style={styles.summary} numberOfLines={1}>{summary}</Text>
+                {/* Folded away rather than unmounted, on the same clock and
+                    easing TaskGroupBody's own collapse runs (AnimatedCollapsible
+                    owns both). Rendering this on `group.collapsed` alone took a
+                    line of text out of the header in the very commit that
+                    started the body opening — an unanimated ~6pt step (~17pt
+                    with tags, which ride along under it) against a 250ms grow.
+                    Everything below the stack jumped *up* by that step on the
+                    first frame and then eased back down, which is what read as
+                    a jitter rather than a slide, and near the end of the list
+                    the momentary content shrink also tripped ReorderableList's
+                    bottom clamp. Collapsing was the same thing mirrored. */}
+                {summary !== null && (
+                  <AnimatedCollapsible expanded={group.collapsed}>
+                    <Text style={styles.summary} numberOfLines={1}>{summary}</Text>
+                  </AnimatedCollapsible>
                 )}
                 {group.tags.length > 0 && (
                   <View style={styles.tagsRow}>

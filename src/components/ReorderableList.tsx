@@ -3,6 +3,7 @@ import {
   View,
   ScrollView,
   Animated,
+  Keyboard,
   PanResponder,
   StyleSheet,
   type StyleProp,
@@ -23,6 +24,7 @@ import {
 import type { DragScroller } from '../utils/fabDrop';
 import { useTheme } from '../theme/ThemeContext';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { strandedScrollOffset } from '../utils/scrollClamp';
 import { haptics } from '../utils/haptics';
 
 const ROW_SHIFT_DURATION = 180;
@@ -903,12 +905,38 @@ export function ReorderableList<T>({
         onContentSizeChange={(_w, h) => {
           contentHeightRef.current = h;
           // Same clamp as the data-empty case above, for shrinks that leave
-          // some rows (not zero) but fewer than the current scroll offset
-          // can show.
-          const maxOffset = Math.max(0, h - viewportHeightRef.current);
-          if (scrollOffsetRef.current > maxOffset) {
-            scrollOffsetRef.current = maxOffset;
-            scrollRef.current?.scrollTo({ y: maxOffset, animated: false });
+          // some rows (not zero) but fewer than the current scroll offset can
+          // show. Through strandedScrollOffset rather than a bare
+          // `offset > height - viewport`, for the two things that comparison
+          // got wrong, both of which cost a native scroll round trip for
+          // nothing on every frame of any animation that resizes the content
+          // (a stack folding shut at the bottom of the list resizes it once a
+          // frame for 250ms):
+          //
+          // - A sub-pixel overshoot is layout landing on the pixel grid, not a
+          //   stranding. The helper's tolerance is what the settled-scroll
+          //   clamp already judges by.
+          // - A list resting inside a live keyboard inset is where iOS put it.
+          //   Measured against the bare content height it reads as overshot by
+          //   the whole height of the keyboard, so a row added or removed under
+          //   an open keyboard used to yank the list that far up. Nothing is
+          //   lost by standing down: the inset's own dismissal is un-stranded
+          //   by useKeyboardInsetScroll, which owns exactly this question.
+          //
+          // What is deliberately NOT filtered out is the frame-by-frame
+          // tracking of a genuine shrink at the bottom of the list. That is
+          // what holds the last row against the bottom edge while a section
+          // folds away above it, so the collapse reads as the list closing up
+          // from the top. Defer it to the settled size instead and the tail of
+          // the list lifts away from the edge for the whole animation and is
+          // pulled back in one jump at the end — a far bigger artefact than the
+          // frame of lag the tracking costs.
+          if (!Keyboard.isVisible()) {
+            const clamped = strandedScrollOffset(scrollOffsetRef.current, h, viewportHeightRef.current);
+            if (clamped !== null) {
+              scrollOffsetRef.current = clamped;
+              scrollRef.current?.scrollTo({ y: clamped, animated: false });
+            }
           }
           // The content resizing under a live drag means the list re-laid out,
           // so the dragged row's slot has moved. The drop gap is derived from
