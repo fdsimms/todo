@@ -150,7 +150,6 @@ import { FocusBar } from '../components/FocusBar';
 import { FocusSetupSheet } from '../components/FocusSetupSheet';
 import { FocusSessionSheet } from '../components/FocusSessionSheet';
 import { useFocusStore } from '../store/useFocusStore';
-import { focusPlanOptionsFrom } from '../utils/focusSettings';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
 import { type FabDragHandlers } from '../components/Fab';
@@ -3582,8 +3581,8 @@ export function TodayScreen() {
           allTasks={allTasks}
           pinnedSeed={focusFromPinned ? pinnedTasks : undefined}
           onClose={() => setFocusSetupVisible(false)}
-          onStart={queue => {
-            startFocusSession(queue, focusPlanOptionsFrom(useSettingsStore.getState()));
+          onStart={(queue, options) => {
+            startFocusSession(queue, options);
             setFocusSetupVisible(false);
             setFocusSessionVisible(true);
           }}
