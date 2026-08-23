@@ -377,12 +377,17 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
             </View>
 
             <Text style={styles.label}>HOW MUCH</Text>
+            <View style={styles.ratioLabelRow}>
+              <Text style={styles.ratioFieldLabel} numberOfLines={1}>{item.name}</Text>
+              <View style={styles.ratioArrowSpacer} />
+              <Text style={styles.ratioFieldLabel} numberOfLines={1}>{picked.name}</Text>
+            </View>
             <View style={styles.ratioRow}>
               <TextInput
                 style={[styles.input, styles.ratioInput]}
                 value={ratioFrom}
                 onChangeText={setRatioFrom}
-                placeholder="e.g. 1 clove"
+                placeholder="e.g. 1/4 tsp"
                 placeholderTextColor={colors.textTertiary}
                 maxLength={GROCERY_NAME_MAX_LENGTH}
                 accessibilityLabel={`Amount of ${item.name} this ratio is written for`}
@@ -392,7 +397,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
                 style={[styles.input, styles.ratioInput]}
                 value={ratioTo}
                 onChangeText={setRatioTo}
-                placeholder="e.g. 1/4 tsp"
+                placeholder="e.g. 1 clove"
                 placeholderTextColor={colors.textTertiary}
                 maxLength={GROCERY_NAME_MAX_LENGTH}
                 accessibilityLabel={`Equivalent amount of ${picked.name}`}
@@ -803,6 +808,12 @@ function makeStyles(colors: Colors) {
       color: colors.text,
     },
     hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: spacing.sm },
+    // Mirrors ratioRow's layout exactly (same flex/gap/spacer width) so each
+    // label sits directly above the box it names, rather than a floating
+    // caption — the arrow icon has no label of its own, hence the spacer.
+    ratioLabelRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.xs },
+    ratioFieldLabel: { flex: 1, color: colors.textTertiary, fontSize: font.xs },
+    ratioArrowSpacer: { width: iconSize.sm },
     ratioRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     // bgTertiary rather than the note field's bgSecondary — a step down, to
     // read as a pair of small numeric fields rather than a paragraph field.
