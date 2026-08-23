@@ -59,13 +59,14 @@ import { InlineAction } from '../components/InlineAction';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { ReorderableList } from '../components/ReorderableList';
 import { useRowSelection } from '../hooks/useRowSelection';
+import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet';
 import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { describeListEstimate, estimateListTotal, priceToInput } from '../utils/groceryPrice';
-import { buildGroceryListShareText } from '../utils/shareText';
+import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -367,6 +368,10 @@ export function GroceryScreen() {
   // Empty for nothing left to buy, which is what the header action's disabled
   // state gates on — see buildGroceryListShareText.
   const shareText = useMemo(() => buildGroceryListShareText(items), [items]);
+  // The same rows without the title line or the bullets, for pasting into
+  // another shopping app rather than sending to a person — see shareText.ts.
+  const copyText = useMemo(() => buildGroceryListText(items), [items]);
+  const { copied, copy } = useCopyToClipboard();
   // ==== actions: share, estimate, bulk selection, adding ====
   const handleShare = useCallback(() => {
     if (!shareText) return;
@@ -976,6 +981,12 @@ export function GroceryScreen() {
       accessibilityLabel: 'List settings — aisles, stores, and grouping',
     });
     list.push({
+      icon: copied ? 'checkmark' : 'copy-outline',
+      onPress: () => copy(copyText),
+      disabled: selectionMode || !copyText,
+      accessibilityLabel: 'Copy the list as plain text',
+    });
+    list.push({
       icon: 'share-outline',
       onPress: handleShare,
       disabled: selectionMode || !shareText,
@@ -991,7 +1002,7 @@ export function GroceryScreen() {
       accessibilityLabel: 'Finish shopping',
     });
     return list;
-  }, [checkedCount, selectionMode, handleCreateGroceryTask, handleShare, shareText]);
+  }, [checkedCount, selectionMode, handleCreateGroceryTask, handleShare, shareText, copied, copy, copyText]);
 
   // Bottom-up: "Add an item" ends up closest to the button. The recipe entry
   // no longer needs a key by itself — a saved recipe imports nothing over the

@@ -1,5 +1,8 @@
 import type { GroceryItem, MealPlanEntry, MealSlot, Recipe, RecipeComponent, RecipeIngredient } from '../types';
-import { buildGroceryListShareText, buildRecipeShareText, buildWeekPlanShareText } from '../utils/shareText';
+import {
+  buildGroceryListShareText, buildGroceryListText, buildIngredientsText, buildRecipeShareText,
+  buildWeekPlanShareText,
+} from '../utils/shareText';
 
 // shareText reaches recipeUtils.ts (for describeAttribution/formatServings)
 // and mealPlan.ts directly, both of which reach dateUtils.ts → the settings
@@ -72,6 +75,19 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
     lastPrepMinutes: null,
     prepTimeCount: 0,
     totalPrepMinutes: 0,
+    ...overrides,
+  };
+}
+
+function item(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
+  return {
+    id: `i-${++seq}`, name, nameKey: name.toLowerCase(), preferredProductId: null, productStrict: false,
+    aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
+    onList: true, checked: false, inCatalog: true, sortOrder: seq, purchaseCount: 0,
+    lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, lastPriceMinor: null,
+    lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   };
 }
@@ -168,20 +184,50 @@ describe('buildRecipeShareText', () => {
   });
 });
 
-describe('buildGroceryListShareText', () => {
-  function item(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
-    return {
-      id: `i-${++seq}`, name, nameKey: name.toLowerCase(), preferredProductId: null, productStrict: false,
-      aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
-      onList: true, checked: false, inCatalog: true, sortOrder: seq, purchaseCount: 0,
-      lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
-      onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
-      isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, lastPriceMinor: null,
-      lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
-      ...overrides,
-    };
-  }
+describe('buildIngredientsText', () => {
+  it('is the ingredient lines and nothing else — no name, no header, no bullets', () => {
+    const r = recipe('r1', 'Pancakes', {
+      servings: 4,
+      ingredients: [ing('Flour', { quantity: '1/2 tbsp' }), ing('Water', { quantity: '1 cup' })],
+      steps: [{ id: 's1', text: 'Mix.' }],
+      sourceUrl: 'https://example.com/pancakes',
+    });
+    expect(buildIngredientsText(r, recipeMap([r]))).toBe('1/2 tbsp Flour\n1 cup Water');
+  });
 
+  it('scales and converts each line the way the screen is showing it', () => {
+    const r = recipe('r1', 'Pancakes', {
+      ingredients: [ing('Flour', { quantity: '1 lb' }), ing('Salt', { quantity: '1/2 tsp' })],
+    });
+    const text = buildIngredientsText(r, recipeMap([r]), { scale: 2, unitSystem: 'metric' });
+    expect(text).toBe('≈910 g Flour\n≈5 ml Salt');
+  });
+
+  it('keeps prep and purpose on the line, same as the recipe share', () => {
+    const r = recipe('r1', 'Salad', {
+      ingredients: [ing('Garlic', { quantity: '2 cloves', prep: 'minced' }), ing('Limes', { purpose: 'margaritas' })],
+    });
+    expect(buildIngredientsText(r, recipeMap([r]))).toBe('2 cloves Garlic, minced\nLimes, for margaritas');
+  });
+
+  it('flattens a component\'s lines in without its heading', () => {
+    const mash = recipe('r2', 'Mash', { ingredients: [ing('Butter', { quantity: '2 tbsp' })] });
+    const steak = recipe('r1', 'Steak with mash', {
+      ingredients: [ing('Steak')],
+      components: [link('r2', 'Mash')],
+    });
+    const text = buildIngredientsText(steak, recipeMap([steak, mash]));
+    expect(text).toBe('Steak\n2 tbsp Butter');
+    expect(text).not.toContain('For the Mash');
+  });
+
+  it('is empty for a recipe with nothing to list, so a caller can gate on it', () => {
+    const r = recipe('r1', 'Idea', { steps: [{ id: 's1', text: 'Think about it.' }] });
+    expect(buildIngredientsText(r, recipeMap([r]))).toBe('');
+  });
+});
+
+describe('buildGroceryListShareText', () => {
   it('lists what is on the list and not checked, in the order given', () => {
     const items = [item('Milk'), item('Eggs', { quantity: 'x12' })];
     expect(buildGroceryListShareText(items)).toBe('Grocery list\n- Milk\n- x12 Eggs');
@@ -195,6 +241,26 @@ describe('buildGroceryListShareText', () => {
   it('is empty when nothing is on the list', () => {
     expect(buildGroceryListShareText([item('Milk', { checked: true })])).toBe('');
     expect(buildGroceryListShareText([])).toBe('');
+  });
+});
+
+describe('buildGroceryListText', () => {
+  it('is the items alone — no title line, no bullets', () => {
+    const items = [item('Milk', { quantity: '2 L' }), item('Bread')];
+    expect(buildGroceryListText(items)).toBe('2 L Milk\nBread');
+  });
+
+  it('leaves out a checked row and an off-list row, same as the share', () => {
+    const items = [
+      item('Milk'),
+      item('Eggs', { checked: true }),
+      item('Rice', { onList: false }),
+    ];
+    expect(buildGroceryListText(items)).toBe('Milk');
+  });
+
+  it('is empty when nothing is on the list, so a caller can gate on it', () => {
+    expect(buildGroceryListText([item('Rice', { onList: false })])).toBe('');
   });
 });
 
