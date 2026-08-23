@@ -185,7 +185,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/titleRules.ts` — MIN_KEYWORD_LENGTH, KEYWORD_MAX_LENGTH, TITLE_RULE_MATCHES, TitleRuleMatchResult, TitleRuleFill, emptyTitleRule, titleRuleSaysNothing, titleRuleIsUseless, normalizeKeywords, matchKeyword, +7 more
 - `src/utils/titleSuggestions.ts` — TitleSuggestion, suggestTitles
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
-- `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ConvertedQuantity, MeasuredQuantity, measureQuantity, shelfUnit, convertQuantity
+- `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ConvertedQuantity, MeasuredQuantity, measureQuantity, shelfUnit, unitFactor, describeUnitFamily, convertQuantity
 - `src/utils/useReduceMotion.ts` — useReduceMotion
 - `src/utils/useShakeToUndo.ts` — useShakeToUndo
 - `src/utils/useSyncOnForeground.ts` — useSyncOnForeground

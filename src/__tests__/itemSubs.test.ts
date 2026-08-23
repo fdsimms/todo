@@ -307,6 +307,110 @@ describe('substituteQuantity', () => {
   });
 });
 
+describe('substituteQuantity across units of one family', () => {
+  it('applies a per-tsp ratio to a line written in tbsp', () => {
+    // The case the exact-word comparison used to sit out: a tablespoon is
+    // three teaspoons, so a tbsp of powder is twelve quarter-teaspoons.
+    expect(substituteQuantity('1 tbsp', '1/4 tsp', '1 clove')).toEqual({
+      text: '12 cloves',
+      converted: true,
+    });
+  });
+
+  it('climbs the whole US volume ladder', () => {
+    expect(substituteQuantity('1 cup', '1 tsp', '1 clove')).toEqual({
+      text: '48 cloves',
+      converted: true,
+    });
+    expect(substituteQuantity('1 qt', '1 cup', '1 clove')).toEqual({
+      text: '4 cloves',
+      converted: true,
+    });
+  });
+
+  it('converts downward too, keeping the arithmetic exact', () => {
+    expect(substituteQuantity('1 tsp', '1 tbsp', '3 cloves')).toEqual({
+      text: '1 clove',
+      converted: true,
+    });
+  });
+
+  it('reaches the identity path through a conversion', () => {
+    // 1 tbsp *is* 3 tsp, so the line names exactly one `ratioFrom` and the
+    // answer is `ratioTo` verbatim rather than a near-miss scaled by 0.999…
+    expect(substituteQuantity('1 tbsp', '3 tsp', '1 clove')).toEqual({
+      text: '1 clove',
+      converted: true,
+    });
+  });
+
+  it('converts mass units, both systems', () => {
+    expect(substituteQuantity('1 lb', '1 oz', '1 clove')).toEqual({
+      text: '16 cloves',
+      converted: true,
+    });
+    expect(substituteQuantity('1 kg', '100 g', '1 clove')).toEqual({
+      text: '10 cloves',
+      converted: true,
+    });
+  });
+
+  it('treats two spellings of one unit as one unit', () => {
+    // `unitKey` collapses inflections but not abbreviations, so this pair only
+    // matches through the conversion table — at a factor of exactly 1.
+    expect(substituteQuantity('2 grams', '1 g', '1 clove')).toEqual({
+      text: '2 cloves',
+      converted: true,
+    });
+  });
+
+  it('refuses across systems, where the conversion would have to round', () => {
+    // Same dimension, but 1 tsp is 4.929 ml. The result of this one gets
+    // written back to a grocery row, and there is no `≈` to put on a saved
+    // amount — see unitFactor.
+    expect(substituteQuantity('5 ml', '1 tsp', '1 clove')).toEqual({
+      text: '5 ml',
+      converted: false,
+    });
+  });
+
+  it('refuses across dimensions', () => {
+    expect(substituteQuantity('1 cup', '1 oz', '1 clove')).toEqual({
+      text: '1 cup',
+      converted: false,
+    });
+  });
+
+  it('still refuses a count word, which converts to nothing', () => {
+    // The load-bearing refusal, unchanged: neither clove nor bulb is on the
+    // conversion table, so widening the match never reaches them.
+    expect(substituteQuantity('1 bulb', '1 clove', '1/4 tsp')).toEqual({
+      text: '1 bulb',
+      converted: false,
+    });
+  });
+
+  it('refuses a sibling unit carrying prose, keeping the whole-tail rule', () => {
+    expect(substituteQuantity('1 tbsp, heaped', '1 tsp', '1 clove')).toEqual({
+      text: '1 tbsp, heaped',
+      converted: false,
+    });
+    expect(substituteQuantity('1 tbsp', '1 tsp, packed', '1 clove')).toEqual({
+      text: '1 tbsp',
+      converted: false,
+    });
+  });
+
+  it("refuses a container's size, which is a product rather than a measurement", () => {
+    // "14 oz can" names a tin on a shelf. Reading its size as fourteen ounces
+    // to convert would turn one can into a weight nobody sells.
+    expect(substituteQuantity('14 oz can', '1 lb', '1 clove')).toEqual({
+      text: '14 oz can',
+      converted: false,
+    });
+  });
+});
+
 describe('substitutesOnHand', () => {
   const NOW = new Date('2026-08-14T12:00:00.000Z');
   const onHand = (i: GroceryItem) => ({ ...i, onHandUntil: '2026-09-01T00:00:00.000Z' });

@@ -359,6 +359,63 @@ export function shelfUnit(
   return system === 'metric' ? { unit: 'L', base: 1000 } : { unit: 'qt', base: ML_PER_QUART };
 }
 
+// ---------------------------------------------------------------------------
+// Converting between two units, exactly
+// ---------------------------------------------------------------------------
+
+/**
+ * How many `to` make one `from` — `unitFactor('tbsp', 'tsp')` is 3, and
+ * `unitFactor('lb', 'oz')` is 16.
+ *
+ * **Same dimension *and* same system, which is deliberately narrower than
+ * everything else in this module**, because those are the pairs whose true
+ * ratio is a whole number: a tablespoon *is* three teaspoons, a pound *is*
+ * sixteen ounces. Nothing is rounded to say so, so a caller may do arithmetic
+ * with the factor and write the answer back into stored data. (The division
+ * below still leaves the float noise any division does — 1/3 comes back as
+ * 0.33333333333333337 — but that is the noise `scaleQuantity`'s denominator
+ * search exists to absorb, not a rounded quantity.)
+ *
+ * A cross-system pair is different in kind rather than in precision: 1 tsp is
+ * 4.929 ml, a number that has to be *rounded* before anyone would write it,
+ * which is rule 4 and is why rule 2 marks that whole path `≈` and never writes
+ * it back. There is nowhere to put an `≈` on a number that gets saved, so this
+ * refuses rather than let the app's rounding be stored as the user's amount.
+ *
+ * Null is every refusal: a unit off the table (a clove, a can, a bunch, which
+ * convert to nothing), the two dimensions, and the two systems.
+ */
+export function unitFactor(from: string, to: string): number | null {
+  const a = KNOWN_UNITS[unitKey(from)];
+  const b = KNOWN_UNITS[unitKey(to)];
+  if (!a || !b) return null;
+  if (a.dimension !== b.dimension || a.system !== b.system) return null;
+  return a.base / b.base;
+}
+
+/**
+ * The family a unit converts inside of, as a phrase a hint can drop in —
+ * "volume, like tsp, tbsp or cups". Null for a unit off the table, which
+ * converts to nothing and has to be named on its own instead.
+ *
+ * The examples are written out rather than derived from `KNOWN_UNITS`, which
+ * holds every spelling of each unit ("tsp" and "teaspoon", "l" and "litre")
+ * and no notion of which one a person would want shown. Keep them in step with
+ * the table if a unit is added there.
+ */
+const UNIT_FAMILIES: Record<string, string> = {
+  'volume:us': 'volume, like tsp, tbsp or cups',
+  'volume:metric': 'volume, like ml or L',
+  'mass:us': 'weight, like oz or lbs',
+  'mass:metric': 'weight, like g or kg',
+};
+
+export function describeUnitFamily(unit: string): string | null {
+  const known = KNOWN_UNITS[unitKey(unit)];
+  if (!known) return null;
+  return UNIT_FAMILIES[`${known.dimension}:${known.system}`] ?? null;
+}
+
 /**
  * `quantity` shown in `system` — "1 lb" in metric is "≈450 g".
  *

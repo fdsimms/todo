@@ -18,6 +18,7 @@ import { border, font, fontWeight, iconSize, interaction, radius, spacing, type 
 import { groceryNameKey } from '../utils/groceryParse';
 import { describeSubstituteLink, substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { parseQuantity } from '../utils/quantity';
+import { describeUnitFamily } from '../utils/unitConvert';
 import { scaleQuantity } from '../utils/recipeScale';
 import { probablyHaveReason } from '../utils/grocerySuggest';
 import type { SuggestedSubstitute } from '../utils/substituteSuggestions';
@@ -244,7 +245,29 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   // "only applies to a recipe line measured in X" hint states the constraint
   // it's *actually* enforcing rather than a canned sentence. Null while the
   // left field hasn't produced a usable amount+unit yet.
-  const fromUnit = parseQuantity(ratioFrom).rest || null;
+  const fromQuantity = parseQuantity(ratioFrom);
+  const fromUnit = fromQuantity.rest || null;
+
+  // ...and the *family* where there is one, because the constraint is wider
+  // than the word typed: a ratio per tsp reaches a line in tbsp or cups too
+  // (see itemSubs.substituteQuantity). Only for a bare `amount unit`, since a
+  // ratio carrying prose ("1 tsp, packed") is matched whole and converts from
+  // nothing — which is exactly when the narrower sentence is the true one.
+  const fromFamily = fromUnit && !fromQuantity.trailing.trim()
+    ? describeUnitFamily(fromUnit)
+    : null;
+
+  // Assembled here rather than inline: four sentences across two independent
+  // conditions is a ternary nobody can read in JSX.
+  const ratioHint = !fromUnit
+    ? 'Optional. For a substitute that needs a different amount, not just a different name.'
+    // With the swap applied for you, a line the ratio can't be read against
+    // isn't renamed either — see standingSwaps.ts for why a swapped name over
+    // an unconverted amount is the one outcome worse than leaving the line
+    // alone.
+    : `Only applies to a recipe line measured ${fromFamily ? `by ${fromFamily}` : `in ${fromUnit}`}. ${
+        standing ? 'A line measured any other way isn’t swapped.' : 'Anything else is left as written.'
+      }`;
 
   // Two illustrative outcomes rather than the three the mock shows for
   // garlic specifically: a believable "wrong but plausible unit" example
@@ -403,17 +426,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
                 accessibilityLabel={`Equivalent amount of ${picked.name}`}
               />
             </View>
-            <Text style={styles.hint}>
-              {fromUnit
-                // With the swap applied for you, a line the ratio can't be
-                // read against isn't renamed either — see standingSwaps.ts for
-                // why a swapped name over an unconverted amount is the one
-                // outcome worse than leaving the line alone.
-                ? standing
-                  ? `Only applies to a recipe line measured in ${fromUnit}. A line measured any other way isn’t swapped.`
-                  : `Only applies to a recipe line measured in ${fromUnit}. Anything else is left as written.`
-                : `Optional. For a substitute that needs a different amount, not just a different name.`}
-            </Text>
+            <Text style={styles.hint}>{ratioHint}</Text>
 
             <Text style={styles.label}>NOTE</Text>
             <TextInput

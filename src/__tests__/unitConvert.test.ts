@@ -1,4 +1,4 @@
-import { convertQuantity } from '../utils/unitConvert';
+import { convertQuantity, describeUnitFamily, unitFactor } from '../utils/unitConvert';
 
 const metric = (q: string) => convertQuantity(q, 'metric').text;
 const us = (q: string) => convertQuantity(q, 'us').text;
@@ -141,5 +141,62 @@ describe('convertQuantity — unit agreement', () => {
     expect(us('480 ml')).toBe('≈2 cups');
     expect(us('460 g')).toBe('≈1 lb');
     expect(us('900 g')).toBe('≈2 lbs');
+  });
+});
+
+describe('unitFactor', () => {
+  it('answers how many of the second unit make one of the first', () => {
+    expect(unitFactor('tbsp', 'tsp')).toBe(3);
+    expect(unitFactor('cup', 'tbsp')).toBe(16);
+    expect(unitFactor('lb', 'oz')).toBe(16);
+    expect(unitFactor('kg', 'g')).toBe(1000);
+    expect(unitFactor('l', 'ml')).toBe(1000);
+  });
+
+  it('answers the reciprocal direction too', () => {
+    // Not `toBe`: a division leaves float noise (1/3 comes back as
+    // 0.33333333333333337), which is the noise scaleQuantity's denominator
+    // search absorbs downstream — see itemSubs' own exactness tests.
+    expect(unitFactor('tsp', 'tbsp')).toBeCloseTo(1 / 3, 12);
+    expect(unitFactor('tsp', 'cup')).toBeCloseTo(1 / 48, 12);
+  });
+
+  it('reads two spellings of one unit as one unit, at a factor of 1', () => {
+    // What `unitKey` deliberately won't do: it collapses inflections, not
+    // abbreviations, so "g" and "grams" only meet here.
+    expect(unitFactor('grams', 'g')).toBe(1);
+    expect(unitFactor('teaspoon', 'tsp')).toBe(1);
+    expect(unitFactor('cups', 'cup')).toBe(1);
+  });
+
+  it('refuses across systems, where the answer would have to round', () => {
+    expect(unitFactor('tsp', 'ml')).toBeNull();
+    expect(unitFactor('oz', 'g')).toBeNull();
+  });
+
+  it('refuses across dimensions', () => {
+    expect(unitFactor('cup', 'oz')).toBeNull();
+  });
+
+  it('refuses a unit off the table — a count converts to nothing', () => {
+    expect(unitFactor('clove', 'tsp')).toBeNull();
+    expect(unitFactor('tsp', 'clove')).toBeNull();
+    expect(unitFactor('can', 'bunch')).toBeNull();
+  });
+});
+
+describe('describeUnitFamily', () => {
+  it('names the family a unit converts inside of', () => {
+    expect(describeUnitFamily('tsp')).toBe('volume, like tsp, tbsp or cups');
+    expect(describeUnitFamily('cups')).toBe('volume, like tsp, tbsp or cups');
+    expect(describeUnitFamily('ml')).toBe('volume, like ml or L');
+    expect(describeUnitFamily('lb')).toBe('weight, like oz or lbs');
+    expect(describeUnitFamily('kg')).toBe('weight, like g or kg');
+  });
+
+  it('is silent for a unit that converts to nothing', () => {
+    expect(describeUnitFamily('clove')).toBeNull();
+    expect(describeUnitFamily('bunch')).toBeNull();
+    expect(describeUnitFamily('')).toBeNull();
   });
 });

@@ -1,0 +1,4 @@
+{
+  "message": "A substitute's ratio now applies to recipe lines written in related units. A ratio written per tsp works on a line measured in tbsp or cups, instead of leaving it as written because the word didn't match",
+  "date": "2026-08-23"
+}
