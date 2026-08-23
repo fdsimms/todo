@@ -12,7 +12,9 @@ import {
 } from '../utils/kitchenInventory';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import type { GroceryItem, Leftover } from '../types';
+import type { GroceryItem, ItemProduct, Leftover } from '../types';
+
+let productSeq = 0;
 
 // The chain here reaches dateUtils (day keys) which reaches the settings store
 // for dayResetTime — which nothing here needs, since a day key is a calendar
@@ -545,5 +547,136 @@ describe('the two other pantry states', () => {
       onHandUntil: OUT_OF_IT_UNTIL,
     });
     expect(kitchenInventory([flour], [], NOW)).toHaveLength(0);
+  });
+});
+
+// ─── boxes: two packets of one item, in two places ──────────────────────────
+
+describe('a box of its own', () => {
+  function makeProduct(overrides: Partial<ItemProduct> & { itemId: string }): ItemProduct {
+    return {
+      id: `p-${++productSeq}`,
+      brand: null,
+      variant: null,
+      productKey: `k-${productSeq}`,
+      rating: null,
+      note: '',
+      purchaseCount: 0,
+      lastPurchasedAt: null,
+      gtin: null,
+      onHandUntil: null,
+      expiresAt: null,
+      frozenAt: null,
+      openedAt: null,
+      createdAt: daysAgo(200),
+      ...overrides,
+    };
+  }
+
+  const bought = (name: string, aisle = 'Bakery') =>
+    makeItem({
+      name, aisle, purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(2),
+    });
+
+  it('draws one row per box beside the item, keyed apart', () => {
+    const item = bought('Vegan ground beef', 'Meat');
+    const beyond = makeProduct({ itemId: item.id, brand: 'Beyond', frozenAt: daysAgo(20) });
+    const impossible = makeProduct({ itemId: item.id, brand: 'Impossible', onHandUntil: daysAgo(-5) });
+
+    const entries = kitchenInventory([item], [], NOW, [beyond, impossible]);
+    expect(entries.map(e => e.id)).toEqual([
+      kitchenEntryId('grocery', item.id),
+      kitchenEntryId('product', beyond.id),
+      kitchenEntryId('product', impossible.id),
+    ]);
+    // The item's name stays the title on all three — the pantry is a list of
+    // food you have, with the packet named underneath, not a list of brands.
+    expect(new Set(entries.map(e => e.title))).toEqual(new Set(['Vegan ground beef']));
+    expect(entries.map(e => e.productName)).toEqual([null, 'Beyond', 'Impossible']);
+  });
+
+  it('files a frozen box under the freezer while its sibling stays in the aisle', () => {
+    const item = bought('Bread');
+    const frozen = makeProduct({ itemId: item.id, brand: "Arnold's", frozenAt: daysAgo(9) });
+    const out = makeProduct({ itemId: item.id, brand: 'Store brand', onHandUntil: daysAgo(-5) });
+
+    const bySection = new Map(
+      kitchenInventory([item], [], NOW, [frozen, out]).map(e => [e.productName, e.section])
+    );
+    expect(bySection.get("Arnold's")).toBe(FREEZER_SECTION);
+    expect(bySection.get('Store brand')).toBe('Bakery');
+    expect(bySection.get(null)).toBe('Bakery');
+  });
+
+  it('keeps the box name out of the reason, so the row can weight it apart', () => {
+    // It's the only thing telling two same-titled rows apart, so the row draws
+    // it in its own weight rather than as more caption — but the accessible
+    // line still reads as one sentence.
+    const item = bought('Bread');
+    const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    expect(entry.productName).toBe("Arnold's");
+    expect(entry.reason).toBe('marked as on hand');
+    expect(entry.caption).toBe("Arnold's · marked as on hand");
+  });
+
+  it('still reads as one sentence when the box has a clock and an opening', () => {
+    const item = bought('Salsa', 'Condiments');
+    const box = makeProduct({
+      itemId: item.id, brand: 'Herdez', onHandUntil: daysAgo(-5),
+      openedAt: daysAgo(2), expiresAt: '2026-08-14',
+    });
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    expect(entry.caption).toBe('Herdez · marked as on hand · opened 11 Aug · Use by tomorrow');
+  });
+
+  it('counts down a box off its own use-by day, ahead of the item\'s', () => {
+    const item = bought('Bread');
+    item.expiresAt = '2026-08-20';
+    const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5), expiresAt: '2026-08-14' });
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    expect(entry.useBy).toBe('2026-08-14');
+  });
+
+  it('falls back to the item\'s use-by day for a box that has none of its own', () => {
+    // A shelf life is a fact about the food, not about the brand, so an
+    // unopened packet is answerable to the day the purchase set.
+    const item = bought('Bread');
+    item.expiresAt = '2026-08-20';
+    const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    expect(entry.useBy).toBe('2026-08-20');
+  });
+
+  it('suspends a frozen box\'s countdown without losing the day', () => {
+    const item = bought('Bread');
+    const box = makeProduct({
+      itemId: item.id, brand: "Arnold's", frozenAt: daysAgo(9), expiresAt: '2026-08-14',
+    });
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    expect(entry.useBy).toBeNull();
+    expect(entry.freshness).toBeNull();
+    expect(box.expiresAt).toBe('2026-08-14');
+  });
+
+  it('carries the item id, which is what the ✕ and the drop need', () => {
+    const item = bought('Bread');
+    const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
+    const entries = kitchenInventory([item], [], NOW, [box]);
+    expect(entries.find(e => e.kind === 'product')!.itemId).toBe(item.id);
+    expect(entries.find(e => e.kind === 'grocery')!.itemId).toBeNull();
+  });
+
+  it('leaves a box search-matchable by its item\'s name', () => {
+    const item = bought('Bread');
+    const box = makeProduct({ itemId: item.id, brand: "Arnold's", onHandUntil: daysAgo(-5) });
+    const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
+    expect(entry.matchKey).toBe(item.nameKey);
+  });
+
+  it('is exactly today\'s behaviour for an item nobody has said anything about', () => {
+    const item = bought('Bread');
+    const silent = makeProduct({ itemId: item.id, brand: "Arnold's" });
+    expect(kitchenInventory([item], [], NOW, [silent])).toEqual(kitchenInventory([item], [], NOW));
   });
 });

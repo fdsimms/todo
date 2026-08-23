@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { format } from 'date-fns/format';
 import {
   Alert,
   Modal,
@@ -20,7 +21,9 @@ import {
   type ProductRating,
 } from '../types';
 import { describeProduct, productsForItem } from '../utils/groceryProduct';
+import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { haptics } from '../utils/haptics';
+import { PillGroup, type PillGroupOption } from './PillGroup';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
@@ -60,6 +63,10 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
   const updateProduct = useGroceryStore(s => s.updateProduct);
   const deleteProduct = useGroceryStore(s => s.deleteProduct);
   const setPreferredProduct = useGroceryStore(s => s.setPreferredProduct);
+  const setProductOnHandUntil = useGroceryStore(s => s.setProductOnHandUntil);
+  const markProductsOutOf = useGroceryStore(s => s.markProductsOutOf);
+  const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
+  const setProductOpened = useGroceryStore(s => s.setProductOpened);
 
   const item = items.find(i => i.id === itemId) ?? null;
   const editing = itemProducts.find(p => p.id === editingProductId) ?? null;
@@ -101,6 +108,76 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
   );
 
   const canSave = !!brand.trim() || !!variant.trim();
+
+  // The box's own pantry state, read exactly as GroceryItemSheet reads the
+  // item's — same sentinel rule, same two-way pills, same wording. A second
+  // phrasing for the same four states is a second thing to keep true.
+  const onHandFuture =
+    !!editing?.onHandUntil && new Date(editing.onHandUntil).getTime() >= Date.now();
+  const onHandPast = editing?.onHandUntil === OUT_OF_IT_UNTIL;
+  const pantryOptions: PillGroupOption[] = useMemo(() => {
+    if (!editing || !item) return [];
+    const name = describeProduct(editing) ?? 'this one';
+    return [
+      {
+        key: 'got',
+        label: 'Got it',
+        selected: onHandFuture,
+        accessibilityLabel: onHandFuture
+          ? `${name} is marked on hand. Tap to clear`
+          : `Mark ${name} on hand`,
+        onPress: () => {
+          haptics.tap();
+          setProductOnHandUntil(
+            editing.id,
+            onHandFuture ? null : defaultOnHandUntil(item, new Date())
+          );
+        },
+      },
+      {
+        key: 'out',
+        label: 'Out of it',
+        selected: onHandPast,
+        accessibilityLabel: onHandPast
+          ? `${name} is marked out. Tap to clear`
+          : `Mark ${name} out`,
+        onPress: () => {
+          haptics.tap();
+          if (onHandPast) setProductOnHandUntil(editing.id, null);
+          else markProductsOutOf([editing.id]);
+        },
+      },
+      {
+        key: 'frozen',
+        label: 'In the freezer',
+        selected: !!editing.frozenAt,
+        accessibilityLabel: editing.frozenAt
+          ? `${name} is in the freezer. Tap to take it out`
+          : `Put ${name} in the freezer`,
+        onPress: () => {
+          haptics.tap();
+          setProductFrozen(editing.id, !editing.frozenAt);
+        },
+      },
+      {
+        key: 'opened',
+        label: editing.openedAt
+          ? `Opened ${format(new Date(editing.openedAt), 'd MMM')}`
+          : 'Opened',
+        selected: !!editing.openedAt,
+        accessibilityLabel: editing.openedAt
+          ? `${name} is marked opened. Tap to clear`
+          : `Mark ${name} opened`,
+        onPress: () => {
+          haptics.tap();
+          setProductOpened(editing.id, !editing.openedAt);
+        },
+      },
+    ];
+  }, [
+    editing, item, onHandFuture, onHandPast,
+    setProductOnHandUntil, markProductsOutOf, setProductFrozen, setProductOpened,
+  ]);
 
   const handleSave = () => {
     if (!item || !canSave) return;
@@ -248,6 +325,23 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
             maxLength={GROCERY_PRODUCT_NOTE_MAX_LENGTH}
             accessibilityLabel="Note"
           />
+
+          {/* Only for a box that exists. One being added has no packet in the
+              kitchen yet to say anything about, and naming a box is not a claim
+              to be holding one. These write immediately, unlike the draft
+              fields above — the same split GroceryItemSheet already makes, and
+              for its reason: a pantry state is a correction about the kitchen
+              right now, not a description of the box being written down. */}
+          {editing && item && (
+            <>
+              <Text style={[styles.label, styles.labelSpaced]}>PANTRY</Text>
+              <Text style={styles.hint}>
+                Tracked for this one on its own, so another {item.name.toLowerCase()} can
+                be somewhere else.
+              </Text>
+              <PillGroup options={pantryOptions} noun="state" />
+            </>
+          )}
 
           {editing && (
             <View style={styles.actions}>

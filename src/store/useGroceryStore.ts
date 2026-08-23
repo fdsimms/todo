@@ -426,6 +426,39 @@ interface GroceryStore {
    */
   setProductUnavailable: (itemId: string, shopId: string, unavailable: boolean) => void;
   /**
+   * The pantry, one box at a time — the four actions below are
+   * `setOnHandUntil` / `markOutOfMany` / `setFrozen` / `setOpened` addressed to
+   * a packet instead of to the catalog row it hangs off.
+   *
+   * They exist because an item can hold two packets at once and the item-level
+   * columns can only describe one: two brands of vegan ground beef are the same
+   * thing to a recipe and are still two separate things in the freezer. See
+   * ItemProduct.onHandUntil for why there are four of these and not five, and
+   * `grocerySuggest.productHaveReason` for what the pantry does with them.
+   *
+   * Each one mirrors its item-level twin exactly, down to the no-op guard and
+   * the re-dating rules, so a box and an item can never drift on what "frozen"
+   * or "opened" means. What they deliberately don't mirror is a *cascade*:
+   * saying something about one packet says nothing about the item or about the
+   * other packet, which is the entire point.
+   */
+  setProductOnHandUntil: (id: string, until: string | null) => void;
+  /**
+   * "Out of it" for a box — the ✕ on a Pantry row that names one. Batched like
+   * `markOutOfMany` and returning how many rows actually changed, so a caller
+   * can tell a real correction from a no-op.
+   *
+   * Deliberately without `markOutOfMany`'s disposal question: that offer hangs
+   * off the item's own usedUp/spoiled counters, which stay item-level (how
+   * often *this food* gets wasted is the useful record, and splitting it per
+   * brand would leave both halves too thin to say anything).
+   */
+  markProductsOutOf: (ids: readonly string[]) => number;
+  /** This box in or out of the freezer. Suspends its own countdown only. */
+  setProductFrozen: (id: string, frozen: boolean) => void;
+  /** This box opened or resealed, re-dating it off the open lexicon. */
+  setProductOpened: (id: string, opened: boolean) => void;
+  /**
    * The pantry override — "Got it" / "Out of it" on GroceryItemSheet. A dumb
    * setter, same as setQuantity/setNote: the caller decides the value
    * (defaultOnHandUntil for "Got it", a past timestamp for "Out of it", or
@@ -978,6 +1011,13 @@ function ensureProductFor(
       note: '',
       purchaseCount: 0,
       lastPurchasedAt: null,
+      // A box nobody has said anything about yet, which is the honest state of
+      // one being minted: it defers to its item on all four until the user
+      // says otherwise. Naming a box is not a claim to be holding one.
+      onHandUntil: null,
+      expiresAt: null,
+      frozenAt: null,
+      openedAt: null,
       // Never set here, even on the scan path that has a barcode in hand.
       // Claiming one has to release it from whichever box held it before, so
       // it goes through `linkScannedGtins` rather than riding an insert.
@@ -2085,6 +2125,83 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
 
+  setProductOnHandUntil(id, until) {
+    const product = get().itemProducts.find(p => p.id === id);
+    if (!product || product.onHandUntil === until) return;
+    const updated: ItemProduct = { ...product, onHandUntil: until };
+    dbSetItemProduct(updated);
+    set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
+  },
+
+  markProductsOutOf(ids) {
+    const wanted = new Set(ids);
+    const before = get().itemProducts.filter(
+      p => wanted.has(p.id) && p.onHandUntil !== OUT_OF_IT_UNTIL
+    );
+    if (before.length === 0) return 0;
+    const updates = before.map((p): ItemProduct => ({ ...p, onHandUntil: OUT_OF_IT_UNTIL }));
+    for (const u of updates) dbSetItemProduct(u);
+    const byId = new Map(updates.map(u => [u.id, u]));
+    set(s => ({ itemProducts: s.itemProducts.map(p => byId.get(p.id) ?? p) }));
+    get().setLastAction({
+      label: `Out of ${updates.length === 1 ? '1 thing' : `${updates.length} things`}`,
+      destructive: true,
+      undo: () => {
+        for (const row of before) dbSetItemProduct(row);
+        const restore = new Map(before.map(p => [p.id, p]));
+        set(s => ({ itemProducts: s.itemProducts.map(p => restore.get(p.id) ?? p) }));
+      },
+    });
+    return updates.length;
+  },
+
+  setProductFrozen(id, frozen) {
+    const product = get().itemProducts.find(p => p.id === id);
+    if (!product || !!product.frozenAt === frozen) return;
+    const item = get().items.find(i => i.id === product.itemId);
+    const now = new Date();
+    // The same suspend-then-restart rule setFrozen runs on the item: freezing
+    // stamps and leaves the day alone, thawing restarts a whole fresh shelf
+    // life rather than resuming what was left. The shelf life is read off the
+    // *item* because that's where it lives (shelfLifeDays is a fact about the
+    // food, not about which brand of it), and a box with no item to read —
+    // impossible in practice, resolve-or-shrug like every pointer here — thaws
+    // to no day at all rather than inventing one.
+    const updated: ItemProduct = frozen
+      ? { ...product, frozenAt: now.toISOString() }
+      : { ...product, frozenAt: null, expiresAt: item ? expiresAtForPurchase(item, now) : null };
+    dbSetItemProduct(updated);
+    set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
+  },
+
+  setProductOpened(id, opened) {
+    const product = get().itemProducts.find(p => p.id === id);
+    if (!product || !!product.openedAt === opened) return;
+    const item = get().items.find(i => i.id === product.itemId);
+    const now = new Date();
+    // Mirrors setOpened: the stamp is recorded whatever the open lexicon knows,
+    // and only the *date* is conditional on it knowing this name. Un-marking
+    // clears the stamp and leaves the day standing, same as the item's.
+    //
+    // **The sealed day handed over is this box's, not its item's.**
+    // `expiresAtForOpening` takes the earlier of the sealed day and the opened
+    // one (#1943), so which sealed day it reads decides the answer — and the
+    // packet being opened is the one whose deadline is at stake. Falls back to
+    // the item's, which is the same fallback the pantry row reads a box's
+    // use-by day through: a packet nobody has dated separately is answerable to
+    // the day its purchase set.
+    const reDated = opened && item
+      ? expiresAtForOpening({ ...item, expiresAt: product.expiresAt ?? item.expiresAt }, now)
+      : null;
+    const updated: ItemProduct = {
+      ...product,
+      openedAt: opened ? now.toISOString() : null,
+      expiresAt: reDated ?? product.expiresAt,
+    };
+    dbSetItemProduct(updated);
+    set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
+  },
+
   setOnHandUntil(id, until) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
@@ -2672,11 +2789,22 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       purchasedAt,
       shop?.id ?? null,
       expiresAtById,
-      priceById
+      priceById,
+      frozenIds ?? new Set()
     );
     if (ids.length === 0) return 0;
     const done = new Set(ids);
     const before = beforeItems.filter(i => done.has(i.id));
+    // Same snapshot for the boxes this trip credits. Keyed by product id, and
+    // only the preferred ones — the set dbFinishGroceryShopping touches.
+    const beforeProducts = new Map(
+      get()
+        .itemProducts.filter(p => {
+          const item = before.find(i => i.id === p.itemId);
+          return item?.preferredProductId === p.id;
+        })
+        .map((p): [string, ItemProduct] => [p.id, p])
+    );
     // Only this shop's links are ever touched below, bumped or newly minted —
     // an untouched shop's links need no snapshot to put back.
     const beforeLinks = new Map(
@@ -2777,7 +2905,34 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         ];
       }
 
+      // The box that actually came home, mirroring the UPDATE
+      // dbFinishGroceryShopping just ran on it. Patched in memory rather than
+      // left for the next load, which is what the purchase counters here used
+      // to settle for: these four columns now decide whether a box appears in
+      // the pantry at all, so a freezer claim about the *previous* packet
+      // surviving in state would keep a stale row on the Pantry screen for the
+      // rest of the session. Preferred-only, exactly like the db — a trip that
+      // bought an item with no preference says nothing about which box it was.
+      const boughtProductIds = new Set(
+        before
+          .map(i => i.preferredProductId)
+          .filter((id): id is string => id !== null)
+      );
+
       return {
+        itemProducts: s.itemProducts.map(p =>
+          boughtProductIds.has(p.id)
+            ? {
+                ...p,
+                purchaseCount: p.purchaseCount + 1,
+                lastPurchasedAt: purchasedAt,
+                onHandUntil: null,
+                expiresAt: null,
+                frozenAt: null,
+                openedAt: null,
+              }
+            : p
+        ),
         items: s.items.map(i =>
           done.has(i.id)
             ? {
@@ -2860,6 +3015,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       undo: () => {
         for (const row of before) dbUpdateGroceryItem(row);
         const byId = new Map(before.map(i => [i.id, i]));
+        // The bought boxes go back whole — counters and pantry claims alike —
+        // from the snapshot taken before the trip, the same discipline the item
+        // rows above follow rather than reconstructing what they probably were.
+        for (const row of beforeProducts.values()) dbSetItemProduct(row);
         if (shop) {
           // A link this trip bumped goes back to its old counts; one this
           // trip minted outright never existed before it, so it's deleted
@@ -2873,6 +3032,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         }
         set(s => ({
           items: s.items.map(i => byId.get(i.id) ?? i),
+          itemProducts: s.itemProducts.map(p => beforeProducts.get(p.id) ?? p),
           itemShops: shop
             ? [
                 ...s.itemShops.filter(l => !(l.shopId === shop.id && done.has(l.itemId))),

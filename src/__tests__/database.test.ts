@@ -1812,6 +1812,10 @@ function makeProduct(
     purchaseCount: 0,
     lastPurchasedAt: null,
     gtin: null,
+    onHandUntil: null,
+    expiresAt: null,
+    frozenAt: null,
+    openedAt: null,
     createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
   };
@@ -2362,6 +2366,57 @@ describe('grocery items', () => {
       const [product] = dbGetAllItemProducts();
       expect(product.purchaseCount).toBe(1);
       expect(product.lastPurchasedAt).toBe('2026-08-07T12:00:00.000Z');
+    });
+
+    // The packet you froze, opened, or declared yourself out of is not the
+    // packet you have just carried home — the same correction the item row
+    // already gets from the blanket clear above it.
+    it('clears the bought box’s own pantry claims', () => {
+      dbInsertGroceryItem(makeGroceryItem({
+        id: 'g1', name: 'Bread', checked: true, preferredProductId: 'p1',
+      }));
+      dbSetItemProduct(makeProduct({
+        id: 'p1', itemId: 'g1', brand: "Arnold's",
+        onHandUntil: '1970-01-01T00:00:00.000Z',
+        expiresAt: '2026-08-01',
+        frozenAt: '2026-07-01T00:00:00.000Z',
+        openedAt: '2026-07-20T00:00:00.000Z',
+      }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', 'shop-1');
+
+      const [product] = dbGetAllItemProducts();
+      expect(product.onHandUntil).toBeNull();
+      expect(product.expiresAt).toBeNull();
+      expect(product.frozenAt).toBeNull();
+      expect(product.openedAt).toBeNull();
+    });
+
+    // A box nobody preferred at the till says nothing about which one came
+    // home, so its claims are left exactly where they were.
+    it('leaves a box the trip did not name alone', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread', checked: true }));
+      dbSetItemProduct(makeProduct({
+        id: 'p1', itemId: 'g1', brand: 'Store brand', frozenAt: '2026-07-01T00:00:00.000Z',
+      }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', 'shop-1');
+
+      expect(dbGetAllItemProducts()[0].frozenAt).toBe('2026-07-01T00:00:00.000Z');
+    });
+
+    // The scan sheet's own toggle, made about the bag being carried home right
+    // now — it has to survive the blanket `frozen_at = NULL` that is about the
+    // *previous* bag, or the freeze lives in memory only and is gone on reload.
+    it('stamps the rows this trip is putting straight in the freezer', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Chicken', checked: true }));
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk', checked: true }));
+
+      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', null, {}, {}, new Set(['g1']));
+
+      const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i.frozenAt]));
+      expect(byId.get('g1')).toBe('2026-08-07T12:00:00.000Z');
+      expect(byId.get('g2')).toBeNull();
     });
 
     // Coming home with something refutes every claim about this store's shelf

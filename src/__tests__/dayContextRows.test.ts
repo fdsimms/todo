@@ -247,6 +247,8 @@ function kitchen(
     sourceId,
     kind,
     title,
+    productName: null,
+    itemId: null,
     section: 'Other',
     useBy: freshness === null ? null : '2026-08-13',
     freshness,

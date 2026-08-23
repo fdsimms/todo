@@ -148,6 +148,9 @@ export function KitchenScreen() {
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
   const setFrozen = useGroceryStore(s => s.setFrozen);
   const setAisle = useGroceryStore(s => s.setAisle);
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const markProductsOutOf = useGroceryStore(s => s.markProductsOutOf);
+  const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const tripShopId = useGroceryStore(s => s.tripShopId);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
@@ -190,8 +193,8 @@ export function KitchenScreen() {
   const now = useMemo(() => new Date(nowMs), [nowMs]);
 
   const entries = useMemo(
-    () => kitchenInventory(items, leftovers, now),
-    [items, leftovers, now]
+    () => kitchenInventory(items, leftovers, now, itemProducts),
+    [items, leftovers, now, itemProducts]
   );
   const sections = useMemo(
     () => buildKitchenSections(entries, aisleOrder, query),
@@ -295,7 +298,10 @@ export function KitchenScreen() {
     const focused = entries.find(e => e.id === focusEntryId);
     if (focused) {
       if (focused.kind === 'leftover') setOpenLeftoverId(focused.sourceId);
-      else setOpenItemId(focused.sourceId);
+      else if (focused.kind === 'product' && focused.itemId) {
+        setOpenItemField('products');
+        setOpenItemId(focused.itemId);
+      } else setOpenItemId(focused.sourceId);
       return;
     }
     // Not in the list, which is the normal case for one link rather than an
@@ -311,6 +317,15 @@ export function KitchenScreen() {
     const parsed = parseKitchenEntryId(focusEntryId);
     if (parsed?.kind === 'grocery' && items.some(i => i.id === parsed.sourceId)) {
       setOpenItemId(parsed.sourceId);
+    } else if (parsed?.kind === 'product') {
+      // A box whose row has gone quiet — the same "link outlives the entry"
+      // case above. Its item is still the right place to land, so resolve
+      // through the box rather than giving up.
+      const product = itemProducts.find(p => p.id === parsed.sourceId);
+      if (product && items.some(i => i.id === product.itemId)) {
+        setOpenItemField('products');
+        setOpenItemId(product.itemId);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusEntryId, focusStamp, handledFocusStamp]);
@@ -349,7 +364,14 @@ export function KitchenScreen() {
 
   const handleMarkOut = (entry: KitchenEntry) => {
     haptics.tap();
-    if (markOutOfMany([entry.sourceId]) > 0) haptics.success();
+    // A box's ✕ writes the box and says nothing about its siblings — being out
+    // of the Beyond one is not being out of vegan ground beef. The item-level
+    // ✕ still means all of them, which is why an item's own "Out of it"
+    // outranks every box in `probablyHaveReason`.
+    const changed = entry.kind === 'product'
+      ? markProductsOutOf([entry.sourceId])
+      : markOutOfMany([entry.sourceId]);
+    if (changed > 0) haptics.success();
   };
 
   // The other half of a drop (`resolveKitchenDrop` is the first): each move is
@@ -370,6 +392,17 @@ export function KitchenScreen() {
         else if (move.to.place === 'aisle') {
           setFrozen(move.sourceId, false);
           setAisle(move.sourceId, move.to.aisle);
+        }
+      } else if (move.kind === 'product') {
+        // A box freezes and thaws on its own — that's the whole reason it has
+        // its own row — but the aisle it lands in is written to its *item*,
+        // because an aisle is where the food sits in a shop and two brands of
+        // one thing don't sit in two. So dragging one box to Frozen leaves its
+        // sibling in Produce, while dragging it to Dairy moves both.
+        if (move.to.place === 'freezer') setProductFrozen(move.sourceId, true);
+        else if (move.to.place === 'aisle') {
+          setProductFrozen(move.sourceId, false);
+          if (move.itemId) setAisle(move.itemId, move.to.aisle);
         }
       } else if (move.to.place === 'freezer') {
         setLeftoverFrozen(move.sourceId, true);
@@ -513,7 +546,15 @@ export function KitchenScreen() {
         onPress={() => {
           haptics.tap();
           if (entry.kind === 'leftover') setOpenLeftoverId(entry.sourceId);
-          else setOpenItemId(entry.sourceId);
+          // A box's corrections live on the box, so its row opens the item
+          // sheet with the Products field already unfolded — the same
+          // pre-opening a catalog row gets for its Pantry field, and for the
+          // same reason: a collapsed field halfway down a dense sheet is in
+          // practice no way to correct anything.
+          else if (entry.kind === 'product' && entry.itemId) {
+            setOpenItemField('products');
+            setOpenItemId(entry.itemId);
+          } else setOpenItemId(entry.sourceId);
         }}
         // The lift haptic is ReorderableList's own, so there's none here.
         onLongPress={drag}
@@ -523,12 +564,22 @@ export function KitchenScreen() {
         accessibilityHint={
           entry.kind === 'leftover'
             ? 'Opens the container, where you can close it out. Long press to move it between the fridge and the freezer'
-            : 'Opens the item, where you can correct it further. Long press to move it to another aisle or the freezer'
+            : entry.kind === 'product'
+              ? 'Opens the item, where you can correct this one. Long press to move it to another aisle or the freezer'
+              : 'Opens the item, where you can correct it further. Long press to move it to another aisle or the freezer'
         }
       >
         <View style={styles.body}>
           <Text style={styles.name} numberOfLines={1}>{entry.title}</Text>
           <Text style={styles.meta} numberOfLines={1}>
+            {/* Which packet, in its own weight and the brighter grey, because
+                on an item that has split into two rows this is the only thing
+                telling them apart — at caption weight the two read as one row
+                drawn twice. Leading, so it survives the truncation that eats
+                the end of a long line at 390pt. */}
+            {!!entry.productName && (
+              <Text style={styles.metaBox}>{`${entry.productName} · `}</Text>
+            )}
             {entry.reason}
             {entry.onList && ' · on the list'}
             {!!entry.useByCaption && (
@@ -539,13 +590,21 @@ export function KitchenScreen() {
         {/* The single most common action on a catalog row, one tap away rather
             than two — see the doc comment above. A container has none: "gone"
             is a two-way question there, and its row's tap asks it properly. */}
-        {entry.kind === 'grocery' && (
+        {entry.kind !== 'leftover' && (
           <PressableScale
             style={styles.outButton}
             onPress={() => handleMarkOut(entry)}
             hitSlop={8}
-            accessibilityLabel={`Mark ${entry.title} out`}
-            accessibilityHint="Marks it not on hand, without opening the item"
+            accessibilityLabel={
+              entry.productName
+                ? `Mark ${entry.productName} ${entry.title} out`
+                : `Mark ${entry.title} out`
+            }
+            accessibilityHint={
+              entry.kind === 'product'
+                ? 'Marks this one not on hand, leaving the others alone'
+                : 'Marks it not on hand, without opening the item'
+            }
           >
             <Ionicons name="close-circle-outline" size={iconSize.md} color={colors.textTertiary} />
           </PressableScale>
@@ -858,6 +917,7 @@ function makeStyles(colors: Colors) {
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
+    metaBox: { color: colors.textSecondary, fontWeight: fontWeight.medium },
     outButton: { padding: 2 },
   });
 }
