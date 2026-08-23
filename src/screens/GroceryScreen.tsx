@@ -21,6 +21,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
 import { GroceryAddSheet } from '../components/GroceryAddSheet';
 import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
@@ -1136,6 +1137,7 @@ export function GroceryScreen() {
         actions={actions}
       />
       <GroceriesHubPills active="Groceries" />
+      <TipHost screen="groceries" />
       {/* A sibling of the list, not its header: the one thing on screen saying
           why rows have started naming other stores has to still be there when
           you're looking at such a row, and a way out of a mode shouldn't have

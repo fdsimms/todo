@@ -17,6 +17,7 @@ import { groupProjectsByCategory, resolveProjectDrop, type ProjectListItem } fro
 import { ProjectEditor } from '../components/ProjectEditor';
 import { QuickAddProjectModal, type ProjectDraft } from '../components/QuickAddProjectModal';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
 import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
 import {
@@ -369,6 +370,8 @@ export function ProjectsScreen() {
           },
         ]}
       />
+
+      <TipHost screen="projects" />
 
       <FabDropZoneProvider
         ref={dropZonesRef}

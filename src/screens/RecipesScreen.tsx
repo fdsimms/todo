@@ -20,6 +20,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { TipHost } from '../components/TipHost';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
@@ -529,6 +530,7 @@ export function RecipesScreen() {
         ] : undefined}
       />
       <GroceriesHubPills active="Recipes" />
+      <TipHost screen="recipes" />
       {!selectionMode && !!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}

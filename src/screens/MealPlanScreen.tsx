@@ -22,6 +22,7 @@ import { isBefore } from 'date-fns/isBefore';
 import { MEAL_SLOTS, type Leftover, type MealPlanEntry, type MealSlot, type Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { TipHost } from '../components/TipHost';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { InlineAction } from '../components/InlineAction';
 import { PeriodNav } from '../components/PeriodNav';
@@ -1578,6 +1579,7 @@ export function MealPlanScreen() {
         actions={headerActions}
       />
       <GroceriesHubPills active="MealPlan" />
+      <TipHost screen="mealPlan" />
       {!selectionMode && !!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}

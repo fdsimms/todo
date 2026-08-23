@@ -28,6 +28,7 @@ import { KitchenScreen } from '../screens/KitchenScreen';
 import { TemplateDetailScreen } from '../screens/TemplateDetailScreen';
 import { ProjectDetailScreen } from '../screens/ProjectDetailScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
+import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { SettingsScreen } from '../screens/SettingsScreen';
 import { SettingsGroupScreen } from '../screens/SettingsGroupScreen';
@@ -195,6 +196,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Waiting" component={WaitingScreen} options={HIDDEN} />
       <Tab.Screen name="Drift" component={DriftScreen} options={HIDDEN} />
       <Tab.Screen name="Archived" component={ArchivedScreen} options={HIDDEN} />
+      <Tab.Screen name="Tips" component={TipsScreen} options={HIDDEN} />
     </Tab.Navigator>
   );
 });
