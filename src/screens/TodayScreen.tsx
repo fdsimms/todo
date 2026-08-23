@@ -42,9 +42,9 @@ import {
   isLaterHeader,
   laterTaskOrder,
   LATER_TODAY_LABEL,
-  laterSections as computeLaterSections,
+  laterVisibleOrder,
+  laterDaySections,
   laterDropZones,
-  visibleLaterSections as computeVisibleLaterSections,
   laterTodaySections as computeLaterTodaySections,
   applyCategoryCollapse as applyCategoryCollapseTo,
   sectionTaskIds as computeSectionTaskIds,
@@ -194,6 +194,11 @@ interface SubtaskEntry {
 // array per row per render and defeat TaskItem's shallow compare precisely
 // where the memo matters most — on the rows that have nothing to say.
 const NO_SUBTASKS: SubtaskEntry = { items: [], doneCount: 0 };
+
+// Stands in for a task selector this sub-view doesn't read — one shared
+// identity, so useShallow sees no change rather than a fresh [] each time.
+// See the selector block in TodayScreen for what gates what.
+const NO_TASKS: Task[] = [];
 
 // Same idea for a header with no rows of its own to leave alongside (see
 // sectionTaskIds): one shared empty array rather than a fresh one per render.
@@ -476,13 +481,33 @@ export function TodayScreen() {
   const tabBarHeight = useBottomTabBarHeight();
   // ==== local state (view mode, selection, expansion, sheets) ====
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
-  const visibleTasks = useTaskStore(useShallow(s => s.visibleTasks()));
-  const pinnedTasks = useTaskStore(useShallow(s => s.pinnedTasks()));
-  const deferredTasks = useTaskStore(useShallow(s => s.deferredTasks()));
-  const unscheduledTasks = useTaskStore(useShallow(s => s.unscheduledTasks()));
-  const expiredTasks = useTaskStore(useShallow(s => s.expiredTasks()));
-  const vacationHiddenTasks = useTaskStore(useShallow(s => s.vacationHiddenTasks()));
-  const upcomingTodayTasks = useTaskStore(useShallow(s => s.upcomingTodayTasks()));
+  // Declared up here rather than with the rest of the sheet/selection state
+  // below, because the selectors immediately after it are gated on it.
+  const [viewMode, setViewMode] = useState<ViewMode>('today');
+  // Each of these is a full filter and sort over every task in the database,
+  // re-run on every store change. Only one sub-view's list is mounted at a
+  // time, so all seven used to run for every completion, edit and reorder no
+  // matter which lens was on screen. They are now gated on the view that
+  // actually reads them: the hook still runs unconditionally (it has to), but
+  // the work inside the selector doesn't.
+  //
+  // inboxTasks is deliberately ungated — its count is the badge on the Inbox
+  // pill, which every view shows. vacationHiddenTasks covers two views because
+  // VacationHiddenSection lives in the shared listFooter.
+  const showingToday = viewMode === 'today';
+  const visibleTasks = useTaskStore(useShallow(s => (showingToday ? s.visibleTasks() : NO_TASKS)));
+  const pinnedTasks = useTaskStore(useShallow(s => (showingToday ? s.pinnedTasks() : NO_TASKS)));
+  const deferredTasks = useTaskStore(useShallow(s => (viewMode === 'later' ? s.deferredTasks() : NO_TASKS)));
+  const unscheduledTasks = useTaskStore(
+    useShallow(s => (viewMode === 'unscheduled' ? s.unscheduledTasks() : NO_TASKS)),
+  );
+  const expiredTasks = useTaskStore(useShallow(s => (showingToday ? s.expiredTasks() : NO_TASKS)));
+  const vacationHiddenTasks = useTaskStore(
+    useShallow(s => (showingToday || viewMode === 'later' ? s.vacationHiddenTasks() : NO_TASKS)),
+  );
+  const upcomingTodayTasks = useTaskStore(
+    useShallow(s => (showingToday ? s.upcomingTodayTasks() : NO_TASKS)),
+  );
   const allTasks = useTaskStore(s => s.tasks);
   const isEmptyDatabase = allTasks.length === 0;
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
@@ -527,7 +552,6 @@ export function TodayScreen() {
     [colors],
   );
 
-  const [viewMode, setViewMode] = useState<ViewMode>('today');
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [quickAddType, setQuickAddType] = useState<TaskKind>('task');
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
@@ -606,9 +630,13 @@ export function TodayScreen() {
   // header left to switch it back off from, and the list stays empty for
   // good. Drop the hide the moment it has nothing left to hide besides.
   // ==== effects ====
+  // Gated on the view as well as the count: pinnedTasks reads empty off Today
+  // (see the selector block), and "hide everything but the pins" is a Today
+  // display state that must survive a look at Later and back. Re-runs on the
+  // way back in, so a pin cleared while away is still caught.
   useEffect(() => {
-    if (pinnedTasks.length === 0) setOthersHidden(false);
-  }, [pinnedTasks.length]);
+    if (showingToday && pinnedTasks.length === 0) setOthersHidden(false);
+  }, [showingToday, pinnedTasks.length]);
   const [showHidden, setShowHidden] = useState(false);
   const [showExpired, setShowExpired] = useState(false);
   // Persisted: folding a section shut is a statement about how you want the
@@ -2646,7 +2674,12 @@ export function TodayScreen() {
   const today = format(new Date(), 'EEEE, MMMM d');
 
 
-  const laterSections = useMemo(() => computeLaterSections(filteredDeferredTasks), [filteredDeferredTasks]);
+  // Split in two memos on purpose. The ordering is the O(every deferred task)
+  // half and depends only on the deferred set; the grouping is bounded by the
+  // row budget below and reruns each time that budget grows a page. Grouping
+  // used to run over everything and be truncated afterwards, so the budget
+  // bounded how many rows mounted but not what it cost to work out which.
+  const laterOrder = useMemo(() => laterVisibleOrder(filteredDeferredTasks), [filteredDeferredTasks]);
 
   // The Later list can grow unboundedly (nothing prunes it), and its
   // ReorderableList renders every row unmounted-free (no virtualization — see
@@ -2665,28 +2698,32 @@ export function TodayScreen() {
   // can scroll to it.
   const [laterTaskLimit, setLaterTaskLimit] = useState(LATER_INITIAL_TASK_LIMIT);
 
+  // Leaving Later drops the budget back: the list unmounts and returns
+  // scrolled to the top, so anything it had paged in is just rows the next
+  // switch would pay to mount off-screen.
+  //
+  // Both directions wait for the switch to settle. The ramp *up* always has,
+  // for the reason above; the reset used to run synchronously on the commit
+  // that left Later, which put a second full render of this screen (the budget
+  // shrinks → laterData → laterDraggableData) in the very frame already
+  // unmounting sixty TaskItems and mounting the destination list. Nothing
+  // needs it to be that early — the list it prunes is already gone. Deferring
+  // it also means switching out and straight back keeps the settled budget
+  // rather than paying to re-mount the same rows: the pending reset is
+  // cancelled by this effect's own cleanup, and the ramp-up that replaces it
+  // is a Math.max.
   useEffect(() => {
-    // Leaving Later drops the budget back: the list unmounts and returns
-    // scrolled to the top, so anything it had paged in is just rows the next
-    // switch would pay to mount off-screen.
-    if (viewMode !== 'later') {
-      setLaterTaskLimit(LATER_INITIAL_TASK_LIMIT);
-      return;
-    }
     const handle = InteractionManager.runAfterInteractions(() => {
-      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT));
+      setLaterTaskLimit(limit =>
+        viewMode === 'later' ? Math.max(limit, LATER_SETTLED_TASK_LIMIT) : LATER_INITIAL_TASK_LIMIT,
+      );
     });
     return () => handle.cancel();
   }, [viewMode]);
 
-  const visibleLaterSections = useMemo(
-    () => computeVisibleLaterSections(laterSections, laterTaskLimit),
-    [laterSections, laterTaskLimit],
-  );
-
-  const hasMoreLaterSections = useMemo(
-    () => visibleLaterSections.length < laterSections.length,
-    [visibleLaterSections, laterSections],
+  const { sections: visibleLaterSections, hasMore: hasMoreLaterSections } = useMemo(
+    () => laterDaySections(laterOrder, laterTaskLimit),
+    [laterOrder, laterTaskLimit],
   );
 
   const laterData = useMemo(() => flattenLaterSections(visibleLaterSections), [visibleLaterSections]);
@@ -2995,7 +3032,7 @@ export function TodayScreen() {
                     <Text style={styles.laterLoadingMoreText}>Loading more…</Text>
                   </View>
                 )}
-                {listFooter(laterSections.length === 0)}
+                {listFooter(laterOrder.length === 0)}
               </>
             }
             refreshControl={

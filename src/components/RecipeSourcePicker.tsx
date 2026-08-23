@@ -205,7 +205,7 @@ export function RecipeSourcePicker({
           <Text style={badUrl ? styles.linkBad : styles.linkHint}>
             {badUrl
               ? 'That doesn’t look like a web address yet.'
-              : 'Works on most recipe sites. Some build their page in the browser — for those, copy the recipe and paste it instead.'}
+              : 'Works on most recipe sites. Some build their page in the browser. For those, copy the recipe and paste it instead.'}
           </Text>
         </View>
       ) : photo ? (
@@ -239,7 +239,7 @@ export function RecipeSourcePicker({
               {renderPhotoButton('library', 'Choose a photo', 'images-outline')}
               <Text style={styles.photoHint}>
                 {photoHint
-                  ?? 'Works on a cookbook page, a recipe card, a clipping — anything with the ingredients readable.'}
+                  ?? 'Works on a cookbook page, a recipe card, a clipping: anything with the ingredients readable.'}
               </Text>
             </>
           )}

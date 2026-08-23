@@ -42,7 +42,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/cookingStats.ts` — CookingWindow, MealCookCounts, CookedRecipe, EMPTY_MEAL_COOK_COUNTS, cookingWindow, mealCookCounts, leftoversFinishedIn, leftoverHistoryIn, mostCookedRecipes, hasCookingData
 - `src/utils/dailyAgenda.ts` — AgendaCounts, agendaCounts, agendaBody, nextAgendaTime
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
-- `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, getTaskDayStart, formatHHMM, formatTimeOfDay, getWeekStart, getLogicalToday, +19 more
+- `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, getTaskDayStart, formatHHMM, formatTimeOfDay, getWeekStart, getLogicalToday, +20 more
 - `src/utils/dayContextRows.ts` — eventContextRows, mealContextRows, KITCHEN_ROW_LIMIT, plannedUsesToday, kitchenContextRows, insertContextRows, withoutContextRows
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, describeDayLoad
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
@@ -171,7 +171,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/syncMerge.ts` — SyncDeletion, SyncChangeSet, SYNC_FORMAT, SyncPayload, ParsedPayload, buildPayload, serializePayload, parsePayload, remoteRowWins, remoteDeletionWins, +3 more
 - `src/utils/syncStatus.ts` — describeLastSynced
 - `src/utils/tagColor.ts` — tagColor
-- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, flattenLaterSections, isLaterHeader, +15 more
+- `src/utils/taskGrouping.ts` — CategoryListItem, ContextListItem, TodayListItem, LATER_TODAY_LABEL, makeCategoryGroups, DropResolution, resolveDrop, LaterListItem, flattenLaterSections, isLaterHeader, +18 more
 - `src/utils/taskInstances.ts` — InstanceGroup, normalizeTitle, getRepeatedInstances
 - `src/utils/taskKinds.ts` — TaskKind, TASK_KIND_META, taskKindOf, QuickAddChip, QUICK_ADD_CHIP_LABELS, QUICK_ADD_CHIP_LIMIT, TASK_KINDS, DEFAULT_TIMED_MINUTES, DEFAULT_TARGET_COUNT, TIMED_MINUTE_OPTIONS, +9 more
 - `src/utils/taskMoves.ts` — DeloadBlocker, SOFT_DELOAD_BLOCKERS, isDateAnchored, deloadBlockerFor, wouldMissDeadline, deloadUpdates
@@ -190,7 +190,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/useShakeToUndo.ts` — useShakeToUndo
 - `src/utils/useSyncOnForeground.ts` — useSyncOnForeground
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
-- `src/utils/visibilityUtils.ts` — isTaskBlocked, isSequenceBlocked, isHeldBack, isHiddenForVacation, sameTimeSegments, hasDayArrived, effectiveWindowEnd, isCompletionOnTime, isTaskWindowActive, isTaskExpired, +27 more
+- `src/utils/visibilityUtils.ts` — isTaskBlocked, isSequenceBlocked, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, sameTimeSegments, hasDayArrived, effectiveWindowEnd, isCompletionOnTime, +29 more
 - `src/utils/weekPlan.ts` — WeekNight, weekNights, decidableNights
 - `src/utils/widgetSync.ts` — useWidgetSync
 

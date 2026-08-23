@@ -1177,7 +1177,7 @@ export function QuickAddModal({
                 ref={inputRef}
                 style={[styles.input, activeMatch && styles.inputHidden]}
                 placeholder="New task…"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor={colors.textTertiary}
                 value={title}
                 onChangeText={setTitle}
                 onSubmitEditing={handleAdd}
@@ -1365,7 +1365,7 @@ export function QuickAddModal({
                   onChangeText={applyCustomTimed}
                   keyboardType="number-pad"
                   placeholder="custom"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   accessibilityLabel="Custom duration in minutes"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -1394,7 +1394,7 @@ export function QuickAddModal({
                   value={targetUnit}
                   onChangeText={setTargetUnit}
                   placeholder="units"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholderTextColor={colors.textTertiary}
                   maxLength={MAX_TARGET_UNIT_LENGTH}
                   autoCapitalize="none"
                   accessibilityLabel="Unit for the daily target, optional"
@@ -1437,7 +1437,7 @@ export function QuickAddModal({
                   onChangeText={setNewStepTitle}
                   onSubmitEditing={() => addStep(newStepTitle)}
                   placeholder={chainItems.length === 0 ? 'First step…' : 'Next step…'}
-                  placeholderTextColor={colors.textSecondary}
+                  placeholderTextColor={colors.textTertiary}
                   maxLength={TITLE_MAX_LENGTH}
                   returnKeyType="next"
                   blurOnSubmit={false}
@@ -1591,6 +1591,8 @@ export function QuickAddModal({
                       haptics.tap();
                       setRecurrenceInterval(Math.max(1, recurrenceInterval - 1));
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Repeat less often"
                   >
                     <Ionicons name="remove" size={16} color={colors.text} />
                   </TouchableOpacity>
@@ -1601,6 +1603,8 @@ export function QuickAddModal({
                       haptics.tap();
                       setRecurrenceInterval(recurrenceInterval + 1);
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Repeat more often"
                   >
                     <Ionicons name="add" size={16} color={colors.text} />
                   </TouchableOpacity>
@@ -1642,6 +1646,8 @@ export function QuickAddModal({
                       haptics.tap();
                       setRecurrenceMonthDay(Math.max(1, recurrenceMonthDay - 1));
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Earlier day of the month"
                   >
                     <Ionicons name="remove" size={16} color={colors.text} />
                   </TouchableOpacity>
@@ -1652,6 +1658,8 @@ export function QuickAddModal({
                       haptics.tap();
                       setRecurrenceMonthDay(Math.min(31, recurrenceMonthDay + 1));
                     }}
+                    accessibilityRole="button"
+                    accessibilityLabel="Later day of the month"
                   >
                     <Ionicons name="add" size={16} color={colors.text} />
                   </TouchableOpacity>
@@ -1719,7 +1727,7 @@ export function QuickAddModal({
                   onChangeText={applyCustomEffort}
                   keyboardType="number-pad"
                   placeholder="custom min"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
@@ -1752,7 +1760,7 @@ export function QuickAddModal({
                   ref={tagInputRef}
                   style={styles.tagInput}
                   placeholder="Add tag…"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholderTextColor={colors.textTertiary}
                   value={tagInput}
                   onChangeText={setTagInput}
                   onSubmitEditing={() => { if (tagInput.trim()) addTag(tagInput); }}
@@ -1763,7 +1771,12 @@ export function QuickAddModal({
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
                 {tagInput.trim().length > 0 && (
-                  <TouchableOpacity onPress={() => addTag(tagInput)} hitSlop={8}>
+                  <TouchableOpacity
+                    onPress={() => addTag(tagInput)}
+                    hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add tag ${tagInput}`}
+                  >
                     <Ionicons name="add-circle" size={20} color={colors.accent} />
                   </TouchableOpacity>
                 )}
@@ -1825,7 +1838,7 @@ export function QuickAddModal({
                   onSubmitEditing={commitCustomLink}
                   onBlur={commitCustomLink}
                   placeholder="https://... or app://"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholderTextColor={colors.textTertiary}
                   keyboardType="url"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -1836,6 +1849,8 @@ export function QuickAddModal({
                   <TouchableOpacity
                     onPress={() => { haptics.tap(); setLinkUrl(null); setCustomLinkText(''); setActivePanel(null); }}
                     hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear link"
                   >
                     <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>
@@ -1854,8 +1869,8 @@ export function QuickAddModal({
                   onChangeText={t => setPhoneText(formatPhoneInput(t))}
                   onSubmitEditing={commitPhone}
                   onBlur={commitPhone}
-                  placeholder="(555) 123-4567"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholder="e.g. (555) 123-4567"
+                  placeholderTextColor={colors.textTertiary}
                   keyboardType="phone-pad"
                   autoCorrect={false}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -1897,8 +1912,8 @@ export function QuickAddModal({
                   onChangeText={setEmailText}
                   onSubmitEditing={commitEmail}
                   onBlur={commitEmail}
-                  placeholder="name@example.com"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholder="e.g. name@example.com"
+                  placeholderTextColor={colors.textTertiary}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -1909,6 +1924,8 @@ export function QuickAddModal({
                   <TouchableOpacity
                     onPress={() => { haptics.tap(); setEmailAddress(null); setEmailText(''); setActivePanel(null); }}
                     hitSlop={8}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear email address"
                   >
                     <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>

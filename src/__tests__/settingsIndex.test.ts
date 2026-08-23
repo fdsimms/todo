@@ -5,6 +5,7 @@ import {
   visibleSettingsGroups,
   visibleSettingsEntries,
 } from '../utils/settingsIndex';
+import { AI_FEATURES } from '../utils/aiFeatures';
 
 describe('settings index', () => {
   it('gives every group at least one entry', () => {
@@ -47,6 +48,38 @@ describe('settings index', () => {
         expect(entry.label.toLowerCase()).not.toContain(keyword.toLowerCase());
       }
     }
+  });
+
+  describe('AI features', () => {
+    // PrivacyAiSettings renders this section by mapping over aiFeaturesFor(),
+    // so its rows *are* AI_FEATURES. Two of them (substitutes, receiptImport)
+    // once had no entry here at all and a third named a label the row had
+    // stopped rendering, all three invisible to every structural check above —
+    // they need the two lists compared, not each one checked on its own.
+    const aiEntries = SETTINGS_ENTRIES.filter(e => e.section === 'AI features');
+
+    it('indexes every feature that gets a row, and nothing else', () => {
+      expect(aiEntries.map(e => e.label)).toEqual(AI_FEATURES.map(f => f.label));
+    });
+
+    it('files every one of them under Privacy & AI', () => {
+      for (const entry of aiEntries) expect(entry.groupId).toBe('privacyAi');
+    });
+
+    it('hides a kitchen feature\'s entry exactly when its row goes', () => {
+      // aiFeaturesFor drops the kitchen features when the area is off; an
+      // entry that disagreed would be a search result opening onto nothing.
+      for (const feature of AI_FEATURES) {
+        const entry = aiEntries.find(e => e.label === feature.label);
+        expect(entry?.kitchen ?? false).toBe(feature.kitchen ?? false);
+      }
+    });
+
+    it('gives every one of them keywords, since the label is only half a name', () => {
+      // "Recipe import" and "Meal ideas" are what the rows say; "paste",
+      // "photo" and "dinner" are what someone types looking for them.
+      for (const entry of aiEntries) expect(entry.keywords?.length ?? 0).toBeGreaterThan(0);
+    });
   });
 
   describe('platform gating', () => {

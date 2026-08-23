@@ -1,5 +1,5 @@
 import type { ContextRow, Task, TaskGroup } from '../types';
-import { getVisibleAt } from './visibilityUtils';
+import { beginVisibleAtPass, getVisibleAt } from './visibilityUtils';
 import { formatGroupHeader, formatHHMM, getDayStart } from './dateUtils';
 import type { DropZone, ScheduleInfo } from './fabDrop';
 
@@ -421,65 +421,127 @@ export interface LaterDaySection {
   }[];
 }
 
+/** A deferred task paired with the moment it surfaces — see laterVisibleOrder. */
+export interface LaterOrderedTask {
+  task: Task;
+  visibleAt: Date;
+}
+
 /**
- * Group deferred tasks into Later-view day sections, sorted by when each
- * becomes visible. A day with tasks spread across several time-segments (or
- * windows) is still ONE section — see `segments` — so the screen renders one
- * date header per day with lighter sub-headers inside it, rather than a
- * fully separate section per segment (#1162).
+ * Sort deferred tasks by when each surfaces. This is the half of the Later
+ * grouping that is unavoidably O(every deferred task), and it is separate from
+ * laterDaySections below so the screen can memoize the two independently: this
+ * one on the deferred set, the grouping on whatever row budget is current.
+ * Recomputing the sort every time the budget grew a page would be paying the
+ * expensive half for rows that were already placed.
+ *
+ * getVisibleAt is the cost here — date math, settings reads and a category
+ * lookup each time — so it is called once per task and carried, rather than
+ * from inside the comparator (~n log n times) and again for each section
+ * title. One VisibleAtPass covers the whole sort, which also fixes the clock
+ * for it: getVisibleAt falls back to the current instant for a task with no
+ * future gate, so a per-task clock could order the same pair differently
+ * depending on when the comparison happened.
  */
-export function laterSections(deferredTasks: Task[]): LaterDaySection[] {
+export function laterVisibleOrder(deferredTasks: Task[]): LaterOrderedTask[] {
+  const pass = beginVisibleAtPass();
+  return deferredTasks
+    .map(task => ({ task, visibleAt: getVisibleAt(task, pass) }))
+    .sort((a, b) => a.visibleAt.getTime() - b.visibleAt.getTime());
+}
+
+export interface LaterSectionsResult {
+  sections: LaterDaySection[];
+  /** True when the budget stopped the grouping short of the full order. */
+  hasMore: boolean;
+}
+
+/**
+ * Group an ordered deferred list into Later-view day sections. A day with
+ * tasks spread across several time-segments (or windows) is still ONE section
+ * — see `segments` — so the screen renders one date header per day with
+ * lighter sub-headers inside it, rather than a fully separate section per
+ * segment (#1162).
+ *
+ * `taskLimit` stops the grouping once that many task placements are in,
+ * finishing the day in progress first so a header never renders without at
+ * least one of its tasks. It bounds the work as well as the output: the
+ * (unvirtualized) Later list is fed a budget that starts at one screenful,
+ * and this used to group every deferred task and then throw most of the
+ * result away, which meant the budget bounded only how many rows mounted and
+ * not what it cost to decide which. Omit it to group everything.
+ */
+export function laterDaySections(
+  ordered: LaterOrderedTask[],
+  taskLimit?: number,
+): LaterSectionsResult {
   const days = new Map<
     string,
     { dayKeys: Set<string>; dateISO: string; segMap: Map<string, { label: string | null; segment: string | null; windowStart: string | null; windowEnd: string | null; data: Task[] }> }
   >();
-  // getVisibleAt is the expensive call in this pass — date math, a settings
-  // read and a category lookup every time — so compute it once per task and
-  // carry it through, rather than calling it from inside the comparator
-  // (~n log n times) and then again for each task's section title. It also
-  // makes the comparator consistent: getVisibleAt falls back to `new Date()`
-  // for a task with no future gate, so re-calling it mid-sort could order the
-  // same pair differently depending on when the comparison happened.
-  deferredTasks
-    .map(task => ({ task, visibleAt: getVisibleAt(task) }))
-    .sort((a, b) => a.visibleAt.getTime() - b.visibleAt.getTime())
-    .forEach(({ task, visibleAt }) => {
-      const dayLabel = formatGroupHeader(visibleAt.toISOString());
-      const dayKey = getDayStart(visibleAt).toISOString();
-      if (!days.has(dayLabel)) {
-        days.set(dayLabel, { dayKeys: new Set(), dateISO: dayKey, segMap: new Map() });
+  // formatGroupHeader is the expensive call in this pass — a date-fns format()
+  // plus its own "what is today" day-start computation — and it was being paid
+  // per task for a string that only ever varies per calendar day. Its output
+  // depends on nothing but the calendar date of what it is handed (every
+  // branch is a differenceInCalendarDays/isSameDay against today, and every
+  // token it formats is a date token), so caching on that date is exact rather
+  // than an approximation. Deliberately not keyed on dayKey below, which is a
+  // *logical* day and can span two calendar dates under a non-midnight
+  // dayResetTime.
+  const labelByDate = new Map<string, string>();
+  const dayLabelOf = (visibleAt: Date): string => {
+    const dateKey = `${visibleAt.getFullYear()}-${visibleAt.getMonth()}-${visibleAt.getDate()}`;
+    let label = labelByDate.get(dateKey);
+    if (label === undefined) {
+      label = formatGroupHeader(visibleAt.toISOString());
+      labelByDate.set(dateKey, label);
+    }
+    return label;
+  };
+
+  let placed = 0;
+  let hasMore = false;
+  for (const { task, visibleAt } of ordered) {
+    const dayLabel = dayLabelOf(visibleAt);
+    const dayKey = getDayStart(visibleAt).toISOString();
+    if (!days.has(dayLabel)) {
+      // The budget is checked only when a new day would open, so the day in
+      // progress is always finished — the same whole-sections-at-a-time rule
+      // the truncation had when it ran over the finished grouping.
+      if (taskLimit !== undefined && placed >= taskLimit) {
+        hasMore = true;
+        break;
       }
-      const day = days.get(dayLabel)!;
-      day.dayKeys.add(dayKey);
-      for (const { label, segment, windowStart, windowEnd } of laterSubGroups(task)) {
-        const key = label ?? '';
-        if (!day.segMap.has(key)) day.segMap.set(key, { label, segment, windowStart, windowEnd, data: [] });
-        day.segMap.get(key)!.data.push(task);
-      }
-    });
-  return Array.from(days.entries()).map(([title, day]) => ({
-    title,
-    // Only a single-calendar-day bucket has one date to drop a task onto —
-    // see LaterDaySection.dateISO.
-    dateISO: day.dayKeys.size === 1 ? day.dateISO : null,
-    segments: Array.from(day.segMap.values()),
-  }));
+      days.set(dayLabel, { dayKeys: new Set(), dateISO: dayKey, segMap: new Map() });
+    }
+    const day = days.get(dayLabel)!;
+    day.dayKeys.add(dayKey);
+    for (const { label, segment, windowStart, windowEnd } of laterSubGroups(task)) {
+      const key = label ?? '';
+      if (!day.segMap.has(key)) day.segMap.set(key, { label, segment, windowStart, windowEnd, data: [] });
+      day.segMap.get(key)!.data.push(task);
+      // A multi-segment task is placed once per segment and counts once per
+      // placement — these are rows in an unvirtualized list, and it renders
+      // under each of its sub-headers.
+      placed += 1;
+    }
+  }
+
+  return {
+    sections: Array.from(days.entries()).map(([title, day]) => ({
+      title,
+      // Only a single-calendar-day bucket has one date to drop a task onto —
+      // see LaterDaySection.dateISO.
+      dateISO: day.dayKeys.size === 1 ? day.dateISO : null,
+      segments: Array.from(day.segMap.values()),
+    })),
+    hasMore,
+  };
 }
 
-/**
- * Truncate Later-view sections to a task budget, whole day sections at a
- * time, so a header never renders without at least one of its tasks. Used to
- * keep the initial mount of the (unvirtualized) Later ReorderableList cheap.
- */
-export function visibleLaterSections(sections: LaterDaySection[], taskLimit: number): LaterDaySection[] {
-  const result: LaterDaySection[] = [];
-  let count = 0;
-  for (const day of sections) {
-    result.push(day);
-    count += day.segments.reduce((n, s) => n + s.data.length, 0);
-    if (count >= taskLimit) break;
-  }
-  return result;
+/** Both halves at once, unbudgeted. */
+export function laterSections(deferredTasks: Task[]): LaterDaySection[] {
+  return laterDaySections(laterVisibleOrder(deferredTasks)).sections;
 }
 
 export type LaterTodaySectionData = {

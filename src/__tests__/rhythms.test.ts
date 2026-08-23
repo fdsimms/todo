@@ -35,6 +35,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceDays: [],
   recurrenceMonthDay: null,
   recurrenceWeekOrdinal: null,
+  recurrenceAnchorDay: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,

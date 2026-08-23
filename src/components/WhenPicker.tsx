@@ -43,7 +43,7 @@ const BLANK_SNOOZE_TASK: Task = {
   deadlineOffsetDays: null, deadlineMonthDay: null, deferUntil: null,
   timeSegments: [], windowStart: null, windowEnd: null,
   recurrenceType: 'none', recurrenceInterval: 1, recurrenceDays: [],
-  recurrenceMonthDay: null, recurrenceWeekOrdinal: null, recurrenceEndDate: null,
+  recurrenceMonthDay: null, recurrenceWeekOrdinal: null, recurrenceAnchorDay: null, recurrenceEndDate: null,
   recurrenceCount: null, recurrenceFromCompletion: false,
   targetCount: null, progressCount: 0, targetUnit: null, allowOvershoot: false,
   tags: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0, priority: 0, effort: 0,

@@ -950,7 +950,7 @@ export function GroceryScreen() {
       icon: 'options-outline',
       onPress: () => setAislesOpen(true),
       disabled: selectionMode,
-      accessibilityLabel: 'List settings — aisles, stores, and grouping',
+      accessibilityLabel: 'List settings: aisles, stores, and grouping',
     });
     list.push({
       icon: copied ? 'checkmark' : 'copy-outline',

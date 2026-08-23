@@ -71,7 +71,7 @@ import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
-import { getNextDueDate, getCurrentDayStart, getLogicalToday, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalToday, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
@@ -285,7 +285,7 @@ function newTaskFromDraft(
   skipCategoryDefault = false,
 ): Task {
   const defaults = useSettingsStore.getState().newTaskDefaults;
-  return {
+  const task: Task = {
     id: id ?? generateId(),
     title: draft.title ?? '',
     notes: draft.notes ?? '',
@@ -308,6 +308,7 @@ function newTaskFromDraft(
     recurrenceDays: draft.recurrenceDays ?? [],
     recurrenceMonthDay: draft.recurrenceMonthDay ?? null,
     recurrenceWeekOrdinal: draft.recurrenceWeekOrdinal ?? null,
+    recurrenceAnchorDay: null,
     recurrenceEndDate: draft.recurrenceEndDate ?? null,
     recurrenceCount: draft.recurrenceCount ?? null,
     recurrenceFromCompletion: draft.recurrenceFromCompletion ?? false,
@@ -381,6 +382,36 @@ function newTaskFromDraft(
     extraTaskTally: 0,
     previousExtraTaskTally: 0,
   };
+  // Captured here rather than defaulted to null in the literal above: a task
+  // created with a monthly rule and a due date on the 31st has to carry the
+  // 31st from its first row, or the first February clamps it away before
+  // anything gets the chance to. See Task.recurrenceAnchorDay.
+  return { ...task, recurrenceAnchorDay: recurrenceAnchorDayFor(task) };
+}
+
+/**
+ * Fills in `recurrenceAnchorDay` for rows that predate the column, in place.
+ *
+ * A one-off pass over the loaded rows rather than a SQL migration: the value is
+ * the *local* day-of-month of an ISO due date, and SQLite's `strftime` would
+ * read a stored `Z` offset as UTC and hand back the wrong day for anything near
+ * midnight. It re-runs on every launch and is a no-op after the first, because
+ * a row it fills no longer matches — and a monthly rule with no due date never
+ * matches at all, which is right: there's no date to anchor to.
+ *
+ * A row whose date has *already* drifted (a task that has been through a
+ * February since it was created) is anchored to the drifted day. That's all
+ * that can be recovered — the day it was originally set to isn't stored
+ * anywhere — and it at least stops the drift where it is.
+ */
+function backfillRecurrenceAnchors(tasks: Task[]): void {
+  for (const task of tasks) {
+    if (task.recurrenceAnchorDay !== null) continue;
+    const anchor = recurrenceAnchorDayFor(task);
+    if (anchor === null) continue;
+    task.recurrenceAnchorDay = anchor;
+    dbUpdateTask(task);
+  }
 }
 
 /**
@@ -619,6 +650,17 @@ function reanchorReminder(reminderTime: string | null, date: Date): string | nul
   return next.toISOString();
 }
 
+// The fields whose arrival in an `updates` patch means the user is writing the
+// schedule itself, rather than the app moving the row around. Only these
+// re-derive recurrenceAnchorDay (see updateTask).
+const SCHEDULE_FIELDS = [
+  'dueDate',
+  'recurrenceType',
+  'recurrenceMonthDay',
+  'recurrenceWeekOrdinal',
+  'recurrenceFromCompletion',
+] as const;
+
 // A dated series and a recurrence rule are two schedules for one task, and a
 // series row is deliberately an ordinary one-off (see Task.seriesId) — the set
 // comes back, if it comes back at all, through seriesMonthDays. Left in place,
@@ -629,7 +671,7 @@ function reanchorReminder(reminderTime: string | null, date: Date): string | nul
 type RecurrenceFields = Pick<
   Task,
   | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay'
-  | 'recurrenceWeekOrdinal' | 'recurrenceEndDate' | 'recurrenceCount'
+  | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceEndDate' | 'recurrenceCount'
   | 'recurrenceFromCompletion' | 'showStreak' | 'streakRequiresWindow'
 >;
 
@@ -639,6 +681,7 @@ const NO_RECURRENCE: RecurrenceFields = {
   recurrenceDays: [],
   recurrenceMonthDay: null,
   recurrenceWeekOrdinal: null,
+  recurrenceAnchorDay: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
@@ -1391,6 +1434,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // and on the same swap-the-database hazard.
     useLeftoverStore.getState().initialize();
     const tasks = dbGetAllTasks();
+    backfillRecurrenceAnchors(tasks);
     const tagRegistry = dbGetTagRegistry();
     // After the tasks, and given them: a stored focus session points at task
     // ids, and the first thing it does is drop the stretches belonging to
@@ -1958,6 +2002,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // Normalized on the way in, like addTask does, so a unit typed as
         // "  glasses " is stored the way every reader formats it.
         ...('targetUnit' in updates ? { targetUnit: normalizeTargetUnit(updates.targetUnit) } : {}),
+        // Re-derived only when the update actually names part of the schedule.
+        // Recomputing on every write would undo the field's whole purpose: the
+        // successor completeTask spawns onto February carries the 31st it was
+        // anchored to, and the next unrelated patch — a pin, a category move —
+        // would read the clamped Feb 28 back off it and put the drift straight
+        // back. An update that names the field itself wins outright, which is
+        // what keeps a whole-snapshot undo faithful. See Task.recurrenceAnchorDay.
+        ...(!('recurrenceAnchorDay' in updates) && SCHEDULE_FIELDS.some(f => f in updates)
+          ? { recurrenceAnchorDay: recurrenceAnchorDayFor({ ...t, ...updates }) }
+          : {}),
       };
 
       // Re-filing a task must not, on its own, make it read as "new".
@@ -2377,7 +2431,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // The recurrence's schedule only decides the date at the point it
       // actually applies (see advancesBySchedule above) — everywhere else
       // there's no date to compute.
-      const nextDue = recurs && datesBySchedule ? getNextDueDate(task, dayResetTime) : null;
+      // catchUp: this is placing a real row, and a successor dated before
+      // today is one the user has to complete again to get rid of. See
+      // getNextDueDate.
+      const nextDue = recurs && datesBySchedule ? getNextDueDate(task, dayResetTime, { catchUp: true }) : null;
       // Skip the spawn only when we actually consulted the schedule and it
       // says the series has ended — a mid-chain step never consults it, so
       // it always spawns regardless of recurrenceEndDate/recurrenceCount.
@@ -3641,7 +3698,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         get().updateTask(id, { chainIndex: task.chainIndex + 1 });
         return;
       }
-      const stepDue = getNextDueDate(task, dayResetTime);
+      const stepDue = getNextDueDate(task, dayResetTime, { catchUp: true });
       if (!stepDue) {
         get().updateTask(id, { chainIndex: task.chainIndex + 1 });
         return;
@@ -3661,7 +3718,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }, SKIP_POSTPONE);
       return;
     }
-    const nextDue = getNextDueDate(task, dayResetTime);
+    // Same catchUp as completeTask's: skipping an occurrence that's a month
+    // overdue means the next one you'll actually do, not the one after the one
+    // you already missed. sweepExpiredTasks rolls expired occurrences forward
+    // through here, so an app left shut for a week lands them on today rather
+    // than on the day after they expired.
+    const nextDue = getNextDueDate(task, dayResetTime, { catchUp: true });
     if (!nextDue) return;
     let nextReminderTime: string | null = task.reminderTime;
     if (task.reminderTime) {
@@ -3911,6 +3973,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceDays: [],
       recurrenceMonthDay: null,
       recurrenceWeekOrdinal: null,
+      recurrenceAnchorDay: null,
       recurrenceEndDate: null,
       recurrenceCount: null,
       recurrenceFromCompletion: false,
@@ -4075,6 +4138,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceDays: [],
       recurrenceMonthDay: null,
       recurrenceWeekOrdinal: null,
+      recurrenceAnchorDay: null,
       recurrenceEndDate: null,
       recurrenceCount: null,
       recurrenceFromCompletion: false,
