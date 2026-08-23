@@ -2665,16 +2665,25 @@ export function TodayScreen() {
   // can scroll to it.
   const [laterTaskLimit, setLaterTaskLimit] = useState(LATER_INITIAL_TASK_LIMIT);
 
+  // Leaving Later drops the budget back: the list unmounts and returns
+  // scrolled to the top, so anything it had paged in is just rows the next
+  // switch would pay to mount off-screen.
+  //
+  // Both directions wait for the switch to settle. The ramp *up* always has,
+  // for the reason above; the reset used to run synchronously on the commit
+  // that left Later, which put a second full render of this screen (the budget
+  // shrinks → laterData → laterDraggableData) in the very frame already
+  // unmounting sixty TaskItems and mounting the destination list. Nothing
+  // needs it to be that early — the list it prunes is already gone. Deferring
+  // it also means switching out and straight back keeps the settled budget
+  // rather than paying to re-mount the same rows: the pending reset is
+  // cancelled by this effect's own cleanup, and the ramp-up that replaces it
+  // is a Math.max.
   useEffect(() => {
-    // Leaving Later drops the budget back: the list unmounts and returns
-    // scrolled to the top, so anything it had paged in is just rows the next
-    // switch would pay to mount off-screen.
-    if (viewMode !== 'later') {
-      setLaterTaskLimit(LATER_INITIAL_TASK_LIMIT);
-      return;
-    }
     const handle = InteractionManager.runAfterInteractions(() => {
-      setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT));
+      setLaterTaskLimit(limit =>
+        viewMode === 'later' ? Math.max(limit, LATER_SETTLED_TASK_LIMIT) : LATER_INITIAL_TASK_LIMIT,
+      );
     });
     return () => handle.cancel();
   }, [viewMode]);

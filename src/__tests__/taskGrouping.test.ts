@@ -680,6 +680,35 @@ describe('laterSections', () => {
     jest.useRealTimers();
     mockSettingsState.dayResetTime = '00:00';
   });
+
+  // The day header is cached per calendar date inside the pass (it used to be
+  // recomputed per task). Two guards on that cache: it must not merge adjacent
+  // days into whichever label it saw first...
+  it('keeps consecutive days in their own sections, several tasks per day', () => {
+    const tasks = [1, 2, 3].flatMap(day =>
+      ['a', 'b'].map(suffix => makeTask({ id: `d${day}${suffix}`, deferUntil: daysFromNow(day) })),
+    );
+    const sections = laterSections(tasks);
+    expect(sections).toHaveLength(3);
+    expect(new Set(sections.map(s => s.title)).size).toBe(3);
+    expect(sections.map(s => s.segments[0].data.map(t => t.id))).toEqual([
+      ['d1a', 'd1b'],
+      ['d2a', 'd2b'],
+      ['d3a', 'd3b'],
+    ]);
+  });
+
+  // ...and it must not outlive the call, or a label would be stuck at whatever
+  // it meant relative to the day the app was opened on.
+  it('relabels the same date once the clock has rolled onto it', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2025, 5, 10, 12, 0, 0));
+    const task = makeTask({ id: 'a', deferUntil: new Date(2025, 5, 11, 12, 0, 0).toISOString() });
+    expect(laterSections([task])[0].title).toMatch(/^Tomorrow/);
+    jest.setSystemTime(new Date(2025, 5, 11, 12, 0, 0));
+    expect(laterSections([task])[0].title).toMatch(/^Today/);
+    jest.useRealTimers();
+  });
 });
 
 describe('laterDropZones', () => {

@@ -440,11 +440,32 @@ export function laterSections(deferredTasks: Task[]): LaterDaySection[] {
   // makes the comparator consistent: getVisibleAt falls back to `new Date()`
   // for a task with no future gate, so re-calling it mid-sort could order the
   // same pair differently depending on when the comparison happened.
+  //
+  // formatGroupHeader is the *other* expensive call, and it was being paid per
+  // task for a string that only ever varies per calendar day: a date-fns
+  // format() plus its own "what is today" day-start computation, ~1000 times
+  // over to produce the few dozen distinct headers a long Later list has. Its
+  // output depends on nothing but the calendar date of what it's handed
+  // (every branch is differenceInCalendarDays/isSameDay against today, and
+  // every format token is a date token), so caching on that date is exact
+  // rather than an approximation — and it can't key off dayKey below, which is
+  // a *logical* day and can span two calendar dates under a non-midnight
+  // dayResetTime.
+  const labelByDate = new Map<string, string>();
+  const dayLabelOf = (visibleAt: Date): string => {
+    const dateKey = `${visibleAt.getFullYear()}-${visibleAt.getMonth()}-${visibleAt.getDate()}`;
+    let label = labelByDate.get(dateKey);
+    if (label === undefined) {
+      label = formatGroupHeader(visibleAt.toISOString());
+      labelByDate.set(dateKey, label);
+    }
+    return label;
+  };
   deferredTasks
     .map(task => ({ task, visibleAt: getVisibleAt(task) }))
     .sort((a, b) => a.visibleAt.getTime() - b.visibleAt.getTime())
     .forEach(({ task, visibleAt }) => {
-      const dayLabel = formatGroupHeader(visibleAt.toISOString());
+      const dayLabel = dayLabelOf(visibleAt);
       const dayKey = getDayStart(visibleAt).toISOString();
       if (!days.has(dayLabel)) {
         days.set(dayLabel, { dayKeys: new Set(), dateISO: dayKey, segMap: new Map() });
