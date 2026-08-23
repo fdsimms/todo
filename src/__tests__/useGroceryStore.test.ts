@@ -5400,6 +5400,38 @@ describe('per-box pantry state', () => {
     expect(useGroceryStore.getState().items.find(i => i.id === item.id)!.openedAt).toBeNull();
   });
 
+  it('opens a box against its own sealed day, not its item\'s', () => {
+    // expiresAtForOpening takes the earlier of the sealed day and the opened
+    // one (#1943), so which sealed day it reads decides the answer — and the
+    // packet being opened is the one whose deadline is at stake. The item here
+    // has weeks left; this jar is nearly gone and must stay nearly gone.
+    const item = makeItem({ name: 'Salsa', expiresAt: '2026-12-01', shelfLifeDays: 1 });
+    seed([item]);
+    const box = useGroceryStore.getState().addProduct(item.id, { brand: 'Herdez', variant: null })!;
+    // A freeze and a thaw is how a box comes by a sealed day of its own — the
+    // thaw restarts it from the item's shelf life, which is one day here.
+    useGroceryStore.getState().setProductFrozen(box.id, true);
+    useGroceryStore.getState().setProductFrozen(box.id, false);
+    const soon = expiryKeyFor(new Date(), 1);
+    expect(useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!.expiresAt).toBe(soon);
+
+    useGroceryStore.getState().setProductOpened(box.id, true);
+
+    expect(useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!.expiresAt).toBe(soon);
+  });
+
+  it('falls back to the item\'s sealed day for a box that has none', () => {
+    const item = makeItem({ name: 'Salsa', expiresAt: expiryKeyFor(new Date(), 1) });
+    seed([item]);
+    const box = useGroceryStore.getState().addProduct(item.id, { brand: 'Herdez', variant: null })!;
+
+    useGroceryStore.getState().setProductOpened(box.id, true);
+
+    // The item's day is sooner than the open lexicon's week, so it wins.
+    expect(useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!.expiresAt)
+      .toBe(item.expiresAt);
+  });
+
   it('records the opening of a box the open lexicon has never heard of', () => {
     const item = makeItem({ name: 'Zorblax paste' });
     seed([item]);

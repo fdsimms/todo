@@ -2182,7 +2182,17 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // Mirrors setOpened: the stamp is recorded whatever the open lexicon knows,
     // and only the *date* is conditional on it knowing this name. Un-marking
     // clears the stamp and leaves the day standing, same as the item's.
-    const reDated = opened && item ? expiresAtForOpening(item, now) : null;
+    //
+    // **The sealed day handed over is this box's, not its item's.**
+    // `expiresAtForOpening` takes the earlier of the sealed day and the opened
+    // one (#1943), so which sealed day it reads decides the answer — and the
+    // packet being opened is the one whose deadline is at stake. Falls back to
+    // the item's, which is the same fallback the pantry row reads a box's
+    // use-by day through: a packet nobody has dated separately is answerable to
+    // the day its purchase set.
+    const reDated = opened && item
+      ? expiresAtForOpening({ ...item, expiresAt: product.expiresAt ?? item.expiresAt }, now)
+      : null;
     const updated: ItemProduct = {
       ...product,
       openedAt: opened ? now.toISOString() : null,
