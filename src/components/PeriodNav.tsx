@@ -54,9 +54,9 @@ const makeStyles = (colors: Colors) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      // Padded on both sides rather than only below: on the meal plan this row
-      // follows the hub pills, which end 4pt above it, and a nav row sitting
-      // flush against them reads as part of that pill row.
+      // Padded on both sides rather than only below, so this row never reads
+      // as flush with whatever precedes it — the calendar's header, the meal
+      // plan's fridge card.
       paddingTop: spacing.xs,
       paddingBottom: spacing.xs,
     },
