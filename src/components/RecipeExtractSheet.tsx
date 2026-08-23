@@ -10,7 +10,7 @@ import {
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import type { Recipe } from '../types';
+import { RECIPE_SOURCE_MAX_LENGTH, type Recipe } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import {
   spacing,
@@ -85,6 +85,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const setServings = useRecipeStore(s => s.setServings);
+  const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
   const setSourceUrl = useRecipeStore(s => s.setSourceUrl);
   const setSource = useRecipeStore(s => s.setSource);
@@ -124,6 +125,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [acceptedPrepTasks, setAcceptedPrepTasks] = useState<Set<number>>(new Set());
   const [servingsText, setServingsText] = useState('');
   const [minutesText, setMinutesText] = useState('');
+  const [yieldText, setYieldText] = useState('');
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
   const edits = usePendingEdits();
@@ -162,6 +164,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setAcceptedPrepTasks(new Set());
     setServingsText('');
     setMinutesText('');
+    setYieldText('');
     setSiteName('');
     setSourceAuthor('');
     resetInput();
@@ -183,7 +186,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setExtracted(result);
       setIngredients(result.ingredients);
       setAccepted(new Set(result.ingredients.map((_, i) => i)));
-      setApplyDetails(result.servings !== null || result.prepMinutes !== null);
+      setApplyDetails(result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null);
       // A method is offered whichever source it came from — the page's own
       // steps when it publishes them, otherwise the model's read of the same
       // source. Attribution stays link-only, since nothing else names where a
@@ -200,6 +203,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setAcceptedPrepTasks(new Set(result.prepTasks.map((_, i) => i)));
       setServingsText(formatServingsRange(result.servings, result.servingsMax) ?? '');
       setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
+      setYieldText(result.recipeYield ?? '');
       setSiteName(page?.siteName ?? '');
       setSourceAuthor(page?.author ?? '');
     } catch (e) {
@@ -297,6 +301,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       // in the prep half it would claim the whole recipe is mise en place.
       const minutes = parseInt(pendingText('details:minutes', minutesText), 10);
       if (minutes > 0) setEstimatedMinutes(recipe.id, minutes);
+      const yieldValue = pendingText('details:yield', yieldText).trim();
+      if (yieldValue) setRecipeYield(recipe.id, yieldValue);
     }
     // Appended, never replacing what's there. A recipe with its own method or
     // prep tasks arrives here unticked, so reaching this line at all means the
@@ -334,10 +340,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   };
 
   // What the run found decides whether the row exists; what's in the boxes
-  // right now decides whether it applies anything. Emptying both must not
+  // right now decides whether it applies anything. Emptying them must not
   // unmount the row mid-edit — there'd be no way to type a value back in.
-  const foundDetails = !!extracted && (extracted.servings !== null || extracted.prepMinutes !== null);
-  const hasDetails = !!servingsText || !!minutesText;
+  const foundDetails = !!extracted
+    && (extracted.servings !== null || extracted.prepMinutes !== null || extracted.recipeYield !== null);
+  const hasDetails = !!servingsText || !!minutesText || !!yieldText;
   // The page's own steps (verbatim structured data) when it has them,
   // otherwise whatever the model read off the source itself.
   const canApply = !loading && !!extracted && (
@@ -351,13 +358,18 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     || acceptedKeys.size > 0
   );
 
-  // One checkbox applying two facts has to name both when it has both, and it
+  // One checkbox applying up to three facts has to name all it has, and it
   // reads out exactly what the row shows rather than a second phrasing of it.
   // Reads the boxes, not `extracted`, so it stays true once they're edited.
-  const detailsLabel = !extracted ? ''
-    : servingsText
-      ? `Serves ${servingsText}${minutesText ? `, about ${minutesText} min` : ''}`
-      : `About ${minutesText} min`;
+  const detailsLabel = !extracted ? '' : (() => {
+    const parts: string[] = [];
+    if (servingsText) parts.push(`Serves ${servingsText}`);
+    if (minutesText) parts.push(`about ${minutesText} min`);
+    if (yieldText) parts.push(`makes ${yieldText}`);
+    if (parts.length === 0) return '';
+    const [first, ...rest] = parts;
+    return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(', ');
+  })();
 
 
   // A deterministic failure — a mistyped address, a site that refuses us, a page
@@ -369,7 +381,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // Unlike the method and the prep tasks, these two overwrite rather than
   // append — there's only one servings field — so the row says so when the
   // recipe already has one.
-  const detailsReplace = recipe?.servings != null || recipe?.estimatedMinutes != null;
+  const detailsReplace = recipe?.servings != null || recipe?.estimatedMinutes != null || recipe?.recipeYield != null;
 
   const methodMeta = methodRowMeta(acceptedSteps.size, steps.length, recipeHasMethod(recipe));
   const prepTasksMeta = prepTasksRowMeta(
@@ -538,6 +550,21 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
                 numberOfLines={1}
               />
               <Text style={styles.detailSep}>min</Text>
+            </View>
+            <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Makes</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="details:yield"
+                value={yieldText}
+                onCommit={setYieldText}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. 2 loaves"
+                accessibilityLabel="yield"
+                maxLength={RECIPE_SOURCE_MAX_LENGTH}
+                numberOfLines={1}
+              />
             </View>
           </ImportApplyRow>
         )}

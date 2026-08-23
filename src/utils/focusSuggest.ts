@@ -4,6 +4,7 @@ import { estimatedMinutesFor } from './effort';
 import { currentTimeSegment, overdueDays } from './pinSuggest';
 import { planTotalMinutes, type FocusPlanOptions } from './focusPlan';
 import { isBlocked, resolverFor, type TaskResolver } from './blocking';
+import { useCategoryStore } from '../store/useCategoryStore';
 
 /**
  * Which tasks to offer for a focus session, and why.
@@ -111,6 +112,8 @@ export interface FocusContext {
    * ignored them would be a window that lies.
    */
   planOptions: FocusPlanOptions;
+  /** Names of categories the user has opted out of suggestions (see PinContext). */
+  excludedCategories: Set<string>;
 }
 
 /**
@@ -124,12 +127,19 @@ export function buildFocusContext(
   allTasks: readonly Task[],
   opts: { windowMinutes: number | null; planOptions: FocusPlanOptions },
 ): FocusContext {
+  const excludedCategories = new Set(
+    useCategoryStore.getState().categories
+      .filter(c => c.excludeFromSuggestions)
+      .map(c => c.name)
+  );
+
   return {
     todayStart: getLogicalToday(),
     currentSegment: currentTimeSegment(),
     resolve: resolverFor([...allTasks]),
     windowMinutes: opts.windowMinutes,
     planOptions: opts.planOptions,
+    excludedCategories,
   };
 }
 
@@ -232,6 +242,12 @@ export function scoreFocusTask(task: Task, listed: readonly Task[], ctx: FocusCo
  * estimate and a subtask's minutes mean something else entirely (a stretch of
  * its *parent's* countdown, see utils/timerSegments.ts). Ticking one off from
  * a session would also leave the parent sitting there looking undone.
+ *
+ * Opted-out categories (Routines, Errands, …) are real work but poor company
+ * in a session — dropping them here rather than penalising them keeps the
+ * setting meaning what it says, same as `pinSuggest.ts`'s `eligible`. Manually
+ * queuing a task via `focusQueueFromPinned` is untouched, same reasoning as
+ * manual pinning.
  */
 function eligible(tasks: readonly Task[], ctx: FocusContext, exclude: Set<string>): Task[] {
   return tasks
@@ -240,6 +256,7 @@ function eligible(tasks: readonly Task[], ctx: FocusContext, exclude: Set<string
       !t.archived &&
       t.parentId === null &&
       !exclude.has(t.id) &&
+      !(t.category !== null && ctx.excludedCategories.has(t.category)) &&
       !isBlocked(t, ctx.resolve)
     )
     // Ties resolve by the user's own ordering, so the same board always

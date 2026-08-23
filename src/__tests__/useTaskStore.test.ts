@@ -939,7 +939,7 @@ describe('updateTask', () => {
     // move out to trip over.
     const routines = {
       id: 'cat-routines', name: 'Routines', scheduleDays: null, scheduleStart: null, scheduleEnd: null,
-      hideOnVacation: false, excludeFromPinSuggestions: false, excludeFromNewTasksBanner: true,
+      hideOnVacation: false, excludeFromSuggestions: false, excludeFromNewTasksBanner: true,
       defaultTimeSegments: [], sortOrder: 1, emoji: null,
     };
 
@@ -6104,7 +6104,7 @@ describe('bulkSetPriority', () => {
 describe('bulkSetCategory', () => {
   const routines = {
     id: 'cat-routines', name: 'Routines', scheduleDays: null, scheduleStart: null, scheduleEnd: null,
-    hideOnVacation: false, excludeFromPinSuggestions: false, excludeFromNewTasksBanner: true,
+    hideOnVacation: false, excludeFromSuggestions: false, excludeFromNewTasksBanner: true,
     defaultTimeSegments: [], sortOrder: 1, emoji: null,
   };
 
@@ -7315,7 +7315,7 @@ describe('deleteCategory', () => {
     const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
     const routines = {
       id: 'cat-routines', name: 'Routines', scheduleDays: null, scheduleStart: null, scheduleEnd: null,
-      hideOnVacation: false, excludeFromPinSuggestions: false, excludeFromNewTasksBanner: true,
+      hideOnVacation: false, excludeFromSuggestions: false, excludeFromNewTasksBanner: true,
       defaultTimeSegments: [], sortOrder: 1, emoji: null,
     };
     useCategoryStore.getState.mockReturnValue({

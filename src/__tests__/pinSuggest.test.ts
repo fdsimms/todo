@@ -564,8 +564,8 @@ describe('buildPinContext', () => {
   it('collects the categories opted out of suggested pins', () => {
     (useCategoryStore.getState as jest.Mock).mockReturnValue({
       categories: [
-        { name: 'Routine', excludeFromPinSuggestions: true },
-        { name: 'Work', excludeFromPinSuggestions: false },
+        { name: 'Routine', excludeFromSuggestions: true },
+        { name: 'Work', excludeFromSuggestions: false },
       ],
     });
     const ctx = buildPinContext();

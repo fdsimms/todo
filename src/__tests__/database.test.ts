@@ -1559,7 +1559,7 @@ describe('Categories', () => {
       scheduleStart: '09:00',
       scheduleEnd: '17:00',
       hideOnVacation: true,
-      excludeFromPinSuggestions: true,
+      excludeFromSuggestions: true,
       excludeFromNewTasksBanner: true,
       defaultTimeSegments: ['evening'],
       sortOrder: 3,
