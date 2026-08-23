@@ -1,7 +1,7 @@
 import {
   useUpTaskDraft,
+  useUpTaskDrift,
   useUpTaskFields,
-  useUpTaskNeedsUpdate,
   useUpTaskTitle,
   wantsUseUpTask,
 } from '../utils/leftoverTasks';
@@ -144,23 +144,34 @@ describe('useUpTaskDraft', () => {
   });
 });
 
-describe('useUpTaskNeedsUpdate', () => {
+describe('useUpTaskDrift', () => {
   const chilli = leftover({ title: 'Chicken stir-fry', keepUntil: '2026-08-14' });
   const inStep = { ...useUpTaskFields(chilli, now) };
 
   it('is quiet when the task already says the right thing', () => {
-    expect(useUpTaskNeedsUpdate(inStep, chilli, now)).toBe(false);
+    expect(useUpTaskDrift(inStep, chilli)).toBeNull();
   });
 
   it('notices the keep-until day moving out', () => {
-    expect(useUpTaskNeedsUpdate(inStep, leftover({ title: 'Chicken stir-fry', keepUntil: '2026-08-20' }), now)).toBe(true);
+    expect(useUpTaskDrift(inStep, { ...chilli, keepUntil: '2026-08-20' })).toEqual({ deadline: '2026-08-20' });
   });
 
-  it('reads a task the user re-dated as drifted — the leftover owns the day', () => {
-    expect(useUpTaskNeedsUpdate({ ...inStep, dueDate: '2026-09-01T12:00:00.000Z' }, chilli, now)).toBe(true);
+  it('notices the container being renamed', () => {
+    expect(useUpTaskDrift(inStep, { ...chilli, title: 'Katsu curry' })).toEqual({ title: 'Use up Katsu curry' });
   });
 
   it('notices a task whose link no longer points at the kitchen', () => {
-    expect(useUpTaskNeedsUpdate({ ...inStep, linkUrl: null }, chilli, now)).toBe(true);
+    expect(useUpTaskDrift({ ...inStep, linkUrl: null }, chilli)).toEqual({ linkUrl: inStep.linkUrl });
+  });
+
+  // The bug this function exists for: reconcileAllLeftoverTasks runs on every
+  // foreground, and dueDate is stamped from the clock rather than projected
+  // from the leftover — so chasing it dragged a row the user had deferred back
+  // onto today, every launch, for as long as the container sat in the fridge.
+  // The parameter type is where that's enforced (dueDate isn't readable here at
+  // all); what's asserted is that nothing it *does* return moves the day.
+  it('never returns a day, so a task the user re-dated stays where they put it', () => {
+    const moved = { ...chilli, title: 'Katsu curry', keepUntil: '2026-08-20' };
+    expect(useUpTaskDrift({ ...inStep, linkUrl: null }, moved)).not.toHaveProperty('dueDate');
   });
 });

@@ -1,8 +1,8 @@
 import {
   clampUseUpLeadDays,
   useUpTaskDraft,
+  useUpTaskDrift,
   useUpTaskFields,
-  useUpTaskNeedsUpdate,
   useUpTaskTitle,
   wantsUseUpTask,
 } from '../utils/groceryExpiry';
@@ -133,28 +133,49 @@ describe('useUpTaskDraft', () => {
   });
 });
 
-describe('useUpTaskNeedsUpdate', () => {
+describe('useUpTaskDrift', () => {
   const spinach = item({ name: 'Spinach', expiresAt: '2026-08-17' });
   const inStep = { ...useUpTaskFields(spinach, 1) };
 
   it('is quiet when the task already says the right thing', () => {
-    expect(useUpTaskNeedsUpdate(inStep, spinach, 1)).toBe(false);
+    expect(useUpTaskDrift(inStep, spinach, 1)).toBeNull();
   });
 
-  it('notices a fresher purchase moving the date out', () => {
-    expect(useUpTaskNeedsUpdate(inStep, item({ expiresAt: '2026-08-24' }), 1)).toBe(true);
+  it('carries the task with a fresher purchase moving the use-by out', () => {
+    const fresher = { ...spinach, expiresAt: '2026-08-24' };
+    expect(useUpTaskDrift(inStep, fresher, 1)).toEqual({
+      deadline: useUpTaskFields(fresher, 1).deadline,
+      dueDate: useUpTaskFields(fresher, 1).dueDate,
+    });
   });
 
-  it('notices the lead time changing', () => {
-    expect(useUpTaskNeedsUpdate(inStep, spinach, 3)).toBe(true);
-  });
-
-  it('reads a task the user re-dated as drifted — the item owns the day', () => {
-    expect(useUpTaskNeedsUpdate({ ...inStep, dueDate: '2026-09-01T12:00:00.000Z' }, spinach, 1)).toBe(true);
+  it('notices the item being renamed', () => {
+    expect(useUpTaskDrift(inStep, { ...spinach, name: 'Baby spinach' }, 1)).toEqual({
+      title: 'Use up Baby spinach',
+    });
   });
 
   it('notices a task whose link no longer points at the kitchen', () => {
-    expect(useUpTaskNeedsUpdate({ ...inStep, linkUrl: null }, spinach, 1)).toBe(true);
+    expect(useUpTaskDrift({ ...inStep, linkUrl: null }, spinach, 1)).toEqual({ linkUrl: inStep.linkUrl });
+  });
+
+  // #1953, the grocery half. reconcileUseUpTask also fires on mutations that
+  // leave expiresAt alone — un-opening a jar, the item's own use-up switch —
+  // and rewriting the day there only undid a date the user had picked.
+  it('leaves a task the user re-dated alone while the use-by has not moved', () => {
+    expect(useUpTaskDrift({ ...inStep, title: 'Use up Spinach' }, spinach, 1)).toBeNull();
+  });
+
+  it('still re-dates a deferred task when the use-by itself moves', () => {
+    const fresher = { ...spinach, expiresAt: '2026-08-24' };
+    expect(useUpTaskDrift(inStep, fresher, 1)!.dueDate).toBe(useUpTaskFields(fresher, 1).dueDate);
+  });
+
+  // The lead is not recoverable from the row (deadline records the expiry, not
+  // the offset), and nothing reconciles on a lead change — see the note on
+  // useUpTaskDrift.
+  it('does not re-date on the lead alone', () => {
+    expect(useUpTaskDrift(inStep, spinach, 3)).toBeNull();
   });
 });
 

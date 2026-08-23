@@ -50,7 +50,7 @@ import { describeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
 import { expiresAtForOpening, expiresAtForPurchase } from '../utils/groceryShelfLife';
-import { useUpTaskDraft, useUpTaskFields, useUpTaskNeedsUpdate, wantsUseUpTask } from '../utils/groceryExpiry';
+import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/groceryExpiry';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import {
   aisleForName,
@@ -1217,11 +1217,7 @@ function reconcileUseUpTask(item: GroceryItem): void {
     // used to re-check `expiresAt` because an explicit `useUpTask: true` could
     // outrank the qualifier and reach useUpTaskFields' `expiresAt!`.
     wanted: wantsUseUpTask(item, groceryUseUpTasks),
-    drift: existing => (
-      useUpTaskNeedsUpdate(existing, item, groceryUseUpLeadDays)
-        ? useUpTaskFields(item, groceryUseUpLeadDays)
-        : null
-    ),
+    drift: existing => useUpTaskDrift(existing, item, groceryUseUpLeadDays),
     draft: () => useUpTaskDraft(item, groceryUseUpLeadDays, groceryUseUpTaskCategory),
     useUpCap: useUpTaskCap,
   });

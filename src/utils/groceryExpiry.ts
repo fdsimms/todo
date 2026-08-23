@@ -1,4 +1,4 @@
-import type { GroceryItem, TaskDraft } from '../types';
+import type { GroceryItem, Task, TaskDraft } from '../types';
 import { GROCERY_USE_UP_LEAD_DAYS_MAX, GROCERY_USE_UP_LEAD_DAYS_MIN } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import { generatedBy, wantsGeneratedTask } from './generatedTasks';
@@ -149,23 +149,56 @@ export function useUpTaskDraft(
 }
 
 /**
- * Whether an existing use-up task has drifted from its item — the guard that
- * keeps a reconcile from writing a row that already says the right thing.
+ * What an existing use-up task should be brought into line with — or null when
+ * it already says the right thing, which is how a caller tells
+ * `reconcileGeneratedTask` to leave the row alone rather than write it back
+ * unchanged. Worth having for the same reason `cookTaskNeedsUpdate` was: a
+ * no-op write would still hit SQLite, still replace the object in the store,
+ * and still re-render every list holding it.
  *
- * Worth having for the same reason `cookTaskNeedsUpdate` is: a no-op write
- * would still hit SQLite, still replace the object in the store, and still
- * re-render every list holding it.
+ * **The date is chased only when the item's use-by day has actually moved, and
+ * `deadline` is how that's known.** Unlike the leftover use-up task's day (see
+ * `leftoverTasks.useUpTaskDrift`, which never chases at all), this one really
+ * is projected from the item — `expiresAt` minus the lead — so a fresher bag
+ * pushing the use-by out *should* carry the task with it, and
+ * `reconcileGeneratedTask` passes `skipPostponeCount` precisely because that
+ * move isn't the user ducking anything.
+ *
+ * What was wrong was chasing it on every reconcile rather than on a move.
+ * `reconcileUseUpTask` also fires on mutations that leave `expiresAt` exactly
+ * where it was — un-opening a jar (`setOpened(false)` re-dates nothing), and
+ * the item's own use-up switch — and there the recomputed day is the same day
+ * it always was, so writing it back only undid a date the *user* had chosen.
+ * A task deferred to Thursday snapped to Wednesday for no reason anyone could
+ * see.
+ *
+ * `deadline` is the item's `expiresAt`, stamped at the same moment the day was
+ * derived from it, so a task whose deadline still matches the item is a task
+ * whose day is still derived from the current expiry — nothing to correct. It
+ * follows that hand-editing a generated task's deadline re-dates it on the next
+ * reconcile; that was already true when this wrote all four fields, and a
+ * deadline the app owns is a thin place to be defending a hand edit.
+ *
+ * The one thing `deadline` can't see is the *lead* changing, since the row
+ * records the expiry it was derived from and not the offset. That costs
+ * nothing today: `setGroceryUseUpLeadDays` writes the setting and reconciles
+ * nothing, so existing tasks have never re-dated on a lead change. A future
+ * caller that wants them to has to sweep the items itself, the way
+ * `reconcileAllLeftoverTasks` does.
  */
-export function useUpTaskNeedsUpdate(
-  task: { title: string; dueDate: string | null; deadline: string | null; linkUrl: string | null },
+export function useUpTaskDrift(
+  task: Pick<Task, 'title' | 'deadline' | 'linkUrl'>,
   item: GroceryItem,
   leadDays: number
-): boolean {
+): Partial<Task> | null {
   const next = useUpTaskFields(item, leadDays);
-  return (
-    task.title !== next.title ||
-    task.dueDate !== next.dueDate ||
-    task.deadline !== next.deadline ||
-    task.linkUrl !== next.linkUrl
-  );
+  const expiryMoved = task.deadline !== next.deadline;
+  const updates: Partial<Task> = {};
+  if (task.title !== next.title) updates.title = next.title;
+  if (expiryMoved) {
+    updates.deadline = next.deadline;
+    updates.dueDate = next.dueDate;
+  }
+  if (task.linkUrl !== next.linkUrl) updates.linkUrl = next.linkUrl;
+  return Object.keys(updates).length > 0 ? updates : null;
 }

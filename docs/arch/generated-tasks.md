@@ -72,6 +72,20 @@ opt-out already lives.
   `generatedSourceOf(task, kind)`.** One column where there were three means two generators can
   hand out the same source id; without the kind check, ticking a leftover's task off could mark a
   *meal* cooked.
+- **No generator re-dates a row on a reconcile unless its own date actually moved** (#1953). The
+  `drift` callback is where this is enforced, per generator, because "its own date" means something
+  different in each: `mealSlot` and `projectReview` never chase (the day is baked into the source id,
+  or into the moment the offer was made), `leftoverUseUp` never chases either (its day is stamped
+  from `getCurrentDayStart()`, so chasing it is chasing the clock), and `groceryUseUp` chases only
+  when `expiresAt` has moved — which it reads off the task's own `deadline`, the field that records
+  the expiry the day was last derived from. The failure mode is the same in every case and is worth
+  recognising by shape: a reconcile that recomputes a date from something *other* than the source
+  silently overwrites the one field the user is most likely to have changed by hand. It bit the
+  leftover generator hardest because `reconcileAllLeftoverTasks` runs on every foreground, so a
+  deferred "Use up X" came back onto Today at every launch; the grocery one only leaked through the
+  mutations that reconcile without re-dating (un-opening a jar, the per-item switch). Deferring is
+  the main thing anyone does to these rows, and `skipPostponeCount` means the app doesn't even
+  notice it is undoing one.
 - **`blocksOnFinished` is cook tasks only, and that asymmetry is the feature.** A meal is one
   event, so a completed cook task means the night happened and a second one would be an invention.
   A grocery item and a leftover are rows that come round again — reading the wide set there would
