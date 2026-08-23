@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
+import { format } from 'date-fns/format';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -12,13 +13,14 @@ import { EmptyState } from '../components/EmptyState';
 import { PressableScale } from '../components/PressableScale';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { CategoryPickerList } from '../components/CategoryPicker';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor } from '../utils/visibilityUtils';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
-import { formatDuration, EFFORT_MINUTES } from '../utils/effort';
+import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor,
@@ -38,6 +40,12 @@ const ESTIMATE_OPTIONS = [1, 2, 3, 4, 5, 6] as Effort[];
 // tap that visibly does nothing — see the note on SegmentedControl's
 // no-op-on-reselect behavior.
 const PRIORITY_OPTIONS = PRIORITY_SEGMENTS.filter(s => s.value !== 0);
+
+/** The unit beside the custom-estimate number — same pair TaskEditor's own Effort field offers. */
+const DURATION_UNIT_SEGMENTS = [
+  { value: 'min' as const, label: 'min' },
+  { value: 'hr' as const, label: 'hr' },
+];
 
 /**
  * Walk the tasks missing one field — time estimate, priority, category — and
@@ -67,6 +75,9 @@ export function BackfillScreen() {
   const [activeField, setActiveField] = useState<BackfillFieldId | null>(null);
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
   const [sessionTotal, setSessionTotal] = useState(0);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [customText, setCustomText] = useState('');
+  const [customUnit, setCustomUnit] = useState<'min' | 'hr'>('min');
 
   const counts = useMemo(() => backfillFieldCounts(tasks), [tasks]);
 
@@ -75,6 +86,15 @@ export function BackfillScreen() {
     [tasks, activeField, skippedIds]
   );
   const current = queue[0] ?? null;
+
+  // The custom-estimate entry is per-card: once the card advances (a value
+  // was applied, or the task was skipped), a half-typed number from the
+  // previous task has no business surviving onto this one.
+  useEffect(() => {
+    setCustomOpen(false);
+    setCustomText('');
+    setCustomUnit('min');
+  }, [current?.id]);
 
   const chooseField = (id: BackfillFieldId) => {
     haptics.tap();
@@ -100,6 +120,17 @@ export function BackfillScreen() {
     haptics.tap();
     animateLayout();
     setSkippedIds(prev => new Set(prev).add(current.id));
+  };
+
+  // iOS's number-pad keyboard has no return key (see NumberPadAccessory), so
+  // this is reached by an explicit "Set" tap rather than onSubmitEditing.
+  // Invalid/empty text is silently ignored rather than applied as null —
+  // there's no draft to fall back to here the way there is in the editor.
+  const applyCustomEstimate = () => {
+    const n = parseFloat(customText);
+    if (!Number.isFinite(n) || n <= 0) return;
+    const minutes = Math.round(customUnit === 'hr' ? n * 60 : n);
+    apply({ effort: minutesToEffort(minutes), estimatedMinutes: minutes });
   };
 
   if (!activeField) {
@@ -176,6 +207,13 @@ export function BackfillScreen() {
             onEstimate={e => apply(estimatePatchFor(e))}
             onPriority={p => apply({ priority: p })}
             onCategory={name => apply({ category: name })}
+            customOpen={customOpen}
+            customText={customText}
+            customUnit={customUnit}
+            onOpenCustom={() => setCustomOpen(true)}
+            onCustomTextChange={setCustomText}
+            onCustomUnitChange={setCustomUnit}
+            onCustomSubmit={applyCustomEstimate}
           />
 
           <PressableScale style={styles.skipButton} onPress={skip} accessibilityRole="button" accessibilityLabel="Skip this task for now">
@@ -192,6 +230,7 @@ export function BackfillScreen() {
           bottomOffset={tabBarHeight}
         />
       )}
+      <NumberPadAccessory />
     </View>
   );
 }
@@ -210,6 +249,13 @@ function categoryLabel(
  * reads once you know it's part of the Iceland trip. Missing every one of
  * these is possible (a plain standalone task) and just means there's nothing
  * more to show; it's not a reason to invent context that isn't on the row.
+ *
+ * The due date is the one addition beyond ArchivedRow's own set, and it earns
+ * its place here specifically: a generated meal task's title and chain step
+ * are the same on every day it's unanswered ("Breakfast" / "Choose
+ * breakfast"), so a run of them in the queue is otherwise indistinguishable —
+ * tapping a value on one and landing on an identical-looking card for the
+ * next day reads as the tap having done nothing.
  */
 function TaskContextRow({
   task, categoryLabel, projectTitle, colors, styles,
@@ -221,10 +267,17 @@ function TaskContextRow({
   styles: ReturnType<typeof makeStyles>;
 }) {
   const repeat = task.recurrenceType !== 'none' ? describeTaskRecurrence(task) : null;
-  if (!repeat && !categoryLabel && !projectTitle) return null;
+  const due = task.dueDate ? format(new Date(task.dueDate), 'EEE, MMM d') : null;
+  if (!due && !repeat && !categoryLabel && !projectTitle) return null;
 
   return (
     <View style={styles.metaRow}>
+      {due && (
+        <View style={styles.metaChip}>
+          <Ionicons name="calendar-outline" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.metaText} numberOfLines={1}>{due}</Text>
+        </View>
+      )}
       {repeat && (
         <View style={styles.metaChip}>
           <Ionicons name="repeat" size={iconSize.xs} color={colors.textSecondary} />
@@ -254,27 +307,78 @@ interface FieldControlProps {
   onEstimate: (effort: Effort) => void;
   onPriority: (priority: (typeof PRIORITY_SEGMENTS)[number]['value']) => void;
   onCategory: (name: string | null) => void;
+  customOpen: boolean;
+  customText: string;
+  customUnit: 'min' | 'hr';
+  onOpenCustom: () => void;
+  onCustomTextChange: (text: string) => void;
+  onCustomUnitChange: (unit: 'min' | 'hr') => void;
+  onCustomSubmit: () => void;
 }
 
-function FieldControl({ field, colors, styles, onEstimate, onPriority, onCategory }: FieldControlProps) {
+function FieldControl({
+  field, colors, styles, onEstimate, onPriority, onCategory,
+  customOpen, customText, customUnit, onOpenCustom, onCustomTextChange, onCustomUnitChange, onCustomSubmit,
+}: FieldControlProps) {
   if (field === 'estimate') {
     return (
-      <View style={styles.pillRow}>
-        {ESTIMATE_OPTIONS.map(e => {
-          const mins = EFFORT_MINUTES[e];
-          return (
+      <View>
+        <View style={styles.pillRow}>
+          {ESTIMATE_OPTIONS.map(e => {
+            const mins = EFFORT_MINUTES[e];
+            return (
+              <PressableScale
+                key={e}
+                style={styles.pill}
+                onPress={() => onEstimate(e)}
+                accessibilityRole="button"
+                accessibilityLabel={`${EFFORT_LABELS[e]}${mins != null ? `, about ${formatDuration(mins)}` : ''}`}
+              >
+                <Text style={styles.pillText}>{EFFORT_LABELS[e]}</Text>
+                {mins != null && <Text style={styles.pillHint}>{formatDuration(mins)}</Text>}
+              </PressableScale>
+            );
+          })}
+          <PressableScale
+            style={[styles.pill, customOpen && styles.pillActive]}
+            onPress={onOpenCustom}
+            accessibilityRole="button"
+            accessibilityLabel="Enter an exact time estimate"
+          >
+            <Text style={styles.pillText}>Custom</Text>
+            <Text style={styles.pillHint}>exact</Text>
+          </PressableScale>
+        </View>
+        {customOpen && (
+          <View style={styles.customRow}>
+            <TextInput
+              style={styles.customInput}
+              value={customText}
+              onChangeText={onCustomTextChange}
+              keyboardType="number-pad"
+              placeholder="0"
+              placeholderTextColor={colors.textSecondary}
+              inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+              autoFocus
+            />
+            <View style={styles.customUnitToggle}>
+              <SegmentedControl
+                label="Unit"
+                value={customUnit}
+                onChange={onCustomUnitChange}
+                options={DURATION_UNIT_SEGMENTS}
+              />
+            </View>
             <PressableScale
-              key={e}
-              style={styles.pill}
-              onPress={() => onEstimate(e)}
+              style={styles.customSetButton}
+              onPress={onCustomSubmit}
               accessibilityRole="button"
-              accessibilityLabel={`${EFFORT_LABELS[e]}${mins != null ? `, about ${formatDuration(mins)}` : ''}`}
+              accessibilityLabel="Set this time estimate"
             >
-              <Text style={styles.pillText}>{EFFORT_LABELS[e]}</Text>
-              {mins != null && <Text style={styles.pillHint}>{formatDuration(mins)}</Text>}
+              <Text style={styles.customSetText}>Set</Text>
             </PressableScale>
-          );
-        })}
+          </View>
+        )}
       </View>
     );
   }
@@ -358,6 +462,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   pillText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
   pillHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  pillActive: { backgroundColor: colors.accentSubtle },
+
+  customRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
+  customInput: {
+    color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold,
+    backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
+    paddingHorizontal: 12, paddingVertical: 8, minWidth: 72, textAlign: 'center',
+  },
+  // A track next to the number it labels, so it takes a width rather than
+  // stretching across the row — same call TaskEditor's own unitToggle makes.
+  customUnitToggle: { width: 104 },
+  customSetButton: {
+    paddingVertical: 8, paddingHorizontal: spacing.md,
+    borderRadius: radius.sm, backgroundColor: colors.accent,
+  },
+  customSetText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold },
 
   categoryCard: { borderRadius: radius.md, padding: spacing.sm },
 
