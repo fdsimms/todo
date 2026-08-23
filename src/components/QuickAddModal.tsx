@@ -1759,7 +1759,6 @@ export function QuickAddModal({
                   returnKeyType="done"
                   blurOnSubmit={false}
                   autoCapitalize="none"
-                  autoCorrect={false}
                   autoFocus
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />

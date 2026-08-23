@@ -319,7 +319,6 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                     onBlur={commitAisleRename}
                     onSubmitEditing={commitAisleRename}
                     autoFocus
-                    autoCorrect={false}
                     returnKeyType="done"
                     maxLength={AISLE_NAME_MAX_LENGTH}
                     accessibilityLabel={`Rename ${aisle}`}
@@ -362,7 +361,6 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
                   returnKeyType="done"
                   onSubmitEditing={handleAdd}
                   blurOnSubmit={false}
-                  autoCorrect={false}
                   maxLength={AISLE_NAME_MAX_LENGTH}
                   accessibilityLabel="New aisle name"
                 />
@@ -469,7 +467,6 @@ function StoresTab({
                   onBlur={onCommitRename}
                   onSubmitEditing={onCommitRename}
                   autoFocus
-                  autoCorrect={false}
                   returnKeyType="done"
                   maxLength={SHOP_NAME_MAX_LENGTH}
                   accessibilityLabel={`Rename ${shop.name}`}
@@ -528,7 +525,6 @@ function StoresTab({
               returnKeyType="done"
               onSubmitEditing={onAdd}
               blurOnSubmit={false}
-              autoCorrect={false}
               maxLength={SHOP_NAME_MAX_LENGTH}
               accessibilityLabel="New store name"
             />

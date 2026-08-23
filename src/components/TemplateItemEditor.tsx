@@ -446,7 +446,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="none"
-                autoCorrect={false}
               />
             ) : (
               <InlineAction icon="add" label="Add blank" variant="neutral" onPress={() => setAddingBlank(true)} />
