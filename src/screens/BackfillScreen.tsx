@@ -33,6 +33,7 @@ const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
   priority: 'flag-outline',
   category: 'folder-outline',
+  streak: 'flame-outline',
 };
 
 // Bucket 0 ("—") is left off — see estimatePatchFor's doc comment for why.
@@ -216,6 +217,7 @@ export function BackfillScreen() {
             onEstimate={e => apply(estimatePatchFor(e))}
             onPriority={p => apply({ priority: p })}
             onCategory={name => apply({ category: name })}
+            onStreak={() => apply({ showStreak: true })}
             customOpen={customOpen}
             customText={customText}
             customUnit={customUnit}
@@ -326,6 +328,7 @@ interface FieldControlProps {
   onEstimate: (effort: Effort) => void;
   onPriority: (priority: (typeof PRIORITY_SEGMENTS)[number]['value']) => void;
   onCategory: (name: string | null) => void;
+  onStreak: () => void;
   customOpen: boolean;
   customText: string;
   customUnit: 'min' | 'hr';
@@ -336,7 +339,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({
-  field, colors, styles, onEstimate, onPriority, onCategory,
+  field, colors, styles, onEstimate, onPriority, onCategory, onStreak,
   customOpen, customText, customUnit, onOpenCustom, onCustomTextChange, onCustomUnitChange, onCustomSubmit,
 }: FieldControlProps) {
   if (field === 'estimate') {
@@ -414,10 +417,24 @@ function FieldControl({
     );
   }
 
+  if (field === 'category') {
+    return (
+      <View style={[styles.categoryCard, { backgroundColor: colors.bgSecondary }]}>
+        <CategoryPickerList value={null} onSelect={onCategory} showNone={false} maxHeight={360} />
+      </View>
+    );
+  }
+
   return (
-    <View style={[styles.categoryCard, { backgroundColor: colors.bgSecondary }]}>
-      <CategoryPickerList value={null} onSelect={onCategory} showNone={false} maxHeight={360} />
-    </View>
+    <PressableScale
+      style={styles.streakButton}
+      onPress={onStreak}
+      accessibilityRole="button"
+      accessibilityLabel="Show streak on row"
+    >
+      <Ionicons name="flame" size={iconSize.md} color={colors.onAccent} />
+      <Text style={styles.streakButtonText}>Show streak on row</Text>
+    </PressableScale>
   );
 }
 
@@ -507,6 +524,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   customSetText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold },
 
   categoryCard: { borderRadius: radius.md, padding: spacing.sm },
+
+  streakButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.orange,
+  },
+  streakButtonText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
 
   actionRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
   skipButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
