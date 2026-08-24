@@ -9583,6 +9583,75 @@ describe('completing a leftover-backed meal task', () => {
   });
 });
 
+describe('completing a use-up task and its meal task for the same leftover', () => {
+  // Regression: ticking off "Use up X" and the meal task that closes out the
+  // same container within moments of each other used to set both pending
+  // flags, popping UseUpResolveSheet's LeftoverSheet and FinishLeftoverPrompt's
+  // native Alert at once — a real Alert on top of a Modal, reported as a
+  // stacked double dialog.
+  const leftover = {
+    id: 'l-1', title: 'Chicken stir-fry', recipeId: null, sourceEntryId: null,
+    storedAt: '2026-08-10T18:00:00.000Z', keepUntil: '2026-08-14',
+    finishedAt: null as string | null, outcome: null as 'eaten' | 'tossed' | null,
+    frozenAt: null, createdAt: '2026-08-10T18:00:00.000Z', useUpTask: null,
+  };
+  const seedLeftover = () => {
+    useLeftoverStore.setState({
+      leftovers: [{ ...leftover }],
+      pendingUseUpLeftoverId: null,
+      pendingFinishLeftoverId: null,
+      initialized: true,
+    });
+  };
+
+  const entry: MealPlanEntry = {
+    id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
+    sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
+    recipeChoices: [], recipeScale: 1, cookTask: null, calendarEventId: null,
+  };
+  const seedEntry = () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry]);
+    (dbGetMealPlanEntry as jest.Mock).mockReturnValue(entry);
+  };
+
+  const addUseUpTask = () => useTaskStore.getState().addTask({
+    title: 'Use up Chicken stir-fry', generatedKind: 'leftoverUseUp', generatedSourceId: 'l-1',
+  });
+  const addEatTask = () => useTaskStore.getState().addTask({
+    title: 'Eat Chicken stir-fry', generatedKind: 'mealSlot', generatedSourceId: '2026-08-22#dinner',
+  });
+
+  it('does not also alert when the sheet is already open for this leftover', () => {
+    seedLeftover();
+    seedEntry();
+    const useUpTask = addUseUpTask();
+    const eatTask = addEatTask();
+
+    useTaskStore.getState().completeTask(useUpTask.id);
+    expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBe('l-1');
+
+    useTaskStore.getState().completeTask(eatTask.id);
+
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+    expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBe('l-1');
+  });
+
+  it('drops a pending alert in favor of the sheet when the sheet opens second', () => {
+    seedLeftover();
+    seedEntry();
+    const useUpTask = addUseUpTask();
+    const eatTask = addEatTask();
+
+    useTaskStore.getState().completeTask(eatTask.id);
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBe('l-1');
+
+    useTaskStore.getState().completeTask(useUpTask.id);
+
+    expect(useLeftoverStore.getState().pendingFinishLeftoverId).toBeNull();
+    expect(useLeftoverStore.getState().pendingUseUpLeftoverId).toBe('l-1');
+  });
+});
+
 // ─── Extra task (every Nth completion) ───────────────────────────────────────
 
 describe('completeTask: extra task every Nth completion', () => {

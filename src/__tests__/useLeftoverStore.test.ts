@@ -76,7 +76,7 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
 }
 
 function seed(leftovers: Leftover[]) {
-  useLeftoverStore.setState({ leftovers, initialized: true });
+  useLeftoverStore.setState({ leftovers, initialized: true, lastAction: null });
 }
 
 beforeEach(() => {
@@ -490,6 +490,26 @@ describe('finishLeftover', () => {
     useLeftoverStore.getState().finishLeftover('nope', 'eaten');
     expect(dbUpdateLeftover).not.toHaveBeenCalled();
   });
+
+  it('registers an undoable action whose undo reopens the leftover', () => {
+    seed([makeLeftover({ id: 'lo-a', title: 'Chilli' })]);
+
+    useLeftoverStore.getState().finishLeftover('lo-a', 'eaten');
+
+    const action = useLeftoverStore.getState().lastAction;
+    expect(action?.label).toBe('Finished "Chilli"');
+    expect(action?.destructive).toBeUndefined();
+
+    action!.undo();
+
+    expect(useLeftoverStore.getState().leftovers[0].finishedAt).toBeNull();
+  });
+
+  it('labels a bin differently from a finish', () => {
+    seed([makeLeftover({ id: 'lo-a', title: 'Chilli' })]);
+    useLeftoverStore.getState().finishLeftover('lo-a', 'tossed');
+    expect(useLeftoverStore.getState().lastAction?.label).toBe('Threw out "Chilli"');
+  });
 });
 
 describe('reopenLeftover', () => {
@@ -517,6 +537,26 @@ describe('deleteLeftover', () => {
 
     expect(dbDeleteLeftover).toHaveBeenCalledWith('lo-a');
     expect(useLeftoverStore.getState().leftovers.map(l => l.id)).toEqual(['lo-b']);
+  });
+
+  it('registers a destructive undo that restores the row', () => {
+    seed([makeLeftover({ id: 'lo-a', title: 'Chilli' })]);
+
+    useLeftoverStore.getState().deleteLeftover('lo-a');
+
+    const action = useLeftoverStore.getState().lastAction;
+    expect(action?.label).toBe('Deleted "Chilli"');
+    expect(action?.destructive).toBe(true);
+
+    action!.undo();
+
+    expect(dbInsertLeftover).toHaveBeenCalledWith(expect.objectContaining({ id: 'lo-a' }));
+    expect(useLeftoverStore.getState().leftovers.map(l => l.id)).toEqual(['lo-a']);
+  });
+
+  it('registers nothing when the id was not there to begin with', () => {
+    useLeftoverStore.getState().deleteLeftover('nope');
+    expect(useLeftoverStore.getState().lastAction).toBeNull();
   });
 });
 
@@ -588,6 +628,33 @@ describe('use-up tasks', () => {
     })!;
 
     useLeftoverStore.getState().deleteLeftover(logged.id);
+
+    expect(mockTaskState.tasks.some(t => t.generatedSourceId === logged.id)).toBe(false);
+  });
+
+  it('undoing a delete brings a still-live use-up task back', () => {
+    const logged = useLeftoverStore.getState().logLeftover({
+      title: 'Chilli',
+      storedAt: new Date(2026, 7, 10, 9, 0).toISOString(),
+      keepDays: 0,
+    })!;
+
+    useLeftoverStore.getState().deleteLeftover(logged.id);
+    useLeftoverStore.getState().lastAction!.undo();
+
+    expect(mockTaskState.tasks.some(t => t.generatedSourceId === logged.id)).toBe(true);
+  });
+
+  it('undoing a delete does not resurrect a finished leftover\'s use-up task', () => {
+    const logged = useLeftoverStore.getState().logLeftover({
+      title: 'Chilli',
+      storedAt: new Date(2026, 7, 10, 9, 0).toISOString(),
+      keepDays: 0,
+    })!;
+    useLeftoverStore.getState().finishLeftover(logged.id, 'eaten');
+
+    useLeftoverStore.getState().deleteLeftover(logged.id);
+    useLeftoverStore.getState().lastAction!.undo();
 
     expect(mockTaskState.tasks.some(t => t.generatedSourceId === logged.id)).toBe(false);
   });

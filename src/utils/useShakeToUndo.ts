@@ -4,6 +4,7 @@ import { Accelerometer } from 'expo-sensors';
 import { useTaskStore } from '../store/useTaskStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
 import { isAppLocked } from '../store/useAppLockStore';
 import { haptics } from './haptics';
 import {
@@ -70,10 +71,16 @@ export function useShakeToUndo(enabled: boolean): void {
         // a task title on top of a lock screen. A locked app stays locked.
         if (isAppLocked()) return;
 
-        // Tasks, grocery and meal plan each keep an independent undo queue
-        // (see useGroceryStore's lastAction doc comment) — offer whichever of
-        // the three is freshest, same as if there were one shared queue.
-        const candidates = [useTaskStore.getState(), useGroceryStore.getState(), useMealPlanStore.getState()];
+        // Tasks, grocery, meal plan and leftovers each keep an independent
+        // undo queue (see useGroceryStore's lastAction doc comment) — offer
+        // whichever of the four is freshest, same as if there were one
+        // shared queue.
+        const candidates = [
+          useTaskStore.getState(),
+          useGroceryStore.getState(),
+          useMealPlanStore.getState(),
+          useLeftoverStore.getState(),
+        ];
         const freshest = candidates.reduce<typeof candidates[number] | null>((best, s) => {
           if (!s.lastAction) return best;
           if (!best || (s.lastAction.at ?? 0) > (best.lastAction!.at ?? 0)) return s;

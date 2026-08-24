@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where completing a leftover's use-up task and its meal task close together could pop a confirmation on top of its own sheet. Finishing or deleting a leftover can now be undone with shake to undo.",
+  "date": "2026-08-24"
+}
