@@ -1,0 +1,4 @@
+{
+  "message": "Recipes and fridge items in the meal plan picker now show a checkmark once added, so repeated taps don't silently pile up duplicate meals",
+  "date": "2026-08-24"
+}
