@@ -967,6 +967,12 @@ export function initDatabase(): void {
     // every existing row reads as "hasn't been asked", which is correct: the
     // screen didn't exist before this.
     "ALTER TABLE tasks ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
+    // Same mechanism as tasks.backfill_dismissed_fields above, for the
+    // category-level fields (see src/utils/categoryBackfill.ts).
+    "ALTER TABLE categories ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
+    // Same mechanism again, for the project-level fields (see
+    // src/utils/projectBackfill.ts).
+    "ALTER TABLE projects ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2087,6 +2093,7 @@ function rowToCategory(row: Record<string, unknown>): Category {
     defaultTimeSegments: parseTimeSegments(row.default_time_segments),
     sortOrder: row.sort_order as number,
     emoji: (row.emoji as string | null) ?? null,
+    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
 
@@ -2100,7 +2107,7 @@ export function dbInsertCategory(name: string): Category {
   const maxOrder = db.getFirstSync<{ m: number }>('SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories')?.m ?? 0;
   const sortOrder = maxOrder + 1;
   db.runSync('INSERT INTO categories (id, name, sort_order) VALUES (?, ?, ?)', [id, name, sortOrder]);
-  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromSuggestions: false, excludeFromNewTasksBanner: false, defaultTimeSegments: [], sortOrder, emoji: null };
+  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromSuggestions: false, excludeFromNewTasksBanner: false, defaultTimeSegments: [], sortOrder, emoji: null, backfillDismissedFields: [] };
 }
 
 export function dbBatchUpdateCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
@@ -2125,6 +2132,13 @@ export function dbSetCategoryExcludeFromSuggestions(id: string, exclude: boolean
 
 export function dbSetCategoryExcludeFromNewTasksBanner(id: string, exclude: boolean): void {
   db.runSync('UPDATE categories SET exclude_from_new_tasks_banner = ? WHERE id = ?', [exclude ? 1 : 0, id]);
+}
+
+// Same mechanism as dismissBackfillField/updateTask for tasks: the screen
+// computes the deduped array (see dismissCategoryBackfillField), this just
+// persists it.
+export function dbSetCategoryBackfillDismissedFields(id: string, fields: string[]): void {
+  db.runSync('UPDATE categories SET backfill_dismissed_fields = ? WHERE id = ?', [JSON.stringify(fields), id]);
 }
 
 export function dbSetCategoryEmoji(id: string, emoji: string | null): void {
@@ -2165,7 +2179,7 @@ export function dbDeleteCategory(name: string): void {
 // the schedule/vacation fields a deleted category carried.
 export function dbInsertCategoryRow(category: Category): void {
   db.runSync(
-    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, exclude_from_pin_suggestions, exclude_from_new_tasks_banner, default_time_segments, sort_order, emoji) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, exclude_from_pin_suggestions, exclude_from_new_tasks_banner, default_time_segments, sort_order, emoji, backfill_dismissed_fields) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       category.id,
       category.name,
@@ -2178,6 +2192,7 @@ export function dbInsertCategoryRow(category: Category): void {
       category.defaultTimeSegments.length ? JSON.stringify(category.defaultTimeSegments) : null,
       category.sortOrder,
       category.emoji,
+      JSON.stringify(category.backfillDismissedFields),
     ]
   );
 }
@@ -3667,6 +3682,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     sequential: Boolean(row.sequential),
     nudgeOptIn: Boolean(row.nudge_opt_in),
     reviewDeclinedAt: (row.review_declined_at as string) ?? null,
+    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
 
@@ -3677,26 +3693,26 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at, backfill_dismissed_fields) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.targetStartDate, project.targetEndDate,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.createdAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
-      project.reviewDeclinedAt,
+      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields),
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=? WHERE id=?',
     [
       project.title, project.notes, project.targetStartDate, project.targetEndDate,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
-      project.reviewDeclinedAt, project.id,
+      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.id,
     ]
   );
 }

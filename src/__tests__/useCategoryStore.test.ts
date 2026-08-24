@@ -31,6 +31,7 @@ jest.mock('../db/database', () => ({
   dbSetCategoryHideOnVacation: jest.fn(),
   dbSetCategoryExcludeFromSuggestions: jest.fn(),
   dbSetCategoryExcludeFromNewTasksBanner: jest.fn(),
+  dbSetCategoryBackfillDismissedFields: jest.fn(),
   dbSetCategoryEmoji: jest.fn(),
   dbSetCategoryDefaultTimeSegments: jest.fn(),
   dbBatchUpdateCategorySortOrders: jest.fn(),
@@ -48,6 +49,7 @@ const category = (name: string): Category => ({
   defaultTimeSegments: [],
   sortOrder: 1,
   emoji: null,
+  backfillDismissedFields: [],
 });
 
 /** Whatever the ensure pass wrote, per settings key. */

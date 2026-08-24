@@ -1433,6 +1433,7 @@ describe('Projects', () => {
     sequential: false,
     nudgeOptIn: true,
     reviewDeclinedAt: null,
+    backfillDismissedFields: [],
     ...overrides,
   });
 
@@ -1564,6 +1565,7 @@ describe('Categories', () => {
       defaultTimeSegments: ['evening'],
       sortOrder: 3,
       emoji: '🏠',
+      backfillDismissedFields: ['vacation'],
     };
     dbInsertCategoryRow(category);
     expect(dbGetAllCategories()).toEqual([category]);
@@ -1617,6 +1619,7 @@ describe('backup and restore', () => {
       createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false, sequential: false,
       nudgeOptIn: true,
       reviewDeclinedAt: null,
+      backfillDismissedFields: [],
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');

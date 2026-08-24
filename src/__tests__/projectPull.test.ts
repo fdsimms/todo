@@ -142,6 +142,7 @@ const PROJECT_BASE: Project = {
   sequential: false,
   nudgeOptIn: true,
   reviewDeclinedAt: null,
+  backfillDismissedFields: [],
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({ ...PROJECT_BASE, ...overrides });
