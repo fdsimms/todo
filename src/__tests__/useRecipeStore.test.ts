@@ -7,6 +7,7 @@ import {
 } from '../db/database';
 import type { Recipe, RecipeIngredient } from '../types';
 import { LEFTOVER_KEEP_DAYS_MAX } from '../types';
+import { groceryNameKey } from '../utils/groceryParse';
 
 jest.mock('../db/database', () => ({
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
@@ -891,6 +892,55 @@ describe('splitIngredientAlternatives', () => {
     expect(useRecipeStore.getState().splitIngredientAlternatives(r.id, 'i1', ['Serrano'], 'Pepper')).toBe(0);
     expect(useRecipeStore.getState().splitIngredientAlternatives(r.id, 'gone', ['A', 'B'], 'Pepper')).toBe(0);
     expect(useRecipeStore.getState().splitIngredientAlternatives('gone', 'i1', ['A', 'B'], 'Pepper')).toBe(0);
+    expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+describe('mergeChoiceGroup', () => {
+  const withGroup = () => {
+    const r = makeRecipe('Salsa', {
+      ingredients: [
+        { id: 'i0', name: 'Tomatoes', nameKey: 'tomatoes', quantity: '6', aisle: null, prep: null, purpose: null, section: null, choiceGroup: null },
+        { id: 'i1', name: 'Serrano', nameKey: 'serrano', quantity: '2', aisle: 'Produce', prep: 'sliced', purpose: null, section: 'For the salsa', choiceGroup: 'Pepper' },
+        { id: 'i2', name: 'Jalapeño', nameKey: 'jalapeno', quantity: '2', aisle: 'Produce', prep: 'sliced', purpose: null, section: 'For the salsa', choiceGroup: 'Pepper' },
+      ],
+    });
+    seed([r]);
+    return r;
+  };
+
+  it('undoes a split: one row named after every member, the rest removed', () => {
+    const r = withGroup();
+
+    expect(useRecipeStore.getState().mergeChoiceGroup(r.id, 'i1')).toBe(true);
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.map(i => i.name)).toEqual(['Tomatoes', 'Serrano or Jalapeño']);
+    expect(ingredients[1].nameKey).toBe(groceryNameKey('Serrano or Jalapeño'));
+    expect(ingredients[1].choiceGroup).toBeNull();
+    // The surviving row is the one the caller named, and keeps its own details.
+    expect(ingredients[1].id).toBe('i1');
+    expect(ingredients[1].quantity).toBe('2');
+    expect(ingredients[1].prep).toBe('sliced');
+  });
+
+  it('merges from any member, not just the group default', () => {
+    const r = withGroup();
+
+    expect(useRecipeStore.getState().mergeChoiceGroup(r.id, 'i2')).toBe(true);
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.map(i => i.id)).toEqual(['i0', 'i2']);
+    expect(ingredients[1].name).toBe('Serrano or Jalapeño');
+  });
+
+  it('refuses a row with no group, a group of one, and unknown ids', () => {
+    const r = withGroup();
+    (dbUpdateRecipe as jest.Mock).mockClear();
+
+    expect(useRecipeStore.getState().mergeChoiceGroup(r.id, 'i0')).toBe(false);
+    expect(useRecipeStore.getState().mergeChoiceGroup(r.id, 'gone')).toBe(false);
+    expect(useRecipeStore.getState().mergeChoiceGroup('gone', 'i1')).toBe(false);
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
   });
 });
