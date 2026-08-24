@@ -81,12 +81,17 @@ export function extraTaskSummary(everyN: number | null): string | undefined {
 }
 
 /**
- * The caption under the stepper — what the rule will do, in one sentence.
+ * The caption under the stepper — the one thing the controls don't already say.
  *
- * Says where the added task lands as well as how often, because that's the
- * half nobody can infer: it's due with the *next* occurrence, not stacked onto
- * the completion that triggered it. A task that doesn't repeat has no next
- * occurrence, so it lands on the day it's added.
+ * Where the added task lands, and nothing else. It used to read the whole rule
+ * back ("Adds “X” every 4th completion, due with the next one"), which
+ * quoted the title out of the field directly above it and repeated the count
+ * out of the stepper beside it, and took two lines at 390pt to do it. The
+ * editor now spells the frequency out around the stepper itself ("Every [4th]
+ * completion"), so all that's left for a caption is the half nobody can infer:
+ * it's due with the *next* occurrence, not stacked onto the completion that
+ * triggered it. A task that doesn't repeat has no next occurrence, so it lands
+ * on the day it's added.
  */
 export function describeExtraTaskRule(
   everyN: number | null,
@@ -94,11 +99,8 @@ export function describeExtraTaskRule(
   repeats: boolean
 ): string {
   if (everyN === null || everyN < MIN_EXTRA_TASK_EVERY_N) return 'No extra task';
-  const trimmed = title?.trim();
-  if (!trimmed) return `Name the task to add every ${ordinal(everyN)} completion`;
-  return repeats
-    ? `Adds “${trimmed}” every ${ordinal(everyN)} completion, due with the next one`
-    : `Adds “${trimmed}” every ${ordinal(everyN)} completion, due that day`;
+  if (!title?.trim()) return 'Name the task to add';
+  return repeats ? 'Due with the next occurrence' : "Due on the day it's added";
 }
 
 /**
