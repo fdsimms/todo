@@ -439,6 +439,11 @@ export const TaskItem = React.memo(function TaskItem({
   const timerRunning = task.timerStartedAt !== null;
   const completingRef = useRef(false);
   const completeAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+  // The answer the in-flight completion is carrying, if it was asked for one.
+  // Held here rather than only in runCompletion's argument because the unmount
+  // commit below has to pass the same value on — a completion salvaged without
+  // its answer would tick the task off and drop what the user typed.
+  const pendingDeliverableRef = useRef<string | null | undefined>(undefined);
   const circleScale = useRef(new Animated.Value(1)).current;
   // A row can mount already completed — Calendar keeps completed rows in its
   // day list, where every other screen filters them out before TaskItem ever
@@ -654,12 +659,31 @@ export const TaskItem = React.memo(function TaskItem({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heldForCompletion, awaitingCollapse]);
 
-  // A row unmounted mid-animation (screen change, filter change) never reaches
-  // completeTask, so it has to let the batch go — otherwise the collapse it was
-  // waiting on would never be called and the other rows would sit invisible
-  // until the hold unmounted them.
+  // A row unmounted mid-animation (screen change, filter change, switching
+  // sub-view) has to finish the completion on the way out, because the store
+  // call is at the *end* of the animation and unmounting is what stops that
+  // animation reaching it: RN detaches the row's Animated values as it goes,
+  // which stops the sequence, and a stopped sequence runs its callback with
+  // `finished: false` — the branch that returns without completing anything.
+  // So a tap that had already popped its checkmark and fired its haptic was
+  // silently thrown away if the user left before the beat was over, which is a
+  // task the app said it had ticked off and hadn't.
+  //
+  // completeTask releases the row from the collapse batch itself (it does that
+  // ahead of its own guards), so this covers what cancelCompletionAnimation was
+  // here for as well — the other rows in the burst still get their collapse.
+  // Neither ordering completes twice. The cleanup runs before the values
+  // detach (React tears a subtree down parent-first), so `completingRef` is
+  // still true here and the stop that follows reaches the callback's
+  // `!finished` return; and a callback that landed first cleared the ref
+  // itself, which is what this reads. `handleUndoComplete` clears it too, so a
+  // cancelled completion is never resurrected on the way out.
   useEffect(() => () => {
-    if (completingRef.current) cancelCompletionAnimation(task.id);
+    if (!completingRef.current) return;
+    completingRef.current = false;
+    const deliverableValue = pendingDeliverableRef.current;
+    pendingDeliverableRef.current = undefined;
+    completeTask(task.id, deliverableValue !== undefined ? { deliverableValue } : undefined);
   }, []);
 
   useEffect(() => {
@@ -1027,6 +1051,7 @@ export const TaskItem = React.memo(function TaskItem({
       quotaSendOffRef.current = null;
     }
     completingRef.current = true;
+    pendingDeliverableRef.current = deliverableValue;
     // Told up front, not at the end: the batched collapse holds for a row that
     // is still animating, so tapping the next task keeps the previous one's gap
     // open even though it finished a moment ago.
@@ -1081,6 +1106,7 @@ export const TaskItem = React.memo(function TaskItem({
       completeAnimRef.current = null;
       if (!finished) return;
       completingRef.current = false;
+      pendingDeliverableRef.current = undefined;
       // Leaves the row checked and fully visible, holding its slot: the send-off
       // is the batched collapse (see the collapseSignal effect above), which
       // fades and closes every row of the burst at once. The completed look has
@@ -1297,6 +1323,7 @@ export const TaskItem = React.memo(function TaskItem({
     completeAnimRef.current?.stop();
     completeAnimRef.current = null;
     completingRef.current = false;
+    pendingDeliverableRef.current = undefined;
     checkScale.setValue(0);
     circleScale.setValue(1);
     rowOpacity.setValue(1);
@@ -1323,6 +1350,7 @@ export const TaskItem = React.memo(function TaskItem({
     completeAnimRef.current?.stop();
     completeAnimRef.current = null;
     completingRef.current = false;
+    pendingDeliverableRef.current = undefined;
     // Nothing was completed, so the batch shouldn't keep waiting on this row.
     cancelCompletionAnimation(task.id);
     await haptics.tap();
