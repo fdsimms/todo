@@ -56,6 +56,8 @@ const BAR_HEIGHT = 96;
 // Shallower than the 7-day chart: 24 bars is a wide, low shape, and a tall one
 // would push the headline under it off the first screen.
 const HOUR_BAR_HEIGHT = 64;
+// Every sixth hour is marked on the hour chart's axis — 24 labels would not fit.
+const HOUR_LABEL_EVERY = 6;
 const HABIT_DAYS = 30;
 // The same month HABIT_DAYS uses, and well inside MEAL_PLAN_RETENTION_DAYS (180)
 // and LEFTOVER_RETENTION_DAYS (60), so neither purge can quietly clip the window.
@@ -426,15 +428,15 @@ export function StatsScreen() {
                   ))}
                 </View>
                 <View style={styles.hourLabelRow}>
-                  {hourBars.map(({ hour }) => (
-                    <View key={hour} style={styles.hourCol}>
-                      {hour % 6 === 0 && (
+                  {hourBars
+                    .filter(({ hour }) => hour % HOUR_LABEL_EVERY === 0)
+                    .map(({ hour }) => (
+                      <View key={hour} style={styles.hourLabelCell}>
                         <Text style={styles.hourLabel} numberOfLines={1}>
                           {formatHour(hour, use24HourTime)}
                         </Text>
-                      )}
-                    </View>
-                  ))}
+                      </View>
+                    ))}
                 </View>
                 {rhythmHeadline && (
                   <View style={[styles.row, styles.rowTopBorder]}>
@@ -779,6 +781,15 @@ const makeStyles = (colors: Colors) =>
       paddingHorizontal: spacing.sm,
       paddingTop: 4,
       paddingBottom: spacing.sm,
+    },
+    // One cell per marked hour, each as wide as the HOUR_LABEL_EVERY columns it
+    // spans, rather than one cell per column: a single 24th of the card is ~14pt,
+    // which truncated every label to its first character and an ellipsis. The
+    // label sits at the left edge of its cell, which is the left edge of the hour
+    // it marks.
+    hourLabelCell: {
+      flex: HOUR_LABEL_EVERY,
+      alignItems: 'flex-start',
     },
     hourLabel: {
       color: colors.textTertiary,
