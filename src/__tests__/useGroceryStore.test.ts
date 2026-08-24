@@ -4410,16 +4410,19 @@ describe('either/or items (choiceGroup)', () => {
 
   it('clears the group when the whole list is cleared', () => {
     const { apples, pears } = pair();
+    // Bought before, so clearList parks them rather than sweeping them — a
+    // swept row proves nothing about the label, and a bare either/or pair is
+    // swept (choiceGroup is deliberately not a user fact).
+    useGroceryStore.setState(s => ({
+      items: s.items.map(i => ({ ...i, purchaseCount: 2 })),
+    }));
     (dbClearGroceryList as jest.Mock).mockReturnValue([apples.id, pears.id]);
 
     useGroceryStore.getState().clearList();
 
-    // Both rows carry a note from the pair() helper's override, so neither is
-    // swept — the point here is the label, not the sweep.
-    for (const id of [apples.id, pears.id]) {
-      const row = useGroceryStore.getState().itemById(id);
-      if (row) expect(row.choiceGroup).toBeNull();
-    }
+    const rows = [apples.id, pears.id].map(id => useGroceryStore.getState().itemById(id));
+    expect(rows.every(Boolean)).toBe(true);
+    expect(rows.map(r => r!.choiceGroup)).toEqual([null, null]);
   });
 
   // The other park paths drop a recipe-owned quantity; this one didn't, which
