@@ -34,6 +34,7 @@ import {
 } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { aisleForName } from '../utils/groceryAisles';
+import { sectionsOf } from '../utils/recipeSections';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker, type RecipeInputMode } from './RecipeSourcePicker';
@@ -166,6 +167,13 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     [ingredients, candidates, acceptedKeys],
   );
 
+  // Every heading the Section picker can offer, for a recipe that doesn't
+  // exist yet: just whatever this batch has already been filed under.
+  const existingSections = useMemo(
+    () => sectionsOf(ingredients.map((row, i) => ({ id: String(i), section: row.section }))),
+    [ingredients],
+  );
+
   const reset = useCallback(() => {
     setLoading(false);
     setError(null);
@@ -243,7 +251,9 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     });
   };
 
-  const editIngredient = (index: number, patch: Partial<Pick<RecipeGroceryItem, 'name' | 'quantity'>>) => {
+  const editIngredient = (
+    index: number, patch: Partial<Pick<RecipeGroceryItem, 'name' | 'quantity' | 'section'>>,
+  ) => {
     haptics.success();
     setIngredients(prev => prev.map((row, i) => {
       if (i !== index) return row;
@@ -669,6 +679,8 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
               onToggle={() => toggle(i)}
               onEditName={name => editIngredient(i, { name })}
               onEditQuantity={quantity => editIngredient(i, { quantity })}
+              onEditSection={section => editIngredient(i, { section })}
+              existingSections={existingSections}
               sectionHeader={sectionHeader}
               note={coveredBy ? `made from the ${coveredBy} recipe` : null}
             />
