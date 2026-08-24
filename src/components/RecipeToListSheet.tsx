@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
-import { useColors } from '../theme/ThemeContext';
+import { useTheme } from '../theme/ThemeContext';
 import {
   spacing,
   radius,
@@ -31,9 +32,15 @@ import { normalizeScale } from '../utils/recipeScale';
 import { convertQuantity } from '../utils/unitConvert';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { InlineAction } from './InlineAction';
 import { EmptyState } from './EmptyState';
 import { SubstituteSheet } from './SubstituteSheet';
 import { haptics } from '../utils/haptics';
+
+// How long the in-sheet "marked in pantry" undo stays up. Same value UndoBar
+// uses for the same reason: long enough to read the label and reach for the
+// button, short enough not to overstay a moment already moved past.
+const PANTRY_UNDO_MS = 6000;
 
 const CHECKBOX_SIZE = 22;
 
@@ -129,8 +136,9 @@ export function RecipeToListSheet({
   initialSelection = 'all',
   onClose,
 }: Props) {
-  const colors = useColors();
+  const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const unitSystem = useSettingsStore(s => s.unitSystem);
 
@@ -277,19 +285,38 @@ export function RecipeToListSheet({
     });
   };
 
+  // Transient "marked in pantry" undo, shown in the sheet itself rather than
+  // through UndoBar/shake-to-undo — neither can be reached while this sheet
+  // is up (a `Modal` presents above everything else UndoBar could render
+  // into, and a shake armed now would only surface its confirm at some later,
+  // disconnected moment). One at a time, replacing on every tap, same as
+  // UndoBar mirrors for its own three queues.
+  const [pantryUndo, setPantryUndo] = useState<{ label: string; undo: () => void } | null>(null);
+  const pantryUndoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (visible) return;
+    setPantryUndo(null);
+    if (pantryUndoTimerRef.current) clearTimeout(pantryUndoTimerRef.current);
+  }, [visible]);
+
+  useEffect(() => () => {
+    if (pantryUndoTimerRef.current) clearTimeout(pantryUndoTimerRef.current);
+  }, []);
+
   // `addToPantry`, not a bare `setOnHandUntil`: it mints the catalog row when
   // the ingredient hasn't got one yet, stamping the same window "Got it"
   // writes, which is what lets this be offered on every line rather than only
   // the ones the catalog already knew about. It's also what the Pantry
   // screen's own "add something you already have" field calls, so a recipe
   // line and a typed name make the same statement.
-  //
-  // Undo deliberately not registered: shake-to-undo can't be reached while
-  // this sheet is up, so an entry armed here would sit under the *next* shake
-  // instead. The row it makes is visible in Probably have, and the Pantry
-  // screen's ✕ takes it back.
   const markAlreadyHave = (row: ClassifiedIngredient) => {
-    const item = addToPantry(row.name, { registerUndo: false });
+    const wasTicked = ticked.has(row.nameKey);
+    let revert: (() => void) | undefined;
+    const item = addToPantry(row.name, {
+      registerUndo: false,
+      onUndo: fn => { revert = fn; },
+    });
     if (!item) { haptics.error(); return; }
     haptics.success();
     setTicked(prev => {
@@ -305,6 +332,28 @@ export function RecipeToListSheet({
     const baseline = new Set<string>(JSON.parse(tickedBaselineRef.current) as string[]);
     baseline.delete(row.nameKey);
     tickedBaselineRef.current = JSON.stringify([...baseline].sort());
+
+    // addToPantry always calls onUndo before returning a non-null item, so
+    // revert is set here — the optional chaining below is belt-and-braces.
+    if (pantryUndoTimerRef.current) clearTimeout(pantryUndoTimerRef.current);
+    setPantryUndo({
+      label: `"${row.name}" marked in pantry`,
+      undo: () => {
+        revert?.();
+        // Only if the tap itself is what unticked it — a row the user had
+        // already unticked by hand stays unticked once it's back.
+        if (wasTicked) setTicked(prev => new Set(prev).add(row.nameKey));
+      },
+    });
+    pantryUndoTimerRef.current = setTimeout(() => setPantryUndo(null), PANTRY_UNDO_MS);
+  };
+
+  const handlePantryUndo = () => {
+    if (!pantryUndo) return;
+    if (pantryUndoTimerRef.current) clearTimeout(pantryUndoTimerRef.current);
+    haptics.success();
+    pantryUndo.undo();
+    setPantryUndo(null);
   };
 
   // Same shape as GroceryItemSheet/TaskEditor's own dirty check. A scale or a
@@ -595,15 +644,11 @@ export function RecipeToListSheet({
                                 </TouchableOpacity>
                               )}
                               {canMarkHave && (
-                                <TouchableOpacity
-                                  style={styles.haveButton}
-                                  activeOpacity={interaction.activeOpacity}
+                                <InlineAction
+                                  label="In pantry"
                                   onPress={() => markAlreadyHave(row)}
-                                  accessibilityRole="button"
                                   accessibilityLabel={`${row.name} is in the pantry, skip it and remember it for next time`}
-                                >
-                                  <Text style={styles.haveButtonText}>In pantry</Text>
-                                </TouchableOpacity>
+                                />
                               )}
                             </View>
                           </React.Fragment>
@@ -620,6 +665,22 @@ export function RecipeToListSheet({
               );
             })}
           </ScrollView>
+        )}
+
+        {!!pantryUndo && (
+          <View
+            style={[styles.undoWrap, { bottom: insets.bottom + spacing.lg }]}
+            pointerEvents="box-none"
+          >
+            <View style={[styles.undoBar, shadows.fab]}>
+              <Text style={styles.undoLabel} numberOfLines={1}>{pantryUndo.label}</Text>
+              <InlineAction
+                label="Undo"
+                onPress={handlePantryUndo}
+                accessibilityLabel={`Undo: ${pantryUndo.label}`}
+              />
+            </View>
+          </View>
         )}
       </View>
 
@@ -781,15 +842,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     color: colors.accent,
   },
-  haveButton: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary,
+  // Floats over the list rather than pushing it, the same way UndoBar floats
+  // over the screen it answers for — a footer here would reflow the list on
+  // every tap, and the sheet has no footer to begin with.
+  undoWrap: {
+    position: 'absolute',
+    left: spacing.md,
+    right: spacing.md,
   },
-  haveButtonText: {
-    fontSize: font.xs,
+  undoBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSunken,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.sm,
+    paddingLeft: spacing.md,
+    paddingRight: spacing.sm,
+  },
+  undoLabel: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
     fontWeight: fontWeight.medium,
-    color: colors.textSecondary,
   },
 });
