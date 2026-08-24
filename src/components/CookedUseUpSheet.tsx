@@ -71,6 +71,7 @@ export function CookedUseUpSheet({ visible, recipeName, rows, onClose }: Props) 
   const items = useGroceryStore(useShallow(s => s.items));
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
   const unitSystem = useSettingsStore(s => s.unitSystem);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
 
@@ -131,10 +132,12 @@ export function CookedUseUpSheet({ visible, recipeName, rows, onClose }: Props) 
 
         {/* Says the mechanism, since this is the only place it's explained:
             what ticking does, and what happens next because of it. */}
-        <Text style={styles.caption}>
-          Things you probably had before cooking {recipeName}. Tick whatever it used up — they&apos;ll
-          stop counting as on hand, and turn up when you next shop.
-        </Text>
+        {!hideHelpText && (
+          <Text style={styles.caption}>
+            Things you probably had before cooking {recipeName}. Tick whatever it used up — they&apos;ll
+            stop counting as on hand, and turn up when you next shop.
+          </Text>
+        )}
 
         <ScrollView contentContainerStyle={styles.list}>
           <View style={styles.card}>

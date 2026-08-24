@@ -3,6 +3,7 @@ import { Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -36,6 +37,7 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
   const items = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const setItemSubStanding = useGroceryStore(s => s.setItemSubStanding);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
 
   const swaps = useMemo(() => standingSwaps(itemSubs, items), [itemSubs, items]);
 
@@ -63,10 +65,12 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
           </View>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
-            <Text style={styles.caption}>
-              Recipes calling for the item on the left show and shop for the one on the right.
-              Swapped lines say what the recipe wrote, and no recipe is changed.
-            </Text>
+            {!hideHelpText && (
+              <Text style={styles.caption}>
+                Recipes calling for the item on the left show and shop for the one on the right.
+                Swapped lines say what the recipe wrote, and no recipe is changed.
+              </Text>
+            )}
             <View style={styles.card}>
               {swaps.map((swap, i) => (
                 <View key={`${swap.link.itemId}|${swap.link.subItemId}`}>

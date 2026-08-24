@@ -60,6 +60,7 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
 
   const titleRules = useSettingsStore(useShallow(s => s.titleRules));
   const setTitleRules = useSettingsStore(s => s.setTitleRules);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
   const categories = useCategoryStore(useShallow(s => s.categories));
   const projects = useProjectStore(useShallow(s => s.projects));
   const applyTitleRuleToExisting = useTaskStore(s => s.applyTitleRuleToExisting);
@@ -169,11 +170,13 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
           </ScrollView>
         ) : (
           <ScrollView contentContainerStyle={styles.list}>
-            <Text style={styles.caption}>
-              A rule fills in a task as you type it. It never overrides something you picked
-              yourself, and it only applies as a task is created. Renaming a task later doesn't
-              refile it. A new rule offers to file the tasks you already have that match it.
-            </Text>
+            {!hideHelpText && (
+              <Text style={styles.caption}>
+                A rule fills in a task as you type it. It never overrides something you picked
+                yourself, and it only applies as a task is created. Renaming a task later doesn't
+                refile it. A new rule offers to file the tasks you already have that match it.
+              </Text>
+            )}
             {backlog && (
               <View style={styles.backlogCard}>
                 <View style={styles.backlogHead}>
