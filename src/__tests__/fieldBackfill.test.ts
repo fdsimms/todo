@@ -118,6 +118,12 @@ describe('isFieldMissing', () => {
     expect(isFieldMissing({ ...baseTask, recurrenceType: 'daily' }, 'streak')).toBe(true);
     expect(isFieldMissing({ ...baseTask, recurrenceType: 'daily', showStreak: true }, 'streak')).toBe(false);
   });
+
+  it('treats vacation pause as missing only for a recurring task with the toggle off', () => {
+    expect(isFieldMissing(baseTask, 'vacation')).toBe(false); // not recurring
+    expect(isFieldMissing({ ...baseTask, recurrenceType: 'daily' }, 'vacation')).toBe(true);
+    expect(isFieldMissing({ ...baseTask, recurrenceType: 'daily', vacationPause: true }, 'vacation')).toBe(false);
+  });
 });
 
 describe('backfillCandidates', () => {
@@ -163,6 +169,15 @@ describe('backfillCandidates', () => {
     ];
     expect(backfillCandidates(tasks, 'streak').map(t => t.id)).toEqual(['recurring-off']);
   });
+
+  it('only includes recurring tasks for vacation pause', () => {
+    const tasks: Task[] = [
+      { ...baseTask, id: 'not-recurring' },
+      { ...baseTask, id: 'recurring-off', recurrenceType: 'daily' },
+      { ...baseTask, id: 'recurring-on', recurrenceType: 'daily', vacationPause: true },
+    ];
+    expect(backfillCandidates(tasks, 'vacation').map(t => t.id)).toEqual(['recurring-off']);
+  });
 });
 
 describe('isBackfillDismissed / dismissBackfillField', () => {
@@ -194,10 +209,10 @@ describe('backfillFieldCounts', () => {
       { ...baseTask, id: 'b', priority: 2 },
       { ...baseTask, id: 'c', category: 'Home' },
       { ...baseTask, id: 'd', completed: true },
-      { ...baseTask, id: 'e', estimatedMinutes: 30, priority: 2, category: 'Home', recurrenceType: 'daily', showStreak: true },
+      { ...baseTask, id: 'e', estimatedMinutes: 30, priority: 2, category: 'Home', recurrenceType: 'daily', showStreak: true, vacationPause: true },
       { ...baseTask, id: 'f', estimatedMinutes: 30, priority: 2, category: 'Home', recurrenceType: 'daily' },
     ];
-    expect(backfillFieldCounts(tasks)).toEqual({ estimate: 2, priority: 2, category: 2, streak: 1 });
+    expect(backfillFieldCounts(tasks)).toEqual({ estimate: 2, priority: 2, category: 2, streak: 1, vacation: 1 });
   });
 
   it('covers every declared backfillable field', () => {
@@ -209,7 +224,7 @@ describe('backfillFieldCounts', () => {
 
   it('does not count a task dismissed for that field', () => {
     const task = { ...baseTask, backfillDismissedFields: ['estimate'] };
-    expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, category: 1, streak: 0 });
+    expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, category: 1, streak: 0, vacation: 0 });
   });
 });
 

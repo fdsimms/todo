@@ -34,6 +34,7 @@ const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   priority: 'flag-outline',
   category: 'folder-outline',
   streak: 'flame-outline',
+  vacation: 'airplane-outline',
 };
 
 // Bucket 0 ("—") is left off — see estimatePatchFor's doc comment for why.
@@ -218,6 +219,7 @@ export function BackfillScreen() {
             onPriority={p => apply({ priority: p })}
             onCategory={name => apply({ category: name })}
             onStreak={() => apply({ showStreak: true })}
+            onVacation={() => apply({ vacationPause: true })}
             customOpen={customOpen}
             customText={customText}
             customUnit={customUnit}
@@ -329,6 +331,7 @@ interface FieldControlProps {
   onPriority: (priority: (typeof PRIORITY_SEGMENTS)[number]['value']) => void;
   onCategory: (name: string | null) => void;
   onStreak: () => void;
+  onVacation: () => void;
   customOpen: boolean;
   customText: string;
   customUnit: 'min' | 'hr';
@@ -339,7 +342,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({
-  field, colors, styles, onEstimate, onPriority, onCategory, onStreak,
+  field, colors, styles, onEstimate, onPriority, onCategory, onStreak, onVacation,
   customOpen, customText, customUnit, onOpenCustom, onCustomTextChange, onCustomUnitChange, onCustomSubmit,
 }: FieldControlProps) {
   if (field === 'estimate') {
@@ -425,15 +428,29 @@ function FieldControl({
     );
   }
 
+  if (field === 'streak') {
+    return (
+      <PressableScale
+        style={[styles.toggleButton, { backgroundColor: colors.orange }]}
+        onPress={onStreak}
+        accessibilityRole="button"
+        accessibilityLabel="Show streak on row"
+      >
+        <Ionicons name="flame" size={iconSize.md} color={colors.onAccent} />
+        <Text style={styles.toggleButtonText}>Show streak on row</Text>
+      </PressableScale>
+    );
+  }
+
   return (
     <PressableScale
-      style={styles.streakButton}
-      onPress={onStreak}
+      style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+      onPress={onVacation}
       accessibilityRole="button"
-      accessibilityLabel="Show streak on row"
+      accessibilityLabel="Turn on vacation pause"
     >
-      <Ionicons name="flame" size={iconSize.md} color={colors.onAccent} />
-      <Text style={styles.streakButtonText}>Show streak on row</Text>
+      <Ionicons name="airplane" size={iconSize.md} color={colors.onAccent} />
+      <Text style={styles.toggleButtonText}>Turn on vacation pause</Text>
     </PressableScale>
   );
 }
@@ -525,16 +542,15 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
 
   categoryCard: { borderRadius: radius.md, padding: spacing.sm },
 
-  streakButton: {
+  toggleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
     paddingVertical: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.orange,
   },
-  streakButtonText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+  toggleButtonText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
 
   actionRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
   skipButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
