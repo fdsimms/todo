@@ -27,6 +27,10 @@ import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor, dismissBackfillField,
   type BackfillFieldId,
 } from '../utils/fieldBackfill';
+import {
+  CATEGORY_BACKFILL_FIELDS, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField,
+  type CategoryBackfillFieldId,
+} from '../utils/categoryBackfill';
 import { EFFORT_LABELS, type Effort, type Task } from '../types';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
@@ -36,6 +40,21 @@ const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   streak: 'flame-outline',
   vacation: 'airplane-outline',
 };
+
+// Filled counterparts of the row icons above, for the per-card CTA button —
+// same outline/filled split the task fields use (flame-outline in the list,
+// flame on the button).
+const CATEGORY_FIELD_ICONS: Record<CategoryBackfillFieldId, { row: keyof typeof Ionicons.glyphMap; button: keyof typeof Ionicons.glyphMap }> = {
+  vacation: { row: 'airplane-outline', button: 'airplane' },
+  suggestions: { row: 'color-wand-outline', button: 'color-wand' },
+  newBanner: { row: 'notifications-off-outline', button: 'notifications-off' },
+};
+
+type EntityKind = 'task' | 'category';
+const ENTITY_KIND_SEGMENTS = [
+  { value: 'task' as const, label: 'Tasks' },
+  { value: 'category' as const, label: 'Categories' },
+];
 
 // Bucket 0 ("—") is left off — see estimatePatchFor's doc comment for why.
 const ESTIMATE_OPTIONS = [1, 2, 3, 4, 5, 6] as Effort[];
@@ -51,18 +70,28 @@ const DURATION_UNIT_SEGMENTS = [
 ];
 
 /**
- * Walk the tasks missing one field — time estimate, priority, category — and
- * fill it in one at a time: pick a value, the next task with the same gap
- * takes its place immediately. No swiping; a tap commits the value (writing
- * straight through `updateTask`, same as the task editor) and advances,
- * which is the fast, low-friction loop the field-by-field flow is for.
+ * Walk the tasks or categories missing one field — time estimate, priority,
+ * category, streak chip, vacation pause on the task side; hide-on-vacation,
+ * skip-in-suggestions, skip-in-new-banner on the category side — and fill it
+ * in one at a time: pick a value, the next item with the same gap takes its
+ * place immediately. No swiping; a tap commits the value (writing straight
+ * through `updateTask`/the category store, same as their own editors) and
+ * advances, which is the fast, low-friction loop the field-by-field flow is
+ * for. The `Tasks`/`Categories` segmented control on the field-picker step
+ * chooses which pool `active` (and everything downstream) reads from.
  *
- * The queue is *live*, not a snapshot: it's `backfillCandidates` recomputed
- * off the current task list every render, filtered against `skippedIds` for
- * tasks left for later this session. That's what lets a plain "current task
- * is the front of the queue" model work with no index to keep in sync — once
- * a task's field is set it drops out on its own.
+ * The queue is *live*, not a snapshot: it's `backfillCandidates`/
+ * `categoryBackfillCandidates` recomputed off the current list every render,
+ * filtered against `skippedIds` for items left for later this session.
+ * That's what lets a plain "current item is the front of the queue" model
+ * work with no index to keep in sync — once an item's field is set it drops
+ * out on its own. Tasks and categories both carry a plain `id`, so the same
+ * `skippedIds` set works for either without knowing which kind is active.
  */
+type ActiveField =
+  | { kind: 'task'; id: BackfillFieldId }
+  | { kind: 'category'; id: CategoryBackfillFieldId };
+
 export function BackfillScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -72,68 +101,113 @@ export function BackfillScreen() {
   const tasks = useTaskStore(useShallow(s => s.tasks));
   const updateTask = useTaskStore(s => s.updateTask);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
+  const categories = useCategoryStore(useShallow(s => s.categories));
+  const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
+  const setCategoryExcludeFromSuggestions = useCategoryStore(s => s.setCategoryExcludeFromSuggestions);
+  const setCategoryExcludeFromNewTasksBanner = useCategoryStore(s => s.setCategoryExcludeFromNewTasksBanner);
+  const setCategoryBackfillDismissedFields = useCategoryStore(s => s.setCategoryBackfillDismissedFields);
   const projects = useProjectStore(useShallow(s => s.projects));
   const projectNamesById = useMemo(() => new Map(projects.map(p => [p.id, p.title])), [projects]);
 
-  const [activeField, setActiveField] = useState<BackfillFieldId | null>(null);
+  const [entityKind, setEntityKind] = useState<EntityKind>('task');
+  const [active, setActive] = useState<ActiveField | null>(null);
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
   const [sessionTotal, setSessionTotal] = useState(0);
   const [customOpen, setCustomOpen] = useState(false);
   const [customText, setCustomText] = useState('');
   const [customUnit, setCustomUnit] = useState<'min' | 'hr'>('min');
 
-  const counts = useMemo(() => backfillFieldCounts(tasks), [tasks]);
+  const taskCounts = useMemo(() => backfillFieldCounts(tasks), [tasks]);
+  const categoryCounts = useMemo(() => categoryBackfillFieldCounts(categories), [categories]);
 
-  const queue = useMemo(
-    () => activeField ? backfillCandidates(tasks, activeField).filter(t => !skippedIds.has(t.id)) : [],
-    [tasks, activeField, skippedIds]
+  const taskQueue = useMemo(
+    () => active?.kind === 'task' ? backfillCandidates(tasks, active.id).filter(t => !skippedIds.has(t.id)) : [],
+    [tasks, active, skippedIds]
   );
-  const current = queue[0] ?? null;
+  const categoryQueue = useMemo(
+    () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id).filter(c => !skippedIds.has(c.id)) : [],
+    [categories, active, skippedIds]
+  );
+  const currentTask = active?.kind === 'task' ? (taskQueue[0] ?? null) : null;
+  const currentCategory = active?.kind === 'category' ? (categoryQueue[0] ?? null) : null;
+  const queueLength = active?.kind === 'task' ? taskQueue.length : categoryQueue.length;
+  const currentId = currentTask?.id ?? currentCategory?.id ?? null;
 
   // The custom-estimate entry is per-card: once the card advances (a value
-  // was applied, or the task was skipped), a half-typed number from the
-  // previous task has no business surviving onto this one.
+  // was applied, or the item was skipped), a half-typed number from the
+  // previous card has no business surviving onto this one.
   useEffect(() => {
     setCustomOpen(false);
     setCustomText('');
     setCustomUnit('min');
-  }, [current?.id]);
+  }, [currentId]);
 
-  const chooseField = (id: BackfillFieldId) => {
+  const chooseTaskField = (id: BackfillFieldId) => {
     haptics.tap();
-    setActiveField(id);
+    setActive({ kind: 'task', id });
     setSkippedIds(new Set());
     setSessionTotal(backfillCandidates(tasks, id).length);
   };
 
+  const chooseCategoryField = (id: CategoryBackfillFieldId) => {
+    haptics.tap();
+    setActive({ kind: 'category', id });
+    setSkippedIds(new Set());
+    setSessionTotal(categoryBackfillCandidates(categories, id).length);
+  };
+
   const backToFields = () => {
     haptics.tap();
-    setActiveField(null);
+    setActive(null);
   };
 
   const apply = (patch: Partial<Task>) => {
-    if (!current) return;
+    if (!currentTask) return;
     haptics.tap();
     animateLayout();
-    updateTask(current.id, patch);
+    updateTask(currentTask.id, patch);
+  };
+
+  // The category store has no generic "patch a category" setter (see
+  // useCategoryStore) — each field already owns a dedicated one, matching
+  // how CategoryEditor itself writes them, so this just dispatches to it.
+  const applyCategory = () => {
+    if (!currentCategory || active?.kind !== 'category') return;
+    haptics.tap();
+    animateLayout();
+    switch (active.id) {
+      case 'vacation': setCategoryHideOnVacation(currentCategory.name, true); break;
+      case 'suggestions': setCategoryExcludeFromSuggestions(currentCategory.name, true); break;
+      case 'newBanner': setCategoryExcludeFromNewTasksBanner(currentCategory.name, true); break;
+    }
   };
 
   const skip = () => {
-    if (!current) return;
+    if (!currentId) return;
     haptics.tap();
     animateLayout();
-    setSkippedIds(prev => new Set(prev).add(current.id));
+    setSkippedIds(prev => new Set(prev).add(currentId));
   };
 
-  // Unlike skip, this is a written, permanent decision about the task —
+  // Unlike skip, this is a written, permanent decision about the item —
   // "this one genuinely doesn't need a time estimate" — so it goes through
-  // updateTask rather than the session-only skippedIds, and the task never
-  // comes back into this field's queue, in this session or any other.
+  // updateTask/the category store rather than the session-only skippedIds,
+  // and the item never comes back into this field's queue, in this session
+  // or any other.
   const dismiss = () => {
-    if (!current || !activeField) return;
+    if (!active) return;
     haptics.tap();
     animateLayout();
-    updateTask(current.id, dismissBackfillField(current, activeField));
+    if (active.kind === 'task') {
+      if (!currentTask) return;
+      updateTask(currentTask.id, dismissBackfillField(currentTask, active.id));
+    } else {
+      if (!currentCategory) return;
+      setCategoryBackfillDismissedFields(
+        currentCategory.name,
+        dismissCategoryBackfillField(currentCategory, active.id).backfillDismissedFields
+      );
+    }
   };
 
   // iOS's number-pad keyboard has no return key (see NumberPadAccessory), so
@@ -147,99 +221,203 @@ export function BackfillScreen() {
     apply({ effort: minutesToEffort(minutes), estimatedMinutes: minutes });
   };
 
-  if (!activeField) {
+  if (!active) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <ScreenHeader title="Backfill" subtitle="Choose a field to fill in, one task at a time" />
-        <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
-          {BACKFILL_FIELDS.map(field => {
-            const count = counts[field.id];
-            return (
-              <TouchableOpacity
-                key={field.id}
-                style={[styles.fieldRow, shadows.card]}
-                onPress={() => chooseField(field.id)}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="button"
-                accessibilityLabel={`${field.label}, ${count === 0 ? 'every task already has one' : `${count} ${count === 1 ? 'task needs' : 'tasks need'} one`}`}
-              >
-                <View style={styles.fieldIcon}>
-                  <Ionicons name={FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
-                </View>
-                <View style={styles.fieldBody}>
-                  <Text style={styles.fieldLabel}>{field.label}</Text>
-                  <Text style={styles.fieldHint}>{field.hint}</Text>
-                  <Text style={count === 0 ? styles.fieldCountDone : styles.fieldCount}>
-                    {count === 0 ? 'Every task already has one' : `${count} ${count === 1 ? 'task needs' : 'tasks need'} one`}
-                  </Text>
-                </View>
-                <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
-              </TouchableOpacity>
-            );
-          })}
-        </ScrollView>
+        <ScreenHeader title="Backfill" subtitle="Choose a field to fill in, one item at a time" />
+        <View style={styles.entitySwitch}>
+          <SegmentedControl label="Backfill scope" surface="page" value={entityKind} onChange={setEntityKind} options={ENTITY_KIND_SEGMENTS} />
+        </View>
+        {entityKind === 'task' ? (
+          <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
+            {BACKFILL_FIELDS.map(field => {
+              const count = taskCounts[field.id];
+              return (
+                <TouchableOpacity
+                  key={field.id}
+                  style={[styles.fieldRow, shadows.card]}
+                  onPress={() => chooseTaskField(field.id)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${field.label}, ${count === 0 ? 'every task already has one' : `${count} ${count === 1 ? 'task needs' : 'tasks need'} one`}`}
+                >
+                  <View style={styles.fieldIcon}>
+                    <Ionicons name={FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
+                  </View>
+                  <View style={styles.fieldBody}>
+                    <Text style={styles.fieldLabel}>{field.label}</Text>
+                    <Text style={styles.fieldHint}>{field.hint}</Text>
+                    <Text style={count === 0 ? styles.fieldCountDone : styles.fieldCount}>
+                      {count === 0 ? 'Every task already has one' : `${count} ${count === 1 ? 'task needs' : 'tasks need'} one`}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        ) : (
+          <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
+            {CATEGORY_BACKFILL_FIELDS.map(field => {
+              const count = categoryCounts[field.id];
+              return (
+                <TouchableOpacity
+                  key={field.id}
+                  style={[styles.fieldRow, shadows.card]}
+                  onPress={() => chooseCategoryField(field.id)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${field.label}, ${count === 0 ? 'every category already has this on' : `${count} ${count === 1 ? "category hasn't" : "categories haven't"} turned this on`}`}
+                >
+                  <View style={styles.fieldIcon}>
+                    <Ionicons name={CATEGORY_FIELD_ICONS[field.id].row} size={iconSize.md} color={colors.accent} />
+                  </View>
+                  <View style={styles.fieldBody}>
+                    <Text style={styles.fieldLabel}>{field.label}</Text>
+                    <Text style={styles.fieldHint}>{field.hint}</Text>
+                    <Text style={count === 0 ? styles.fieldCountDone : styles.fieldCount}>
+                      {count === 0 ? 'Every category already has this on' : `${count} ${count === 1 ? "category hasn't" : "categories haven't"} turned this on`}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        )}
       </View>
     );
   }
 
-  const field = BACKFILL_FIELDS.find(f => f.id === activeField)!;
-  const doneCount = Math.max(0, sessionTotal - queue.length);
+  const doneCount = Math.max(0, sessionTotal - queueLength);
+
+  if (active.kind === 'task') {
+    const field = BACKFILL_FIELDS.find(f => f.id === active.id)!;
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <DetailHeader title={field.label} onBack={backToFields} backAccessibilityLabel="Back to fields" />
+        {sessionTotal > 0 && (
+          <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+        )}
+
+        {currentTask ? (
+          <ScrollView
+            contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={[styles.itemCard, shadows.card]}>
+              <Text style={styles.itemTitle} numberOfLines={3}>{displayTitleFor(currentTask)}</Text>
+              {!!currentTask.notes.trim() && (
+                <Text style={styles.itemNotes} numberOfLines={2}>{currentTask.notes.trim()}</Text>
+              )}
+              <TaskContextRow
+                task={currentTask}
+                categoryLabel={currentTask.category ? categoryLabel(currentTask.category, getCategoryByName) : null}
+                projectTitle={currentTask.projectId ? projectNamesById.get(currentTask.projectId) ?? null : null}
+                colors={colors}
+                styles={styles}
+              />
+            </View>
+
+            <FieldControl
+              field={active.id}
+              colors={colors}
+              styles={styles}
+              onEstimate={e => apply(estimatePatchFor(e))}
+              onPriority={p => apply({ priority: p })}
+              onCategory={name => apply({ category: name })}
+              onStreak={() => apply({ showStreak: true })}
+              onVacation={() => apply({ vacationPause: true })}
+              customOpen={customOpen}
+              customText={customText}
+              customUnit={customUnit}
+              onOpenCustom={() => setCustomOpen(true)}
+              onCustomTextChange={setCustomText}
+              onCustomUnitChange={setCustomUnit}
+              onCustomSubmit={applyCustomEstimate}
+            />
+
+            <View style={styles.actionRow}>
+              <PressableScale style={styles.skipButton} onPress={skip} accessibilityRole="button" accessibilityLabel="Skip this task for now">
+                <Text style={styles.skipText}>Skip for now</Text>
+              </PressableScale>
+              <PressableScale
+                style={styles.skipButton}
+                onPress={dismiss}
+                accessibilityRole="button"
+                accessibilityLabel={`Leave ${field.label.toLowerCase()} unset for this task and don't ask again`}
+              >
+                <Text style={styles.skipText}>Leave {field.label.toLowerCase()} unset</Text>
+              </PressableScale>
+            </View>
+          </ScrollView>
+        ) : (
+          <EmptyState
+            icon="checkmark-circle-outline"
+            title="All caught up"
+            subtitle={`Every task has a ${field.label.toLowerCase()} now. Pick another field to keep going.`}
+            actionLabel="Choose another field"
+            onAction={backToFields}
+            bottomOffset={tabBarHeight}
+          />
+        )}
+        <NumberPadAccessory />
+      </View>
+    );
+  }
+
+  const categoryField = CATEGORY_BACKFILL_FIELDS.find(f => f.id === active.id)!;
+  const currentCategoryTaskCount = currentCategory
+    ? tasks.filter(t => t.category === currentCategory.name && !t.completed && !t.archived).length
+    : 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <DetailHeader title={field.label} onBack={backToFields} backAccessibilityLabel="Back to fields" />
+      <DetailHeader title={categoryField.label} onBack={backToFields} backAccessibilityLabel="Back to fields" />
       {sessionTotal > 0 && (
         <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
       )}
 
-      {current ? (
+      {currentCategory ? (
         <ScrollView
           contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={[styles.taskCard, shadows.card]}>
-            <Text style={styles.taskTitle} numberOfLines={3}>{displayTitleFor(current)}</Text>
-            {!!current.notes.trim() && (
-              <Text style={styles.taskNotes} numberOfLines={2}>{current.notes.trim()}</Text>
-            )}
-            <TaskContextRow
-              task={current}
-              categoryLabel={current.category ? categoryLabel(current.category, getCategoryByName) : null}
-              projectTitle={current.projectId ? projectNamesById.get(current.projectId) ?? null : null}
-              colors={colors}
-              styles={styles}
-            />
+          <View style={[styles.itemCard, shadows.card]}>
+            <Text style={styles.itemTitle} numberOfLines={2}>
+              {currentCategory.emoji ? `${currentCategory.emoji} ${currentCategory.name}` : currentCategory.name}
+            </Text>
+            <View style={styles.metaRow}>
+              <View style={styles.metaChip}>
+                <Ionicons name="checkbox-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.metaText} numberOfLines={1}>
+                  {currentCategoryTaskCount} {currentCategoryTaskCount === 1 ? 'task' : 'tasks'}
+                </Text>
+              </View>
+            </View>
           </View>
 
-          <FieldControl
-            field={activeField}
-            colors={colors}
-            styles={styles}
-            onEstimate={e => apply(estimatePatchFor(e))}
-            onPriority={p => apply({ priority: p })}
-            onCategory={name => apply({ category: name })}
-            onStreak={() => apply({ showStreak: true })}
-            onVacation={() => apply({ vacationPause: true })}
-            customOpen={customOpen}
-            customText={customText}
-            customUnit={customUnit}
-            onOpenCustom={() => setCustomOpen(true)}
-            onCustomTextChange={setCustomText}
-            onCustomUnitChange={setCustomUnit}
-            onCustomSubmit={applyCustomEstimate}
-          />
+          <PressableScale
+            style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+            onPress={applyCategory}
+            accessibilityRole="button"
+            accessibilityLabel={categoryField.label}
+          >
+            <Ionicons name={CATEGORY_FIELD_ICONS[active.id].button} size={iconSize.md} color={colors.onAccent} />
+            <Text style={styles.toggleButtonText}>{categoryField.label}</Text>
+          </PressableScale>
 
           <View style={styles.actionRow}>
-            <PressableScale style={styles.skipButton} onPress={skip} accessibilityRole="button" accessibilityLabel="Skip this task for now">
+            <PressableScale style={styles.skipButton} onPress={skip} accessibilityRole="button" accessibilityLabel="Skip this category for now">
               <Text style={styles.skipText}>Skip for now</Text>
             </PressableScale>
             <PressableScale
               style={styles.skipButton}
               onPress={dismiss}
               accessibilityRole="button"
-              accessibilityLabel={`Leave ${field.label.toLowerCase()} unset for this task and don't ask again`}
+              accessibilityLabel={`Leave "${categoryField.label}" off for this category and don't ask again`}
             >
-              <Text style={styles.skipText}>Leave {field.label.toLowerCase()} unset</Text>
+              <Text style={styles.skipText}>Leave this off</Text>
             </PressableScale>
           </View>
         </ScrollView>
@@ -247,13 +425,12 @@ export function BackfillScreen() {
         <EmptyState
           icon="checkmark-circle-outline"
           title="All caught up"
-          subtitle={`Every task has a ${field.label.toLowerCase()} now. Pick another field to keep going.`}
+          subtitle="Every category already has this set. Pick another field to keep going."
           actionLabel="Choose another field"
           onAction={backToFields}
           bottomOffset={tabBarHeight}
         />
       )}
-      <NumberPadAccessory />
     </View>
   );
 }
@@ -458,6 +635,8 @@ function FieldControl({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
 
+  entitySwitch: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+
   fieldList: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm },
   fieldRow: {
     flexDirection: 'row',
@@ -491,14 +670,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
 
   reviewContent: { paddingHorizontal: spacing.md, paddingTop: spacing.md, gap: spacing.lg },
-  taskCard: {
+  // Shared by both the task card and the category card on the per-item
+  // review step — entity-agnostic layout, no task-specific meaning.
+  itemCard: {
     padding: spacing.md,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
     gap: spacing.xs,
   },
-  taskTitle: { color: colors.text, fontSize: font.lg, lineHeight: lineHeight.lg, fontWeight: fontWeight.semibold },
-  taskNotes: { color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm },
+  itemTitle: { color: colors.text, fontSize: font.lg, lineHeight: lineHeight.lg, fontWeight: fontWeight.semibold },
+  itemNotes: { color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm },
   // Wraps rather than squeezing, same call ArchivedRow's own meta row makes —
   // a task carrying a schedule, a category and a project has more than fits
   // on one line at 390pt.

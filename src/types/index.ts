@@ -49,6 +49,14 @@ export interface Category {
   defaultTimeSegments: TimeOfDay[];
   sortOrder: number;
   emoji: string | null;            // shown in place of the folder icon, and prefixed to the name wherever it appears
+  /**
+   * Which Backfill fields (see `src/utils/categoryBackfill.ts`) this category
+   * has been told to stop asking about — same mechanism and same reasoning as
+   * `Task.backfillDismissedFields`, holding `CategoryBackfillFieldId` values
+   * as plain strings since a `Category` field can't depend on a type from
+   * `src/utils`.
+   */
+  backfillDismissedFields: string[];
 }
 
 // A category for grouping PROJECTS on the Projects page (e.g. "Travel",

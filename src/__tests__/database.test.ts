@@ -1564,6 +1564,7 @@ describe('Categories', () => {
       defaultTimeSegments: ['evening'],
       sortOrder: 3,
       emoji: '🏠',
+      backfillDismissedFields: ['vacation'],
     };
     dbInsertCategoryRow(category);
     expect(dbGetAllCategories()).toEqual([category]);
