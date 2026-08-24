@@ -30,6 +30,17 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
   },
 ];
 
+export interface BackfillCandidatesOptions {
+  /**
+   * Redo-from-scratch mode: include every live task for the field, not just
+   * ones missing a value or previously dismissed. A task's value is only
+   * ever touched when the user actually sets a new one for it in the
+   * screen's review loop, so turning this on doesn't clear anything by
+   * itself — it just widens which tasks get walked.
+   */
+  fromScratch?: boolean;
+}
+
 /** Whether `task` still needs a value for `fieldId` — the backfill queue's inclusion test. */
 export function isFieldMissing(task: Task, fieldId: BackfillFieldId): boolean {
   switch (fieldId) {
@@ -58,11 +69,15 @@ export function isBackfillDismissed(task: Task, fieldId: BackfillFieldId): boole
 // estimatedMinutesFor's chain-step note and the module-map entry for
 // visibilityUtils on why subtasks are excluded from top-level task lists
 // throughout the app).
-export function backfillCandidates(tasks: Task[], fieldId: BackfillFieldId): Task[] {
+export function backfillCandidates(
+  tasks: Task[],
+  fieldId: BackfillFieldId,
+  opts: BackfillCandidatesOptions = {}
+): Task[] {
   return tasks
     .filter(t =>
       !t.parentId && !t.completed && !t.archived &&
-      isFieldMissing(t, fieldId) && !isBackfillDismissed(t, fieldId)
+      (opts.fromScratch || (isFieldMissing(t, fieldId) && !isBackfillDismissed(t, fieldId)))
     )
     .sort((a, b) => a.title.localeCompare(b.title));
 }
