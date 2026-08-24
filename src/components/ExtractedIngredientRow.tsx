@@ -7,10 +7,13 @@ import {
   type Colors,
 } from '../theme';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH } from '../types';
+import type { GroceryItem } from '../types';
 import type { RecipeGroceryItem } from '../services/aiSuggestions';
 import { InlineEditableText } from './InlineEditableText';
 import { PillGroup } from './PillGroup';
+import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { type PendingEdits } from '../hooks/usePendingEdits';
+import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 
@@ -29,6 +32,8 @@ interface Props {
   onEditSection: (section: string | null) => void;
   /** Every section label already in play — this recipe's own plus this import's — offered as picks before falling back to typing a new one. */
   existingSections: string[];
+  /** The grocery catalog, searched by the link picker below — see its own doc comment. */
+  catalogItems: readonly GroceryItem[];
   sectionHeader?: string | null;
   /**
    * Why this row arrived unticked, when something other than the user unticked
@@ -67,13 +72,23 @@ interface Props {
  */
 export function ExtractedIngredientRow({
   row, edits, index, checked, onToggle, onEditName, onEditQuantity, onEditSection,
-  existingSections, sectionHeader, note,
+  existingSections, catalogItems, sectionHeader, note,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   // Local, not lifted: which row's section picker is open is throwaway UI
   // state, not something the sheet needs to know about.
   const [sectionOpen, setSectionOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
+
+  // Whether this line, as currently named, already resolves to a real row —
+  // nameKey is always derived from name (see CatalogLinkPicker's own doc
+  // comment), so this is the same lookup the store does on save, run early so
+  // the icon can say which way this line is headed.
+  const linkedItem = useMemo(
+    () => catalogItems.find(i => i.nameKey === groceryNameKey(row.name)) ?? null,
+    [catalogItems, row.name]
+  );
 
   return (
     <>
@@ -124,6 +139,22 @@ export function ExtractedIngredientRow({
         )}
 
         <TouchableOpacity
+          onPress={() => { haptics.tap(); animateLayout(); setLinkOpen(v => !v); }}
+          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: linkOpen }}
+          accessibilityLabel={
+            linkedItem ? `Linked to ${linkedItem.name} in your groceries` : 'Link to an existing item'
+          }
+        >
+          <Ionicons
+            name={linkedItem ? 'link' : 'link-outline'}
+            size={iconSize.sm}
+            color={linkedItem ? colors.purple : colors.textTertiary}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
           onPress={() => { haptics.tap(); animateLayout(); setSectionOpen(v => !v); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
           accessibilityRole="button"
@@ -138,8 +169,27 @@ export function ExtractedIngredientRow({
         </TouchableOpacity>
       </View>
 
+      {linkOpen && (
+        <View style={styles.expandedCard}>
+          <CatalogLinkPicker
+            items={catalogItems}
+            initialQuery={row.name}
+            excludeItemId={linkedItem?.id}
+            onPick={item => {
+              onEditName(item.name);
+              animateLayout();
+              setLinkOpen(false);
+            }}
+          />
+          <Text style={styles.expandedHint}>
+            Renames this line to match, so it lands on the item you already have instead of a
+            new one.
+          </Text>
+        </View>
+      )}
+
       {sectionOpen && (
-        <View style={styles.sectionPicker}>
+        <View style={styles.expandedCard}>
           <PillGroup
             noun="section"
             surface="card"
@@ -172,7 +222,7 @@ export function ExtractedIngredientRow({
               })),
             ]}
           />
-          <Text style={styles.sectionHint}>
+          <Text style={styles.expandedHint}>
             Puts this ingredient under a heading, like “For the cake” or “For the frosting”.
           </Text>
         </View>
@@ -214,7 +264,7 @@ function makeStyles(colors: Colors) {
       justifyContent: 'center',
     },
     checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
-    sectionPicker: {
+    expandedCard: {
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
       marginTop: -2,
@@ -223,7 +273,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.sm,
       paddingBottom: spacing.sm,
     },
-    sectionHint: {
+    expandedHint: {
       fontSize: font.xs,
       color: colors.textTertiary,
       paddingHorizontal: spacing.xs,

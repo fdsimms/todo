@@ -116,6 +116,7 @@ export function RecipeCreateSheet({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
@@ -710,6 +711,7 @@ export function RecipeCreateSheet({
               onEditQuantity={quantity => editIngredient(i, { quantity })}
               onEditSection={section => editIngredient(i, { section })}
               existingSections={existingSections}
+              catalogItems={groceryItems}
               sectionHeader={sectionHeader}
               note={coveredBy ? `made from the ${coveredBy} recipe` : null}
             />
