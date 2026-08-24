@@ -5,6 +5,7 @@ import {
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
+  dbRepointStoreAliases,
   dbFinishGroceryShopping,
   dbClearGroceryList,
   dbGetGroceryAisleOrder,
@@ -2028,6 +2029,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       }
       for (const link of mergedShopLinks) dbSetItemShopLink(link);
       for (const link of finalRetargetedSubs) dbSetItemSubLink(link);
+      // Also before the cascade, and for the same reason the products are: a
+      // receipt phrase taught for the loser is still what that store prints
+      // for what is now one item, and dbDeleteGroceryItem would take it. No
+      // collision to resolve — see dbRepointStoreAliases.
+      dbRepointStoreAliases(fromId, intoId);
       // Cascades whatever's left still pointing at fromId — the rows worth
       // keeping were already moved onto intoId above, so this only clears
       // the old fromId-keyed copies and the item row itself.
@@ -2054,6 +2060,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         ...mergedProducts,
         ...s.itemProducts.filter(p => p.itemId !== fromId && p.itemId !== intoId),
       ],
+      // Mirrors the re-point above rather than dropping them, which is what
+      // the cascade would have done: these rows survive, pointing at the
+      // survivor.
+      storeAliases: s.storeAliases.map(a => (a.itemId === fromId ? { ...a, itemId: intoId } : a)),
       cartHoldIds: s.cartHoldIds.filter(x => x !== fromId),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));

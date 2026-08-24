@@ -12,6 +12,7 @@ import {
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
+  dbRepointStoreAliases,
   dbFinishGroceryShopping,
   dbClearGroceryList,
   dbGetAllGroceryShops,
@@ -71,6 +72,7 @@ jest.mock('../db/database', () => ({
   dbGetAllItemProducts: jest.fn(() => []),
   dbGetAllStoreAliases: jest.fn(() => []),
   dbSetStoreAlias: jest.fn(),
+  dbRepointStoreAliases: jest.fn(),
   dbSetItemProduct: jest.fn(),
   dbSetProductGtin: jest.fn(),
   dbDeleteItemProduct: jest.fn(),
@@ -3027,6 +3029,54 @@ describe('mergeItems', () => {
     useGroceryStore.getState().mergeItems(coriander.id, cilantro.id);
 
     expect(useUpTaskFor(coriander.id)).toBeUndefined();
+  });
+});
+
+describe('mergeItems keeps receipt aliases', () => {
+  // The loser's phrases used to go down with it: nothing re-pointed them, and
+  // dbDeleteGroceryItem cascades grocery_store_aliases by item_id. What a
+  // store's printer calls cilantro is still what it calls the merged row.
+  const alias = (id: string, itemId: string, rawKey: string): StoreAlias => ({
+    id, shopId: 'shop-1', rawKey, itemId, hitCount: 3,
+    createdAt: '2026-01-01T00:00:00.000Z', lastUsedAt: '2026-06-01T00:00:00.000Z',
+  });
+
+  it('re-points them onto the survivor rather than letting the cascade take them', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    seed([cilantro, coriander], {
+      storeAliases: [alias('a1', cilantro.id, 'grn onion'), alias('a2', coriander.id, 'corndr')],
+    });
+
+    expect(useGroceryStore.getState().mergeItems(cilantro.id, coriander.id)).toBe(true);
+
+    // Re-pointed in SQLite before the cascade runs, or the row is gone by then.
+    expect(dbRepointStoreAliases).toHaveBeenCalledWith(cilantro.id, coriander.id);
+    const order = (fn: jest.Mock) => fn.mock.invocationCallOrder[0];
+    expect(order(dbRepointStoreAliases as jest.Mock))
+      .toBeLessThan(order(dbDeleteGroceryItem as jest.Mock));
+
+    // ...and mirrored in memory, so the store doesn't hold a phrase pointing at
+    // a row it has just dropped.
+    const after = useGroceryStore.getState().storeAliases;
+    expect(after).toHaveLength(2);
+    expect(after.every(a => a.itemId === coriander.id)).toBe(true);
+    expect(after.map(a => a.rawKey).sort()).toEqual(['corndr', 'grn onion']);
+  });
+
+  it('leaves a third item’s phrases alone', () => {
+    const cilantro = makeItem({ name: 'Cilantro' });
+    const coriander = makeItem({ name: 'Coriander' });
+    const bread = makeItem({ name: 'Bread' });
+    seed([cilantro, coriander, bread], {
+      storeAliases: [alias('a1', cilantro.id, 'grn onion'), alias('a3', bread.id, 'wht loaf')],
+    });
+
+    useGroceryStore.getState().mergeItems(cilantro.id, coriander.id);
+
+    const byId = new Map(useGroceryStore.getState().storeAliases.map(a => [a.id, a.itemId]));
+    expect(byId.get('a1')).toBe(coriander.id);
+    expect(byId.get('a3')).toBe(bread.id);
   });
 });
 

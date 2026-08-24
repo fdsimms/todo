@@ -57,6 +57,9 @@ import {
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
+  dbRepointStoreAliases,
+  dbSetStoreAlias,
+  dbGetAllStoreAliases,
   dbFinishGroceryShopping,
   dbGetAllItemShopLinks,
   dbInsertGroceryShop,
@@ -2220,6 +2223,52 @@ describe('grocery items', () => {
     dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
     dbDeleteGroceryItem('g1');
     expect(dbGetAllGroceryItems()).toEqual([]);
+  });
+
+  describe('receipt aliases', () => {
+    const alias = (id: string, itemId: string, rawKey: string, shopId = 'shop-1') => ({
+      id, shopId, rawKey, itemId, hitCount: 1,
+      createdAt: '2026-01-01T00:00:00.000Z', lastUsedAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    it('goes with the item it was taught for', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cilantro' }));
+      dbSetStoreAlias(alias('a1', 'g1', 'grn onion'));
+
+      dbDeleteGroceryItem('g1');
+
+      expect(dbGetAllStoreAliases()).toEqual([]);
+    });
+
+    // Which is why mergeItems re-points first — see dbRepointStoreAliases.
+    it('survives the merge cascade when re-pointed first', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cilantro' }));
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Coriander' }));
+      dbSetStoreAlias(alias('a1', 'g1', 'grn onion'));
+      dbSetStoreAlias(alias('a2', 'g2', 'corndr'));
+
+      dbRepointStoreAliases('g1', 'g2');
+      dbDeleteGroceryItem('g1');
+
+      const after = dbGetAllStoreAliases();
+      expect(after).toHaveLength(2);
+      expect(after.every(a => a.itemId === 'g2')).toBe(true);
+      expect(after.map(a => a.rawKey).sort()).toEqual(['corndr', 'grn onion']);
+    });
+
+    it('leaves other items alone', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cilantro' }));
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Coriander' }));
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g3', name: 'Bread' }));
+      dbSetStoreAlias(alias('a1', 'g1', 'grn onion'));
+      dbSetStoreAlias(alias('a3', 'g3', 'wht loaf'));
+
+      dbRepointStoreAliases('g1', 'g2');
+
+      const byId = new Map(dbGetAllStoreAliases().map(a => [a.id, a.itemId]));
+      expect(byId.get('a1')).toBe('g2');
+      expect(byId.get('a3')).toBe('g3');
+    });
   });
 
   describe('substitute links', () => {

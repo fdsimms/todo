@@ -3113,6 +3113,26 @@ export function dbDeleteStoreAlias(id: string): void {
   db.runSync('DELETE FROM grocery_store_aliases WHERE id = ?', [id]);
 }
 
+/**
+ * Hands every phrase taught for one item over to another — `mergeItems`, whose
+ * cascade would otherwise take the loser's aliases with it. What a receipt
+ * prints for cilantro is still what it prints once cilantro and coriander are
+ * one row.
+ *
+ * **No collision handling, and none is possible**: `(shop_id, raw_key)` is
+ * unique across the whole table, not per item, so one phrase at one store
+ * already means exactly one thing. The loser and the survivor cannot both hold
+ * it, and a plain re-point can't violate the index.
+ *
+ * Not `dbSetStoreAlias`, which upserts on that pair and bumps `hit_count` — it
+ * records a *confirmation*, and a merge is not one. Deliberately keyed on
+ * `item_id` rather than taking rows, so it can't miss one the store's copy
+ * hadn't loaded.
+ */
+export function dbRepointStoreAliases(fromId: string, intoId: string): void {
+  db.runSync('UPDATE grocery_store_aliases SET item_id = ? WHERE item_id = ?', [intoId, fromId]);
+}
+
 // ─── Barcode lookups ────────────────────────────────────────────────────────
 
 function rowToGtinLookup(row: Record<string, unknown>): GtinLookup {

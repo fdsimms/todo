@@ -1,0 +1,4 @@
+{
+  "message": "Merging two grocery items no longer forgets the receipt shorthand you'd taught for the one that went away. Both items' printed names now point at the merged row.",
+  "date": "2026-08-24"
+}
