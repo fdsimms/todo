@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the Later screen briefly showing \"Nothing deferred\" and a loading footer at the same time when you switch to it",
+  "date": "2026-08-24"
+}

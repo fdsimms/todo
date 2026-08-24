@@ -2772,10 +2772,18 @@ export function TodayScreen() {
   );
 
   const laterData = useMemo(() => flattenLaterSections(visibleLaterSections), [visibleLaterSections]);
+  // Synced during render (comparing against a ref), same as Today's own
+  // draggableData above — a useEffect sync lands a frame late, which is what
+  // made switching to Later always flash "Nothing deferred" (the stale,
+  // still-empty laterDraggableData from before the switch) alongside a
+  // correctly-computed "Loading more" footer (already reflecting the real,
+  // paginated laterData) for one frame before the effect caught up.
   const [laterDraggableData, setLaterDraggableData] = useState<LaterListItem[]>(laterData);
-  useEffect(() => {
+  const syncedLaterDataRef = useRef(laterData);
+  if (syncedLaterDataRef.current !== laterData) {
+    syncedLaterDataRef.current = laterData;
     setLaterDraggableData(laterData);
-  }, [laterData]);
+  }
 
   // One zone per row, keyed the same way ReorderableList's own keyExtractor
   // reads them (item.key) — see laterDropZones for what a header/subheader/
