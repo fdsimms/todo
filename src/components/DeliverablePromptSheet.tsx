@@ -150,11 +150,12 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start(() => {
-      // A date answers through the calendar, so there's no field to focus and
-      // no keyboard wanted.
-      if (kind !== 'date') inputRef.current?.focus();
-    });
+    ]).start();
+    // Focus (and the keyboard's own slide-up) starts alongside the sheet
+    // animation rather than after it, so the keyboard is up sooner — same
+    // fix as QuickAddModal's (#1210). A date answers through the calendar,
+    // so there's no field to focus and no keyboard wanted.
+    if (kind !== 'date') inputRef.current?.focus();
   }, [visible, task.id]);
 
   const dismiss = (after: () => void) => {

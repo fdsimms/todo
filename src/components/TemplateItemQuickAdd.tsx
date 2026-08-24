@@ -127,11 +127,11 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
       Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start(() => {
-      // Focus is deferred until the sheet has settled so the keyboard's own
-      // slide-up doesn't fight the sheet's entrance.
-      inputRef.current?.focus();
-    });
+    ]).start();
+    // Focus (and the keyboard's own slide-up) starts alongside the sheet
+    // animation rather than after it, so the keyboard is up sooner — same
+    // fix as QuickAddModal's (#1210).
+    inputRef.current?.focus();
   }, [visible]);
 
   /** Fades the sheet out, closes it, then runs `after` — see the note above. */

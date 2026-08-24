@@ -79,11 +79,11 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
       Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start(() => {
-      // Focus is deferred until the card has settled so the keyboard's own
-      // slide-up doesn't fight the entrance.
-      fieldRef.current?.focus();
-    });
+    ]).start();
+    // Focus (and the keyboard's own slide-up) starts alongside the card
+    // animation rather than after it, so the keyboard is up sooner — same
+    // fix as QuickAddModal's (#1210).
+    fieldRef.current?.focus();
   }, [visible]);
 
   const dismiss = () => {
