@@ -435,6 +435,56 @@ describe('resolveDrop', () => {
     const { groupUpdates } = resolveDrop(reordered, noUpcoming);
     expect(groupUpdates).toEqual([]);
   });
+
+  // "Hide categories" (Today's display option) drops every header out of the
+  // array before it reaches resolveDrop, so a reorder here has no header to
+  // derive a category from. Without a guard, `currentSection` stays null for
+  // the whole walk and every task is silently uncategorized — a plain reorder
+  // must instead leave every task's category exactly as it was.
+  it('leaves categories untouched when the drop has no category headers (hide categories)', () => {
+    const health = makeTask({ id: 'workout', category: 'health' });
+    const work = makeTask({ id: 'standup', category: 'work' });
+    const loose = makeTask({ id: 'errand', category: null });
+    // Reordered so the previously-uncategorized task now sits first.
+    const reordered: CategoryListItem[] = [
+      { type: 'task', task: loose },
+      { type: 'task', task: work },
+      { type: 'task', task: health },
+    ];
+    const { taskOrders, categoryUpdates, settled } = resolveDrop(reordered, noUpcoming);
+    expect(taskOrders).toEqual([
+      { id: 'errand', sortOrder: 1 },
+      { id: 'standup', sortOrder: 2 },
+      { id: 'workout', sortOrder: 3 },
+    ]);
+    expect(categoryUpdates).toEqual([]);
+    // resolveDrop's own `settled` still regroups by (untouched) category, same
+    // as any other drop — it's TodayScreen's stripCategoryHeaders, applied
+    // after this, that hides the headers to match "Hide categories" (see
+    // settleWithContext in TodayScreen.tsx).
+    expect(layoutSeq(settled)).toEqual(['errand', '#health', 'workout', '#work', 'standup']);
+  });
+
+  it('leaves a dragged group’s category untouched with no headers in the drop', () => {
+    const group = makeGroup({ id: 'g1', category: 'health', sortOrder: 1 });
+    const reordered: CategoryListItem[] = [
+      { type: 'task', task: makeTask({ id: 't1', category: 'work' }) },
+      { type: 'group', group, children: [] },
+    ];
+    const { groupUpdates, settled } = resolveDrop(reordered, noUpcoming);
+    // sortOrder still shifts with drop position; only category is preserved.
+    expect(groupUpdates).toEqual([{ id: 'g1', category: 'health', sortOrder: 2 }]);
+    expect(layoutSeq(settled)).toEqual(['#health', 'g-g1', '#work', 't1']);
+  });
+
+  it('still uncategorizes when the drop is genuinely all-uncategorized (not a hide-categories effect)', () => {
+    const reordered: CategoryListItem[] = [
+      { type: 'task', task: makeTask({ id: 'a', category: null }) },
+      { type: 'task', task: makeTask({ id: 'b', category: null }) },
+    ];
+    const { categoryUpdates } = resolveDrop(reordered, noUpcoming);
+    expect(categoryUpdates).toEqual([]);
+  });
 });
 
 // A single-segment-per-day helper: no sub-header, since there's nothing
