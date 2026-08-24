@@ -609,7 +609,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           onClear={source.trim() ? () => { setSourceDraft(''); setSourceOpen(false); } : undefined}
         />
         {sourceOpen && (
-          <View style={styles.pillRow}>
+          <View style={[styles.pillRow, styles.pillRowSpaced]}>
             {RECIPE_SOURCE_TYPES.map(type => (
               <TouchableOpacity
                 key={type}
@@ -812,6 +812,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   tagSuggestionText: { color: colors.textSecondary, fontSize: font.xs },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingBottom: spacing.sm },
+  // Only for Source, which sits directly under its EditorRow — Meal type's
+  // use is inside a CollapsibleField, which already spaces its own children.
+  pillRowSpaced: { paddingTop: spacing.sm },
   pill: {
     paddingHorizontal: 14,
     paddingVertical: 8,

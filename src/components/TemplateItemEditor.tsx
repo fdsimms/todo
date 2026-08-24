@@ -1398,7 +1398,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   anchorRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   timePill: {
     flex: 1, paddingVertical: 7, borderRadius: radius.full,

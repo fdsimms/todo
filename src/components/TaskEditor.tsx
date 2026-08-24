@@ -3541,7 +3541,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               onClear={phoneNumber ? () => { setPhoneNumber(null); setPhoneText(''); setShowPhoneField(false); } : undefined}
             />
             {showPhoneField && (
-              <View style={styles.linkCustomRow}>
+              <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
                 <Ionicons name="call-outline" size={16} color={colors.textSecondary} />
                 <TextInput
                   style={styles.linkCustomInput}
@@ -3591,7 +3591,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               onClear={emailAddress ? () => { setEmailAddress(null); setEmailText(''); setShowEmailField(false); } : undefined}
             />
             {showEmailField && (
-              <View style={styles.linkCustomRow}>
+              <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
                 <Ionicons name="mail-outline" size={16} color={colors.textSecondary} />
                 <TextInput
                   style={styles.linkCustomInput}
@@ -3965,7 +3965,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Lifts an InlineAction off the list it appends to, and keeps it from stretching in a column. */
   addBtnSpacing: { marginTop: spacing.sm, alignSelf: 'flex-start' },
-  blocksBlock: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  blocksBlock: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm },
   blocksRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,
@@ -4006,7 +4006,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   unitToggle: { width: 104 },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   timePill: {
     flex: 1, paddingVertical: 7, borderRadius: radius.full,
@@ -4017,12 +4017,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   timePillTextActive: { color: colors.bg, fontWeight: '600' },
   windowPillRow: {
     flexDirection: 'row', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   windowPill: { flex: 1 },
   targetStepperRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.xs,
   },
   targetStepperCaption: {
     color: colors.textSecondary, fontSize: font.sm,
@@ -4044,7 +4044,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   linkAppChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -4058,6 +4058,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
+  // Only for Phone/Email, where this is the first thing under the row: Link's
+  // own use sits below `linkPickerRow`, whose paddingBottom already spaces it.
+  linkCustomRowSpaced: { paddingTop: spacing.md },
   linkCustomInput: {
     flex: 1, color: colors.text, fontSize: font.sm,
     borderBottomWidth: 1, borderBottomColor: colors.accent,
