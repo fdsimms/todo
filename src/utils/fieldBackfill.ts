@@ -41,11 +41,30 @@ export interface BackfillCandidatesOptions {
   fromScratch?: boolean;
 }
 
-/** Whether `task` still needs a value for `fieldId` — the backfill queue's inclusion test. */
+/**
+ * Whether `task` still needs a value for `fieldId` — the backfill queue's
+ * inclusion test. Also doubles as "is this task even worth asking about" for
+ * `estimate`: a task the wizard has no honest way to size (see the
+ * `groceryUseUp`/`leftoverUseUp` case below) reads as not-missing rather than
+ * as a question with no good answer.
+ */
 export function isFieldMissing(task: Task, fieldId: BackfillFieldId): boolean {
   switch (fieldId) {
     case 'estimate':
-      return task.estimatedMinutes == null;
+      // "Use up X" tasks (grocery expiry, leftovers) don't share a step-type
+      // the way meal-slot chain steps do — every one names a different food
+      // with its own prep time, so there's nothing sensible to remember a
+      // duration against, and no recipe to read one from either. Asking
+      // per-item forever would be exactly the flood the meal-slot fix was
+      // for, so these are excluded outright rather than asked at all.
+      if (task.generatedKind === 'groceryUseUp' || task.generatedKind === 'leftoverUseUp') return false;
+      // The step currently showing may already carry its own duration —
+      // a recipe-backed "Cook X" step gets one from the recipe (see
+      // mealSlotChain), and a meal-slot "Choose"/"Eat" step gets one from
+      // mealSlotStepEstimates once the user has sized that step-type once.
+      // Reading task.estimatedMinutes alone would flag both as missing
+      // even though the app already knows the answer.
+      return (task.chainItems[task.chainIndex]?.estimatedMinutes ?? task.estimatedMinutes) == null;
     case 'priority':
       return task.priority === 0;
     case 'category':

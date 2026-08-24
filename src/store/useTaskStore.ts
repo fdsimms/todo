@@ -589,7 +589,10 @@ function writeMealSlotTasks(fromKey: string, toKey: string, slots: readonly Meal
       if (entry?.cookedAt) continue;
       const recipe = entry?.recipeId ? recipes.find(r => r.id === entry.recipeId) : undefined;
       useTaskStore.getState().addTask(
-        mealSlotTaskDraft(dayKey, slot, entry, category, recipe ? totalMinutes(recipe) : null),
+        mealSlotTaskDraft(
+          dayKey, slot, entry, category, recipe ? totalMinutes(recipe) : null,
+          useSettingsStore.getState().mealSlotStepEstimates
+        ),
         derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
         { skipCategoryDefault: true, skipTitleRules: true },
       );

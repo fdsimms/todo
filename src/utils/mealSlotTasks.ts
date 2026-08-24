@@ -224,18 +224,26 @@ function isAnswered(entry: MealPlanEntry | null): entry is MealPlanEntry {
  * a generic "Prepare lunch" has no recipe to read a time from), so Cook X is
  * the one step standing in for the whole act of making the dish and gets the
  * whole number.
+ *
+ * `stepEstimates` is the fallback for every step *without* a recipe to read a
+ * time from — Choose/Prepare/Eat, keyed by the same `${slot}-${key}` id the
+ * step carries (see `useSettingsStore.mealSlotStepEstimates`). These never
+ * vary meal to meal the way a recipe's cook time does, so once the user has
+ * sized one "Choose breakfast" there is no new evidence a second one could
+ * offer — every later step with that id is created already carrying the
+ * remembered value instead of asking again.
  */
 export function mealSlotChain(
   slot: MealSlot,
   entry: MealPlanEntry | null,
-  recipeMinutes: number | null = null
+  recipeMinutes: number | null = null,
+  stepEstimates: Readonly<Record<string, number>> = {}
 ): ChainItem[] {
   const lower = MEAL_SLOT_LABELS[slot].toLowerCase();
-  const step = (key: string, title: string, estimatedMinutes: number | null = null): ChainItem => ({
-    id: `${slot}-${key}`,
-    title,
-    estimatedMinutes,
-  });
+  const step = (key: string, title: string, estimatedMinutes: number | null = null): ChainItem => {
+    const id = `${slot}-${key}`;
+    return { id, title, estimatedMinutes: estimatedMinutes ?? stepEstimates[id] ?? null };
+  };
   if (!isAnswered(entry)) {
     return [
       step('choose', `Choose ${lower}`),
@@ -287,7 +295,8 @@ export function mealSlotTaskFields(
   dayKey: string,
   slot: MealSlot,
   entry: MealPlanEntry | null,
-  recipeMinutes: number | null = null
+  recipeMinutes: number | null = null,
+  stepEstimates: Readonly<Record<string, number>> = {}
 ): {
   title: string;
   dueDate: string;
@@ -296,7 +305,7 @@ export function mealSlotTaskFields(
   chainEnabled: boolean;
   chainItems: ChainItem[];
 } {
-  const chain = mealSlotChain(slot, entry, recipeMinutes);
+  const chain = mealSlotChain(slot, entry, recipeMinutes, stepEstimates);
   return {
     title: mealSlotTaskTitle(slot, entry),
     // Never null: dayKeyToDate always yields a real Date, and the offset is 0.
@@ -349,9 +358,10 @@ export function mealSlotDrift(
   dayKey: string,
   slot: MealSlot,
   entry: MealPlanEntry | null,
-  recipeMinutes: number | null = null
+  recipeMinutes: number | null = null,
+  stepEstimates: Readonly<Record<string, number>> = {}
 ): Partial<Task> | null {
-  const next = mealSlotTaskFields(dayKey, slot, entry, recipeMinutes);
+  const next = mealSlotTaskFields(dayKey, slot, entry, recipeMinutes, stepEstimates);
   const started = (task.chainIndex ?? 0) > 0;
   const updates: Partial<Task> = {};
   if (task.title !== next.title) updates.title = next.title;
@@ -389,10 +399,11 @@ export function mealSlotTaskDraft(
   slot: MealSlot,
   entry: MealPlanEntry | null,
   category: string | null = null,
-  recipeMinutes: number | null = null
+  recipeMinutes: number | null = null,
+  stepEstimates: Readonly<Record<string, number>> = {}
 ): Partial<TaskDraft> {
   return {
-    ...mealSlotTaskFields(dayKey, slot, entry, recipeMinutes),
+    ...mealSlotTaskFields(dayKey, slot, entry, recipeMinutes, stepEstimates),
     ...generatedBy('mealSlot', mealSlotSourceId(dayKey, slot)),
     chainIndex: 0,
     category,
@@ -413,4 +424,26 @@ export function completesMealSlot(
 ): boolean {
   if (!task.chainEnabled || task.chainItems.length <= 1) return true;
   return isChainFinish(task);
+}
+
+/**
+ * The id of the chain step a mealSlot-generated task is currently showing —
+ * the key `mealSlotStepEstimates` (`useSettingsStore`) remembers a per-
+ * step-type time estimate under, so sizing "Choose breakfast" once carries
+ * forward to every later "Choose breakfast" without asking again.
+ *
+ * Deliberately reads `chainItems[chainIndex]` directly rather than going
+ * through `activeChainStep` — that helper's "a single-item chain doesn't
+ * count as one" rule exists to keep a lone step from showing a chain badge
+ * in the UI, which has nothing to do with whether this step already has a
+ * duration worth remembering. A leftover/takeout answer's one-step "Eat X"
+ * needs a step id here just as much as a multi-step chain does.
+ *
+ * Null for a task this generator didn't write.
+ */
+export function activeMealSlotStepId(
+  task: Pick<Task, 'generatedKind' | 'chainIndex' | 'chainItems'>
+): string | null {
+  if (task.generatedKind !== 'mealSlot') return null;
+  return task.chainItems[task.chainIndex]?.id ?? null;
 }

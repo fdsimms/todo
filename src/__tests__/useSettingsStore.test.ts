@@ -22,7 +22,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   (dbGetSetting as jest.Mock).mockReturnValue(null);
   (loadAnthropicApiKey as jest.Mock).mockResolvedValue('');
-  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', anthropicApiKey: '', appLockEnabled: false, appLockGraceSeconds: 60, patchNotesQaStatus: {}, initialized: false });
+  useSettingsStore.setState({ dayResetTime: '00:00', themeMode: 'dark', anthropicApiKey: '', appLockEnabled: false, appLockGraceSeconds: 60, patchNotesQaStatus: {}, mealSlotStepEstimates: {}, initialized: false });
 });
 
 // ─── initial state ────────────────────────────────────────────────────────────
@@ -278,6 +278,44 @@ describe('setPatchNoteQaStatus', () => {
     );
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().patchNotesQaStatus).toEqual({ 'note-a': 'pass' });
+  });
+});
+
+// ─── setMealSlotStepEstimate ────────────────────────────────────────────────
+
+describe('setMealSlotStepEstimate', () => {
+  it('has an empty default', () => {
+    expect(useSettingsStore.getState().mealSlotStepEstimates).toEqual({});
+  });
+
+  it('remembers a minute value for a step id', () => {
+    useSettingsStore.getState().setMealSlotStepEstimate('breakfast-choose', 2);
+    expect(useSettingsStore.getState().mealSlotStepEstimates).toEqual({ 'breakfast-choose': 2 });
+  });
+
+  it('overwrites an existing value for the same step id', () => {
+    useSettingsStore.getState().setMealSlotStepEstimate('breakfast-choose', 2);
+    useSettingsStore.getState().setMealSlotStepEstimate('breakfast-choose', 5);
+    expect(useSettingsStore.getState().mealSlotStepEstimates).toEqual({ 'breakfast-choose': 5 });
+  });
+
+  it('keeps values for other step ids independent', () => {
+    useSettingsStore.getState().setMealSlotStepEstimate('breakfast-choose', 2);
+    useSettingsStore.getState().setMealSlotStepEstimate('lunch-choose', 3);
+    expect(useSettingsStore.getState().mealSlotStepEstimates).toEqual({ 'breakfast-choose': 2, 'lunch-choose': 3 });
+  });
+
+  it('persists the map to the database', () => {
+    useSettingsStore.getState().setMealSlotStepEstimate('breakfast-choose', 2);
+    expect(dbSetSetting).toHaveBeenCalledWith('mealSlotStepEstimates', JSON.stringify({ 'breakfast-choose': 2 }));
+  });
+
+  it('restores stored estimates on initialize', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'mealSlotStepEstimates' ? JSON.stringify({ 'breakfast-choose': 2 }) : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().mealSlotStepEstimates).toEqual({ 'breakfast-choose': 2 });
   });
 });
 
