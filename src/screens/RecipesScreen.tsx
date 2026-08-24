@@ -61,6 +61,7 @@ import {
   groupRecipesByMealType,
   rankRecipes,
   recipeListItemKey,
+  recipeSectionKey,
   resolveRecipeMealTypeDrop,
   sortRecipesBy,
   type RecipeListItem,
@@ -93,6 +94,18 @@ import { groceryNameKey } from '../utils/groceryParse';
  * favorites-first), so a drop that doesn't cross a header boundary is a
  * no-op: the list re-settles to its favorites-first order instead of keeping
  * wherever the row was released.
+ *
+ * A section header is also tappable, to fold its recipes away — persisted
+ * per meal type in `collapsedRecipeSections` (useSettingsStore), the same
+ * "a collapse is a preference about the list's shape" reasoning Today's own
+ * `collapsedCategories` is kept for. Collapsing only hides rows from the
+ * list actually handed to `ReorderableList` (`visibleDraggableData` below);
+ * `draggableData` itself, and everything derived from the full `grouped`
+ * list (section counts, drop targets), stays complete, so expanding a
+ * section again never has to wait on a store round-trip to get its recipes
+ * back. A drag can only ever touch what's rendered, so `onReorder` has to
+ * hand a collapsed section's untouched recipes back to
+ * `resolveRecipeMealTypeDrop` itself or they'd be read as deleted.
  *
  * The add button can be dragged into a section too, same FabDropZoneProvider
  * wiring ProjectsScreen uses over its own category-sectioned list — see the
@@ -156,6 +169,31 @@ export function RecipesScreen() {
   const setRecipeSort = useSettingsStore(s => s.setRecipeSortOption);
   const recipeFavoritesOnly = useSettingsStore(s => s.recipeFavoritesOnly);
   const setRecipeFavoritesOnly = useSettingsStore(s => s.setRecipeFavoritesOnly);
+  // Which meal-type sections are folded shut — see the doc comment above.
+  // Kept as a Set locally, same wrapper shape TodayScreen uses around its own
+  // collapsedCategories, so callers can toggle with a Set-updater instead of
+  // reconstructing the whole array by hand each time.
+  const storedCollapsedSections = useSettingsStore(useShallow(s => s.collapsedRecipeSections));
+  const setStoredCollapsedSections = useSettingsStore(s => s.setCollapsedRecipeSections);
+  const collapsedSections = useMemo(
+    () => new Set(storedCollapsedSections),
+    [storedCollapsedSections]
+  );
+  const setCollapsedSections = useCallback(
+    (update: (prev: Set<string>) => Set<string>) => {
+      setStoredCollapsedSections([...update(new Set(storedCollapsedSections))]);
+    },
+    [storedCollapsedSections, setStoredCollapsedSections]
+  );
+  const toggleSectionCollapse = useCallback((key: string) => {
+    haptics.tap();
+    animateLayout();
+    setCollapsedSections(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  }, [setCollapsedSections]);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -274,6 +312,19 @@ export function RecipesScreen() {
     grouped?.forEach(section => map.set(section.mealType ?? '', section.data.length));
     return map;
   }, [grouped]);
+
+  // `draggableData` with a collapsed section's recipe rows dropped — what
+  // ReorderableList actually renders and drags. Headers always stay (see the
+  // doc comment above), which is also what keeps row 0 a header for
+  // dragRange below, whether or not the very first section is folded shut.
+  const visibleDraggableData = useMemo(() => {
+    if (collapsedSections.size === 0) return draggableData;
+    let currentKey: string | null = null;
+    return draggableData.filter(item => {
+      if (item.type === 'header') { currentKey = recipeSectionKey(item.mealType); return true; }
+      return currentKey === null || !collapsedSections.has(currentKey);
+    });
+  }, [draggableData, collapsedSections]);
 
   // Every row of `draggableData` as a target for the add button being dragged
   // in, plus the mealType a drop on it means — the nearest header's, same
@@ -644,7 +695,7 @@ export function RecipesScreen() {
               scroller={scrollControl}
             >
               <ReorderableList
-                data={draggableData}
+                data={visibleDraggableData}
                 keyExtractor={recipeListItemKey}
                 // The user can't scroll during an add-button drag (the
                 // button's responder has the touch); the drag scrolls it
@@ -656,10 +707,25 @@ export function RecipesScreen() {
                   // dragged in — see dropTargetsByKey above.
                   const zone = isActive ? null : dropTargetsByKey.get(recipeListItemKey(item))?.zone ?? null;
                   const row = item.type === 'header' ? (
-                    <View style={styles.sectionHeader}>
-                      <Text style={styles.sectionHeaderText}>{item.title}</Text>
+                    <TouchableOpacity
+                      style={styles.sectionHeader}
+                      onPress={() => toggleSectionCollapse(recipeSectionKey(item.mealType))}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        `${collapsedSections.has(recipeSectionKey(item.mealType)) ? 'Expand' : 'Collapse'} ${item.title}`
+                      }
+                    >
+                      <View style={styles.sectionHeaderLeft}>
+                        <Text style={styles.sectionHeaderText}>{item.title}</Text>
+                        <Ionicons
+                          name={collapsedSections.has(recipeSectionKey(item.mealType)) ? 'chevron-forward' : 'chevron-down'}
+                          size={13}
+                          color={colors.textTertiary}
+                        />
+                      </View>
                       <Text style={styles.sectionHeaderCount}>{sectionCounts.get(item.mealType ?? '') ?? 0}</Text>
-                    </View>
+                    </TouchableOpacity>
                   ) : renderRecipe({ item: item.recipe, drag: selectionMode ? undefined : drag, isActive });
                   return <FabDropZone zone={zone}>{row}</FabDropZone>;
                 }}
@@ -671,7 +737,15 @@ export function RecipesScreen() {
                 dragRange={(data, _activeIndex) => [1, data.length - 1]}
                 placeholderStyle={styles.dropSlot}
                 onReorder={reordered => {
-                  const { mealTypeUpdates, settled } = resolveRecipeMealTypeDrop(reordered);
+                  // A collapsed section's recipes never appear in `reordered`
+                  // (visibleDraggableData drops them) — hand them back
+                  // untouched or resolveRecipeMealTypeDrop would read the
+                  // whole section as deleted. See the doc comment up top.
+                  const hiddenRecipes = draggableData
+                    .filter((item): item is Extract<RecipeListItem, { type: 'recipe' }> =>
+                      item.type === 'recipe' && collapsedSections.has(recipeSectionKey(item.recipe.mealType)))
+                    .map(item => item.recipe);
+                  const { mealTypeUpdates, settled } = resolveRecipeMealTypeDrop(reordered, hiddenRecipes);
                   setDraggableData(settled);
                   mealTypeUpdates.forEach(u => setMealType(u.id, u.mealType));
                 }}
@@ -859,11 +933,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // are uppercase font.xs semibold textTertiary with 0.8 letterSpacing.
   sectionHeader: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
     paddingBottom: spacing.xs,
+  },
+  // Title + collapse chevron, grouped so `justifyContent: 'space-between'`
+  // on `sectionHeader` above pushes only the count to the far edge.
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   sectionHeaderText: {
     color: colors.textSecondary,

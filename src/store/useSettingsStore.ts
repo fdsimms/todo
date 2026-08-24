@@ -627,6 +627,15 @@ interface SettingsStore {
   // costs a string until that name exists again, which is when the user would
   // want it honoured anyway.
   collapsedCategories: string[];
+  // Which meal-type sections the recipe box's "Group" view has folded shut —
+  // the recipe-box counterpart of `collapsedCategories` above, same reasoning
+  // for persisting it (a collapse is a preference about the shape of the
+  // list, not a momentary thing to forget on cold start). Keyed by
+  // `recipeSectionKey()` (a RecipeMealType, or `'untagged'`) rather than a
+  // display title, since — unlike a task category — that set is fixed by the
+  // type and never renamed, so there's nothing to reconcile against on load
+  // the way `collapsedCategories` has to be.
+  collapsedRecipeSections: string[];
   // Whether a reminder landing inside a meeting gets pushed to the meeting's
   // end (#1491). A refinement of calendarReadEnabled, not a separate read —
   // it does nothing while that's off, and defaults on once it's turned on so
@@ -835,6 +844,7 @@ interface SettingsStore {
   setCalendarIds: (ids: string[]) => void;
   setCalendarEventCategory: (category: string | null) => void;
   setCollapsedCategories: (categories: string[]) => void;
+  setCollapsedRecipeSections: (sections: string[]) => void;
   setReminderMeetingNudgeEnabled: (on: boolean) => void;
   setDeadlineCalendarId: (id: string | null) => void;
   setMealCalendarId: (id: string | null) => void;
@@ -904,6 +914,7 @@ const DEFAULT_SETTINGS = {
   tripLiveActivity: true,
   focusLiveActivity: true,
   collapsedCategories: [] as string[],
+  collapsedRecipeSections: [] as string[],
   mealsOnToday: 'inline' as MealsOnToday,
   kitchenOnToday: true,
   unitSystem: 'asWritten' as UnitSystem,
@@ -1054,6 +1065,25 @@ function parseCategoryNames(raw: string | null): string[] {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
     return parsed.filter((name): name is string => typeof name === 'string' && name.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A stored list of `recipeSectionKey()` values — the collapsed meal-type
+ * sections in the recipe box. Same shape as `parseCategoryNames` (a bad or
+ * missing row is just "nothing collapsed"), but with no live set to
+ * reconcile against on load: unlike a task category, a recipe meal type is a
+ * fixed enum plus `'untagged'`, so a stale key here is simply one that never
+ * matches a rendered header again rather than one that needs pruning.
+ */
+function parseCollapsedRecipeSections(raw: string | null): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((key): key is string => typeof key === 'string' && key.length > 0);
   } catch {
     return [];
   }
@@ -1223,6 +1253,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   tripLiveActivity: true,
   focusLiveActivity: true,
   collapsedCategories: [],
+  collapsedRecipeSections: [],
   kitchenEnabled: true,
   mealsOnToday: 'inline',
   kitchenOnToday: true,
@@ -1343,6 +1374,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const collapsedCategories = parseCategoryNames(dbGetSetting('collapsedCategories'));
+    const collapsedRecipeSections = parseCollapsedRecipeSections(dbGetSetting('collapsedRecipeSections'));
     const simpleTaskForm = dbGetSetting('simpleTaskForm') === 'true';
     const simpleMode = dbGetSetting('simpleMode') === 'true';
     const hideHelpText = dbGetSetting('hideHelpText') === 'true';
@@ -1546,7 +1578,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2170,6 +2202,11 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setCollapsedCategories(categories: string[]) {
     dbSetSetting('collapsedCategories', JSON.stringify(categories));
     set({ collapsedCategories: categories });
+  },
+
+  setCollapsedRecipeSections(sections: string[]) {
+    dbSetSetting('collapsedRecipeSections', JSON.stringify(sections));
+    set({ collapsedRecipeSections: sections });
   },
 
   setReminderMeetingNudgeEnabled(on: boolean) {

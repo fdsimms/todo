@@ -956,9 +956,18 @@ export function flattenRecipeMealTypeSections(sections: readonly RecipeMealTypeS
   return items;
 }
 
+/**
+ * The stable identity of a meal-type section, independent of its display
+ * title — used both for the header's row key below and as the key
+ * RecipesScreen collapses a section by (settings' `collapsedRecipeSections`).
+ */
+export function recipeSectionKey(mealType: RecipeMealType | null): string {
+  return mealType ?? 'untagged';
+}
+
 /** Stable row key for a RecipeListItem, for ReorderableList's keyExtractor. */
 export function recipeListItemKey(item: RecipeListItem): string {
-  return item.type === 'header' ? `h-${item.mealType ?? 'untagged'}` : item.recipe.id;
+  return item.type === 'header' ? `h-${recipeSectionKey(item.mealType)}` : item.recipe.id;
 }
 
 /**
@@ -971,16 +980,27 @@ export function recipeListItemKey(item: RecipeListItem): string {
  * keep row 0 — always a header, since groupRecipesByMealType never emits an
  * empty section — off limits to a drop.
  *
+ * `hiddenRecipes` are recipes left out of `reordered` entirely — a collapsed
+ * section's rows, which RecipesScreen hides from the draggable list rather
+ * than passing through untouched (a whole section is hidden or not, so
+ * there's nothing of theirs to reorder). Without them here, rebuilding
+ * `settled` from `reordered` alone would drop every recipe a collapsed
+ * section holds the moment any other section is dragged. Their own mealType
+ * is left exactly as it was — they were never in reach of the drop.
+ *
  * `settled` is the regrouped layout (rebuilt with groupRecipesByMealType, so
  * favorites-first order within a section is preserved) to render immediately,
  * matching what the store-derived list will recompute to once the writes land.
  */
-export function resolveRecipeMealTypeDrop(reordered: readonly RecipeListItem[]): {
+export function resolveRecipeMealTypeDrop(
+  reordered: readonly RecipeListItem[],
+  hiddenRecipes: readonly Recipe[] = [],
+): {
   mealTypeUpdates: Array<{ id: string; mealType: RecipeMealType | null }>;
   settled: RecipeListItem[];
 } {
   const mealTypeUpdates: Array<{ id: string; mealType: RecipeMealType | null }> = [];
-  const updatedRecipes: Recipe[] = [];
+  const updatedRecipes: Recipe[] = [...hiddenRecipes];
   let currentMealType: RecipeMealType | null = null;
   reordered.forEach(item => {
     if (item.type === 'header') {
