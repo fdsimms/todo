@@ -80,6 +80,29 @@ export interface ChainItem {
   // five-step routine charges its full estimate at every step and the day's
   // workload never drops as you work through it (see estimatedMinutesFor).
   estimatedMinutes: number | null;
+  // What completing *this step* asks for, or null/absent for the ordinary
+  // "ticking it is the whole answer" step. Per-step for the same reason
+  // estimatedMinutes is: `Task.deliverableKind` is one question for the whole
+  // task and rides `...effective` onto every successor, so a two-step chain
+  // that asks a question at step one asked it again at step two. Resolved by
+  // `deliverableKindFor`, which prefers the active step and falls back to the
+  // task, exactly as `estimatedMinutesFor` and `displayTitleFor` do.
+  //
+  // The *answer* stays on the row (`Task.deliverableValue`) and needs no
+  // per-step counterpart — a chain only ever has one step live at a time, and
+  // each step is its own row, so the answers already log one per step.
+  deliverableKind?: DeliverableKind | null;
+  // For a 'date' step: the answer becomes the next step's due date, instead of
+  // the next step landing on the day this one was completed. "Book haircut"
+  // answers with the appointment date and "Get haircut" lands on it.
+  //
+  // Deliberately its own flag rather than something a date step always does.
+  // Recording a date mid-chain and *moving the next step* are two different
+  // wants, and the second one reschedules a row — a thing that should be
+  // visible in the editor rather than an unannounced second meaning of the
+  // date kind. Inert without `deliverableKind: 'date'`, and inert on the last
+  // step, which has no next step to date.
+  deliverableDatesNextStep?: boolean;
 }
 
 // Everything the "Extra task" rule says about the task it adds, beyond its

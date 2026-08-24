@@ -21,6 +21,7 @@
 import { subDays } from 'date-fns/subDays';
 import { getDayStart } from './dateUtils';
 import type { Task } from '../types';
+import { deliverableKindFor } from './deliverables';
 
 /**
  * How long completed tasks are kept, in days. `null` = forever, the default.
@@ -109,7 +110,7 @@ export function selectPurgeableTaskIds(tasks: Task[], cutoff: Date): string[] {
         !t.parentId &&
         t.completed &&
         !t.archived &&
-        !(t.deliverableKind !== null && t.deliverableValue !== null) &&
+        !(deliverableKindFor(t) !== null && t.deliverableValue !== null) &&
         t.completedAt !== null &&
         new Date(t.completedAt).getTime() < cutoff.getTime()
     )

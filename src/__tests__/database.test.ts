@@ -545,12 +545,33 @@ describe('dbInsertTask + rowToTask round-trip', () => {
   it('deserialises JSON array columns (tags, recurrenceDays, chainItems)', () => {
     const tags = ['work', 'urgent'];
     const recurrenceDays = [1, 3, 5];
-    const chainItems = [{ id: 'ci', title: 'Item A', estimatedMinutes: null }];
+    const chainItems = [
+      { id: 'ci', title: 'Item A', estimatedMinutes: null, deliverableKind: null, deliverableDatesNextStep: false },
+    ];
     dbInsertTask(makeTask({ id: 'json', tags, recurrenceDays, chainItems }));
     const [t] = dbGetAllTasks();
     expect(t.tags).toEqual(tags);
     expect(t.recurrenceDays).toEqual(recurrenceDays);
     expect(t.chainItems).toEqual(chainItems);
+  });
+
+  it("round-trips a chain step's question and its dates-next-step flag", () => {
+    // Both ride inside the cycle_items JSON rather than columns of their own,
+    // so the round trip is what proves parseChainItems and the serializer
+    // agree about them.
+    const chainItems = [
+      {
+        id: 'book', title: 'Book haircut', estimatedMinutes: null,
+        deliverableKind: 'date' as const, deliverableDatesNextStep: true,
+      },
+      {
+        id: 'get', title: 'Get haircut', estimatedMinutes: null,
+        deliverableKind: null, deliverableDatesNextStep: false,
+      },
+    ];
+    dbInsertTask(makeTask({ id: 'chain-q', chainEnabled: true, chainItems }));
+
+    expect(dbGetAllTasks()[0].chainItems).toEqual(chainItems);
   });
 
   it('round-trips chainStepOnSchedule through both insert and update', () => {

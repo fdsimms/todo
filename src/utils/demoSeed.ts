@@ -226,6 +226,27 @@ export function seedDemoData(): void {
   });
   updateTask(morningRoutine.id, { effort: 1 });
 
+  // A chain step that asks a question and *places the next step with the
+  // answer* — the one thing a chain can do with a deliverable that a plain
+  // task can't. Left live on its first step so the tap does the whole thing:
+  // tick "Book haircut", pick the appointment, and "Get haircut" turns up on
+  // that day rather than today.
+  addTask({
+    title: 'Haircut',
+    notes: 'Booking it is a step of its own. The date you give lands on the next step.',
+    category: 'Errands',
+    dueDate: today.toISOString(),
+    chainEnabled: true,
+    chainIndex: 0,
+    chainItems: [
+      {
+        id: generateId(), title: 'Book haircut', estimatedMinutes: 5,
+        deliverableKind: 'date', deliverableDatesNextStep: true,
+      },
+      { id: generateId(), title: 'Get haircut', estimatedMinutes: 40 },
+    ],
+  });
+
   // A number on a task is what puts the call/text button on its row — with no
   // row carrying one, that button and the Phone field both read as features
   // the app doesn't have.

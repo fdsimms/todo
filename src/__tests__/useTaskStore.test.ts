@@ -9969,6 +9969,118 @@ describe('completeTask: decision tasks capture an answer', () => {
   });
 });
 
+describe("completeTask: a date step scheduling the chain's next step", () => {
+  const APPOINTMENT = new Date(2025, 5, 26, 12, 0, 0);
+
+  const haircut = (overrides: Partial<Task> = {}) => makeTask({
+    id: 'haircut',
+    title: 'Haircut',
+    chainEnabled: true,
+    chainIndex: 0,
+    chainItems: [
+      {
+        id: 'book', title: 'Book haircut', estimatedMinutes: null,
+        deliverableKind: 'date', deliverableDatesNextStep: true,
+      },
+      {
+        id: 'get', title: 'Get haircut', estimatedMinutes: null,
+        deliverableKind: null, deliverableDatesNextStep: false,
+      },
+    ],
+    dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+    ...overrides,
+  });
+
+  const successor = () => useTaskStore.getState().tasks.find(t => !t.completed && t.title === 'Haircut')!;
+
+  it('dates the next step from the answer instead of today', () => {
+    useTaskStore.setState({ tasks: [haircut()] });
+
+    useTaskStore.getState().completeTask('haircut', { deliverableValue: APPOINTMENT.toISOString() });
+
+    const next = successor();
+    expect(next.chainIndex).toBe(1);
+    expect(new Date(next.dueDate!).toDateString()).toBe(APPOINTMENT.toDateString());
+  });
+
+  it('dates the next step even when the chain carries no date signal at all', () => {
+    // midChainDue refuses an undated chain so it can't acquire a placement by
+    // accident. An answer is not an accident.
+    useTaskStore.setState({ tasks: [haircut({ dueDate: null })] });
+
+    useTaskStore.getState().completeTask('haircut', { deliverableValue: APPOINTMENT.toISOString() });
+
+    expect(new Date(successor().dueDate!).toDateString()).toBe(APPOINTMENT.toDateString());
+  });
+
+  it("re-anchors the next step's reminder onto the answered day", () => {
+    useTaskStore.setState({
+      tasks: [haircut({ reminderTime: new Date(2025, 5, 10, 9, 30, 0).toISOString() })],
+    });
+
+    useTaskStore.getState().completeTask('haircut', { deliverableValue: APPOINTMENT.toISOString() });
+
+    const reminder = new Date(successor().reminderTime!);
+    expect(reminder.toDateString()).toBe(APPOINTMENT.toDateString());
+    expect(reminder.getHours()).toBe(9);
+    expect(reminder.getMinutes()).toBe(30);
+  });
+
+  it('falls back to the ordinary mid-chain date when nobody was asked', () => {
+    // Bulk complete, the widget, a stack cascade: no answer to pass on, so the
+    // next step lands where it always did.
+    useTaskStore.setState({ tasks: [haircut()] });
+
+    useTaskStore.getState().completeTask('haircut');
+
+    expect(new Date(successor().dueDate!).toDateString()).toBe(new Date().toDateString());
+  });
+
+  it('falls back when the answer is unparseable', () => {
+    useTaskStore.setState({ tasks: [haircut()] });
+
+    useTaskStore.getState().completeTask('haircut', { deliverableValue: 'sometime soon' });
+
+    expect(new Date(successor().dueDate!).toDateString()).toBe(new Date().toDateString());
+  });
+
+  it('leaves a step that only records its answer alone', () => {
+    const items = [
+      { id: 'book', title: 'Book haircut', estimatedMinutes: null, deliverableKind: 'date' as const, deliverableDatesNextStep: false },
+      { id: 'get', title: 'Get haircut', estimatedMinutes: null, deliverableKind: null, deliverableDatesNextStep: false },
+    ];
+    useTaskStore.setState({ tasks: [haircut({ chainItems: items })] });
+
+    useTaskStore.getState().completeTask('haircut', { deliverableValue: APPOINTMENT.toISOString() });
+
+    expect(new Date(successor().dueDate!).toDateString()).toBe(new Date().toDateString());
+    // The answer is still recorded — only the scheduling is opted out of.
+    expect(useTaskStore.getState().tasks.find(t => t.completed)!.deliverableValue)
+      .toBe(APPOINTMENT.toISOString());
+  });
+
+  it("does not let the last step's answer date a repeating chain's next cycle", () => {
+    // The wrap is the recurrence placing the next run, and the last step has no
+    // next step of its own — see nextChainStep and completeTask's atChainEnd.
+    const items = [
+      { id: 'book', title: 'Book haircut', estimatedMinutes: null, deliverableKind: null, deliverableDatesNextStep: false },
+      { id: 'get', title: 'Get haircut', estimatedMinutes: null, deliverableKind: 'date' as const, deliverableDatesNextStep: true },
+    ];
+    useTaskStore.setState({
+      tasks: [haircut({
+        chainItems: items, chainIndex: 1,
+        recurrenceType: 'weekly', recurrenceInterval: 1,
+      })],
+    });
+
+    useTaskStore.getState().completeTask('haircut', { deliverableValue: APPOINTMENT.toISOString() });
+
+    const next = successor();
+    expect(next.chainIndex).toBe(0);
+    expect(new Date(next.dueDate!).toDateString()).not.toBe(APPOINTMENT.toDateString());
+  });
+});
+
 describe('setDeliverableValue', () => {
   const decide = (overrides: Partial<Task> = {}) => makeTask({
     id: 'budget',
@@ -10014,6 +10126,24 @@ describe('setDeliverableValue', () => {
     useTaskStore.getState().lastAction!.undo();
 
     expect(rowOf('budget').deliverableValue).toBe('2400');
+  });
+
+  it("corrects the answer of a chain step, whose question is not the task's", () => {
+    useTaskStore.setState({
+      tasks: [decide({
+        deliverableKind: null,
+        chainEnabled: true,
+        chainIndex: 0,
+        chainItems: [
+          { id: 'book', title: 'Book haircut', estimatedMinutes: null, deliverableKind: 'date', deliverableDatesNextStep: true },
+          { id: 'get', title: 'Get haircut', estimatedMinutes: null },
+        ],
+      })],
+    });
+
+    useTaskStore.getState().setDeliverableValue('budget', '2026-09-12T12:00:00.000Z');
+
+    expect(rowOf('budget').deliverableValue).toBe('2026-09-12T12:00:00.000Z');
   });
 
   it('refuses to write an answer onto a task that asks nothing', () => {

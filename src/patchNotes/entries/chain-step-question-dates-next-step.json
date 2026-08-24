@@ -1,0 +1,4 @@
+{
+  "message": "A chain step can ask its own question when you finish it, and a date answer can schedule the step that follows: answer \"Book haircut\" with the appointment and \"Get haircut\" lands on that day.",
+  "date": "2026-08-24"
+}

@@ -326,7 +326,7 @@ them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (5.3k), `components/TaskEditor.tsx` (4.2k),
 `store/useGroceryStore.ts` (4.0k), `db/database.ts` (3.9k), `screens/TodayScreen.tsx` (3.9k),
-`components/TaskItem.tsx` (3.4k), `types/index.ts` (3.1k),
+`components/TaskItem.tsx` (3.4k), `types/index.ts` (3.2k),
 `components/QuickAddModal.tsx` (2.6k), `store/useSettingsStore.ts` (2.4k),
 `screens/MealPlanScreen.tsx` (2.2k).
 
@@ -606,6 +606,16 @@ A task the user gave more than one date ("walk the neighbour's dog on the 10th a
 Chain items (`chainItems[]` / `chainIndex`, shown in the editor collocated with Repeat since the two are easy to conflate) are a singly-linked list of steps, independent of recurrence: completing a chained task always advances `chainIndex` and immediately spawns the next task with no `dueDate`, ending after the last item. Repeat changes only what happens at that last item — instead of ending, `chainIndex` wraps to `0` and the whole chain repeats on the recurrence's schedule. See the `spawnsNext`/`atChainEnd` logic in `completeTask()` (`src/store/useTaskStore.ts`). `rowToTask()` maps the legacy `cycle_enabled`/`cycle_index`/`cycle_items` SQLite columns to the `chain*` fields on `Task`.
 
 **A step carries its own `estimatedMinutes`, and every workload read goes through `estimatedMinutesFor()`** (`src/utils/effort.ts`) rather than `task.estimatedMinutes` — the same discipline `displayTitleFor` imposes for titles, and for the same reason: mid-chain, only one step is on the day, but the task-level estimate covers the whole chain. Read raw and a five-step routine charges its full estimate at *every* step, and since completing a step spawns the next onto the same day, the day's planned total never falls as the chain is worked. The step value is optional and falls back to the task's, so a chain nobody has itemised behaves exactly as before. `activeChainStep()` (`src/utils/chain.ts`) is the one place the "which step is live" rule lives — including that a single-item chain doesn't count as one.
+
+**A step carries its own question too, and every deliverable read goes through `deliverableKindFor()`** (`src/utils/deliverables.ts`) rather than `task.deliverableKind` — the third field on the same pattern, for the same reason and with the same `step ?? task` fallback. `deliverableKind` is a `CONTENT_FIELD`, so it rides `...effective` onto every successor: with only that to read, a two-step chain that asks a question at step one asks it again at step two. The readers are the row's "?" glyph, `completionTapFor`, the prompt sheet, Logbook (including its Edit answer item and `setDeliverableValue`), Search, `projectDecisions` and `selectPurgeableTaskIds` — the last two matter because a chain step's recorded answer is a decision the project should list and a row retention must not purge. The *answer* stays on the row (`deliverableValue` is per-occurrence, like `progressCount`) and needs no per-step counterpart, since a chain only has one step live at a time and each step is its own row.
+
+**A `'date'` step can place the step after it, and that's opt-in per step** (`ChainItem.deliverableDatesNextStep`). "Book haircut" is answered with the appointment and "Get haircut" lands on that day instead of on the day the booking got done. In `completeTask` it's one more candidate ahead of the two dates that were already there — `answeredDue ?? nextDue ?? midChainDue` — so the successor's re-anchored `reminderTime` and relative `deadline` follow it for free. Three rules hold it in place:
+
+- **It is deliberately not something a date step just does.** Recording a date and *moving another row* are two different wants, and the second one wants to be visible in the editor rather than being an unannounced second meaning of the kind. The prompt sheet names the step it's about to schedule for the same reason.
+- **It never applies at `atChainEnd`.** The last step of a plain chain spawns nothing, and a repeating chain's wrap is the recurrence placing the next cycle — `nextChainStep()` refuses to wrap for exactly this, and `completeTask` checks both.
+- **It ignores the `hasNoDateSignal` guard `midChainDue` obeys.** That guard exists so a chain with no placement at all doesn't acquire one by accident; an answer given a second ago is not an accident.
+
+This is the one reader `src/utils/deliverables.ts` was left open for (#1253) and it is still not a general write-anywhere mechanism: one field, one place, reusing the date the successor was getting anyway.
 
 ### Stacks (`TaskGroup`)
 

@@ -81,7 +81,7 @@ import {
   shopPricesFor,
 } from '../utils/groceryPrice';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
-import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
+import { asksOnCompletion, chainStepDatedByAnswer, formatTaskDeliverable } from '../utils/deliverables';
 import { tripMarkerFor, describeTripMarker } from '../utils/activeTrip';
 import { buildDayBuckets, canProject } from '../utils/calendarMonth';
 import { buildDayLoads, describeDayLoad, weightFor } from '../utils/dayLoad';
@@ -611,6 +611,20 @@ describe('demo mode', () => {
     const answered = asking.find(t => t.completed && t.deliverableValue !== null)!;
     expect(answered).toBeDefined();
     expect(formatTaskDeliverable(answered)).toBeTruthy();
+  });
+
+  // The one thing only a chain can do with an answer. Invisible from the rows
+  // above: a decision task shows the question, not that the answer is about to
+  // schedule something.
+  it('seeds a chain step whose date answer places the next step', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const chained = tasks.find(t => t.chainEnabled && t.chainItems.some(c => c.deliverableDatesNextStep))!;
+    expect(chained).toBeDefined();
+    // Live on the asking step, so the demo tap actually runs the feature.
+    expect(chained.completed).toBe(false);
+    expect(chainStepDatedByAnswer(chained)).not.toBeNull();
   });
 
   // A template item can declare the same question (#1471), and that half is

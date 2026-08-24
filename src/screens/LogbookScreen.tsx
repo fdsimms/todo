@@ -64,7 +64,7 @@ import { formatScale } from '../utils/recipeScale';
 import { MEAL_PLAN_RETENTION_DAYS, LEFTOVER_RETENTION_DAYS } from '../types';
 import { isQuotaPartial, isMissed, displayTitleFor, quotaFraction } from '../utils/visibilityUtils';
 import { formatQuotaProgress } from '../utils/quotaUnit';
-import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
+import { asksOnCompletion, deliverableKindFor, formatTaskDeliverable } from '../utils/deliverables';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { sectionListCellLayout } from '../utils/sectionListLayout';
 import type { Task } from '../types';
@@ -680,7 +680,7 @@ export function LogbookScreen() {
           }
           setMenuTask(null);
         }}
-        onEditAnswer={menuTask?.deliverableKind ? () => {
+        onEditAnswer={menuTask && deliverableKindFor(menuTask) ? () => {
           const id = menuTask.id;
           setMenuTask(null);
           // Staggered for the same reason the calendar's confirm is: closing

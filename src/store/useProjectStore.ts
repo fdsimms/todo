@@ -11,6 +11,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { registerProjectSource } from '../utils/blockerRegistry';
+import { deliverableKindFor } from '../utils/deliverables';
 
 /**
  * What one member of a project is, as far as counting goes: a task, not a row.
@@ -106,7 +107,10 @@ export function projectDecisions(projectId: string, tasks: Task[]): Task[] {
 
   const latest = new Map<string, Task>();
   for (const member of members) {
-    if (member.deliverableKind === null || member.deliverableValue === null) continue;
+    // Through the resolver, not off the field: a chain step carries its own
+    // question (see deliverableKindFor), and a decision made at a step is a
+    // decision the project should list.
+    if (deliverableKindFor(member) === null || member.deliverableValue === null) continue;
     const key = memberKey(member, byId);
     const held = latest.get(key);
     if (!held || answeredAt(member) > answeredAt(held)) latest.set(key, member);
