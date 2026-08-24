@@ -23,7 +23,7 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors }
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { aisleForName } from '../utils/groceryAisles';
-import { splitAlternativeNames, suggestShorterCatalogName } from '../utils/groceryParse';
+import { groceryNameKey, splitAlternativeNames, suggestShorterCatalogName } from '../utils/groceryParse';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
@@ -55,6 +55,15 @@ interface Props {
  * line resolves to and opens it, so the brand to reach for and the substitute
  * you'd accept are set once, from either end.
  *
+ * When there's nothing on the other side of the bridge, the card mints it —
+ * `ensureCatalogItem`, so the row arrives off-list and asserting nothing about
+ * what's in the cupboard. That an ingredient can exist with no grocery row at
+ * all is the thing being fixed: every fact this app can hold about a food hangs
+ * off that row, so "not in your groceries yet" was a dead end on the one screen
+ * with the most reason to want one. It is deliberately not an add-to-list
+ * button; putting the thing in this week's trolley is a different sentence, and
+ * `RecipeToListSheet` is where the recipe says it.
+ *
  * Everything else is progressive disclosure in the shape the editors use: the
  * fields that are always worth seeing, then the two labels — section and
  * alternatives — that most lines never carry.
@@ -75,6 +84,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   );
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
+  const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -134,10 +144,19 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // The catalog row this line resolves to. Above the early return, like every
   // other hook here — an ingredient sheet with nothing to edit still has to run
   // the same hooks in the same order.
-  const catalogItem = useMemo(
-    () => (ingredient ? groceryItems.find(i => i.nameKey === ingredient.nameKey) ?? null : null),
-    [groceryItems, ingredient]
-  );
+  //
+  // Keyed on the **draft** name rather than the saved one, because two controls
+  // above now rewrite that field: the link picker's `onPick` and the "did you
+  // mean" correction. Read from `ingredient.nameKey`, this card went on saying
+  // "not in your groceries yet" about a line the user had just pointed at an
+  // existing row — and the Add button below it would then mint the *old* name,
+  // which is the duplicate the link picker exists to avoid. Falls back to the
+  // saved key while the field is empty mid-edit.
+  const catalogItem = useMemo(() => {
+    if (!ingredient) return null;
+    const key = groceryNameKey(name) || ingredient.nameKey;
+    return groceryItems.find(i => i.nameKey === key) ?? null;
+  }, [groceryItems, ingredient, name]);
 
   // Who this line is currently an alternative to, by name. The label alone is
   // an abstraction ("Pepper"); the siblings are the thing it actually means.
@@ -239,6 +258,27 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     haptics.success();
     animateLayout();
     onClose();
+  };
+
+  // Mints the catalog row and nothing else — off-list, and with no claim that
+  // you have any. `ensureCatalogItem` is the primitive for exactly this (see
+  // its doc comment): a name gets a row so a standing fact can hang off it,
+  // which is the whole reason to reach for this from here. Deliberately not
+  // `addByName`/`addFromPlan` — those put it in this week's trolley, which is
+  // a different statement and one this sheet has no business making.
+  //
+  // Mints what the field says, which is what `catalogItem` resolves against —
+  // the two have to agree, or pressing this leaves the card on its empty state
+  // insisting the thing you just added isn't there.
+  const addIngredientToCatalog = () => {
+    const created = ensureCatalogItem(name.trim() || ingredient.name);
+    if (!created) { haptics.error(); return; }
+    haptics.success();
+    animateLayout();
+    // Straight into the item, since recording something on it — a brand, a
+    // store, what you'd accept instead — is the reason to have pressed this at
+    // all. Same sheet the catalog row's own chevron opens once it exists.
+    setEditingItemId(created.id);
   };
 
   // A preview of what mergeBack produces — this row's own typed name (not yet
@@ -421,10 +461,19 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
           </TouchableOpacity>
         ) : (
-          <Text style={styles.hint}>
-            Not in your groceries yet. It's added the first time you put this on a list, and
-            then it can carry a brand, a store, a price and what you'd accept instead.
-          </Text>
+          <>
+            <Text style={styles.hint}>
+              Not in your groceries yet. Add it to give it a brand, a store, a price or what
+              you'd accept instead. This doesn't put it on your shopping list.
+            </Text>
+            <InlineAction
+              label="Add to groceries"
+              icon="basket-outline"
+              onPress={addIngredientToCatalog}
+              style={styles.addToCatalogButton}
+              accessibilityLabel={`Add ${name.trim() || ingredient.name} to your groceries`}
+            />
+          </>
         )}
 
         {(!!standingSwap || noSwap) && (
@@ -799,6 +848,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   catalogBody: {
     flex: 1,
     gap: 2,
+  },
+  addToCatalogButton: {
+    marginTop: spacing.xs,
+    alignSelf: 'flex-start',
   },
   catalogName: {
     color: colors.text,
