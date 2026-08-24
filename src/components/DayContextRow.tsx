@@ -5,6 +5,7 @@ import type { ContextRow } from '../types';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, fontWeight, border, iconSize, interaction, checkboxRadius, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { SpotlightScrim } from './SpotlightOverlay';
 
 interface Props {
   row: ContextRow;
@@ -146,31 +147,40 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
 
   return (
     <View style={[styles.card, shadows.card]}>
-      <View style={styles.row}>
-        {leading}
-        {onPress ? (
-          <TouchableOpacity
-            style={styles.content}
-            onPress={() => { haptics.tap(); onPress(); }}
-            activeOpacity={interaction.activeOpacity}
-            // TaskItem.content's slop, and deliberately 0 on the left for its
-            // reason — that gap is the glyph's.
-            hitSlop={{ top: 14, bottom: 14, left: 0, right: 10 }}
-            accessibilityRole="button"
-            accessibilityLabel={`${row.title}, ${row.caption}`}
-            accessibilityHint={
-              row.kind === 'event' ? "Opens the day's events"
-              : row.kind === 'kitchen' ? 'Opens Pantry'
-              : 'Opens Meal plan'
-            }
-          >
-            {body}
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.content} accessible accessibilityLabel={`${row.title}, ${row.caption}`}>
-            {body}
-          </View>
-        )}
+      {/* Separate from `card`: overflow hidden there would clip the card
+          shadow on iOS (same split TaskItem's itemWrapper/cardClip make). */}
+      <View style={styles.clip}>
+        <View style={styles.row}>
+          {leading}
+          {onPress ? (
+            <TouchableOpacity
+              style={styles.content}
+              onPress={() => { haptics.tap(); onPress(); }}
+              activeOpacity={interaction.activeOpacity}
+              // TaskItem.content's slop, and deliberately 0 on the left for its
+              // reason — that gap is the glyph's.
+              hitSlop={{ top: 14, bottom: 14, left: 0, right: 10 }}
+              accessibilityRole="button"
+              accessibilityLabel={`${row.title}, ${row.caption}`}
+              accessibilityHint={
+                row.kind === 'event' ? "Opens the day's events"
+                : row.kind === 'kitchen' ? 'Opens Pantry'
+                : 'Opens Meal plan'
+              }
+            >
+              {body}
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.content} accessible accessibilityLabel={`${row.title}, ${row.caption}`}>
+              {body}
+            </View>
+          )}
+        </View>
+        {/* Same scrim TaskItem draws over itself while another row is
+            spotlighted (focus session, expanded row). This row never
+            expands, so unlike TaskItem it has no isSpotlighted case to
+            skip. */}
+        <SpotlightScrim />
       </View>
     </View>
   );
@@ -204,6 +214,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginVertical: 2,
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
+  },
+  // TaskItem.cardClip — rounds the scrim to the card's corners without
+  // clipping the shadow drawn on `card` itself.
+  clip: {
+    borderRadius: radius.md,
+    overflow: 'hidden',
   },
   // TaskItem.row.
   row: {

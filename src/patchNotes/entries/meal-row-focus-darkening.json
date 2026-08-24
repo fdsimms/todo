@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a meal row (like a snack with no task behind it yet) staying bright instead of darkening along with everything else while another task is focused",
+  "date": "2026-08-24"
+}
