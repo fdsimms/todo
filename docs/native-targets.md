@@ -4,11 +4,28 @@ Reference for adding or changing a native target (widget, Watch app, Live Activi
 extension). Referenced from `CLAUDE.md` — read this *before* touching `plugins/` or
 `targets/`, not after the first failed build.
 
-The Today widget (`targets/todo-widget/`) is injected at prebuild time by custom config
-plugins rather than a checked-in `ios/` folder — see `plugins/withAppGroup.js` (adds the App
-Group entitlement to the main app) and `plugins/withWidgetExtension.js` (adds the WidgetKit
-extension as a whole new Xcode target via the raw `xcode` npm package). Any future target that
-needs to share data with the app will hit the same sharp edges this one did.
+Targets are injected at prebuild time by custom config plugins rather than a checked-in
+`ios/` folder. There are two:
+
+- **`targets/todo-widget/`** — the Today widget, added by `plugins/withWidgetExtension.js`.
+- **`targets/todo-share/`** — the share extension ("dundundun" in another app's share sheet,
+  for a recipe page), added by `plugins/withShareExtension.js`.
+
+Both get the App Group entitlement from `plugins/withAppGroup.js`, and both build their Xcode
+target through **`plugins/lib/nativeTarget.js`**, which is where the sharp edges below actually
+live. **Add a third target by calling `addAppExtensionTarget` too, not by copying a plugin.**
+Every workaround in that file was a failed build cycle to find and every one of them fails
+*late* — at archive or at submission, not at build — so a second copy is a second place the
+seventh one would have to be found again. What belongs in the plugin is only what genuinely
+differs per extension point: the Info.plist, the entitlements, the frameworks, the deployment
+target, and which sources compile in.
+
+`npx expo prebuild --platform ios --no-install` runs offline and is the cheap way to check a
+plugin change: it writes `ios/` (gitignored) and you can read the generated `project.pbxproj`
+and Info.plist directly. The `xcode` package mints random UUIDs, so two runs are never
+byte-equal — rewrite each distinct 24-hex-char id to a counter in order of first appearance and
+the two runs compare exactly, which is how the widget target was proved unchanged when its
+plumbing moved into `lib/nativeTarget.js`.
 
 - **A new target must be declared in `app.json`'s
   `extra.eas.build.experimental.ios.appExtensions`** (name, bundle id, entitlements), or EAS
@@ -36,6 +53,23 @@ needs to share data with the app will hit the same sharp edges this one did.
   Support/<name>.json`, single-writer (app) / many-reader (extensions), no locking needed.
   Reuse this path shape for anything new sharing the group rather than inventing another
   location.
+- **A share extension's `NSExtensionPrincipalClass` failing to resolve is a silent no-op**, not
+  a build error: iOS instantiates the named class when the row is tapped, and if the name is
+  wrong nothing at all happens. A Swift class's Objective-C name is module-qualified, so the
+  value is `$(PRODUCT_MODULE_NAME).ShareViewController` — and `PRODUCT_MODULE_NAME` is pinned
+  explicitly in `withShareExtension.js` rather than left to derive from `PRODUCT_NAME` through
+  `:c99extidentifier`, since the share sheet's whole behaviour otherwise rides on a string
+  substitution nothing checks.
+- **`NSExtensionActivationRule` decides which apps show the extension at all.** Matching only
+  `NSExtensionActivationSupportsWebURLWithMaxCount` misses every app that shares a page as a
+  *string* with the link inside it, which is common; matching text as well means the extension
+  has to run a link detector over what it's handed and be prepared to find nothing.
+- **A share extension cannot open its containing app.** `NSExtensionContext.open(_:)` is not
+  available to this extension point, so anything the app has to do — here, fetching the page and
+  running the extraction — has to wait for the app to be opened some other way. The extension
+  writes to the App Group and the app drains it on launch and on foreground; the queue is
+  *persisted on the app side* immediately, because the drain deletes the file it read and would
+  otherwise be the only copy (see `src/store/useSharedLinkStore.ts`).
 - **A Live Activity needs `NSSupportsLiveActivities: true` in the *main app's* Info.plist**
   (`expo.ios.infoPlist` in `app.json`) — not the widget extension's. Without it,
   `Activity.request` throws at runtime on the very device it's meant to work on; nothing at

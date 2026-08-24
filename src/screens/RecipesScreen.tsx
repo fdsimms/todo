@@ -22,6 +22,8 @@ import { ScreenHeader } from '../components/ScreenHeader';
 import { GroceriesHubPills } from '../components/GroceriesHubPills';
 import { TipHost } from '../components/TipHost';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
+import { SharedLinkBanner } from '../components/SharedLinkBanner';
+import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
@@ -181,6 +183,12 @@ export function RecipesScreen() {
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [importMode, setImportMode] = useState<RecipeInputMode>('photo');
+  // The shared page the import sheet was opened for, if it was opened from the
+  // banner rather than the add menu. Deliberately not cleared when the sheet
+  // closes: `RecipeCreateSheet` calls `onClose` before `onCreated`, so clearing
+  // there would blank it out one line before the handler that needs it reads it.
+  // The add-menu path clears it instead, which is the only other way in.
+  const [importUrl, setImportUrl] = useState<string | null>(null);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [groupByMealType, setGroupByMealType] = useState(true);
 
@@ -208,11 +216,41 @@ export function RecipesScreen() {
 
   const handleAddMenuSelect = useCallback((key: string) => {
     // Both import items open the one sheet, on their own tab — see
-    // RecipeCreateSheet's initialMode.
+    // RecipeCreateSheet's initialMode. Either way this is an import the user is
+    // starting from scratch, so any page left over from the shared-link banner
+    // is cleared rather than turning up pre-filled in a field they came here to
+    // type into themselves.
+    setImportUrl(null);
     if (key === 'link') { setImportMode('link'); setImportVisible(true); }
     else if (key === 'import') { setImportMode('photo'); setImportVisible(true); }
     else setAddVisible(true);
   }, []);
+
+  // A page saved from another app's share sheet. Only the front of the queue is
+  // offered at a time — see SharedLinkBanner.
+  const sharedUrls = useSharedLinkStore(useShallow(s => s.pendingUrls));
+  const dismissSharedLink = useSharedLinkStore(s => s.dismiss);
+  const sharedUrl = sharedUrls[0] ?? null;
+
+  const handleImportShared = useCallback(() => {
+    if (!sharedUrl) return;
+    setImportUrl(sharedUrl);
+    setImportMode('link');
+    setImportVisible(true);
+  }, [sharedUrl]);
+
+  const handleDismissShared = useCallback(() => {
+    if (sharedUrl) dismissSharedLink(sharedUrl);
+  }, [sharedUrl, dismissSharedLink]);
+
+  // Drop the queued page once a recipe has actually been made from it. Keyed on
+  // the source url the sheet reports rather than on whatever it opened with:
+  // the tabs are still live, so someone who opened the banner and then pasted a
+  // different recipe hasn't dealt with the shared one, and it stays queued.
+  const handleCreated = useCallback((recipeId: string, sourceUrl: string | null) => {
+    if (sourceUrl) dismissSharedLink(sourceUrl);
+    navigation.navigate('RecipeDetail', { recipeId });
+  }, [dismissSharedLink, navigation]);
 
   // The whole box's vocabulary, and the counts beside each chip. Derived from
   // the recipes rather than stored (see Recipe.tags), so the row holds exactly
@@ -539,6 +577,14 @@ export function RecipesScreen() {
           onClear={handleClearTrip}
         />
       )}
+      {!selectionMode && !!sharedUrl && (
+        <SharedLinkBanner
+          url={sharedUrl}
+          remaining={sharedUrls.length - 1}
+          onImport={handleImportShared}
+          onDismiss={handleDismissShared}
+        />
+      )}
 
       {recipes.length === 0 ? (
         <EmptyState
@@ -750,8 +796,9 @@ export function RecipesScreen() {
       <RecipeCreateSheet
         visible={importVisible}
         initialMode={importMode}
+        initialUrl={importUrl}
         onClose={() => setImportVisible(false)}
-        onCreated={recipeId => navigation.navigate('RecipeDetail', { recipeId })}
+        onCreated={handleCreated}
       />
 
       <RecipeTagFilterSheet

@@ -11,6 +11,44 @@ doesn't already cover.
 
 ---
 
+## Shared-in pages (`sharedRecipeLinks.ts`) — the iOS share sheet
+
+"dundundun" in another app's share sheet (NYT Cooking, Safari, a food blog) is an iOS **share
+extension**, `targets/todo-share/`, built as a second native target — read
+`docs/native-targets.md` before touching it or its config plugin.
+
+The round trip is: the extension captures a web address and appends it to a JSON array in the
+App Group container, the app drains that on launch and on foreground
+(`useSharedRecipeLinks` → `drainSharedLinks` on the widget bridge), and the queue lands in
+`useSharedLinkStore`, which puts a `SharedLinkBanner` at the top of Recipes. Tapping Import
+opens the ordinary `RecipeCreateSheet` on its link tab with the address already in the field.
+
+- **The extension captures the address and nothing else.** It's a separate process with a hard
+  memory cap, no access to the app's SQLite file and no way to reach the API key in the app's
+  keychain, so fetching, extracting and writing a recipe row are all things only the app can
+  do. It also can't open the app: `NSExtensionContext.open(_:)` isn't available to this
+  extension point, which is why the hand-off is a queue rather than a launch.
+- **A shared page waits for a tap; it does not import itself.** The import is a page fetch plus
+  an Anthropic call billed to the user's own key, and spending that unasked — for something
+  shared in a supermarket aisle three days ago, possibly several at once — is a decision nobody
+  made. It also means a failure is reported in the sheet that caused it rather than after the
+  fact.
+- **The queue is persisted to the `settings` table the moment it's drained.** `drainSharedLinks`
+  *deletes* the file it reads, which is the only way a page shared once doesn't queue again on
+  every launch — so the store is the sole remaining copy from that instant, and a force-quit
+  before the user gets round to the banner would otherwise lose a recipe they explicitly saved.
+  That also makes it the one store holding state in memory *and* writing through to `settings`,
+  so `useDemoStore` has to `reload()` it on the way in and out; every other store gets that from
+  its own `initialize()`.
+- **What gets dismissed is the source the recipe ended up with**, not the link the sheet opened
+  with (`onCreated(recipeId, sourceUrl)`). The tabs stay live, so someone who opened the banner
+  and then pasted a different recipe hasn't dealt with the shared page, and it stays queued.
+- **One banner at a time, oldest first.** Addresses are canonicalised through
+  `normalizeRecipeUrl` on the way in, so the queue holds exactly what the import would accept
+  and a re-share collapses onto the entry already there rather than jumping the line.
+
+---
+
 ## Composed recipes (`Recipe.components`) — one recipe used inside another
 
 "Steak with mashed potatoes" and "Salmon with mashed potatoes" are two recipes and one shared
