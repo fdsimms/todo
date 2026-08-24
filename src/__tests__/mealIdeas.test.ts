@@ -8,6 +8,7 @@ import {
   recentlyCookedTitles,
   expiringItemHints,
   mealIdeaRecipeDraft,
+  AI_INVENTED_RECIPE_SOURCE,
   type MealIdea,
 } from '../utils/mealIdeas';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
@@ -304,20 +305,22 @@ describe('mealIdeaRecipeDraft', () => {
     expect(draft.notes).toBe('A one-tray roast with charred lemons.');
   });
 
+  it('stamps the source as AI generated', () => {
+    const draft = mealIdeaRecipeDraft(idea('Lemon chicken'), []);
+    expect(draft.source).toBe(AI_INVENTED_RECIPE_SOURCE);
+  });
+
   it('defaults the recipe fields when no draft is given', () => {
     const draft = mealIdeaRecipeDraft(idea('Lemon chicken'), []);
-    expect(draft.estimatedMinutes).toBeNull();
     expect(draft.steps).toEqual([]);
     expect(draft.prepTasks).toEqual([]);
   });
 
-  it('carries the time, method and prep tasks through from the drafted recipe', () => {
+  it('carries the method and prep tasks through from the drafted recipe', () => {
     const draft = mealIdeaRecipeDraft(idea('Lemon chicken'), [], {
-      estimatedMinutes: 45,
       steps: ['Sear the chicken.', 'Roast with the lemons.'],
       prepTasks: [{ title: 'Marinate the chicken', offsetDays: -1 }],
     });
-    expect(draft.estimatedMinutes).toBe(45);
     expect(draft.steps).toEqual(['Sear the chicken.', 'Roast with the lemons.']);
     expect(draft.prepTasks).toEqual([{ title: 'Marinate the chicken', offsetDays: -1 }]);
   });

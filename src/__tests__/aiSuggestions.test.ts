@@ -1206,9 +1206,9 @@ describe('suggestMealIdeas', () => {
 describe('draftMealRecipe', () => {
   const AISLES = ['Produce', 'Meat', 'Pantry', 'Other'];
   const recipeResponse = (input: Record<string, unknown>) => toolUseResponse('draft_recipe', {
-    items: [], estimatedMinutes: 0, steps: [], prepTasks: [], ...input,
+    items: [], steps: [], prepTasks: [], ...input,
   });
-  const EMPTY_DRAFT = { ingredients: [], estimatedMinutes: null, steps: [], prepTasks: [] };
+  const EMPTY_DRAFT = { ingredients: [], steps: [], prepTasks: [] };
 
   it('throws when no API key is configured', async () => {
     jest.spyOn(
@@ -1272,20 +1272,12 @@ describe('draftMealRecipe', () => {
 
   it('returns the method and any prep tasks', async () => {
     mockFetchOnce(recipeResponse({
-      estimatedMinutes: 45,
       steps: ['Sear the chicken thighs.', 'Roast with the lemons at 200C for 30 minutes.'],
       prepTasks: [{ title: 'Marinate the chicken', daysAhead: 1 }],
     }));
     const result = await draftMealRecipe('Lemon chicken', AISLES, 4);
-    expect(result.estimatedMinutes).toBe(45);
     expect(result.steps).toEqual(['Sear the chicken thighs.', 'Roast with the lemons at 200C for 30 minutes.']);
     expect(result.prepTasks).toEqual([{ title: 'Marinate the chicken', offsetDays: -1 }]);
-  });
-
-  it('gives no estimated time when the model gives none', async () => {
-    mockFetchOnce(recipeResponse({ estimatedMinutes: 0 }));
-    const result = await draftMealRecipe('Lemon chicken', AISLES, 4);
-    expect(result.estimatedMinutes).toBeNull();
   });
 
   it('throws on a non-OK HTTP response', async () => {

@@ -999,14 +999,6 @@ export async function suggestMealIdeas(
 
 export interface DraftedMealRecipe {
   ingredients: RecipeGroceryItem[];
-  /**
-   * Total prep/cook time in minutes, start to finish. Null when nothing
-   * sensible to give. Deliberately not named `prepMinutes` the way
-   * `ExtractedRecipe`'s equivalent field is — this one has no split-source
-   * naming history to match, and the destination it's written to
-   * (`setEstimatedMinutes`) is the clearer name to carry all the way through.
-   */
-  estimatedMinutes: number | null;
   /** The method, in order. Empty when the name was too vague to cook at all. */
   steps: string[];
   /** Only genuine advance-prep — see the prompt below for the same rule `extractRecipe` uses. */
@@ -1032,6 +1024,11 @@ export interface DraftedMealRecipe {
  * *written* recipe states, and there's nothing to read — the prompt already
  * tells the model exactly how many to feed, so the caller writes that same
  * number rather than trusting the model to echo it back.
+ *
+ * No time estimate either, unlike `extractRecipe`'s `prepMinutes` — that one
+ * is reading a number the source actually printed; this would be the model
+ * guessing at a total for a dish it just made up, which isn't a number worth
+ * shipping.
  */
 export async function draftMealRecipe(
   mealName: string,
@@ -1040,7 +1037,7 @@ export async function draftMealRecipe(
 ): Promise<DraftedMealRecipe> {
   const { apiKey, model } = requireFeature('mealIdeas');
 
-  const empty: DraftedMealRecipe = { ingredients: [], estimatedMinutes: null, steps: [], prepTasks: [] };
+  const empty: DraftedMealRecipe = { ingredients: [], steps: [], prepTasks: [] };
   const name = mealName.trim().slice(0, RECIPE_NAME_MAX_LENGTH);
   // Nothing in, no network call — same guard extractRecipe makes on an empty
   // paste.
@@ -1054,7 +1051,7 @@ export async function draftMealRecipe(
     max_tokens: 2500,
     tools: [{
       name: 'draft_recipe',
-      description: 'Draft a full recipe — shopping list, method, and time — for a meal that has no written recipe',
+      description: 'Draft a full recipe — shopping list and method — for a meal that has no written recipe',
       input_schema: {
         type: 'object',
         properties: {
@@ -1062,10 +1059,6 @@ export async function draftMealRecipe(
             availableAisles,
             'The things a shopper needs to buy to cook this meal.',
           ),
-          estimatedMinutes: {
-            type: 'integer',
-            description: 'Roughly how many minutes this takes start to finish, prep and cook together. 0 if you cannot reasonably estimate one.',
-          },
           steps: {
             type: 'array',
             description: `The method, as an ordered list of separate steps a home cook could actually follow — brief and specific, the way a recipe states them. Under ${MAX_RECIPE_STEPS} steps. Empty array if the name is too vague to cook at all.`,
@@ -1097,7 +1090,7 @@ export async function draftMealRecipe(
     messages: [{
       role: 'user',
       content: [
-        `Write a full home-cooked recipe for a meal called "${name}". There is no written recipe — draft a straightforward home version of it: what to buy, how to make it, and roughly how long it takes.`,
+        `Write a full home-cooked recipe for a meal called "${name}". There is no written recipe — draft a straightforward home version of it: what to buy and how to make it.`,
         `Quantities should feed ${serves}. Give the amount in the quantity field, and name each item the way a shop would label it, not the way the dish prepares it — "garlic" rather than "3 cloves garlic, minced". Abbreviate tablespoon/teaspoon as "tbsp"/"tsp".`,
         'Cover what the dish genuinely needs and stop there: the everyday version rather than an elaborate one, no optional garnishes, and skip water. Include salt, pepper and cooking oil only when the dish actually turns on them.',
         `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
@@ -1110,17 +1103,12 @@ export async function draftMealRecipe(
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
-    items?: unknown; estimatedMinutes?: unknown; steps?: unknown; prepTasks?: unknown;
+    items?: unknown; steps?: unknown; prepTasks?: unknown;
   } | undefined;
   if (!input) throw new Error('No suggestions returned');
 
-  const estimatedMinutes = typeof input.estimatedMinutes === 'number' && input.estimatedMinutes > 0
-    ? Math.round(input.estimatedMinutes)
-    : null;
-
   return {
     ingredients: parseExtractedItems(input.items, availableAisles),
-    estimatedMinutes,
     steps: parseExtractedSteps(input.steps),
     prepTasks: parseExtractedPrepTasks(input.prepTasks),
   };

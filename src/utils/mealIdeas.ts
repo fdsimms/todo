@@ -190,12 +190,22 @@ export interface MealIdeaPrepTask {
   offsetDays: number;
 }
 
+/**
+ * What `Recipe.source` is set to for every recipe this file creates — a
+ * plain, literal statement of where it came from, not a joke or a euphemism
+ * (see CLAUDE.md's user-facing copy rules). `describeAttribution`
+ * (recipeUtils.ts) shows it verbatim wherever a recipe's byline is shown,
+ * the same way it would show "NYT Cooking" or "Nothing Fancy".
+ */
+export const AI_INVENTED_RECIPE_SOURCE = 'AI generated';
+
 export interface MealIdeaRecipeDraft {
   name: string;
   /** The idea's own blurb, carried onto the recipe rather than thrown away. */
   notes: string;
   ingredients: RecipeIngredient[];
-  estimatedMinutes: number | null;
+  /** Always `AI_INVENTED_RECIPE_SOURCE` — every recipe this function drafts came from one. */
+  source: string;
   steps: string[];
   prepTasks: MealIdeaPrepTask[];
 }
@@ -203,8 +213,8 @@ export interface MealIdeaRecipeDraft {
 /**
  * An accepted idea, as the arguments the recipe store wants: a name for
  * `addRecipe`, rows for `addStructuredIngredients`, and everything else
- * `draftMealRecipe` came back with, for `setNotes`/`setEstimatedMinutes`/
- * `addStep`/`addPrepTask`.
+ * `draftMealRecipe` came back with, for `setNotes`/`setSource`/`addStep`/
+ * `addPrepTask`.
  *
  * Accepting an invented meal creates a *real* recipe (#1063) rather than a
  * free-text `MealPlanEntry`, so the next time it comes round it's already in
@@ -222,10 +232,9 @@ export function mealIdeaRecipeDraft(
   idea: MealIdea,
   items: readonly unknown[],
   recipe: {
-    estimatedMinutes: number | null;
     steps: readonly string[];
     prepTasks: readonly MealIdeaPrepTask[];
-  } = { estimatedMinutes: null, steps: [], prepTasks: [] },
+  } = { steps: [], prepTasks: [] },
 ): MealIdeaRecipeDraft {
   return {
     name: cleanRecipeName(idea.title),
@@ -233,7 +242,7 @@ export function mealIdeaRecipeDraft(
     ingredients: items
       .map(item => normalizeIngredient(item))
       .filter((i): i is RecipeIngredient => i !== null),
-    estimatedMinutes: recipe.estimatedMinutes,
+    source: AI_INVENTED_RECIPE_SOURCE,
     steps: [...recipe.steps],
     prepTasks: [...recipe.prepTasks],
   };
