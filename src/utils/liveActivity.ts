@@ -4,6 +4,7 @@ import type { Task, Recipe } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { widgetBridge } from './widgetBridge';
 import { isTimedTask, timerRemaining } from './timer';
 import { hasCookTimer, cookTimerRemaining, hasPrepTimer, prepTimerRemaining } from './recipeTimer';
 import { displayTitleFor } from './visibilityUtils';
@@ -123,21 +124,15 @@ export function buildTimerRuns(
   return runs;
 }
 
-// Lazily required, same shape as writeToNativeBridge in widgetSync.ts, so
-// importing this module never crashes in Expo Go or on Android, where the
-// local `todo-widget-bridge` native module doesn't exist.
+// Through widgetBridge(), which is where not-iOS, demo mode and a build with
+// no native half are all answered at once — see its note for why a Live
+// Activity must never be started from seeded demo data.
 function syncNativeTimerActivities(runs: TimerRun[]): void {
-  if (Platform.OS !== 'ios') return;
-  try {
-    const { syncTimerLiveActivities } = require('todo-widget-bridge') as {
-      syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
-    };
-    // Fire-and-forget: nothing here needs to block on the native reconcile
-    // completing, and a failure must never surface anywhere in the app UI.
-    syncTimerLiveActivities(JSON.stringify(runs)).catch(() => {});
-  } catch {
-    // No dev client build with the native module present (e.g. Expo Go) — no-op.
-  }
+  const bridge = widgetBridge();
+  if (!bridge) return;
+  // Fire-and-forget: nothing here needs to block on the native reconcile
+  // completing, and a failure must never surface anywhere in the app UI.
+  bridge.syncTimerLiveActivities(JSON.stringify(runs)).catch(() => {});
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;

@@ -5,6 +5,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { resetToToday } from '../navigation/navigationRef';
 import { displayTitleFor } from './visibilityUtils';
+import { widgetBridge } from './widgetBridge';
 
 const DEBOUNCE_MS = 300;
 const MAX_VISIBLE_TASKS = 50;
@@ -40,21 +41,17 @@ function toWidgetTask(task: Task): WidgetTask {
   };
 }
 
-// Lazily required so importing this module never crashes in Expo Go or on
-// Android, where the local `todo-widget-bridge` native module doesn't exist.
+// Through widgetBridge(), which answers not-iOS, demo mode and a build with no
+// native half in one call. The demo gate is checked here rather than in the
+// debounce below on purpose: it's the latest possible moment, so a write
+// scheduled a moment before demo mode was entered still doesn't land.
 function writeToNativeBridge(jsonString: string): void {
-  if (Platform.OS !== 'ios') return;
-  try {
-    const { writeWidgetSnapshot } = require('todo-widget-bridge') as {
-      writeWidgetSnapshot: (jsonString: string) => Promise<boolean>;
-    };
-    // Fire-and-forget: nothing here needs to block on the native write
-    // completing. Swallowing a rejection here is intentional — a failed
-    // widget refresh should never surface anywhere in the app UI.
-    writeWidgetSnapshot(jsonString).catch(() => {});
-  } catch {
-    // No dev client build with the native module present (e.g. Expo Go) — no-op.
-  }
+  const bridge = widgetBridge();
+  if (!bridge) return;
+  // Fire-and-forget: nothing here needs to block on the native write
+  // completing. Swallowing a rejection here is intentional — a failed
+  // widget refresh should never surface anywhere in the app UI.
+  bridge.writeWidgetSnapshot(jsonString).catch(() => {});
 }
 
 // Hands off task completions queued by the widget's checkbox
@@ -68,17 +65,21 @@ function writeToNativeBridge(jsonString: string): void {
 // app (CompleteTaskIntent.openAppWhenRun), so this also jumps to Today so the
 // animation is actually visible.
 async function processPendingWidgetCompletions(): Promise<void> {
-  if (Platform.OS !== 'ios') return;
+  // widgetBridge() is null in demo mode, and a *drain* is the half of this
+  // that would actually lose something: the queue holds real taps made on the
+  // real widget, and consuming them into the throwaway demo database completes
+  // ids that aren't in it. The tap would silently do nothing, with nothing left
+  // to retry from. Skipped, the queue keeps them for the next foreground after
+  // the demo ends.
+  const bridge = widgetBridge();
+  if (!bridge) return;
   try {
-    const { drainPendingWidgetCompletions } = require('todo-widget-bridge') as {
-      drainPendingWidgetCompletions: () => Promise<string[]>;
-    };
-    const ids = await drainPendingWidgetCompletions();
+    const ids = await bridge.drainPendingWidgetCompletions();
     if (ids.length === 0) return;
     useWidgetCompletionStore.getState().enqueue(ids);
     resetToToday();
   } catch {
-    // No dev client build with the native module present (e.g. Expo Go) — no-op.
+    // A build predating drainPendingCompletions — no-op.
   }
 }
 
