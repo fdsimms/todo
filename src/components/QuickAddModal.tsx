@@ -2238,8 +2238,28 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   toolChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
+    // Content is centred because these stretch (below): left-aligned, a chip
+    // on a line that only fits two carries all its slack as a trailing gap
+    // inside the pill, which is the ragged edge again one level down.
+    justifyContent: 'center',
+    gap: 5,
+    // 10, where the sheet's other pills (`presetChip`, `segmentChip`) use 14.
+    // Those sit three or four to a panel; this is the one row where six to
+    // nine compete for a single line, and at 14 the widest three ran a few
+    // points past the sheet's 294pt of inner width at 390pt — so only two
+    // ever landed on a line and the toolbar stood three rows tall with a
+    // third of its width unused. Don't put it back without rechecking that
+    // arithmetic; the padding is what buys the third chip.
+    paddingHorizontal: 10,
+    // Grow to fill the line rather than leaving it ragged. Yoga lays each
+    // wrapped line out on its own, so this hands whatever the line didn't use
+    // to the chips on it: the right edge is flush at any sheet width, label
+    // set or text size, and a line that only fits two still reads as
+    // deliberate. Shrink covers the opposite case — a chip whose value alone
+    // outgrows the line (a long category name) narrows and lets its label
+    // ellipsize instead of running past the sheet.
+    flexGrow: 1,
+    flexShrink: 1,
     // Height rather than padding: these carry a mix of icons, coloured dots and
     // text, which don't share a natural line box, and a toolbar of pills at
     // three different heights reads as broken. 44 is the HIG touch minimum,
@@ -2258,6 +2278,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     color: colors.textSecondary,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
+    // So the chip's own flexShrink reaches the label: a Text in a row keeps
+    // its measured width otherwise, and `numberOfLines={1}` never ellipsizes.
+    flexShrink: 1,
   },
   toolChipTextSet: {
     color: colors.accent,
