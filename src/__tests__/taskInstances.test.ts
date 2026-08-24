@@ -195,6 +195,49 @@ describe('getRepeatedInstances', () => {
     expect(getRepeatedInstances(tasks, 4)).toEqual([]);
   });
 
+  it('ignores rows the user marked missed', () => {
+    const tasks = [
+      makeTask({ id: 'a', title: 'water plants', completedAt: '2025-01-01T00:00:00.000Z' }),
+      makeTask({
+        id: 'b',
+        title: 'water plants',
+        completedAt: '2025-01-02T00:00:00.000Z',
+        missedAt: '2025-01-02T00:00:00.000Z',
+      }),
+    ];
+    // A miss is stored as a completed row, but it isn't an achievement — one
+    // real completion left, which is below the repeat threshold.
+    expect(getRepeatedInstances(tasks)).toEqual([]);
+  });
+
+  it('ignores the steps of a multi-step chain', () => {
+    const chain = {
+      chainEnabled: true,
+      chainItems: [
+        { id: 's1', title: 'cook omelette', estimatedMinutes: null },
+        { id: 's2', title: 'eat omelette', estimatedMinutes: null },
+      ],
+    };
+    const tasks = [
+      makeTask({ ...chain, id: 'a', title: 'JUST Egg Omelette', chainIndex: 0, completedAt: '2025-01-01T08:00:00.000Z' }),
+      makeTask({ ...chain, id: 'b', title: 'JUST Egg Omelette', chainIndex: 1, completedAt: '2025-01-01T08:30:00.000Z' }),
+    ];
+    // One cook-then-eat run, not a task done twice.
+    expect(getRepeatedInstances(tasks)).toEqual([]);
+  });
+
+  it('still counts a single-item chain, which reads as a plain task', () => {
+    const chain = {
+      chainEnabled: true,
+      chainItems: [{ id: 's1', title: 'stretch', estimatedMinutes: null }],
+    };
+    const tasks = [
+      makeTask({ ...chain, id: 'a', title: 'stretch', completedAt: '2025-01-01T00:00:00.000Z' }),
+      makeTask({ ...chain, id: 'b', title: 'stretch', completedAt: '2025-01-02T00:00:00.000Z' }),
+    ];
+    expect(getRepeatedInstances(tasks).map(g => g.count)).toEqual([2]);
+  });
+
   it('ignores blank titles', () => {
     const tasks = [
       makeTask({ id: 'a', title: '   ', completedAt: '2025-01-01T00:00:00.000Z' }),
