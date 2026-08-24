@@ -577,7 +577,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   intervalValueSm: { color: colors.text, fontSize: font.sm, fontWeight: '600', minWidth: 60, textAlign: 'center' },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+    paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.md,
   },
   timePill: {
     flex: 1, paddingVertical: 7, borderRadius: radius.full,

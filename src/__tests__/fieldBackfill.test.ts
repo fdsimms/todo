@@ -193,6 +193,36 @@ describe('backfillCandidates', () => {
     ];
     expect(backfillCandidates(tasks, 'estimate').map(t => t.id)).toEqual(['b']);
   });
+
+  describe('fromScratch', () => {
+    it('includes tasks that already have the field set', () => {
+      const tasks: Task[] = [
+        { ...baseTask, id: 'a', estimatedMinutes: 30 },
+        { ...baseTask, id: 'b', estimatedMinutes: null },
+      ];
+      expect(backfillCandidates(tasks, 'estimate', { fromScratch: true }).map(t => t.id))
+        .toEqual(['a', 'b']);
+    });
+
+    it('includes tasks dismissed for that field', () => {
+      const tasks: Task[] = [
+        { ...baseTask, id: 'a', backfillDismissedFields: ['estimate'] },
+      ];
+      expect(backfillCandidates(tasks, 'estimate', { fromScratch: true }).map(t => t.id))
+        .toEqual(['a']);
+    });
+
+    it('still excludes subtasks, completed tasks and archived tasks', () => {
+      const tasks: Task[] = [
+        { ...baseTask, id: 'sub', parentId: 'test-1' },
+        { ...baseTask, id: 'done', completed: true },
+        { ...baseTask, id: 'gone', archived: true },
+        { ...baseTask, id: 'live' },
+      ];
+      expect(backfillCandidates(tasks, 'estimate', { fromScratch: true }).map(t => t.id))
+        .toEqual(['live']);
+    });
+  });
 });
 
 describe('isBackfillDismissed / dismissBackfillField', () => {
