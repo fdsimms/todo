@@ -18,6 +18,7 @@ function makeCategory(overrides: Partial<Category> = {}): Category {
     excludeFromNewTasksBanner: false,
     sortOrder: 1,
     emoji: null,
+    backfillDismissedFields: [],
     ...overrides,
   };
 }

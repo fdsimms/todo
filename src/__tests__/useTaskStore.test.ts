@@ -345,6 +345,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   sequential: false,
   nudgeOptIn: true,
   reviewDeclinedAt: null,
+  backfillDismissedFields: [],
   ...overrides,
 });
 
