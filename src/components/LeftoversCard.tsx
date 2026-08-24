@@ -412,8 +412,10 @@ export function LeftoverDragCard({
 
   // Selected as plain strings and booleans, never as the intent: most pointer
   // samples don't change either, and one that doesn't must cost nothing. See
-  // useFabIntentSelector.
-  const caption = useFabIntentSelector(channel, intent => {
+  // useFabIntentSelector. Split in two rather than one combined string so the
+  // slot name can carry its own emphasis — it's the half that changes as a
+  // finger crosses meal columns, the day label doesn't.
+  const captionPrefix = useFabIntentSelector(channel, intent => {
     if (intent?.kind !== 'day') return describeLeftover(leftover);
     // The use-by warning replaces the meal rather than sitting after it: the
     // row is one line at font.xs, and "Thursday · Dinner · past its use-by"
@@ -421,7 +423,11 @@ export function LeftoverDragCard({
     // point; which meal of that day is not.
     return isPlannedPastKeepUntil(leftover, intent.dayKey)
       ? `${intent.dayLabel} · past its use-by`
-      : `${intent.dayLabel} · ${slotLabel(intent.slot)}`;
+      : `${intent.dayLabel} · `;
+  });
+  const captionSlot = useFabIntentSelector(channel, intent => {
+    if (intent?.kind !== 'day' || isPlannedPastKeepUntil(leftover, intent.dayKey)) return null;
+    return slotLabel(intent.slot);
   });
   const late = useFabIntentSelector(
     channel,
@@ -439,7 +445,10 @@ export function LeftoverDragCard({
         <View style={[styles.dot, { backgroundColor: tint }]} />
         <View style={styles.rowText}>
           <Text style={styles.rowTitle} numberOfLines={1}>{leftover.title}</Text>
-          <Text style={[styles.rowCaption, { color: tint }]} numberOfLines={1}>{caption}</Text>
+          <Text style={[styles.rowCaption, { color: tint }]} numberOfLines={1}>
+            {captionPrefix}
+            {captionSlot != null && <Text style={styles.rowCaptionSlot}>{captionSlot}</Text>}
+          </Text>
         </View>
       </View>
     </View>
@@ -567,5 +576,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowCaption: {
     color: colors.textTertiary,
     fontSize: font.xs,
+  },
+  rowCaptionSlot: {
+    color: colors.accent,
+    fontWeight: fontWeight.semibold,
   },
 });
