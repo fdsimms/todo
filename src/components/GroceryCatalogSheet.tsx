@@ -416,7 +416,7 @@ function makeStyles(colors: Colors) {
       height: 40,
       padding: 0,
     },
-    filterWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
+    filterWrap: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.md },
     selectionBar: {
       flexDirection: 'row',
       alignItems: 'center',
