@@ -2260,6 +2260,13 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     // ellipsize instead of running past the sheet.
     flexGrow: 1,
     flexShrink: 1,
+    // Ceiling on that growth, because a line can hold one chip: tapping "2 more"
+    // puts ten on the toolbar, which lands three-three-three-one, and the odd
+    // one out grew into a full-width banner that read as a section header
+    // rather than as the last pill in a row. Under half the line it stays a
+    // pill. A percentage rather than a fixed width so it can't overflow — two
+    // of them plus the 4pt gap still fit any sheet width.
+    maxWidth: '48%',
     // Height rather than padding: these carry a mix of icons, coloured dots and
     // text, which don't share a natural line box, and a toolbar of pills at
     // three different heights reads as broken. 44 is the HIG touch minimum,
@@ -2410,6 +2417,15 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',
+    // Fill the line, same as `toolChip` and for the same reason — six short
+    // presets otherwise wrap four-then-two and leave the second line half
+    // empty under a toolbar that is now flush. Only the single-choice rows
+    // (timed minutes, effort) get this; see `segmentChip`. The cap matters
+    // more here than on the toolbar: the minute row wraps to a lone "1h"
+    // beside the custom field, and uncapped that one word filled the line.
+    flexGrow: 1,
+    flexShrink: 1,
+    maxWidth: '48%',
   },
   presetChipActive: {
     backgroundColor: colors.accent,
@@ -2448,6 +2464,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   // row of toggles rather than one field, so it stays pills — and the tint is
   // the segment's own colour, which a raised grey segment would drop.
   segmentChip: {
+    // Deliberately not filling its line the way `presetChip` does. Time of day
+    // is multi-select, and a row of pills stretched into one full-width band
+    // is how this app draws "pick exactly one of a closed set"
+    // (`SegmentedControl`) — the ragged edge is what says these toggle
+    // independently. Consistency with the rows above it isn't worth saying the
+    // wrong thing about the control.
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
