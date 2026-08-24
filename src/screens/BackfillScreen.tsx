@@ -154,15 +154,15 @@ export function BackfillScreen() {
   const [customUnit, setCustomUnit] = useState<'min' | 'hr'>('min');
   const [nudgeDraft, setNudgeDraft] = useState<CadenceParts>({ count: null, unit: 'days' });
 
-  const taskCounts = useMemo(() => backfillFieldCounts(tasks), [tasks]);
+  const taskCounts = useMemo(() => backfillFieldCounts(tasks, categories), [tasks, categories]);
   const categoryCounts = useMemo(() => categoryBackfillFieldCounts(categories), [categories]);
   const projectCounts = useMemo(() => projectBackfillFieldCounts(projects), [projects]);
 
   const taskQueue = useMemo(
     () => active?.kind === 'task'
-      ? backfillCandidates(tasks, active.id, { fromScratch }).filter(t => !skippedIds.has(t.id))
+      ? backfillCandidates(tasks, active.id, { fromScratch, categories }).filter(t => !skippedIds.has(t.id))
       : [],
-    [tasks, active, fromScratch, skippedIds]
+    [tasks, active, fromScratch, skippedIds, categories]
   );
   const categoryQueue = useMemo(
     () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id).filter(c => !skippedIds.has(c.id)) : [],
@@ -201,7 +201,7 @@ export function BackfillScreen() {
     setActive({ kind: 'task', id });
     setFromScratch(false);
     setSkippedIds(new Set());
-    setSessionTotal(backfillCandidates(tasks, id).length);
+    setSessionTotal(backfillCandidates(tasks, id, { categories }).length);
   };
 
   const chooseCategoryField = (id: CategoryBackfillFieldId) => {
@@ -468,7 +468,7 @@ export function BackfillScreen() {
     // In a from-scratch run, "dismiss" often lands on a task that already has
     // a value — the current value is left exactly as it is, so "leave
     // unset" would misdescribe what the button does there.
-    const dismissLabel = currentTask && isFieldMissing(currentTask, active.id)
+    const dismissLabel = currentTask && isFieldMissing(currentTask, active.id, categories)
       ? `Leave ${field.label.toLowerCase()} unset`
       : `Don't ask again`;
     return (

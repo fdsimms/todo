@@ -1,0 +1,4 @@
+{
+  "message": "The Vacation pause field in Backfill no longer asks about a task whose category is already set to hide on vacation.",
+  "date": "2026-08-24"
+}

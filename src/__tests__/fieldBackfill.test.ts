@@ -2,7 +2,22 @@ import {
   isFieldMissing, isBackfillDismissed, backfillCandidates, backfillFieldCounts,
   dismissBackfillField, estimatePatchFor, BACKFILL_FIELDS,
 } from '../utils/fieldBackfill';
-import type { Task } from '../types';
+import type { Task, Category } from '../types';
+
+const baseCategory: Category = {
+  id: 'cat-1',
+  name: 'Home',
+  scheduleDays: null,
+  scheduleStart: null,
+  scheduleEnd: null,
+  hideOnVacation: false,
+  excludeFromSuggestions: false,
+  excludeFromNewTasksBanner: false,
+  defaultTimeSegments: [],
+  sortOrder: 0,
+  emoji: null,
+  backfillDismissedFields: [],
+};
 
 const baseTask: Task = {
   id: 'test-1',
@@ -160,6 +175,18 @@ describe('isFieldMissing', () => {
     expect(isFieldMissing({ ...baseTask, recurrenceType: 'daily' }, 'vacation')).toBe(true);
     expect(isFieldMissing({ ...baseTask, recurrenceType: 'daily', vacationPause: true }, 'vacation')).toBe(false);
   });
+
+  it('does not treat vacation pause as missing when the task\'s own category already hides on vacation', () => {
+    const task = { ...baseTask, recurrenceType: 'daily' as const, category: 'Home' };
+    const hidingCategory = { ...baseCategory, name: 'Home', hideOnVacation: true };
+    expect(isFieldMissing(task, 'vacation', [hidingCategory])).toBe(false);
+    // A category that hasn't turned it on doesn't suppress the question.
+    expect(isFieldMissing(task, 'vacation', [{ ...baseCategory, name: 'Home', hideOnVacation: false }])).toBe(true);
+    // A different category hiding on vacation is irrelevant to this task.
+    expect(isFieldMissing(task, 'vacation', [{ ...baseCategory, name: 'Work', hideOnVacation: true }])).toBe(true);
+    // No categories passed at all: falls back to the task-only check.
+    expect(isFieldMissing(task, 'vacation')).toBe(true);
+  });
 });
 
 describe('backfillCandidates', () => {
@@ -222,6 +249,17 @@ describe('backfillCandidates', () => {
       { ...baseTask, id: 'recurring-on', recurrenceType: 'daily', vacationPause: true },
     ];
     expect(backfillCandidates(tasks, 'vacation').map(t => t.id)).toEqual(['recurring-off']);
+  });
+
+  it('excludes a recurring task whose category already hides on vacation', () => {
+    const tasks: Task[] = [
+      { ...baseTask, id: 'no-category', recurrenceType: 'daily' },
+      { ...baseTask, id: 'hidden-category', recurrenceType: 'daily', category: 'Home' },
+      { ...baseTask, id: 'other-category', recurrenceType: 'daily', category: 'Work' },
+    ];
+    const categories: Category[] = [{ ...baseCategory, name: 'Home', hideOnVacation: true }];
+    expect(backfillCandidates(tasks, 'vacation', { categories }).map(t => t.id))
+      .toEqual(['no-category', 'other-category']);
   });
 
   describe('fromScratch', () => {
@@ -300,6 +338,13 @@ describe('backfillFieldCounts', () => {
   it('does not count a task dismissed for that field', () => {
     const task = { ...baseTask, backfillDismissedFields: ['estimate'] };
     expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, category: 1, streak: 0, vacation: 0 });
+  });
+
+  it('does not count a recurring task whose category already hides on vacation', () => {
+    const task = { ...baseTask, recurrenceType: 'daily' as const, category: 'Home' };
+    const categories: Category[] = [{ ...baseCategory, name: 'Home', hideOnVacation: true }];
+    expect(backfillFieldCounts([task], categories).vacation).toBe(0);
+    expect(backfillFieldCounts([task]).vacation).toBe(1);
   });
 });
 

@@ -1,4 +1,4 @@
-import type { Task, Effort } from '../types';
+import type { Task, Effort, Category } from '../types';
 import { EFFORT_MINUTES } from './effort';
 
 /** A field this screen can walk the task list and fill in, one task at a time. */
@@ -49,6 +49,11 @@ export interface BackfillCandidatesOptions {
    * itself — it just widens which tasks get walked.
    */
   fromScratch?: boolean;
+  /**
+   * Live categories, needed only by the `vacation` field — see
+   * `isFieldMissing`'s `vacation` case for why. Omit for any other field.
+   */
+  categories?: Category[];
 }
 
 /**
@@ -58,7 +63,7 @@ export interface BackfillCandidatesOptions {
  * `groceryUseUp`/`leftoverUseUp` case below) reads as not-missing rather than
  * as a question with no good answer.
  */
-export function isFieldMissing(task: Task, fieldId: BackfillFieldId): boolean {
+export function isFieldMissing(task: Task, fieldId: BackfillFieldId, categories?: Category[]): boolean {
   switch (fieldId) {
     case 'estimate':
       // "Use up X" tasks (grocery expiry, leftovers) don't share a step-type
@@ -82,7 +87,13 @@ export function isFieldMissing(task: Task, fieldId: BackfillFieldId): boolean {
     case 'streak':
       return task.recurrenceType !== 'none' && !task.showStreak;
     case 'vacation':
-      return task.recurrenceType !== 'none' && !task.vacationPause;
+      if (task.recurrenceType === 'none' || task.vacationPause) return false;
+      // A task in a category that's already set to hide on vacation is
+      // already covered — isHiddenForVacation (visibilityUtils) treats the
+      // two as equivalent, so pausing it individually too would be asking
+      // for a value that changes nothing.
+      if (task.category && categories?.some(c => c.name === task.category && c.hideOnVacation)) return false;
+      return true;
   }
 }
 
@@ -110,18 +121,18 @@ export function backfillCandidates(
   return tasks
     .filter(t =>
       !t.parentId && !t.completed && !t.archived &&
-      (opts.fromScratch || (isFieldMissing(t, fieldId) && !isBackfillDismissed(t, fieldId)))
+      (opts.fromScratch || (isFieldMissing(t, fieldId, opts.categories) && !isBackfillDismissed(t, fieldId)))
     )
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 
 /** How many live tasks are missing each field, for the field-picker step's counts. */
-export function backfillFieldCounts(tasks: Task[]): Record<BackfillFieldId, number> {
+export function backfillFieldCounts(tasks: Task[], categories: Category[] = []): Record<BackfillFieldId, number> {
   const counts = { estimate: 0, priority: 0, category: 0, streak: 0, vacation: 0 } as Record<BackfillFieldId, number>;
   for (const t of tasks) {
     if (t.parentId || t.completed || t.archived) continue;
     for (const field of BACKFILL_FIELDS) {
-      if (isFieldMissing(t, field.id) && !isBackfillDismissed(t, field.id)) counts[field.id]++;
+      if (isFieldMissing(t, field.id, categories) && !isBackfillDismissed(t, field.id)) counts[field.id]++;
     }
   }
   return counts;
