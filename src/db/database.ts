@@ -2323,9 +2323,6 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     note: (row.note as string) ?? '',
     onList: Boolean(row.on_list),
     checked: Boolean(row.checked),
-    // Absent only on a row read before the migration landed, and a row that
-    // already exists is a catalog member — same reading as the column default.
-    inCatalog: row.in_catalog === undefined ? true : Boolean(row.in_catalog),
     sortOrder: (row.sort_order as number) ?? 0,
     purchaseCount: (row.purchase_count as number) ?? 0,
     lastAddedAt: (row.last_added_at as string) ?? null,
@@ -2377,7 +2374,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
-      item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
+      item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
       item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
       item.onHandUntil ?? null,
@@ -2406,7 +2403,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
-      item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
+      item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
       item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
       item.onHandUntil ?? null,
@@ -2671,19 +2668,16 @@ export function dbFinishGroceryShopping(
  * Clears the list without buying anything — "I'm not doing this trip after
  * all". Deliberately does not touch purchase_count: nothing was bought, so
  * inflating the ranking signal would teach autocomplete a lie.
+ *
+ * **Unlists only.** It used to also delete the rows that had never been in the
+ * catalog, but the decision of which rows an abandoned trip leaves behind now
+ * needs an item's products, subs, shop links and aliases to answer — see
+ * `hasUserFacts` — and those live above this layer. `clearList` does the
+ * sweep, this returns everything it unlisted.
  */
 export function dbClearGroceryList(): string[] {
   const rows = db.getAllSync<{ id: string }>('SELECT id FROM grocery_items WHERE on_list = 1');
   if (rows.length === 0) return [];
-  // Same split removeFromList makes: a row already in the catalog parks
-  // off-list, same as before. A provisional row — never in the catalog until
-  // this trip added it — has nothing to keep once the trip is abandoned, so
-  // it's deleted rather than minted into a catalog entry for something that
-  // was never bought.
-  const provisional = db.getAllSync<{ id: string }>(
-    'SELECT id FROM grocery_items WHERE on_list = 1 AND in_catalog = 0'
-  );
-  for (const row of provisional) dbDeleteGroceryItem(row.id);
   db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0 WHERE on_list = 1');
   return rows.map(r => r.id);
 }

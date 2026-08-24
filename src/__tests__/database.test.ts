@@ -1771,7 +1771,6 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     note: '',
     onList: true,
     checked: false,
-    inCatalog: true,
     sortOrder: 1,
     purchaseCount: 0,
     lastAddedAt: null,
@@ -2172,28 +2171,29 @@ describe('grocery items', () => {
 
   it('stores booleans as 0/1 and reads them back as booleans', () => {
     dbInsertGroceryItem(makeGroceryItem({
-      id: 'g1', name: 'Milk', onList: false, checked: false, inCatalog: false,
+      id: 'g1', name: 'Milk', onList: false, checked: false,
     }));
-    const raw = mockRawDb.prepare('SELECT on_list, in_catalog FROM grocery_items WHERE id = ?').get('g1') as {
+    const raw = mockRawDb.prepare('SELECT on_list, checked FROM grocery_items WHERE id = ?').get('g1') as {
       on_list: number;
-      in_catalog: number;
+      checked: number;
     };
     expect(raw.on_list).toBe(0);
-    expect(raw.in_catalog).toBe(0);
+    expect(raw.checked).toBe(0);
 
     const item = dbGetAllGroceryItems()[0];
     expect(item.onList).toBe(false);
-    expect(item.inCatalog).toBe(false);
+    expect(item.checked).toBe(false);
   });
 
-  // The migration's default, and the only safe one: a row that predates the
-  // provisional idea is a catalog member, not something a Remove from list may
-  // delete out from under the user.
-  it('reads a row written without in_catalog as a catalog member', () => {
-    mockRawDb
-      .prepare('INSERT INTO grocery_items (id, name, name_key, created_at) VALUES (?,?,?,?)')
-      .run('g1', 'Milk', 'milk', '2026-01-01T00:00:00.000Z');
-    expect(dbGetAllGroceryItems()[0].inCatalog).toBe(true);
+  // Retired, never dropped — the same treatment `task_groups.completed_at`
+  // gets. Asserted so a future migration can't quietly stop satisfying the
+  // column's NOT NULL.
+  it('still writes the retired in_catalog column', () => {
+    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', onList: false }));
+    const raw = mockRawDb
+      .prepare('SELECT in_catalog FROM grocery_items WHERE id = ?')
+      .get('g1') as { in_catalog: number };
+    expect(raw.in_catalog).toBe(1);
   });
 
   // The no-duplicates guarantee lives in the schema, not in a store method a
@@ -2435,12 +2435,6 @@ describe('grocery items', () => {
       expect(dbGetAllItemShopLinks()[0].unavailableProductIds).toEqual({});
     });
 
-    it('promotes what was bought into the catalog', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true, inCatalog: false }));
-      dbFinishGroceryShopping('2026-08-07T12:00:00.000Z');
-      expect(dbGetAllGroceryItems()[0].inCatalog).toBe(true);
-    });
-
     // Deleting would lose the ranking signal, not just the row.
     it('never deletes', () => {
       dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true }));
@@ -2494,22 +2488,16 @@ describe('grocery items', () => {
       expect(items.find(i => i.id === 'g1')!.purchaseCount).toBe(3);
     });
 
-    // Same split removeFromList makes: a row already in the catalog parks
-    // off-list, but a provisional row never was, so clearing deletes it
-    // rather than minting a catalog entry for something never bought.
-    it('deletes a provisional row rather than parking it in the catalog', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', inCatalog: false }));
-      dbClearGroceryList();
-      expect(dbGetAllGroceryItems()).toHaveLength(0);
-    });
-
-    it('parks a catalog row off-list instead of deleting it', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', inCatalog: true }));
-      dbClearGroceryList();
+    // Unlists and never deletes: which rows an abandoned trip leaves behind
+    // needs an item's links to answer, so `clearList` owns that sweep now.
+    it('parks every row off-list instead of deleting any', () => {
+      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+      const cleared = dbClearGroceryList();
       const items = dbGetAllGroceryItems();
+      expect(cleared).toEqual(['g1']);
       expect(items).toHaveLength(1);
       expect(items[0].onList).toBe(false);
-      expect(items[0].inCatalog).toBe(true);
+      expect(items[0].checked).toBe(false);
     });
   });
 

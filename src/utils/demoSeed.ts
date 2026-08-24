@@ -1357,10 +1357,9 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   setCheckedMany(idsNamed(CORNER_SHOP), true);
   finishShopping(null, priced({ 'Greek yogurt': 549, Butter: 479 }));
 
-  // Salt and pepper need a trip too — like every catalog row here, isStaple
-  // is a corrected-by-hand flag on an item, not something a provisional row
-  // can carry, so they have to earn their catalog place the same way Greek
-  // yogurt and Butter just did before setStaple below has anything to mark.
+  // Salt and pepper get a trip too, so they read like everything else here:
+  // a staple with no purchase behind it is a legal row but a strange one to
+  // hand someone as demo data.
   const STAPLES = ['Salt', 'Black pepper'];
   addExistingMany(idsNamed(STAPLES));
   setCheckedMany(idsNamed(STAPLES), true);
@@ -1405,9 +1404,9 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
 
   // "I can get this here" with no trip behind it — an assertion, not an
   // observation. Almonds are linked to Costco alone, so they read as available
-  // at exactly one store. Linking (like finishing a trip) promotes a
-  // provisional row into the catalog, so this runs before the clear below —
-  // otherwise these names, never bought, would have nothing left to promote.
+  // at exactly one store. A store link is a user fact, so it keeps its row
+  // through the clear below (see hasUserFacts) — which is why this runs first:
+  // afterwards these never-bought names wouldn't be here to link.
   linkItemShop(itemNamed('Almonds').id, costco.id);
   linkItemShopMany(idsNamed(['Peanut butter', 'Ground beef']), costco.id);
   linkItemShopMany(idsNamed(['Dish soap', 'Toilet paper']), amazon.id);
@@ -1456,8 +1455,8 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // symmetric one, which is two rows and not a flag.
   //
   // Both stand-ins are minted off-list rather than added to the CATALOG list
-  // above: nothing is provisional about a name typed to record a standing
-  // fact, and the clear below would drop a row that had never been bought.
+  // above: naming a substitute is not a plan to buy it, and the clear below
+  // only ever touches rows that are on the list.
   const margarine = ensureCatalogItem('Margarine');
   const oatMilk = ensureCatalogItem('Oat milk');
   if (margarine) {
@@ -1680,9 +1679,8 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   setCheckedMany(idsNamed(['Milk', 'Bananas']), true);
 
   // Coriander, typed fresh — see the Cilantro trip above. It has to be added
-  // here, after the clear, or clearList would delete it outright: nothing
-  // yet has bought it or linked it to a store, so it's provisional in
-  // exactly the sense every other never-bought name typed above is.
+  // here, after the clear: it carries nothing anyone put on it, so clearList
+  // would sweep it along with every other bare name on the list.
   addByName('Coriander', undefined, undefined, { registerUndo: false });
 
   // The shelf-life correction itself: a name the lexicon has never heard of

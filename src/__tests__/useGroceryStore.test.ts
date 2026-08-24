@@ -181,7 +181,6 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     note: '',
     onList: false,
     checked: false,
-    inCatalog: true,
     sortOrder: seq,
     purchaseCount: 0,
     lastAddedAt: null,
@@ -473,14 +472,17 @@ describe('addByName', () => {
     expect(useGroceryStore.getState().items).toHaveLength(1);
   });
 
-  // A name typed once is on the list, not in the catalog — see removeFromList.
-  it('starts a brand-new name provisional', () => {
-    expect(useGroceryStore.getState().addByName('nduja').inCatalog).toBe(false);
+  // A typed name is a catalog row from the first moment — there is no
+  // provisional state left for it to start in. See hasUserFacts.
+  it('puts a brand-new name straight on the list', () => {
+    expect(useGroceryStore.getState().addByName('nduja').onList).toBe(true);
   });
 
-  it('leaves a catalog row in the catalog when it comes back on the list', () => {
-    seed([makeItem({ name: 'Milk', onList: false, inCatalog: true })]);
-    expect(useGroceryStore.getState().addByName('milk').inCatalog).toBe(true);
+  it('re-lists an existing catalog row rather than inserting a second', () => {
+    seed([makeItem({ name: 'Milk', onList: false })]);
+    const again = useGroceryStore.getState().addByName('milk');
+    expect(again.onList).toBe(true);
+    expect(useGroceryStore.getState().items).toHaveLength(1);
   });
 
   it('files an unrecognised item under Other rather than leaving it aisle-less', () => {
@@ -601,7 +603,7 @@ describe('addByName', () => {
   });
 
   it('registers an undo that un-lists a catalog row it re-listed', () => {
-    const parsley = makeItem({ name: 'Parsley', onList: false, inCatalog: true });
+    const parsley = makeItem({ name: 'Parsley', onList: false });
     seed([parsley]);
     useGroceryStore.getState().addByName('parsley');
 
@@ -773,14 +775,16 @@ describe('finishShopping', () => {
     expect(after.find(i => i.id === eggs.id)!.onList).toBe(true);
   });
 
-  it('promotes a provisional row that was actually bought', () => {
-    const nduja = makeItem({ name: 'nduja', onList: true, checked: true, inCatalog: false });
+  it('records the purchase on a name bought for the first time', () => {
+    const nduja = makeItem({ name: 'nduja', onList: true, checked: true });
     seed([nduja]);
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([nduja.id]);
 
     useGroceryStore.getState().finishShopping();
 
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+    const row = useGroceryStore.getState().items[0];
+    expect(row.onList).toBe(false);
+    expect(row.purchaseCount).toBe(1);
   });
 
   it('is a no-op with an empty trolley', () => {
@@ -867,12 +871,12 @@ describe('clearList', () => {
     expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
   });
 
-  // Same split removeFromList makes: a provisional row was never in the
-  // catalog, so clearing the list it's on has nothing to keep — it's gone,
-  // not minted into a catalog entry for something that was never bought.
-  it('deletes a provisional row rather than parking it in the catalog', () => {
-    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: true });
-    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+  // The one sweep left in the app. "I'm not doing this trip after all" drops
+  // the rows that were only ever a line of the list, and keeps anything
+  // carrying something the user put there — see hasUserFacts.
+  it('sweeps a row carrying nothing, and parks one that has been bought', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, purchaseCount: 3 });
+    const nduja = makeItem({ name: 'nduja', onList: true });
     seed([milk, nduja]);
     (dbClearGroceryList as jest.Mock).mockReturnValue([milk.id, nduja.id]);
 
@@ -884,9 +888,31 @@ describe('clearList', () => {
     expect(items[0].onList).toBe(false);
   });
 
-  it('queues an undo that re-parks catalog rows and revives deleted provisional ones', () => {
-    const milk = makeItem({ name: 'Milk', onList: true, checked: true, inCatalog: true });
-    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+  // The case the flag got wrong: a name minted to hold a substitute has no
+  // purchases, so the old provisional rule let an unrelated abandoned trip
+  // destroy it along with its link.
+  it('keeps a never-bought row that carries a substitute link', () => {
+    const butter = makeItem({ name: 'Butter', onList: true });
+    const margarine = makeItem({ name: 'Margarine', onList: false });
+    seed([butter, margarine]);
+    useGroceryStore.setState({
+      itemSubs: [{
+        itemId: butter.id, subItemId: margarine.id, note: '',
+        createdAt: '2026-08-01T00:00:00.000Z', ratioFrom: null, ratioTo: null, standing: false,
+      }],
+    });
+    (dbClearGroceryList as jest.Mock).mockReturnValue([butter.id]);
+
+    useGroceryStore.getState().clearList();
+
+    const items = useGroceryStore.getState().items;
+    expect(items.map(i => i.id).sort()).toEqual([butter.id, margarine.id].sort());
+    expect(items.find(i => i.id === butter.id)!.onList).toBe(false);
+  });
+
+  it('queues an undo that re-parks kept rows and revives swept ones', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, purchaseCount: 2 });
+    const nduja = makeItem({ name: 'nduja', onList: true });
     seed([milk, nduja]);
     (dbClearGroceryList as jest.Mock).mockReturnValue([milk.id, nduja.id]);
     useGroceryStore.setState({ lastAction: null });
@@ -964,22 +990,23 @@ describe('list membership', () => {
     expect(useGroceryStore.getState().items[0].checked).toBe(false);
   });
 
-  it('removeFromList deletes a provisional row instead of parking it', () => {
-    // Typed once, never bought: it only existed as this line of
-    // the list, so leaving it behind is what fills the catalog with typos.
-    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+  it('removeFromList parks a never-bought row rather than deleting it', () => {
+    // It used to delete this row. That is the whole change: an action about
+    // this week's list must not destroy the item behind it.
+    const nduja = makeItem({ name: 'nduja', onList: true });
     seed([nduja]);
 
     useGroceryStore.getState().removeFromList(nduja.id);
 
-    expect(dbDeleteGroceryItem).toHaveBeenCalledWith(nduja.id);
-    expect(useGroceryStore.getState().items).toEqual([]);
+    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
+    expect(useGroceryStore.getState().items).toHaveLength(1);
+    expect(useGroceryStore.getState().items[0].onList).toBe(false);
   });
 
   it('removeFromList keeps a row that was in the catalog before this trip', () => {
     // The whole point of the distinction: "not this week" must not forget
     // something you buy most weeks.
-    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: true, purchaseCount: 9 });
+    const milk = makeItem({ name: 'Milk', onList: true, purchaseCount: 9 });
     seed([milk]);
 
     useGroceryStore.getState().removeFromList(milk.id);
@@ -1042,19 +1069,17 @@ describe('list membership', () => {
     expect(useGroceryStore.getState().items).toEqual([]);
   });
 
-  it('removeFromListMany splits a selection the same way removeFromList does per row', () => {
-    const milk = makeItem({ name: 'Milk', onList: true, checked: true, inCatalog: true });
-    const nduja = makeItem({ name: 'nduja', onList: true, inCatalog: false });
+  it('removeFromListMany parks every row, same as removeFromList does per row', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, purchaseCount: 2 });
+    const nduja = makeItem({ name: 'nduja', onList: true });
     seed([milk, nduja]);
 
     useGroceryStore.getState().removeFromListMany([milk.id, nduja.id]);
 
-    expect(dbDeleteGroceryItem).toHaveBeenCalledWith(nduja.id);
+    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
     const after = useGroceryStore.getState().items;
-    expect(after).toHaveLength(1);
-    expect(after[0].id).toBe(milk.id);
-    expect(after[0].onList).toBe(false);
-    expect(after[0].checked).toBe(false);
+    expect(after).toHaveLength(2);
+    expect(after.every(i => !i.onList && !i.checked)).toBe(true);
   });
 
   it('removeFromListMany only touches ids that are on the list', () => {
@@ -1242,7 +1267,7 @@ describe('deleteAisle', () => {
 
   it('files everything that was in it under Other — off-list rows included', () => {
     const chips = makeItem({ name: 'Chips', aisle: 'Snacks', onList: true });
-    const nuts = makeItem({ name: 'Nuts', aisle: 'Snacks', onList: false, inCatalog: true });
+    const nuts = makeItem({ name: 'Nuts', aisle: 'Snacks', onList: false });
     seed([chips, nuts]);
 
     useGroceryStore.getState().deleteAisle('Snacks');
@@ -1437,33 +1462,25 @@ describe('shops', () => {
     expect(dbSetItemShopLink).not.toHaveBeenCalled();
   });
 
-  // The seam between provisional rows and store links: a provisional row is
-  // deleted when it comes off the list, so an assertion that didn't promote
-  // would be silently discarded by the next "Remove from list".
-  it('linkItemShop promotes a provisional row to the catalog', () => {
+  // The seam this refactor was about: a store link is a statement about the
+  // item, and it now protects its own row rather than needing the link call to
+  // remember to mark it — see hasUserFacts.
+  it('linkItemShop leaves the item row untouched, and the link survives a clear', () => {
     const costco = makeShop('Costco');
-    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: false });
+    const milk = makeItem({ name: 'Milk', onList: true });
     seed([milk], { shops: [costco] });
 
     useGroceryStore.getState().linkItemShop(milk.id, costco.id);
+    // Nothing to promote any more: the link is its own protection.
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
 
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+    (dbClearGroceryList as jest.Mock).mockReturnValue([milk.id]);
+    useGroceryStore.getState().clearList();
 
-    // ...so taking it off the list now parks it instead of deleting it.
-    useGroceryStore.getState().removeFromList(milk.id);
     expect(useGroceryStore.getState().items).toHaveLength(1);
     expect(useGroceryStore.getState().itemShops).toHaveLength(1);
   });
 
-  it('linkItemShop leaves an already-catalogued row alone', () => {
-    const costco = makeShop('Costco');
-    const milk = makeItem({ name: 'Milk', inCatalog: true });
-    seed([milk], { shops: [costco] });
-
-    useGroceryStore.getState().linkItemShop(milk.id, costco.id);
-
-    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
-  });
 
   it('linkItemShop ignores an unknown item or store', () => {
     seed([], { shops: [] });
@@ -1502,17 +1519,6 @@ describe('shops', () => {
     expect(links).toHaveLength(2);
     expect(links.find(l => l.itemId === milk.id)!.purchaseCount).toBe(5);
     expect(dbSetItemShopLink).toHaveBeenCalledTimes(1);
-  });
-
-  it('linkItemShopMany promotes every provisional row it touches', () => {
-    const costco = makeShop('Costco');
-    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: false });
-    const bread = makeItem({ name: 'Bread', onList: true, inCatalog: false });
-    seed([milk, bread], { shops: [costco] });
-
-    useGroceryStore.getState().linkItemShopMany([milk.id, bread.id], costco.id);
-
-    expect(useGroceryStore.getState().items.every(i => i.inCatalog)).toBe(true);
   });
 
   it('linkItemShopMany skips unknown items and does nothing for an unknown store', () => {
@@ -1572,16 +1578,6 @@ describe('shops', () => {
     expect(links[0].purchaseCount).toBe(6);
     expect(links[0].lastPurchasedAt).toBe('2026-05-01T00:00:00.000Z');
     expect(links[0].unavailableAt).not.toBeNull();
-  });
-
-  it('markItemsUnavailable promotes a provisional row, like the positive claim does', () => {
-    const costco = makeShop('Costco');
-    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: false });
-    seed([milk], { shops: [costco] });
-
-    useGroceryStore.getState().markItemsUnavailable([milk.id], costco.id);
-
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
   });
 
   it('markItemsUnavailable ignores an unknown store, and re-marking writes nothing', () => {
@@ -2057,28 +2053,29 @@ describe('finishShopping with a store', () => {
 
   it('clearList records no purchase anywhere, store or not', () => {
     const costco = makeShop('Costco');
-    const milk = makeItem({ name: 'Milk', onList: true, checked: true });
+    // Bought before, so clearList parks it rather than sweeping it — the point
+    // here is that abandoning a trip adds no *new* purchase.
+    const milk = makeItem({ name: 'Milk', onList: true, checked: true, purchaseCount: 1 });
     seed([milk], { shops: [costco] });
     (dbClearGroceryList as jest.Mock).mockReturnValue([milk.id]);
 
     useGroceryStore.getState().clearList();
 
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
-    expect(useGroceryStore.getState().items[0].purchaseCount).toBe(0);
+    expect(useGroceryStore.getState().items[0].purchaseCount).toBe(1);
   });
 });
 
 describe('finishShopping undo', () => {
-  it('restores everything a purchase touched, including a promoted provisional row', () => {
+  it('restores everything a purchase touched', () => {
     const nduja = makeItem({
-      name: 'nduja', onList: true, checked: true, inCatalog: false, purchaseCount: 0,
+      name: 'nduja', onList: true, checked: true, purchaseCount: 0,
       quantity: '1 jar', quantityFromRecipe: true,
     });
     seed([nduja]);
     (dbFinishGroceryShopping as jest.Mock).mockReturnValue([nduja.id]);
 
     expect(useGroceryStore.getState().finishShopping()).toBe(1);
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
     expect(useGroceryStore.getState().lastAction?.label).toBe('Bought 1 thing');
 
     useGroceryStore.getState().undoLastAction();
@@ -2086,9 +2083,6 @@ describe('finishShopping undo', () => {
     const restored = useGroceryStore.getState().items[0];
     expect(restored.onList).toBe(true);
     expect(restored.checked).toBe(true);
-    // A row that wasn't in the catalog before this trip goes back to not
-    // being in it — the purchase that promoted it never happened.
-    expect(restored.inCatalog).toBe(false);
     expect(restored.purchaseCount).toBe(0);
     expect(restored.lastPurchasedAt).toBeNull();
     expect(restored.quantity).toBe('1 jar');
@@ -2193,12 +2187,12 @@ describe('remembered aisles', () => {
     expect(item.aisle).toBe('Frozen');
   });
 
-  it('survives the provisional row it was made on being deleted', () => {
-    // The case the memory exists for: a name typed for the first time is
-    // provisional, so taking it off the list deletes the row outright.
+  it('survives the row it was made on being deleted', () => {
+    // The case the memory exists for: it is keyed by nameKey in a setting, so
+    // it outlives the row itself and is re-applied when the name comes back.
     const item = useGroceryStore.getState().addByName('Nduja');
     useGroceryStore.getState().setAisle(item.id, 'Butcher');
-    useGroceryStore.getState().removeFromList(item.id);
+    useGroceryStore.getState().deleteItem(item.id);
     expect(useGroceryStore.getState().items).toEqual([]);
 
     expect(useGroceryStore.getState().addByName('nduja').aisle).toBe('Butcher');
@@ -2260,7 +2254,7 @@ describe('remembered aisles', () => {
 });
 
 describe('addFromPlan', () => {
-  it('adds a new name as a provisional row carrying its quantity and aisle', () => {
+  it('adds a new name carrying its quantity and aisle', () => {
     seed([]);
 
     const result = useGroceryStore.getState().addFromPlan([
@@ -2275,8 +2269,6 @@ describe('addFromPlan', () => {
     expect(item.onList).toBe(true);
     expect(item.quantity).toBe('2 lb');
     expect(item.aisle).toBe('Meat & Seafood');
-    // Typed for the first time, so it hasn't earned a catalog place yet.
-    expect(item.inCatalog).toBe(false);
   });
 
   it('re-lists a catalog row that was off the list', () => {
@@ -3095,15 +3087,6 @@ describe('addProduct', () => {
   // Same promotion linkItemShop and addToPantry perform: which one you want has
   // to outlive the list it was named from, and a provisional row is deleted
   // when it leaves the list rather than parked.
-  it('promotes a provisional row so the preference survives leaving the list', () => {
-    const cc = makeItem({ name: 'Cottage cheese', onList: true, inCatalog: false });
-    seed([cc]);
-
-    useGroceryStore.getState().addProduct(cc.id, { brand: 'Good Culture', variant: null });
-
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
-  });
-
   it('shrugs off an id that no longer resolves', () => {
     seed([makeItem({ name: 'Milk' })]);
 
@@ -3192,16 +3175,17 @@ describe('setPreferredProduct', () => {
     expect(useGroceryStore.getState().itemById(cc.id)!.preferredProductId).toBeNull();
   });
 
-  it('promotes a provisional row on setting one, but not on clearing', () => {
-    const cc = makeItem({ name: 'Cottage cheese', onList: true, inCatalog: false });
+  it('sets the preference without otherwise touching the row', () => {
+    const cc = makeItem({ name: 'Cottage cheese', onList: true });
     seed([cc]);
     const product = useGroceryStore.getState().addProduct(cc.id, { brand: 'Good Culture', variant: null })!;
     useGroceryStore.setState({
-      items: useGroceryStore.getState().items.map(i => ({ ...i, inCatalog: false, preferredProductId: null })),
+      items: useGroceryStore.getState().items.map(i => ({ ...i, preferredProductId: null })),
     });
 
     useGroceryStore.getState().setPreferredProduct(cc.id, product.id);
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+    expect(useGroceryStore.getState().items[0].preferredProductId).toBe(product.id);
+    expect(useGroceryStore.getState().items[0].onList).toBe(true);
   });
 });
 
@@ -3253,22 +3237,13 @@ describe('setProductStrict', () => {
     );
   });
 
-  it('promotes a provisional row when switching on, so the rule outlives the list', () => {
-    const cc = makeItem({ name: 'Cottage cheese', onList: true, inCatalog: false });
-    seed([cc]);
-
-    useGroceryStore.getState().setProductStrict(cc.id, true);
-
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
-  });
-
-  it('never demotes when switching off', () => {
+  it('switches back off again', () => {
     const cc = makeItem({ name: 'Cottage cheese', productStrict: true });
     seed([cc]);
 
     useGroceryStore.getState().setProductStrict(cc.id, false);
 
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+    expect(useGroceryStore.getState().items[0].productStrict).toBe(false);
   });
 });
 
@@ -3585,13 +3560,10 @@ describe('addToPantry', () => {
     expect(added).not.toBeNull();
     expect(added!.name).toBe('Flour');
     expect(added!.onList).toBe(false);
-    // Never provisional: a name typed to say you own it has no stint on the
-    // list for a removal to end, so nothing should ever delete it silently.
-    expect(added!.inCatalog).toBe(true);
     expect(added!.lastAddedAt).toBeNull();
     expect(new Date(added!.onHandUntil!).getTime()).toBeGreaterThan(Date.now());
     expect(dbInsertGroceryItem).toHaveBeenCalledWith(
-      expect.objectContaining({ id: added!.id, onList: false, inCatalog: true })
+      expect.objectContaining({ id: added!.id, onList: false })
     );
     // Which is exactly the set the pantry sheet lists.
     expect(probablyHaveReason(useGroceryStore.getState().items[0], new Date())).toBe(
@@ -3608,7 +3580,7 @@ describe('addToPantry', () => {
   });
 
   it('stamps a name already in the catalog instead of inserting a second row', () => {
-    const milk = makeItem({ name: 'Milk', inCatalog: true, purchaseCount: 4 });
+    const milk = makeItem({ name: 'Milk', purchaseCount: 4 });
     seed([milk]);
 
     const added = useGroceryStore.getState().addToPantry('milk');
@@ -3630,13 +3602,18 @@ describe('addToPantry', () => {
     expect(updated.sortOrder).toBe(3);
   });
 
-  it('promotes a provisional row, so the assertion survives the next removal', () => {
-    const tahini = makeItem({ name: 'Tahini', onList: true, inCatalog: false });
+  // An on-hand claim is a user fact, so the row it lands on survives the sweep
+  // an abandoned trip runs — see hasUserFacts.
+  it('leaves a claim that outlives a cleared list', () => {
+    const tahini = makeItem({ name: 'Tahini', onList: true });
     seed([tahini]);
 
     useGroceryStore.getState().addToPantry('Tahini');
+    (dbClearGroceryList as jest.Mock).mockReturnValue([tahini.id]);
+    useGroceryStore.getState().clearList();
 
-    expect(useGroceryStore.getState().items[0].inCatalog).toBe(true);
+    expect(useGroceryStore.getState().items).toHaveLength(1);
+    expect(useGroceryStore.getState().items[0].onHandUntil).not.toBeNull();
   });
 
   it('takes back an "Out of it" marking', () => {
@@ -3679,7 +3656,7 @@ describe('addToPantry', () => {
   });
 
   it('undoes a stamped row back to exactly what it was', () => {
-    const milk = makeItem({ name: 'Milk', onHandUntil: null, inCatalog: false, onList: true });
+    const milk = makeItem({ name: 'Milk', onHandUntil: null, onList: true });
     seed([milk]);
 
     useGroceryStore.getState().addToPantry('Milk');
@@ -3691,7 +3668,7 @@ describe('addToPantry', () => {
 
 describe('addManyToPantry', () => {
   it('adds a name per entry, mixing new rows and stamped ones', () => {
-    const milk = makeItem({ name: 'Milk', inCatalog: true });
+    const milk = makeItem({ name: 'Milk' });
     seed([milk]);
 
     const count = useGroceryStore.getState().addManyToPantry(['milk', 'Flour', 'Eggs']);
@@ -3730,7 +3707,7 @@ describe('addManyToPantry', () => {
   });
 
   it('undoes the whole session: deletes fresh rows, restores stamped ones', () => {
-    const milk = makeItem({ name: 'Milk', onHandUntil: null, inCatalog: false, onList: true });
+    const milk = makeItem({ name: 'Milk', onHandUntil: null, onList: true });
     seed([milk]);
 
     useGroceryStore.getState().addManyToPantry(['milk', 'Flour']);
@@ -3763,7 +3740,7 @@ describe('addManyToPantry', () => {
   });
 
   it('undoing a session that froze an already-stamped row restores it unfrozen', () => {
-    const peas = makeItem({ name: 'Peas', onHandUntil: null, inCatalog: false, onList: true });
+    const peas = makeItem({ name: 'Peas', onHandUntil: null, onList: true });
     seed([peas]);
 
     useGroceryStore.getState().addManyToPantry(['Peas'], new Set(['Peas']));
@@ -3795,7 +3772,7 @@ describe('addManyToPantry', () => {
   });
 
   it('never overrides a box the item already has a preference for', () => {
-    const bread = makeItem({ name: 'Bread', inCatalog: true });
+    const bread = makeItem({ name: 'Bread' });
     seed([bread]);
     const chosen = useGroceryStore.getState().addProduct(bread.id, { brand: "Arnold's", variant: null })!;
 
@@ -3826,7 +3803,7 @@ describe('addManyToPantry', () => {
   });
 
   it('never moves a row it merely found to the scanned aisle', () => {
-    const chips = makeItem({ name: 'Chips', aisle: 'Pantry', inCatalog: true });
+    const chips = makeItem({ name: 'Chips', aisle: 'Pantry' });
     seed([chips]);
 
     useGroceryStore.getState().addManyToPantry(
@@ -3854,7 +3831,7 @@ describe('addManyToPantry', () => {
   // name the box and the freezer flag already are. See KitchenScreen's
   // handleReceiptApply.
   it('records a price per name, on a row it minted as readily as one it stamped', () => {
-    const flour = makeItem({ name: 'Flour', inCatalog: true });
+    const flour = makeItem({ name: 'Flour' });
     seed([flour]);
 
     useGroceryStore.getState().addManyToPantry(
@@ -3870,7 +3847,7 @@ describe('addManyToPantry', () => {
   });
 
   it('leaves a name the receipt put no price against alone', () => {
-    const flour = makeItem({ name: 'Flour', inCatalog: true, lastPriceMinor: 399 });
+    const flour = makeItem({ name: 'Flour', lastPriceMinor: 399 });
     seed([flour]);
 
     useGroceryStore.getState().addManyToPantry(
@@ -3885,7 +3862,7 @@ describe('addManyToPantry', () => {
 
   it('puts the price on the named store’s link too, when there is one', () => {
     const costco = makeShop('Costco');
-    const flour = makeItem({ name: 'Flour', inCatalog: true });
+    const flour = makeItem({ name: 'Flour' });
     seed([flour], {
       shops: [costco],
       itemShops: [
@@ -3908,7 +3885,7 @@ describe('addManyToPantry', () => {
 
   it('mints no store link for a price at a store the item has never had one at', () => {
     const costco = makeShop('Costco');
-    const flour = makeItem({ name: 'Flour', inCatalog: true });
+    const flour = makeItem({ name: 'Flour' });
     seed([flour], { shops: [costco] });
 
     useGroceryStore.getState().addManyToPantry(
@@ -3926,7 +3903,7 @@ describe('addManyToPantry', () => {
 
   it('undoing a session that priced an already-stamped row restores its old price', () => {
     const flour = makeItem({
-      name: 'Flour', onHandUntil: null, inCatalog: false, onList: true, lastPriceMinor: 399,
+      name: 'Flour', onHandUntil: null, onList: true, lastPriceMinor: 399,
     });
     seed([flour]);
 
@@ -4298,7 +4275,6 @@ describe('setRunningLow', () => {
     const updated = useGroceryStore.getState().items[0];
     expect(updated.runningLowAt).not.toBeNull();
     expect(updated.onList).toBe(true);
-    expect(updated.inCatalog).toBe(true);
   });
 
   // One direction only: nothing on the row records *which* owner put it on the
@@ -4373,18 +4349,9 @@ describe('either/or items (choiceGroup)', () => {
     expect(survivor.checked).toBe(true);
     // The choice is over, so the row is an ordinary one again.
     expect(survivor.choiceGroup).toBeNull();
-    // Provisional rows are deleted outright, same split removeFromList makes.
-    expect(items.find(i => i.id === pears.id)).toBeUndefined();
-  });
-
-  it('unlists rather than deletes a loser that is in the catalog', () => {
-    const shop = makeShop('Costco');
-    useGroceryStore.setState(s => ({ shops: [...s.shops, shop] }));
-    const { apples, pears } = pair();
-    useGroceryStore.getState().linkItemShop(pears.id, shop.id); // promotes to catalog
-    useGroceryStore.getState().toggleChecked(apples.id);
-
-    const loser = useGroceryStore.getState().items.find(i => i.id === pears.id)!;
+    // The loser parks rather than being deleted: picking apples this week says
+    // nothing about wanting pears forgotten.
+    const loser = items.find(i => i.id === pears.id)!;
     expect(loser.onList).toBe(false);
     expect(loser.choiceGroup).toBeNull();
   });
@@ -4797,7 +4764,7 @@ describe('the active trip', () => {
 
   it('clearing the list ends the trip', () => {
     const costco = makeShop('Costco');
-    const milk = makeItem({ name: 'Milk', onList: true, inCatalog: true });
+    const milk = makeItem({ name: 'Milk', onList: true });
     (dbClearGroceryList as jest.Mock).mockReturnValue([milk.id]);
     seed([milk], { shops: [costco], tripShopId: costco.id, tripStartedAt: new Date().toISOString() });
 
@@ -4946,14 +4913,17 @@ describe('substitutes', () => {
     });
   });
 
-  it('promotes both provisional rows into the catalog', () => {
-    const butter = makeItem({ name: 'Butter', onList: true, inCatalog: false });
-    const margarine = makeItem({ name: 'Margarine', onList: true, inCatalog: false });
+  it('leaves both rows to be kept by the link itself', () => {
+    const butter = makeItem({ name: 'Butter', onList: true });
+    const margarine = makeItem({ name: 'Margarine', onList: true });
     seed([butter, margarine]);
 
     useGroceryStore.getState().linkItemSub(butter.id, margarine.id);
 
-    expect(useGroceryStore.getState().items.every(i => i.inCatalog)).toBe(true);
+    // Nothing writes to the item rows any more — the link is the protection.
+    (dbClearGroceryList as jest.Mock).mockReturnValue([butter.id, margarine.id]);
+    useGroceryStore.getState().clearList();
+    expect(useGroceryStore.getState().items).toHaveLength(2);
 
     // ...so the next "Remove from list" parks the row rather than deleting it
     // and taking the substitution with it.
@@ -5134,7 +5104,7 @@ describe('substitutes', () => {
     seed([]);
 
     const created = useGroceryStore.getState().ensureCatalogItem('2 lb margarine');
-    expect(created).toMatchObject({ name: 'margarine', onList: false, inCatalog: true });
+    expect(created).toMatchObject({ name: 'margarine', onList: false });
 
     // Keyed on the parsed name, so a second spelling finds the same row rather
     // than minting one no purchase could ever match.
@@ -5262,11 +5232,11 @@ describe('swapForSubstitute', () => {
     expect(items.find(i => i.id === margarine.id)).toEqual(margarine);
   });
 
-  // Same split removeFromList makes: a provisional original has nothing to
-  // keep, so it's deleted outright rather than merely unlisted — and undo
-  // has to re-insert it, not just patch it back.
-  it('deletes a provisional original outright, and undo re-inserts it', () => {
-    const mysteryHerb = makeItem({ name: 'Mystery herb', onList: true, inCatalog: false });
+  // It used to delete a never-bought original outright. That was the worst
+  // instance of the old rule: the row being swapped away from is the one
+  // holding the link that says what to swap it for.
+  it('parks the original rather than deleting it, and undo puts it back', () => {
+    const mysteryHerb = makeItem({ name: 'Mystery herb', onList: true });
     const basil = makeItem({ name: 'Basil', onList: false });
     seed([mysteryHerb, basil], {
       itemSubs: [
@@ -5275,8 +5245,10 @@ describe('swapForSubstitute', () => {
     });
 
     useGroceryStore.getState().swapForSubstitute(mysteryHerb.id, basil.id);
-    expect(useGroceryStore.getState().items.map(i => i.id)).toEqual([basil.id]);
-    expect(dbDeleteGroceryItem).toHaveBeenCalledWith(mysteryHerb.id);
+    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
+    const after = useGroceryStore.getState().items;
+    expect(after.find(i => i.id === mysteryHerb.id)!.onList).toBe(false);
+    expect(after.find(i => i.id === basil.id)!.onList).toBe(true);
 
     useGroceryStore.getState().lastAction!.undo();
     const restored = useGroceryStore.getState().items;

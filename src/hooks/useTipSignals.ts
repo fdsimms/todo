@@ -68,7 +68,9 @@ export function useTipSignals(): TipSignals {
     let purchasedItemCount = 0;
     for (const item of groceryItems) {
       if (item.onList) groceryItemCount++;
-      if (item.inCatalog) catalogCount++;
+      // Every row is a catalog row now — see the note in `types/index.ts` where
+      // `inCatalog` used to be. The off-list set is what the catalog view shows.
+      if (!item.onList) catalogCount++;
       if (item.purchaseCount > 0) purchasedItemCount++;
     }
     return { groceryItemCount, catalogCount, purchasedItemCount };
