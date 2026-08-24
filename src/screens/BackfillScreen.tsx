@@ -76,6 +76,7 @@ export function BackfillScreen() {
 
   const tasks = useTaskStore(useShallow(s => s.tasks));
   const updateTask = useTaskStore(s => s.updateTask);
+  const setLastAction = useTaskStore(s => s.setLastAction);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
   const projects = useProjectStore(useShallow(s => s.projects));
   const projectNamesById = useMemo(() => new Map(projects.map(p => [p.id, p.title])), [projects]);
@@ -156,11 +157,18 @@ export function BackfillScreen() {
   // own, so this is what actually moves past the current card.
   const advance = (id: string) => setSkippedIds(prev => new Set(prev).add(id));
 
+  // A tap here commits immediately and advances the queue, with no per-row
+  // confirm — registering the snapshot with setLastAction, same as
+  // TaskEditor's save, is what makes a mis-tap recoverable via shake-to-undo
+  // instead of a trip back into the task editor.
   const apply = (patch: Partial<Task>) => {
-    if (!current) return;
+    if (!current || !activeField) return;
     haptics.tap();
     animateLayout();
+    const snapshot = { ...current };
+    const fieldLabel = BACKFILL_FIELDS.find(f => f.id === activeField)!.label;
     updateTask(current.id, patch);
+    setLastAction({ label: `${fieldLabel} set`, undo: () => updateTask(snapshot.id, snapshot) });
     advance(current.id);
   };
 
@@ -180,7 +188,10 @@ export function BackfillScreen() {
     if (!current || !activeField) return;
     haptics.tap();
     animateLayout();
+    const snapshot = { ...current };
+    const fieldLabel = BACKFILL_FIELDS.find(f => f.id === activeField)!.label;
     updateTask(current.id, dismissBackfillField(current, activeField));
+    setLastAction({ label: `${fieldLabel} left unset`, undo: () => updateTask(snapshot.id, snapshot) });
     advance(current.id);
   };
 
@@ -579,6 +590,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   categoryCard: { borderRadius: radius.md, padding: spacing.sm },
 
   actionRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
-  skipButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
-  skipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.regular },
+  skipButton: {
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+    backgroundColor: colors.bgSecondary, borderRadius: radius.md,
+  },
+  skipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
 });
