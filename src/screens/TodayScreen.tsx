@@ -66,6 +66,9 @@ import {
   withoutContextRows,
 } from '../utils/dayContextRows';
 import { dragRange } from '../utils/reorder';
+import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
+import { asksOnCompletion } from '../utils/deliverables';
+import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -605,6 +608,23 @@ export function TodayScreen() {
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
+
+  // Every path here that completes more than one task at a time asks first if
+  // any of them would go unanswered — the bulk bar, and a stack's "complete
+  // all". See useAnswerFirstCompletion. Selection is left alone until
+  // something actually happens, so cancelling the confirm doesn't cost the
+  // user the selection they just built.
+  const { requestComplete, enqueue, queueProps } = useAnswerFirstCompletion();
+  const handleBulkComplete = () => {
+    const ids = Array.from(selectedIds);
+    requestComplete({
+      ids,
+      complete: skipIds => {
+        bulkCompleteTasks(ids.filter(id => !skipIds.includes(id)));
+        exitSelection();
+      },
+    });
+  };
   // One per view mode: only ever one of these lists is mounted at a time, but
   // each needs its own ref and its own record of where it last settled.
   const unscheduledScroll = useKeyboardInsetScroll<FlatList>();
@@ -784,6 +804,15 @@ export function TodayScreen() {
       const task = allTasks.find(t => t.id === id);
       if (!task || task.completed) return;
       if (!isTaskVisible(task)) {
+        // No row is mounted to catch autoComplete, so the animated path (which
+        // asks a decision task its question) can't run. Ask here instead
+        // rather than completing straight through it — a Live Activity's Done
+        // button is a person finishing a task, and it's the one completion
+        // path left that would drop an answer with nobody told.
+        if (asksOnCompletion(task)) {
+          enqueue([id]);
+          return;
+        }
         useTaskStore.getState().completeTask(id);
         return;
       }
@@ -2071,7 +2100,16 @@ export function TodayScreen() {
     enterSelectionMode(ids);
   }, [groupRosterOf, enterSelectionMode]);
 
-  const handleGroupComplete = useCallback((groupId: string) => completeGroup(groupId), [completeGroup]);
+  const handleGroupComplete = useCallback((groupId: string) => {
+    // A stack's cascade is a bulk completion like any other, so it gets the
+    // same question. skipIds is what keeps the members being asked about out
+    // of the cascade until they've been answered.
+    const roster = useTaskStore.getState().groupRosterOf(groupId);
+    requestComplete({
+      ids: roster.filter(t => !t.completed).map(t => t.id),
+      complete: skipIds => completeGroup(groupId, { skipIds }),
+    });
+  }, [completeGroup, requestComplete]);
   const handleGroupDefer = useCallback((groupId: string, date: Date) => deferGroup(groupId, date), [deferGroup]);
   const handleGroupPressEdit = useCallback((groupId: string) => {
     const group = useTaskGroupStore.getState().getGroupById(groupId);
@@ -3534,6 +3572,8 @@ export function TodayScreen() {
           onApplied={tasks => { if (tasks[0]) openEditor(tasks[0]); }}
         />
 
+        <DeliverablePromptQueue {...queueProps} />
+
         <TaskEditor
           visible={editorVisible}
           task={editingTask}
@@ -3663,7 +3703,7 @@ export function TodayScreen() {
             selectedCount={selectedIds.size}
             totalCount={visibleForMode.length}
             existingTags={useTaskStore.getState().allTags()}
-            onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+            onComplete={handleBulkComplete}
             onDelete={handleBulkDelete}
             onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
             onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}

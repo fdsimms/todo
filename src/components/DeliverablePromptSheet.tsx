@@ -15,6 +15,8 @@ import type { Task } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
+import { isDayBefore } from '../utils/calendarGrid';
+import { displayTitleFor } from '../utils/visibilityUtils';
 import { spacing, radius, font, fontWeight, iconSize, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
@@ -22,6 +24,9 @@ import {
   deliverableMeta,
   formatDeliverableValue,
   normalizeDeliverableValue,
+  chainStepDatedByAnswer,
+  deliverableDate,
+  deliverableKindFor,
 } from '../utils/deliverables';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -79,8 +84,15 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
-  const kind = task.deliverableKind ?? 'text';
+  // The active chain step's question when there is one, so a two-step chain
+  // asks only at the step that carries it — see deliverableKindFor.
+  const kind = deliverableKindFor(task) ?? 'text';
   const meta = deliverableMeta(kind);
+  // The step this answer is about to schedule, if it's one of those. Named
+  // outright rather than left to be discovered when the next step turns up on
+  // a day nobody chose: the answer is doing two jobs and only one of them is
+  // visible from the question.
+  const datesStep = chainStepDatedByAnswer(task);
 
   const hiddenY = useSheetHiddenOffset();
 
@@ -122,7 +134,18 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     // Seeded from whatever's already there, which matters more than it looks:
     // un-completing a task keeps its answer, so re-ticking it shouldn't ask the
     // user to type the same thing again.
-    setDraft(task.deliverableValue ?? '');
+    //
+    // The exception is an answer that has since gone stale: a stored date that
+    // is about to schedule the next chain step, on a day that has already been
+    // and gone. The picker refuses that day (allowPast below), so handing it
+    // back as the value to Save with is the one way past its own floor. Cleared
+    // instead, which lands on the ordinary unanswered state — placeholder
+    // showing, Save greyed until a day is picked.
+    const stored = task.deliverableValue ?? '';
+    const storedDate = deliverableDate(stored);
+    const staleForScheduling =
+      datesStep !== null && storedDate !== null && isDayBefore(storedDate, getLogicalToday(dayResetTime));
+    setDraft(staleForScheduling ? '' : stored);
     setPickerOpen(false);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
@@ -179,7 +202,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
         <View style={styles.card}>
           <View style={styles.headerRow}>
             <SheetHeaderButton label="Cancel" role="cancel" onPress={() => dismiss(onCancel)} minWidth={56} />
-            <Text style={styles.heading} numberOfLines={2}>{task.title}</Text>
+            <Text style={styles.heading} numberOfLines={2}>{displayTitleFor(task)}</Text>
             <SheetHeaderButton
               label="Save"
               onPress={() => confirm(normalized)}
@@ -229,6 +252,11 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
                   </TouchableOpacity>
                 ))}
               </View>
+              {datesStep && (
+                <Text style={styles.datesStepNote}>
+                  {`\u201C${datesStep.title}\u201D will be scheduled for this date.`}
+                </Text>
+              )}
             </>
           ) : (
             <View style={styles.field}>
@@ -275,9 +303,14 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
         <WhenPicker
           visible
           value={normalized ? new Date(normalized) : null}
-          title={task.title}
+          title={displayTitleFor(task)}
           showTimeOfDay={false}
           showSuggest={false}
+          // A date that merely records something ("when did the warranty
+          // start") can be any day; one that schedules the next chain step
+          // can't be a day that has been and gone, or the step it places is
+          // overdue the moment it arrives.
+          allowPast={datesStep === null}
           onConfirm={date => { if (date) pickDate(date); else setPickerOpen(false); }}
           onCancel={() => setPickerOpen(false)}
         />
@@ -348,6 +381,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pills: {
     flexDirection: 'row',
     gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+  },
+  datesStepNote: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
   },

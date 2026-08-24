@@ -1,4 +1,4 @@
-import type { ChainItem } from '../types';
+import type { ChainItem, DeliverableKind } from '../types';
 
 /**
  * Chain-step lookup, shared by everything that needs to know which step a
@@ -38,11 +38,54 @@ export function activeChainStep(task: ChainCarrier): ChainItem | null {
 }
 
 /**
+ * The step that will follow the active one, or null when there isn't one.
+ *
+ * Deliberately does NOT wrap round to step 0 the way `chainIndex` does on a
+ * repeating chain: a wrap is the recurrence placing the next cycle, and the
+ * things that ask this question — "does this step have somewhere to send a
+ * date", and the editor's own "will this move anything" — are all about
+ * stepping *within* one run. `completeTask` draws the same line with
+ * `!atChainEnd`.
+ */
+export function nextChainStep(task: ChainCarrier): ChainItem | null {
+  const items = task.chainItems;
+  if (!task.chainEnabled || !items || items.length <= 1) return null;
+  const idx = (task.chainIndex ?? 0) % items.length;
+  return items[idx + 1] ?? null;
+}
+
+/**
+ * The title of the step after `stepId`, or null when it's the last one (or
+ * isn't in the list at all).
+ *
+ * The editors' counterpart to `nextChainStep`: they hold a draft array and an
+ * id rather than a task with a `chainIndex`, and they ask the same question
+ * ("is there a step for this one's answer to date?"). Doesn't wrap, for the
+ * same reason that one doesn't.
+ */
+export function nextChainStepTitle(items: readonly ChainItem[], stepId: string | null): string | null {
+  if (!stepId) return null;
+  const idx = items.findIndex(c => c.id === stepId);
+  if (idx === -1) return null;
+  return items[idx + 1]?.title ?? null;
+}
+
+/** The kinds a stored step's question may be, for validating JSON off disk. */
+const DELIVERABLE_KINDS: readonly string[] = ['text', 'date', 'number'];
+
+/**
  * Normalize chainItems read back out of stored JSON (the `cycle_items` column,
  * and a template's saved items). Rows written before per-step estimates existed
  * have no `estimatedMinutes` key at all, and an absent key has to become an
  * explicit null rather than undefined — every reader tests it with `!= null`,
  * and the value is re-serialized on the next write.
+ *
+ * The two deliverable keys are optional on `ChainItem` itself rather than
+ * required like `estimatedMinutes`, because a step that asks a question is the
+ * rare one and the alternative is every chain-step literal in the app spelling
+ * out two fields it doesn't use. Stored rows are still normalized to explicit
+ * values here, so a reader off the database never has to tell "absent" from
+ * "set to nothing".
  */
 export function parseChainItems(raw: unknown): ChainItem[] {
   if (!Array.isArray(raw)) return [];
@@ -50,6 +93,11 @@ export function parseChainItems(raw: unknown): ChainItem[] {
     id: c?.id ?? '',
     title: c?.title ?? '',
     estimatedMinutes: typeof c?.estimatedMinutes === 'number' ? c.estimatedMinutes : null,
+    deliverableKind:
+      typeof c?.deliverableKind === 'string' && DELIVERABLE_KINDS.includes(c.deliverableKind)
+        ? (c.deliverableKind as DeliverableKind)
+        : null,
+    deliverableDatesNextStep: c?.deliverableDatesNextStep === true,
   }));
 }
 

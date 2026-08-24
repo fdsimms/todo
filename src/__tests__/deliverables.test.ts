@@ -1,11 +1,24 @@
 import {
   DELIVERABLE_TEXT_MAX_LENGTH,
   asksOnCompletion,
+  chainStepDatedByAnswer,
+  deliverableDate,
+  deliverableKindFor,
   deliverableMeta,
   formatDeliverableValue,
   formatTaskDeliverable,
   normalizeDeliverableValue,
 } from '../utils/deliverables';
+
+// "Book haircut" asks for the appointment date and hands it to "Get haircut";
+// the second step asks nothing of its own.
+const haircutChain = [
+  { id: 'book', title: 'Book haircut', estimatedMinutes: null, deliverableKind: 'date' as const, deliverableDatesNextStep: true },
+  { id: 'get', title: 'Get haircut', estimatedMinutes: null, deliverableKind: null, deliverableDatesNextStep: false },
+];
+const onStep = (chainIndex: number, deliverableKind: 'text' | 'date' | 'number' | null = null) => ({
+  deliverableKind, chainEnabled: true, chainIndex, chainItems: haircutChain,
+});
 
 describe('asksOnCompletion', () => {
   it('is false for an ordinary task', () => {
@@ -14,6 +27,85 @@ describe('asksOnCompletion', () => {
 
   it('is true once a kind is set', () => {
     expect(asksOnCompletion({ deliverableKind: 'date' })).toBe(true);
+  });
+
+  it('follows the chain step rather than the task', () => {
+    expect(asksOnCompletion(onStep(0))).toBe(true);
+    expect(asksOnCompletion(onStep(1))).toBe(false);
+  });
+
+  it('is still true at a silent step when the task itself asks', () => {
+    expect(asksOnCompletion(onStep(1, 'text'))).toBe(true);
+  });
+});
+
+describe('deliverableKindFor', () => {
+  it("prefers the active step's own question to the task's", () => {
+    expect(deliverableKindFor(onStep(0, 'number'))).toBe('date');
+  });
+
+  it('falls back to the task at a step that declares nothing', () => {
+    // Same fallback estimatedMinutesFor makes, and for the same reason: a
+    // chain written before per-step questions existed behaves as it did.
+    expect(deliverableKindFor(onStep(1, 'number'))).toBe('number');
+    expect(deliverableKindFor(onStep(1))).toBeNull();
+  });
+
+  it('falls back to the task when there is no chain', () => {
+    expect(deliverableKindFor({ deliverableKind: 'text' })).toBe('text');
+    expect(deliverableKindFor({ deliverableKind: 'text', chainEnabled: false, chainIndex: 0, chainItems: haircutChain })).toBe('text');
+  });
+
+  it('falls back to the task for a single-item chain, which is not a chain', () => {
+    expect(deliverableKindFor({
+      deliverableKind: 'text', chainEnabled: true, chainIndex: 0, chainItems: [haircutChain[1]],
+    })).toBe('text');
+  });
+});
+
+describe('chainStepDatedByAnswer', () => {
+  it('names the step the answer will schedule', () => {
+    expect(chainStepDatedByAnswer(onStep(0))?.title).toBe('Get haircut');
+  });
+
+  it('is null at the last step, which has nowhere to send it', () => {
+    expect(chainStepDatedByAnswer(onStep(1))).toBeNull();
+  });
+
+  it('is null for a date step that was not opted in', () => {
+    const items = [{ ...haircutChain[0], deliverableDatesNextStep: false }, haircutChain[1]];
+    expect(chainStepDatedByAnswer({ deliverableKind: null, chainEnabled: true, chainIndex: 0, chainItems: items }))
+      .toBeNull();
+  });
+
+  it('is null for a non-date step, however the flag is set', () => {
+    const items = [{ ...haircutChain[0], deliverableKind: 'text' as const }, haircutChain[1]];
+    expect(chainStepDatedByAnswer({ deliverableKind: null, chainEnabled: true, chainIndex: 0, chainItems: items }))
+      .toBeNull();
+  });
+
+  it('works off a date question the task declared and the step passes on', () => {
+    const items = [{ ...haircutChain[0], deliverableKind: null }, haircutChain[1]];
+    expect(chainStepDatedByAnswer({
+      deliverableKind: 'date', chainEnabled: true, chainIndex: 0, chainItems: items,
+    })?.title).toBe('Get haircut');
+  });
+
+  it('is null for a task with no chain at all', () => {
+    expect(chainStepDatedByAnswer({ deliverableKind: 'date' })).toBeNull();
+  });
+});
+
+describe('deliverableDate', () => {
+  it('parses a stored answer', () => {
+    expect(deliverableDate('2026-09-12T12:00:00.000Z')?.toISOString()).toBe('2026-09-12T12:00:00.000Z');
+  });
+
+  it('is null for no answer and for anything unparseable', () => {
+    expect(deliverableDate(null)).toBeNull();
+    expect(deliverableDate(undefined)).toBeNull();
+    expect(deliverableDate('')).toBeNull();
+    expect(deliverableDate('next Tuesday-ish')).toBeNull();
   });
 });
 

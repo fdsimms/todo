@@ -206,6 +206,25 @@ describe('selectPurgeableTaskIds', () => {
     expect(selectPurgeableTaskIds(tasks, cutoff)).toEqual([]);
   });
 
+  // Same protection when the question was the chain step's rather than the
+  // task's — a chain step's answer is no less recorded for living on a row
+  // whose own deliverableKind is null.
+  it("never takes a chain step that recorded an answer", () => {
+    const tasks = [
+      completedDaysAgo('haircut', 400, {
+        deliverableKind: null,
+        deliverableValue: '2026-09-12T12:00:00.000Z',
+        chainEnabled: true,
+        chainIndex: 0,
+        chainItems: [
+          { id: 'book', title: 'Book haircut', estimatedMinutes: null, deliverableKind: 'date', deliverableDatesNextStep: true },
+          { id: 'get', title: 'Get haircut', estimatedMinutes: null },
+        ],
+      }),
+    ];
+    expect(selectPurgeableTaskIds(tasks, cutoff)).toEqual([]);
+  });
+
   // Narrow on purpose: nothing was recorded, so the row is an ordinary
   // tombstone and the window means what it says.
   it('takes a decision task that was completed without an answer', () => {

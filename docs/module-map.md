@@ -25,8 +25,9 @@ render, so listing them adds lines without adding answers.
 - `src/utils/blockerRegistry.ts` — registerTaskSource, registerProjectSource, resolveBlocker, waitingCountFor, stepNumberOf, isSequentialProject, isSequenceHeld
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
 - `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerOf, isBlocked, wouldCycle, BlockerContext, blockerAffinity, sortByBlockerAffinity, waitingOn, +5 more
+- `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy
 - `src/utils/calendarBusy.ts` — BusyEvent, BusyInterval, isLiveEvent, occupiesTime, busyIntervalsIn, busyMinutesIn, freeGapsIn, freeMinutesIn, eventsIn, nextEventAfter
-- `src/utils/calendarGrid.ts` — weekdayHeaders, buildWeekDays, buildCalendarGrid
+- `src/utils/calendarGrid.ts` — weekdayHeaders, buildWeekDays, buildCalendarGrid, isDayBefore, clampMonthToEarliest, canPageToPreviousMonth
 - `src/utils/calendarMonth.ts` — DayMarkKind, MARK_KINDS, DayMark, DotState, DayDot, DayBucket, MAX_PROJECTION_STEPS, canProject, projectOccurrences, projectedDeadlineFor, +6 more
 - `src/utils/calendarSync.ts` — CalendarPermission, getCalendarPermission, requestCalendarPermission, listEventCalendars, validCalendarIds, CalendarReadStatus, FetchEventsResult, fetchEvents, listWritableCalendars, AllDayEventFields, +9 more
 - `src/utils/categoryBackfill.ts` — CategoryBackfillFieldId, CategoryBackfillFieldDef, CATEGORY_BACKFILL_FIELDS, isCategoryFieldMissing, isCategoryBackfillDismissed, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField
@@ -34,7 +35,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/categoryOrder.ts` — moveCategory, alphabeticalCategories, sortCategoriesByTaskCount
 - `src/utils/categoryPicker.ts` — CategoryOption, CategoryFilterResult, optionLabel, filterCategories, CategorySubmit, resolveCategorySubmit
 - `src/utils/categorySchedule.ts` — DAY_LABELS, FULL_DAY_NAMES, formatScheduleTime, formatScheduleDays, formatCategorySchedule
-- `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, parseChainItems, ChainPreview, chainPreview, isChainFinish
+- `src/utils/chain.ts` — ChainCarrier, ChainCompletionCarrier, activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, ChainPreview, chainPreview, isChainFinish
 - `src/utils/clockTime.ts` — hhmmToDate, logicalDayStart, taskDayStart, formatHHMM, clockTimeToken, dateToHHMM
 - `src/utils/cloudKitTransport.ts` — CLOUDKIT_SOURCE, isCloudKitSyncAvailable, cloudKitUnavailableReason, cloudKitTransport
 - `src/utils/completionTap.ts` — CompletionTap, completionTapFor
@@ -48,7 +49,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, describeDayLoad
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
 - `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isMealPlanUrl, mealPlanUrlDayKey, +14 more
-- `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, deliverableMeta, asksOnCompletion, normalizeDeliverableValue, formatDeliverableValue, formatTaskDeliverable
+- `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, deliverableMeta, DeliverableSource, deliverableKindFor, asksOnCompletion, chainStepDatedByAnswer, deliverableDate, normalizeDeliverableValue, formatDeliverableValue, +1 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoSeed.ts` — seedDemoData
 - `src/utils/demoState.ts` — isDemoModeActive, setDemoModeActive
@@ -227,6 +228,7 @@ render, so listing them adds lines without adding answers.
 
 ## `src/hooks`
 
+- `src/hooks/useAnswerFirstCompletion.ts` — useAnswerFirstCompletion
 - `src/hooks/useBulkBarEntrance.ts` — useBulkBarEntrance
 - `src/hooks/useCopyToClipboard.ts` — COPIED_TICK_MS, useCopyToClipboard
 - `src/hooks/useDebouncedValue.ts` — useDebouncedValue

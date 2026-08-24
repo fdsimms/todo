@@ -12,6 +12,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
+import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -81,6 +83,23 @@ export function TagsScreen() {
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
+
+  // Bulk completion asks before it drops an answer — see
+  // useAnswerFirstCompletion. Selection is left alone until something actually
+  // happens: `complete` runs on every path out of the confirm except Cancel,
+  // so backing out leaves the selection exactly as it was rather than making
+  // the user rebuild it.
+  const { requestComplete, queueProps } = useAnswerFirstCompletion();
+  const handleBulkComplete = () => {
+    const ids = Array.from(selectedIds);
+    requestComplete({
+      ids,
+      complete: skipIds => {
+        bulkCompleteTasks(ids.filter(id => !skipIds.includes(id)));
+        exitSelection();
+      },
+    });
+  };
   const keyboardScroll = useKeyboardInsetScroll<FlatList>();
   // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
   const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
@@ -338,7 +357,7 @@ export function TagsScreen() {
                 selectedCount={selectedIds.size}
                 totalCount={tagTasks.length}
                 existingTags={allTags}
-                onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+                onComplete={handleBulkComplete}
                 onDelete={handleBulkDelete}
                 onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
                 onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}
@@ -354,6 +373,8 @@ export function TagsScreen() {
             )}
           </View>
         </Modal>
+
+        <DeliverablePromptQueue {...queueProps} />
 
         <TaskEditor
           visible={editorVisible}

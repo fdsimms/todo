@@ -47,6 +47,9 @@ import { deliverableMeta } from '../utils/deliverables';
 import { SortableList } from './SortableList';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { StepMinutes } from './StepMinutes';
+import { StepQuestion } from './StepQuestion';
+import { nextChainStepTitle } from '../utils/chain';
+import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
@@ -127,6 +130,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
+  // By id rather than index — see the same state in TaskEditor.
+  const [questionStepId, setQuestionStepId] = useState<string | null>(null);
   const [chainIndex, setChainIndex] = useState(0);
   const [addingChainItem, setAddingChainItem] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
@@ -178,6 +183,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setDeliverableKind(item?.deliverableKind ?? draft?.deliverableKind ?? null);
     setChainEnabled(item?.chainEnabled ?? draft?.chainEnabled ?? false);
     setChainItems(item?.chainItems ?? draft?.chainItems ?? []);
+    setQuestionStepId(null);
     setChainIndex(item?.chainIndex ?? draft?.chainIndex ?? 0);
     setSubtasks(item?.subtasks ?? draft?.subtasks ?? []);
     setAddingTag(false);
@@ -390,7 +396,20 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           />
         </>
       }
-      footer={<NumberPadAccessory />}
+      footer={
+        <>
+          <ChainStepQuestionSheet
+            visible={questionStepId !== null}
+            step={chainItems.find(c => c.id === questionStepId) ?? null}
+            nextStepTitle={nextChainStepTitle(chainItems, questionStepId)}
+            onSave={patch => setChainItems(prev => prev.map(
+              c => (c.id === questionStepId ? { ...c, ...patch } : c),
+            ))}
+            onClose={() => setQuestionStepId(null)}
+          />
+          <NumberPadAccessory />
+        </>
+      }
     >
       <TextInput
         style={styles.titleInput}
@@ -864,6 +883,11 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                         onChange={mins => setChainItems(prev => prev.map(
                           c => (c.id === chainItem.id ? { ...c, estimatedMinutes: mins } : c),
                         ))}
+                      />
+                      <StepQuestion
+                        step={chainItem}
+                        datesNextStep={chainItem.deliverableDatesNextStep === true}
+                        onPress={() => setQuestionStepId(chainItem.id)}
                       />
                       <TouchableOpacity
                         onLongPress={drag}
