@@ -102,6 +102,31 @@ function ms(iso: string): number | null {
  * date back off the instant and rebuilding it as local midnight is what makes
  * the comparison ask about the calendar date rather than the instant.
  */
+/**
+ * The local days a range is asking about, as a [start, end) pair of midnight
+ * instants — what an all-day event's own dates get compared against.
+ *
+ * A range here is a *logical* day: both callers anchor it with `getDayStart`,
+ * so a `dayResetTime` of 04:00 makes "today" 04:00 to 04:00 rather than
+ * midnight to midnight. Comparing an all-day event's instants against that
+ * window directly puts *tomorrow's* all-day event on today, all day long
+ * (#2019) — [Aug 24 04:00, Aug 25 04:00) genuinely overlaps the first four
+ * hours of an event named Aug 25, so the overlap is real and the answer is
+ * still wrong. An all-day event has no clock time to be inside a window with,
+ * only a date to be *on*, so the question is widened to whole local days: the
+ * day the range starts on, plus one for each further day it covers.
+ */
+function allDayWindowMs(rangeStart: Date, rangeEnd: Date): { start: number; end: number } {
+  const first = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate());
+  // Rounded, not floored: a day that lost or gained an hour to DST is still
+  // one day, and a range shorter than a day still asks about the day it sits in.
+  const days = Math.max(1, Math.round((rangeEnd.getTime() - rangeStart.getTime()) / 86400000));
+  return {
+    start: first.getTime(),
+    end: new Date(first.getFullYear(), first.getMonth(), first.getDate() + days).getTime(),
+  };
+}
+
 function allDayRangeMs(event: BusyEvent): { start: number; end: number } | null {
   const start = new Date(event.start);
   const end = new Date(event.end);
@@ -229,16 +254,21 @@ export function eventsIn(
 ): BusyEvent[] {
   const from = rangeStart.getTime();
   const to = rangeEnd.getTime();
+  const allDayWindow = allDayWindowMs(rangeStart, rangeEnd);
   return events
     .filter(event => {
       if (!isLiveEvent(event)) return false;
-      // An all-day event's range is the calendar date it names, read via
-      // allDayRangeMs — not the raw UTC-midnight instant, which reads as a
-      // different local day in any zone behind UTC (#1725). `end > from`
-      // keeps a meeting/day that finished at the range's own start out of it.
+      // An all-day event is on a date rather than at a time, so both sides of
+      // this comparison are dates: `allDayRangeMs` for the days the event
+      // names (not its raw UTC-midnight instant, #1725) and `allDayWindowMs`
+      // for the days the range covers (not its reset-time bounds, #2019).
+      // `end > start` keeps a day that finished at the window's own start out
+      // of it.
       if (event.allDay) {
         const range = allDayRangeMs(event);
-        return range !== null && range.start < to && range.end > from;
+        return range !== null
+          && range.start < allDayWindow.end
+          && range.end > allDayWindow.start;
       }
       const start = ms(event.start);
       const end = ms(event.end);
