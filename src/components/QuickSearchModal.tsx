@@ -246,11 +246,11 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
       Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(cardOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
-    ]).start(() => {
-      // Focus after the card settles so its spring and the keyboard's own
-      // slide-up don't overlap — same reasoning as QuickAddModal.
-      inputRef.current?.focus();
-    });
+    ]).start();
+    // Focus (and the keyboard's own slide-up) starts alongside the card
+    // animation rather than after it, so the keyboard is up sooner —
+    // same fix as QuickAddModal's (#1210).
+    inputRef.current?.focus();
   }, [visible]);
 
   const dismiss = (then?: () => void) => {
