@@ -54,6 +54,15 @@ interface Props {
  * line resolves to and opens it, so the brand to reach for and the substitute
  * you'd accept are set once, from either end.
  *
+ * When there's nothing on the other side of the bridge, the card mints it —
+ * `ensureCatalogItem`, so the row arrives off-list and asserting nothing about
+ * what's in the cupboard. That an ingredient can exist with no grocery row at
+ * all is the thing being fixed: every fact this app can hold about a food hangs
+ * off that row, so "not in your groceries yet" was a dead end on the one screen
+ * with the most reason to want one. It is deliberately not an add-to-list
+ * button; putting the thing in this week's trolley is a different sentence, and
+ * `RecipeToListSheet` is where the recipe says it.
+ *
  * Everything else is progressive disclosure in the shape the editors use: the
  * fields that are always worth seeing, then the two labels — section and
  * alternatives — that most lines never carry.
@@ -71,10 +80,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const recipeEmptySections = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.emptySections ?? [])
   );
-  const recipeTitle = useRecipeStore(s => s.recipes.find(r => r.id === recipeId)?.name ?? '');
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
-  const addFromPlan = useGroceryStore(s => s.addFromPlan);
+  const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -237,21 +245,25 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     onClose();
   };
 
-  // The saved line, not the draft in the fields above — matching what
-  // `catalogItem` is keyed against, so the card flips to the "In your
-  // groceries" row the moment this resolves rather than staying stuck on the
-  // empty state until the next save. Goes through addFromPlan rather than
-  // addByName directly for the same quantityFromRecipe/aisle-precedence
-  // handling a whole-recipe add gets — see addFromPlan's doc comment.
-  const addIngredientToList = () => {
-    const result = addFromPlan([{
-      name: ingredient.name,
-      quantity: ingredient.quantity || null,
-      aisle: ingredient.aisle,
-      sourceRecipeId: recipeId,
-      sourceRecipeTitle: recipeTitle,
-    }]);
-    if (result.added.length > 0) haptics.success();
+  // Mints the catalog row and nothing else — off-list, and with no claim that
+  // you have any. `ensureCatalogItem` is the primitive for exactly this (see
+  // its doc comment): a name gets a row so a standing fact can hang off it,
+  // which is the whole reason to reach for this from here. Deliberately not
+  // `addByName`/`addFromPlan` — those put it in this week's trolley, which is
+  // a different statement and one this sheet has no business making.
+  //
+  // Keyed off the saved line rather than the draft in the field above, because
+  // that's what `catalogItem` resolves against: minting from the draft would
+  // leave the card sitting on its empty state, still looking for the old name.
+  const addIngredientToCatalog = () => {
+    const created = ensureCatalogItem(ingredient.name);
+    if (!created) { haptics.error(); return; }
+    haptics.success();
+    animateLayout();
+    // Straight into the item, since recording something on it — a brand, a
+    // store, what you'd accept instead — is the reason to have pressed this at
+    // all. Same sheet the catalog row's own chevron opens once it exists.
+    setEditingItemId(created.id);
   };
 
   return (
@@ -395,15 +407,15 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
         ) : (
           <>
             <Text style={styles.hint}>
-              Not on your list yet. Add it and it can carry a brand, a store, a price and what
-              you'd accept instead.
+              Not in your groceries yet. Add it to give it a brand, a store, a price or what
+              you'd accept instead. This doesn't put it on your shopping list.
             </Text>
             <InlineAction
-              label="Add to list"
-              icon="cart-outline"
-              onPress={addIngredientToList}
-              style={styles.addToListButton}
-              accessibilityLabel={`Add ${ingredient.name} to your grocery list`}
+              label="Add to groceries"
+              icon="basket-outline"
+              onPress={addIngredientToCatalog}
+              style={styles.addToCatalogButton}
+              accessibilityLabel={`Add ${ingredient.name} to your groceries`}
             />
           </>
         )}
@@ -759,7 +771,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  addToListButton: {
+  addToCatalogButton: {
     marginTop: spacing.xs,
     alignSelf: 'flex-start',
   },
