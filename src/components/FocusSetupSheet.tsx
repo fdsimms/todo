@@ -9,6 +9,7 @@ import {
   PanResponder,
   StyleSheet,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -111,6 +112,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation();
 
   // useShallow, not a bare selector: focusPlanOptionsFrom builds a fresh
   // object every call, and an unmemoized snapshot is what useSyncExternalStore
@@ -228,6 +230,17 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
       // No re-arming setValue here — see useSheetHiddenOffset.
       onClose();
     });
+  };
+
+  const openSettings = () => {
+    haptics.tap();
+    // Lands on the group these settings actually live in ("Focus sessions"
+    // inside Tasks & projects), not the Settings index. The sheet's own
+    // dismiss animation runs same as Cancel; the pushed screen is behind it
+    // and shows once the sheet is gone.
+    (navigation as never as { navigate: (n: string, p: object) => void })
+      .navigate('SettingsGroup', { groupId: 'tasksProjects' });
+    dismiss();
   };
 
   const panResponder = useRef(
@@ -427,12 +440,23 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
         <View style={styles.card}>
           <View style={styles.header}>
             <Text style={styles.sheetTitle}>{pinnedSeed ? 'Focus session · Pinned' : 'Focus session'}</Text>
-            <View style={styles.countRow}>
-              <Ionicons name="hourglass-outline" size={13} color={colors.textTertiary} />
-              <Text style={styles.countText}>
-                <Text style={styles.countValue}>{selected.length}</Text>
-                {pinnedSeed ? ` of ${slots.length} pinned` : ` of ${MAX_SUGGESTED_FOCUS}`}
-              </Text>
+            <View style={styles.headerRight}>
+              <View style={styles.countRow}>
+                <Ionicons name="hourglass-outline" size={13} color={colors.textTertiary} />
+                <Text style={styles.countText}>
+                  <Text style={styles.countValue}>{selected.length}</Text>
+                  {pinnedSeed ? ` of ${slots.length} pinned` : ` of ${MAX_SUGGESTED_FOCUS}`}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={openSettings}
+                style={styles.settingsBtn}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel="Focus session settings"
+              >
+                <Ionicons name="settings-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -616,6 +640,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.md,
   },
   sheetTitle: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  settingsBtn: { padding: 2 },
   countRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   countText: { color: colors.textTertiary, fontSize: font.sm },
   countValue: { color: colors.accent, fontWeight: fontWeight.semibold },
