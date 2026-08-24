@@ -103,6 +103,29 @@ describe('isFieldMissing', () => {
     expect(isFieldMissing({ ...baseTask, estimatedMinutes: 30 }, 'estimate')).toBe(false);
   });
 
+  it('treats the active chain step\'s own estimate as not missing, even with no task-level estimate', () => {
+    // A recipe-backed "Cook X" step (or a meal-slot step with a remembered
+    // default) already has a real duration on chainItems — the backfill
+    // wizard shouldn't ask for one it can already read.
+    const task = {
+      ...baseTask,
+      chainEnabled: true,
+      chainIndex: 0,
+      chainItems: [{ id: 's1', title: 'Cook', estimatedMinutes: 35 }, { id: 's2', title: 'Eat', estimatedMinutes: null }],
+    };
+    expect(isFieldMissing(task, 'estimate')).toBe(false);
+  });
+
+  it('still treats it as missing when the current step has no estimate of its own', () => {
+    const task = {
+      ...baseTask,
+      chainEnabled: true,
+      chainIndex: 1,
+      chainItems: [{ id: 's1', title: 'Cook', estimatedMinutes: 35 }, { id: 's2', title: 'Eat', estimatedMinutes: null }],
+    };
+    expect(isFieldMissing(task, 'estimate')).toBe(true);
+  });
+
   it('treats priority 0 (None) as missing', () => {
     expect(isFieldMissing(baseTask, 'priority')).toBe(true);
     expect(isFieldMissing({ ...baseTask, priority: 2 }, 'priority')).toBe(false);

@@ -34,7 +34,13 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
 export function isFieldMissing(task: Task, fieldId: BackfillFieldId): boolean {
   switch (fieldId) {
     case 'estimate':
-      return task.estimatedMinutes == null;
+      // The step currently showing may already carry its own duration —
+      // a recipe-backed "Cook X" step gets one from the recipe (see
+      // mealSlotChain), and a meal-slot "Choose"/"Eat" step gets one from
+      // mealSlotStepEstimates once the user has sized that step-type once.
+      // Reading task.estimatedMinutes alone would flag both as missing
+      // even though the app already knows the answer.
+      return (task.chainItems[task.chainIndex]?.estimatedMinutes ?? task.estimatedMinutes) == null;
     case 'priority':
       return task.priority === 0;
     case 'category':

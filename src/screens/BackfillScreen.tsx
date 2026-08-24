@@ -6,6 +6,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { format } from 'date-fns/format';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -20,6 +21,7 @@ import { spacing, radius, font, lineHeight, fontWeight, iconSize, interaction, t
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor } from '../utils/visibilityUtils';
+import { activeMealSlotStepId } from '../utils/mealSlotTasks';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
@@ -114,6 +116,15 @@ export function BackfillScreen() {
     haptics.tap();
     animateLayout();
     updateTask(current.id, patch);
+    // Choosing and eating a given meal take about the same time every day,
+    // so a size given to "Choose breakfast" here is remembered under its
+    // step id and carried onto every future "Choose breakfast" at creation
+    // — see mealSlotStepEstimates. A recipe-backed "Cook X" step already has
+    // its own evidence and never reaches isFieldMissing in the first place.
+    if (activeField === 'estimate' && patch.estimatedMinutes != null) {
+      const stepId = activeMealSlotStepId(current);
+      if (stepId) useSettingsStore.getState().setMealSlotStepEstimate(stepId, patch.estimatedMinutes);
+    }
   };
 
   const skip = () => {
