@@ -4,6 +4,7 @@ import { seedDemoData } from '../utils/demoSeed';
 import { setDemoModeActive } from '../utils/demoState';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
+import { useSharedLinkStore } from './useSharedLinkStore';
 
 // Demo mode replaces the app's entire data source with a throwaway one, so
 // handing someone the phone shows them a believable task list and none of
@@ -38,6 +39,11 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // from it — which also cancels the real reminders, since initialize()
     // reschedules notifications from the tasks it just loaded.
     useTaskStore.getState().initialize();
+    // Points the shared-link queue at the scratch database before the seed
+    // fills it — it's the one store holding state in memory *and* writing
+    // through to `settings`, so without this the real queue would still be on
+    // screen inside the demo and the demo's own writes would land on it.
+    useSharedLinkStore.getState().reload();
     seedDemoData();
     set({ active: true });
   },
@@ -54,6 +60,9 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // the scratch file.
     useTaskStore.getState().initialize();
     useSettingsStore.getState().initialize();
+    // And back to the real queue, so the demo's invented shared link leaves
+    // with the rest of the scratch database.
+    useSharedLinkStore.getState().reload();
     set({ active: false });
   },
 }));

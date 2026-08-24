@@ -43,6 +43,8 @@ import { extraTaskDraftIsEmpty, extraTaskRule } from '../utils/extraTask';
 import { isDialable } from '../utils/phone';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useSharedLinkStore } from '../store/useSharedLinkStore';
+import { sharedLinkLabel } from '../utils/sharedRecipeLinks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -896,6 +898,23 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(
       items.some(i => !i.onList && i.inCatalog && i.purchaseCount === 0 && !i.lastAddedAt)
     ).toBe(true);
+  });
+
+  it('seeds a recipe page waiting to be imported from the share sheet', () => {
+    // The share extension leaves no trace until something has been shared to
+    // it, so with an empty queue the Recipes screen is indistinguishable from a
+    // build that can't be shared to at all — the exact case demo mode exists
+    // to avoid.
+    const { pendingUrls } = useSharedLinkStore.getState();
+    expect(pendingUrls.length).toBeGreaterThanOrEqual(1);
+    // Canonicalised on the way in, so the banner offers something the import
+    // will actually accept rather than failing on the tap that opens it.
+    expect(pendingUrls[0]).toMatch(/^https:\/\//);
+    expect(sharedLinkLabel(pendingUrls[0])).toBe('cooking.nytimes.com');
+    // Queued, not imported: it must not already be in the recipe box, or the
+    // banner is offering work that's been done.
+    const label = sharedLinkLabel(pendingUrls[0]);
+    expect(useRecipeStore.getState().recipes.some(r => r.sourceUrl?.includes(label))).toBe(false);
   });
 
   it('seeds an either/or on the list, from a recipe choice left for the shelf', () => {

@@ -158,6 +158,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/settingsSummary.ts` — SettingsSummaryInput, settingsSummaries
 - `src/utils/shakeDetect.ts` — ShakeSample, SHAKE_UPDATE_INTERVAL_MS, SHAKE_THRESHOLD_G, SHAKE_JOLTS_REQUIRED, SHAKE_WINDOW_MS, SHAKE_COOLDOWN_MS, SHAKE_ARM_DELAY_MS, ShakeState, createShakeState, armShakeState, +3 more
 - `src/utils/shareText.ts` — buildRecipeShareText, buildIngredientsText, buildGroceryListShareText, buildGroceryListText, buildWeekPlanShareText
+- `src/utils/sharedRecipeLinks.ts` — SHARED_LINK_QUEUE_CAP, mergeSharedLinks, parseSharedLinkQueue, serializeSharedLinkQueue, sharedLinkLabel
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
 - `src/utils/simpleMode.ts` — SimpleArea, SimpleFeatureId, SimpleFeature, SIMPLE_AREA_LABELS, SIMPLE_AREAS, SIMPLE_FEATURES, simpleFeaturesIn, featureHidden, featureShown, SIMPLE_HIDDEN_SCREENS, +8 more
 - `src/utils/simpleTaskForm.ts` — SIMPLE_QUICK_ADD_CHIPS, SIMPLE_EDITOR_PRIMARY_ROWS, isSimpleChip, simplePrimaryRow
@@ -213,6 +214,7 @@ render, so listing them adds lines without adding answers.
 - `src/store/useProjectStore.ts` — projectProgress, projectDecisions, isProjectPastWindow, useProjectStore
 - `src/store/useRecipeStore.ts` — CookStats, useRecipeStore
 - `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore
+- `src/store/useSharedLinkStore.ts` — useSharedLinkStore
 - `src/store/useSyncStore.ts` — SyncPhase, useSyncStore, isSyncSupported
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
 - `src/store/useTaskStore.ts` — CONTENT_FIELDS, useTaskStore
@@ -235,6 +237,7 @@ render, so listing them adds lines without adding answers.
 - `src/hooks/useRecipeImportSource.ts` — ResolvedRecipeSource, alertPhotoAccessDenied, useRecipeImportSource
 - `src/hooks/useRecipeTimer.ts` — RecipeTimerBinding, useRecipeTimer
 - `src/hooks/useRowSelection.ts` — useRowSelection
+- `src/hooks/useSharedRecipeLinks.ts` — useSharedRecipeLinks
 - `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset
 - `src/hooks/useTaskSelection.ts` — useTaskSelection
 - `src/hooks/useTipSignals.ts` — useTipSignals
