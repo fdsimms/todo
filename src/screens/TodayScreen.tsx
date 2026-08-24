@@ -176,6 +176,15 @@ const VIEW_TITLES: Record<ViewMode, string> = {
   inbox: 'Inbox',
 };
 
+// What a pill's badge count means, read out after the view's name. Only the two
+// lenses holding tasks that haven't been placed anywhere carry a badge — Today
+// and Later already say their size in the header subtitle, and a count on every
+// pill is a count on none of them.
+const VIEW_BADGE_LABELS: Partial<Record<ViewMode, string>> = {
+  unscheduled: 'with no date',
+  inbox: 'to sort',
+};
+
 // Task budgets for the Later list (see the laterTaskLimit block below for why
 // it has one at all). INITIAL is about a screenful — it's what the tap into
 // Later has to mount before anything paints; SETTLED is topped up once that
@@ -1043,11 +1052,12 @@ export function TodayScreen() {
   const hideCategories = useSettingsStore(s => s.hideCategories);
   const setHideCategories = useSettingsStore(s => s.setHideCategories);
   const simpleMode = useSettingsStore(s => s.simpleMode);
-  // Only counted while simplified mode is on, so the pass over every task costs
-  // nothing for everyone else. A scalar, so it can't churn renders.
-  const unscheduledCount = useTaskStore(
-    s => (simpleMode ? s.tasks.filter(isUnscheduledTask).length : 0)
-  );
+  // Counted in every mode now, not just simplified: it's the badge on the
+  // Unscheduled pill, which every view shows, so it can't be gated on the view
+  // that reads the list (same trade inboxTasks makes above). A scalar, so it
+  // can't churn renders — this recomputes on every store write and re-renders
+  // only when the number itself moves.
+  const unscheduledCount = useTaskStore(s => s.tasks.filter(isUnscheduledTask).length);
   // Later and Inbox stay whatever the mode is: each is the only route to a set
   // of real tasks, and a lens that hides tasks isn't a simplification. Only
   // Unscheduled goes, and only while it's empty and isn't the view you're on.
@@ -2894,7 +2904,9 @@ export function TodayScreen() {
         >
           {viewModes.map(mode => {
             const active = viewMode === mode;
-            const badge = mode === 'inbox' ? inboxTasks.length : 0;
+            const badge = mode === 'inbox'
+              ? inboxTasks.length
+              : mode === 'unscheduled' ? unscheduledCount : 0;
             return (
               <TouchableOpacity
                 key={mode}
@@ -2909,15 +2921,24 @@ export function TodayScreen() {
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
                 accessibilityLabel={
-                  badge > 0 ? `${VIEW_TITLES[mode]} view, ${badge} to sort` : `${VIEW_TITLES[mode]} view`
+                  badge > 0
+                    ? `${VIEW_TITLES[mode]} view, ${badge} ${VIEW_BADGE_LABELS[mode]}`
+                    : `${VIEW_TITLES[mode]} view`
                 }
               >
                 <Text style={[styles.viewModePillText, active && styles.viewModePillTextActive]}>
                   {VIEW_TITLES[mode]}
                 </Text>
                 {badge > 0 && (
-                  <View style={styles.viewModePillBadge}>
-                    <Text style={styles.viewModePillBadgeText}>{badge}</Text>
+                  <View style={[styles.viewModePillBadge, mode !== 'inbox' && styles.viewModePillBadgeQuiet]}>
+                    <Text
+                      style={[
+                        styles.viewModePillBadgeText,
+                        mode !== 'inbox' && styles.viewModePillBadgeTextQuiet,
+                      ]}
+                    >
+                      {badge}
+                    </Text>
                   </View>
                 )}
               </TouchableOpacity>
@@ -3731,8 +3752,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // listWrapper below) instead of sizing to its own (short, pill-height)
   // content — this pins it back to its natural height.
   viewModePillsScroll: { flexGrow: 0, flexShrink: 0 },
+  // gap: spacing.sm, not xs. A badge hangs 4pt past its pill's right edge, which
+  // an xs gap gave it exactly nowhere to hang — fine while Inbox (the last pill)
+  // was the only badged one, but Unscheduled's landed on the Inbox pill's left
+  // edge, and RN paints later siblings on top, so the neighbour would have
+  // clipped it rather than the other way round.
   viewModePills: {
-    flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4,
   },
   viewModePill: {
@@ -3748,6 +3774,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.red, alignItems: 'center', justifyContent: 'center',
   },
   viewModePillBadgeText: { color: colors.onAccent, fontSize: 9, fontWeight: fontWeight.bold },
+  // Same badge, muted: Unscheduled is a pile of things with no date, not a pile
+  // of things owed, so a red alert dot overstates it — and two red dots side by
+  // side stop reading as "this one needs you". Red stays the Inbox's alone.
+  viewModePillBadgeQuiet: { backgroundColor: colors.bgQuaternary },
+  viewModePillBadgeTextQuiet: { color: colors.text },
   sectionHeader: {
     paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.xs,
     backgroundColor: colors.bg,
