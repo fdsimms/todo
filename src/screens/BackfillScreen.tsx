@@ -520,6 +520,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   categoryCard: { borderRadius: radius.md, padding: spacing.sm },
 
   actionRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
-  skipButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
-  skipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.regular },
+  skipButton: {
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+    backgroundColor: colors.bgSecondary, borderRadius: radius.md,
+  },
+  skipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
 });
