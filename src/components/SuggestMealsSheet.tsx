@@ -19,7 +19,7 @@ import {
   mergeMealSuggestions, mealIdeaRecipeDraft, mealTitleKey,
   type MealIdea, type MealSuggestion,
 } from '../utils/mealIdeas';
-import { suggestMealIdeas, suggestMealIngredients, describeAIError } from '../services/aiSuggestions';
+import { suggestMealIdeas, draftMealRecipe, describeAIError } from '../services/aiSuggestions';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -166,14 +166,20 @@ interface Props {
  *   user has to be able to tell which is which before accepting.
  *
  * Picking an *idea* and pressing Save does one extra step per idea: a call
- * that drafts its shopping list and saves it as a real `Recipe` (`addRecipe`
- * + `addStructuredIngredients`) before landing it on a day — so the meal
- * enters the recipe box and is rankable, cookable and shoppable from then on,
- * rather than being a one-off free-text entry that has to be invented again
- * next month. A draft that fails (a flaky request, a name that didn't
- * survive cleaning) leaves that idea picked with an error under it and
- * doesn't spend a day on it — everything else picked alongside it still
- * saves, and the row is retried the next time Save is pressed.
+ * that drafts a full recipe — shopping list, method, any advance prep — and
+ * saves it as a real `Recipe` (`addRecipe`, `addStructuredIngredients`,
+ * `setNotes`, `setSource`, `addStep`, `addPrepTask`) before landing it on a
+ * day — so the meal enters the recipe box already stocked with everything but
+ * a time estimate, which is deliberately left for the cook to fill in once
+ * they've actually made it once (see `draftMealRecipe`'s own comment on why),
+ * and is rankable, cookable and shoppable from then on, rather than being a
+ * one-off free-text entry that has to be invented again next month. Every
+ * recipe this creates is stamped `source: 'AI generated'`
+ * (`AI_INVENTED_RECIPE_SOURCE`) so its byline says so wherever attribution is
+ * shown. A draft that fails (a flaky request, a name that didn't survive
+ * cleaning) leaves that idea picked with an error under it and doesn't spend
+ * a day on it — everything else picked alongside it still saves, and the row
+ * is retried the next time Save is pressed.
  */
 export function SuggestMealsSheet({
   visible, recipes, cookAgainRecipes = [], leftovers = [], pantryByRecipeId, openDays,
@@ -198,6 +204,11 @@ export function SuggestMealsSheet({
   const allRecipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const addStructuredIngredients = useRecipeStore(s => s.addStructuredIngredients);
+  const setNotes = useRecipeStore(s => s.setNotes);
+  const setSource = useRecipeStore(s => s.setSource);
+  const addStep = useRecipeStore(s => s.addStep);
+  const addPrepTask = useRecipeStore(s => s.addPrepTask);
+  const updatePrepTask = useRecipeStore(s => s.updatePrepTask);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
   const recipesById = useMemo(() => recipeMap(allRecipes), [allRecipes]);
@@ -371,8 +382,8 @@ export function SuggestMealsSheet({
    * leaves a planned entry pointing at nothing.
    */
   const saveIdeaAsRecipe = useCallback(async (idea: MealIdea): Promise<Recipe> => {
-    const items = await suggestMealIngredients(idea.title, [...aisleOrder], null);
-    const draft = mealIdeaRecipeDraft(idea, items);
+    const drafted = await draftMealRecipe(idea.title, [...aisleOrder], null);
+    const draft = mealIdeaRecipeDraft(idea, drafted.ingredients, drafted);
     if (!draft.name) throw new Error('IDEA_NAME_EMPTY');
     // addRecipe refuses a name already in the box (nameKey is UNIQUE); land
     // on the existing recipe rather than telling the user no.
@@ -381,8 +392,20 @@ export function SuggestMealsSheet({
       ?? null;
     if (!recipe) throw new Error('IDEA_SAVE_FAILED');
     if (draft.ingredients.length > 0) addStructuredIngredients(recipe.id, draft.ingredients);
+    if (draft.notes) setNotes(recipe.id, draft.notes);
+    setSource(recipe.id, draft.source);
+    draft.steps.forEach(step => addStep(recipe.id, step));
+    draft.prepTasks.forEach(task => {
+      const added = addPrepTask(recipe.id, task.title);
+      if (added && task.offsetDays !== added.offsetDays) {
+        updatePrepTask(recipe.id, added.id, { offsetDays: task.offsetDays });
+      }
+    });
     return recipe;
-  }, [aisleOrder, addRecipe, allRecipes, addStructuredIngredients]);
+  }, [
+    aisleOrder, addRecipe, allRecipes, addStructuredIngredients,
+    setNotes, setSource, addStep, addPrepTask, updatePrepTask,
+  ]);
 
   /**
    * Commits every current pick: containers and recipes plan straight away,
