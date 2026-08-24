@@ -1438,9 +1438,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const timeWindowSummary = (windowStart || windowEnd)
     ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
     : undefined;
-  const effortSummary = customEffortActive && estimatedMinutes != null
-    ? formatDuration(estimatedMinutes)
-    : effort > 0 ? EFFORT_LABELS[effort] : undefined;
+  const effortSummaryMinutes = estimatedMinutes ?? effortToMinutes(effort);
+  const effortSummary = effort > 0 && effortSummaryMinutes != null
+    ? formatDuration(effortSummaryMinutes)
+    : undefined;
   const subtasks: (Task | DraftSubtask)[] = task ? subtasksOf(task.id) : draftSubtasks;
   // The stretches of the countdown the subtasks have been given, in their own
   // order. Empty unless at least one subtask carries minutes, which is what
