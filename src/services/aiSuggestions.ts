@@ -997,35 +997,64 @@ export async function suggestMealIdeas(
   return dedupeMealIdeas(input.meals, [...planned, ...recent]);
 }
 
+export interface DraftedMealRecipe {
+  ingredients: RecipeGroceryItem[];
+  /**
+   * Total prep/cook time in minutes, start to finish. Null when nothing
+   * sensible to give. Deliberately not named `prepMinutes` the way
+   * `ExtractedRecipe`'s equivalent field is — this one has no split-source
+   * naming history to match, and the destination it's written to
+   * (`setEstimatedMinutes`) is the clearer name to carry all the way through.
+   */
+  estimatedMinutes: number | null;
+  /** The method, in order. Empty when the name was too vague to cook at all. */
+  steps: string[];
+  /** Only genuine advance-prep — see the prompt below for the same rule `extractRecipe` uses. */
+  prepTasks: ExtractedPrepTask[];
+}
+
 /**
- * Drafts the shopping list for a meal that has no recipe — "leftovers" or a
- * just-invented idea turned into something you can actually buy for.
+ * Drafts a full recipe for a meal that has no written one — "leftovers" or a
+ * just-invented idea turned into something you can actually cook, not just
+ * shop for.
  *
- * Deliberately the same tool shape, the same aisle clamp and the same
- * `parseExtractedItems` validator as `extractRecipe` (see
- * `groceryItemsSchema`): the difference between reading a recipe and
- * inventing one belongs in the prompt, not in a second output format for the
- * same kind of answer. That's what lets an accepted idea go straight into
- * `addStructuredIngredients` alongside an imported one.
+ * Deliberately the same ingredient shape, the same aisle clamp and the same
+ * `parseExtractedItems`/`parseExtractedSteps`/`parseExtractedPrepTasks`
+ * validators as `extractRecipe` (see `groceryItemsSchema`): the difference
+ * between reading a recipe and inventing one belongs in the prompt, not in a
+ * second output format for the same kind of answer. That's what lets an
+ * accepted idea go straight into `addStructuredIngredients`/`addStep`/
+ * `addPrepTask` alongside an imported one, and what keeps the two prompts
+ * from drifting on what counts as a "prep task" versus routine same-day prep.
+ *
+ * `servings`/`servingsMax` and `recipeYield` are deliberately not asked for
+ * here the way `extractRecipe` asks for them: those fields report what a
+ * *written* recipe states, and there's nothing to read — the prompt already
+ * tells the model exactly how many to feed, so the caller writes that same
+ * number rather than trusting the model to echo it back.
  */
-export async function suggestMealIngredients(
+export async function draftMealRecipe(
   mealName: string,
   availableAisles: string[],
   servings: number | null,
-): Promise<RecipeGroceryItem[]> {
+): Promise<DraftedMealRecipe> {
   const { apiKey, model } = requireFeature('mealIdeas');
 
+  const empty: DraftedMealRecipe = { ingredients: [], estimatedMinutes: null, steps: [], prepTasks: [] };
   const name = mealName.trim().slice(0, RECIPE_NAME_MAX_LENGTH);
   // Nothing in, no network call — same guard extractRecipe makes on an empty
   // paste.
-  if (!name) return [];
+  if (!name) return empty;
   const serves = servings && servings > 0 ? Math.min(99, Math.round(servings)) : 4;
 
   const data = await callAnthropic({
-    max_tokens: 1500,
+    // A method plus any prep tasks needs more room than the shopping-list-only
+    // response this used to always be — same bump extractRecipe makes for
+    // includeMethod.
+    max_tokens: 2500,
     tools: [{
-      name: 'draft_ingredients',
-      description: 'Draft the shopping list for a meal that has no written recipe',
+      name: 'draft_recipe',
+      description: 'Draft a full recipe — shopping list, method, and time — for a meal that has no written recipe',
       input_schema: {
         type: 'object',
         properties: {
@@ -1033,28 +1062,68 @@ export async function suggestMealIngredients(
             availableAisles,
             'The things a shopper needs to buy to cook this meal.',
           ),
+          estimatedMinutes: {
+            type: 'integer',
+            description: 'Roughly how many minutes this takes start to finish, prep and cook together. 0 if you cannot reasonably estimate one.',
+          },
+          steps: {
+            type: 'array',
+            description: `The method, as an ordered list of separate steps a home cook could actually follow — brief and specific, the way a recipe states them. Under ${MAX_RECIPE_STEPS} steps. Empty array if the name is too vague to cook at all.`,
+            items: { type: 'string' },
+          },
+          prepTasks: {
+            type: 'array',
+            description: 'Only genuine advance-prep that needs to start well ahead of cooking — never routine same-day prep. Empty array when nothing needs advance lead time.',
+            items: {
+              type: 'object',
+              properties: {
+                title: {
+                  type: 'string',
+                  description: `What to do, e.g. "Soak the beans overnight". Under ${TITLE_MAX_LENGTH} characters.`,
+                },
+                daysAhead: {
+                  type: 'integer',
+                  description: 'How many days before cooking this needs to start. 1 for "overnight" or "the night before".',
+                },
+              },
+              required: ['title', 'daysAhead'],
+            },
+          },
         },
-        required: ['items'],
+        required: ['items', 'steps'],
       },
     }],
-    tool_choice: { type: 'tool', name: 'draft_ingredients' },
+    tool_choice: { type: 'tool', name: 'draft_recipe' },
     messages: [{
       role: 'user',
       content: [
-        `Write the shopping list for a home-cooked meal called "${name}". There is no written recipe — draft what a cook would need to buy to make a straightforward home version of it.`,
+        `Write a full home-cooked recipe for a meal called "${name}". There is no written recipe — draft a straightforward home version of it: what to buy, how to make it, and roughly how long it takes.`,
         `Quantities should feed ${serves}. Give the amount in the quantity field, and name each item the way a shop would label it, not the way the dish prepares it — "garlic" rather than "3 cloves garlic, minced". Abbreviate tablespoon/teaspoon as "tbsp"/"tsp".`,
         'Cover what the dish genuinely needs and stop there: the everyday version rather than an elaborate one, no optional garnishes, and skip water. Include salt, pepper and cooking oil only when the dish actually turns on them.',
         `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
-        'If the name is too vague to shop for at all, return an empty list rather than guessing at a dish.',
+        'Write the method as an ordered list of steps a home cook could actually follow — plain and specific, not padded with commentary.',
+        'Separately, list any "prep tasks": things that genuinely have to start well ahead of cooking because they need lead time — soaking dried beans overnight, marinating or brining meat overnight, thawing something frozen, proofing a dough overnight. Do NOT list routine same-day steps just because they happen early in the method — chopping vegetables, mixing dry ingredients, preheating the oven. Return an empty list when nothing needs advance lead time.',
+        'If the name is too vague to cook at all, return an empty ingredient list and an empty method rather than guessing at a dish.',
       ].join('\n\n'),
     }],
   }, apiKey, model);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
-  const input = toolUse?.input as { items?: unknown } | undefined;
+  const input = toolUse?.input as {
+    items?: unknown; estimatedMinutes?: unknown; steps?: unknown; prepTasks?: unknown;
+  } | undefined;
   if (!input) throw new Error('No suggestions returned');
 
-  return parseExtractedItems(input.items, availableAisles);
+  const estimatedMinutes = typeof input.estimatedMinutes === 'number' && input.estimatedMinutes > 0
+    ? Math.round(input.estimatedMinutes)
+    : null;
+
+  return {
+    ingredients: parseExtractedItems(input.items, availableAisles),
+    estimatedMinutes,
+    steps: parseExtractedSteps(input.steps),
+    prepTasks: parseExtractedPrepTasks(input.prepTasks),
+  };
 }
 
 // ─── Substitute suggestions (#1578) ─────────────────────────────────────────

@@ -11,7 +11,7 @@ import {
   suggestRecipeGroceries,
   extractRecipe,
   suggestMealIdeas,
-  suggestMealIngredients,
+  draftMealRecipe,
   suggestSubstitutes,
   describeAIError,
 } from '../services/aiSuggestions';
@@ -1200,12 +1200,15 @@ describe('suggestMealIdeas', () => {
 });
 
 // ============================================================================
-// suggestMealIngredients (#1063)
+// draftMealRecipe (#1063)
 // ============================================================================
 
-describe('suggestMealIngredients', () => {
+describe('draftMealRecipe', () => {
   const AISLES = ['Produce', 'Meat', 'Pantry', 'Other'];
-  const itemsResponse = (items: unknown[]) => toolUseResponse('draft_ingredients', { items });
+  const recipeResponse = (input: Record<string, unknown>) => toolUseResponse('draft_recipe', {
+    items: [], estimatedMinutes: 0, steps: [], prepTasks: [], ...input,
+  });
+  const EMPTY_DRAFT = { ingredients: [], estimatedMinutes: null, steps: [], prepTasks: [] };
 
   it('throws when no API key is configured', async () => {
     jest.spyOn(
@@ -1213,7 +1216,7 @@ describe('suggestMealIngredients', () => {
       'getState',
     ).mockReturnValue({ anthropicApiKey: '' });
 
-    await expect(suggestMealIngredients('Lemon chicken', AISLES, 4)).rejects.toThrow('No API key');
+    await expect(draftMealRecipe('Lemon chicken', AISLES, 4)).rejects.toThrow('No API key');
   });
 
   it('throws without hitting the network when the feature is turned off', async () => {
@@ -1226,77 +1229,100 @@ describe('suggestMealIngredients', () => {
     });
     const spy = jest.spyOn(global, 'fetch');
 
-    await expect(suggestMealIngredients('Lemon chicken', AISLES, 4)).rejects.toThrow('AI feature disabled');
+    await expect(draftMealRecipe('Lemon chicken', AISLES, 4)).rejects.toThrow('AI feature disabled');
     expect(spy).not.toHaveBeenCalled();
   });
 
   it('makes no network call for an empty meal name', async () => {
     const spy = jest.spyOn(global, 'fetch');
-    await expect(suggestMealIngredients('   ', AISLES, 4)).resolves.toEqual([]);
+    await expect(draftMealRecipe('   ', AISLES, 4)).resolves.toEqual(EMPTY_DRAFT);
     expect(spy).not.toHaveBeenCalled();
   });
 
   it('returns the drafted shopping list', async () => {
-    mockFetchOnce(itemsResponse([
-      { name: 'chicken thighs', quantity: '1 kg', aisle: 'Meat' },
-      { name: 'lemons', quantity: '2', aisle: 'Produce' },
-    ]));
-    await expect(suggestMealIngredients('Lemon chicken', AISLES, 4)).resolves.toEqual([
+    mockFetchOnce(recipeResponse({
+      items: [
+        { name: 'chicken thighs', quantity: '1 kg', aisle: 'Meat' },
+        { name: 'lemons', quantity: '2', aisle: 'Produce' },
+      ],
+    }));
+    const result = await draftMealRecipe('Lemon chicken', AISLES, 4);
+    expect(result.ingredients).toEqual([
       { name: 'chicken thighs', quantity: '1 kg', aisle: 'Meat', section: null },
       { name: 'lemons', quantity: '2', aisle: 'Produce', section: null },
     ]);
   });
 
   it('files an invented aisle under Other rather than trusting it', async () => {
-    mockFetchOnce(itemsResponse([{ name: 'lemons', quantity: '2', aisle: 'Citrus Corner' }]));
-    const result = await suggestMealIngredients('Lemon chicken', AISLES, 4);
-    expect(result[0].aisle).toBe('Other');
+    mockFetchOnce(recipeResponse({ items: [{ name: 'lemons', quantity: '2', aisle: 'Citrus Corner' }] }));
+    const result = await draftMealRecipe('Lemon chicken', AISLES, 4);
+    expect(result.ingredients[0].aisle).toBe('Other');
   });
 
   it('dedupes two spellings of the same item on the catalog key', async () => {
-    mockFetchOnce(itemsResponse([
-      { name: 'Lemons', quantity: '2', aisle: 'Produce' },
-      { name: 'lemons', quantity: '3', aisle: 'Produce' },
-    ]));
-    const result = await suggestMealIngredients('Lemon chicken', AISLES, 4);
-    expect(result).toHaveLength(1);
+    mockFetchOnce(recipeResponse({
+      items: [
+        { name: 'Lemons', quantity: '2', aisle: 'Produce' },
+        { name: 'lemons', quantity: '3', aisle: 'Produce' },
+      ],
+    }));
+    const result = await draftMealRecipe('Lemon chicken', AISLES, 4);
+    expect(result.ingredients).toHaveLength(1);
+  });
+
+  it('returns the method and any prep tasks', async () => {
+    mockFetchOnce(recipeResponse({
+      estimatedMinutes: 45,
+      steps: ['Sear the chicken thighs.', 'Roast with the lemons at 200C for 30 minutes.'],
+      prepTasks: [{ title: 'Marinate the chicken', daysAhead: 1 }],
+    }));
+    const result = await draftMealRecipe('Lemon chicken', AISLES, 4);
+    expect(result.estimatedMinutes).toBe(45);
+    expect(result.steps).toEqual(['Sear the chicken thighs.', 'Roast with the lemons at 200C for 30 minutes.']);
+    expect(result.prepTasks).toEqual([{ title: 'Marinate the chicken', offsetDays: -1 }]);
+  });
+
+  it('gives no estimated time when the model gives none', async () => {
+    mockFetchOnce(recipeResponse({ estimatedMinutes: 0 }));
+    const result = await draftMealRecipe('Lemon chicken', AISLES, 4);
+    expect(result.estimatedMinutes).toBeNull();
   });
 
   it('throws on a non-OK HTTP response', async () => {
     mockFetchOnce({}, 401);
-    await expect(suggestMealIngredients('Lemon chicken', AISLES, 4)).rejects.toThrow('API error 401');
+    await expect(draftMealRecipe('Lemon chicken', AISLES, 4)).rejects.toThrow('API error 401');
   });
 
   it('throws when the response contains no tool_use block', async () => {
     mockFetchOnce({ content: [{ type: 'text', text: 'hi' }] });
-    await expect(suggestMealIngredients('Lemon chicken', AISLES, 4)).rejects.toThrow('No suggestions returned');
+    await expect(draftMealRecipe('Lemon chicken', AISLES, 4)).rejects.toThrow('No suggestions returned');
   });
 
   it('names the meal, the serving count and the available aisles in the request', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: () => Promise.resolve(itemsResponse([])),
+      json: () => Promise.resolve(recipeResponse({})),
     } as Response);
 
-    await suggestMealIngredients('Lemon chicken', AISLES, 6);
+    await draftMealRecipe('Lemon chicken', AISLES, 6);
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;
     expect(content).toContain('Lemon chicken');
     expect(content).toContain('feed 6');
     expect(content).toContain('Produce');
-    expect(body.tool_choice).toEqual({ type: 'tool', name: 'draft_ingredients' });
+    expect(body.tool_choice).toEqual({ type: 'tool', name: 'draft_recipe' });
   });
 
   it('falls back to a four-serving quantity when servings is unknown', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
       status: 200,
-      json: () => Promise.resolve(itemsResponse([])),
+      json: () => Promise.resolve(recipeResponse({})),
     } as Response);
 
-    await suggestMealIngredients('Lemon chicken', AISLES, null);
+    await draftMealRecipe('Lemon chicken', AISLES, null);
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     expect(body.messages[0].content as string).toContain('feed 4');

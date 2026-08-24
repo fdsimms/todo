@@ -14,7 +14,7 @@ import type { KitchenEntry } from './kitchenInventory';
  * service applies to a model response, the rule that decides how an idea may
  * sit next to the offline ranking, and the mapping from an accepted idea to a
  * real `Recipe` draft. The network call itself is `suggestMealIdeas` /
- * `suggestMealIngredients` in `src/services/aiSuggestions.ts`.
+ * `draftMealRecipe` in `src/services/aiSuggestions.ts`.
  *
  * **The settled rule this file exists to enforce: an AI idea supplements the
  * offline ranking, it never replaces it.** That was decided in #1041 and
@@ -182,14 +182,29 @@ export function expiringItemHints(
   return entries.map(e => (e.useByCaption ? `${e.title} — ${e.useByCaption}` : e.title));
 }
 
+/** Same shape `ExtractedPrepTask` (aiSuggestions.ts) has — structurally, not
+ * by import, so this file stays free of the network-calling service it feeds
+ * (see the file-level comment above). */
+export interface MealIdeaPrepTask {
+  title: string;
+  offsetDays: number;
+}
+
 export interface MealIdeaRecipeDraft {
   name: string;
+  /** The idea's own blurb, carried onto the recipe rather than thrown away. */
+  notes: string;
   ingredients: RecipeIngredient[];
+  estimatedMinutes: number | null;
+  steps: string[];
+  prepTasks: MealIdeaPrepTask[];
 }
 
 /**
- * An accepted idea, as the two arguments the recipe store wants: a name for
- * `addRecipe` and rows for `addStructuredIngredients`.
+ * An accepted idea, as the arguments the recipe store wants: a name for
+ * `addRecipe`, rows for `addStructuredIngredients`, and everything else
+ * `draftMealRecipe` came back with, for `setNotes`/`setEstimatedMinutes`/
+ * `addStep`/`addPrepTask`.
  *
  * Accepting an invented meal creates a *real* recipe (#1063) rather than a
  * free-text `MealPlanEntry`, so the next time it comes round it's already in
@@ -200,16 +215,26 @@ export interface MealIdeaRecipeDraft {
  * than stored.
  *
  * Returns an empty name when nothing survives the clean — the caller must
- * not create a recipe for it.
+ * not create a recipe for it. `recipe` defaults to empty so a caller with
+ * only ingredients (or a test) doesn't have to spell out the rest.
  */
 export function mealIdeaRecipeDraft(
   idea: MealIdea,
   items: readonly unknown[],
+  recipe: {
+    estimatedMinutes: number | null;
+    steps: readonly string[];
+    prepTasks: readonly MealIdeaPrepTask[];
+  } = { estimatedMinutes: null, steps: [], prepTasks: [] },
 ): MealIdeaRecipeDraft {
   return {
     name: cleanRecipeName(idea.title),
+    notes: idea.blurb,
     ingredients: items
       .map(item => normalizeIngredient(item))
       .filter((i): i is RecipeIngredient => i !== null),
+    estimatedMinutes: recipe.estimatedMinutes,
+    steps: [...recipe.steps],
+    prepTasks: [...recipe.prepTasks],
   };
 }

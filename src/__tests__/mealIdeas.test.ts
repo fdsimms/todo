@@ -298,4 +298,27 @@ describe('mealIdeaRecipeDraft', () => {
     ]);
     expect(draft.ingredients[0].section).toBe('For the marinade');
   });
+
+  it('carries the idea blurb through as the recipe notes', () => {
+    const draft = mealIdeaRecipeDraft(idea('Lemon chicken', 'A one-tray roast with charred lemons.'), []);
+    expect(draft.notes).toBe('A one-tray roast with charred lemons.');
+  });
+
+  it('defaults the recipe fields when no draft is given', () => {
+    const draft = mealIdeaRecipeDraft(idea('Lemon chicken'), []);
+    expect(draft.estimatedMinutes).toBeNull();
+    expect(draft.steps).toEqual([]);
+    expect(draft.prepTasks).toEqual([]);
+  });
+
+  it('carries the time, method and prep tasks through from the drafted recipe', () => {
+    const draft = mealIdeaRecipeDraft(idea('Lemon chicken'), [], {
+      estimatedMinutes: 45,
+      steps: ['Sear the chicken.', 'Roast with the lemons.'],
+      prepTasks: [{ title: 'Marinate the chicken', offsetDays: -1 }],
+    });
+    expect(draft.estimatedMinutes).toBe(45);
+    expect(draft.steps).toEqual(['Sear the chicken.', 'Roast with the lemons.']);
+    expect(draft.prepTasks).toEqual([{ title: 'Marinate the chicken', offsetDays: -1 }]);
+  });
 });
