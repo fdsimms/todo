@@ -6,6 +6,18 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalNow } from './dateUtils';
+import { isDemoModeActive } from './demoState';
+import {
+  mirrorTitleFor,
+  parseGroceryLinks,
+  planGroceryReminderSync,
+  serializeGroceryLinks,
+  withGroceryLinks,
+  type GroceryLinkIndex,
+  type GroceryReminderLink,
+  type MirrorItem,
+  type MirrorReminder,
+} from './groceryReminderMirror';
 import {
   draftFromReminder,
   findReminderList,
@@ -20,6 +32,7 @@ import {
   reconcileHandledReminders,
   reminderListOptions,
   serializeHandledReminders,
+  sortRemindersByCreation,
   taskTitleKey,
   taskTitleKeys,
   type HandledReminderIndex,
@@ -53,6 +66,11 @@ export interface ImportOutcome {
    * mode where a reminder is read again on every foreground.
    */
   skipped: number;
+  /**
+   * Reminders written *out* to the Reminders app by the two-way mirror. Zero
+   * for every one-way path, which never writes anything there.
+   */
+  mirrored: number;
   reason:
     | 'ok'
     | 'unsupported'
@@ -68,6 +86,7 @@ const NOTHING = (reason: ImportOutcome['reason']): ImportOutcome => ({
   imported: 0,
   deleteFailed: 0,
   skipped: 0,
+  mirrored: 0,
   reason,
 });
 
@@ -137,6 +156,51 @@ function rememberHandled(
   } catch {
     // The in-memory copy still holds, so the rest of this session behaves; only
     // durability is lost, which is where this feature was before it persisted.
+  }
+}
+
+/**
+ * The two-way mirror's link record — which reminder stands for which grocery
+ * row, and what the two last agreed on. Read through once and written through
+ * on change, exactly like the handled record above, and stored beside it in the
+ * settings table for the same reason: no screen renders it.
+ *
+ * Deliberately **not** a column on `grocery_items`, which is the obvious place
+ * and the wrong one. That table syncs (`SYNC_TRACKED_TABLES`), and an EventKit
+ * id names a record on one device — a link that travelled to the other phone
+ * would point at nothing there, or at something else. The key falls under the
+ * `groceryImport*` family `isSyncedSettingKey` already leaves alone. Two
+ * devices on the same iCloud list each keep their own links and meet by
+ * adopting each other's reminders by name; see `planGroceryReminderSync`.
+ */
+const LINKS_SETTING_KEY = 'groceryImportLinks';
+
+let linkIndex: GroceryLinkIndex | null = null;
+let linkSerialized = '';
+
+function linksIndex(): GroceryLinkIndex {
+  if (!linkIndex) {
+    let raw: string | null = null;
+    try {
+      raw = dbGetSetting(LINKS_SETTING_KEY);
+    } catch {
+      raw = null;
+    }
+    linkIndex = parseGroceryLinks(raw);
+    linkSerialized = serializeGroceryLinks(linkIndex);
+  }
+  return linkIndex;
+}
+
+function writeLinks(next: GroceryLinkIndex): void {
+  const serialized = serializeGroceryLinks(next);
+  linkIndex = next;
+  if (serialized === linkSerialized) return;
+  linkSerialized = serialized;
+  try {
+    dbSetSetting(LINKS_SETTING_KEY, serialized);
+  } catch {
+    // The in-memory copy still holds, so the rest of this session behaves.
   }
 }
 
@@ -264,7 +328,7 @@ function drainTargets(): DrainTarget[] {
     remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId,
     remindersImportDelete,
     groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId,
-    groceryImportDelete,
+    groceryImportDelete, groceryImportTwoWay,
     kitchenEnabled,
   } = useSettingsStore.getState();
 
@@ -277,12 +341,16 @@ function drainTargets(): DrainTarget[] {
       deleteAfterImport: remindersImportDelete,
     });
   }
+  // Two-way replaces this leg rather than running beside it — see mirrorOnce.
+  // Both would read the same list, and the drain would import every reminder
+  // the mirror had just written out.
+  //
   // The grocery sink goes with the area it feeds. Dropping the target rather
   // than clearing the setting is what makes it resume on its own: the list id
   // and its confirmation are still there, so turning groceries back on picks
   // up where it left off instead of re-asking. And nothing is lost meanwhile —
   // a reminder that isn't drained stays in the Reminders list.
-  if (kitchenEnabled && groceryImportEnabled && groceryImportListId
+  if (kitchenEnabled && groceryImportEnabled && !groceryImportTwoWay && groceryImportListId
       && groceryImportConfirmedListId === groceryImportListId) {
     targets.push({
       listId: groceryImportListId,
@@ -314,6 +382,235 @@ function takenNames(sink: Sink, deleteAfterImport: boolean): Set<string> | null 
 }
 
 /**
+ * The list the two-way mirror runs against, or null when it isn't configured.
+ * Gated exactly as the one-way grocery leg is, plus the switch itself: the
+ * confirmation is keyed on the list id, and a mirror writes to *and deletes
+ * from* that list, so it may never run against one the user hasn't named.
+ */
+function mirrorTarget(): string | null {
+  const {
+    kitchenEnabled, groceryImportEnabled, groceryImportTwoWay,
+    groceryImportListId, groceryImportConfirmedListId,
+  } = useSettingsStore.getState();
+  if (!kitchenEnabled || !groceryImportEnabled || !groceryImportTwoWay) return null;
+  if (!groceryImportListId || groceryImportConfirmedListId !== groceryImportListId) return null;
+  return groceryImportListId;
+}
+
+/** What one grocery row looks like to the mirror. */
+function mirrorItems(): MirrorItem[] {
+  return useGroceryStore.getState().items.map(item => ({
+    id: item.id,
+    name: item.name,
+    nameKey: item.nameKey,
+    quantity: item.quantity,
+    onList: item.onList,
+    checked: item.checked,
+  }));
+}
+
+/**
+ * A signature of everything the mirror actually reads on this side. The store
+ * notifies on every grocery write — a price, an aisle, a pantry date, a shop
+ * link — and a pass costs an EventKit fetch, so the trigger is keyed on this
+ * rather than on the notification.
+ */
+export function groceryMirrorSignature(): string {
+  const parts: string[] = [];
+  for (const item of useGroceryStore.getState().items) {
+    if (!item.onList) continue;
+    // Separated on every side, because concatenating free text straight onto
+    // an id lets two different lists spell the same signature, and a collision
+    // here is a change that never syncs.
+    parts.push([item.id, item.checked ? 1 : 0, item.name, item.quantity ?? ''].join('\u0000'));
+  }
+  return parts.join('\u0001');
+}
+
+interface MirrorOutcome {
+  /** Rows added to the grocery list because a reminder named them. */
+  imported: number;
+  /** Reminders written out because a row named them. */
+  mirrored: number;
+  deleteFailed: number;
+  reason: ImportOutcome['reason'];
+}
+
+/**
+ * One reconcile of the grocery list against its Reminders list, in both
+ * directions. `planGroceryReminderSync` decides everything; this executes it
+ * and records what landed.
+ *
+ * Returns null when two-way isn't configured — which is also where the link
+ * record is thrown away, so switching the mirror off leaves nothing behind to
+ * be acted on by a later pass reading a shadow from before.
+ *
+ * **Order is the safety rule, and it's the drain's own**: everything that
+ * *creates* runs before anything that *destroys*, on both sides. A failed
+ * create costs a retry next pass; a delete that ran first costs the row. So
+ * the app-side writes go first (none of them destroy anything — `removeFromList`
+ * parks a row in the catalog with its aisle, its stores and its price intact),
+ * then the reminders that need writing or updating, and the deletes last.
+ */
+async function mirrorOnce(): Promise<MirrorOutcome | null> {
+  if (Platform.OS !== 'ios') return null;
+  const listId = mirrorTarget();
+  if (!listId) {
+    writeLinks({});
+    return null;
+  }
+  // The guard notifications.ts and the two calendar mirrors already keep. Demo
+  // mode swaps the whole database for a throwaway one, and a mirror is a
+  // two-way write: without this it would push a seeded demo list into the
+  // user's real Reminders list and delete whatever was already there.
+  if (isDemoModeActive()) return null;
+  if ((await getRemindersPermission()) !== 'granted') {
+    return { imported: 0, mirrored: 0, deleteFailed: 0, reason: 'no-permission' };
+  }
+
+  const quiet = (reason: ImportOutcome['reason']): MirrorOutcome =>
+    ({ imported: 0, mirrored: 0, deleteFailed: 0, reason });
+
+  try {
+    // Never an unvalidated id — same rule the drain follows, and the stakes are
+    // higher here because this call site also deletes.
+    const lists = await calendar().getCalendarsAsync(calendar().EntityTypes.REMINDER);
+    const list = findReminderList(lists, listId);
+    if (!list) return quiet('list-missing');
+    if (!isImportableList(list)) return quiet('list-readonly');
+
+    // Unfiltered, and `status` must stay null — see fetchList. The mirror needs
+    // the completed ones too: a reminder ticked off in the Reminders app is the
+    // signal that its row is in the cart, which the import's own filter would
+    // throw away.
+    const raw = await calendar().getRemindersAsync([listId], null, null, null);
+    const present = new Set<string>();
+    const reminders: MirrorReminder[] = [];
+    for (const reminder of sortRemindersByCreation(raw)) {
+      if (!reminder.id) continue;
+      present.add(reminder.id);
+      reminders.push({
+        id: reminder.id,
+        title: reminder.title?.trim() ?? '',
+        completed: reminder.completed === true,
+      });
+    }
+
+    const store = useGroceryStore.getState();
+    const plan = planGroceryReminderSync(mirrorItems(), reminders, linksIndex()[listId] ?? []);
+    const nextLinks: GroceryReminderLink[] = [...plan.links];
+    let imported = 0;
+    let mirrored = 0;
+    let deleteFailed = 0;
+
+    // Written in a finally so a throw part-way through still records the pairs
+    // already made — the same discipline the drain's `decided` set keeps, and
+    // for the same reason: an unrecorded pair is one the next pass duplicates.
+    try {
+      for (const add of plan.addItems) {
+        // addByName, so a dictated "2 lb chicken" splits its amount off and a
+        // name already in the catalog is re-listed rather than duplicated.
+        // registerUndo: false because this is not something the user just did —
+        // a sync-driven add sitting under their next shake is not an undo.
+        const item = store.addByName(add.title, undefined, undefined, { registerUndo: false });
+        if (!item) continue;
+        nextLinks.push({
+          reminderId: add.reminderId,
+          itemId: item.id,
+          name: mirrorTitleFor(item),
+          checked: item.checked,
+          seen: true,
+        });
+        imported += 1;
+      }
+
+      for (const rename of plan.renameItems) {
+        if (store.renameItem(rename.itemId, rename.name)) {
+          store.setQuantity(rename.itemId, rename.quantity);
+          continue;
+        }
+        // A collision: two rows already claim to be the same thing, and this is
+        // not the place to decide which survives (that's mergeItems, behind a
+        // sheet). The row keeps its name, and the shadow is corrected to say so
+        // — otherwise the next pass reads the reminder as changed again and
+        // retries the same impossible rename for ever.
+        const item = useGroceryStore.getState().items.find(i => i.id === rename.itemId);
+        const link = nextLinks.find(l => l.itemId === rename.itemId);
+        if (item && link) link.name = mirrorTitleFor(item);
+      }
+
+      const toCheck = plan.setChecked.filter(c => c.checked).map(c => c.itemId);
+      const toUncheck = plan.setChecked.filter(c => !c.checked).map(c => c.itemId);
+      if (toCheck.length > 0) store.setCheckedMany(toCheck, true);
+      if (toUncheck.length > 0) store.setCheckedMany(toUncheck, false);
+      if (plan.removeItems.length > 0) {
+        store.removeFromListMany(plan.removeItems.map(r => r.itemId));
+      }
+
+      for (const create of plan.createReminders) {
+        const id = await calendar().createReminderAsync(listId, { title: create.title });
+        if (!id) continue;
+        nextLinks.push({
+          reminderId: id,
+          itemId: create.itemId,
+          name: create.title,
+          checked: false,
+          // Nothing has fetched it yet, so its absence next pass would mean
+          // nothing. See GroceryReminderLink.seen.
+          seen: false,
+        });
+        mirrored += 1;
+      }
+
+      for (const update of plan.updateReminders) {
+        try {
+          // The whole title every time, even when only the tick changed:
+          // saveReminderAsync assigns `reminder.title = details.title`
+          // unconditionally, so a partial update blanks the title of the row it
+          // was meant to leave alone.
+          await calendar().updateReminderAsync(update.reminderId, {
+            title: update.title,
+            completed: update.completed,
+          });
+        } catch {
+          // Isolated, like the drain's deletes: one reminder in a strange state
+          // must not strand the rest of the pass. The shadow already says what
+          // the two sides agreed on, so the next pass sees the reminder
+          // unchanged and tries again.
+        }
+      }
+
+      for (const del of plan.deleteReminders) {
+        try {
+          await calendar().deleteReminderAsync(del.reminderId);
+        } catch {
+          deleteFailed += 1;
+          // The link survives a failed delete rather than being dropped. Dropped,
+          // the surviving reminder reads as new next pass and puts the row it
+          // stands for straight back on the list — the exact re-adding this
+          // whole design exists to prevent. Kept, the next pass tries the delete
+          // again.
+          nextLinks.push(del.link);
+        }
+      }
+    } finally {
+      writeLinks(withGroceryLinks(linksIndex(), listId, nextLinks));
+      // Everything in a mirrored list counts as handled, so switching two-way
+      // back off hands the one-way drain a clean slate rather than a list it
+      // reads as one big backlog — including the reminders the mirror itself
+      // wrote.
+      rememberHandled(listId, present, present);
+    }
+
+    return { imported, mirrored, deleteFailed, reason: 'ok' };
+  } catch {
+    // Nothing was deleted that wasn't first reconciled, so the next trigger
+    // simply tries again.
+    return quiet('error');
+  }
+}
+
+/**
  * Reads each configured Reminders list, turns every reminder into a task or a
  * grocery item, and deletes it. See the notes on ordering and isolation inside
  * — this is the one thing in the app that destroys data the user owns
@@ -321,6 +618,11 @@ function takenNames(sink: Sink, deleteAfterImport: boolean): Set<string> | null 
  */
 async function drainOnce(): Promise<ImportOutcome> {
   if (Platform.OS !== 'ios') return NOTHING('unsupported');
+  // Demo mode swaps the whole database for a throwaway one, so a drain running
+  // under it imports the user's real reminders into a database that is about to
+  // be discarded — and deletes them from the Reminders app on the way. The same
+  // guard notifications.ts and both calendar mirrors already keep.
+  if (isDemoModeActive()) return NOTHING('off');
 
   const {
     remindersImportEnabled,
@@ -485,7 +787,8 @@ async function drainOnce(): Promise<ImportOutcome> {
       if (!sawList) return NOTHING('list-missing');
       if (!sawWritableList) return NOTHING('list-readonly');
     }
-    return { imported, deleteFailed, skipped, reason: 'ok' };
+    // A drain never writes to the Reminders app, so it never mirrors anything.
+    return { imported, deleteFailed, skipped, mirrored: 0, reason: 'ok' };
   } catch {
     // Nothing was deleted that wasn't first imported, so the next trigger
     // simply tries again.
@@ -518,6 +821,25 @@ export async function importReminders(): Promise<ImportOutcome> {
     do {
       rerunRequested = false;
       outcome = await drainOnce();
+      // After the drain, never beside it: both read EventKit, and the mirror's
+      // own writes are what the drain would otherwise read back as a backlog.
+      // Inside the same guard, so a store change either pass causes replays the
+      // pair rather than starting a second one underneath.
+      const mirror = await mirrorOnce();
+      if (mirror) {
+        outcome = {
+          imported: outcome.imported + mirror.imported,
+          deleteFailed: outcome.deleteFailed + mirror.deleteFailed,
+          skipped: outcome.skipped,
+          mirrored: mirror.mirrored,
+          // 'off' and 'no-list' are answers about the leg two-way replaced, so
+          // they'd read as a fault ("the list you chose has gone") for a mirror
+          // that ran perfectly well. A real failure in the drain still wins.
+          reason: outcome.reason === 'off' || outcome.reason === 'no-list'
+            ? mirror.reason
+            : outcome.reason,
+        };
+      }
     } while (rerunRequested);
     lastOutcome = outcome;
     return outcome;
@@ -560,10 +882,25 @@ export function useRemindersImportSync(): void {
         state.remindersImportConfirmedListId !== prev.remindersImportConfirmedListId ||
         state.groceryImportEnabled !== prev.groceryImportEnabled ||
         state.groceryImportListId !== prev.groceryImportListId ||
-        state.groceryImportConfirmedListId !== prev.groceryImportConfirmedListId
+        state.groceryImportConfirmedListId !== prev.groceryImportConfirmedListId ||
+        state.groceryImportTwoWay !== prev.groceryImportTwoWay
       ) {
         importReminders();
       }
+    });
+
+    // The mirror is a diff, so this side changing has to trigger it too —
+    // adding a row, ticking one off, finishing a shop. Keyed on a signature of
+    // what a pass actually reads, because the grocery store notifies on every
+    // write it makes and most of them (a price, an aisle, a pantry date) say
+    // nothing a Reminders list can hold. Nothing subscribes for the one-way
+    // legs: a drain only ever reads the other side.
+    let signature = groceryMirrorSignature();
+    const unsubscribeGroceries = useGroceryStore.subscribe(() => {
+      const next = groceryMirrorSignature();
+      if (next === signature) return;
+      signature = next;
+      if (mirrorTarget()) importReminders();
     });
 
     // The workhorse: said it to Siri, came back to the app.
@@ -573,6 +910,7 @@ export function useRemindersImportSync(): void {
 
     return () => {
       unsubscribe();
+      unsubscribeGroceries();
       subscription.remove();
     };
   }, []);

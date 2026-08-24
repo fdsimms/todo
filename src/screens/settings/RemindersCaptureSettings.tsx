@@ -49,6 +49,8 @@ export function RemindersCaptureSettings() {
   const setGroceryImportConfirmedListId = useSettingsStore(s => s.setGroceryImportConfirmedListId);
   const groceryImportDelete = useSettingsStore(s => s.groceryImportDelete);
   const setGroceryImportDelete = useSettingsStore(s => s.setGroceryImportDelete);
+  const groceryImportTwoWay = useSettingsStore(s => s.groceryImportTwoWay);
+  const setGroceryImportTwoWay = useSettingsStore(s => s.setGroceryImportTwoWay);
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -273,6 +275,33 @@ export function RemindersCaptureSettings() {
     setGroceryPickerOpen(true);
   };
 
+  /**
+   * Turning the mirror on is its own decision, not a detail of the list choice
+   * that came before it: up to here the app only ever *read* this list, and
+   * from here it writes to it and deletes from it. The alert names the list and
+   * says what each of the three actions does in both directions, the same way
+   * confirmGroceryList names the count before anything is imported.
+   */
+  const onToggleTwoWay = () => {
+    if (groceryImportTwoWay) {
+      setGroceryImportTwoWay(false);
+      return;
+    }
+    const title = selectedGroceryList?.title ?? 'this list';
+    // Only worth saying when it's about to change under them.
+    const deleteNote = groceryImportDelete
+      ? ' Reminders are no longer deleted as they come in.'
+      : '';
+    Alert.alert(
+      `Keep “${title}” in step with your grocery list?`,
+      `Anything on one list is added to the other. Checking an item off completes its reminder, and removing an item from the list deletes its reminder. Doing either of those in the Reminders app does the same here.${deleteNote}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Turn On', style: 'destructive', onPress: () => setGroceryImportTwoWay(true) },
+      ]
+    );
+  };
+
   const onImportNow = async () => {
     if (importBusy) return;
     setImportBusy(true);
@@ -283,9 +312,15 @@ export function RemindersCaptureSettings() {
       // difference between "there was nothing new" and "there were things, and
       // you already have all of them" — which look identical otherwise.
       const skipped = outcome.skipped > 0 ? ` · ${outcome.skipped} already here` : '';
+      // The mirror's own half of the run: rows this app wrote *out*. Worth its
+      // own number, since a pass that sent five things and imported none is not
+      // the same as one that did nothing.
+      const mirrored = outcome.mirrored > 0 ? ` · ${outcome.mirrored} sent` : '';
       setImportResult(
         outcome.imported > 0
-          ? `Imported ${outcome.imported}${skipped}`
+          ? `Imported ${outcome.imported}${skipped}${mirrored}`
+          : outcome.mirrored > 0
+            ? `Sent ${outcome.mirrored} to Reminders`
           : outcome.skipped > 0
             ? `Nothing new — ${outcome.skipped} already here`
             : 'Nothing new'
@@ -455,9 +490,11 @@ export function RemindersCaptureSettings() {
         iconColor={groceryImportEnabled ? colors.accent : undefined}
         label="Send a list to Groceries"
         hint={groceryImportEnabled
-          ? groceryImportDelete
-            ? 'Reminders in this list become grocery items instead of tasks.'
-            : 'Reminders in this list become grocery items instead of tasks, and stay where they are.'
+          ? groceryImportTwoWay
+            ? 'This list and your grocery list are kept the same, in both directions.'
+            : groceryImportDelete
+              ? 'Reminders in this list become grocery items instead of tasks.'
+              : 'Reminders in this list become grocery items instead of tasks, and stay where they are.'
           : 'Point a second list at your grocery list, so “add milk to my Groceries list” lands there.'}
         toggle={groceryImportEnabled}
         onPress={onToggleGroceryImport}
@@ -492,6 +529,28 @@ export function RemindersCaptureSettings() {
       )}
 
       {groceryImportEnabled && remindersPermission === 'granted' && selectedGroceryList && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="swap-horizontal-outline"
+            iconColor={groceryImportTwoWay ? colors.accent : undefined}
+            label="Two-way sync"
+            hint={groceryImportTwoWay
+              ? `Your grocery list and “${selectedGroceryList.title}” are kept the same in both directions`
+              : 'Reminders only come in. Nothing on your grocery list is written back.'}
+            toggle={groceryImportTwoWay}
+            onPress={onToggleTwoWay}
+            accessibilityLabel="Keep the grocery list and this Reminders list the same in both directions"
+          />
+        </>
+      )}
+
+      {/* Mutually exclusive with the mirror, and hidden rather than disabled
+          while it's on: the reminder *is* the mirror, so there's no version of
+          this row that means anything there. The setter enforces it too — see
+          groceryImportTwoWay. */}
+      {groceryImportEnabled && remindersPermission === 'granted' && selectedGroceryList
+        && !groceryImportTwoWay && (
         <>
           <View style={styles.sep} />
           <SettingsRow
