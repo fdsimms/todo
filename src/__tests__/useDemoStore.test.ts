@@ -827,8 +827,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const onList = items.filter(i => i.onList);
 
     expect(onList.length).toBeGreaterThan(5);
-    // Bought before but not on the list right now — what the catalog reads.
-    expect(items.filter(i => !i.onList && i.inCatalog).length).toBeGreaterThan(0);
+    // Not on the list right now — which is exactly what the catalog reads.
+    expect(items.filter(i => !i.onList).length).toBeGreaterThan(0);
     // Mid-trip: something already in the trolley, so the finish sheet has work.
     expect(onList.some(i => i.checked)).toBe(true);
     expect(items.some(i => i.quantity)).toBe(true);
@@ -914,10 +914,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(pantry.length).toBeGreaterThan(5);
     expect(pantry.some(e => e.asserted)).toBe(true);
     expect(pantry.some(e => !e.asserted && e.reason.startsWith('bought '))).toBe(true);
-    // Added straight to the pantry: never on a list, never bought, and in the
-    // catalog anyway — what the pantry sheet's add field makes.
+    // Added straight to the pantry: never on a list and never bought — what
+    // the pantry sheet's add field makes.
     expect(
-      items.some(i => !i.onList && i.inCatalog && i.purchaseCount === 0 && !i.lastAddedAt)
+      items.some(i => !i.onList && i.purchaseCount === 0 && !i.lastAddedAt)
     ).toBe(true);
   });
 
@@ -985,10 +985,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(mutual[0].isMutual).toBe(true);
     expect(substitutesFor(mutual[0].item.id, itemSubs, items)[0].item.id).toBe(milk.id);
 
-    // Linking promotes both rows, so neither stand-in can be deleted by the
-    // seed's own clearList on the way past.
-    expect(margarine!.inCatalog).toBe(true);
-    expect(mutual[0].item.inCatalog).toBe(true);
+    // A sub link is a user fact, so hasUserFacts keeps both stand-ins through
+    // the seed's own clearList on the way past — neither row is swept.
+    expect(items.some(i => i.id === margarine!.id)).toBe(true);
+    expect(items.some(i => i.id === mutual[0].item.id)).toBe(true);
   });
 
   it('seeds a standing swap, and one line that opts out of it (#1571)', () => {

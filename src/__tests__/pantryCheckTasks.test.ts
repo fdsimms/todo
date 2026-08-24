@@ -40,7 +40,6 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     note: '',
     onList: false,
     checked: false,
-    inCatalog: true,
     sortOrder: seq,
     // Three purchases over a year is a 122-day cadence, which is long enough
     // that most of these cases can move `lastPurchasedAt` alone without also
@@ -160,9 +159,8 @@ describe('pantryCheckLapse', () => {
     expect(pantryCheckLapse(item, NOW)).not.toBeNull();
   });
 
-  it('stays quiet for a row already on the list, or one not in the catalog', () => {
+  it('stays quiet for a row already on the list', () => {
     expect(pantryCheckLapse(makeItem({ name: 'Flour', onList: true }), NOW)).toBeNull();
-    expect(pantryCheckLapse(makeItem({ name: 'Flour', inCatalog: false }), NOW)).toBeNull();
   });
 
   it('ignores the grace window, so a live task keeps its reason', () => {

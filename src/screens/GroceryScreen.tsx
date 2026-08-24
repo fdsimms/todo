@@ -810,12 +810,12 @@ export function GroceryScreen() {
    * and which one of the item it is. A row this session mints takes its brand
    * through `addByName`'s own override — the same one GroceryAddField's Brand
    * chip uses — so it files as that row's first `ItemProduct`. Deliberately not
-   * a follow-up `addProduct` call, which would also flip `inCatalog` and leave
-   * a scanned row that happened to carry a brand surviving a "remove from list"
-   * that deletes the brandless one beside it.
+   * a follow-up `addProduct` call: one add should leave one row in one shape,
+   * and threading the brand through the add keeps the minted row identical to
+   * the one the Brand chip produces.
    *
    * A row that matched an item the catalog already had travels in `products`
-   * instead, written through `addProduct`'s default promotion rule: the scan
+   * instead, written through `addProduct`'s default rule: the scan
    * can supply the very first answer to "which one?" for an item that has
    * never had a box named, but — the whole point of #1866 — it never
    * overrides a preference the user already chose. Unpacking twenty bags
@@ -906,7 +906,7 @@ export function GroceryScreen() {
   const confirmClear = useCallback(() => {
     confirmDelete({
       title: 'Clear the list?',
-      message: 'Everything comes off the list without being marked as bought. Items already in your catalog stay there; items typed just for this list are removed.',
+      message: 'Everything comes off the list without being marked as bought. Anything you\u2019ve bought before, or recorded anything about, stays in your groceries. Names you only typed for this list are removed.',
       confirmLabel: 'Clear',
       onConfirm: () => {
         animateLayout();

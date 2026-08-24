@@ -967,6 +967,12 @@ export function initDatabase(): void {
     // every existing row reads as "hasn't been asked", which is correct: the
     // screen didn't exist before this.
     "ALTER TABLE tasks ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
+    // Same mechanism as tasks.backfill_dismissed_fields above, for the
+    // category-level fields (see src/utils/categoryBackfill.ts).
+    "ALTER TABLE categories ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
+    // Same mechanism again, for the project-level fields (see
+    // src/utils/projectBackfill.ts).
+    "ALTER TABLE projects ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2087,6 +2093,7 @@ function rowToCategory(row: Record<string, unknown>): Category {
     defaultTimeSegments: parseTimeSegments(row.default_time_segments),
     sortOrder: row.sort_order as number,
     emoji: (row.emoji as string | null) ?? null,
+    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
 
@@ -2100,7 +2107,7 @@ export function dbInsertCategory(name: string): Category {
   const maxOrder = db.getFirstSync<{ m: number }>('SELECT COALESCE(MAX(sort_order), 0) AS m FROM categories')?.m ?? 0;
   const sortOrder = maxOrder + 1;
   db.runSync('INSERT INTO categories (id, name, sort_order) VALUES (?, ?, ?)', [id, name, sortOrder]);
-  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromSuggestions: false, excludeFromNewTasksBanner: false, defaultTimeSegments: [], sortOrder, emoji: null };
+  return { id, name, scheduleDays: null, scheduleStart: null, scheduleEnd: null, hideOnVacation: false, excludeFromSuggestions: false, excludeFromNewTasksBanner: false, defaultTimeSegments: [], sortOrder, emoji: null, backfillDismissedFields: [] };
 }
 
 export function dbBatchUpdateCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
@@ -2125,6 +2132,13 @@ export function dbSetCategoryExcludeFromSuggestions(id: string, exclude: boolean
 
 export function dbSetCategoryExcludeFromNewTasksBanner(id: string, exclude: boolean): void {
   db.runSync('UPDATE categories SET exclude_from_new_tasks_banner = ? WHERE id = ?', [exclude ? 1 : 0, id]);
+}
+
+// Same mechanism as dismissBackfillField/updateTask for tasks: the screen
+// computes the deduped array (see dismissCategoryBackfillField), this just
+// persists it.
+export function dbSetCategoryBackfillDismissedFields(id: string, fields: string[]): void {
+  db.runSync('UPDATE categories SET backfill_dismissed_fields = ? WHERE id = ?', [JSON.stringify(fields), id]);
 }
 
 export function dbSetCategoryEmoji(id: string, emoji: string | null): void {
@@ -2165,7 +2179,7 @@ export function dbDeleteCategory(name: string): void {
 // the schedule/vacation fields a deleted category carried.
 export function dbInsertCategoryRow(category: Category): void {
   db.runSync(
-    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, exclude_from_pin_suggestions, exclude_from_new_tasks_banner, default_time_segments, sort_order, emoji) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO categories (id, name, schedule_days, schedule_start, schedule_end, hide_on_vacation, exclude_from_pin_suggestions, exclude_from_new_tasks_banner, default_time_segments, sort_order, emoji, backfill_dismissed_fields) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       category.id,
       category.name,
@@ -2178,6 +2192,7 @@ export function dbInsertCategoryRow(category: Category): void {
       category.defaultTimeSegments.length ? JSON.stringify(category.defaultTimeSegments) : null,
       category.sortOrder,
       category.emoji,
+      JSON.stringify(category.backfillDismissedFields),
     ]
   );
 }
@@ -2323,9 +2338,6 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     note: (row.note as string) ?? '',
     onList: Boolean(row.on_list),
     checked: Boolean(row.checked),
-    // Absent only on a row read before the migration landed, and a row that
-    // already exists is a catalog member — same reading as the column default.
-    inCatalog: row.in_catalog === undefined ? true : Boolean(row.in_catalog),
     sortOrder: (row.sort_order as number) ?? 0,
     purchaseCount: (row.purchase_count as number) ?? 0,
     lastAddedAt: (row.last_added_at as string) ?? null,
@@ -2377,7 +2389,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
-      item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
+      item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
       item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null, item.createdAt,
       item.onHandUntil ?? null,
@@ -2406,7 +2418,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
-      item.onList ? 1 : 0, item.checked ? 1 : 0, item.inCatalog ? 1 : 0, item.sortOrder,
+      item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
       item.purchaseCount,
       item.lastAddedAt ?? null, item.lastPurchasedAt ?? null,
       item.onHandUntil ?? null,
@@ -2671,20 +2683,21 @@ export function dbFinishGroceryShopping(
  * Clears the list without buying anything — "I'm not doing this trip after
  * all". Deliberately does not touch purchase_count: nothing was bought, so
  * inflating the ranking signal would teach autocomplete a lie.
+ *
+ * **Unlists only.** It used to also delete the rows that had never been in the
+ * catalog, but the decision of which rows an abandoned trip leaves behind now
+ * needs an item's products, subs, shop links and aliases to answer — see
+ * `hasUserFacts` — and those live above this layer. `clearList` does the
+ * sweep, this returns everything it unlisted.
  */
 export function dbClearGroceryList(): string[] {
   const rows = db.getAllSync<{ id: string }>('SELECT id FROM grocery_items WHERE on_list = 1');
   if (rows.length === 0) return [];
-  // Same split removeFromList makes: a row already in the catalog parks
-  // off-list, same as before. A provisional row — never in the catalog until
-  // this trip added it — has nothing to keep once the trip is abandoned, so
-  // it's deleted rather than minted into a catalog entry for something that
-  // was never bought.
-  const provisional = db.getAllSync<{ id: string }>(
-    'SELECT id FROM grocery_items WHERE on_list = 1 AND in_catalog = 0'
-  );
-  for (const row of provisional) dbDeleteGroceryItem(row.id);
-  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0 WHERE on_list = 1');
+  // choice_group goes with the list it belonged to: an either/or is this
+  // trolley's "apples or pears", so a cleared list has no choice left to make.
+  // Written here as well as in `clearList`'s in-memory patch, or the pair comes
+  // back on the next launch.
+  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0, choice_group = NULL WHERE on_list = 1');
   return rows.map(r => r.id);
 }
 
@@ -2729,8 +2742,8 @@ export function dbSetGroceryHiddenAisles(hidden: string[]): void {
 }
 
 // name_key → the aisle the user filed that item under, which is why it lives
-// here and not on the row: a provisional grocery row is deleted when it comes
-// off the list, and the filing has to outlive it. Same tolerance for a corrupt
+// here and not on the row: `clearList` sweeps a row carrying nothing and
+// `deleteItem` takes any row at all, and the filing has to outlive either. Same tolerance for a corrupt
 // value as the walk order above — a bad blob costs the memory, not the launch.
 export function dbGetGroceryAisleOverrides(): Record<string, string> {
   const val = dbGetSetting('grocery_aisle_overrides');
@@ -3113,6 +3126,26 @@ export function dbClearGtinLookups(): void {
 
 export function dbDeleteStoreAlias(id: string): void {
   db.runSync('DELETE FROM grocery_store_aliases WHERE id = ?', [id]);
+}
+
+/**
+ * Hands every phrase taught for one item over to another — `mergeItems`, whose
+ * cascade would otherwise take the loser's aliases with it. What a receipt
+ * prints for cilantro is still what it prints once cilantro and coriander are
+ * one row.
+ *
+ * **No collision handling, and none is possible**: `(shop_id, raw_key)` is
+ * unique across the whole table, not per item, so one phrase at one store
+ * already means exactly one thing. The loser and the survivor cannot both hold
+ * it, and a plain re-point can't violate the index.
+ *
+ * Not `dbSetStoreAlias`, which upserts on that pair and bumps `hit_count` — it
+ * records a *confirmation*, and a merge is not one. Deliberately keyed on
+ * `item_id` rather than taking rows, so it can't miss one the store's copy
+ * hadn't loaded.
+ */
+export function dbRepointStoreAliases(fromId: string, intoId: string): void {
+  db.runSync('UPDATE grocery_store_aliases SET item_id = ? WHERE item_id = ?', [intoId, fromId]);
 }
 
 // ─── Barcode lookups ────────────────────────────────────────────────────────
@@ -3667,6 +3700,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     sequential: Boolean(row.sequential),
     nudgeOptIn: Boolean(row.nudge_opt_in),
     reviewDeclinedAt: (row.review_declined_at as string) ?? null,
+    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
 
@@ -3677,26 +3711,26 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at, backfill_dismissed_fields) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.targetStartDate, project.targetEndDate,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.createdAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
-      project.reviewDeclinedAt,
+      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields),
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=? WHERE id=?',
     [
       project.title, project.notes, project.targetStartDate, project.targetEndDate,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
-      project.reviewDeclinedAt, project.id,
+      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.id,
     ]
   );
 }

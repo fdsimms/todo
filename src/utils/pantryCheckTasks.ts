@@ -136,11 +136,7 @@ export function pantryCheckLinkUrl(itemId: string): string {
  *    who just told you they haven't is the app not listening.
  * 3. **A row on the list is being restocked.** The question is moot the moment
  *    it's in the trolley, and `finishShopping` will re-date the row anyway.
- * 4. **A provisional row isn't a pantry member.** `inCatalog` false means the
- *    row exists only because it's on this week's list (see the invariant on
- *    `GroceryItem.inCatalog`), which gate 3 has already excluded — belt and
- *    braces, and it says which set this generator draws from.
- * 5. **The lapse itself**, with its own purchase-history gate — see
+ * 4. **The lapse itself**, with its own purchase-history gate — see
  *    `pantryGuessLapsedDays`.
  *
  * Deliberately *not* gated on the grace window: this is the predicate a live
@@ -149,7 +145,7 @@ export function pantryCheckLinkUrl(itemId: string): string {
 export function pantryCheckLapse(item: GroceryItem, now: Date): number | null {
   if (probablyHaveReason(item, now) !== null) return null;
   if (item.onHandUntil === OUT_OF_IT_UNTIL) return null;
-  if (item.onList || !item.inCatalog) return null;
+  if (item.onList) return null;
   return pantryGuessLapsedDays(item, now);
 }
 

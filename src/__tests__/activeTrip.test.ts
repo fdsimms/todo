@@ -68,7 +68,6 @@ function item(id: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
     note: '',
     onList: true,
     checked: false,
-    inCatalog: true,
     sortOrder: 0,
     purchaseCount: 0,
     lastAddedAt: null,

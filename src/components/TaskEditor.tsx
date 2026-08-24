@@ -2014,7 +2014,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         since on its own it labels nothing. */}
                     {targetCount !== null && (
                       <TextInput
-                        style={styles.targetUnitInput}
+                        style={[styles.fieldBox, styles.targetUnitInput]}
                         value={targetUnit}
                         onChangeText={setTargetUnit}
                         placeholder="units"
@@ -2937,12 +2937,28 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 : undefined}
             />
             {showExtraTask && (
-              // Deliberately the Daily target body's layout, styles and all:
-              // both are a small integer with a word beside it and a caption
-              // saying how it will read. A second set of styles for the same
-              // shape is how the two would drift apart.
+              // The same shape as the Daily target body below — a small integer
+              // with a filled field beside it and a caption saying how it will
+              // read — and sharing its styles, since a second set for the same
+              // shape is how the two would drift apart. The one thing this adds
+              // is the sentence around the stepper.
               <>
                 <View style={styles.targetStepperRow}>
+                  {/* The number's noun, said where the number is. On its own
+                      the pill reads "4th" — 4th what? — and the answer used to
+                      be two lines down in the caption. The words are hidden
+                      while the count is null, since "Every Off completion"
+                      isn't a sentence, and they're hidden from VoiceOver
+                      because `describeValue` below already speaks the phrase. */}
+                  {extraTaskEveryN !== null && (
+                    <Text
+                      style={styles.stepperSentence}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no"
+                    >
+                      Every
+                    </Text>
+                  )}
                   <CountStepper
                     value={extraTaskEveryN}
                     onChange={setExtraTaskEveryN}
@@ -2956,21 +2972,33 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     label="Extra task frequency"
                     describeValue={n => (n === null ? 'off' : `every ${ordinal(n)} completion`)}
                   />
-                  {/* Hidden until there's a count, since on its own a title
-                      names a task nothing will ever create. */}
                   {extraTaskEveryN !== null && (
-                    <TextInput
-                      style={styles.targetUnitInput}
-                      value={extraTaskTitle}
-                      onChangeText={setExtraTaskTitle}
-                      placeholder="Task to add"
-                      placeholderTextColor={colors.textTertiary}
-                      maxLength={TITLE_MAX_LENGTH}
-                      returnKeyType="done"
-                      accessibilityLabel="Title of the task to add"
-                    />
+                    <Text
+                      style={styles.stepperSentence}
+                      accessibilityElementsHidden
+                      importantForAccessibility="no"
+                    >
+                      completion
+                    </Text>
                   )}
                 </View>
+                {/* A line of its own rather than the rest of the stepper's row,
+                    which is where Daily target's one-word unit sits: this holds
+                    a whole task title, and half a row truncates one at 390pt.
+                    Hidden until there's a count, since on its own a title names
+                    a task nothing will ever create. */}
+                {extraTaskEveryN !== null && (
+                  <TextInput
+                    style={[styles.fieldBox, styles.extraTaskTitleInput]}
+                    value={extraTaskTitle}
+                    onChangeText={setExtraTaskTitle}
+                    placeholder="Task to add"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={TITLE_MAX_LENGTH}
+                    returnKeyType="done"
+                    accessibilityLabel="Title of the task to add"
+                  />
+                )}
                 <Text style={styles.targetStepperCaption}>
                   {describeExtraTaskRule(extraTaskEveryN, extraTaskTitle, recurrenceType !== 'none')}
                 </Text>
@@ -3974,9 +4002,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.xs,
   },
+  /** The static words either side of a stepper, e.g. "Every [4th] completion". */
+  stepperSentence: { color: colors.textSecondary, fontSize: font.md },
   targetStepperCaption: {
     color: colors.textSecondary, fontSize: font.sm,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,
   },
   /**
    * The Details row is an EditorRow inside another EditorRow's expanded body,
@@ -3984,13 +4014,38 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
    * control is a pill row or a stepper, and so can't be mistaken for a
    * sibling of the row above it. Indenting past the top-level rows' own label
    * column is what says it belongs to Extra task rather than to Relationships.
+   *
+   * The margin (rather than padding) is what puts the hairline at the same
+   * 16pt inset the app's other nested separators use, while `EditorRow`'s own
+   * padding still lands the content at 32. Without the line the row floated in
+   * the gap under the caption and read as the start of the next group.
    */
-  extraTaskDetailsIndent: { paddingLeft: spacing.md },
-  targetUnitInput: {
-    flex: 1, color: colors.text, fontSize: font.sm,
-    borderBottomWidth: border.sm, borderBottomColor: colors.separator,
+  extraTaskDetailsIndent: {
+    marginLeft: spacing.md,
+    borderTopWidth: border.hairline, borderTopColor: colors.separator,
+  },
+  /**
+   * The filled input that keeps a `CountStepper` company — Daily target's unit
+   * and Extra task's title.
+   *
+   * Both were a hairline-underlined 32pt box sitting next to a 36pt filled
+   * pill, which read as two unrelated controls at two different weights, and
+   * put the underline below the pill's text rather than on its baseline. Same
+   * surface and corner family as the stepper, so the pair reads as one field.
+   * Layout goes on top of this per call site; the treatment stays shared.
+   */
+  fieldBox: {
+    color: colors.text, fontSize: font.md,
+    backgroundColor: colors.bgTertiary, borderRadius: radius.sm,
+    paddingHorizontal: 12,
     // Height rather than lineHeight — see the TextInput note in CLAUDE.md.
-    height: 32,
+    height: 36,
+  },
+  /** Daily target's unit: one word, so it takes the rest of the stepper's line. */
+  targetUnitInput: { flex: 1 },
+  /** Extra task's title: a line of its own, and a touch taller for typing into. */
+  extraTaskTitleInput: {
+    marginHorizontal: spacing.md, marginTop: spacing.sm, height: 40,
   },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,

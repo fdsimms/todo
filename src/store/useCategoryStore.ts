@@ -10,6 +10,7 @@ import {
   dbSetCategoryHideOnVacation,
   dbSetCategoryExcludeFromSuggestions,
   dbSetCategoryExcludeFromNewTasksBanner,
+  dbSetCategoryBackfillDismissedFields,
   dbSetCategoryEmoji,
   dbSetCategoryDefaultTimeSegments,
   dbBatchUpdateCategorySortOrders,
@@ -35,6 +36,10 @@ interface CategoryStore {
   setCategoryHideOnVacation: (name: string, hide: boolean) => void;
   setCategoryExcludeFromSuggestions: (name: string, exclude: boolean) => void;
   setCategoryExcludeFromNewTasksBanner: (name: string, exclude: boolean) => void;
+  // Persists the deduped array the Backfill screen (categoryBackfill.ts's
+  // dismissCategoryBackfillField) computes — same split as
+  // dismissBackfillField/updateTask on the task side.
+  setCategoryBackfillDismissedFields: (name: string, fields: string[]) => void;
   setCategoryEmoji: (name: string, emoji: string | null) => void;
   // Only what *new* tasks in this category start with. Retroactively moving
   // the tasks that already exist is a separate, explicit act — see
@@ -135,6 +140,17 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
     set(s => ({
       categories: s.categories.map(c =>
         c.name === name ? { ...c, excludeFromNewTasksBanner: exclude } : c
+      ),
+    }));
+  },
+
+  setCategoryBackfillDismissedFields(name, fields) {
+    const cat = get().categories.find(c => c.name === name);
+    if (!cat) return;
+    dbSetCategoryBackfillDismissedFields(cat.id, fields);
+    set(s => ({
+      categories: s.categories.map(c =>
+        c.name === name ? { ...c, backfillDismissedFields: fields } : c
       ),
     }));
   },

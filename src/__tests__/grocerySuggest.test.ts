@@ -17,6 +17,8 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { FROZEN_REASON, RUNNING_LOW_REASON, type GroceryItem, type ItemProduct } from '../types';
 
 const NOW = new Date('2026-08-07T12:00:00.000Z');
+/** No item carries a product, sub, shop link or alias — see linkCounts. */
+const NO_LINKS: ReadonlyMap<string, number> = new Map<string, number>();
 
 function daysAgo(n: number): string {
   return new Date(NOW.getTime() - n * 86_400_000).toISOString();
@@ -56,7 +58,6 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     note: '',
     onList: false,
     checked: false,
-    inCatalog: true,
     sortOrder: seq,
     purchaseCount: 0,
     lastAddedAt: null,
@@ -303,29 +304,43 @@ describe('buildGroceryRecipeSections', () => {
 // ─── catalogPruneCandidates ──────────────────────────────────────────────────
 
 describe('catalogPruneCandidates', () => {
+  // The prune is an unrecoverable delete, so it asks the same question
+  // clearList's sweep does rather than the weaker "never bought" it used to.
+  it('never names a never-bought row that carries a substitute link', () => {
+    const items = [makeItem({ name: 'Margarine', lastAddedAt: daysAgo(200) })];
+    const linked = new Map([[items[0].id, 1]]);
+    expect(catalogPruneCandidates(items, NO_LINKS, NOW).map(i => i.name)).toEqual(['Margarine']);
+    expect(catalogPruneCandidates(items, linked, NOW)).toEqual([]);
+  });
+
+  it('never names a never-bought row someone has named a brand on', () => {
+    const items = [makeItem({ name: 'Bread', preferredProductId: 'p1', lastAddedAt: daysAgo(200) })];
+    expect(catalogPruneCandidates(items, NO_LINKS, NOW)).toEqual([]);
+  });
+
   it('names a stale never-bought row', () => {
     const items = [makeItem({ name: 'Mlik', lastAddedAt: daysAgo(200) })];
-    expect(catalogPruneCandidates(items, NOW).map(i => i.name)).toEqual(['Mlik']);
+    expect(catalogPruneCandidates(items, NO_LINKS, NOW).map(i => i.name)).toEqual(['Mlik']);
   });
 
   it('never names something that has been bought', () => {
     const items = [makeItem({ name: 'Milk', purchaseCount: 1, lastAddedAt: daysAgo(200) })];
-    expect(catalogPruneCandidates(items, NOW)).toEqual([]);
+    expect(catalogPruneCandidates(items, NO_LINKS, NOW)).toEqual([]);
   });
 
   it('names a stale never-bought row even with a long-ago add date', () => {
     const items = [makeItem({ name: 'Truffle oil', lastAddedAt: daysAgo(200) })];
-    expect(catalogPruneCandidates(items, NOW).map(i => i.name)).toEqual(['Truffle oil']);
+    expect(catalogPruneCandidates(items, NO_LINKS, NOW).map(i => i.name)).toEqual(['Truffle oil']);
   });
 
   it('never names something currently on the list', () => {
     const items = [makeItem({ name: 'Mlik', onList: true, lastAddedAt: daysAgo(200) })];
-    expect(catalogPruneCandidates(items, NOW)).toEqual([]);
+    expect(catalogPruneCandidates(items, NO_LINKS, NOW)).toEqual([]);
   });
 
   it('leaves a recent typo alone — it might still be wanted', () => {
     const items = [makeItem({ name: 'Mlik', lastAddedAt: daysAgo(2) })];
-    expect(catalogPruneCandidates(items, NOW)).toEqual([]);
+    expect(catalogPruneCandidates(items, NO_LINKS, NOW)).toEqual([]);
   });
 });
 

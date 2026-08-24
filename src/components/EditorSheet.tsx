@@ -3,12 +3,11 @@ import {
   Modal,
   View,
   ScrollView,
-  KeyboardAvoidingView,
-  Platform,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 
 interface Props {
   visible: boolean;
@@ -28,9 +27,8 @@ interface Props {
   scrollContentStyle: StyleProp<ViewStyle>;
   header: React.ReactNode;
   children: React.ReactNode;
-  // Content rendered after the ScrollView but still inside the
-  // KeyboardAvoidingView — TaskEditor and ProjectEditor hang picker sheets
-  // here, outside the scrollable area.
+  // Content rendered after the ScrollView, outside the scrollable area —
+  // TaskEditor and ProjectEditor hang picker sheets here.
   footer?: React.ReactNode;
   // Stood down while a row inside is mid-drag (SortableList's
   // onDragStateChange) — a JS responder nested inside a ScrollView doesn't
@@ -40,10 +38,9 @@ interface Props {
 }
 
 /**
- * The Modal + KeyboardAvoidingView + header row + ScrollView shell every
- * editor sheet (TaskEditor, TaskGroupEditor, ProjectEditor, TemplateEditor,
- * TemplateItemEditor) opens with — see issue #758 for the byte-identical
- * lines this replaces.
+ * The Modal + header row + ScrollView shell every editor sheet (TaskEditor,
+ * TaskGroupEditor, ProjectEditor, TemplateEditor, TemplateItemEditor) opens
+ * with — see issue #758 for the byte-identical lines this replaces.
  *
  * ## Why this is `fullScreen` and not the page sheet it used to be (#1182)
  *
@@ -90,6 +87,17 @@ export function EditorSheet({
   scrollEnabled = true,
 }: Props) {
   const insets = useSafeAreaInsets();
+  // Gives the ScrollView itself a correct bottom inset for the focused field
+  // (`automaticallyAdjustKeyboardInsets`) instead of a `KeyboardAvoidingView`
+  // padding the whole sheet — the same pattern every other keyboard-heavy
+  // list/sheet in the app already uses (`ReorderableList`, `GroceryItemSheet`,
+  // …; see the hook's own doc comment). `KeyboardAvoidingView`'s `padding`
+  // behavior used to sit here and fought this ScrollView's own native
+  // keyboard handling: both react to the same keyboard-show event, and the
+  // combination could over-scroll the sheet — a small field near the top
+  // scrolling far past where it needed to, occasionally all the way to the
+  // bottom of the content. One mechanism owning the adjustment fixes that.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   return (
     <Modal
@@ -99,7 +107,7 @@ export function EditorSheet({
       onRequestClose={onRequestClose}
       onShow={onShow}
     >
-      <KeyboardAvoidingView style={rootStyle} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <View style={rootStyle}>
         {/*
           The page sheet used to start below the status bar for us. Held on a
           wrapper rather than folded into headerStyle because each editor passes
@@ -112,16 +120,18 @@ export function EditorSheet({
         </View>
 
         <ScrollView
+          ref={keyboardScroll.ref}
           style={scrollStyle}
           scrollEnabled={scrollEnabled}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={scrollContentStyle}
+          {...keyboardScroll.props}
         >
           {children}
         </ScrollView>
 
         {footer}
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

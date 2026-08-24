@@ -207,6 +207,38 @@ describe('eventsIn', () => {
       expect(eventsIn([allDayAug13()], localAug13.start, localAug13.end)).toHaveLength(1);
     });
   });
+
+  // #2019: a dayResetTime after midnight makes "today" a window that runs from
+  // 04:00 to 04:00, which overlaps the first four hours of tomorrow's all-day
+  // event — so tomorrow's birthday sat on Today all day. Unlike the timezone
+  // case above, this one is not zone-dependent and fails in UTC too.
+  describe('all-day events under a dayResetTime window (#2019)', () => {
+    // Today, for a user whose day starts at 04:00.
+    const from = new Date(2026, 7, 24, 4);
+    const to = new Date(2026, 7, 25, 4);
+    const allDayOn = (day: number) => ev(
+      new Date(Date.UTC(2026, 7, day)).toISOString(),
+      new Date(Date.UTC(2026, 7, day + 1)).toISOString(),
+      { allDay: true },
+    );
+
+    it("does not put tomorrow's all-day event on today", () => {
+      expect(eventsIn([allDayOn(25)], from, to)).toEqual([]);
+    });
+
+    it("still places today's own all-day event", () => {
+      expect(eventsIn([allDayOn(24)], from, to)).toHaveLength(1);
+    });
+
+    it("does not keep yesterday's, which the window has left behind", () => {
+      expect(eventsIn([allDayOn(23)], from, to)).toEqual([]);
+    });
+
+    it('places a timed event in the small hours the window still covers', () => {
+      const lateNight = ev(new Date(2026, 7, 25, 1).toISOString(), new Date(2026, 7, 25, 2).toISOString());
+      expect(eventsIn([lateNight], from, to)).toHaveLength(1);
+    });
+  });
 });
 
 describe('nextEventAfter', () => {

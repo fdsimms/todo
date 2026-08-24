@@ -94,19 +94,26 @@ describe('extraTaskSummary', () => {
 });
 
 describe('describeExtraTaskRule', () => {
-  it('says what will happen, and where the task lands', () => {
-    expect(describeExtraTaskRule(4, 'Rosin the bow', true))
-      .toBe('Adds “Rosin the bow” every 4th completion, due with the next one');
+  it('says where the task lands, and only that', () => {
+    expect(describeExtraTaskRule(4, 'Rosin the bow', true)).toBe('Due with the next occurrence');
   });
 
   it('lands it on the day when the task does not repeat', () => {
-    expect(describeExtraTaskRule(4, 'Rosin the bow', false))
-      .toBe('Adds “Rosin the bow” every 4th completion, due that day');
+    expect(describeExtraTaskRule(4, 'Rosin the bow', false)).toBe("Due on the day it's added");
+  });
+
+  // The count and the title are both on screen — the stepper says one and the
+  // field beside it holds the other — so a caption repeating either is the
+  // user's own input read back at them.
+  it('quotes neither the title nor the count', () => {
+    const caption = describeExtraTaskRule(4, 'Rosin the bow', true);
+    expect(caption).not.toContain('Rosin the bow');
+    expect(caption).not.toContain('4th');
   });
 
   it('asks for the missing half rather than describing a rule that will not fire', () => {
-    expect(describeExtraTaskRule(4, '', true)).toBe('Name the task to add every 4th completion');
-    expect(describeExtraTaskRule(4, '   ', true)).toBe('Name the task to add every 4th completion');
+    expect(describeExtraTaskRule(4, '', true)).toBe('Name the task to add');
+    expect(describeExtraTaskRule(4, '   ', true)).toBe('Name the task to add');
   });
 
   it('says so when there is no rule at all', () => {

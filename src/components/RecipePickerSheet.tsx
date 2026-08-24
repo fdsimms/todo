@@ -160,6 +160,21 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
 
   const typed = cleanRecipeName(query);
 
+  // What's already been picked for the *current* slot this session, so a row
+  // can say "you already added this" instead of just silently stacking a
+  // second entry when a tap that landed doesn't look like it did anything.
+  // Keyed by slot: switching the chip to plan the same dish for a different
+  // meal is a real, deliberate second pick, not the accidental repeat this
+  // is guarding against.
+  const pickedThisSlot = useMemo(() => {
+    const keys = new Set<string>();
+    for (const entry of planned) {
+      if (entry.slot !== slot) continue;
+      keys.add(entry.recipeId ? `r:${entry.recipeId}` : entry.leftoverId ? `l:${entry.leftoverId}` : `t:${entry.title.toLowerCase()}`);
+    }
+    return keys;
+  }, [planned, slot]);
+
   // Matched on a plain substring rather than through rankRecipes: the fridge
   // holds a handful of rows the user put there this week, so there is nothing
   // for a ranker to disambiguate, and a fuzzy match would put a leftover under
@@ -365,14 +380,19 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
           </View>
 
           <View style={styles.presetRow}>
-            {PRESET_PLANS.map(preset => (
-              <InlineAction
-                key={preset}
-                label={preset}
-                onPress={() => pick(null, preset)}
-                accessibilityLabel={`Plan ${preset}`}
-              />
-            ))}
+            {PRESET_PLANS.map(preset => {
+              const picked = pickedThisSlot.has(`t:${preset.toLowerCase()}`);
+              return (
+                <InlineAction
+                  key={preset}
+                  label={preset}
+                  icon={picked ? 'checkmark' : undefined}
+                  variant={picked ? 'neutral' : 'accent'}
+                  onPress={() => pick(null, preset)}
+                  accessibilityLabel={picked ? `${preset}, already added for ${slotLabel(slot)}` : `Plan ${preset}`}
+                />
+              );
+            })}
           </View>
 
           <View style={styles.searchWrap}>
@@ -423,15 +443,18 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                   // container has no live day to be urgent about.
                   const live = liveFreshnessOf(leftover);
                   const tint = live ? freshnessColor(live, colors) : colors.textTertiary;
+                  const picked = pickedThisSlot.has(`l:${leftover.id}`);
                   return (
                     <React.Fragment key={leftover.id}>
                       {idx > 0 && <View style={styles.inlineSep} />}
                       <TouchableOpacity
-                        style={styles.row}
+                        style={[styles.row, picked && styles.rowPicked]}
                         onPress={() => pickLeftover(leftover)}
                         activeOpacity={interaction.activeOpacity}
                         accessibilityRole="button"
-                        accessibilityLabel={`Plan ${leftover.title}. ${describeLeftover(leftover)}`}
+                        accessibilityLabel={picked
+                          ? `${leftover.title}, already added for ${slotLabel(slot)}`
+                          : `Plan ${leftover.title}. ${describeLeftover(leftover)}`}
                       >
                         <View style={[styles.rowIcon, { backgroundColor: colors.bgTertiary }]}>
                           <Ionicons name="snow-outline" size={16} color={tint} />
@@ -442,7 +465,9 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                             {describeLeftover(leftover)}
                           </Text>
                         </View>
-                        <Ionicons name="add" size={16} color={colors.textTertiary} />
+                        {picked
+                          ? <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
+                          : <Ionicons name="add" size={16} color={colors.textTertiary} />}
                       </TouchableOpacity>
                     </React.Fragment>
                   );
@@ -462,30 +487,37 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                 />
               </View>
             ) : (
-              matches.map((recipe, idx) => (
-                <React.Fragment key={recipe.id}>
-                  {/* The "Recipes" caption already separates this run from the
-                      fridge above it, so the first row only takes a rule when
-                      it's butting straight up against the free-text one. */}
-                  {(idx > 0 || (showFreeText && fridge.length === 0)) && <View style={styles.inlineSep} />}
-                  <TouchableOpacity
-                    style={styles.row}
-                    onPress={() => pick(recipe.id, recipe.name)}
-                    activeOpacity={interaction.activeOpacity}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Plan ${recipe.name}. ${describeRecipe(recipe)}`}
-                  >
-                    <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
-                      <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
-                    </View>
-                    <View style={styles.rowInfo}>
-                      <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
-                      <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe)}</Text>
-                    </View>
-                    {recipe.favorite && <Ionicons name="star" size={13} color={colors.orange} />}
-                  </TouchableOpacity>
-                </React.Fragment>
-              ))
+              matches.map((recipe, idx) => {
+                const picked = pickedThisSlot.has(`r:${recipe.id}`);
+                return (
+                  <React.Fragment key={recipe.id}>
+                    {/* The "Recipes" caption already separates this run from the
+                        fridge above it, so the first row only takes a rule when
+                        it's butting straight up against the free-text one. */}
+                    {(idx > 0 || (showFreeText && fridge.length === 0)) && <View style={styles.inlineSep} />}
+                    <TouchableOpacity
+                      style={[styles.row, picked && styles.rowPicked]}
+                      onPress={() => pick(recipe.id, recipe.name)}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={picked
+                        ? `${recipe.name}, already added for ${slotLabel(slot)}`
+                        : `Plan ${recipe.name}. ${describeRecipe(recipe)}`}
+                    >
+                      <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
+                        <Ionicons name="restaurant-outline" size={16} color={colors.accent} />
+                      </View>
+                      <View style={styles.rowInfo}>
+                        <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
+                        <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe)}</Text>
+                      </View>
+                      {picked
+                        ? <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
+                        : recipe.favorite && <Ionicons name="star" size={13} color={colors.orange} />}
+                    </TouchableOpacity>
+                  </React.Fragment>
+                );
+              })
             )}
           </ScrollView>
         </View>
@@ -605,6 +637,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 10,
+  },
+  rowPicked: {
+    opacity: 0.6,
   },
   rowIcon: {
     width: 32,
