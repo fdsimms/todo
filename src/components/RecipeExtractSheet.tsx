@@ -30,6 +30,7 @@ import {
   recipeHasMethod, recipeHasPrepTasks, recipeHasAttribution,
 } from '../utils/recipeUtils';
 import { aisleForName } from '../utils/groceryAisles';
+import { allSectionsOf, sectionsOf } from '../utils/recipeSections';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
@@ -148,6 +149,18 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     [ingredients, candidates, acceptedKeys],
   );
 
+  // Every heading the Section picker can offer: this recipe's own (including
+  // one declared with nothing under it yet), plus whatever this batch has
+  // already been filed under — so a row can join a heading the recipe
+  // already has, not just one this import invents.
+  const existingSections = useMemo(() => {
+    const recipeOwn = recipe ? allSectionsOf(recipe.ingredients, recipe.emptySections) : [];
+    const batch = sectionsOf(ingredients.map((row, i) => ({ id: String(i), section: row.section })));
+    const seen = [...recipeOwn];
+    for (const s of batch) if (!seen.includes(s)) seen.push(s);
+    return seen;
+  }, [recipe, ingredients]);
+
   const reset = useCallback(() => {
     setLoading(false);
     setError(null);
@@ -223,7 +236,9 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     });
   };
 
-  const editIngredient = (index: number, patch: Partial<Pick<RecipeGroceryItem, 'name' | 'quantity'>>) => {
+  const editIngredient = (
+    index: number, patch: Partial<Pick<RecipeGroceryItem, 'name' | 'quantity' | 'section'>>,
+  ) => {
     haptics.success();
     setIngredients(prev => prev.map((row, i) => {
       if (i !== index) return row;
@@ -662,6 +677,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               onToggle={() => toggle(i)}
               onEditName={name => editIngredient(i, { name })}
               onEditQuantity={quantity => editIngredient(i, { quantity })}
+              onEditSection={section => editIngredient(i, { section })}
+              existingSections={existingSections}
               sectionHeader={sectionHeader}
               note={coveredBy ? `made from the ${coveredBy} recipe` : null}
             />
