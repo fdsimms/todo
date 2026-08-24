@@ -546,6 +546,7 @@ export function TodayScreen() {
   const deferGroup = useTaskStore(s => s.deferGroup);
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const groupTasks = useTaskStore(s => s.groupTasks);
+  const applyGroupCategory = useTaskStore(s => s.applyGroupCategory);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
@@ -1896,7 +1897,10 @@ export function TodayScreen() {
       categoryOrder: allCategories,
     });
     setDraggableData(settleWithContext(settled));
-    groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
+    groupUpdates.forEach(u => {
+      updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder });
+      applyGroupCategory(u.id, u.category);
+    });
     // No "this task or this and future occurrences?" prompt, unlike the drag
     // path: a task created a moment ago has no other occurrences to apply to.
     reorderWithCategoryUpdates(taskOrders, categoryUpdates);
@@ -3319,7 +3323,10 @@ export function TodayScreen() {
                   showUpcoming,
                   categoryOrder: allCategories,
                 });
-                groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
+                groupUpdates.forEach(u => {
+                  updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder });
+                  applyGroupCategory(u.id, u.category);
+                });
                 setDraggableData(settleWithContext(settled));
                 reorderWithCategoryUpdates(taskOrders, categoryUpdates);
                 return;
@@ -3336,7 +3343,10 @@ export function TodayScreen() {
                 // effect then reconciles to the store-derived `data` (structurally
                 // identical) once the store write lands.
                 setDraggableData(settleWithContext(settled));
-                groupUpdates.forEach(u => updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder }));
+                groupUpdates.forEach(u => {
+                  updateGroup(u.id, { category: u.category, sortOrder: u.sortOrder });
+                  applyGroupCategory(u.id, u.category);
+                });
                 reorderWithCategoryUpdates(taskOrders, categoryUpdates, scope ? { scope } : undefined);
               };
 
