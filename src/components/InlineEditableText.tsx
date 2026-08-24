@@ -4,7 +4,7 @@ import {
   type StyleProp, type TextStyle,
 } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, interaction, type Colors } from '../theme';
+import { spacing, radius, border, interaction, type Colors } from '../theme';
 import { useRegisterPendingEdit, type PendingEdits } from '../hooks/usePendingEdits';
 
 interface Props {
@@ -126,7 +126,17 @@ export function InlineEditableText({
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
-    readWrap: { paddingVertical: 1 },
+    // The dashed underline is the only cue this text is tappable, since it
+    // otherwise renders identically to the read-only labels around it. Only
+    // paddingTop carries the 1pt readWrap used to split across top/bottom —
+    // the bottom pt is now the border itself, so the total stays 2pt either
+    // side of edit mode (see the comment on `input` below).
+    readWrap: {
+      paddingTop: 1,
+      borderBottomWidth: border.sm,
+      borderBottomColor: colors.separator,
+      borderStyle: 'dashed',
+    },
     // Padded and tinted so an open field reads as a field. The vertical
     // padding is matched by readWrap's 1pt plus the border, so flipping into
     // edit mode doesn't shift the line it's on.
