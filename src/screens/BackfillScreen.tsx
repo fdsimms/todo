@@ -21,7 +21,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { displayTitleFor } from '../utils/visibilityUtils';
+import { displayTitleFor, activeChainStepTitle } from '../utils/visibilityUtils';
 import { activeMealSlotStepId } from '../utils/mealSlotTasks';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort';
@@ -770,10 +770,22 @@ function TaskContextRow({
 }) {
   const repeat = task.recurrenceType !== 'none' ? describeTaskRecurrence(task) : null;
   const due = task.dueDate ? format(new Date(task.dueDate), 'EEE, MMM d') : null;
-  if (!due && !repeat && !categoryLabel && !projectTitle) return null;
+  // Mid-chain, itemTitle above shows the active step (displayTitleFor) rather
+  // than the task's own title — so without this, a step like "Gather laundry
+  // (check for towels etc.)" gives no hint it's one part of a "Do laundry"
+  // routine. Only shown once there's a step swapped in, same gate as
+  // activeChainStepTitle itself.
+  const chainName = activeChainStepTitle(task) ? task.title : null;
+  if (!due && !repeat && !categoryLabel && !projectTitle && !chainName) return null;
 
   return (
     <View style={styles.metaRow}>
+      {chainName && (
+        <View style={styles.metaChip}>
+          <Ionicons name="git-commit" size={iconSize.xs} color={colors.textSecondary} />
+          <Text style={styles.metaText} numberOfLines={1}>{chainName}</Text>
+        </View>
+      )}
       {due && (
         <View style={styles.metaChip}>
           <Ionicons name="calendar-outline" size={iconSize.xs} color={colors.textSecondary} />
