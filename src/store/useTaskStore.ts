@@ -2851,7 +2851,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const cookedLeftover = cookedEntryLeftoverId
         ? useLeftoverStore.getState().leftovers.find(l => l.id === cookedEntryLeftoverId)
         : null;
-      if (cookedLeftover && isLiveLeftover(cookedLeftover)) {
+      // Skipped when UseUpResolveSheet is already open (or about to open, see
+      // below) on this same container: its own Finished it/Threw it out rows
+      // already answer "was that the last of it?", so also popping this
+      // Alert stacks a native alert on top of that sheet — which is exactly
+      // what happens when the use-up task and the meal task for one leftover
+      // both get ticked within moments of each other.
+      if (
+        cookedLeftover &&
+        isLiveLeftover(cookedLeftover) &&
+        useLeftoverStore.getState().pendingUseUpLeftoverId !== cookedLeftover.id
+      ) {
         useLeftoverStore.getState().setPendingFinishLeftover(cookedLeftover.id);
       }
     }
@@ -2868,7 +2878,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       const groceryUseUpId = generatedSourceOf(task, 'groceryUseUp');
       if (groceryUseUpId) useGroceryStore.getState().setPendingUseUpItem(groceryUseUpId);
       const leftoverUseUpId = generatedSourceOf(task, 'leftoverUseUp');
-      if (leftoverUseUpId) useLeftoverStore.getState().setPendingUseUpLeftover(leftoverUseUpId);
+      if (leftoverUseUpId) {
+        // The sheet this is about to open covers the same question
+        // FinishLeftoverPrompt's Alert asks, in more depth (it also offers
+        // freezing/splitting) — so a pending Alert for this same leftover is
+        // superseded, not stacked. See the pendingUseUpLeftoverId check above
+        // for the mirror case.
+        if (useLeftoverStore.getState().pendingFinishLeftoverId === leftoverUseUpId) {
+          useLeftoverStore.getState().setPendingFinishLeftover(null);
+        }
+        useLeftoverStore.getState().setPendingUseUpLeftover(leftoverUseUpId);
+      }
     }
 
     if (completionHoldTimer) clearTimeout(completionHoldTimer);

@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTaskStore } from '../store/useTaskStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { useLeftoverStore } from '../store/useLeftoverStore';
 import { InlineAction } from './InlineAction';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { FAB_SIZE } from './Fab';
@@ -31,8 +32,8 @@ const VISIBLE_MS = 6000;
  * the rescue the issue is about. See the flag's own doc comment in each
  * store for the reasoning, and for which ones are marked.
  *
- * **One bar for three independent queues.** Mirrors `useShakeToUndo`:
- * offers whichever of the three stores' `lastAction` is freshest, so a
+ * **One bar for four independent queues.** Mirrors `useShakeToUndo`:
+ * offers whichever of the four stores' `lastAction` is freshest, so a
  * grocery clear and a task delete can't both want the slot at once.
  *
  * **Mounted once at the navigator root**, a sibling of `DemoBanner` —
@@ -51,11 +52,14 @@ export function UndoBar() {
   const undoGrocery = useGroceryStore(s => s.undoLastAction);
   const mealPlanAction = useMealPlanStore(s => s.lastAction);
   const undoMealPlan = useMealPlanStore(s => s.undoLastAction);
+  const leftoverAction = useLeftoverStore(s => s.lastAction);
+  const undoLeftover = useLeftoverStore(s => s.undoLastAction);
 
   const candidates = [
     { action: taskAction, undo: undoTask },
     { action: groceryAction, undo: undoGrocery },
     { action: mealPlanAction, undo: undoMealPlan },
+    { action: leftoverAction, undo: undoLeftover },
   ];
   const freshest = candidates.reduce<typeof candidates[number] | null>((best, c) => {
     if (!c.action?.destructive) return best;

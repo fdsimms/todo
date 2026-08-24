@@ -22,6 +22,21 @@ import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 
+/**
+ * Mirrors useTaskStore/useGroceryStore/useMealPlanStore's UndoableAction — see
+ * useGroceryStore's doc comment. A fourth independent queue rather than
+ * folding into any of those: a leftover isn't a task, a catalog row or a
+ * plan entry, and useShakeToUndo/UndoBar just add a fourth candidate to the
+ * freshest-wins comparison they already do between the other three.
+ */
+interface UndoableAction {
+  label: string;
+  undo: () => void;
+  at?: number;
+  /** See useTaskStore's UndoableAction — same flag, same UndoBar. */
+  destructive?: boolean;
+}
+
 export interface LeftoverDraft {
   title: string;
   /** ISO instant it went in the fridge. Defaults to now. */
@@ -80,6 +95,11 @@ interface LeftoverStore {
    */
   pendingFinishLeftoverId: string | null;
   setPendingFinishLeftover: (id: string | null) => void;
+
+  /** The most recent undoable action — see UndoableAction and useTaskStore's twin. */
+  lastAction: UndoableAction | null;
+  setLastAction: (action: UndoableAction | null) => void;
+  undoLastAction: () => void;
 
   /**
    * Rides useTaskStore.initialize's fan-out for the same reason groceries,
@@ -233,6 +253,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
   initialized: false,
   pendingUseUpLeftoverId: null,
   pendingFinishLeftoverId: null,
+  lastAction: null,
 
   initialize() {
     set({
@@ -249,6 +270,21 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
 
   setPendingFinishLeftover(id) {
     set({ pendingFinishLeftoverId: id });
+  },
+
+  setLastAction(action) {
+    set({ lastAction: action ? { ...action, at: Date.now() } : null });
+  },
+
+  undoLastAction() {
+    const action = get().lastAction;
+    if (!action) return;
+    try {
+      action.undo();
+    } catch (e) {
+      console.error('undoLastAction failed', e);
+    }
+    set({ lastAction: null });
   },
 
   logLeftover(draft) {
@@ -368,6 +404,15 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // directly rather than through reconcile, same call dropUseUpTask makes:
     // this is a row that won't be live any more, not a correction to one.
     dropLeftoverTask(id);
+    // Not `destructive` — this is a completion, the same call completeTask
+    // makes about its own lastAction, not a delete. reopenLeftover is the
+    // exact reverse (see its own doc comment on why this one, unlike
+    // markCooked, gets to un-happen) and already re-reconciles the use-up
+    // task dropped above.
+    get().setLastAction({
+      label: outcome === 'tossed' ? `Threw out "${leftover.title}"` : `Finished "${leftover.title}"`,
+      undo: () => get().reopenLeftover(id),
+    });
   },
 
   reopenLeftover(id) {
@@ -379,9 +424,24 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
   },
 
   deleteLeftover(id) {
+    const leftover = get().leftovers.find(l => l.id === id);
     dbDeleteLeftover(id);
     set(s => ({ leftovers: s.leftovers.filter(l => l.id !== id) }));
     dropLeftoverTask(id);
+    if (leftover) {
+      get().setLastAction({
+        label: `Deleted "${leftover.title}"`,
+        destructive: true,
+        undo: () => {
+          dbInsertLeftover(leftover);
+          set(s => ({ leftovers: sortLeftovers([...s.leftovers, leftover]) }));
+          // Only a still-live container's use-up task comes back — a
+          // finished one had already dropped its task on the way out for a
+          // reason undoing the delete doesn't reverse.
+          if (isLiveLeftover(leftover)) reconcileLeftoverTask(leftover);
+        },
+      });
+    }
   },
 
   setUseUpTask(id, value, options) {
