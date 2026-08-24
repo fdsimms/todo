@@ -126,6 +126,19 @@ describe('isFieldMissing', () => {
     expect(isFieldMissing(task, 'estimate')).toBe(true);
   });
 
+  it('excludes generated "use up" tasks from the estimate field entirely', () => {
+    // Every one names a different food with its own prep time — there's no
+    // step-type to remember a duration against, and no recipe to read one
+    // from either, so these are never asked about rather than asked forever.
+    expect(isFieldMissing({ ...baseTask, generatedKind: 'groceryUseUp' }, 'estimate')).toBe(false);
+    expect(isFieldMissing({ ...baseTask, generatedKind: 'leftoverUseUp' }, 'estimate')).toBe(false);
+  });
+
+  it('does not exclude a "use up" task from other fields', () => {
+    expect(isFieldMissing({ ...baseTask, generatedKind: 'groceryUseUp' }, 'priority')).toBe(true);
+    expect(isFieldMissing({ ...baseTask, generatedKind: 'groceryUseUp', category: 'Home' }, 'category')).toBe(false);
+  });
+
   it('treats priority 0 (None) as missing', () => {
     expect(isFieldMissing(baseTask, 'priority')).toBe(true);
     expect(isFieldMissing({ ...baseTask, priority: 2 }, 'priority')).toBe(false);
@@ -143,6 +156,15 @@ describe('backfillCandidates', () => {
       { ...baseTask, id: 'sub', parentId: 'test-1' },
       { ...baseTask, id: 'done', completed: true },
       { ...baseTask, id: 'gone', archived: true },
+      { ...baseTask, id: 'live' },
+    ];
+    expect(backfillCandidates(tasks, 'estimate').map(t => t.id)).toEqual(['live']);
+  });
+
+  it('excludes generated "use up" tasks from the estimate queue', () => {
+    const tasks: Task[] = [
+      { ...baseTask, id: 'grocery', generatedKind: 'groceryUseUp' },
+      { ...baseTask, id: 'leftover', generatedKind: 'leftoverUseUp' },
       { ...baseTask, id: 'live' },
     ];
     expect(backfillCandidates(tasks, 'estimate').map(t => t.id)).toEqual(['live']);

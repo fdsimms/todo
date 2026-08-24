@@ -1,4 +1,4 @@
 {
-  "message": "The time estimate backfill wizard no longer asks about a recipe's Cook step separately, and remembers your answer for Choose/Eat steps so it only asks once per meal",
+  "message": "The time estimate backfill wizard no longer asks about a recipe's Cook step separately, remembers your answer for Choose/Eat steps so it only asks once per meal, and skips \"Use up X\" tasks altogether since each names a different food",
   "date": "2026-08-24"
 }
