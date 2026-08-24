@@ -69,8 +69,10 @@ export function useTipSignals(): TipSignals {
     for (const item of groceryItems) {
       if (item.onList) groceryItemCount++;
       // Every row is a catalog row now — see the note in `types/index.ts` where
-      // `inCatalog` used to be. The off-list set is what the catalog view shows.
-      if (!item.onList) catalogCount++;
+      // `inCatalog` used to be. Counting only the off-list ones would make this
+      // *shrink* as the list fills, which is the opposite of the "your catalog
+      // is getting big" signal the tips gated on it are looking for.
+      catalogCount++;
       if (item.purchaseCount > 0) purchasedItemCount++;
     }
     return { groceryItemCount, catalogCount, purchasedItemCount };

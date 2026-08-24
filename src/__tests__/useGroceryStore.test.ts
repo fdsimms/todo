@@ -602,6 +602,21 @@ describe('addByName', () => {
     expect(useGroceryStore.getState().items).toHaveLength(0);
   });
 
+  // The undo of an *add* is not a licence to delete: addProduct and friends
+  // register no undo of their own, so the add's action is still armed minutes
+  // later, by which time the row may be carrying a brand or a substitute.
+  it('registers an undo that spares a row given a fact since the add', () => {
+    const item = useGroceryStore.getState().addByName('Bread');
+    useGroceryStore.getState().addProduct(item.id, { brand: "Arnold's", variant: null });
+
+    useGroceryStore.getState().undoLastAction();
+
+    expect(dbDeleteGroceryItem).not.toHaveBeenCalled();
+    const after = useGroceryStore.getState().itemById(item.id)!;
+    expect(after.onList).toBe(false);
+    expect(useGroceryStore.getState().itemProducts).toHaveLength(1);
+  });
+
   it('registers an undo that un-lists a catalog row it re-listed', () => {
     const parsley = makeItem({ name: 'Parsley', onList: false });
     seed([parsley]);
@@ -1480,7 +1495,6 @@ describe('shops', () => {
     expect(useGroceryStore.getState().items).toHaveLength(1);
     expect(useGroceryStore.getState().itemShops).toHaveLength(1);
   });
-
 
   it('linkItemShop ignores an unknown item or store', () => {
     seed([], { shops: [] });
@@ -2494,7 +2508,7 @@ describe('addFromPlan', () => {
       useGroceryStore.getState().items.find(i => i.name === name);
     // Carrots was a catalog row re-listed by this add — undo takes it back off.
     expect(byName('Carrots')!.onList).toBe(false);
-    // Thyme was a brand-new provisional row — undo deletes it outright.
+    // Thyme was minted by this add and carries nothing, so undo deletes it.
     expect(byName('Thyme')).toBeUndefined();
     // Untouched by this add, so untouched by its undo.
     expect(byName('Garlic')!.checked).toBe(true);
@@ -3084,9 +3098,6 @@ describe('addProduct', () => {
     expect(useGroceryStore.getState().itemProducts).toHaveLength(1);
   });
 
-  // Same promotion linkItemShop and addToPantry perform: which one you want has
-  // to outlive the list it was named from, and a provisional row is deleted
-  // when it leaves the list rather than parked.
   it('shrugs off an id that no longer resolves', () => {
     seed([makeItem({ name: 'Milk' })]);
 

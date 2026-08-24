@@ -3,6 +3,7 @@ import type { GroceryItem, ItemProduct } from '../types';
 import { FROZEN_REASON, RUNNING_LOW_REASON } from '../types';
 import { groceryNameKey } from './groceryParse';
 import { OTHER_AISLE } from './groceryAisles';
+import { hasUserFacts } from './groceryFacts';
 
 /**
  * Ranking and sectioning — the part that makes the catalog feel like it knows
@@ -253,22 +254,30 @@ export function buildGroceryRecipeSections(
 }
 
 /**
- * Catalog rows that look like typos or one-offs: never bought, not favourited,
- * off the list, and untouched for a while.
+ * Catalog rows that look like typos or one-offs: carrying nothing anyone put
+ * there, off the list, and untouched for a while.
  *
  * Surfaced as an *offer* inside the catalog, never swept automatically. The task
  * side gets away with an automatic purge because shake-to-undo exists;
  * groceries have no undo at all, so an automatic delete here is unrecoverable.
+ *
+ * **`hasUserFacts`, not `purchaseCount === 0`** (#1998). "Never bought" was
+ * always too weak a test for an unrecoverable delete — it can't see a brand, a
+ * store link or a substitute, and a row minted to hold one of those has no
+ * purchases by definition. It went unnoticed while such rows were rare; they
+ * are ordinary now that every row is a catalog row, so this uses the same
+ * predicate `clearList` does.
  */
 export function catalogPruneCandidates(
   items: readonly GroceryItem[],
+  linked: ReadonlySet<string>,
   now: Date,
   staleDays = 60
 ): GroceryItem[] {
   return items
     .filter(i =>
       !i.onList &&
-      i.purchaseCount === 0 &&
+      !hasUserFacts(i, linked) &&
       daysBetween(now, i.lastAddedAt ?? i.createdAt) >= staleDays
     )
     .sort((a, b) => a.name.localeCompare(b.name));

@@ -18,8 +18,22 @@ export interface ItemRelations {
   aliases: readonly StoreAlias[];
 }
 
-/** Nothing hanging off anything — the shape a caller with no relations to hand passes. */
-export const NO_RELATIONS: ItemRelations = { products: [], subs: [], shops: [], aliases: [] };
+/**
+ * The ids of every item something is hung off, as one set.
+ *
+ * Built once per sweep rather than scanned per row: `clearList` asks about a
+ * whole list at a time, and four `.some()` walks over four arrays for each of
+ * fifty rows is thousands of comparisons on a tap. Subs contribute *both* ends
+ * — see the note in `hasUserFacts`.
+ */
+export function linkedItemIds(relations: ItemRelations): Set<string> {
+  const ids = new Set<string>();
+  for (const p of relations.products) ids.add(p.itemId);
+  for (const l of relations.subs) { ids.add(l.itemId); ids.add(l.subItemId); }
+  for (const l of relations.shops) ids.add(l.itemId);
+  for (const a of relations.aliases) ids.add(a.itemId);
+  return ids;
+}
 
 /**
  * Whether this row carries anything a person put there.
@@ -39,13 +53,18 @@ export const NO_RELATIONS: ItemRelations = { products: [], subs: [], shops: [], 
  * side effect of the thing it stored, with nothing to remember and nothing to
  * keep in step.
  *
- * **It is deliberately generous.** The only caller that deletes on a false
- * answer is `clearList`, and the two outcomes are not symmetric: keeping a row
- * nobody wanted costs a line in a catalog that already ranks by familiarity and
- * buries it within weeks (see `familiarity` in `grocerySuggest.ts`), while
- * dropping one wrongly destroys a substitute, a price history or a brand with
- * no undo. So anything arguable counts as a fact, and only a row that is purely
- * a name — typed, never shopped, never spoken about — answers false.
+ * **It is deliberately generous.** Every caller deletes on a false answer, and
+ * the two outcomes are not symmetric: keeping a row nobody wanted costs a line
+ * in a catalog that already ranks by familiarity and buries it within weeks
+ * (see `familiarity` in `grocerySuggest.ts`), while dropping one wrongly
+ * destroys a substitute, a price history or a brand with no undo. So anything
+ * arguable counts as a fact, and only a row that is purely a name — typed,
+ * never shopped, never spoken about — answers false.
+ *
+ * Three callers, all of which delete: `clearList`'s sweep of an abandoned
+ * trip, `revertAdds` (so undoing an add can't destroy something recorded on
+ * the row since), and `catalogPruneCandidates`, whose "never bought" test was
+ * on its own too weak to protect a row someone had named a brand on.
  *
  * Not counted, and each for its own reason:
  *   - `aisle`, because the lexicon guesses it unasked, and a hand-set one is
@@ -57,7 +76,7 @@ export const NO_RELATIONS: ItemRelations = { products: [], subs: [], shops: [], 
  *   - `lastAddedAt`/`createdAt`/`sortOrder`, which every row has by existing.
  *   - `choiceGroup`, which is this trolley's own either/or and dies with it.
  */
-export function hasUserFacts(item: GroceryItem, relations: ItemRelations): boolean {
+export function hasUserFacts(item: GroceryItem, linked: ReadonlySet<string>): boolean {
   // Shopped for. A purchase is the original promotion rule and still the
   // commonest one — it also brings the price and cadence the pantry reads.
   if (item.purchaseCount > 0 || item.lastPurchasedAt) return true;
@@ -83,13 +102,9 @@ export function hasUserFacts(item: GroceryItem, relations: ItemRelations): boole
   if (item.note.trim()) return true;
   if (item.quantity && !item.quantityFromRecipe) return true;
 
-  // Hung off the row. Subs count in both directions: "margarine instead of
-  // butter" is a fact about margarine's row as much as butter's, and deleting
-  // either end drops the link.
-  if (relations.products.some(p => p.itemId === item.id)) return true;
-  if (relations.subs.some(l => l.itemId === item.id || l.subItemId === item.id)) return true;
-  if (relations.shops.some(l => l.itemId === item.id)) return true;
-  if (relations.aliases.some(a => a.itemId === item.id)) return true;
-
-  return false;
+  // Hung off the row — a box, a store link, a substitute, a receipt alias.
+  // Subs count in both directions: "margarine instead of butter" is a fact
+  // about margarine's row as much as butter's, and deleting either end drops
+  // the link. See linkedItemIds, which is what builds this set.
+  return linked.has(item.id);
 }

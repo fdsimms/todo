@@ -25,6 +25,7 @@ import {
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { rankedCatalogItems, catalogPruneCandidates, rankGrocerySuggestions } from '../utils/grocerySuggest';
+import { linkedItemIds } from '../utils/groceryFacts';
 import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groceryShops';
 import { formatPrice, describePriceContext, lastPriceFor } from '../utils/groceryPrice';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -60,6 +61,11 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const items = useGroceryStore(useShallow(s => s.items));
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
+  // For the prune offer's hasUserFacts test — an unrecoverable delete must be
+  // able to see a brand or a substitute, not just a purchase count.
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const storeAliases = useGroceryStore(useShallow(s => s.storeAliases));
   const addExistingMany = useGroceryStore(s => s.addExistingMany);
   const deleteItems = useGroceryStore(s => s.deleteItems);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
@@ -147,7 +153,14 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   // Deliberately over `items` and not `scoped`: the prune offer is about the
   // whole catalog, and scoping it to a store would offer to forget a subset
   // while the button still said how many were unused overall.
-  const pruneable = useMemo(() => catalogPruneCandidates(items, now), [items, now]);
+  const linked = useMemo(
+    () => linkedItemIds({ products: itemProducts, subs: itemSubs, shops: itemShops, aliases: storeAliases }),
+    [itemProducts, itemSubs, itemShops, storeAliases]
+  );
+  const pruneable = useMemo(
+    () => catalogPruneCandidates(items, linked, now),
+    [items, linked, now]
+  );
 
   const toggle = useCallback((id: string) => {
     haptics.tap();

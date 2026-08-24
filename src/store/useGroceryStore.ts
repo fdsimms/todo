@@ -46,7 +46,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, mergePriceHistories } from '../utils/priceHistory';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
-import { hasUserFacts } from '../utils/groceryFacts';
+import { hasUserFacts, linkedItemIds } from '../utils/groceryFacts';
 import { describeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
@@ -103,6 +103,9 @@ import {
  * short enough not to feel stuck.
  */
 const CART_HOLD_MS = 1200;
+
+/** Shared empty set for `revertAdds` callers where every id is newly minted. */
+const EMPTY_IDS: ReadonlySet<string> = new Set<string>();
 
 /**
  * Mirrors useTaskStore's UndoableAction: shake-to-undo reads whichever of the
@@ -710,6 +713,21 @@ interface GroceryStore {
   removeFromList: (id: string) => void;
   /** removeFromList over a whole selection at once. */
   removeFromListMany: (ids: string[]) => void;
+  /**
+   * The revert for a batch of adds, and the only correct one.
+   *
+   * `addByName` either mints a row or re-lists one that was already there, and
+   * the undo differs: a minted row goes, a re-listed row goes back off-list.
+   * That used to be a single `removeFromList` call for both, which worked only
+   * because a first-typed row was provisional and deleted itself on the way off
+   * the list. `preexisting` is the set of item ids from *before* the batch ran,
+   * which is the only moment the difference is knowable.
+   *
+   * A minted row is still spared if anything has been recorded on it since —
+   * naming a brand on a row and then shaking to undo the add that made it must
+   * not take the brand with it. See `hasUserFacts`.
+   */
+  revertAdds: (addedIds: readonly string[], preexisting: ReadonlySet<string>) => void;
   deleteItem: (id: string) => void;
   deleteItems: (ids: string[]) => void;
 
@@ -1499,8 +1517,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (opts?.registerUndo !== false) {
       get().setLastAction({
         label: `Added "${item.name}"`,
-        // This call minted the row, so undoing it takes the row with it.
-        undo: () => get().deleteItems([item.id]),
+        // This call minted the row, so undoing it takes the row with it —
+        // unless something has been recorded on it in the meantime. An empty
+        // `preexisting` says "this id is new"; revertAdds does the rest.
+        undo: () => get().revertAdds([item.id], EMPTY_IDS),
       });
     }
     return item;
@@ -1524,16 +1544,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }
     // One combined undo for the whole paste rather than addByName's per-line
     // one, which the loop above suppresses — otherwise only the last line of
-    // a ten-item paste would be undoable.
+    // a ten-item paste would be undoable. revertAdds owns the minted-vs-
+    // re-listed split.
     if (added.length > 0) {
-      const minted = added.filter(i => !preexisting.has(i.id)).map(i => i.id);
-      const relisted = added.filter(i => preexisting.has(i.id)).map(i => i.id);
+      const addedIds = added.map(i => i.id);
       get().setLastAction({
         label: `${added.length} item${added.length === 1 ? '' : 's'} added`,
-        undo: () => {
-          if (minted.length > 0) get().deleteItems(minted);
-          if (relisted.length > 0) get().removeFromListMany(relisted);
-        },
+        undo: () => get().revertAdds(addedIds, preexisting),
       });
     }
     return { added, alreadyOnList };
@@ -1644,18 +1661,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       }
     });
 
-    // One combined undo for the whole recipe, same split addManyFromText
-    // makes: a row this call minted goes, a row it re-listed goes back
-    // off-list.
+    // One combined undo for the whole recipe, through the same revertAdds
+    // addManyFromText uses.
     if (added.length > 0) {
-      const minted = added.filter(i => !preexisting.has(i.id)).map(i => i.id);
-      const relisted = added.filter(i => preexisting.has(i.id)).map(i => i.id);
+      const addedIds = added.map(i => i.id);
       get().setLastAction({
         label: `${added.length} item${added.length === 1 ? '' : 's'} added`,
-        undo: () => {
-          if (minted.length > 0) get().deleteItems(minted);
-          if (relisted.length > 0) get().removeFromListMany(relisted);
-        },
+        undo: () => get().revertAdds(addedIds, preexisting),
       });
     }
 
@@ -2713,6 +2725,25 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
   },
 
+  revertAdds(addedIds, preexisting) {
+    const linked = linkedItemIds({
+      products: get().itemProducts,
+      subs: get().itemSubs,
+      shops: get().itemShops,
+      aliases: get().storeAliases,
+    });
+    const toDelete: string[] = [];
+    const toPark: string[] = [];
+    for (const id of addedIds) {
+      const row = get().itemById(id);
+      if (!row) continue;
+      if (!preexisting.has(id) && !hasUserFacts(row, linked)) toDelete.push(id);
+      else toPark.push(id);
+    }
+    if (toDelete.length > 0) get().deleteItems(toDelete);
+    if (toPark.length > 0) get().removeFromListMany(toPark);
+  },
+
   removeFromList(id) {
     const item = get().items.find(i => i.id === id);
     if (!item || !item.onList) return;
@@ -2773,15 +2804,20 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   deleteItems(ids) {
     if (ids.length === 0) return;
     const gone = new Set(ids);
-    // dbDeleteGroceryItem drops the item's shop and substitute links too;
-    // mirror that here so the in-memory copy doesn't keep links to an item
-    // that's gone. Substitutes are dropped from *both* sides, since the link is
-    // directional and the deleted row can be either half of a pair.
+    // dbDeleteGroceryItem cascades to the item's boxes, shop links, substitute
+    // links and receipt aliases; mirror all four here so the in-memory copy
+    // doesn't keep rows pointing at an item that's gone. Substitutes are
+    // dropped from *both* sides, since the link is directional and the deleted
+    // row can be either half of a pair. (Products and aliases used to be
+    // missed, which only stayed invisible because nothing deleted a row that
+    // had either until an add's undo could.)
     for (const id of ids) dbDeleteGroceryItem(id);
     set(s => ({
       items: s.items.filter(i => !gone.has(i.id)),
       itemShops: s.itemShops.filter(l => !gone.has(l.itemId)),
       itemSubs: s.itemSubs.filter(l => !gone.has(l.itemId) && !gone.has(l.subItemId)),
+      itemProducts: s.itemProducts.filter(p => !gone.has(p.itemId)),
+      storeAliases: s.storeAliases.filter(a => !gone.has(a.itemId)),
       cartHoldIds: s.cartHoldIds.filter(x => !gone.has(x)),
     }));
     // Not part of the SQL cascade: the task is in another table that knows
@@ -3111,20 +3147,21 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // whether or not it was ever bought. That's the half the old `inCatalog`
     // flag got wrong: a name typed to hold a substitute had no purchases, so
     // abandoning an unrelated trip destroyed it.
-    const relations = {
+    const linked = linkedItemIds({
       products: get().itemProducts,
       subs: get().itemSubs,
       shops: get().itemShops,
       aliases: get().storeAliases,
-    };
-    const deleted = before.filter(i => cleared.has(i.id) && !hasUserFacts(i, relations));
+    });
+    const deleted = before.filter(i => cleared.has(i.id) && !hasUserFacts(i, linked));
     const deletedIds = new Set(deleted.map(i => i.id));
-    for (const id of deletedIds) dbDeleteGroceryItem(id);
+    // Through deleteItems rather than a dbDeleteGroceryItem loop of its own, so
+    // the in-memory mirror of the cascade and the use-up cleanup can't drift
+    // from the one place that owns them.
+    if (deletedIds.size > 0) get().deleteItems([...deletedIds]);
     const parked = before.filter(i => cleared.has(i.id) && !deletedIds.has(i.id));
     set(s => ({
-      items: s.items
-        .filter(i => !deletedIds.has(i.id))
-        .map(i => (cleared.has(i.id) ? { ...i, onList: false, checked: false } : i)),
+      items: s.items.map(i => (cleared.has(i.id) ? { ...i, onList: false, checked: false } : i)),
       cartHoldIds: [],
     }));
     // A trip whose list just went away is over. The other terminator is

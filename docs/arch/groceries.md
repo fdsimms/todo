@@ -63,9 +63,19 @@ weeks later. Seven places remembering a rule is six chances to forget it.
   history with no undo. Anything arguable counts as a fact. What doesn't: an auto-filed aisle (kept
   in `grocery_aisle_overrides` by `nameKey`, so it outlives the row anyway), a recipe stamp, a
   recipe-owned quantity, and this trolley's own `choiceGroup`.
-- **Undoing an *add* still deletes.** `addByName` mints or re-lists, and it knows which — the
-  minting branch's undo deletes the row, the re-listing branch's parks it. That used to be one call
-  to `removeFromList` for both, which worked only because provisionality made it mean two things.
+- **Undoing an *add* still deletes**, through `revertAdds`. `addByName` mints or re-lists, and only
+  the caller knows which, so every add path snapshots the item ids that existed before it ran and
+  hands that set to the undo: a minted row is deleted, a re-listed one parks. That used to be one
+  call to `removeFromList` for both, which worked only because provisionality made it mean two
+  things. **`revertAdds` also spares a minted row that has grown a fact since** — nothing like
+  `addProduct` or `linkItemShop` registers an undo of its own, so an add's action is still armed
+  minutes later, by which time the row may be carrying the brand you just named. Every add path
+  goes through it, `GroceryAddField`'s either/or and `GroceryAISheet`'s recipe apply included; a
+  new one that reaches for `removeFromListMany` instead will silently leak rows.
+- **`catalogPruneCandidates` asks the same question.** Its "never bought" test was always too weak
+  for an unrecoverable delete — it can't see a brand, a store link or a substitute, and a row
+  minted to hold one has no purchases by definition. That was rare while such rows were
+  provisional; it is ordinary now, so the prune offer uses `hasUserFacts` too.
 - **The `in_catalog` column is still in SQLite**, written `1` and never read, the same treatment
   `task_groups.completed_at` gets. Dropping a column isn't this schema's migration style.
 

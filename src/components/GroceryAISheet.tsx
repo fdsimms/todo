@@ -173,6 +173,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
       // registerUndo: false on each call, then one combined undo below — same
       // reasoning as useGroceryStore's addManyFromText/addFromPlan, otherwise
       // only the last accepted row of the recipe would be undoable.
+      const preexisting = new Set(useGroceryStore.getState().items.map(i => i.id));
       const addedIds: string[] = [];
       recipeRows.forEach((row, i) => {
         if (!accepted.has(i)) return;
@@ -194,9 +195,13 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         if (!wasOnList) addedIds.push(item.id);
       });
       if (addedIds.length > 0) {
+        // revertAdds, not removeFromListMany: the latter only parks, so undoing
+        // an apply would leave every row this minted behind — and setQuantity
+        // above stamps a user-owned quantity on them, which would then keep
+        // them through clearList's sweep for good.
         useGroceryStore.getState().setLastAction({
           label: `${addedIds.length} item${addedIds.length === 1 ? '' : 's'} added`,
-          undo: () => useGroceryStore.getState().removeFromListMany(addedIds),
+          undo: () => useGroceryStore.getState().revertAdds(addedIds, preexisting),
         });
       }
     }

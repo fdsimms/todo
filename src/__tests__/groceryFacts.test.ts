@@ -1,4 +1,4 @@
-import { hasUserFacts, NO_RELATIONS, type ItemRelations } from '../utils/groceryFacts';
+import { hasUserFacts, linkedItemIds, type ItemRelations } from '../utils/groceryFacts';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, StoreAlias } from '../types';
@@ -45,16 +45,18 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
 }
 
 const BARE = makeItem('Nduja');
+const NO_LINKS: ReadonlySet<string> = new Set<string>();
 
-function relations(over: Partial<ItemRelations> = {}): ItemRelations {
-  return { ...NO_RELATIONS, ...over };
+/** The set `hasUserFacts` actually takes, built the way production builds it. */
+function linked(over: Partial<ItemRelations> = {}): ReadonlySet<string> {
+  return linkedItemIds({ products: [], subs: [], shops: [], aliases: [], ...over });
 }
 
 describe('hasUserFacts', () => {
   // The population clearList is allowed to sweep: typed once, never shopped
   // for, never spoken about.
   it('is false for a row that is only a name', () => {
-    expect(hasUserFacts(BARE, NO_RELATIONS)).toBe(false);
+    expect(hasUserFacts(BARE, NO_LINKS)).toBe(false);
   });
 
   // Everything the row picks up by merely existing or by being put on a list
@@ -67,7 +69,7 @@ describe('hasUserFacts', () => {
     ['a list slot', { onList: true, sortOrder: 9, lastAddedAt: '2026-08-01T00:00:00.000Z' }],
     ["this trolley's either/or", { choiceGroup: 'group-1' }],
   ])('stays sweepable with %s', (_label, patch) => {
-    expect(hasUserFacts(makeItem('Nduja', patch), NO_RELATIONS)).toBe(false);
+    expect(hasUserFacts(makeItem('Nduja', patch), NO_LINKS)).toBe(false);
   });
 
   it.each([
@@ -88,22 +90,22 @@ describe('hasUserFacts', () => {
     ['a typed note', { note: 'the green one' }],
     ['a hand-set quantity', { quantity: '2 bags', quantityFromRecipe: false }],
   ])('is true for %s', (_label, patch) => {
-    expect(hasUserFacts(makeItem('Nduja', patch), NO_RELATIONS)).toBe(true);
+    expect(hasUserFacts(makeItem('Nduja', patch), NO_LINKS)).toBe(true);
   });
 
   it('is true for a row with a box named under it', () => {
     const product = { id: 'p1', itemId: BARE.id } as ItemProduct;
-    expect(hasUserFacts(BARE, relations({ products: [product] }))).toBe(true);
+    expect(hasUserFacts(BARE, linked({ products: [product] }))).toBe(true);
   });
 
   it('is true for a row with a store link', () => {
     const link = { itemId: BARE.id, shopId: 's1' } as ItemShopLink;
-    expect(hasUserFacts(BARE, relations({ shops: [link] }))).toBe(true);
+    expect(hasUserFacts(BARE, linked({ shops: [link] }))).toBe(true);
   });
 
   it('is true for a row with a receipt alias', () => {
     const alias = { id: 'a1', itemId: BARE.id, shopId: 's1' } as StoreAlias;
-    expect(hasUserFacts(BARE, relations({ aliases: [alias] }))).toBe(true);
+    expect(hasUserFacts(BARE, linked({ aliases: [alias] }))).toBe(true);
   });
 
   // Both ends. "Margarine instead of butter" is a fact about margarine's row
@@ -111,13 +113,13 @@ describe('hasUserFacts', () => {
   it('is true for either end of a substitute link', () => {
     const other = makeItem('Butter');
     const link = { itemId: other.id, subItemId: BARE.id } as ItemSubLink;
-    expect(hasUserFacts(BARE, relations({ subs: [link] }))).toBe(true);
-    expect(hasUserFacts(other, relations({ subs: [link] }))).toBe(true);
+    expect(hasUserFacts(BARE, linked({ subs: [link] }))).toBe(true);
+    expect(hasUserFacts(other, linked({ subs: [link] }))).toBe(true);
   });
 
   it('ignores links belonging to other items', () => {
     const link = { itemId: 'someone-else', subItemId: 'also-not-this-one' } as ItemSubLink;
     const product = { id: 'p1', itemId: 'someone-else' } as ItemProduct;
-    expect(hasUserFacts(BARE, relations({ subs: [link], products: [product] }))).toBe(false);
+    expect(hasUserFacts(BARE, linked({ subs: [link], products: [product] }))).toBe(false);
   });
 });

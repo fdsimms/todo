@@ -2723,8 +2723,8 @@ export function dbSetGroceryHiddenAisles(hidden: string[]): void {
 }
 
 // name_key → the aisle the user filed that item under, which is why it lives
-// here and not on the row: a provisional grocery row is deleted when it comes
-// off the list, and the filing has to outlive it. Same tolerance for a corrupt
+// here and not on the row: `clearList` sweeps a row carrying nothing and
+// `deleteItem` takes any row at all, and the filing has to outlive either. Same tolerance for a corrupt
 // value as the walk order above — a bad blob costs the memory, not the launch.
 export function dbGetGroceryAisleOverrides(): Record<string, string> {
   const val = dbGetSetting('grocery_aisle_overrides');
