@@ -55,9 +55,23 @@ interface Props {
   visible: boolean;
   /** Which tab to open on — the add menu's item decides, see RecipesScreen. */
   initialMode?: RecipeInputMode;
+  /**
+   * A link to open with already in the field, for an import the user didn't
+   * type: a page saved from another app's share sheet (see
+   * `useSharedRecipeLinks`). Only meaningful alongside `initialMode="link"`.
+   * The run still waits for a tap — this fills the box, it doesn't press Import.
+   */
+  initialUrl?: string | null;
   onClose: () => void;
-  /** Handed the new (or matched existing) recipe id; the caller navigates. */
-  onCreated: (recipeId: string) => void;
+  /**
+   * Handed the new (or matched existing) recipe id; the caller navigates.
+   *
+   * `sourceUrl` is the page it was read off, when it was read off one, so a
+   * caller holding a queue of pages to import can tell *which* it just
+   * finished — the sheet's tabs mean the link it opened with isn't necessarily
+   * the source the recipe ended up with.
+   */
+  onCreated: (recipeId: string, sourceUrl: string | null) => void;
 }
 
 /**
@@ -96,10 +110,13 @@ interface Props {
  * unfold what they'd add, ticked by default because a new recipe has nothing
  * of the user's own for them to land on top of.
  */
-export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onCreated }: Props) {
+export function RecipeCreateSheet({
+  visible, initialMode = 'photo', initialUrl = null, onClose, onCreated,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
@@ -150,7 +167,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
   // land here, and each opens on its own tab rather than making that tap feel
   // ignored. Every other tab is still one tap away.
   const input = useRecipeImportSource(initialMode);
-  const { resolveSource, reset: resetInput } = input;
+  const { resolveSource, reset: resetInput, setMode, setUrl } = input;
 
   // "…and there's a salsa verde on page 45." Nothing is filtered out here for
   // an existing parent, because there isn't one yet — see importableReferences.
@@ -199,15 +216,21 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     if (!visible) reset();
   }, [visible, reset]);
 
-  // `input`'s own `mode` state only picks up `initialMode` on first mount —
-  // this sheet stays mounted for the screen's whole life, so a later tap on a
-  // different add-menu item (link vs. photo) changed the prop without the
-  // sheet re-opening on that tab. Synced here, on the same transition that
-  // opens the sheet.
-  const { setMode } = input;
+  // `input` keeps its own `mode` and `url` state, and both only pick up the
+  // props on first mount — while this sheet stays mounted for the screen's whole
+  // life. So a later tap on a different add-menu item (link vs. photo) changed
+  // `initialMode` without the sheet re-opening on that tab, and a page arriving
+  // from the share sheet arrives as a prop rather than as typing. Both are
+  // synced on the same transition that opens the sheet, which is also the only
+  // point *after* the reset above: that runs on close, and would wipe a value
+  // set any earlier.
   useEffect(() => {
-    if (visible) setMode(initialMode);
-  }, [visible, initialMode, setMode]);
+    if (!visible) return;
+    setMode(initialMode);
+    // Only when there is one — the add menu's two items open with an empty
+    // field, and clearing it here would fight the reset that just ran.
+    if (initialUrl) setUrl(initialUrl);
+  }, [visible, initialMode, initialUrl, setMode, setUrl]);
 
   const run = useCallback(async () => {
     setLoading(true);
@@ -306,7 +329,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
       // The store refused a name the live check said was free — the box changed
       // under a sheet left open. Land them on the recipe they were after.
       const existing = recipes.find(r => r.nameKey === groceryNameKey(cleaned));
-      if (existing) { onClose(); onCreated(existing.id); }
+      if (existing) { onClose(); onCreated(existing.id, input.page?.url ?? null); }
       return;
     }
     // Tapping Create can beat a field's own blur, so every value below is read
@@ -387,7 +410,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     // Close first, then navigate: a navigate fired from under a live pageSheet
     // renders the destination behind the sheet.
     onClose();
-    onCreated(recipe.id);
+    onCreated(recipe.id, page?.url ?? null);
   };
 
   const canCreate = !loading && !!extracted && !!cleaned && !duplicate;
@@ -557,7 +580,14 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
               </Text>
               <TouchableOpacity
                 activeOpacity={interaction.activeOpacity}
-                onPress={() => { haptics.tap(); onClose(); onCreated(duplicate.id); }}
+                // The page still counts as dealt with: they shared a recipe,
+                // it turned out to already be in the box, and this lands them
+                // on it. A queue entry the caller can now drop.
+                onPress={() => {
+                  haptics.tap();
+                  onClose();
+                  onCreated(duplicate.id, input.page?.url ?? null);
+                }}
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${duplicate.name}`}
               >
@@ -681,6 +711,7 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
               onEditQuantity={quantity => editIngredient(i, { quantity })}
               onEditSection={section => editIngredient(i, { section })}
               existingSections={existingSections}
+              catalogItems={groceryItems}
               sectionHeader={sectionHeader}
               note={coveredBy ? `made from the ${coveredBy} recipe` : null}
             />

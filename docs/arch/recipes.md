@@ -11,6 +11,51 @@ doesn't already cover.
 
 ---
 
+## Shared-in pages (`sharedRecipeLinks.ts`) — the iOS share sheet
+
+"dundundun" in another app's share sheet (NYT Cooking, Safari, a food blog) is an iOS **share
+extension**, `targets/todo-share/`, built as a second native target — read
+`docs/native-targets.md` before touching it or its config plugin.
+
+The round trip is: the extension captures a web address and appends it to a JSON array in the
+App Group container, the app drains that on launch and on foreground
+(`useSharedRecipeLinks` → `drainSharedLinks` on the widget bridge), and the queue lands in
+`useSharedLinkStore`, which puts a `SharedLinkBanner` at the top of Recipes. Tapping Import
+opens the ordinary `RecipeCreateSheet` on its link tab with the address already in the field.
+
+- **The extension captures the address and nothing else.** It's a separate process with a hard
+  memory cap, no access to the app's SQLite file and no way to reach the API key in the app's
+  keychain, so fetching, extracting and writing a recipe row are all things only the app can
+  do. It also can't open the app: `NSExtensionContext.open(_:)` isn't available to this
+  extension point, which is why the hand-off is a queue rather than a launch.
+- **A shared page waits for a tap; it does not import itself.** The import is a page fetch plus
+  an Anthropic call billed to the user's own key, and spending that unasked — for something
+  shared in a supermarket aisle three days ago, possibly several at once — is a decision nobody
+  made. It also means a failure is reported in the sheet that caused it rather than after the
+  fact.
+- **The queue is persisted to the `settings` table the moment it's drained.** `drainSharedLinks`
+  *deletes* the file it reads, which is the only way a page shared once doesn't queue again on
+  every launch — so the store is the sole remaining copy from that instant, and a force-quit
+  before the user gets round to the banner would otherwise lose a recipe they explicitly saved.
+  That also makes it the one store holding state in memory *and* writing through to `settings`,
+  so `useDemoStore` has to `reload()` it on the way in and out; every other store gets that from
+  its own `initialize()`.
+- **What gets dismissed is the source the recipe ended up with**, not the link the sheet opened
+  with (`onCreated(recipeId, sourceUrl)`). The tabs stay live, so someone who opened the banner
+  and then pasted a different recipe hasn't dealt with the shared page, and it stays queued.
+- **One banner at a time, oldest first.** Addresses are canonicalised through
+  `normalizeRecipeUrl` on the way in, so the queue holds exactly what the import would accept
+  and a re-share collapses onto the entry already there rather than jumping the line.
+- **The banner is gated on `anthropicApiKey`, the same as the add button's import menu.**
+  Without a key there is no import to offer, and this would otherwise be the one route into a
+  sheet that can only end at "No API key". The extension keeps queueing either way — it's a
+  separate process and knows nothing about the keychain — and the queue persists, so a page
+  shared before a key is added turns up once there's something to import it with rather than
+  being dropped. The key lives in the keychain rather than the `settings` table, so this reads
+  the same inside demo mode as outside it.
+
+---
+
 ## Composed recipes (`Recipe.components`) — one recipe used inside another
 
 "Steak with mashed potatoes" and "Salmon with mashed potatoes" are two recipes and one shared
@@ -224,6 +269,31 @@ choosable before anything's filed under it.
   update the internal hover state, mirroring `ReorderableList`'s same-named prop but with the
   payload this list's caller actually needs. Nothing about the drag itself changes for a caller that
   doesn't pass it.
+
+## Linking an ingredient to an existing item (`CatalogLinkPicker.tsx`)
+
+`RecipeIngredient.nameKey` is always *derived* from `name` (`groceryNameKey`, never written
+directly — see `docs/arch/groceries.md`'s "the join is nameKey and nothing else"), so an imported
+or hand-typed line that spells a thing slightly differently than the catalog does mints a second,
+near-duplicate row instead of resolving to the one you already have. `CatalogLinkPicker` is a
+fuzzy search over the catalog (`rankGrocerySuggestions`, the same ranking `GroceryAddField` uses)
+that a line can open to fix that.
+
+- **Picking a result renames the line to the catalog item's own name; nothing writes a key.**
+  That's the same `commit(item.name)` convergence `GroceryAddField`'s suggestions use — the
+  existing derivation takes it from there, so this needed no schema change and no
+  `nameKeyOverride` field. Don't add one; it would be a second way to say the same thing and the
+  two could disagree.
+- **It's the same component in both places it's offered**: the import review row
+  (`ExtractedIngredientRow`, behind a link icon that also reports whether the line as typed
+  already resolves to something) and the manual editor (`RecipeIngredientSheet`, behind a "Link
+  to an existing item" action). One picker, not two, for the same reason the ingredient/section
+  pickers elsewhere in this doc are shared rather than duplicated per host.
+- **It doesn't replace `suggestShorterCatalogName`'s "Did you mean" nudge.** That one is a
+  narrower, zero-interaction correction for one specific case (a leading prep/unit word dropped
+  from an otherwise-exact catalog match) and stays exactly as safe as it always was; this picker
+  is the general, explicit tool for everything else, including a name that doesn't share a
+  leading word with its catalog match at all.
 
 ## Quantities (`quantity.ts`) — the one place a quantity string is read
 

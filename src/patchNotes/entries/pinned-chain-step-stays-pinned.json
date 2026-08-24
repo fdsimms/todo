@@ -1,0 +1,4 @@
+{
+  "message": "Pinning a chain task now keeps each step pinned as it advances, until the chain finishes or you unpin it yourself",
+  "date": "2026-08-24"
+}

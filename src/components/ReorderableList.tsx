@@ -90,8 +90,20 @@ interface Props<T> {
    * describes a gap, and while rows are displaced to open that gap the row
    * it names is no longer where the user sees it. `dropDisabled` freezes the
    * displacement so the two agree again.
+   *
+   * `overHeader` is the same idea for `ListHeaderComponent`: true while the
+   * card sits over the measured header region (see that prop). It's a
+   * companion to `overIndex` rather than a value inside it — `overIndex` is
+   * always null there anyway, since the header holds no row — so a caller
+   * wanting a header drop target reads this instead of trying to infer it
+   * from `overIndex === null` (which is also true past the last row).
    */
-  onDragMove?: (info: { dx: number; hoverIndex: number | null; overIndex: number | null }) => void;
+  onDragMove?: (info: {
+    dx: number;
+    hoverIndex: number | null;
+    overIndex: number | null;
+    overHeader: boolean;
+  }) => void;
   /**
    * Suspends reordering for the rest of the drag while true: the list settles
    * back to its resting layout (no gap opens, no rows shift) and a drop
@@ -107,6 +119,15 @@ interface Props<T> {
    * "it went in there" rather than "it snapped back and then vanished".
    */
   dropIntoIndex?: number | null;
+  /**
+   * Absorb the drop into `ListHeaderComponent` instead of a row (paired with
+   * `dropDisabled`, same as `dropIntoIndex`). The floating card settles at
+   * the top of the list and dissolves, same visual treatment a row-absorb
+   * gets. Mutually exclusive with `dropIntoIndex` in practice — a card can
+   * only be over one drop target at a time (see `overHeader`) — but nothing
+   * here enforces that; the caller's own intent tracking does.
+   */
+  dropIntoHeader?: boolean;
   /** Restricts how far the active row may move, e.g. to keep it within its own section. */
   dragRange?: (data: T[], activeIndex: number) => [number, number];
   /**
@@ -215,6 +236,7 @@ export function ReorderableList<T>({
   onDragMove,
   dropDisabled = false,
   dropIntoIndex = null,
+  dropIntoHeader = false,
   dragRange,
   rowElevated,
   placeholderStyle,
@@ -294,6 +316,14 @@ export function ReorderableList<T>({
   const dropDisabledRef = useRef(dropDisabled);
   const dropIntoIndexRef = useRef(dropIntoIndex);
   dropIntoIndexRef.current = dropIntoIndex;
+  const dropIntoHeaderRef = useRef(dropIntoHeader);
+  dropIntoHeaderRef.current = dropIntoHeader;
+  // Measured height of ListHeaderComponent, so a drop target over it can be
+  // hit-tested the same way a row is — see overHeaderNow. Zeroed whenever the
+  // header itself goes away (e.g. the last pinned task is unpinned mid-list),
+  // so a stale height doesn't keep claiming a region that no longer renders.
+  const headerHeightRef = useRef(0);
+  if (!ListHeaderComponent) headerHeightRef.current = 0;
   const dragRangeRef = useRef(dragRange);
   const onEndReachedRef = useRef(onEndReached);
   const onEndReachedThresholdRef = useRef(onEndReachedThreshold);
@@ -636,6 +666,17 @@ export function ReorderableList<T>({
     return rowIndexAtContentY(tops, heights, y);
   };
 
+  // Whether the card is physically over ListHeaderComponent right now — the
+  // header equivalent of rowUnderCard, since the header holds no row for that
+  // to land on. rowIndexAtContentY already returns null there (content-Y 0 is
+  // below every row's top), so this only adds "and it's specifically the
+  // header, not past the last row" on top of that same measurement.
+  const overHeaderNow = (): boolean => {
+    if (headerHeightRef.current <= 0) return false;
+    const y = cardCenterContentY();
+    return y !== null && y < headerHeightRef.current;
+  };
+
   const updateHover = () => {
     const ai = activeIndexRef.current;
     // Frozen: leave hoverIndex wherever the caller's capture left it (its own
@@ -725,15 +766,19 @@ export function ReorderableList<T>({
     const hi = hoverIndexRef.current;
     const result = hi !== null && hi !== ai ? moveItem(dataRef.current, ai, hi) : null;
 
-    // Where the card finishes: onto the row that's absorbing it if the caller
-    // claimed the drop, otherwise into the open gap (the same content position
-    // the displaced rows opened up). Committing only after the card covers the
-    // destination masks the overlay→row swap.
+    // Where the card finishes: onto the row (or header) that's absorbing it
+    // if the caller claimed the drop, otherwise into the open gap (the same
+    // content position the displaced rows opened up). Committing only after
+    // the card covers the destination masks the overlay→row swap.
     const into = dropIntoIndexRef.current;
+    const intoHeader = dropIntoHeaderRef.current;
     const intoItem = into !== null && into >= 0 && into !== ai ? dataRef.current[into] : undefined;
-    const slotContentY = intoItem !== undefined
-      ? (layoutYRef.current.get(keyExtractor(intoItem)) ?? 0)
-      : gapContentY(ai, hi ?? ai);
+    const absorbed = intoItem !== undefined || intoHeader;
+    const slotContentY = intoHeader
+      ? 0
+      : intoItem !== undefined
+        ? (layoutYRef.current.get(keyExtractor(intoItem)) ?? 0)
+        : gapContentY(ai, hi ?? ai);
     const slotTop = slotContentY - scrollOffsetRef.current;
     Animated.parallel([
       Animated.timing(overlayY, {
@@ -742,15 +787,15 @@ export function ReorderableList<T>({
         useNativeDriver: true,
       }),
       Animated.timing(overlayX, { toValue: 0, duration: 160, useNativeDriver: true }),
-      // Absorbed drops shrink and fade into the target row; ordinary drops
-      // just settle back to their resting size.
+      // Absorbed drops shrink and fade into the target row/header; ordinary
+      // drops just settle back to their resting size.
       Animated.timing(overlayScale, {
-        toValue: intoItem !== undefined ? 0.88 : 1,
+        toValue: absorbed ? 0.88 : 1,
         duration: 160,
         useNativeDriver: true,
       }),
       Animated.timing(overlayOpacity, {
-        toValue: intoItem !== undefined ? 0 : 1,
+        toValue: absorbed ? 0 : 1,
         duration: 160,
         useNativeDriver: true,
       }),
@@ -916,7 +961,12 @@ export function ReorderableList<T>({
         overlayX.setValue(dx);
         updateHover();
         maybeAutoscroll();
-        onDragMoveRef.current?.({ dx, hoverIndex: hoverIndexRef.current, overIndex: rowUnderCard() });
+        onDragMoveRef.current?.({
+          dx,
+          hoverIndex: hoverIndexRef.current,
+          overIndex: rowUnderCard(),
+          overHeader: overHeaderNow(),
+        });
       },
       onPanResponderRelease: () => commitDrag(),
       onPanResponderTerminate: () => {
@@ -1033,7 +1083,13 @@ export function ReorderableList<T>({
           onScrollSettle?.();
         }}
       >
-        {ListHeaderComponent}
+        {ListHeaderComponent != null && (
+          // Measured purely so a drag can hit-test against it (overHeaderNow);
+          // an unstyled wrapper adds nothing to the flex layout it sits in.
+          <View onLayout={e => { headerHeightRef.current = e.nativeEvent.layout.height; }}>
+            {ListHeaderComponent}
+          </View>
+        )}
         {renderData.length === 0 && ListEmptyComponent}
         {renderData.map(item => {
           const key = keyExtractor(item);

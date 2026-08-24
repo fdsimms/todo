@@ -7,6 +7,15 @@ private let snapshotFileName = "widget_data.json"
 // Must match the same literal in TodoWidgetData.swift — a separate Xcode
 // target/compilation unit, so the string can't be shared directly.
 private let pendingCompletionsFileName = "widget_pending_completions.json"
+// Likewise, matching SharedRecipeQueue.swift in the share extension target.
+//
+// This module is the app's only App Group accessor, which is why a queue
+// written by the *share* extension is drained through something called
+// TodoWidgetBridge. The alternative was a fourth local expo module carrying one
+// function, its own podspec and its own autolinking — see docs/native-targets.md
+// on what a podspec costs a second target. The name is the widget's by history;
+// the job is the container's.
+private let sharedLinksFileName = "shared_recipe_links.json"
 
 // Mirrors the TimerRun shape written by src/utils/liveActivity.ts —
 // JSONDecoder maps camelCase keys onto these properties automatically.
@@ -111,6 +120,34 @@ public class TodoWidgetBridgeModule: Module {
         try? FileManager.default.removeItem(at: fileURL)
       }
       return ids
+    }
+
+    // Reads and clears the queue of recipe page URLs the share extension
+    // (ShareViewController, in the TodoShareExtension process) captured from
+    // another app's share sheet. Same read-and-delete shape as
+    // drainPendingCompletions above and for the same reason: the extension can
+    // only say "this page", since fetching it, extracting it and writing a
+    // recipe row all need the app's database, its API key and the JS store
+    // actions. See src/utils/sharedRecipeLinks.ts for what happens next.
+    AsyncFunction("drainSharedLinks") { () -> [String] in
+      var urls: [String] = []
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(sharedLinksFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        guard let decoded = try? JSONDecoder().decode([String].self, from: data) else { return }
+        urls = decoded
+        try? FileManager.default.removeItem(at: fileURL)
+      }
+      return urls
     }
 
     // ─── Live Activities (running timers) ─────────────────────────────────

@@ -1,6 +1,7 @@
 import type { Task } from '../types';
 import { isQuotaTask, isRecurrenceNotYetDue } from './visibilityUtils';
 import { asksOnCompletion } from './deliverables';
+import { activeMealSlotStepId } from './mealSlotTasks';
 
 /**
  * What a tap on a task's checkbox should do, for the surfaces that show a
@@ -19,6 +20,8 @@ export type CompletionTap =
   | 'complete'
   /** A decision task (see Task.deliverableKind) — ask for the answer first. */
   | 'ask'
+  /** A meal-slot task's own "Choose <meal>" step — open the meal picker, not the checkmark. */
+  | 'pick-meal'
   /** A daily target below its count: this tap logs one unit, not the lot. */
   | 'log-unit'
   /** Already done: put it back on the list. */
@@ -51,6 +54,10 @@ export function completionTapFor(task: Task): CompletionTap {
     const reachesTarget = !task.allowOvershoot && task.progressCount + 1 >= task.targetCount!;
     if (!reachesTarget) return 'log-unit';
   }
+  // Same reasoning as `ask`, checked first: this step isn't answered by
+  // ticking it, it's answered by putting something in the slot — see
+  // mealSlotChain in mealSlotTasks.ts.
+  if (activeMealSlotStepId(task)?.endsWith('-choose')) return 'pick-meal';
   if (asksOnCompletion(task)) return 'ask';
   return 'complete';
 }

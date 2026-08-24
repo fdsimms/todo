@@ -1358,7 +1358,8 @@ function createMealSlotTask(get: () => MealPlanStore, entry: MealPlanEntry): voi
   addTask(
     // Re-read after ensureGeneratedTaskCategory, which may have just filled it.
     mealSlotTaskDraft(
-      entry.date, entry.slot, entry, useSettingsStore.getState().mealCookTaskCategory, recipeMinutesFor(entry.recipeId)
+      entry.date, entry.slot, entry, useSettingsStore.getState().mealCookTaskCategory, recipeMinutesFor(entry.recipeId),
+      useSettingsStore.getState().mealSlotStepEstimates
     ),
     derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
     { skipCategoryDefault: true, skipTitleRules: true },
@@ -1400,7 +1401,10 @@ function reconcileMealSlot(get: () => MealPlanStore, entry: Pick<MealPlanEntry, 
     return;
   }
 
-  const updates = mealSlotDrift(live, dayKey, slot, current, recipeMinutesFor(current?.recipeId ?? null));
+  const updates = mealSlotDrift(
+    live, dayKey, slot, current, recipeMinutesFor(current?.recipeId ?? null),
+    useSettingsStore.getState().mealSlotStepEstimates
+  );
   // skipPostponeCount for reconcileGeneratedTask's reason: this row's date is
   // the slot's date, and dragging Tuesday's dinner to Friday is not the user
   // ducking anything.

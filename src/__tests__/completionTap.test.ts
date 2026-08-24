@@ -211,4 +211,39 @@ describe('completionTapFor', () => {
   it('lets a blocked task be ticked, the same as its row does', () => {
     expect(completionTapFor({ ...baseTask, blockedById: 'other-task' })).toBe('complete');
   });
+
+  describe('a meal-slot task', () => {
+    const chooseChain = [
+      { id: 'lunch-choose', title: 'Choose lunch', estimatedMinutes: null },
+      { id: 'lunch-prepare', title: 'Prepare lunch', estimatedMinutes: null },
+      { id: 'lunch-eat', title: 'Eat lunch', estimatedMinutes: null },
+    ];
+    const chooseStep = {
+      ...baseTask,
+      generatedKind: 'mealSlot',
+      generatedSourceId: '2025-06-10#lunch',
+      chainEnabled: true,
+      chainIndex: 0,
+      chainItems: chooseChain,
+    } as Task;
+
+    it('opens the meal picker on the unanswered "Choose" step instead of ticking it', () => {
+      expect(completionTapFor(chooseStep)).toBe('pick-meal');
+    });
+
+    it('ticks normally once the chain has moved past Choose', () => {
+      expect(completionTapFor({ ...chooseStep, chainIndex: 1 })).toBe('complete');
+    });
+
+    it('ticks normally on a single-step slot (leftover/takeout answer)', () => {
+      expect(
+        completionTapFor({
+          ...chooseStep,
+          chainEnabled: false,
+          chainIndex: 0,
+          chainItems: [{ id: 'lunch-eat', title: 'Eat lunch', estimatedMinutes: null }],
+        })
+      ).toBe('complete');
+    });
+  });
 });

@@ -32,13 +32,14 @@ import Reanimated, {
   runOnJS,
 } from 'react-native-reanimated';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { format } from 'date-fns';
 import { PinIcon } from './PinIcon';
 import type { Task } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, dayKeyToDate } from '../utils/dateUtils';
 import { isDateAnchored } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
@@ -61,7 +62,8 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { MEAL_PLAN_NUDGE_SLOT_COUNT, mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
-import { mealSlotOf } from '../utils/mealSlotTasks';
+import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
+import { usePlanMeal } from '../hooks/usePlanMeal';
 import {
   describeProjectQuiet,
   projectQuietDays,
@@ -74,6 +76,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { WhenPicker } from './WhenPicker';
 import { TaskBreakdownSheet } from './TaskBreakdownSheet';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
+import { RecipePickerSheet } from './RecipePickerSheet';
 import { PressableScale } from './PressableScale';
 import { usePaintSelectionRow } from './PaintSelection';
 import { SelectionDot } from './SelectionDot';
@@ -376,6 +379,8 @@ export const TaskItem = React.memo(function TaskItem({
   const [showWhenPicker, setShowWhenPicker] = useState(false);
   const [showBreakdown, setShowBreakdown] = useState(false);
   const [showDeliverablePrompt, setShowDeliverablePrompt] = useState(false);
+  const [showMealPicker, setShowMealPicker] = useState(false);
+  const { offerPrepTasksForEach } = usePlanMeal();
   // The postpone prompt's "Break it up" needs somewhere to send the user. With
   // a key it's the AI sheet; without one it falls back to the editor, where the
   // subtask field is. A row that can't do either (no onEdit) offers no pill.
@@ -729,6 +734,14 @@ export const TaskItem = React.memo(function TaskItem({
   // food, and a day's breakfast, lunch and dinner rows sit together under one
   // category with nothing between them saying which is which.
   const mealSlot = mealSlotOf(task);
+
+  // Whether the row's current step is the slot's own "Choose <meal>" step —
+  // always chainIndex 0 by construction (mealSlotChain puts it first), but
+  // checked by step id rather than index so a task that isn't this
+  // generator's at all reads as not-a-choose-step too.
+  const mealSlotChooseSource =
+    activeMealSlotStepId(task)?.endsWith('-choose') ? parseMealSlotSource(task.generatedSourceId) : null;
+  const planMeal = useMealPlanStore(s => s.planMeal);
 
   // A quiet project's review task: how long the project has actually been
   // silent, which is what the banner this replaced showed beside each name.
@@ -1088,6 +1101,15 @@ export const TaskItem = React.memo(function TaskItem({
       await haptics.error();
       return;
     }
+    // "Choose lunch" isn't answered by ticking it — it's answered by putting
+    // something in the slot. Picking a meal here rewrites this same row into
+    // "Cook X"/"Eat X" (see mealSlotDrift), so nothing is completed at all;
+    // the tap opens the picker instead of running the ordinary completion.
+    if (mealSlotChooseSource) {
+      await haptics.tap();
+      setShowMealPicker(true);
+      return;
+    }
     // The question comes before the animation, not after it: the row has to
     // still be there to cancel back to. Answering (or explicitly skipping)
     // then runs the ordinary completion, so nothing downstream — the hold, the
@@ -1396,6 +1418,8 @@ export const TaskItem = React.memo(function TaskItem({
                     ? `${task.title}, timer done, complete`
                     : mealPlanReady
                       ? `${task.title}, all ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned, complete`
+                    : mealSlotChooseSource
+                      ? `${task.title}, pick a meal`
                     : asksOnComplete
                       ? `Complete ${task.title}, asks for an answer`
                       : `Complete ${task.title}`
@@ -1481,10 +1505,12 @@ export const TaskItem = React.memo(function TaskItem({
             {!completing && !recurrenceNotYetDue && locked && (
               <Ionicons name="lock-closed" size={iconSize.xs} color={colors.textTertiary} />
             )}
-            {!completing && !completionLocked && asksOnComplete && (
+            {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource) && (
               // xs like the lock, not sm like the repeat: a "?" is tall where
               // the repeat glyph is wide and short, so the same nominal size
-              // fills far more of a 20pt box and reads as crowded.
+              // fills far more of a 20pt box and reads as crowded. Shared with
+              // asksOnComplete: both mean "this tap asks something before it
+              // completes anything," which is exactly what happens here too.
               <Ionicons name="help" size={iconSize.xs} color={colors.textTertiary} />
             )}
           </View>
@@ -2722,6 +2748,21 @@ export const TaskItem = React.memo(function TaskItem({
           // Cancel leaves the task exactly as it was — the tap is taken back,
           // not turned into an unanswered completion.
           onCancel={() => setShowDeliverablePrompt(false)}
+        />
+      )}
+      {showMealPicker && mealSlotChooseSource && (
+        <RecipePickerSheet
+          visible
+          dayKey={mealSlotChooseSource.dayKey}
+          dayLabel={format(dayKeyToDate(mealSlotChooseSource.dayKey), 'EEEE')}
+          defaultSlot={mealSlotChooseSource.slot}
+          forceSlot={mealSlotChooseSource.slot}
+          onPlan={planMeal}
+          // Same deferred offer the Meal Plan screen's own picker makes —
+          // this sheet is the same component, just mounted from a task row
+          // instead of that screen, so it gets the same prep-task ask for free.
+          onPlanned={offerPrepTasksForEach}
+          onClose={() => setShowMealPicker(false)}
         />
       )}
     </>

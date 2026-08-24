@@ -275,12 +275,24 @@ that ends the chain stamps `cookedAt` (`completesMealSlot`), and marking a meal 
 Plan screen walks the whole remaining chain rather than ticking one step and leaving "Eat dinner"
 outstanding on a night already logged.
 
-**The picker is reached by link, not hosted on Today.** An unanswered slot's `linkUrl` carries
-`&pick=<slot>`, which `openInAppUrl` routes to the Meal Plan screen with `RecipePickerSheet` already
-open on the right slot — the same call `projectReview` makes in reverse. A second copy of that sheet
-over Today would be a second place for "what am I eating" to be answered, which is how two of these
-drift apart. The link's slot beats the sheet's remembered one (`forceSlot`): "Choose lunch" named
-the slot before the sheet opened.
+**The picker opens two ways, and both mount the same `RecipePickerSheet` — there still isn't a second
+one.** An unanswered slot's `linkUrl` carries `&pick=<slot>`, which `openInAppUrl` routes to the Meal
+Plan screen with the sheet already open on the right slot — the same call `projectReview` makes in
+reverse, and the way to browse or replan the rest of that day alongside this one. Completing the row's
+own "Choose" step is the second way: `completionTapFor` returns `'pick-meal'` for it (checked via
+`activeMealSlotStepId(task)?.endsWith('-choose')`, always index 0 by construction), and both checkbox
+owners — `TaskItem.handleComplete` and `TaskCheckbox.runPress` — short-circuit on that the same way they
+already do for `asksOnComplete`/`'ask'`, mounting `RecipePickerSheet` locally instead of running the
+ordinary completion, with `dayKey`/`forceSlot` read off `parseMealSlotSource(task.generatedSourceId)`
+rather than off navigation params. **Nothing is completed by picking.** `planMeal`'s reconcile rewrites
+this same row from "Choose lunch" into "Cook X"/"Eat X" (`mealSlotDrift`, since `chainIndex` is still 0)
+exactly as it would if the pick had come from the Meal Plan screen — the checkbox tap never reaches
+`completeTask` at all. This is a deliberate reopening of the objection above, not a lapse of it: the
+thing that made a second copy wrong was a second *browsing* surface holding its own idea of what
+"today" is, and this isn't one — it's the identical component, given the one day+slot the row already
+names, with the sheet's own session state (`lastPickedSlot`, `planned`) starting fresh on each mount
+either way. The link's slot still beats the sheet's remembered one (`forceSlot`) from either entry
+point: "Choose lunch" named the slot before the sheet opened.
 
 - **They still write straight to Today**, rather than proposing into a review surface the way
   `deloadPlan`/`projectPull` do. That fork is real and was deliberately left alone here: it's a
