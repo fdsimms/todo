@@ -5,7 +5,7 @@
 //   ==== <name> ====        the section banners through the logic half
 //   <EditorGroup label=     the cards, in render order: Kind, Schedule,
 //                           Relationships, Organize, Priority & effort,
-//                           Task actions, Streaks, Convert
+//                           Task actions, Streaks
 //   makeStyles              styles, at the bottom
 //
 // Adding a field? Read "Editors are progressive disclosure" and "The task
@@ -65,7 +65,6 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { nudgeReminderPastMeeting } from '../utils/reminderNudge';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { useGroceryStore } from '../store/useGroceryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -1150,38 +1149,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setShowEmailField(false);
   };
 
-  /**
-   * Rescues a shopping item captured in the wrong place — "buy milk" typed
-   * into quick-add before you thought about which list it belonged on.
-   *
-   * Uses the live `title` rather than task.title so an edit in this session
-   * comes along, and goes through addByName so the usual parsing applies: the
-   * quantity is split off and a name already in the catalog is put back on the
-   * list rather than duplicated. Confirms because it deletes the task.
-   */
-  // ==== the other exits: send to groceries, cancel, delete ====
-  const handleSendToGroceries = () => {
-    if (!task) return;
-    const raw = title.trim() || task.title;
-    if (!raw) return;
-    Alert.alert(
-      'Convert to grocery item?',
-      `“${raw}” moves to your grocery list, and this task is deleted.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Convert',
-          onPress: () => {
-            useGroceryStore.getState().addByName(raw);
-            deleteTask(task.id);
-            haptics.success();
-            onClose();
-          },
-        },
-      ]
-    );
-  };
-
+  // ==== the other exits: cancel, delete ====
   // Save can fire before the custom link input's onBlur/onSubmitEditing has
   // committed its text to `linkUrl` state (e.g. tapping the header Save
   // button blurs the input and saves in the same gesture, so this render's
@@ -3766,44 +3734,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
         ]}
       />
-
-      {/* Gated as a whole, not just its row: its only entry needs a saved
-          top-level task, and EditorGroup with no rows still draws its card.
-          `kitchenEnabled` gates it for the same reason — the row's whole
-          effect is to move the task into a list that isn't in the menu. */}
-      {kitchenEnabled && task && !task.parentId && (
-      <EditorGroup
-        label="Convert"
-        searchTerms={searchTerms}
-        onMatchCount={reportMatches}
-        rows={[
-          ...(task && !task.parentId ? [{
-            key: 'groceries', label: 'Convert to grocery item', set: false,
-            keywords: ['shopping', 'grocery list', 'buy'],
-            node: (
-              <>
-                <TouchableOpacity
-                  style={styles.optionRow}
-                  onPress={handleSendToGroceries}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel="Convert to grocery item"
-                >
-                  <Ionicons name="cart-outline" size={18} color={colors.textSecondary} />
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionLabel}>Convert to grocery item</Text>
-                    <Text style={styles.optionHint}>
-                      Deletes the task and adds it to the grocery list — for a &ldquo;buy milk&rdquo; captured as a task
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </>
-            ),
-          }] : []),
-        ]}
-      />
-      )}
 
       {/* The two ways a task leaves the list, together and last. Archive was
           previously gated on the task repeating — collateral from sharing a
