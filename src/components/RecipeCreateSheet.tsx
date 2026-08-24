@@ -191,6 +191,16 @@ export function RecipeCreateSheet({ visible, initialMode = 'photo', onClose, onC
     if (!visible) reset();
   }, [visible, reset]);
 
+  // `input`'s own `mode` state only picks up `initialMode` on first mount —
+  // this sheet stays mounted for the screen's whole life, so a later tap on a
+  // different add-menu item (link vs. photo) changed the prop without the
+  // sheet re-opening on that tab. Synced here, on the same transition that
+  // opens the sheet.
+  const { setMode } = input;
+  useEffect(() => {
+    if (visible) setMode(initialMode);
+  }, [visible, initialMode, setMode]);
+
   const run = useCallback(async () => {
     setLoading(true);
     setError(null);
