@@ -102,12 +102,18 @@ export const QUICK_ADD_CHIP_LABELS: Record<QuickAddChip, string> = {
  * Chips shown before the toolbar folds the rest behind one "N more".
  *
  * Labelling every chip costs the width the icons used to save, so ten of them
- * is four rows of pills above the keyboard. Five is two rows — the ones a task
- * usually needs, with the contact-detail chips (link/phone/email) a tap away.
- * Anything already set is exempt from the cap, so a chip the typed title just
- * filled in never hides itself (`resolvePillOverflow`).
+ * is four rows of pills above the keyboard. Eight is three rows, with the
+ * contact-detail chips (phone/email) a tap away. Anything already set is
+ * exempt from the cap, so a chip the typed title just filled in never hides
+ * itself (`resolvePillOverflow`).
+ *
+ * This was five, on the arithmetic that five is two rows. It never was: the
+ * chips are content-sized and the widest pair ran a few points past the sheet's
+ * 294pt of inner width at 390pt, so only two ever landed on a line and five
+ * stood three rows tall with a ragged gap down the right. Three fit per line
+ * now (see `toolChip`'s padding in QuickAddModal), so three rows carries eight.
  */
-export const QUICK_ADD_CHIP_LIMIT = 5;
+export const QUICK_ADD_CHIP_LIMIT = 8;
 
 export const TASK_KINDS: readonly TaskKind[] = ['task', 'timed', 'target', 'chain'];
 
