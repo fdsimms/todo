@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
+import { widgetBridge } from '../utils/widgetBridge';
 
 /**
  * Collects recipe pages the share extension has queued in the App Group
@@ -27,15 +28,19 @@ export function useSharedRecipeLinks(): void {
     if (Platform.OS !== 'ios') return;
 
     const drain = async (): Promise<void> => {
+      // Null in demo mode, and skipping is the point: the queue holds real
+      // links shared in from Safari, and `enqueue` writes through to whichever
+      // database is live — which under demo is the throwaway one. Draining
+      // there consumes the link and then discards it with the scratch file, so
+      // a share the user made would vanish. Left alone, it's still queued for
+      // the next foreground after the demo ends.
+      const bridge = widgetBridge();
+      if (!bridge) return;
       try {
-        const { drainSharedLinks } = require('todo-widget-bridge') as {
-          drainSharedLinks: () => Promise<string[]>;
-        };
-        const urls = await drainSharedLinks();
+        const urls = await bridge.drainSharedLinks();
         if (urls.length > 0) enqueue(urls);
       } catch {
-        // No dev client build with the native module present (e.g. Expo Go), or
-        // a build predating drainSharedLinks — no-op either way.
+        // A build predating drainSharedLinks — no-op.
       }
     };
 

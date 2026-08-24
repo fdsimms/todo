@@ -590,6 +590,17 @@ interface SettingsStore {
   groceryImportConfirmedListId: string | null;
   /** remindersImportDelete's twin, for the grocery list. Same default, same rules. */
   groceryImportDelete: boolean;
+  // Whether that grocery list is a two-way mirror rather than an inbox: rows
+  // added here are written back as reminders, checking off either side checks
+  // off the other, and a delete on either side removes the other. Off by
+  // default, and it *replaces* the one-way drain for that list rather than
+  // running alongside it — see drainTargets in remindersImportSync.ts.
+  //
+  // Mutually exclusive with groceryImportDelete, which the setter enforces
+  // rather than leaving to the UI: the reminder is the mirror, so deleting it
+  // the moment it's read leaves nothing to mirror and every row would be
+  // written back out on the next pass, for ever.
+  groceryImportTwoWay: boolean;
   // Whether the schedule an import parses out of a reminder — its due date,
   // repeat, and alarm — waits on the Inbox row as a suggestion the user taps
   // to accept, or is simply applied. On by default: applying is what takes a
@@ -854,6 +865,7 @@ interface SettingsStore {
   setGroceryImportListId: (id: string | null) => void;
   setGroceryImportConfirmedListId: (id: string | null) => void;
   setGroceryImportDelete: (on: boolean) => void;
+  setGroceryImportTwoWay: (on: boolean) => void;
   setRemindersImportReview: (on: boolean) => void;
   setCalendarReadEnabled: (on: boolean) => void;
   setCalendarIds: (ids: string[]) => void;
@@ -950,6 +962,7 @@ const DEFAULT_SETTINGS = {
   remindersImportDelete: true,
   groceryImportEnabled: false,
   groceryImportDelete: true,
+  groceryImportTwoWay: false,
   remindersImportReview: true,
   calendarReadEnabled: false,
   reminderMeetingNudgeEnabled: true,
@@ -1204,7 +1217,7 @@ function parseNewTaskDefaults(raw: string | null): NewTaskDefaults {
   return result;
 }
 
-export const useSettingsStore = create<SettingsStore>(set => ({
+export const useSettingsStore = create<SettingsStore>((set, get) => ({
   dayResetTime: '00:00',
   morningStart: '06:00',
   afternoonStart: '12:00',
@@ -1295,6 +1308,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   groceryImportListId: null,
   groceryImportConfirmedListId: null,
   groceryImportDelete: true,
+  groceryImportTwoWay: false,
   remindersImportReview: true,
   calendarReadEnabled: false,
   calendarIds: [],
@@ -1503,6 +1517,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const groceryImportListId = dbGetSetting('groceryImportListId') || null;
     const groceryImportConfirmedListId = dbGetSetting('groceryImportConfirmedListId') || null;
     const groceryImportDelete = dbGetSetting('groceryImportDelete') !== 'false';
+    const groceryImportTwoWay = dbGetSetting('groceryImportTwoWay') === 'true';
     const calendarReadEnabled = dbGetSetting('calendarReadEnabled') === 'true';
     const calendarIds = parseCalendarIds(dbGetSetting('calendarIds'));
     // '' persists as "not chosen", matching mealCookTaskCategory. Nothing
@@ -1603,7 +1618,7 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2209,6 +2224,22 @@ export const useSettingsStore = create<SettingsStore>(set => ({
   setGroceryImportDelete(on: boolean) {
     dbSetSetting('groceryImportDelete', on ? 'true' : 'false');
     set({ groceryImportDelete: on });
+    // Deleting the reminder is what one-way capture is built on and what a
+    // mirror cannot survive — see groceryImportTwoWay. Enforced on both setters
+    // so the two can never be on together, whichever one was touched last.
+    if (on && get().groceryImportTwoWay) {
+      dbSetSetting('groceryImportTwoWay', 'false');
+      set({ groceryImportTwoWay: false });
+    }
+  },
+
+  setGroceryImportTwoWay(on: boolean) {
+    dbSetSetting('groceryImportTwoWay', on ? 'true' : 'false');
+    set({ groceryImportTwoWay: on });
+    if (on && get().groceryImportDelete) {
+      dbSetSetting('groceryImportDelete', 'false');
+      set({ groceryImportDelete: false });
+    }
   },
 
   setRemindersImportReview(on: boolean) {
@@ -2357,6 +2388,12 @@ export const useSettingsStore = create<SettingsStore>(set => ({
     dbSetSetting('remindersImportConfirmedListId', '');
     dbSetSetting('groceryImportListId', '');
     dbSetSetting('groceryImportConfirmedListId', '');
+    // And the mirror's link record, for the same reason: a link holds the state
+    // its pair last agreed on, and reset has just switched the mirror off. Left
+    // behind, everything done in either app meanwhile would be read against a
+    // stale shadow the moment the same list was picked again — an edit made
+    // while nothing was watching is not a change to mirror.
+    dbSetSetting('groceryImportLinks', '');
     // Same reasoning as the two import list ids: reset stops the write
     // rather than leaving it pointed at a calendar reset didn't ask about.
     // Per-task deadlineOnCalendar flags aren't settings and aren't touched —

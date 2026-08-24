@@ -4,6 +4,7 @@ import type { Shop } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { isTripLive } from './activeTrip';
+import { widgetBridge } from './widgetBridge';
 
 /**
  * Drives the "shopping trip" Live Activity (Lock Screen + Dynamic Island) —
@@ -52,21 +53,16 @@ export function buildTripRun(
   return { shopName, startedAtMs: Date.parse(tripStartedAt) };
 }
 
-// Lazily required, same shape as syncNativeTimerActivities in liveActivity.ts,
-// so importing this module never crashes in Expo Go or on Android, where the
-// local `todo-widget-bridge` native module doesn't exist.
+// Through widgetBridge(), same as the other two Live Activities. The demo
+// gate it carries matters most here: seedDemoData starts a trip of its own,
+// so an ungated sync puts a fake shop on the real lock screen the moment demo
+// mode is entered, on a default install.
 function syncNativeTripActivity(run: TripRun | null): void {
-  if (Platform.OS !== 'ios') return;
-  try {
-    const { syncTripLiveActivity } = require('todo-widget-bridge') as {
-      syncTripLiveActivity: (jsonString: string) => Promise<boolean>;
-    };
-    // Fire-and-forget: nothing here needs to block on the native reconcile
-    // completing, and a failure must never surface anywhere in the app UI.
-    syncTripLiveActivity(run ? JSON.stringify(run) : '').catch(() => {});
-  } catch {
-    // No dev client build with the native module present (e.g. Expo Go) — no-op.
-  }
+  const bridge = widgetBridge();
+  if (!bridge) return;
+  // Fire-and-forget: nothing here needs to block on the native reconcile
+  // completing, and a failure must never surface anywhere in the app UI.
+  bridge.syncTripLiveActivity(run ? JSON.stringify(run) : '').catch(() => {});
 }
 
 // Keeps the shopping-trip Live Activity in sync with tripShopId/tripStartedAt.

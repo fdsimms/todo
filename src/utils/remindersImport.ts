@@ -362,6 +362,26 @@ function creationTime(reminder: Reminder): number | null {
 }
 
 /**
+ * Two things said in a row should land in the order they were said. Anything
+ * undated sorts last rather than to the epoch, keeping its relative order.
+ *
+ * Shared with the two-way mirror (`groceryReminderMirror.ts`), which needs the
+ * same order over a set the filter below would have thrown away — a completed
+ * reminder is not importable but is very much still mirrored.
+ */
+export function sortRemindersByCreation(reminders: readonly Reminder[]): Reminder[] {
+  return reminders
+    .map((reminder, index) => ({ reminder, index, at: creationTime(reminder) }))
+    .sort((a, b) => {
+      if (a.at === null && b.at === null) return a.index - b.index;
+      if (a.at === null) return 1;
+      if (b.at === null) return -1;
+      return a.at === b.at ? a.index - b.index : a.at - b.at;
+    })
+    .map(entry => entry.reminder);
+}
+
+/**
  * Everything in a fetched list we're willing to import *and then delete*,
  * oldest first. Nothing outside this array is ever touched.
  *
@@ -389,17 +409,7 @@ export function importableReminders(
     return true;
   });
 
-  // Two things said in a row should land in the order they were said. Anything
-  // undated sorts last rather than to the epoch, keeping its relative order.
-  return kept
-    .map((reminder, index) => ({ reminder, index, at: creationTime(reminder) }))
-    .sort((a, b) => {
-      if (a.at === null && b.at === null) return a.index - b.index;
-      if (a.at === null) return 1;
-      if (b.at === null) return -1;
-      return a.at === b.at ? a.index - b.index : a.at - b.at;
-    })
-    .map(entry => entry.reminder);
+  return sortRemindersByCreation(kept);
 }
 
 /**
