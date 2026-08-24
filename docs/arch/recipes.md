@@ -270,6 +270,31 @@ choosable before anything's filed under it.
   payload this list's caller actually needs. Nothing about the drag itself changes for a caller that
   doesn't pass it.
 
+## Linking an ingredient to an existing item (`CatalogLinkPicker.tsx`)
+
+`RecipeIngredient.nameKey` is always *derived* from `name` (`groceryNameKey`, never written
+directly — see `docs/arch/groceries.md`'s "the join is nameKey and nothing else"), so an imported
+or hand-typed line that spells a thing slightly differently than the catalog does mints a second,
+near-duplicate row instead of resolving to the one you already have. `CatalogLinkPicker` is a
+fuzzy search over the catalog (`rankGrocerySuggestions`, the same ranking `GroceryAddField` uses)
+that a line can open to fix that.
+
+- **Picking a result renames the line to the catalog item's own name; nothing writes a key.**
+  That's the same `commit(item.name)` convergence `GroceryAddField`'s suggestions use — the
+  existing derivation takes it from there, so this needed no schema change and no
+  `nameKeyOverride` field. Don't add one; it would be a second way to say the same thing and the
+  two could disagree.
+- **It's the same component in both places it's offered**: the import review row
+  (`ExtractedIngredientRow`, behind a link icon that also reports whether the line as typed
+  already resolves to something) and the manual editor (`RecipeIngredientSheet`, behind a "Link
+  to an existing item" action). One picker, not two, for the same reason the ingredient/section
+  pickers elsewhere in this doc are shared rather than duplicated per host.
+- **It doesn't replace `suggestShorterCatalogName`'s "Did you mean" nudge.** That one is a
+  narrower, zero-interaction correction for one specific case (a leading prep/unit word dropped
+  from an otherwise-exact catalog match) and stays exactly as safe as it always was; this picker
+  is the general, explicit tool for everything else, including a name that doesn't share a
+  leading word with its catalog match at all.
+
 ## Quantities (`quantity.ts`) — the one place a quantity string is read
 
 `quantity` is free text everywhere it's stored (`RecipeIngredient.quantity`, `GroceryItem.quantity`,

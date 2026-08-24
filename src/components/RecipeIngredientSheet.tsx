@@ -33,6 +33,8 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 import { PillGroup } from './PillGroup';
 import { GroceryItemSheet } from './GroceryItemSheet';
+import { CatalogLinkPicker } from './CatalogLinkPicker';
+import { InlineAction } from './InlineAction';
 
 interface Props {
   visible: boolean;
@@ -110,6 +112,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // presentation while this one is up. Same call GroceryCatalogSheet makes, and it's
   // what keeps this sheet underneath while the item is edited.
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  // Whether the "link to an existing item" picker is open — closed whenever a
+  // different ingredient is opened, same as editingItemId below.
+  const [linkOpen, setLinkOpen] = useState(false);
 
   useEffect(() => {
     if (!ingredient) return;
@@ -123,6 +128,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setAisle(ingredient.aisle);
     setNoSwap(!!ingredient.noSwap);
     setEditingItemId(null);
+    setLinkOpen(false);
   }, [ingredient]);
 
   // The catalog row this line resolves to. Above the early return, like every
@@ -317,6 +323,31 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
               <Text style={styles.suggestionDetail}>Already in your catalog.</Text>
             </View>
           </TouchableOpacity>
+        )}
+
+        <InlineAction
+          label={catalogItem ? 'Choose a different item' : 'Link to an existing item'}
+          icon="link-outline"
+          variant="neutral"
+          style={styles.linkAction}
+          onPress={() => { haptics.tap(); animateLayout(); setLinkOpen(v => !v); }}
+          accessibilityLabel={
+            catalogItem
+              ? `Choose a different existing item for ${catalogItem.name}`
+              : 'Link this line to an existing item in your groceries'
+          }
+        />
+        {linkOpen && (
+          <CatalogLinkPicker
+            items={groceryItems}
+            initialQuery={name}
+            excludeItemId={catalogItem?.id}
+            onPick={item => {
+              setName(item.name);
+              animateLayout();
+              setLinkOpen(false);
+            }}
+          />
         )}
 
         <View style={styles.separator} />
@@ -733,6 +764,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
+  },
+  linkAction: {
+    marginTop: spacing.sm,
+    alignSelf: 'flex-start',
   },
   suggestionDetail: {
     color: colors.textSecondary,

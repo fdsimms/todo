@@ -190,6 +190,17 @@ export function resolveDrop(
   // own separate numbering (as this used to) is what made "task above stack"
   // unrepresentable — the two orders had nothing to compare.
   let rank = 0;
+  // Today's "Hide categories" option strips every category header out of the
+  // dropped array before it reaches here (see stripCategoryHeaders in
+  // TodayScreen), so `currentSection` would never get set and every row
+  // would read as "above every header" — the deliberate uncategorize rule
+  // above, but firing on the whole list instead of the one dragged task.
+  // With no header to derive a category from, a drop is a pure reorder: keep
+  // each row's own category. A list that's genuinely all-uncategorized hits
+  // this same branch and is unaffected, since there'd be nothing to change.
+  const hasCategoryHeaders = reordered.some(
+    item => item.type === 'header' && item.label !== LATER_TODAY_LABEL,
+  );
 
   for (const item of reordered) {
     if (item.type === 'header') {
@@ -205,7 +216,7 @@ export function resolveDrop(
       // Groups never appear inside "Later Today" (that section is rendered
       // by a separate, non-draggable path — see TodayScreen), so they always
       // adopt the nearest real header above, same rule as a task.
-      const target = currentSection;
+      const target = hasCategoryHeaders ? currentSection : item.group.category;
       if (target !== item.group.category || rank !== item.group.sortOrder) {
         groupUpdates.push({ id: item.group.id, category: target, sortOrder: rank });
       }
@@ -220,7 +231,7 @@ export function resolveDrop(
     // Upcoming/"Later Today" tasks keep their own category; everything else
     // adopts its section's (null above the first header = uncategorize).
     const target: string | null =
-      inLaterToday || isUpcoming ? item.task.category : currentSection;
+      inLaterToday || isUpcoming || !hasCategoryHeaders ? item.task.category : currentSection;
     if (target !== item.task.category) {
       categoryUpdates.push({ id: item.task.id, category: target });
     }

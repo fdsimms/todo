@@ -83,6 +83,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const setServings = useRecipeStore(s => s.setServings);
@@ -679,6 +680,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               onEditQuantity={quantity => editIngredient(i, { quantity })}
               onEditSection={section => editIngredient(i, { section })}
               existingSections={existingSections}
+              catalogItems={groceryItems}
               sectionHeader={sectionHeader}
               note={coveredBy ? `made from the ${coveredBy} recipe` : null}
             />

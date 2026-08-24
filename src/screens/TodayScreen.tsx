@@ -1713,7 +1713,12 @@ export function TodayScreen() {
   // straight into the list would blink the events out for the frame or two
   // before the store-derived `data` catches up.
   const settleWithContext = (settled: CategoryListItem[]): ListItem[] =>
-    insertContextRows(settled, contextRows, { categoryOrder: allCategories });
+    // resolveDrop always rebuilds `settled` with headers (its own job stops at
+    // category resolution); strip them back out here so the preview matches
+    // the store-derived `data`, which runs stripCategoryHeaders after it.
+    stripCategoryHeaders(
+      insertContextRows(settled, contextRows, { categoryOrder: allCategories }),
+    );
 
   // ——— Dragging the add button into the list ———————————————————————————
   //
@@ -2014,6 +2019,15 @@ export function TodayScreen() {
   // onReorder), so the placement pass below leaves it alone — it belongs to
   // the group now, not to whatever slot it was let go over.
   const joinedTaskIdRef = useRef<string | null>(null);
+
+  // Same shape as joinGroupIntentRef/joinedTaskIdRef above, for dragging a
+  // task onto the Pinned Tasks block instead of into a group. `overHeader`
+  // reports the card sitting over ReorderableList's ListHeaderComponent —
+  // here, the pinned block — so there's no group id to track, just whether
+  // the drop is currently aimed there.
+  const pinIntentRef = useRef(false);
+  const [pinIntentActive, setPinIntentActive] = useState(false);
+  const pinnedTaskIdRef = useRef<string | null>(null);
   // Index (within draggableData) of the row currently being dragged in the
   // main list — kept up to date from dragRange (called every hover update)
   // so onDragMove can tell which row is in flight without ReorderableList
@@ -2457,6 +2471,7 @@ export function TodayScreen() {
     // the next task's card sit back to back with only the ordinary 2px
     // inter-row gap, reading as one section.
     <>
+    <GroupDropTarget active={pinIntentActive}>
     <FabDropZone zone={PINNED_DROP_ZONE}>
       <Pressable style={styles.focusSectionHeader} onPress={() => setExpandedTaskId(null)}>
         <View style={styles.focusSectionTitleRow}>
@@ -2545,6 +2560,7 @@ export function TodayScreen() {
         }
       />
     </FabDropZone>
+    </GroupDropTarget>
     <View style={styles.pinnedBlockFooter}>
       <SpotlightScrim />
     </View>
@@ -3122,6 +3138,9 @@ export function TodayScreen() {
             onDragBegin={() => {
               setExpandedTaskId(null);
               joinedTaskIdRef.current = null;
+              pinnedTaskIdRef.current = null;
+              pinIntentRef.current = false;
+              setPinIntentActive(false);
               // Fires synchronously inside drag(), so this is the group whose
               // header started this drag — or null for any other row, which
               // also clears a previous group drag that somehow outlived its
@@ -3132,15 +3151,23 @@ export function TodayScreen() {
               const joinGroupId = joinGroupIntentRef.current;
               joinGroupIntentRef.current = null;
               setJoinGroupIntentId(null);
-              // The join lands here rather than in onReorder: a drop onto a
-              // group leaves the list order untouched (the list stops
-              // reordering once it's aimed at a group), and onReorder stays
-              // silent when nothing moved. `committed` keeps a cancelled drag —
-              // touch loss, app switch — from quietly stacking the task.
+              const pinTarget = pinIntentRef.current;
+              pinIntentRef.current = false;
+              setPinIntentActive(false);
+              // The join/pin lands here rather than in onReorder: a drop onto a
+              // group or the pinned block leaves the list order untouched (the
+              // list stops reordering once it's aimed at either), and onReorder
+              // stays silent when nothing moved. `committed` keeps a cancelled
+              // drag — touch loss, app switch — from quietly stacking or
+              // pinning the task.
               const dragged = draggableData[activeDragIndexRef.current ?? -1];
               if (committed && joinGroupId !== null && dragged?.type === 'task') {
                 joinedTaskIdRef.current = dragged.task.id;
                 addExistingToGroup(dragged.task.id, joinGroupId);
+                haptics.success();
+              } else if (committed && pinTarget && dragged?.type === 'task') {
+                pinnedTaskIdRef.current = dragged.task.id;
+                updateTask(dragged.task.id, { pinned: true });
                 haptics.success();
               }
               // Unconditional: the guard this used to carry read a
@@ -3149,9 +3176,10 @@ export function TodayScreen() {
               setDraggingGroupId(null);
             }}
             onHoverChange={haptics.dragTick}
-            onDragMove={({ overIndex }) => {
-              // Only a plain loose task can be dragged onto a group to join it.
+            onDragMove={({ overIndex, overHeader }) => {
               const draggedItem = draggableData[activeDragIndexRef.current ?? -1];
+              // Only a plain loose task can be dragged onto a group, or onto
+              // the pinned block, to join/pin it.
               if (draggedItem?.type !== 'task') return;
               // The target is the group the card is physically over, anywhere
               // from the top of its header to the bottom of its last child —
@@ -3168,16 +3196,26 @@ export function TodayScreen() {
                 setJoinGroupIntentId(nextId);
                 if (nextId) haptics.impactLight();
               }
+              // Already-pinned task hovering its own block would be a no-op
+              // write, so it's left out of the intent rather than treated as a
+              // target.
+              const wantsPin = nextId === null && overHeader && !draggedItem.task.pinned;
+              if (wantsPin !== pinIntentRef.current) {
+                pinIntentRef.current = wantsPin;
+                setPinIntentActive(wantsPin);
+                if (wantsPin) haptics.impactLight();
+              }
             }}
-            // Aiming at a group takes the drag over: the list stops opening a
-            // reorder gap, so the group stays put under the card instead of
-            // sliding away from the finger chasing it.
-            dropDisabled={joinGroupIntentId !== null}
+            // Aiming at a group or the pinned block takes the drag over: the
+            // list stops opening a reorder gap, so the target stays put under
+            // the card instead of sliding away from the finger chasing it.
+            dropDisabled={joinGroupIntentId !== null || pinIntentActive}
             dropIntoIndex={
               joinGroupIntentId === null
                 ? null
                 : draggableData.findIndex(i => i.type === 'group' && i.group.id === joinGroupIntentId)
             }
+            dropIntoHeader={pinIntentActive}
             // Only here to record which row is in flight (onDragMove reads it);
             // every draggable row on this list may go anywhere in it. Section
             // headers aren't draggable at all — their order is set from the "…"
@@ -3194,13 +3232,20 @@ export function TodayScreen() {
 
               const joinedTaskId = joinedTaskIdRef.current;
               joinedTaskIdRef.current = null;
+              const pinnedTaskId = pinnedTaskIdRef.current;
+              pinnedTaskIdRef.current = null;
+              // The two are mutually exclusive (the card can only be over one
+              // drop target at release), but read both defensively rather than
+              // assuming it.
+              const absorbedTaskId = joinedTaskId ?? pinnedTaskId;
 
-              // A task dragged onto a group (see onDragMove) has already joined
-              // it in onDragEnd — drop it from the normal placement pass so
-              // resolveDrop never assigns it a category/order of its own.
-              if (joinedTaskId !== null) {
+              // A task dragged onto a group, or onto the Pinned Tasks block
+              // (see onDragMove), has already been handled in onDragEnd — drop
+              // it from the normal placement pass so resolveDrop never assigns
+              // it a category/order of its own.
+              if (absorbedTaskId !== null) {
                 const withoutJoined = dropped.filter(
-                  item => !(item.type === 'task' && item.task.id === joinedTaskId),
+                  item => !(item.type === 'task' && item.task.id === absorbedTaskId),
                 );
                 const { taskOrders, categoryUpdates, groupUpdates, settled } = resolveDrop(withoutJoined, {
                   isUpcoming: id => upcomingTaskIds.has(id),

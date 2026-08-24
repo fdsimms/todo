@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where reordering tasks on Today with categories hidden could silently uncategorize them",
+  "date": "2026-08-24"
+}
