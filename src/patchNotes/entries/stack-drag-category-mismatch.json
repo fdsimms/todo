@@ -1,0 +1,4 @@
+{
+  "message": "Fixed dragging a stack into a different category on Today moving the stack's header without moving its tasks, which left them showing under a category they weren't actually filed in",
+  "date": "2026-08-24"
+}
