@@ -1311,7 +1311,13 @@ interface TaskStore {
   groupTasks: (taskIds: string[], title: string, category: string | null) => TaskGroup;
   /** Re-files the stack's live members under `category`; returns their prior values for undo. */
   applyGroupCategory: (groupId: string, category: string | null) => Array<{ id: string; category: string | null }>;
-  completeGroup: (groupId: string) => void;
+  /**
+   * `skipIds` leaves those members alone — the bulk paths use it to complete
+   * everything that doesn't ask a question and hand the rest to the prompt
+   * queue (see useAnswerFirstCompletion). Omitted, every live member is
+   * completed, which is what every non-interactive caller wants.
+   */
+  completeGroup: (groupId: string, options?: { skipIds?: readonly string[] }) => void;
   uncompleteGroup: (groupId: string) => void;
   deferGroup: (groupId: string, until: Date) => void;
   pinGroup: (groupId: string) => void;
@@ -4382,12 +4388,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // no-ops it. Skip is deliberately NOT cascaded here: it only makes sense
   // per-child (see skipNextRecurrence), and cascading it across children on
   // different cadences would desync them unpredictably.
-  completeGroup(groupId) {
+  completeGroup(groupId, options) {
     const children = get().groupRosterOf(groupId);
+    const skip = new Set(options?.skipIds ?? []);
     const completedIds: string[] = [];
     dbTransaction(() => {
       children.forEach(child => {
-        if (child.completed) return;
+        if (child.completed || skip.has(child.id)) return;
         get().completeTask(child.id);
         if (get().tasks.find(t => t.id === child.id)?.completed) completedIds.push(child.id);
       });

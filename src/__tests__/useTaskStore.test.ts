@@ -5599,6 +5599,30 @@ describe('completeGroup', () => {
     expect(useTaskStore.getState().lastAction).toBeNull();
   });
 
+  // skipIds is how the bulk paths hold back the members that are about to be
+  // asked a question — see useAnswerFirstCompletion.
+  it('leaves out the children named in skipIds', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', groupId: 'g1', completed: false, recurrenceType: 'none' }),
+        makeTask({ id: 'asks', groupId: 'g1', completed: false, recurrenceType: 'none', deliverableKind: 'date' }),
+      ],
+    });
+    useTaskStore.getState().completeGroup('g1', { skipIds: ['asks'] });
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')?.completed).toBe(true);
+    expect(tasks.find(t => t.id === 'asks')?.completed).toBe(false);
+  });
+
+  it('does nothing at all when every member is skipped', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'asks', groupId: 'g1', completed: false, recurrenceType: 'none', deliverableKind: 'text' })],
+    });
+    useTaskStore.getState().completeGroup('g1', { skipIds: ['asks'] });
+    expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
   it('queues one combined undo that uncompletes every child it completed', () => {
     useTaskStore.setState({
       tasks: [

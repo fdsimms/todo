@@ -255,6 +255,7 @@ exports.
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
+| a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once) |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
 | the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see `docs/arch/month-grid.md` |
 | a column, migration, or row↔object mapping | `src/db/database.ts` (`initDatabase`, `rowToTask`) |
@@ -325,7 +326,7 @@ exports.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (5.3k), `components/TaskEditor.tsx` (4.2k),
-`store/useGroceryStore.ts` (4.0k), `db/database.ts` (3.9k), `screens/TodayScreen.tsx` (3.9k),
+`store/useGroceryStore.ts` (4.0k), `screens/TodayScreen.tsx` (3.9k), `db/database.ts` (3.9k),
 `components/TaskItem.tsx` (3.4k), `types/index.ts` (3.2k),
 `components/QuickAddModal.tsx` (2.6k), `store/useSettingsStore.ts` (2.4k),
 `screens/MealPlanScreen.tsx` (2.2k).
@@ -333,7 +334,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **184 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **185 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -616,6 +617,8 @@ Chain items (`chainItems[]` / `chainIndex`, shown in the editor collocated with 
 - **It ignores the `hasNoDateSignal` guard `midChainDue` obeys.** That guard exists so a chain with no placement at all doesn't acquire one by accident; an answer given a second ago is not an accident.
 
 This is the one reader `src/utils/deliverables.ts` was left open for (#1253) and it is still not a general write-anywhere mechanism: one field, one place, reusing the date the successor was getting anyway.
+
+**Every completion path with a person present asks; only the unattended ones complete unanswered.** `completeTask` reads an omitted `deliverableValue` as "nobody asked" and completes with no answer, which is right for the missed sweep, the quota rollover and meal sync, and was wrong for the four paths a person actually taps: the bulk bar, a stack's "complete all", the focus session's Done, and a Live Activity's Done on a task with no row mounted. Each dropped the answer with nothing said, and once an answer can place the next chain step, what was dropped was a task's date rather than only a note. They now go through `useAnswerFirstCompletion` — a three-way confirm (Answer / Complete Without Answering / Cancel) for the paths completing several, `enqueue` straight to the questions for the paths completing one, and `DeliverablePromptQueue` asking them one sheet at a time. **Completing unanswered stays one tap**: the feature's rule is that nothing may ever *require* an answer, so what changed is that it's chosen rather than assumed. Cancel costs nothing, including the selection the bulk bar was built from.
 
 ### Stacks (`TaskGroup`)
 

@@ -26,6 +26,9 @@ import {
 import { useFocusStore } from '../store/useFocusStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useFocusSession } from '../hooks/useFocusSession';
+import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
+import { asksOnCompletion } from '../utils/deliverables';
+import { DeliverablePromptQueue } from './DeliverablePromptQueue';
 import { ProgressBar } from './ProgressBar';
 import { PressableScale } from './PressableScale';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -70,6 +73,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const { session, now } = useFocusSession();
   const tasks = useTaskStore(s => s.tasks);
   const completeTask = useTaskStore(s => s.completeTask);
+  const { enqueue, queueProps } = useAnswerFirstCompletion();
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
   const pause = useFocusStore(s => s.pause);
   const resume = useFocusStore(s => s.resume);
@@ -196,6 +200,16 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
 
   const handleDone = () => {
     if (!currentTask) return;
+    // A task that asks something when it's ticked off asks here too. Done is a
+    // person finishing a task, exactly as its own row's checkbox is, and
+    // completing straight through the question would drop the answer with
+    // nothing said — see utils/bulkCompletion.ts. No confirm: there is one
+    // task, so there is nothing to warn about, only a question to ask.
+    if (asksOnCompletion(currentTask)) {
+      haptics.tap();
+      enqueue([currentTask.id]);
+      return;
+    }
     haptics.success();
     // Completed through the task store like any other completion, so
     // recurrence, chains, streaks and the Logbook all behave exactly as they
@@ -494,6 +508,8 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
           {finished ? renderFinished() : renderStep()}
         </ScrollView>
       </View>
+
+      <DeliverablePromptQueue {...queueProps} />
     </Modal>
   );
 }

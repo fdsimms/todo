@@ -13,6 +13,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
+import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
+import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectDecisions } from '../store/useProjectStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
@@ -101,6 +103,23 @@ export function ProjectDetailScreen() {
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
+
+  // Bulk completion asks before it drops an answer — see
+  // useAnswerFirstCompletion. Selection is left alone until something actually
+  // happens: `complete` runs on every path out of the confirm except Cancel,
+  // so backing out leaves the selection exactly as it was rather than making
+  // the user rebuild it.
+  const { requestComplete, queueProps } = useAnswerFirstCompletion();
+  const handleBulkComplete = () => {
+    const ids = Array.from(selectedIds);
+    requestComplete({
+      ids,
+      complete: skipIds => {
+        bulkCompleteTasks(ids.filter(id => !skipIds.includes(id)));
+        exitSelection();
+      },
+    });
+  };
   // This screen is a RootStack card, not a tab screen — it covers the tab bar
   // entirely, so the bulk bar sits above the home indicator, not above a tab
   // bar. (Asking for useBottomTabBarHeight() here throws outright.)
@@ -432,7 +451,7 @@ export function ProjectDetailScreen() {
             selectedCount={selectedIds.size}
             totalCount={selectableTasks.length}
             existingTags={allTags}
-            onComplete={() => { bulkCompleteTasks(Array.from(selectedIds)); exitSelection(); }}
+            onComplete={handleBulkComplete}
             onDelete={handleBulkDelete}
             onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
             onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}
@@ -562,6 +581,8 @@ export function ProjectDetailScreen() {
           project={editingProject}
           onClose={() => setEditingProject(null)}
         />
+
+        <DeliverablePromptQueue {...queueProps} />
 
         <TaskEditor
           visible={editorVisible}
