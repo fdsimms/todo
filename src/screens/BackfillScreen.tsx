@@ -148,6 +148,20 @@ export function BackfillScreen() {
   // confirmStartOver.
   const [fromScratch, setFromScratch] = useState(false);
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
+  // Ids left behind as the queue advances, most-recent-last — what the
+  // "Previous" header button steps back through. Recorded by recordVisited,
+  // called from every apply/skip/dismiss handler before it acts, so a step
+  // is captured whether it left the queue by being skipped/dismissed (added
+  // to skippedIds) or by the item simply no longer matching the field's
+  // "missing" test (a task/category/project apply).
+  const [history, setHistory] = useState<string[]>([]);
+  // Set by goBack: forces the queue to show this item instead of its own
+  // front for one step, the same way it'd already look mid-way through a
+  // from-scratch run showing an item that already has a value — nothing is
+  // reverted, the item is just surfaced again to reconsider or re-answer.
+  // Cleared as soon as any action is taken on it, so the queue's own front
+  // takes back over.
+  const [manualCurrentId, setManualCurrentId] = useState<string | null>(null);
   const [sessionTotal, setSessionTotal] = useState(0);
   const [customOpen, setCustomOpen] = useState(false);
   const [customText, setCustomText] = useState('');
@@ -172,9 +186,15 @@ export function BackfillScreen() {
     () => active?.kind === 'project' ? projectBackfillCandidates(projects, active.id).filter(p => !skippedIds.has(p.id)) : [],
     [projects, active, skippedIds]
   );
-  const currentTask = active?.kind === 'task' ? (taskQueue[0] ?? null) : null;
-  const currentCategory = active?.kind === 'category' ? (categoryQueue[0] ?? null) : null;
-  const currentProject = active?.kind === 'project' ? (projectQueue[0] ?? null) : null;
+  const currentTask = active?.kind === 'task'
+    ? (manualCurrentId ? tasks.find(t => t.id === manualCurrentId) ?? (taskQueue[0] ?? null) : (taskQueue[0] ?? null))
+    : null;
+  const currentCategory = active?.kind === 'category'
+    ? (manualCurrentId ? categories.find(c => c.id === manualCurrentId) ?? (categoryQueue[0] ?? null) : (categoryQueue[0] ?? null))
+    : null;
+  const currentProject = active?.kind === 'project'
+    ? (manualCurrentId ? projects.find(p => p.id === manualCurrentId) ?? (projectQueue[0] ?? null) : (projectQueue[0] ?? null))
+    : null;
   const queueLength = active?.kind === 'task' ? taskQueue.length : active?.kind === 'category' ? categoryQueue.length : projectQueue.length;
   const currentId = currentTask?.id ?? currentCategory?.id ?? currentProject?.id ?? null;
 
@@ -201,6 +221,8 @@ export function BackfillScreen() {
     setActive({ kind: 'task', id });
     setFromScratch(false);
     setSkippedIds(new Set());
+    setHistory([]);
+    setManualCurrentId(null);
     setSessionTotal(backfillCandidates(tasks, id, { categories }).length);
   };
 
@@ -208,6 +230,8 @@ export function BackfillScreen() {
     haptics.tap();
     setActive({ kind: 'category', id });
     setSkippedIds(new Set());
+    setHistory([]);
+    setManualCurrentId(null);
     setSessionTotal(categoryBackfillCandidates(categories, id).length);
   };
 
@@ -215,6 +239,8 @@ export function BackfillScreen() {
     haptics.tap();
     setActive({ kind: 'project', id });
     setSkippedIds(new Set());
+    setHistory([]);
+    setManualCurrentId(null);
     setSessionTotal(projectBackfillCandidates(projects, id).length);
   };
 
@@ -222,6 +248,8 @@ export function BackfillScreen() {
     haptics.tap();
     setActive(null);
     setFromScratch(false);
+    setHistory([]);
+    setManualCurrentId(null);
   };
 
   // Widens the task queue to every live task for the field, including ones
@@ -235,6 +263,8 @@ export function BackfillScreen() {
     haptics.tap();
     setFromScratch(true);
     setSkippedIds(new Set());
+    setHistory([]);
+    setManualCurrentId(null);
     setSessionTotal(backfillCandidates(tasks, active.id, { fromScratch: true }).length);
   };
 
@@ -259,6 +289,34 @@ export function BackfillScreen() {
   // own, so this is what actually moves past the current card there.
   const advance = (id: string) => setSkippedIds(prev => new Set(prev).add(id));
 
+  // Called from every apply/skip/dismiss handler, before it acts, so the
+  // item about to leave the front of the queue is captured regardless of
+  // *how* it leaves (an explicit advance() vs. a category/project apply
+  // that just mutates the store and lets the live filter drop it).
+  const recordVisited = () => {
+    if (currentId) setHistory(prev => [...prev, currentId]);
+  };
+
+  // Steps back to the item recorded just before the current one. It isn't
+  // an undo: nothing already applied is reverted, the item is just forced
+  // back to the front of the queue (see manualCurrentId) so it can be
+  // reconsidered or answered again, same as reaching an already-set item
+  // mid-way through a from-scratch run.
+  const goBack = () => {
+    if (history.length === 0) return;
+    haptics.tap();
+    animateLayout();
+    const prevId = history[history.length - 1];
+    setHistory(h => h.slice(0, -1));
+    setSkippedIds(prev => {
+      if (!prev.has(prevId)) return prev;
+      const next = new Set(prev);
+      next.delete(prevId);
+      return next;
+    });
+    setManualCurrentId(prevId);
+  };
+
   // A tap here commits immediately and advances the queue, with no per-row
   // confirm — registering the snapshot with setLastAction, same as
   // TaskEditor's save, is what makes a mis-tap recoverable via shake-to-undo
@@ -269,6 +327,8 @@ export function BackfillScreen() {
     if (!currentTask || active?.kind !== 'task') return;
     haptics.tap();
     animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
     const snapshot = { ...currentTask };
     const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
     updateTask(currentTask.id, patch);
@@ -292,6 +352,8 @@ export function BackfillScreen() {
     if (!currentCategory || active?.kind !== 'category') return;
     haptics.tap();
     animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
     switch (active.id) {
       case 'vacation': setCategoryHideOnVacation(currentCategory.name, true); break;
       case 'suggestions': setCategoryExcludeFromSuggestions(currentCategory.name, true); break;
@@ -303,6 +365,8 @@ export function BackfillScreen() {
     if (!currentProject) return;
     haptics.tap();
     animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
     updateProject(currentProject.id, { sequential: true });
   };
 
@@ -313,6 +377,8 @@ export function BackfillScreen() {
     if (!currentProject) return;
     haptics.tap();
     animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
     updateProject(currentProject.id, { nudgeOptIn: true, nudgeCadenceDays: fromCadenceParts(nudgeDraft) });
   };
 
@@ -320,6 +386,8 @@ export function BackfillScreen() {
     if (!currentId) return;
     haptics.tap();
     animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
     advance(currentId);
   };
 
@@ -333,6 +401,8 @@ export function BackfillScreen() {
     if (!active) return;
     haptics.tap();
     animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
     if (active.kind === 'task') {
       if (!currentTask) return;
       const snapshot = { ...currentTask };
@@ -478,14 +548,26 @@ export function BackfillScreen() {
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
           actions={
-            <TouchableOpacity
-              onPress={confirmStartOver}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel={`Redo ${field.label.toLowerCase()} from scratch`}
-            >
-              <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              {history.length > 0 && (
+                <TouchableOpacity
+                  onPress={goBack}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Previous task"
+                >
+                  <Ionicons name="play-skip-back-outline" size={iconSize.md} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={confirmStartOver}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel={`Redo ${field.label.toLowerCase()} from scratch`}
+              >
+                <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
           }
         />
         {sessionTotal > 0 && (
@@ -566,7 +648,21 @@ export function BackfillScreen() {
 
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <DetailHeader title={categoryField.label} onBack={backToFields} backAccessibilityLabel="Back to fields" />
+        <DetailHeader
+          title={categoryField.label}
+          onBack={backToFields}
+          backAccessibilityLabel="Back to fields"
+          actions={history.length > 0 ? (
+            <TouchableOpacity
+              onPress={goBack}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Previous category"
+            >
+              <Ionicons name="play-skip-back-outline" size={iconSize.md} color={colors.textSecondary} />
+            </TouchableOpacity>
+          ) : undefined}
+        />
         {sessionTotal > 0 && (
           <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
         )}
@@ -635,7 +731,21 @@ export function BackfillScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <DetailHeader title={projectField.label} onBack={backToFields} backAccessibilityLabel="Back to fields" />
+      <DetailHeader
+        title={projectField.label}
+        onBack={backToFields}
+        backAccessibilityLabel="Back to fields"
+        actions={history.length > 0 ? (
+          <TouchableOpacity
+            onPress={goBack}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Previous project"
+          >
+            <Ionicons name="play-skip-back-outline" size={iconSize.md} color={colors.textSecondary} />
+          </TouchableOpacity>
+        ) : undefined}
+      />
       {sessionTotal > 0 && (
         <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
       )}
@@ -950,6 +1060,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
 
   entitySwitch: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
+
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
 
   fieldList: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm },
   fieldRow: {
