@@ -69,6 +69,19 @@ interface LeftoverStore {
   setPendingUseUpLeftover: (id: string | null) => void;
 
   /**
+   * The leftover a just-completed leftover-backed meal task points at — set
+   * by useTaskStore.completeTask when the step that finished a mealSlot chain
+   * belongs to an entry with `leftoverId` set, so ticking "Eat X" off asks
+   * whether that closed the container out. The peer of pendingUseUpLeftoverId,
+   * but watched by FinishLeftoverPrompt (mounted in AppNavigator) rather than
+   * UseUpResolveSheet: this is a yes/no ask, not the leftover's whole editor.
+   * Cleared by uncompleteTask and by the prompt's own answer. Session-only,
+   * same reasoning as pendingUseUpLeftoverId.
+   */
+  pendingFinishLeftoverId: string | null;
+  setPendingFinishLeftover: (id: string | null) => void;
+
+  /**
    * Rides useTaskStore.initialize's fan-out for the same reason groceries,
    * recipes and the meal plan do: enterDemoMode, exitDemoMode and
    * restore-from-backup all reload by calling that after swapping the database
@@ -219,17 +232,23 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
   leftovers: [],
   initialized: false,
   pendingUseUpLeftoverId: null,
+  pendingFinishLeftoverId: null,
 
   initialize() {
     set({
       leftovers: sortLeftovers(dbGetAllLeftovers()),
       pendingUseUpLeftoverId: null,
+      pendingFinishLeftoverId: null,
       initialized: true,
     });
   },
 
   setPendingUseUpLeftover(id) {
     set({ pendingUseUpLeftoverId: id });
+  },
+
+  setPendingFinishLeftover(id) {
+    set({ pendingFinishLeftoverId: id });
   },
 
   logLeftover(draft) {

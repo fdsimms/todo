@@ -26,6 +26,7 @@ import {
   dbMarkTaskSeen,
   dbTransaction,
   dbGetMealPlanEntries,
+  dbGetMealPlanEntry,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
 import { useCategoryStore, ensureCalendarEventCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory } from './useCategoryStore';
@@ -39,6 +40,7 @@ import { useGroceryStore } from './useGroceryStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
+import { isLiveLeftover } from '../utils/leftovers';
 import { dripCandidate, findProjectStalls, projectPullUpdates } from '../utils/projectPull';
 import {
   projectReviewLinkUrl,
@@ -2821,6 +2823,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ? useMealPlanStore.getState().setCookedPaired(cookedEntryId, true)
       : null;
 
+    // A leftover-backed meal's entry (`MealPlanEntry.leftoverId`) is the one
+    // case the pairing above doesn't close out: eating a tub of chilli is
+    // what empties the container, and the app has no way to know that on its
+    // own (Leftover.finishedAt is deliberately never implied by planning or
+    // cooking a meal against it — a pot of soup feeds two dinners). So the
+    // moment this tick finishes that meal, point a session-only id at the
+    // leftover — FinishLeftoverPrompt (mounted in AppNavigator, same
+    // reasoning as the Use-up prompts below) asks whether that was the last
+    // of it. Gated on the leftover still being live so a container already
+    // closed out isn't asked about twice. Never on a miss, same as the cook
+    // pairing above.
+    if (!missed && cookedEntryId) {
+      const cookedEntryLeftoverId = dbGetMealPlanEntry(cookedEntryId)?.leftoverId;
+      const cookedLeftover = cookedEntryLeftoverId
+        ? useLeftoverStore.getState().leftovers.find(l => l.id === cookedEntryLeftoverId)
+        : null;
+      if (cookedLeftover && isLiveLeftover(cookedLeftover)) {
+        useLeftoverStore.getState().setPendingFinishLeftover(cookedLeftover.id);
+      }
+    }
+
     // Ticking a "Use up X" task off is the moment the user can say what
     // actually happened to the thing it's about — surfaced immediately as
     // that item's own resolve sheet (UseUpResolveSheet, mounted in
@@ -2960,6 +2983,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // since finishing one spawns nothing.
       (completesMealSlot(task) ? mealSlotEntryId(task) : null);
     if (uncookedEntryId) useMealPlanStore.getState().setCooked(uncookedEntryId, false);
+
+    // Mirrors the retraction just above: un-ticking the step that finished a
+    // leftover-backed meal takes back whatever finish-the-container ask it
+    // just triggered. Unconditional on the entry actually carrying a
+    // leftoverId — clearing a flag that wasn't this task's to begin with is
+    // harmless, same reasoning the Use-up clears below rely on.
+    if (uncookedEntryId && dbGetMealPlanEntry(uncookedEntryId)?.leftoverId) {
+      useLeftoverStore.getState().setPendingFinishLeftover(null);
+    }
 
     // Un-ticking a "Use up X" task retracts whatever resolve prompt it just
     // triggered — same reasoning as the cook pairing above, and unconditional

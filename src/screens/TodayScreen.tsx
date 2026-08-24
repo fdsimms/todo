@@ -72,7 +72,6 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { kitchenInventory, type KitchenEntry } from '../utils/kitchenInventory';
 import { standingSwapMap } from '../utils/standingSwaps';
-import { isLiveLeftover } from '../utils/leftovers';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { featureHidden, visibleLenses } from '../utils/simpleMode';
@@ -1395,7 +1394,6 @@ export function TodayScreen() {
   const setMealCookedPaired = useMealPlanStore(s => s.setCookedPaired);
   const setMealLastAction = useMealPlanStore(s => s.setLastAction);
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
-  const finishLeftover = useLeftoverStore(s => s.finishLeftover);
   /**
    * Ticking a meal off from its row here (#1571).
    *
@@ -1410,34 +1408,17 @@ export function TodayScreen() {
    * rows up this same list. Null back from it means nothing happened (a stale row, an
    * entry already cooked), so nothing is animated and no undo is stored.
    *
-   * **The leftover close-out is asked here too.** A meal only gets a task when
-   * its slot is one of the meals the user named (see `mealSlotTasks.ts`), so a
-   * leftover-backed meal in a slot they didn't is exactly what these rows are
-   * made of — skipping the ask would mean the one surface most likely to tick
-   * one off is the one that never closes the container. The restock offer the
-   * Meal plan screen also makes is deliberately *not* copied: it's a banner
-   * that screen owns, it needs a recipe, and Today already doesn't make it when
-   * a meal task is ticked off.
+   * The leftover close-out ask (was that the last of it?) used to be raised
+   * here too, but it's asked from useTaskStore.completeTask now — that same
+   * `setCookedPaired` call ticks the paired task, so this row already gets
+   * the ask via FinishLeftoverPrompt without doing it a second time.
    */
   const handleMarkMealCooked = useCallback((entryId: string, title: string) => {
     const undo = setMealCookedPaired(entryId, true);
     if (!undo) return;
     animateLayout();
     setMealLastAction({ label: `Cooked "${title}"`, undo });
-
-    const entry = mealEntries.find(e => e.id === entryId);
-    if (!entry?.leftoverId) return;
-    const leftover = leftovers.find(l => l.id === entry.leftoverId);
-    if (!leftover || !isLiveLeftover(leftover)) return;
-    Alert.alert(
-      'Finished the leftovers?',
-      `Was that the last of the ${leftover.title}?`,
-      [
-        { text: 'Still some left', style: 'cancel' },
-        { text: 'Finished it', onPress: () => finishLeftover(leftover.id, 'eaten') },
-      ]
-    );
-  }, [setMealCookedPaired, setMealLastAction, mealEntries, leftovers, finishLeftover]);
+  }, [setMealCookedPaired, setMealLastAction]);
   // Resolved rather than read straight through: with the groceries/meals area
   // off, Today shows no meals whatever this is set to, but the setting itself
   // is left alone so turning the area back on restores the shape the user
