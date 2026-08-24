@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { Alert, Linking, Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -8,6 +8,9 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, intera
 import { haptics } from '../utils/haptics';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
+import { openInAppUrl } from '../utils/deepLinks';
+import { telUrl, smsUrl } from '../utils/phone';
+import { mailtoUrl } from '../utils/email';
 import { displayTitleFor, isQuotaTask, quotaUnitsToPace } from '../utils/visibilityUtils';
 import { formatQuotaCatchUp, formatQuotaProgress, formatQuotaTarget } from '../utils/quotaUnit';
 import {
@@ -91,6 +94,64 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const totals = focusPlanTotals(session.steps);
   const endsAt = focusProjectedEnd(session, now);
   const currentTask: Task | undefined = step?.taskId ? byId.get(step.taskId) : undefined;
+
+  // ==== the current task's outward actions: link, call, text, email ====
+  // Same handlers and sanitisation as TaskItem's row actions (utils/phone.ts,
+  // utils/email.ts) — a session is exactly the place someone needs the
+  // number or link a task carries without backing out to find the row.
+  const handleOpenLink = async () => {
+    if (!currentTask?.linkUrl) return;
+    haptics.tap();
+    if (openInAppUrl(currentTask.linkUrl)) return;
+    try {
+      await Linking.openURL(currentTask.linkUrl);
+    } catch {
+      // silently ignore — no toast infra for this action
+    }
+  };
+  const callUrl = telUrl(currentTask?.phoneNumber);
+  const textUrl = smsUrl(currentTask?.phoneNumber);
+  const handleCall = async () => {
+    if (!callUrl) return;
+    haptics.tap();
+    try {
+      await Linking.openURL(callUrl);
+    } catch {
+      // silently ignore — no toast infra for this action
+    }
+  };
+  const handleText = async () => {
+    if (!textUrl) return;
+    haptics.tap();
+    try {
+      await Linking.openURL(textUrl);
+    } catch {
+      // silently ignore — no toast infra for this action
+    }
+  };
+  const handleContact = () => {
+    if (!callUrl) return;
+    haptics.tap();
+    Alert.alert(
+      currentTask?.phoneNumber ?? '',
+      undefined,
+      [
+        { text: 'Call', onPress: handleCall },
+        ...(textUrl ? [{ text: 'Message', onPress: handleText }] : []),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    );
+  };
+  const emailUrl = mailtoUrl(currentTask?.emailAddress);
+  const handleEmail = async () => {
+    if (!emailUrl) return;
+    haptics.tap();
+    try {
+      await Linking.openURL(emailUrl);
+    } catch {
+      // silently ignore — no toast infra for this action
+    }
+  };
 
   const upcoming = session.steps.slice(session.stepIndex + 1);
   const nextStep: FocusStep | undefined = upcoming[0];
@@ -207,6 +268,54 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
           <Text style={styles.stageTitle} numberOfLines={3}>
             {isRest ? 'Step away' : titleOf(step.taskId)}
           </Text>
+
+          {/* Whatever the task itself holds to get the work done — the
+              details a person would otherwise have to back out of the
+              session to go find on the row. */}
+          {!isRest && currentTask && currentTask.notes.length > 0 && (
+            <Text style={styles.notesText}>{currentTask.notes}</Text>
+          )}
+
+          {!isRest && currentTask && (currentTask.linkUrl || callUrl || emailUrl) && (
+            <View style={styles.contactRow}>
+              {currentTask.linkUrl && (
+                <TouchableOpacity
+                  onPress={handleOpenLink}
+                  style={styles.contactBtn}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open link for ${titleOf(step.taskId)}`}
+                >
+                  <Ionicons name="link" size={iconSize.sm} color={colors.accent} />
+                  <Text style={styles.contactLabel}>Link</Text>
+                </TouchableOpacity>
+              )}
+              {callUrl && (
+                <TouchableOpacity
+                  onPress={handleContact}
+                  style={styles.contactBtn}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Call or text ${currentTask.phoneNumber} for ${titleOf(step.taskId)}`}
+                >
+                  <Ionicons name="call" size={iconSize.sm} color={colors.accent} />
+                  <Text style={styles.contactLabel}>Call</Text>
+                </TouchableOpacity>
+              )}
+              {emailUrl && (
+                <TouchableOpacity
+                  onPress={handleEmail}
+                  style={styles.contactBtn}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Email ${currentTask.emailAddress} for ${titleOf(step.taskId)}`}
+                >
+                  <Ionicons name="mail" size={iconSize.sm} color={colors.accent} />
+                  <Text style={styles.contactLabel}>Email</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
 
           {/* The count and what one more log does with it. A target's row on
               Today answers both by being there or not; in a session there is no
@@ -421,6 +530,28 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.sm,
   },
+  notesText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    lineHeight: lineHeight.sm,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+  },
+  contactRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  contactBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.full,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.md,
+  },
+  contactLabel: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium },
   quotaChip: {
     flexDirection: 'row',
     alignItems: 'center',
