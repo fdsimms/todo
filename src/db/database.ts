@@ -2678,7 +2678,11 @@ export function dbFinishGroceryShopping(
 export function dbClearGroceryList(): string[] {
   const rows = db.getAllSync<{ id: string }>('SELECT id FROM grocery_items WHERE on_list = 1');
   if (rows.length === 0) return [];
-  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0 WHERE on_list = 1');
+  // choice_group goes with the list it belonged to: an either/or is this
+  // trolley's "apples or pears", so a cleared list has no choice left to make.
+  // Written here as well as in `clearList`'s in-memory patch, or the pair comes
+  // back on the next launch.
+  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0, choice_group = NULL WHERE on_list = 1');
   return rows.map(r => r.id);
 }
 

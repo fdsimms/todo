@@ -25,7 +25,7 @@ import {
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { rankedCatalogItems, catalogPruneCandidates, rankGrocerySuggestions } from '../utils/grocerySuggest';
-import { linkedItemIds } from '../utils/groceryFacts';
+import { linkCounts } from '../utils/groceryFacts';
 import { itemIdsForShop, itemCountsByShop, primaryShopFor } from '../utils/groceryShops';
 import { formatPrice, describePriceContext, lastPriceFor } from '../utils/groceryPrice';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -154,7 +154,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   // whole catalog, and scoping it to a store would offer to forget a subset
   // while the button still said how many were unused overall.
   const linked = useMemo(
-    () => linkedItemIds({ products: itemProducts, subs: itemSubs, shops: itemShops, aliases: storeAliases }),
+    () => linkCounts({ products: itemProducts, subs: itemSubs, shops: itemShops, aliases: storeAliases }),
     [itemProducts, itemSubs, itemShops, storeAliases]
   );
   const pruneable = useMemo(

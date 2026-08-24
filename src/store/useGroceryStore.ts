@@ -46,7 +46,7 @@ import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, mergePriceHistories } from '../utils/priceHistory';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
-import { hasUserFacts, linkedItemIds } from '../utils/groceryFacts';
+import { hasUserFacts, factSignature, linkCounts } from '../utils/groceryFacts';
 import { describeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
@@ -104,7 +104,7 @@ import {
  */
 const CART_HOLD_MS = 1200;
 
-/** Shared empty set for `revertAdds` callers where every id is newly minted. */
+/** Shared empty set for `undoForAdds` callers where every id is newly minted. */
 const EMPTY_IDS: ReadonlySet<string> = new Set<string>();
 
 /**
@@ -714,20 +714,27 @@ interface GroceryStore {
   /** removeFromList over a whole selection at once. */
   removeFromListMany: (ids: string[]) => void;
   /**
-   * The revert for a batch of adds, and the only correct one.
+   * Builds the undo for a batch of adds, and is the only correct way to revert
+   * one. **Call it immediately after the adds land**, because it snapshots the
+   * rows as they then stand; the closure it returns is what goes on
+   * `setLastAction`.
    *
    * `addByName` either mints a row or re-lists one that was already there, and
    * the undo differs: a minted row goes, a re-listed row goes back off-list.
    * That used to be a single `removeFromList` call for both, which worked only
    * because a first-typed row was provisional and deleted itself on the way off
    * the list. `preexisting` is the set of item ids from *before* the batch ran,
-   * which is the only moment the difference is knowable.
+   * which is the only moment that difference is knowable.
    *
-   * A minted row is still spared if anything has been recorded on it since —
-   * naming a brand on a row and then shaking to undo the add that made it must
-   * not take the brand with it. See `hasUserFacts`.
+   * A minted row is spared if anything has been recorded on it *since* the add
+   * — naming a brand and then shaking must not take the brand with it. That
+   * needs a snapshot rather than a `hasUserFacts` call at undo time, which was
+   * the bug this replaced: an add writes facts of its own (a parsed "2 gal", a
+   * note, a Brand chip), so the predicate already answered true for a row that
+   * had only ever been added, and "2 gal milk" became un-undoable. See
+   * `factSignature`.
    */
-  revertAdds: (addedIds: readonly string[], preexisting: ReadonlySet<string>) => void;
+  undoForAdds: (addedIds: readonly string[], preexisting: ReadonlySet<string>) => () => void;
   deleteItem: (id: string) => void;
   deleteItems: (ids: string[]) => void;
 
@@ -1519,8 +1526,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         label: `Added "${item.name}"`,
         // This call minted the row, so undoing it takes the row with it —
         // unless something has been recorded on it in the meantime. An empty
-        // `preexisting` says "this id is new"; revertAdds does the rest.
-        undo: () => get().revertAdds([item.id], EMPTY_IDS),
+        // `preexisting` says "this id is new"; undoForAdds does the rest.
+        undo: get().undoForAdds([item.id], EMPTY_IDS),
       });
     }
     return item;
@@ -1544,13 +1551,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }
     // One combined undo for the whole paste rather than addByName's per-line
     // one, which the loop above suppresses — otherwise only the last line of
-    // a ten-item paste would be undoable. revertAdds owns the minted-vs-
+    // a ten-item paste would be undoable. undoForAdds owns the minted-vs-
     // re-listed split.
     if (added.length > 0) {
       const addedIds = added.map(i => i.id);
       get().setLastAction({
         label: `${added.length} item${added.length === 1 ? '' : 's'} added`,
-        undo: () => get().revertAdds(addedIds, preexisting),
+        undo: get().undoForAdds(addedIds, preexisting),
       });
     }
     return { added, alreadyOnList };
@@ -1661,13 +1668,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       }
     });
 
-    // One combined undo for the whole recipe, through the same revertAdds
+    // One combined undo for the whole recipe, through the same undoForAdds
     // addManyFromText uses.
     if (added.length > 0) {
       const addedIds = added.map(i => i.id);
       get().setLastAction({
         label: `${added.length} item${added.length === 1 ? '' : 's'} added`,
-        undo: () => get().revertAdds(addedIds, preexisting),
+        undo: get().undoForAdds(addedIds, preexisting),
       });
     }
 
@@ -2687,7 +2694,17 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // ever runs from toggleChecked), so undoing the choice has to undo the tick
     // too, or the group comes back with one option already in the trolley.
     const before = [{ ...item, checked: false }, ...losers];
-    const toUnlist = losers.map(i => ({ ...i, onList: false, checked: false, choiceGroup: null }));
+    // Same park shape removeFromList uses, recipe-owned quantity included: a
+    // rejected "2 cups pears" must not hand that amount back on a later manual
+    // re-add. Previously unreachable, because the loser was deleted.
+    const toUnlist = losers.map(i => ({
+      ...i,
+      onList: false,
+      checked: false,
+      choiceGroup: null,
+      quantity: i.quantityFromRecipe ? null : i.quantity,
+      quantityFromRecipe: false,
+    }));
 
     dbUpdateGroceryItem(winner);
     for (const u of toUnlist) dbUpdateGroceryItem(u);
@@ -2725,23 +2742,40 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
   },
 
-  revertAdds(addedIds, preexisting) {
-    const linked = linkedItemIds({
+  undoForAdds(addedIds, preexisting) {
+    const currentLinks = () => linkCounts({
       products: get().itemProducts,
       subs: get().itemSubs,
       shops: get().itemShops,
       aliases: get().storeAliases,
     });
-    const toDelete: string[] = [];
-    const toPark: string[] = [];
-    for (const id of addedIds) {
+    // Taken now, with the add's own writes already on the rows, so that only a
+    // *later* edit can change it.
+    const linkedAtAdd = currentLinks();
+    const atAdd = addedIds.map(id => {
       const row = get().itemById(id);
-      if (!row) continue;
-      if (!preexisting.has(id) && !hasUserFacts(row, linked)) toDelete.push(id);
-      else toPark.push(id);
-    }
-    if (toDelete.length > 0) get().deleteItems(toDelete);
-    if (toPark.length > 0) get().removeFromListMany(toPark);
+      return {
+        id,
+        minted: !preexisting.has(id),
+        signature: row ? factSignature(row, linkedAtAdd) : null,
+      };
+    });
+
+    return () => {
+      const linkedNow = currentLinks();
+      const toDelete: string[] = [];
+      const toPark: string[] = [];
+      for (const snap of atAdd) {
+        const row = get().itemById(snap.id);
+        if (!row) continue;
+        const untouched = snap.signature !== null
+          && factSignature(row, linkedNow) === snap.signature;
+        if (snap.minted && untouched) toDelete.push(snap.id);
+        else toPark.push(snap.id);
+      }
+      if (toDelete.length > 0) get().deleteItems(toDelete);
+      if (toPark.length > 0) get().removeFromListMany(toPark);
+    };
   },
 
   removeFromList(id) {
@@ -2753,11 +2787,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // this week's shopping. See hasUserFacts.
     //
     // Taking the row off the list ends that shop's claim just as finishing
-    // does — see GroceryItem.quantityFromRecipe.
+    // does — see GroceryItem.quantityFromRecipe — and ends its either/or with
+    // it. The group is *this trolley's* "apples or pears" (see
+    // GroceryItem.choiceGroup, and hasUserFacts, which skips it on exactly
+    // that ground): a row leaving the list has left the choice, and carrying
+    // the label off-list would silently re-form the pair on a later re-add.
+    // resolveChoice used to be the only path that cleared it, which was enough
+    // only while the alternative was that the row got deleted.
     const updated = {
       ...item,
       onList: false,
       checked: false,
+      choiceGroup: null,
       quantity: item.quantityFromRecipe ? null : item.quantity,
       quantityFromRecipe: false,
     };
@@ -2774,11 +2815,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const toUpdate: GroceryItem[] = [];
     for (const item of get().items) {
       if (!wanted.has(item.id) || !item.onList) continue;
-      // Parks every row, same as removeFromList.
+      // Parks every row, same as removeFromList — choiceGroup included.
       toUpdate.push({
         ...item,
         onList: false,
         checked: false,
+        choiceGroup: null,
         quantity: item.quantityFromRecipe ? null : item.quantity,
         quantityFromRecipe: false,
       });
@@ -3147,7 +3189,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // whether or not it was ever bought. That's the half the old `inCatalog`
     // flag got wrong: a name typed to hold a substitute had no purchases, so
     // abandoning an unrelated trip destroyed it.
-    const linked = linkedItemIds({
+    const linked = linkCounts({
       products: get().itemProducts,
       subs: get().itemSubs,
       shops: get().itemShops,
@@ -3161,7 +3203,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (deletedIds.size > 0) get().deleteItems([...deletedIds]);
     const parked = before.filter(i => cleared.has(i.id) && !deletedIds.has(i.id));
     set(s => ({
-      items: s.items.map(i => (cleared.has(i.id) ? { ...i, onList: false, checked: false } : i)),
+      items: s.items.map(i => (
+        cleared.has(i.id) ? { ...i, onList: false, checked: false, choiceGroup: null } : i
+      )),
       cartHoldIds: [],
     }));
     // A trip whose list just went away is over. The other terminator is
@@ -3767,6 +3811,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       ...item,
       onList: false,
       checked: false,
+      choiceGroup: null,
       quantity: item.quantityFromRecipe ? null : item.quantity,
       quantityFromRecipe: false,
     };

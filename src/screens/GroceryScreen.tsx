@@ -906,7 +906,7 @@ export function GroceryScreen() {
   const confirmClear = useCallback(() => {
     confirmDelete({
       title: 'Clear the list?',
-      message: 'Everything comes off the list without being marked as bought. Anything you\u2019ve given a brand, a store, a price or a substitute stays in your groceries. Names you only typed for this list are removed.',
+      message: 'Everything comes off the list without being marked as bought. Anything you\u2019ve bought before, or recorded anything about, stays in your groceries. Names you only typed for this list are removed.',
       confirmLabel: 'Clear',
       onConfirm: () => {
         animateLayout();

@@ -63,15 +63,32 @@ weeks later. Seven places remembering a rule is six chances to forget it.
   history with no undo. Anything arguable counts as a fact. What doesn't: an auto-filed aisle (kept
   in `grocery_aisle_overrides` by `nameKey`, so it outlives the row anyway), a recipe stamp, a
   recipe-owned quantity, and this trolley's own `choiceGroup`.
-- **Undoing an *add* still deletes**, through `revertAdds`. `addByName` mints or re-lists, and only
-  the caller knows which, so every add path snapshots the item ids that existed before it ran and
-  hands that set to the undo: a minted row is deleted, a re-listed one parks. That used to be one
-  call to `removeFromList` for both, which worked only because provisionality made it mean two
-  things. **`revertAdds` also spares a minted row that has grown a fact since** — nothing like
-  `addProduct` or `linkItemShop` registers an undo of its own, so an add's action is still armed
-  minutes later, by which time the row may be carrying the brand you just named. Every add path
-  goes through it, `GroceryAddField`'s either/or and `GroceryAISheet`'s recipe apply included; a
-  new one that reaches for `removeFromListMany` instead will silently leak rows.
+- **`choiceGroup` is cleared by every path that takes a row off the list** — `removeFromList`,
+  `removeFromListMany`, `clearList` (in the SQL as well as in memory), `swapForSubstitute` and
+  `resolveChoice`. That used to be `resolveChoice`'s job alone, which was enough only while the
+  alternative was that the row got deleted. Carried off-list it would silently re-form the pair
+  when both names were added again, and it is exempt above on the express grounds that it dies
+  with the trolley, so something has to kill it.
+- **Undoing an *add* still deletes**, through `undoForAdds`. `addByName` mints or re-lists, and
+  only the caller knows which, so every add path snapshots the item ids that existed before it ran
+  and hands that set over: a minted row is deleted, a re-listed one parks. That used to be one call
+  to `removeFromList` for both, which worked only because provisionality made it mean two things.
+  Every add path goes through it, `GroceryAddField`'s either/or and `GroceryAISheet`'s recipe apply
+  included; a new one reaching for `removeFromListMany` instead will silently leak rows.
+- **It spares a minted row that grew a fact *since* the add, and that needs a snapshot, not a
+  predicate.** Nothing like `addProduct` or `linkItemShop` registers an undo of its own, so an
+  add's action stays armed for minutes, by which time the row may carry the brand you just named.
+  Asking `hasUserFacts` at undo time looks like the answer and is not: an add writes facts of its
+  own — a parsed "2 gal", a note typed into the add field, a Brand chip — so a row that has only
+  ever been added already answers true, and `addByName('2 gal milk')` became un-undoable. So
+  `undoForAdds` takes a `factSignature` when the add lands, takes another when the undo runs, and
+  deletes only when they match. **Build the undo at add time**, which is why it returns a closure
+  rather than being a plain action.
+- **`factSignature` and `hasUserFacts` read one table** (`FACT_READERS`), because the two must
+  never disagree about what counts. Written separately, the second drifts from the first on the
+  next field added and the failure is silent: an undo that deletes a row it should have kept. The
+  relation half is a *count* per item, not membership, so a second link landing on a row that
+  already had one still registers.
 - **`catalogPruneCandidates` asks the same question.** Its "never bought" test was always too weak
   for an unrecoverable delete — it can't see a brand, a store link or a substitute, and a row
   minted to hold one has no purchases by definition. That was rare while such rows were

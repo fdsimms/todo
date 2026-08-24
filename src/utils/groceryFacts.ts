@@ -19,20 +19,29 @@ export interface ItemRelations {
 }
 
 /**
- * The ids of every item something is hung off, as one set.
+ * How many things are hung off each item — boxes, store links, substitutes and
+ * receipt aliases counted together.
  *
  * Built once per sweep rather than scanned per row: `clearList` asks about a
  * whole list at a time, and four `.some()` walks over four arrays for each of
- * fifty rows is thousands of comparisons on a tap. Subs contribute *both* ends
- * — see the note in `hasUserFacts`.
+ * fifty rows is thousands of comparisons on a tap.
+ *
+ * A **count**, not a membership set, because `factSignature` has to notice a
+ * *second* link arriving on a row that already had one — a row minted with a
+ * Brand chip owns an `ItemProduct` from birth, so "does it have any links" is
+ * already true before the user names a store on it.
+ *
+ * Subs contribute to *both* ends: "margarine instead of butter" is a fact about
+ * margarine's row as much as butter's, and deleting either end drops the link.
  */
-export function linkedItemIds(relations: ItemRelations): Set<string> {
-  const ids = new Set<string>();
-  for (const p of relations.products) ids.add(p.itemId);
-  for (const l of relations.subs) { ids.add(l.itemId); ids.add(l.subItemId); }
-  for (const l of relations.shops) ids.add(l.itemId);
-  for (const a of relations.aliases) ids.add(a.itemId);
-  return ids;
+export function linkCounts(relations: ItemRelations): Map<string, number> {
+  const counts = new Map<string, number>();
+  const bump = (id: string) => counts.set(id, (counts.get(id) ?? 0) + 1);
+  for (const p of relations.products) bump(p.itemId);
+  for (const l of relations.subs) { bump(l.itemId); bump(l.subItemId); }
+  for (const l of relations.shops) bump(l.itemId);
+  for (const a of relations.aliases) bump(a.itemId);
+  return counts;
 }
 
 /**
@@ -62,9 +71,10 @@ export function linkedItemIds(relations: ItemRelations): Set<string> {
  * never shopped, never spoken about — answers false.
  *
  * Three callers, all of which delete: `clearList`'s sweep of an abandoned
- * trip, `revertAdds` (so undoing an add can't destroy something recorded on
- * the row since), and `catalogPruneCandidates`, whose "never bought" test was
- * on its own too weak to protect a row someone had named a brand on.
+ * trip, `undoForAdds` (which compares two `factSignature`s rather than calling
+ * this, for the reason that function's own note gives), and
+ * `catalogPruneCandidates`, whose "never bought" test was on its own too weak
+ * to protect a row someone had named a brand on.
  *
  * Not counted, and each for its own reason:
  *   - `aisle`, because the lexicon guesses it unasked, and a hand-set one is
@@ -74,37 +84,75 @@ export function linkedItemIds(relations: ItemRelations): Set<string> {
  *   - `sourceRecipeId`/`sourceRecipeTitle`, stamped by `addFromPlan` rather
  *     than typed.
  *   - `lastAddedAt`/`createdAt`/`sortOrder`, which every row has by existing.
- *   - `choiceGroup`, which is this trolley's own either/or and dies with it.
+ *   - `choiceGroup`, which is this trolley's own either/or. Every path that
+ *     takes a row off the list clears it (see removeFromList), so it can't
+ *     outlive the list it belonged to.
  */
-export function hasUserFacts(item: GroceryItem, linked: ReadonlySet<string>): boolean {
+export function hasUserFacts(item: GroceryItem, linked: ReadonlyMap<string, number>): boolean {
+  if (linked.has(item.id)) return true;
+  return FACT_READERS.some(read => read(item) !== '');
+}
+
+/**
+ * One reader per fact a row can carry: `''` when it isn't there, a stable
+ * string naming its current value when it is.
+ *
+ * A table rather than a chain of `if`s because two questions are asked of it
+ * and they must never disagree: *is* there a fact (`hasUserFacts`) and *which
+ * facts, with which values* (`factSignature`). Written twice, the second would
+ * drift from the first on the next field added, and the failure would be a
+ * silent one — an undo that deletes a row it should have spared.
+ */
+const FACT_READERS: ReadonlyArray<(item: GroceryItem) => string> = [
   // Shopped for. A purchase is the original promotion rule and still the
   // commonest one — it also brings the price and cadence the pantry reads.
-  if (item.purchaseCount > 0 || item.lastPurchasedAt) return true;
-  if (item.lastPriceMinor !== null || item.priceHistory.length > 0) return true;
+  i => (i.purchaseCount > 0 ? `bought:${i.purchaseCount}` : ''),
+  i => (i.lastPurchasedAt ? `boughtAt:${i.lastPurchasedAt}` : ''),
+  i => (i.lastPriceMinor !== null ? `price:${i.lastPriceMinor}` : ''),
+  i => (i.priceHistory.length > 0 ? `prices:${i.priceHistory.length}` : ''),
 
   // Said about the kitchen: "I always have it", "Got it", "Out of it", frozen,
   // opened, nearly out, goes off on this date, keeps this long.
-  if (item.isStaple) return true;
-  if (item.onHandUntil || item.frozenAt || item.openedAt || item.runningLowAt) return true;
-  if (item.expiresAt || item.shelfLifeDays !== null) return true;
+  i => (i.isStaple ? 'staple' : ''),
+  i => (i.onHandUntil ? `onHand:${i.onHandUntil}` : ''),
+  i => (i.frozenAt ? `frozen:${i.frozenAt}` : ''),
+  i => (i.openedAt ? `opened:${i.openedAt}` : ''),
+  i => (i.runningLowAt ? `low:${i.runningLowAt}` : ''),
+  i => (i.expiresAt ? `expires:${i.expiresAt}` : ''),
+  i => (i.shelfLifeDays !== null ? `shelfLife:${i.shelfLifeDays}` : ''),
 
   // How it left the kitchen last time, and whether the app was told to stop
   // asking about it.
-  if (item.usedUpCount > 0 || item.spoiledCount > 0 || item.lastSpoiledAt) return true;
-  if (item.pantryCheckDeclinedAt || item.useUpTask !== null) return true;
+  i => (i.usedUpCount > 0 ? `usedUp:${i.usedUpCount}` : ''),
+  i => (i.spoiledCount > 0 ? `spoiled:${i.spoiledCount}` : ''),
+  i => (i.lastSpoiledAt ? `spoiledAt:${i.lastSpoiledAt}` : ''),
+  i => (i.pantryCheckDeclinedAt ? `declined:${i.pantryCheckDeclinedAt}` : ''),
+  i => (i.useUpTask !== null ? `useUp:${i.useUpTask}` : ''),
 
   // Which one of it.
-  if (item.preferredProductId || item.productStrict) return true;
+  i => (i.preferredProductId ? `box:${i.preferredProductId}` : ''),
+  i => (i.productStrict ? 'strict' : ''),
 
   // Typed onto the row. A quantity only counts when the user set it — the
   // recipe-owned kind is `addFromPlan`'s bookkeeping, not a preference (see
   // GroceryItem.quantityFromRecipe).
-  if (item.note.trim()) return true;
-  if (item.quantity && !item.quantityFromRecipe) return true;
+  i => (i.note.trim() ? `note:${i.note.trim()}` : ''),
+  i => (i.quantity && !i.quantityFromRecipe ? `qty:${i.quantity}` : ''),
+];
 
-  // Hung off the row — a box, a store link, a substitute, a receipt alias.
-  // Subs count in both directions: "margarine instead of butter" is a fact
-  // about margarine's row as much as butter's, and deleting either end drops
-  // the link. See linkedItemIds, which is what builds this set.
-  return linked.has(item.id);
+/**
+ * The same facts as a comparable string, for asking "has anything been recorded
+ * on this row *since* a moment I care about".
+ *
+ * `hasUserFacts` can't answer that on its own, and assuming it could was a bug:
+ * an add writes facts of its own (a parsed "2 gal", a note typed into the add
+ * field, a Brand chip), so a row that has only ever been added already answers
+ * true. Undoing that add compared the predicate against nothing and concluded
+ * the row was precious, leaving it behind. Compare two signatures instead —
+ * `undoForAdds` takes one the instant the add lands and another when the undo
+ * runs, and deletes only when they match.
+ */
+export function factSignature(item: GroceryItem, linked: ReadonlyMap<string, number>): string {
+  const facts = FACT_READERS.map(read => read(item));
+  return [...facts, `links:${linked.get(item.id) ?? 0}`].join(' ');
 }

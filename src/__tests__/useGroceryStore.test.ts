@@ -602,6 +602,34 @@ describe('addByName', () => {
     expect(useGroceryStore.getState().items).toHaveLength(0);
   });
 
+  // The add writes facts of its own — a parsed quantity, a typed note, a Brand
+  // chip — so "has this row got facts" is the wrong question at undo time and
+  // made "2 gal milk" un-undoable. undoForAdds compares against a snapshot
+  // taken when the add landed instead.
+  it('deletes a minted row whose only facts the add itself wrote', () => {
+    useGroceryStore.getState().addByName('2 gal milk');
+    useGroceryStore.getState().undoLastAction();
+    expect(useGroceryStore.getState().items).toEqual([]);
+  });
+
+  it('deletes a minted row carrying a note the add field typed', () => {
+    useGroceryStore.getState().addByName('limes', {
+      name: 'limes', quantity: null, note: 'for margs',
+    });
+    useGroceryStore.getState().undoLastAction();
+    expect(useGroceryStore.getState().items).toEqual([]);
+  });
+
+  it('deletes a minted row carrying a brand the add field chipped on', () => {
+    useGroceryStore.getState().addByName('bread', {
+      name: 'bread', quantity: null, brand: "Arnold's",
+    });
+    useGroceryStore.getState().undoLastAction();
+    expect(useGroceryStore.getState().items).toEqual([]);
+    // The box goes with it rather than dangling — see deleteItems' cascade.
+    expect(useGroceryStore.getState().itemProducts).toEqual([]);
+  });
+
   // The undo of an *add* is not a licence to delete: addProduct and friends
   // register no undo of their own, so the add's action is still armed minutes
   // later, by which time the row may be carrying a brand or a substitute.
@@ -4365,6 +4393,50 @@ describe('either/or items (choiceGroup)', () => {
     const loser = items.find(i => i.id === pears.id)!;
     expect(loser.onList).toBe(false);
     expect(loser.choiceGroup).toBeNull();
+  });
+
+  // Every park path clears the group, not just resolveChoice's. It parks now
+  // where it used to delete, so a label carried off-list would silently
+  // re-form the pair when both names were added again months later.
+  it('clears the group when an option is removed from the list instead of ticked', () => {
+    const { apples, pears } = pair();
+
+    useGroceryStore.getState().removeFromList(apples.id);
+    expect(useGroceryStore.getState().itemById(apples.id)!.choiceGroup).toBeNull();
+
+    useGroceryStore.getState().removeFromListMany([pears.id]);
+    expect(useGroceryStore.getState().itemById(pears.id)!.choiceGroup).toBeNull();
+  });
+
+  it('clears the group when the whole list is cleared', () => {
+    const { apples, pears } = pair();
+    (dbClearGroceryList as jest.Mock).mockReturnValue([apples.id, pears.id]);
+
+    useGroceryStore.getState().clearList();
+
+    // Both rows carry a note from the pair() helper's override, so neither is
+    // swept — the point here is the label, not the sweep.
+    for (const id of [apples.id, pears.id]) {
+      const row = useGroceryStore.getState().itemById(id);
+      if (row) expect(row.choiceGroup).toBeNull();
+    }
+  });
+
+  // The other park paths drop a recipe-owned quantity; this one didn't, which
+  // only became reachable once the loser stopped being deleted.
+  it('drops a rejected option\'s recipe-owned quantity', () => {
+    const { apples, pears } = pair();
+    useGroceryStore.setState(s => ({
+      items: s.items.map(i => (
+        i.id === pears.id ? { ...i, quantity: '2 cups', quantityFromRecipe: true } : i
+      )),
+    }));
+
+    useGroceryStore.getState().toggleChecked(apples.id);
+
+    const loser = useGroceryStore.getState().itemById(pears.id)!;
+    expect(loser.quantity).toBeNull();
+    expect(loser.quantityFromRecipe).toBe(false);
   });
 
   it('undoes the whole choice — the loser comes back and the tick is taken off', () => {

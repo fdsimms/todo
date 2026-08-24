@@ -270,7 +270,7 @@ export function buildGroceryRecipeSections(
  */
 export function catalogPruneCandidates(
   items: readonly GroceryItem[],
-  linked: ReadonlySet<string>,
+  linked: ReadonlyMap<string, number>,
   now: Date,
   staleDays = 60
 ): GroceryItem[] {

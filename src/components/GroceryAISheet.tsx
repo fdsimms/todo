@@ -195,13 +195,15 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         if (!wasOnList) addedIds.push(item.id);
       });
       if (addedIds.length > 0) {
-        // revertAdds, not removeFromListMany: the latter only parks, so undoing
-        // an apply would leave every row this minted behind — and setQuantity
-        // above stamps a user-owned quantity on them, which would then keep
-        // them through clearList's sweep for good.
+        // undoForAdds, not removeFromListMany: the latter only parks, so
+        // undoing an apply would leave every row this minted behind. Built
+        // here rather than at undo time, which matters most on this path —
+        // setQuantity above stamps a user-owned quantity on every row, so a
+        // check made later would read the apply's own writes as reasons to
+        // keep them.
         useGroceryStore.getState().setLastAction({
           label: `${addedIds.length} item${addedIds.length === 1 ? '' : 's'} added`,
-          undo: () => useGroceryStore.getState().revertAdds(addedIds, preexisting),
+          undo: useGroceryStore.getState().undoForAdds(addedIds, preexisting),
         });
       }
     }

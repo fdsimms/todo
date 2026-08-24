@@ -17,8 +17,8 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { FROZEN_REASON, RUNNING_LOW_REASON, type GroceryItem, type ItemProduct } from '../types';
 
 const NOW = new Date('2026-08-07T12:00:00.000Z');
-/** No item carries a product, sub, shop link or alias — see linkedItemIds. */
-const NO_LINKS: ReadonlySet<string> = new Set<string>();
+/** No item carries a product, sub, shop link or alias — see linkCounts. */
+const NO_LINKS: ReadonlyMap<string, number> = new Map<string, number>();
 
 function daysAgo(n: number): string {
   return new Date(NOW.getTime() - n * 86_400_000).toISOString();
@@ -308,7 +308,7 @@ describe('catalogPruneCandidates', () => {
   // clearList's sweep does rather than the weaker "never bought" it used to.
   it('never names a never-bought row that carries a substitute link', () => {
     const items = [makeItem({ name: 'Margarine', lastAddedAt: daysAgo(200) })];
-    const linked = new Set([items[0].id]);
+    const linked = new Map([[items[0].id, 1]]);
     expect(catalogPruneCandidates(items, NO_LINKS, NOW).map(i => i.name)).toEqual(['Margarine']);
     expect(catalogPruneCandidates(items, linked, NOW)).toEqual([]);
   });

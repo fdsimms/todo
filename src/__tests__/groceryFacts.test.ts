@@ -1,4 +1,4 @@
-import { hasUserFacts, linkedItemIds, type ItemRelations } from '../utils/groceryFacts';
+import { hasUserFacts, factSignature, linkCounts, type ItemRelations } from '../utils/groceryFacts';
 import { groceryNameKey } from '../utils/groceryParse';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, StoreAlias } from '../types';
@@ -45,11 +45,11 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
 }
 
 const BARE = makeItem('Nduja');
-const NO_LINKS: ReadonlySet<string> = new Set<string>();
+const NO_LINKS: ReadonlyMap<string, number> = new Map<string, number>();
 
-/** The set `hasUserFacts` actually takes, built the way production builds it. */
-function linked(over: Partial<ItemRelations> = {}): ReadonlySet<string> {
-  return linkedItemIds({ products: [], subs: [], shops: [], aliases: [], ...over });
+/** The counts `hasUserFacts` actually takes, built the way production builds them. */
+function linked(over: Partial<ItemRelations> = {}): ReadonlyMap<string, number> {
+  return linkCounts({ products: [], subs: [], shops: [], aliases: [], ...over });
 }
 
 describe('hasUserFacts', () => {
@@ -121,5 +121,46 @@ describe('hasUserFacts', () => {
     const link = { itemId: 'someone-else', subItemId: 'also-not-this-one' } as ItemSubLink;
     const product = { id: 'p1', itemId: 'someone-else' } as ItemProduct;
     expect(hasUserFacts(BARE, linked({ subs: [link], products: [product] }))).toBe(false);
+  });
+});
+
+describe('factSignature', () => {
+  it('is stable for an unchanged row', () => {
+    expect(factSignature(BARE, NO_LINKS)).toBe(factSignature(BARE, NO_LINKS));
+  });
+
+  // The distinction hasUserFacts cannot draw on its own, and the reason this
+  // exists: both rows carry a fact, but only one of them *changed*.
+  it('separates a row that already had a fact from one that has gained another', () => {
+    const withNote = makeItem('Nduja', { note: 'the spicy one' });
+    const before = factSignature(withNote, NO_LINKS);
+    expect(factSignature({ ...withNote }, NO_LINKS)).toBe(before);
+    expect(factSignature({ ...withNote, isStaple: true }, NO_LINKS)).not.toBe(before);
+  });
+
+  it('changes when a fact is edited rather than added', () => {
+    const a = makeItem('Nduja', { quantity: '1 jar' });
+    const b = makeItem('Nduja', { quantity: '2 jars' });
+    expect(factSignature(a, NO_LINKS)).not.toBe(factSignature(b, NO_LINKS));
+  });
+
+  // Counts, not membership: a row minted with a Brand chip owns a product from
+  // birth, so a bit would miss the store link named on it afterwards.
+  it('changes when a second link lands on a row that already had one', () => {
+    const product = { id: 'p1', itemId: BARE.id } as ItemProduct;
+    const shop = { itemId: BARE.id, shopId: 's1' } as ItemShopLink;
+    const one = factSignature(BARE, linked({ products: [product] }));
+    const two = factSignature(BARE, linked({ products: [product], shops: [shop] }));
+    expect(one).not.toBe(two);
+  });
+
+  it('ignores everything hasUserFacts ignores', () => {
+    const bare = factSignature(BARE, NO_LINKS);
+    expect(factSignature(makeItem('Nduja', { aisle: 'Produce' }), NO_LINKS)).toBe(bare);
+    expect(factSignature(makeItem('Nduja', { choiceGroup: 'g1' }), NO_LINKS)).toBe(bare);
+    expect(factSignature(makeItem('Nduja', { sourceRecipeId: 'r1' }), NO_LINKS)).toBe(bare);
+    expect(
+      factSignature(makeItem('Nduja', { quantity: '2 lb', quantityFromRecipe: true }), NO_LINKS)
+    ).toBe(bare);
   });
 });
