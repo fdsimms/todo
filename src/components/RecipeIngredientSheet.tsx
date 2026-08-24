@@ -33,6 +33,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 import { PillGroup } from './PillGroup';
 import { GroceryItemSheet } from './GroceryItemSheet';
+import { InlineAction } from './InlineAction';
 
 interface Props {
   visible: boolean;
@@ -70,8 +71,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const recipeEmptySections = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.emptySections ?? [])
   );
+  const recipeTitle = useRecipeStore(s => s.recipes.find(r => r.id === recipeId)?.name ?? '');
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
+  const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -234,6 +237,23 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     onClose();
   };
 
+  // The saved line, not the draft in the fields above — matching what
+  // `catalogItem` is keyed against, so the card flips to the "In your
+  // groceries" row the moment this resolves rather than staying stuck on the
+  // empty state until the next save. Goes through addFromPlan rather than
+  // addByName directly for the same quantityFromRecipe/aisle-precedence
+  // handling a whole-recipe add gets — see addFromPlan's doc comment.
+  const addIngredientToList = () => {
+    const result = addFromPlan([{
+      name: ingredient.name,
+      quantity: ingredient.quantity || null,
+      aisle: ingredient.aisle,
+      sourceRecipeId: recipeId,
+      sourceRecipeTitle: recipeTitle,
+    }]);
+    if (result.added.length > 0) haptics.success();
+  };
+
   return (
     <EditorSheet
       visible={visible}
@@ -373,10 +393,19 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
           </TouchableOpacity>
         ) : (
-          <Text style={styles.hint}>
-            Not in your groceries yet. It's added the first time you put this on a list, and
-            then it can carry a brand, a store, a price and what you'd accept instead.
-          </Text>
+          <>
+            <Text style={styles.hint}>
+              Not on your list yet. Add it and it can carry a brand, a store, a price and what
+              you'd accept instead.
+            </Text>
+            <InlineAction
+              label="Add to list"
+              icon="cart-outline"
+              onPress={addIngredientToList}
+              style={styles.addToListButton}
+              accessibilityLabel={`Add ${ingredient.name} to your grocery list`}
+            />
+          </>
         )}
 
         {(!!standingSwap || noSwap) && (
@@ -729,6 +758,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   catalogBody: {
     flex: 1,
     gap: 2,
+  },
+  addToListButton: {
+    marginTop: spacing.xs,
+    alignSelf: 'flex-start',
   },
   catalogName: {
     color: colors.text,
