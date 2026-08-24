@@ -517,8 +517,14 @@ interface GroceryStore {
    * `registerUndo: false` suppresses the per-call shake-to-undo entry, same as
    * `addByName`'s option and for the same reason — `addManyToPantry` uses it
    * and registers one combined action of its own after its loop.
+   *
+   * `onUndo`, if given, is handed the same revert closure `registerUndo`
+   * would otherwise file under `lastAction` — called regardless of
+   * `registerUndo`, so a caller that can't reach shake-to-undo (a sheet
+   * presented as a native `Modal` sits above `UndoBar` too) can still offer
+   * an immediate, local way back without reimplementing the revert itself.
    */
-  addToPantry: (raw: string, opts?: { registerUndo?: boolean }) => GroceryItem | null;
+  addToPantry: (raw: string, opts?: { registerUndo?: boolean; onUndo?: (undo: () => void) => void }) => GroceryItem | null;
   /**
    * `addToPantry`, for a whole scan session at once — the barcode sheet's
    * "Add" button on the Pantry screen. Loops `addToPantry` with its undo
@@ -2340,15 +2346,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       };
       dbUpdateGroceryItem(updated);
       set(s => ({ items: s.items.map(i => (i.id === existing.id ? updated : i)) }));
+      const undo = () => {
+        dbUpdateGroceryItem(existing);
+        set(s => ({ items: s.items.map(i => (i.id === existing.id ? existing : i)) }));
+      };
       if (opts?.registerUndo !== false) {
-        get().setLastAction({
-          label: `Added "${updated.name}" to the pantry`,
-          undo: () => {
-            dbUpdateGroceryItem(existing);
-            set(s => ({ items: s.items.map(i => (i.id === existing.id ? existing : i)) }));
-          },
-        });
+        get().setLastAction({ label: `Added "${updated.name}" to the pantry`, undo });
       }
+      opts?.onUndo?.(undo);
       return updated;
     }
 
@@ -2371,12 +2376,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const item: GroceryItem = { ...row, onHandUntil: defaultOnHandUntil(row, now) };
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));
+    const undo = () => get().deleteItem(item.id);
     if (opts?.registerUndo !== false) {
-      get().setLastAction({
-        label: `Added "${item.name}" to the pantry`,
-        undo: () => get().deleteItem(item.id),
-      });
+      get().setLastAction({ label: `Added "${item.name}" to the pantry`, undo });
     }
+    opts?.onUndo?.(undo);
     return item;
   },
 

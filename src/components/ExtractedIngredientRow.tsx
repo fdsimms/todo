@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
@@ -6,11 +6,13 @@ import {
   spacing, radius, font, fontWeight, border, iconSize, interaction, checkboxRadius,
   type Colors,
 } from '../theme';
-import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH } from '../types';
 import type { RecipeGroceryItem } from '../services/aiSuggestions';
 import { InlineEditableText } from './InlineEditableText';
+import { PillGroup } from './PillGroup';
 import { type PendingEdits } from '../hooks/usePendingEdits';
 import { haptics } from '../utils/haptics';
+import { animateLayout } from '../utils/layoutAnimation';
 
 const CHECKBOX_SIZE = 22;
 
@@ -24,6 +26,9 @@ interface Props {
   onToggle: () => void;
   onEditName: (name: string) => void;
   onEditQuantity: (quantity: string) => void;
+  onEditSection: (section: string | null) => void;
+  /** Every section label already in play — this recipe's own plus this import's — offered as picks before falling back to typing a new one. */
+  existingSections: string[];
   sectionHeader?: string | null;
   /**
    * Why this row arrived unticked, when something other than the user unticked
@@ -61,10 +66,14 @@ interface Props {
  * writes to `grocery_item_subs`.
  */
 export function ExtractedIngredientRow({
-  row, edits, index, checked, onToggle, onEditName, onEditQuantity, sectionHeader, note,
+  row, edits, index, checked, onToggle, onEditName, onEditQuantity, onEditSection,
+  existingSections, sectionHeader, note,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  // Local, not lifted: which row's section picker is open is throwaway UI
+  // state, not something the sheet needs to know about.
+  const [sectionOpen, setSectionOpen] = useState(false);
 
   return (
     <>
@@ -113,7 +122,61 @@ export function ExtractedIngredientRow({
             />
           </View>
         )}
+
+        <TouchableOpacity
+          onPress={() => { haptics.tap(); animateLayout(); setSectionOpen(v => !v); }}
+          hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+          accessibilityRole="button"
+          accessibilityState={{ expanded: sectionOpen }}
+          accessibilityLabel={row.section ? `Section: ${row.section}` : 'Add a section'}
+        >
+          <Ionicons
+            name={row.section ? 'pricetag' : 'pricetag-outline'}
+            size={iconSize.sm}
+            color={row.section ? colors.purple : colors.textTertiary}
+          />
+        </TouchableOpacity>
       </View>
+
+      {sectionOpen && (
+        <View style={styles.sectionPicker}>
+          <PillGroup
+            noun="section"
+            surface="card"
+            filterPlaceholder="Find or name a section…"
+            createMaxLength={RECIPE_SECTION_MAX_LENGTH}
+            onCreate={label => {
+              const cleaned = label.trim().slice(0, RECIPE_SECTION_MAX_LENGTH);
+              if (!cleaned) return 'Give the section a name.';
+              onEditSection(cleaned);
+              animateLayout();
+              setSectionOpen(false);
+            }}
+            options={[
+              {
+                key: '__none__',
+                label: 'No section',
+                pinned: true,
+                selected: !row.section,
+                onPress: () => {
+                  haptics.tap(); animateLayout(); onEditSection(null); setSectionOpen(false);
+                },
+              },
+              ...existingSections.map(label => ({
+                key: label,
+                label,
+                selected: row.section === label,
+                onPress: () => {
+                  haptics.tap(); animateLayout(); onEditSection(label); setSectionOpen(false);
+                },
+              })),
+            ]}
+          />
+          <Text style={styles.sectionHint}>
+            Puts this ingredient under a heading, like “For the cake” or “For the frosting”.
+          </Text>
+        </View>
+      )}
     </>
   );
 }
@@ -151,6 +214,22 @@ function makeStyles(colors: Colors) {
       justifyContent: 'center',
     },
     checkboxOn: { backgroundColor: colors.purple, borderColor: colors.purple },
+    sectionPicker: {
+      backgroundColor: colors.bgSecondary,
+      marginHorizontal: spacing.md,
+      marginTop: -2,
+      marginBottom: spacing.xs,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.sm,
+      paddingBottom: spacing.sm,
+    },
+    sectionHint: {
+      fontSize: font.xs,
+      color: colors.textTertiary,
+      paddingHorizontal: spacing.xs,
+      paddingTop: spacing.xs,
+      paddingBottom: spacing.sm,
+    },
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     // No lineHeight — RN maps it onto the iOS paragraph style with no

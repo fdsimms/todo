@@ -362,6 +362,19 @@ export function RecipeDetailScreen() {
     Share.share({ message }).catch(() => {});
   };
 
+  // Skip Linking.canOpenURL — recipe links are always http(s), and openURL
+  // fails harmlessly with nothing to catch beyond ignoring it (see the same
+  // call in TaskItem's handleOpenLink).
+  const handleOpenSourceUrl = async () => {
+    if (!recipe.sourceUrl) return;
+    haptics.tap();
+    try {
+      await Linking.openURL(recipe.sourceUrl);
+    } catch {
+      // silently ignore — no toast infra for this row-level action
+    }
+  };
+
   const submitStepDraft = () => {
     if (!stepDraft.trim()) return;
     animateLayout();
@@ -979,6 +992,16 @@ export function RecipeDetailScreen() {
                 accessibilityLabel="Share this recipe"
               >
                 <Ionicons name="share-outline" size={iconSize.md} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+            {!selectionMode && !!recipe.sourceUrl && (
+              <TouchableOpacity
+                onPress={handleOpenSourceUrl}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Open original recipe"
+              >
+                <Ionicons name="open-outline" size={iconSize.md} color={colors.textSecondary} />
               </TouchableOpacity>
             )}
             {!selectionMode && (

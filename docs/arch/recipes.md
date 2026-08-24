@@ -120,6 +120,16 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   missing shortcut: what a person has to check is the parts, which a row can't show without
   truncating them, so there's exactly one place the split is accepted. Suppressed on a row already
   filed under a `choiceGroup`, which is the app asking for something the user has already done.
+- **`mergeChoiceGroup` is the undo, and it's a real recombine, not just clearing the label.** The
+  Alternatives field's "No alternatives" pill and the per-sibling toggle-off only ever touch one
+  row's own `choiceGroup` — that's on purpose (leaving one member shouldn't clear the group for
+  whoever else is still in it) but it means neither one actually reverses a split: the sibling
+  rows stay behind as separate, permanent lines. `RecipeIngredientSheet`'s "Merge back into one
+  line?" offer, mirroring the split offer above it, recombines every member of the *opened* row's
+  group back into that one row — named as the members' current names joined with "or", the same
+  spelling the split undoes — and removes the rest. It works from whichever member the sheet has
+  open, not only the group's default, since there's no reason to require reopening a specific row
+  to undo a split made from any of them.
 
 - **The choice is resolved at read time and never written onto the recipe.** `activeComponents`
   picks one option per group, `walk` descends only into that one, and every flatten takes an

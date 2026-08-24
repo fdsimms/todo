@@ -34,6 +34,7 @@ import {
 } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
 import { aisleForName } from '../utils/groceryAisles';
+import { sectionsOf } from '../utils/recipeSections';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker, type RecipeInputMode } from './RecipeSourcePicker';
@@ -165,7 +166,7 @@ export function RecipeCreateSheet({
   // land here, and each opens on its own tab rather than making that tap feel
   // ignored. Every other tab is still one tap away.
   const input = useRecipeImportSource(initialMode);
-  const { resolveSource, reset: resetInput, setUrl } = input;
+  const { resolveSource, reset: resetInput, setMode, setUrl } = input;
 
   // "…and there's a salsa verde on page 45." Nothing is filtered out here for
   // an existing parent, because there isn't one yet — see importableReferences.
@@ -180,6 +181,13 @@ export function RecipeCreateSheet({
   const covered = useMemo(
     () => coveredIngredients(ingredients, candidates, acceptedKeys),
     [ingredients, candidates, acceptedKeys],
+  );
+
+  // Every heading the Section picker can offer, for a recipe that doesn't
+  // exist yet: just whatever this batch has already been filed under.
+  const existingSections = useMemo(
+    () => sectionsOf(ingredients.map((row, i) => ({ id: String(i), section: row.section }))),
+    [ingredients],
   );
 
   const reset = useCallback(() => {
@@ -207,14 +215,21 @@ export function RecipeCreateSheet({
     if (!visible) reset();
   }, [visible, reset]);
 
-  // A shared page arrives as a prop rather than as typing, so the field is
-  // seeded on the way *open* — the reset above runs on close and would wipe a
-  // value set any earlier. Keyed on `visible` as well as the url so reopening
-  // for the same page fills the box again after that reset, which is the same
-  // reason the stamped navigation params elsewhere carry a timestamp.
+  // `input` keeps its own `mode` and `url` state, and both only pick up the
+  // props on first mount — while this sheet stays mounted for the screen's whole
+  // life. So a later tap on a different add-menu item (link vs. photo) changed
+  // `initialMode` without the sheet re-opening on that tab, and a page arriving
+  // from the share sheet arrives as a prop rather than as typing. Both are
+  // synced on the same transition that opens the sheet, which is also the only
+  // point *after* the reset above: that runs on close, and would wipe a value
+  // set any earlier.
   useEffect(() => {
-    if (visible && initialUrl) setUrl(initialUrl);
-  }, [visible, initialUrl, setUrl]);
+    if (!visible) return;
+    setMode(initialMode);
+    // Only when there is one — the add menu's two items open with an empty
+    // field, and clearing it here would fight the reset that just ran.
+    if (initialUrl) setUrl(initialUrl);
+  }, [visible, initialMode, initialUrl, setMode, setUrl]);
 
   const run = useCallback(async () => {
     setLoading(true);
@@ -258,7 +273,9 @@ export function RecipeCreateSheet({
     });
   };
 
-  const editIngredient = (index: number, patch: Partial<Pick<RecipeGroceryItem, 'name' | 'quantity'>>) => {
+  const editIngredient = (
+    index: number, patch: Partial<Pick<RecipeGroceryItem, 'name' | 'quantity' | 'section'>>,
+  ) => {
     haptics.success();
     setIngredients(prev => prev.map((row, i) => {
       if (i !== index) return row;
@@ -691,6 +708,8 @@ export function RecipeCreateSheet({
               onToggle={() => toggle(i)}
               onEditName={name => editIngredient(i, { name })}
               onEditQuantity={quantity => editIngredient(i, { quantity })}
+              onEditSection={section => editIngredient(i, { section })}
+              existingSections={existingSections}
               sectionHeader={sectionHeader}
               note={coveredBy ? `made from the ${coveredBy} recipe` : null}
             />

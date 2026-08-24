@@ -63,6 +63,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
 
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const splitIngredientAlternatives = useRecipeStore(s => s.splitIngredientAlternatives);
+  const mergeChoiceGroup = useRecipeStore(s => s.mergeChoiceGroup);
   const renameChoiceGroup = useRecipeStore(s => s.renameChoiceGroup);
   const recipeIngredients = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.ingredients ?? [])
@@ -229,6 +230,22 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       recipeId, ingredient.id, alternatives, name.trim()
     );
     if (!created) return;
+    haptics.success();
+    animateLayout();
+    onClose();
+  };
+
+  // A preview of what mergeBack produces — this row's own typed name (not yet
+  // saved) plus every sibling's stored one, "or"-joined the same way the
+  // split offer shows its parts verbatim.
+  const mergePreviewName = ingredient
+    ? [name.trim() || ingredient.name, ...siblingNames].join(' or ')
+    : '';
+
+  const mergeBack = () => {
+    if (!ingredient) return;
+    const merged = mergeChoiceGroup(recipeId, ingredient.id);
+    if (!merged) return;
     haptics.success();
     animateLayout();
     onClose();
@@ -527,6 +544,24 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             'You haven’t listed any alternatives for this ingredient.'
           )}
         </Text>
+        {siblingNames.length > 0 && (
+          <TouchableOpacity
+            style={styles.suggestionRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={mergeBack}
+            accessibilityRole="button"
+            accessibilityLabel={`Merge back into one line: ${mergePreviewName}`}
+          >
+            <Ionicons name="git-merge-outline" size={iconSize.sm} color={colors.accent} />
+            <View style={styles.suggestionBody}>
+              <Text style={styles.suggestionTitle}>Merge back into one line?</Text>
+              <Text style={styles.suggestionDetail}>{mergePreviewName}</Text>
+              <Text style={styles.suggestionDetail}>
+                Combines these into one line. You won't choose between them anymore.
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.sectionCard}>
