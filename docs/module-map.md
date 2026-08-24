@@ -119,6 +119,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/pricePairing.ts` — PairItem, Pairing, autoPairing, pairWith, unpair, unpairedPriceIndexes, pricesByItemId
 - `src/utils/prioritySegments.ts` — PRIORITY_SEGMENTS
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
+- `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField
 - `src/utils/projectGrouping.ts` — ProjectListItem, groupProjectsByCategory, ProjectDropResolution, resolveProjectDrop
 - `src/utils/projectOrder.ts` — liveProjectSteps, stepNumbersByTask, slotUpdates
 - `src/utils/projectPull.ts` — MAX_PULLED_PROJECTS, MAX_CANDIDATES_PER_PROJECT, PULL_TODAY_BUDGET_MINUTES, StallMode, ProjectStall, PullDate, ProjectPullProposal, PullEmptyReason, PullEmptyState, ProjectPullPlan, +9 more
