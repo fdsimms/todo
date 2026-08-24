@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { format } from 'date-fns';
 import type { Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
+import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
 import { completionTapFor } from '../utils/completionTap';
@@ -11,7 +14,10 @@ import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { isChainFinish } from '../utils/chain';
+import { dayKeyToDate } from '../utils/dateUtils';
+import { parseMealSlotSource } from '../utils/mealSlotTasks';
 import { DeliverablePromptSheet } from './DeliverablePromptSheet';
+import { RecipePickerSheet } from './RecipePickerSheet';
 
 export const TASK_CHECKBOX_SIZE = 20;
 
@@ -60,8 +66,11 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
+  const planMeal = useMealPlanStore(s => s.planMeal);
+  const { offerPrepTasksForEach } = usePlanMeal();
 
   const [showPrompt, setShowPrompt] = useState(false);
+  const [showMealPicker, setShowMealPicker] = useState(false);
   const scale = useRef(new Animated.Value(1)).current;
 
   const action = completionTapFor(task);
@@ -121,6 +130,13 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         await haptics.tap();
         setShowPrompt(true);
         return;
+      case 'pick-meal':
+        // Same contract as 'ask': the tap opens a sheet instead of ticking
+        // anything. Picking a meal rewrites this row into "Cook X"/"Eat X" in
+        // place (see mealSlotDrift) rather than completing it.
+        await haptics.tap();
+        setShowMealPicker(true);
+        return;
       case 'log-unit':
         await haptics.impactLight();
         scale.setValue(1);
@@ -155,6 +171,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const a11yLabel =
     action === 'locked' ? `${label}, not due yet`
     : action === 'ask' ? `Complete ${label}, asks for an answer`
+    : action === 'pick-meal' ? `${label}, pick a meal`
     : action === 'log-unit'
       ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)} done, ${label}`
     : action === 'uncomplete' ? `Mark ${label} as not done`
@@ -204,7 +221,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
               {action === 'locked' && (
                 <Ionicons name="repeat" size={iconSize.sm} color={colors.textTertiary} />
               )}
-              {action === 'ask' && (
+              {(action === 'ask' || action === 'pick-meal') && (
                 // xs rather than sm: a "?" is tall where the repeat glyph is wide
                 // and short, so the same nominal size crowds a 20pt box.
                 <Ionicons name="help" size={iconSize.xs} color={colors.textTertiary} />
@@ -225,6 +242,22 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
           onCancel={() => setShowPrompt(false)}
         />
       )}
+      {showMealPicker && (() => {
+        const source = parseMealSlotSource(task.generatedSourceId);
+        if (!source) return null;
+        return (
+          <RecipePickerSheet
+            visible
+            dayKey={source.dayKey}
+            dayLabel={format(dayKeyToDate(source.dayKey), 'EEEE')}
+            defaultSlot={source.slot}
+            forceSlot={source.slot}
+            onPlan={planMeal}
+            onPlanned={offerPrepTasksForEach}
+            onClose={() => setShowMealPicker(false)}
+          />
+        );
+      })()}
     </>
   );
 }

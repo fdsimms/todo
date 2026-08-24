@@ -12,6 +12,7 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
+import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import type { DeliverableKind, GroceryItem, MealSlot, Recipe, Shop, TemplateItem } from '../types';
 import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
@@ -108,6 +109,10 @@ export function seedDemoData(): void {
     deadline: addDays(today, 2).toISOString(),
     tags: ['admin'],
     pinned: true,
+    // This is also the first task the seeded focus session below queues up —
+    // notes and a link only show on that screen once a task in the plan
+    // actually carries one.
+    linkUrl: 'https://example.com/q3-roadmap-draft',
   });
 
   // Nothing here says Work, #admin or XXS — the seeded title rule above does,
@@ -1110,6 +1115,16 @@ function seedRecipes(): DemoRecipes {
   markCooked(steak.id);
   toggleFavorite(steak.id);
   setVote(steak.id, 'up');
+
+  // A recipe page saved from another app's share sheet, still waiting to be
+  // imported — the banner at the top of Recipes. Seeded because the share
+  // extension is invisible until something has used it: with an empty queue the
+  // Recipes screen looks exactly like a build that can't be shared to at all,
+  // which is the case demo mode exists to avoid. One is enough to show both the
+  // row and the "+N" it grows.
+  useSharedLinkStore.getState().enqueue([
+    'https://cooking.nytimes.com/recipes/1022674-sheet-pan-chicken-with-shallots',
+  ]);
 
   return {
     mash: mash.id,

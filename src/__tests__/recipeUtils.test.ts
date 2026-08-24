@@ -31,6 +31,7 @@ import {
   groupRecipesByMealType,
   flattenRecipeMealTypeSections,
   recipeListItemKey,
+  recipeSectionKey,
   resolveRecipeMealTypeDrop,
   rankRecipeSuggestions,
   scoreRecipeAgainstCatalog,
@@ -886,6 +887,28 @@ describe('resolveRecipeMealTypeDrop', () => {
     const reordered = flattenRecipeMealTypeSections(groupRecipesByMealType([oatmeal]));
     const { mealTypeUpdates } = resolveRecipeMealTypeDrop(reordered);
     expect(mealTypeUpdates).toEqual([]);
+  });
+
+  it('keeps a hidden (collapsed-section) recipe in `settled` and untouched by the drop', () => {
+    // Breakfast is collapsed in RecipesScreen, so its recipe never appears in
+    // `reordered` — only Lunch, where Salad is dragged in ahead of Toast.
+    const oatmeal = recipe('Oatmeal', { mealType: 'breakfast', sortOrder: 0 });
+    const salad = recipe('Salad', { mealType: null, sortOrder: 0 });
+    const toast = recipe('Toast', { mealType: 'lunch', sortOrder: 0 });
+    const reordered = flattenRecipeMealTypeSections([
+      { mealType: 'lunch', title: 'Lunch', data: [salad, toast] },
+    ]);
+    const { mealTypeUpdates, settled } = resolveRecipeMealTypeDrop(reordered, [oatmeal]);
+    expect(mealTypeUpdates).toEqual([{ id: salad.id, mealType: 'lunch' }]);
+    expect(settled.map(i => (i.type === 'header' ? i.title : i.recipe.name)))
+      .toEqual(['Breakfast', 'Oatmeal', 'Lunch', 'Salad', 'Toast']);
+  });
+});
+
+describe('recipeSectionKey', () => {
+  it('is the mealType itself, or "untagged" for the null section', () => {
+    expect(recipeSectionKey('breakfast')).toBe('breakfast');
+    expect(recipeSectionKey(null)).toBe('untagged');
   });
 });
 

@@ -88,6 +88,7 @@
       ],
       "./plugins/withAppGroup",
       "./plugins/withWidgetExtension",
+      "./plugins/withShareExtension",
       "./plugins/withAlarmKit",
       "./plugins/withCloudKit",
       "./plugins/withFmtConstevalFix",
@@ -129,6 +130,15 @@
                 {
                   "targetName": "TodoWidget",
                   "bundleIdentifier": "com.fdsimms.dundundun.TodoWidget",
+                  "entitlements": {
+                    "com.apple.security.application-groups": [
+                      "group.com.fdsimms.dundundun"
+                    ]
+                  }
+                },
+                {
+                  "targetName": "TodoShareExtension",
+                  "bundleIdentifier": "com.fdsimms.dundundun.ShareExtension",
                   "entitlements": {
                     "com.apple.security.application-groups": [
                       "group.com.fdsimms.dundundun"

@@ -23,7 +23,7 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors }
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { aisleForName } from '../utils/groceryAisles';
-import { splitAlternativeNames, suggestShorterCatalogName } from '../utils/groceryParse';
+import { groceryNameKey, splitAlternativeNames, suggestShorterCatalogName } from '../utils/groceryParse';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
@@ -33,6 +33,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 import { PillGroup } from './PillGroup';
 import { GroceryItemSheet } from './GroceryItemSheet';
+import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { InlineAction } from './InlineAction';
 
 interface Props {
@@ -73,6 +74,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
 
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const splitIngredientAlternatives = useRecipeStore(s => s.splitIngredientAlternatives);
+  const mergeChoiceGroup = useRecipeStore(s => s.mergeChoiceGroup);
   const renameChoiceGroup = useRecipeStore(s => s.renameChoiceGroup);
   const recipeIngredients = useRecipeStore(
     useShallow(s => s.recipes.find(r => r.id === recipeId)?.ingredients ?? [])
@@ -120,6 +122,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // presentation while this one is up. Same call GroceryCatalogSheet makes, and it's
   // what keeps this sheet underneath while the item is edited.
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  // Whether the "link to an existing item" picker is open — closed whenever a
+  // different ingredient is opened, same as editingItemId below.
+  const [linkOpen, setLinkOpen] = useState(false);
 
   useEffect(() => {
     if (!ingredient) return;
@@ -133,15 +138,25 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setAisle(ingredient.aisle);
     setNoSwap(!!ingredient.noSwap);
     setEditingItemId(null);
+    setLinkOpen(false);
   }, [ingredient]);
 
   // The catalog row this line resolves to. Above the early return, like every
   // other hook here — an ingredient sheet with nothing to edit still has to run
   // the same hooks in the same order.
-  const catalogItem = useMemo(
-    () => (ingredient ? groceryItems.find(i => i.nameKey === ingredient.nameKey) ?? null : null),
-    [groceryItems, ingredient]
-  );
+  //
+  // Keyed on the **draft** name rather than the saved one, because two controls
+  // above now rewrite that field: the link picker's `onPick` and the "did you
+  // mean" correction. Read from `ingredient.nameKey`, this card went on saying
+  // "not in your groceries yet" about a line the user had just pointed at an
+  // existing row — and the Add button below it would then mint the *old* name,
+  // which is the duplicate the link picker exists to avoid. Falls back to the
+  // saved key while the field is empty mid-edit.
+  const catalogItem = useMemo(() => {
+    if (!ingredient) return null;
+    const key = groceryNameKey(name) || ingredient.nameKey;
+    return groceryItems.find(i => i.nameKey === key) ?? null;
+  }, [groceryItems, ingredient, name]);
 
   // Who this line is currently an alternative to, by name. The label alone is
   // an abstraction ("Pepper"); the siblings are the thing it actually means.
@@ -252,11 +267,11 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // `addByName`/`addFromPlan` — those put it in this week's trolley, which is
   // a different statement and one this sheet has no business making.
   //
-  // Keyed off the saved line rather than the draft in the field above, because
-  // that's what `catalogItem` resolves against: minting from the draft would
-  // leave the card sitting on its empty state, still looking for the old name.
+  // Mints what the field says, which is what `catalogItem` resolves against —
+  // the two have to agree, or pressing this leaves the card on its empty state
+  // insisting the thing you just added isn't there.
   const addIngredientToCatalog = () => {
-    const created = ensureCatalogItem(ingredient.name);
+    const created = ensureCatalogItem(name.trim() || ingredient.name);
     if (!created) { haptics.error(); return; }
     haptics.success();
     animateLayout();
@@ -264,6 +279,22 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     // store, what you'd accept instead — is the reason to have pressed this at
     // all. Same sheet the catalog row's own chevron opens once it exists.
     setEditingItemId(created.id);
+  };
+
+  // A preview of what mergeBack produces — this row's own typed name (not yet
+  // saved) plus every sibling's stored one, "or"-joined the same way the
+  // split offer shows its parts verbatim.
+  const mergePreviewName = ingredient
+    ? [name.trim() || ingredient.name, ...siblingNames].join(' or ')
+    : '';
+
+  const mergeBack = () => {
+    if (!ingredient) return;
+    const merged = mergeChoiceGroup(recipeId, ingredient.id);
+    if (!merged) return;
+    haptics.success();
+    animateLayout();
+    onClose();
   };
 
   return (
@@ -332,6 +363,31 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
               <Text style={styles.suggestionDetail}>Already in your catalog.</Text>
             </View>
           </TouchableOpacity>
+        )}
+
+        <InlineAction
+          label={catalogItem ? 'Choose a different item' : 'Link to an existing item'}
+          icon="link-outline"
+          variant="neutral"
+          style={styles.linkAction}
+          onPress={() => { haptics.tap(); animateLayout(); setLinkOpen(v => !v); }}
+          accessibilityLabel={
+            catalogItem
+              ? `Choose a different existing item for ${catalogItem.name}`
+              : 'Link this line to an existing item in your groceries'
+          }
+        />
+        {linkOpen && (
+          <CatalogLinkPicker
+            items={groceryItems}
+            initialQuery={name}
+            excludeItemId={catalogItem?.id}
+            onPick={item => {
+              setName(item.name);
+              animateLayout();
+              setLinkOpen(false);
+            }}
+          />
         )}
 
         <View style={styles.separator} />
@@ -415,7 +471,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
               icon="basket-outline"
               onPress={addIngredientToCatalog}
               style={styles.addToCatalogButton}
-              accessibilityLabel={`Add ${ingredient.name} to your groceries`}
+              accessibilityLabel={`Add ${name.trim() || ingredient.name} to your groceries`}
             />
           </>
         )}
@@ -568,6 +624,24 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             'You haven’t listed any alternatives for this ingredient.'
           )}
         </Text>
+        {siblingNames.length > 0 && (
+          <TouchableOpacity
+            style={styles.suggestionRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={mergeBack}
+            accessibilityRole="button"
+            accessibilityLabel={`Merge back into one line: ${mergePreviewName}`}
+          >
+            <Ionicons name="git-merge-outline" size={iconSize.sm} color={colors.accent} />
+            <View style={styles.suggestionBody}>
+              <Text style={styles.suggestionTitle}>Merge back into one line?</Text>
+              <Text style={styles.suggestionDetail}>{mergePreviewName}</Text>
+              <Text style={styles.suggestionDetail}>
+                Combines these into one line. You won't choose between them anymore.
+              </Text>
+            </View>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.sectionCard}>
@@ -739,6 +813,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.accent,
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
+  },
+  linkAction: {
+    marginTop: spacing.sm,
+    alignSelf: 'flex-start',
   },
   suggestionDetail: {
     color: colors.textSecondary,

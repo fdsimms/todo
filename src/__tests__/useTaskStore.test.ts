@@ -1636,6 +1636,72 @@ describe('completeTask', () => {
     expect(completed.streakCount).toBe(task.streakCount);
   });
 
+  it('keeps a pinned chain step pinned across an immediate step, without needing another pin action', () => {
+    const task = makeTask({
+      id: 'pinned-chain',
+      recurrenceType: 'none',
+      dueDate: null,
+      pinned: true,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+        { id: 'c', title: 'Step C', estimatedMinutes: null },
+      ],
+      chainIndex: 0,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('pinned-chain');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'pinned-chain')!;
+    expect(next.chainIndex).toBe(1);
+    expect(next.pinned).toBe(true);
+  });
+
+  it('does not pin the successor of an unpinned chain step', () => {
+    const task = makeTask({
+      id: 'unpinned-chain',
+      recurrenceType: 'none',
+      dueDate: null,
+      pinned: false,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+      ],
+      chainIndex: 0,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('unpinned-chain');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'unpinned-chain')!;
+    expect(next.pinned).toBe(false);
+  });
+
+  it('does not carry the pin into a repeat that wraps a chain back to its first item', () => {
+    const task = makeTask({
+      id: 'pinned-chain-wrap',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      pinned: true,
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+      ],
+      chainIndex: 1, // already on the last item
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('pinned-chain-wrap');
+
+    // The wrapped occurrence lands on the recurrence's schedule (tomorrow),
+    // not immediately, so it resets like any other future occurrence.
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'pinned-chain-wrap')!;
+    expect(next.chainIndex).toBe(0);
+    expect(next.pinned).toBe(false);
+  });
+
   // ---- per-step scheduling ("Next step: on the next repeat") ----
 
   const rotationSteps = () => [
@@ -1650,6 +1716,7 @@ describe('completeTask', () => {
       recurrenceType: 'daily',
       recurrenceInterval: 1,
       dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      pinned: true,
       chainEnabled: true,
       chainStepOnSchedule: true,
       chainItems: rotationSteps(),
@@ -1663,6 +1730,9 @@ describe('completeTask', () => {
     // The daily schedule's next date, not today — this is the whole difference
     // from the default mode, which spawns onto the completion day.
     expect(new Date(next.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+    // A step on its own schedule lands on a future date like any other
+    // occurrence, so it resets the pin instead of carrying it forward.
+    expect(next.pinned).toBe(false);
   });
 
   it('advances the streak on every scheduled step but the recurrence count only per cycle', () => {

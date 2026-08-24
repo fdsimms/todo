@@ -5,7 +5,7 @@
 //   ==== <name> ====        the section banners through the logic half
 //   <EditorGroup label=     the cards, in render order: Kind, Schedule,
 //                           Relationships, Organize, Priority & effort,
-//                           Task actions, Streaks, Convert
+//                           Task actions, Streaks
 //   makeStyles              styles, at the bottom
 //
 // Adding a field? Read "Editors are progressive disclosure" and "The task
@@ -65,7 +65,6 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { nudgeReminderPastMeeting } from '../utils/reminderNudge';
 import { useCategoryStore } from '../store/useCategoryStore';
-import { useGroceryStore } from '../store/useGroceryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -1150,38 +1149,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setShowEmailField(false);
   };
 
-  /**
-   * Rescues a shopping item captured in the wrong place — "buy milk" typed
-   * into quick-add before you thought about which list it belonged on.
-   *
-   * Uses the live `title` rather than task.title so an edit in this session
-   * comes along, and goes through addByName so the usual parsing applies: the
-   * quantity is split off and a name already in the catalog is put back on the
-   * list rather than duplicated. Confirms because it deletes the task.
-   */
-  // ==== the other exits: send to groceries, cancel, delete ====
-  const handleSendToGroceries = () => {
-    if (!task) return;
-    const raw = title.trim() || task.title;
-    if (!raw) return;
-    Alert.alert(
-      'Convert to grocery item?',
-      `“${raw}” moves to your grocery list, and this task is deleted.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Convert',
-          onPress: () => {
-            useGroceryStore.getState().addByName(raw);
-            deleteTask(task.id);
-            haptics.success();
-            onClose();
-          },
-        },
-      ]
-    );
-  };
-
+  // ==== the other exits: cancel, delete ====
   // Save can fire before the custom link input's onBlur/onSubmitEditing has
   // committed its text to `linkUrl` state (e.g. tapping the header Save
   // button blurs the input and saves in the same gesture, so this render's
@@ -1438,9 +1406,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const timeWindowSummary = (windowStart || windowEnd)
     ? `${windowStart ? formatHHMM(windowStart) : 'Any'} – ${windowEnd ? formatHHMM(windowEnd) : 'Any'}`
     : undefined;
-  const effortSummary = customEffortActive && estimatedMinutes != null
-    ? formatDuration(estimatedMinutes)
-    : effort > 0 ? EFFORT_LABELS[effort] : undefined;
+  const effortSummaryMinutes = estimatedMinutes ?? effortToMinutes(effort);
+  const effortSummary = effort > 0 && effortSummaryMinutes != null
+    ? formatDuration(effortSummaryMinutes)
+    : undefined;
   const subtasks: (Task | DraftSubtask)[] = task ? subtasksOf(task.id) : draftSubtasks;
   // The stretches of the countdown the subtasks have been given, in their own
   // order. Empty unless at least one subtask carries minutes, which is what
@@ -3540,7 +3509,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               onClear={phoneNumber ? () => { setPhoneNumber(null); setPhoneText(''); setShowPhoneField(false); } : undefined}
             />
             {showPhoneField && (
-              <View style={styles.linkCustomRow}>
+              <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
                 <Ionicons name="call-outline" size={16} color={colors.textSecondary} />
                 <TextInput
                   style={styles.linkCustomInput}
@@ -3590,7 +3559,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               onClear={emailAddress ? () => { setEmailAddress(null); setEmailText(''); setShowEmailField(false); } : undefined}
             />
             {showEmailField && (
-              <View style={styles.linkCustomRow}>
+              <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
                 <Ionicons name="mail-outline" size={16} color={colors.textSecondary} />
                 <TextInput
                   style={styles.linkCustomInput}
@@ -3766,44 +3735,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         ]}
       />
 
-      {/* Gated as a whole, not just its row: its only entry needs a saved
-          top-level task, and EditorGroup with no rows still draws its card.
-          `kitchenEnabled` gates it for the same reason — the row's whole
-          effect is to move the task into a list that isn't in the menu. */}
-      {kitchenEnabled && task && !task.parentId && (
-      <EditorGroup
-        label="Convert"
-        searchTerms={searchTerms}
-        onMatchCount={reportMatches}
-        rows={[
-          ...(task && !task.parentId ? [{
-            key: 'groceries', label: 'Convert to grocery item', set: false,
-            keywords: ['shopping', 'grocery list', 'buy'],
-            node: (
-              <>
-                <TouchableOpacity
-                  style={styles.optionRow}
-                  onPress={handleSendToGroceries}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityLabel="Convert to grocery item"
-                >
-                  <Ionicons name="cart-outline" size={18} color={colors.textSecondary} />
-                  <View style={styles.optionContent}>
-                    <Text style={styles.optionLabel}>Convert to grocery item</Text>
-                    <Text style={styles.optionHint}>
-                      Deletes the task and adds it to the grocery list — for a &ldquo;buy milk&rdquo; captured as a task
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </>
-            ),
-          }] : []),
-        ]}
-      />
-      )}
-
       {/* The two ways a task leaves the list, together and last. Archive was
           previously gated on the task repeating — collateral from sharing a
           row with the streak editor, which genuinely is recurrence-only. Any
@@ -3964,7 +3895,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Lifts an InlineAction off the list it appends to, and keeps it from stretching in a column. */
   addBtnSpacing: { marginTop: spacing.sm, alignSelf: 'flex-start' },
-  blocksBlock: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
+  blocksBlock: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm },
   blocksRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,
@@ -4005,7 +3936,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   unitToggle: { width: 104 },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   timePill: {
     flex: 1, paddingVertical: 7, borderRadius: radius.full,
@@ -4016,12 +3947,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   timePillTextActive: { color: colors.bg, fontWeight: '600' },
   windowPillRow: {
     flexDirection: 'row', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   windowPill: { flex: 1 },
   targetStepperRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.xs,
+    paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.xs,
   },
   targetStepperCaption: {
     color: colors.textSecondary, fontSize: font.sm,
@@ -4043,7 +3974,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   linkPickerRow: {
     flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm, paddingBottom: spacing.sm,
   },
   linkAppChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
@@ -4057,6 +3988,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
   },
+  // Only for Phone/Email, where this is the first thing under the row: Link's
+  // own use sits below `linkPickerRow`, whose paddingBottom already spaces it.
+  linkCustomRowSpaced: { paddingTop: spacing.md },
   linkCustomInput: {
     flex: 1, color: colors.text, fontSize: font.sm,
     borderBottomWidth: 1, borderBottomColor: colors.accent,

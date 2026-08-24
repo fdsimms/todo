@@ -70,7 +70,9 @@ export function RecipeTimerRow({
 
   const headerText = hasTarget
     ? ready
-      ? `Ready · ${formatDuration(targetMinutes!)} done`
+      ? running
+        ? `${formatStopwatch(-remainingSeconds)} over`
+        : `Paused · ${formatStopwatch(-remainingSeconds)} over`
       : running
         ? `${formatStopwatch(Math.max(0, remainingSeconds))} left`
         : paused
@@ -95,9 +97,9 @@ export function RecipeTimerRow({
           accessibilityHint="Double tap for the time it usually takes, and to log one by hand"
         >
           <Ionicons
-            name={ready ? 'checkmark-circle' : 'timer-outline'}
+            name={ready ? 'alarm-outline' : 'timer-outline'}
             size={16}
-            color={ready ? colors.green : colors.accent}
+            color={ready ? colors.orange : colors.accent}
           />
           <Text style={styles.timerHeaderText} numberOfLines={1}>{headerText}</Text>
           <Ionicons

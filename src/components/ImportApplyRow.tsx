@@ -266,6 +266,7 @@ function makeStyles(colors: Colors) {
     previewLine: { flexDirection: 'row', gap: spacing.sm, alignItems: 'flex-start' },
     previewIndex: {
       fontSize: font.sm,
+      lineHeight: 20,
       color: colors.textTertiary,
       fontWeight: fontWeight.medium,
       minWidth: 16,

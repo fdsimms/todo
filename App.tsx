@@ -19,6 +19,7 @@ import { useShakeToUndo } from './src/utils/useShakeToUndo';
 import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
+import { useSharedRecipeLinks } from './src/hooks/useSharedRecipeLinks';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useTripLiveActivitySync } from './src/utils/tripLiveActivity';
 import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
@@ -250,6 +251,12 @@ function AppRoot() {
 
   // Keeps the iOS Today widget's shared snapshot in sync with the task store.
   useWidgetSync();
+
+  // Collects recipe pages saved from another app's share sheet (targets/todo-share)
+  // into the queue the Recipes screen offers. Same ordering requirement as the
+  // deep links above: the queue is persisted to the settings table, so the DB
+  // has to exist before the first drain writes to it.
+  useSharedRecipeLinks();
 
   // Keeps a running task/recipe timer's Lock Screen Live Activity in sync.
   useTimerLiveActivitySync();

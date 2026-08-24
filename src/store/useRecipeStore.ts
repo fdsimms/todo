@@ -233,6 +233,18 @@ interface RecipeStore {
     choiceGroup: string,
   ) => number;
   /**
+   * The undo for splitIngredientAlternatives — recombines every row in
+   * ingredientId's choice group back into that one row, named as the
+   * members' names joined with "or", and clears choiceGroup. The other
+   * members are removed from the recipe: a merged group is one tap from
+   * being split again, the same trade removeIngredient already makes for a
+   * typed line.
+   *
+   * False without writing when ingredientId isn't currently in a group of
+   * at least two, or doesn't resolve.
+   */
+  mergeChoiceGroup: (recipeId: string, ingredientId: string) => boolean;
+  /**
    * Renames a choice group across every ingredient currently in it, not just
    * the row a sheet happens to have open — a group's label is shared identity
    * (RecipeIngredient.choiceGroup), so editing it from one member and leaving
@@ -736,6 +748,32 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       ],
     });
     return rows.length;
+  },
+
+  mergeChoiceGroup(recipeId, ingredientId) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return false;
+    const survivor = recipe.ingredients.find(i => i.id === ingredientId);
+    const label = survivor?.choiceGroup ? cleanChoiceGroup(survivor.choiceGroup) : null;
+    if (!survivor || !label) return false;
+
+    const members = recipe.ingredients.filter(i => i.choiceGroup === label);
+    if (members.length < 2) return false;
+
+    const combinedName = members.map(m => m.name).join(' or ').trim()
+      .slice(0, GROCERY_NAME_MAX_LENGTH).trim();
+    const nameKey = groceryNameKey(combinedName);
+    if (!nameKey) return false;
+
+    const memberIds = new Set(members.map(m => m.id));
+    const ingredients = recipe.ingredients
+      .filter(i => i.id === survivor.id || !memberIds.has(i.id))
+      .map(i => (i.id === survivor.id
+        ? { ...i, name: combinedName, nameKey, choiceGroup: null }
+        : i));
+
+    save(set, { ...recipe, ingredients });
+    return true;
   },
 
   renameChoiceGroup(recipeId, oldLabel, newLabel) {

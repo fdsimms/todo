@@ -2,6 +2,7 @@ import type { MealPlanEntry, MealSlot, Task } from '../types';
 import {
   DEFAULT_MEAL_SLOTS_ENABLED,
   MEAL_SLOT_SEGMENTS,
+  activeMealSlotStepId,
   completesMealSlot,
   mealSlotChain,
   mealSlotDrift,
@@ -144,6 +145,59 @@ describe('the chain, given what the slot holds', () => {
     const b = mealSlotChain('lunch', null);
     expect(a.map(c => c.id)).toEqual(b.map(c => c.id));
     expect(a[0].id).toBe('lunch-choose');
+  });
+});
+
+describe('remembered step estimates', () => {
+  it('falls back to the remembered value for a step with no recipe evidence', () => {
+    const remembered = { 'lunch-choose': 2, 'lunch-eat': 10 };
+    expect(mealSlotChain('lunch', null, null, remembered).map(c => c.estimatedMinutes))
+      .toEqual([2, null, 10]);
+  });
+
+  it('lets a recipe\'s own time win over a remembered default on the Cook step', () => {
+    const planned = entry({ recipeId: 'r1', title: 'Chili' });
+    const remembered = { 'dinner-cook': 5, 'dinner-eat': 10 };
+    expect(mealSlotChain('dinner', planned, 35, remembered).map(c => c.estimatedMinutes))
+      .toEqual([35, 10]);
+  });
+
+  it('remembers a one-step slot\'s estimate too — Eat is its own last step', () => {
+    const takeaway = entry({ title: 'Takeaway' });
+    const remembered = { 'dinner-eat': 5 };
+    expect(mealSlotChain('dinner', takeaway, null, remembered).map(c => c.estimatedMinutes)).toEqual([5]);
+  });
+
+  it('is unset when nothing has been remembered for this step yet', () => {
+    expect(mealSlotChain('lunch', null, null, {}).map(c => c.estimatedMinutes)).toEqual([null, null, null]);
+  });
+
+  it('threads through mealSlotTaskFields and mealSlotTaskDraft', () => {
+    const remembered = { 'lunch-choose': 2 };
+    expect(mealSlotTaskFields('2026-08-22', 'lunch', null, null, remembered).chainItems[0].estimatedMinutes).toBe(2);
+    const draft = mealSlotTaskDraft('2026-08-22', 'lunch', null, 'Meal Plan', null, remembered);
+    expect(draft.chainItems![0].estimatedMinutes).toBe(2);
+  });
+});
+
+describe('activeMealSlotStepId', () => {
+  it('names the step a mid-chain task is currently on', () => {
+    const task = taskFor('2026-08-22', 'lunch', null, { chainIndex: 1, generatedKind: 'mealSlot' });
+    expect(activeMealSlotStepId(task)).toBe('lunch-prepare');
+  });
+
+  it('names the step for a one-step slot too, not just a real chain', () => {
+    // activeChainStep would say null here (a single-item chain "doesn't
+    // count"), but there is still exactly one step and it still deserves a
+    // remembered estimate.
+    const takeaway = entry({ title: 'Takeaway' });
+    const task = taskFor('2026-08-22', 'dinner', takeaway, { generatedKind: 'mealSlot' });
+    expect(activeMealSlotStepId(task)).toBe('dinner-eat');
+  });
+
+  it('is null for a task this generator did not write', () => {
+    const task = taskFor('2026-08-22', 'lunch', null); // no generatedKind override
+    expect(activeMealSlotStepId(task)).toBeNull();
   });
 });
 
