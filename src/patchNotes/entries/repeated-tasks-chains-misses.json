@@ -1,0 +1,4 @@
+{
+  "message": "Stats' Repeated Tasks list no longer counts each step of a chain as its own completion, so a two-step routine run once stops reading as a task done twice. Tasks you marked missed are no longer counted there either.",
+  "date": "2026-08-24"
+}
