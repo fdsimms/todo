@@ -1,4 +1,4 @@
-import { activeChainStep, parseChainItems, chainPreview, isChainFinish } from '../utils/chain';
+import { activeChainStep, nextChainStep, nextChainStepTitle, parseChainItems, chainPreview, isChainFinish } from '../utils/chain';
 import type { ChainItem } from '../types';
 
 const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
@@ -101,17 +101,81 @@ describe('isChainFinish', () => {
   });
 });
 
+describe('nextChainStep', () => {
+  const items = [
+    { id: 'a', title: 'Book haircut', estimatedMinutes: null },
+    { id: 'b', title: 'Get haircut', estimatedMinutes: null },
+  ];
+
+  it('names the step after the active one', () => {
+    expect(nextChainStep({ chainEnabled: true, chainIndex: 0, chainItems: items })?.id).toBe('b');
+  });
+
+  it('does not wrap round at the last step', () => {
+    // A repeating chain's wrap is placed by the recurrence, not by the step
+    // that finished the run — see completeTask's atChainEnd.
+    expect(nextChainStep({ chainEnabled: true, chainIndex: 1, chainItems: items })).toBeNull();
+  });
+
+  it('is null when the task is not stepping through a chain', () => {
+    expect(nextChainStep({ chainEnabled: false, chainIndex: 0, chainItems: items })).toBeNull();
+    expect(nextChainStep({ chainEnabled: true, chainIndex: 0, chainItems: [items[0]] })).toBeNull();
+    expect(nextChainStep({})).toBeNull();
+  });
+});
+
+describe('nextChainStepTitle', () => {
+  const items = [
+    { id: 'a', title: 'Book haircut', estimatedMinutes: null },
+    { id: 'b', title: 'Get haircut', estimatedMinutes: null },
+  ];
+
+  it('names the step after the given one', () => {
+    expect(nextChainStepTitle(items, 'a')).toBe('Get haircut');
+  });
+
+  it('is null for the last step, an unknown id, and no id at all', () => {
+    expect(nextChainStepTitle(items, 'b')).toBeNull();
+    expect(nextChainStepTitle(items, 'gone')).toBeNull();
+    expect(nextChainStepTitle(items, null)).toBeNull();
+  });
+});
+
 describe('parseChainItems', () => {
-  it('fills in a null estimate for rows stored before the field existed', () => {
+  it('fills in defaults for rows stored before the fields existed', () => {
     expect(parseChainItems([{ id: 'c1', title: 'Stretch' }])).toEqual([
-      { id: 'c1', title: 'Stretch', estimatedMinutes: null },
+      { id: 'c1', title: 'Stretch', estimatedMinutes: null, deliverableKind: null, deliverableDatesNextStep: false },
     ]);
   });
 
   it('keeps a stored estimate', () => {
     expect(parseChainItems([{ id: 'c1', title: 'Stretch', estimatedMinutes: 5 }])).toEqual([
-      { id: 'c1', title: 'Stretch', estimatedMinutes: 5 },
+      { id: 'c1', title: 'Stretch', estimatedMinutes: 5, deliverableKind: null, deliverableDatesNextStep: false },
     ]);
+  });
+
+  it('keeps a stored question and its dates-next-step flag', () => {
+    expect(parseChainItems([
+      { id: 'c1', title: 'Book haircut', deliverableKind: 'date', deliverableDatesNextStep: true },
+    ])).toEqual([
+      {
+        id: 'c1', title: 'Book haircut', estimatedMinutes: null,
+        deliverableKind: 'date', deliverableDatesNextStep: true,
+      },
+    ]);
+  });
+
+  it('rejects a stored kind that is not one of the three', () => {
+    // JSON off disk, so it can say anything — a value the pickers can't
+    // produce must not reach deliverableMeta, which would return undefined
+    // and take the row down with it.
+    expect(parseChainItems([{ id: 'c1', title: 'x', deliverableKind: 'colour' }])[0].deliverableKind).toBeNull();
+    expect(parseChainItems([{ id: 'c1', title: 'x', deliverableKind: 3 }])[0].deliverableKind).toBeNull();
+  });
+
+  it('coerces a truthy-but-not-true dates-next-step flag to false', () => {
+    expect(parseChainItems([{ id: 'c1', title: 'x', deliverableDatesNextStep: 1 }])[0].deliverableDatesNextStep)
+      .toBe(false);
   });
 
   it('coerces a non-numeric estimate to null rather than passing it through', () => {

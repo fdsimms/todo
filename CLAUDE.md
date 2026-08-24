@@ -255,6 +255,7 @@ exports.
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
+| a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once) |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
 | the month grid, and drawing an occurrence that has no row | `src/utils/calendarMonth.ts` + `src/screens/CalendarScreen.tsx` — see `docs/arch/month-grid.md` |
 | a column, migration, or row↔object mapping | `src/db/database.ts` (`initDatabase`, `rowToTask`) |
@@ -325,7 +326,7 @@ exports.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (5.3k), `components/TaskEditor.tsx` (4.3k),
-`store/useGroceryStore.ts` (4.0k), `db/database.ts` (3.9k), `screens/TodayScreen.tsx` (3.9k),
+`store/useGroceryStore.ts` (4.0k), `screens/TodayScreen.tsx` (3.9k), `db/database.ts` (3.9k),
 `components/TaskItem.tsx` (3.4k), `types/index.ts` (3.2k),
 `components/QuickAddModal.tsx` (2.6k), `store/useSettingsStore.ts` (2.4k),
 `screens/MealPlanScreen.tsx` (2.2k).
@@ -333,7 +334,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **187 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **188 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -607,6 +608,18 @@ Chain items (`chainItems[]` / `chainIndex`, shown in the editor collocated with 
 
 **A step carries its own `estimatedMinutes`, and every workload read goes through `estimatedMinutesFor()`** (`src/utils/effort.ts`) rather than `task.estimatedMinutes` — the same discipline `displayTitleFor` imposes for titles, and for the same reason: mid-chain, only one step is on the day, but the task-level estimate covers the whole chain. Read raw and a five-step routine charges its full estimate at *every* step, and since completing a step spawns the next onto the same day, the day's planned total never falls as the chain is worked. The step value is optional and falls back to the task's, so a chain nobody has itemised behaves exactly as before. `activeChainStep()` (`src/utils/chain.ts`) is the one place the "which step is live" rule lives — including that a single-item chain doesn't count as one.
 
+**A step carries its own question too, and every deliverable read goes through `deliverableKindFor()`** (`src/utils/deliverables.ts`) rather than `task.deliverableKind` — the third field on the same pattern, for the same reason and with the same `step ?? task` fallback. `deliverableKind` is a `CONTENT_FIELD`, so it rides `...effective` onto every successor: with only that to read, a two-step chain that asks a question at step one asks it again at step two. The readers are the row's "?" glyph, `completionTapFor`, the prompt sheet, Logbook (including its Edit answer item and `setDeliverableValue`), Search, `projectDecisions` and `selectPurgeableTaskIds` — the last two matter because a chain step's recorded answer is a decision the project should list and a row retention must not purge. The *answer* stays on the row (`deliverableValue` is per-occurrence, like `progressCount`) and needs no per-step counterpart, since a chain only has one step live at a time and each step is its own row.
+
+**A `'date'` step can place the step after it, and that's opt-in per step** (`ChainItem.deliverableDatesNextStep`). "Book haircut" is answered with the appointment and "Get haircut" lands on that day instead of on the day the booking got done. In `completeTask` it's one more candidate ahead of the two dates that were already there — `answeredDue ?? nextDue ?? midChainDue` — so the successor's re-anchored `reminderTime` and relative `deadline` follow it for free. Three rules hold it in place:
+
+- **It is deliberately not something a date step just does.** Recording a date and *moving another row* are two different wants, and the second one wants to be visible in the editor rather than being an unannounced second meaning of the kind. The prompt sheet names the step it's about to schedule for the same reason.
+- **It never applies at `atChainEnd`.** The last step of a plain chain spawns nothing, and a repeating chain's wrap is the recurrence placing the next cycle — `nextChainStep()` refuses to wrap for exactly this, and `completeTask` checks both.
+- **It ignores the `hasNoDateSignal` guard `midChainDue` obeys.** That guard exists so a chain with no placement at all doesn't acquire one by accident; an answer given a second ago is not an accident.
+
+This is the one reader `src/utils/deliverables.ts` was left open for (#1253) and it is still not a general write-anywhere mechanism: one field, one place, reusing the date the successor was getting anyway.
+
+**Every completion path with a person present asks; only the unattended ones complete unanswered.** `completeTask` reads an omitted `deliverableValue` as "nobody asked" and completes with no answer, which is right for the missed sweep, the quota rollover and meal sync, and was wrong for the four paths a person actually taps: the bulk bar, a stack's "complete all", the focus session's Done, and a Live Activity's Done on a task with no row mounted. Each dropped the answer with nothing said, and once an answer can place the next chain step, what was dropped was a task's date rather than only a note. They now go through `useAnswerFirstCompletion` — a three-way confirm (Answer / Complete Without Answering / Cancel) for the paths completing several, `enqueue` straight to the questions for the paths completing one, and `DeliverablePromptQueue` asking them one sheet at a time. **Completing unanswered stays one tap**: the feature's rule is that nothing may ever *require* an answer, so what changed is that it's chosen rather than assumed. Cancel costs nothing, including the selection the bulk bar was built from.
+
 ### Stacks (`TaskGroup`)
 
 "Stack" is the user-facing name; the code says `TaskGroup` / `group` throughout (table `task_groups`, `useTaskGroupStore`, `TaskGroupHeader`/`TaskGroupEditor`). A stack is a lightweight, stable *label* that several independently-scheduled tasks hang off — deliberately not a `Task`, so it can never be "not due yet" and desync from its members. Membership is `Task.groupId`.
@@ -689,7 +702,14 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   cadence stores days and converts in `src/utils/nudgeCadence.ts`, so switching Weeks→Months keeps
   the count and only the stored day total changes.
 - `WhenPicker` (`src/components/WhenPicker.tsx`) — **the date picker.** Today/Tomorrow quick
-  buttons, a month grid, and (optionally) time-of-day segments and the AI "Suggest" button. This is
+  buttons, a month grid, and (optionally) time-of-day segments and the AI "Suggest" button.
+  `allowPast={false}` refuses days before today (dimmed cells, back chevron off, the opening
+  month clamped forward) — for a date that *places* something, like a chain step's answer
+  scheduling the next step. It's a flag rather than a `minDate` because the floor has to be the
+  logical today: a date parameter invites a call site to pass `new Date()`, which is the
+  grace-window bug below. Backdating stays the default, since a completion date or a deadline
+  that has already passed is a real thing to enter. The three pure bits are in
+  `src/utils/calendarGrid.ts` (`isDayBefore`, `clampMonthToEarliest`, `canPageToPreviousMonth`). This is
   the one users actually see most, from the row's own reschedule action, so it's the one to reach
   for **any time a new feature needs to ask "what date?"** — a settings screen, an editor field, a
   bulk action, a sheet. Set `showTimeOfDay`/`showSuggest` to `false` when the date being picked

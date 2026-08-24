@@ -1,6 +1,9 @@
 import { format } from 'date-fns/format';
 import { isSameDay } from 'date-fns/isSameDay';
-import { buildCalendarGrid, buildWeekDays, weekdayHeaders } from '../utils/calendarGrid';
+import {
+  buildCalendarGrid, buildWeekDays, weekdayHeaders,
+  canPageToPreviousMonth, clampMonthToEarliest, isDayBefore,
+} from '../utils/calendarGrid';
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd');
 
@@ -221,5 +224,63 @@ describe('weekdayHeaders', () => {
         expect(headers[col]).toBe(format(days[col], 'EEEEE'));
       }
     }
+  });
+});
+
+describe('the floor a picker may not go below', () => {
+  const day = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12, 0, 0);
+
+  describe('isDayBefore', () => {
+    it('compares calendar days, not instants', () => {
+      // 23:59 today is not before 00:01 today. The floor is a square on a
+      // grid; half a day being unavailable is not something a grid can show.
+      expect(isDayBefore(new Date(2026, 7, 24, 23, 59), new Date(2026, 7, 24, 0, 1))).toBe(false);
+      expect(isDayBefore(new Date(2026, 7, 24, 0, 1), new Date(2026, 7, 24, 23, 59))).toBe(false);
+    });
+
+    it('is true only for an earlier day', () => {
+      expect(isDayBefore(day(2026, 8, 23), day(2026, 8, 24))).toBe(true);
+      expect(isDayBefore(day(2026, 8, 25), day(2026, 8, 24))).toBe(false);
+    });
+
+    it('holds across a month and a year boundary', () => {
+      expect(isDayBefore(day(2026, 7, 31), day(2026, 8, 1))).toBe(true);
+      expect(isDayBefore(day(2025, 12, 31), day(2026, 1, 1))).toBe(true);
+      expect(isDayBefore(day(2026, 1, 1), day(2025, 12, 31))).toBe(false);
+    });
+  });
+
+  describe('clampMonthToEarliest', () => {
+    it('pulls a month behind the floor forward to the floor’s month', () => {
+      expect(iso(clampMonthToEarliest(day(2026, 3, 15), day(2026, 8, 24)))).toBe('2026-08-01');
+    });
+
+    it('leaves the floor’s own month alone, wherever in it the floor falls', () => {
+      expect(iso(clampMonthToEarliest(day(2026, 8, 2), day(2026, 8, 24)))).toBe('2026-08-01');
+    });
+
+    it('leaves a later month alone', () => {
+      expect(iso(clampMonthToEarliest(day(2026, 11, 9), day(2026, 8, 24)))).toBe('2026-11-01');
+    });
+
+    it('is a plain start-of-month with no floor', () => {
+      expect(iso(clampMonthToEarliest(day(2020, 2, 29), null))).toBe('2020-02-01');
+    });
+  });
+
+  describe('canPageToPreviousMonth', () => {
+    it('is false in the floor’s own month', () => {
+      expect(canPageToPreviousMonth(day(2026, 8, 1), day(2026, 8, 24))).toBe(false);
+      expect(canPageToPreviousMonth(day(2026, 8, 31), day(2026, 8, 24))).toBe(false);
+    });
+
+    it('is true in any later month', () => {
+      expect(canPageToPreviousMonth(day(2026, 9, 1), day(2026, 8, 24))).toBe(true);
+      expect(canPageToPreviousMonth(day(2027, 1, 1), day(2026, 8, 24))).toBe(true);
+    });
+
+    it('is always true with no floor', () => {
+      expect(canPageToPreviousMonth(day(1998, 4, 3), null)).toBe(true);
+    });
   });
 });

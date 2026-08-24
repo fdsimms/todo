@@ -33,6 +33,8 @@ import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
 import { PressableScale } from './PressableScale';
 import { StepMinutes } from './StepMinutes';
+import { StepQuestion } from './StepQuestion';
+import { ChainStepQuestionSheet } from './ChainStepQuestionSheet';
 import { format } from 'date-fns/format';
 import { addMonths } from 'date-fns/addMonths';
 import { addDays } from 'date-fns/addDays';
@@ -90,6 +92,7 @@ import { ExtraTaskSheet } from './ExtraTaskSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { describeBlocks } from '../utils/blocking';
 import { displayTitleFor, isMissableMealPlanTask } from '../utils/visibilityUtils';
+import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
@@ -413,6 +416,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const [chainEnabled, setChainEnabled] = useState(false);
   const [chainItems, setChainItems] = useState<ChainItem[]>([]);
+  // Which step's "ask on completion" sheet is open, by id rather than index —
+  // the list under it can be reordered or shortened while the sheet is up.
+  const [questionStepId, setQuestionStepId] = useState<string | null>(null);
   const [chainIndex, setChainIndex] = useState(0);
   const [chainStepOnSchedule, setChainStepOnSchedule] = useState(false);
   const [newChainItemTitle, setNewChainItemTitle] = useState('');
@@ -1707,6 +1713,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             onClose={() => setShowBlocksPicker(false)}
             onSelect={id => setBlocksIds(prev => (prev.includes(id) ? prev : [...prev, id]))}
           />
+          <ChainStepQuestionSheet
+            visible={questionStepId !== null}
+            step={chainItems.find(c => c.id === questionStepId) ?? null}
+            nextStepTitle={nextChainStepTitle(chainItems, questionStepId)}
+            onSave={patch => setChainItems(prev => prev.map(
+              c => (c.id === questionStepId ? { ...c, ...patch } : c),
+            ))}
+            onClose={() => setQuestionStepId(null)}
+          />
           <ExtraTaskSheet
             visible={showExtraTaskSheet}
             taskTitle={extraTaskTitle}
@@ -2130,6 +2145,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                               onChange={mins => setChainItems(prev => prev.map(
                                 c => (c.id === item.id ? { ...c, estimatedMinutes: mins } : c),
                               ))}
+                            />
+                            <StepQuestion
+                              step={item}
+                              datesNextStep={item.deliverableDatesNextStep === true}
+                              onPress={() => setQuestionStepId(item.id)}
                             />
                             <TouchableOpacity
                               onLongPress={drag}

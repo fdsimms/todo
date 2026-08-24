@@ -19,7 +19,10 @@ import { format } from 'date-fns/format';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
+import {
+  buildCalendarGrid, weekdayHeaders,
+  canPageToPreviousMonth, clampMonthToEarliest, isDayBefore,
+} from '../utils/calendarGrid';
 import { dayKeyOf, getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import type { TimeOfDay, Effort, Priority, Task } from '../types';
@@ -85,6 +88,22 @@ interface Props {
   showTimeOfDay?: boolean;
   showSuggest?: boolean;
   /**
+   * Whether days before today may be picked. True (every existing caller)
+   * because backdating is a real thing to want — a task finished last Tuesday,
+   * a deadline that has already been and gone. False for a date that is about
+   * to *place* something: a chain step's answer scheduling the next step
+   * (DeliverablePromptSheet) has no use for last Tuesday, and picking it spawns
+   * a task overdue on arrival.
+   *
+   * A flag rather than a `minDate` on purpose. The floor has to be the logical
+   * today (`getLogicalToday`, computed here from `dayResetTime`), and a date
+   * parameter invites a call site to pass `new Date()` — which is exactly the
+   * grace-window bug in CLAUDE.md, one day out for anyone whose day starts
+   * after midnight. Today itself stays pickable: the floor is a day, not a
+   * moment.
+   */
+  allowPast?: boolean;
+  /**
    * Opts this picker in to the postpone check (see PostponeCheckBanner).
    *
    * Deliberately its own prop rather than a gate on `taskId`, which would get
@@ -129,7 +148,7 @@ export function WhenPicker({
   visible, value, timeSegments: initialSegments,
   taskId, taskTitle, taskNotes, taskTags, taskCategory, taskPriority, taskEffort, taskEstimatedMinutes,
   onConfirm, onClear, onCancel,
-  title = 'When?', showTimeOfDay = true, showSuggest = true,
+  title = 'When?', showTimeOfDay = true, showSuggest = true, allowPast = true,
   postponeTaskId, onBreakUp,
 }: Props) {
   const colors = useColors();
@@ -166,10 +185,15 @@ export function WhenPicker({
   const today = useMemo(() => getLogicalToday(dayResetTime), [visible, dayResetTime]);
   const tomorrow = useMemo(() => getLogicalTomorrow(dayResetTime), [visible, dayResetTime]);
   const tomorrowKey = dayKeyOf(tomorrow);
+  // The floor, or null for no floor — see the allowPast prop. Both quick
+  // buttons are on or after it, so neither needs gating.
+  const earliestDay = allowPast ? null : today;
 
   useEffect(() => {
     if (visible) {
-      setDisplayMonth(startOfMonth(value ?? new Date()));
+      // Clamped, so a picker holding a value from before the floor doesn't open
+      // on a month whose every cell is refused and whose back chevron is off.
+      setDisplayMonth(clampMonthToEarliest(value ?? new Date(), earliestDay));
       setSegments(initialSegments ?? []);
       setPendingKey(null);
       setSuggestion(null);
@@ -202,6 +226,7 @@ export function WhenPicker({
     [displayMonth, weekStartsOn]
   );
   const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
+  const canPageBack = canPageToPreviousMonth(displayMonth, earliestDay);
 
   /**
    * How full each day of the visible month already is (#1791).
@@ -257,6 +282,8 @@ export function WhenPicker({
   };
 
   const handleDayPress = (day: Date) => {
+    // The cell is already disabled; this is the belt to that pair of braces.
+    if (earliestDay && isDayBefore(day, earliestDay)) return;
     confirmWithFeedback(noonOf(day), isSameDay(day, today) ? 'today' : dayKeyOf(day));
   };
 
@@ -501,12 +528,18 @@ export function WhenPicker({
             <View style={styles.monthNav}>
               <TouchableOpacity
                 onPress={() => setDisplayMonth(m => subMonths(m, 1))}
+                disabled={!canPageBack}
                 hitSlop={8}
                 style={styles.navBtn}
                 accessibilityRole="button"
                 accessibilityLabel="Previous month"
+                accessibilityState={{ disabled: !canPageBack }}
               >
-                <Ionicons name="chevron-back" size={16} color={colors.accent} />
+                <Ionicons
+                  name="chevron-back"
+                  size={16}
+                  color={canPageBack ? colors.accent : colors.textTertiary}
+                />
               </TouchableOpacity>
               <Text style={styles.monthLabel}>{format(displayMonth, 'MMMM yyyy')}</Text>
               <TouchableOpacity
@@ -533,6 +566,7 @@ export function WhenPicker({
                 const inMonth = isSameMonth(day, displayMonth);
                 const isSelected = value ? isSameDay(day, value) : false;
                 const todayDay = isSameDay(day, today);
+                const outOfRange = earliestDay !== null && isDayBefore(day, earliestDay);
                 const key = todayDay ? 'today' : dayKeyOf(day);
                 const isPending = pendingKey === key && pendingRef.current;
                 const isSuggested = suggestion?.key === dayKeyOf(day);
@@ -544,15 +578,22 @@ export function WhenPicker({
                     key={idx}
                     style={styles.dayCell}
                     onPress={() => handleDayPress(day)}
+                    disabled={outOfRange}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
-                    accessibilityLabel={weight ? `${dateLabel}, ${describeDayWeight(weight)}` : dateLabel}
-                    accessibilityState={{ selected: isSelected }}
+                    accessibilityLabel={weight && !outOfRange ? `${dateLabel}, ${describeDayWeight(weight)}` : dateLabel}
+                    accessibilityState={{ selected: isSelected, disabled: outOfRange }}
                   >
                     <View style={styles.dayStack}>
                       <Animated.View style={[
                         styles.dayCircle,
-                        isSelected && !isPending && styles.dayCircleSelected,
+                        // A refused day gets none of the marked treatments,
+                        // including the accent fill for the current value: a
+                        // floor can only ever exclude a value the picker was
+                        // opened with (see clampMonthToEarliest), and dim grey
+                        // on an accent circle is unreadable as well as
+                        // misleading about what a tap would do.
+                        isSelected && !isPending && !outOfRange && styles.dayCircleSelected,
                         !isSelected && !isPending && todayDay && styles.dayCircleToday,
                         !isPending && isSuggested && styles.dayCircleSuggested,
                         isPending && styles.dayCirclePending,
@@ -564,9 +605,11 @@ export function WhenPicker({
                           <Text style={[
                             styles.dayText,
                             !inMonth && styles.dayTextOtherMonth,
-                            isSelected && styles.dayTextSelected,
+                            isSelected && !outOfRange && styles.dayTextSelected,
                             !isSelected && todayDay && styles.dayTextToday,
                             isSuggested && styles.dayTextSuggested,
+                            // Last, so it wins over every treatment above.
+                            outOfRange && styles.dayTextOutOfRange,
                           ]}>
                             {format(day, 'd')}
                           </Text>
@@ -576,7 +619,7 @@ export function WhenPicker({
                           bar can't nudge its own circle out of line with its
                           neighbours' — most days carry nothing here. */}
                       <View style={styles.weightSlot}>
-                        {weight && (
+                        {weight && !outOfRange && (
                           <View style={[
                             styles.weightBar,
                             weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
@@ -877,6 +920,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   dayTextSelected: {
     color: colors.onAccent,
     fontWeight: fontWeight.semibold,
+  },
+  // Dimmer than dayTextOtherMonth's grey: an adjacent month's day is merely
+  // out of context and still pickable, this one is refused. Dimness is the
+  // signal here rather than decoration, which is the case CLAUDE.md's note on
+  // textTertiary's contrast leaves it right for — but only so far. The digits
+  // still have to be readable, because a calendar you can't read is one you
+  // can't orient in ("where's the 24th"), so this stops at a little over half
+  // rather than at the ~25% iOS greys a disabled cell out.
+  dayTextOutOfRange: {
+    color: colors.textTertiary,
+    opacity: 0.55,
   },
   dayTextToday: {
     color: colors.accent,

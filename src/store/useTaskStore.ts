@@ -72,6 +72,7 @@ import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
 import { liveProjectSteps, slotUpdates } from '../utils/projectOrder';
 import { applyMeasuredTime } from '../utils/effort';
+import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor } from '../utils/deliverables';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
@@ -1310,7 +1311,13 @@ interface TaskStore {
   groupTasks: (taskIds: string[], title: string, category: string | null) => TaskGroup;
   /** Re-files the stack's live members under `category`; returns their prior values for undo. */
   applyGroupCategory: (groupId: string, category: string | null) => Array<{ id: string; category: string | null }>;
-  completeGroup: (groupId: string) => void;
+  /**
+   * `skipIds` leaves those members alone — the bulk paths use it to complete
+   * everything that doesn't ask a question and hand the rest to the prompt
+   * queue (see useAnswerFirstCompletion). Omitted, every live member is
+   * completed, which is what every non-interactive caller wants.
+   */
+  completeGroup: (groupId: string, options?: { skipIds?: readonly string[] }) => void;
   uncompleteGroup: (groupId: string) => void;
   deferGroup: (groupId: string, until: Date) => void;
   pinGroup: (groupId: string) => void;
@@ -2490,7 +2497,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // not a request to abandon the run that's already in progress — the
         // spawn-skip below is likewise gated on advancesBySchedule, so a
         // rotation can only stop at the wrap, never half-finished.
-        const effectiveDue = nextDue ?? midChainDue;
+        // A step that asked for a date and was told to pass it on (see
+        // ChainItem.deliverableDatesNextStep) places the next step itself:
+        // "Book haircut" is answered with the appointment, and "Get haircut"
+        // lands on it rather than on today. It wins over both dates below,
+        // which is the whole point — an answer given a moment ago is a better
+        // placement than either the schedule's guess or "the day the previous
+        // step happened to get done".
+        //
+        // Deliberately not gated on hasNoDateSignal the way midChainDue is:
+        // that guard exists so a chain with no placement at all doesn't
+        // acquire one by accident, and an answer is not an accident.
+        //
+        // atChainEnd covers both cases with nowhere to send it — the last step
+        // of a plain chain (nothing spawns) and the wrap of a repeating one
+        // (the recurrence owns that date). chainStepDatedByAnswer refuses the
+        // second on its own too, via nextChainStep; both are checked because
+        // this is the half that writes.
+        const answeredDue = !atChainEnd && chainStepDatedByAnswer(task)
+          ? deliverableDate(options?.deliverableValue)
+          : null;
+        const effectiveDue = answeredDue ?? nextDue ?? midChainDue;
         let nextReminderTime: string | null = effective.reminderTime;
         if (effectiveDue && effective.reminderTime) {
           const original = new Date(effective.reminderTime);
@@ -3040,8 +3067,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const task = get().tasks.find(t => t.id === id);
     // Guarded on the kind, not on `completed`: the answer belongs to a task
     // that asks a question, and a row can be un-completed and re-completed
-    // without the answer needing to be retyped.
-    if (!task || task.deliverableKind === null) return;
+    // without the answer needing to be retyped. Through the resolver, since
+    // the question may be the chain step's rather than the task's — a
+    // completed row's chainIndex still points at the step that asked.
+    if (!task || deliverableKindFor(task) === null) return;
     const previous = task.deliverableValue;
     if (previous === value) return;
     const updated = { ...task, deliverableValue: value };
@@ -4359,12 +4388,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // no-ops it. Skip is deliberately NOT cascaded here: it only makes sense
   // per-child (see skipNextRecurrence), and cascading it across children on
   // different cadences would desync them unpredictably.
-  completeGroup(groupId) {
+  completeGroup(groupId, options) {
     const children = get().groupRosterOf(groupId);
+    const skip = new Set(options?.skipIds ?? []);
     const completedIds: string[] = [];
     dbTransaction(() => {
       children.forEach(child => {
-        if (child.completed) return;
+        if (child.completed || skip.has(child.id)) return;
         get().completeTask(child.id);
         if (get().tasks.find(t => t.id === child.id)?.completed) completedIds.push(child.id);
       });
