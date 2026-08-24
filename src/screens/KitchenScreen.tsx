@@ -157,6 +157,7 @@ export function KitchenScreen() {
   const tripShopId = useGroceryStore(s => s.tripShopId);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
   const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
   const endTrip = useGroceryStore(s => s.endTrip);
   const activeTripShop = useMemo(
@@ -733,7 +734,7 @@ export function KitchenScreen() {
 
       {/* The only in-app explanation of where this list comes from, so it
           says the mechanism rather than describing the feature. */}
-      {entries.length > 0 && !typed && (
+      {entries.length > 0 && !typed && !hideHelpText && (
         <Text style={styles.caption}>
           Worked out from what you buy, what you&apos;ve marked, and what
           you&apos;ve put in the fridge. Tap ✕ to say you&apos;re out of something.

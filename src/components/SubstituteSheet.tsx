@@ -97,6 +97,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const apiKey = useSettingsStore(s => s.anthropicApiKey);
   const substitutesFeature = useSettingsStore(s => s.aiFeatureConfig.substitutes);
+  const hideHelpText = useSettingsStore(s => s.hideHelpText);
 
   const item = items.find(i => i.id === itemId) ?? null;
 
@@ -538,10 +539,12 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
             {/* The one place the item-level model is explained, said at the
                 moment it makes sense — you're about to answer for butter, and
                 the answer is going to turn up in every recipe calling for it. */}
-            <Text style={styles.caption}>
-              Pick what you&apos;d use instead. It&apos;s saved on {item.name.toLowerCase()}, so every
-              recipe calling for it can use your answer.
-            </Text>
+            {!hideHelpText && (
+              <Text style={styles.caption}>
+                Pick what you&apos;d use instead. It&apos;s saved on {item.name.toLowerCase()}, so every
+                recipe calling for it can use your answer.
+              </Text>
+            )}
 
             {/* What's already recorded, before anything is proposed: the
                 answer you wrote yourself outranks a suggestion, and mid-shop
