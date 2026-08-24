@@ -81,6 +81,7 @@ const workCategory: Category = {
   defaultTimeSegments: [],
   sortOrder: 1,
   emoji: null,
+  backfillDismissedFields: [],
 };
 
 const baseTask: Task = {
@@ -1015,6 +1016,7 @@ const eveningCategory: Category = {
   defaultTimeSegments: [],
   sortOrder: 1,
   emoji: null,
+  backfillDismissedFields: [],
 };
 
 describe('category schedule — across midnight', () => {
@@ -1091,6 +1093,7 @@ const errandsCategory: Category = {
   defaultTimeSegments: [],
   sortOrder: 1,
   emoji: null,
+  backfillDismissedFields: [],
 };
 
 describe('category hide-on-vacation', () => {
@@ -1796,6 +1799,7 @@ describe('isSequenceBlocked', () => {
       sequential,
       nudgeOptIn: false,
       reviewDeclinedAt: null,
+      backfillDismissedFields: [],
     }]);
     registerTaskSource(() => tasks);
   };

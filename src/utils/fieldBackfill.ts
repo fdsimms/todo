@@ -2,7 +2,7 @@ import type { Task, Effort } from '../types';
 import { EFFORT_MINUTES } from './effort';
 
 /** A field this screen can walk the task list and fill in, one task at a time. */
-export type BackfillFieldId = 'estimate' | 'priority' | 'category';
+export type BackfillFieldId = 'estimate' | 'priority' | 'category' | 'streak' | 'vacation';
 
 export interface BackfillFieldDef {
   id: BackfillFieldId;
@@ -27,6 +27,16 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
     id: 'category',
     label: 'Category',
     hint: 'Which category each task falls under.',
+  },
+  {
+    id: 'streak',
+    label: 'Streak chip',
+    hint: 'Whether a recurring task’s streak count also shows as a chip on the row, not just in its editor.',
+  },
+  {
+    id: 'vacation',
+    label: 'Vacation pause',
+    hint: 'Whether a recurring task hides (and keeps its streak safe) while vacation mode is on.',
   },
 ];
 
@@ -69,6 +79,10 @@ export function isFieldMissing(task: Task, fieldId: BackfillFieldId): boolean {
       return task.priority === 0;
     case 'category':
       return task.category == null;
+    case 'streak':
+      return task.recurrenceType !== 'none' && !task.showStreak;
+    case 'vacation':
+      return task.recurrenceType !== 'none' && !task.vacationPause;
   }
 }
 
@@ -103,7 +117,7 @@ export function backfillCandidates(
 
 /** How many live tasks are missing each field, for the field-picker step's counts. */
 export function backfillFieldCounts(tasks: Task[]): Record<BackfillFieldId, number> {
-  const counts = { estimate: 0, priority: 0, category: 0 } as Record<BackfillFieldId, number>;
+  const counts = { estimate: 0, priority: 0, category: 0, streak: 0, vacation: 0 } as Record<BackfillFieldId, number>;
   for (const t of tasks) {
     if (t.parentId || t.completed || t.archived) continue;
     for (const field of BACKFILL_FIELDS) {
