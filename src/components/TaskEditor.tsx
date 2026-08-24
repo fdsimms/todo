@@ -78,6 +78,18 @@ import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor } from '../utils/effort';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
+import { PillGroup } from './PillGroup';
+import { useGroceryStore } from '../store/useGroceryStore';
+import {
+  DEFAULT_SUPPLY_REORDER_AT,
+  MAX_SUPPLY_COUNT,
+  clampSupplyReorderAt,
+  describeSupply,
+  describeSupplyRunOut,
+  formatSupplyLeft,
+  supplyOrderByDate,
+  supplyRunOutDate,
+} from '../utils/supply';
 import { CategoryPickerList } from './CategoryPicker';
 import { deliverableMeta } from '../utils/deliverables';
 import { InlineAction } from './InlineAction';
@@ -162,6 +174,12 @@ export interface TaskDraft {
   targetCount?: number | null;
   targetUnit?: string | null;
   allowOvershoot?: boolean;
+  supplyCount?: number | null;
+  supplyUnit?: string | null;
+  supplyRefillCount?: number | null;
+  supplyReorderAt?: number;
+  supplyLeadDays?: number | null;
+  supplyGroceryItemId?: string | null;
 }
 
 interface Props {
@@ -216,6 +234,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const allGroups = useTaskGroupStore(useShallow(s => s.groups));
   const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));
+  // For the "Stocked from" picker only, and read here rather than at the render
+  // site so the sheet's other ~40 store bindings all sit together. `addToPantry`
+  // is the create path: a supply is a thing kept in a cupboard, not a thing
+  // wanted on this week's list — going low is what puts it on the list.
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const addGroceryItem = useGroceryStore(s => s.addToPantry);
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -310,6 +334,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [targetUnit, setTargetUnit] = useState('');
   const [allowOvershoot, setAllowOvershoot] = useState(false);
   const [showTargetCount, setShowTargetCount] = useState(false);
+  const [supplyCount, setSupplyCount] = useState<number | null>(null);
+  const [supplyUnit, setSupplyUnit] = useState('');
+  const [supplyRefillCount, setSupplyRefillCount] = useState<number | null>(null);
+  const [supplyReorderAt, setSupplyReorderAt] = useState(DEFAULT_SUPPLY_REORDER_AT);
+  const [supplyLeadDays, setSupplyLeadDays] = useState<number | null>(null);
+  const [supplyGroceryItemId, setSupplyGroceryItemId] = useState<string | null>(null);
+  const [showSupply, setShowSupply] = useState(false);
+  const [showSupplySource, setShowSupplySource] = useState(false);
   const [windowStart, setWindowStart] = useState<string | null>(null);
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [windowPickerMode, setWindowPickerMode] = useState<'none' | 'start' | 'end'>('none');
@@ -523,6 +555,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTargetCount(task.targetCount ?? null);
       setTargetUnit(task.targetUnit ?? '');
       setAllowOvershoot(task.allowOvershoot ?? false);
+      setSupplyCount(task.supplyCount ?? null);
+      setSupplyUnit(task.supplyUnit ?? '');
+      setSupplyRefillCount(task.supplyRefillCount ?? null);
+      setSupplyReorderAt(task.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT);
+      setSupplyLeadDays(task.supplyLeadDays ?? null);
+      setSupplyGroceryItemId(task.supplyGroceryItemId ?? null);
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setReminderKind(task.reminderKind ?? 'notification');
@@ -555,7 +593,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -788,6 +826,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // overshoot, and would otherwise silently survive a target being cleared
       // and re-added.
       allowOvershoot: targetCount !== null ? allowOvershoot : false,
+      // A supply counts down by riding onto the successor a completion spawns,
+      // so it means nothing on a one-off — cleared with the repeat rather than
+      // left to sit at its starting number for ever, the same reset showStreak
+      // gets one field over. The five fields that describe it go with it: they
+      // only ever read against a count.
+      supplyCount: recurrenceType !== 'none' ? supplyCount : null,
+      supplyUnit: recurrenceType !== 'none' && supplyCount !== null ? normalizeTargetUnit(supplyUnit) : null,
+      supplyRefillCount: recurrenceType !== 'none' && supplyCount !== null ? supplyRefillCount : null,
+      supplyReorderAt: recurrenceType !== 'none' && supplyCount !== null ? supplyReorderAt : DEFAULT_SUPPLY_REORDER_AT,
+      supplyLeadDays: recurrenceType !== 'none' && supplyCount !== null ? supplyLeadDays : null,
+      supplyGroceryItemId: recurrenceType !== 'none' && supplyCount !== null ? supplyGroceryItemId : null,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
@@ -1011,6 +1060,40 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
    */
   const kind = taskKindOf({ chainEnabled, targetCount, timedMinutes });
 
+  // What the supply card reads back: the day the last unit gets spent, and the
+  // day an order has to go in to beat it.
+  //
+  // Derived at render rather than stored, the same call `projectQuietDays`
+  // makes about a review task's "21d": both numbers move every time the task is
+  // completed, and a copy on the row would be a second thing to keep true.
+  //
+  // Only computable against a *saved* task, because the projection walk needs a
+  // whole Task (see canProject's refusals, which it inherits deliberately). On
+  // a task being created the count and the threshold still read back; the date
+  // appears once there's a row to project from, which the hint says.
+  const supplyPreview = useMemo(() => {
+    if (!task || supplyCount === null || recurrenceType === 'none') return null;
+    const projected: Task = {
+      ...task,
+      dueDate: dueDate?.toISOString() ?? null,
+      recurrenceType,
+      recurrenceInterval,
+      recurrenceDays,
+      recurrenceMonthDay,
+      recurrenceWeekOrdinal,
+      recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
+      recurrenceCount,
+      recurrenceFromCompletion,
+      supplyCount,
+      supplyLeadDays,
+    };
+    return { runOut: supplyRunOutDate(projected), orderBy: supplyOrderByDate(projected) };
+  }, [
+    task, supplyCount, supplyLeadDays, dueDate, recurrenceType, recurrenceInterval,
+    recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceEndDate,
+    recurrenceCount, recurrenceFromCompletion,
+  ]);
+
   /**
    * The only way to change kind, and the reason they're exclusive: it takes
    * the same `bakedFields` path quick add does, which returns a full set of
@@ -1214,6 +1297,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       targetCount,
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnit) : null,
       allowOvershoot: targetCount !== null ? allowOvershoot : false,
+      supplyCount, supplyUnit, supplyRefillCount, supplyReorderAt, supplyLeadDays, supplyGroceryItemId,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
@@ -2817,6 +2901,187 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          // Only on a repeating task, and that's the feature's one hard
+          // constraint rather than a tidy-up: a supply counts down by riding
+          // onto the successor a completion spawns, so a one-off has nowhere to
+          // put the decrement (see canHoldSupply). Same gate showStreak lives
+          // under, one card over.
+          ...(recurrenceType !== 'none' ? [{
+            key: 'supply', label: 'Supply', set: supplyCount !== null,
+            keywords: ['stock', 'refill', 'reorder', 'consumable', 'filters', 'left', 'runs out', 'order more'],
+            node: (
+              <>
+                <EditorRow
+                  icon="cube-outline"
+                  label="Supply"
+                  hint="Count down a stock of something each time this is done, and get a task to order more"
+                  value={supplyCount !== null ? describeSupply({
+                    supplyCount, supplyUnit, supplyRefillCount, supplyReorderAt,
+                    supplyLeadDays, supplyDeclinedAtCount: null, supplyGroceryItemId,
+                  }) ?? undefined : undefined}
+                  expanded={showSupply}
+                  onPress={() => { animateLayout(); setShowSupply(v => !v); }}
+                  onClear={supplyCount !== null ? () => {
+                    setSupplyCount(null); setSupplyUnit(''); setSupplyRefillCount(null);
+                    setSupplyReorderAt(DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(null);
+                    setSupplyGroceryItemId(null); setShowSupply(false);
+                  } : undefined}
+                />
+                {showSupply && (
+                  <>
+                    {/* The count and its unit sit on one row, for the reason
+                        the daily target's do: the unit is only ever read
+                        beside the number, so it's typed beside it. */}
+                    <View style={styles.targetStepperRow}>
+                      <CountStepper
+                        value={supplyCount}
+                        onChange={setSupplyCount}
+                        min={0}
+                        max={MAX_SUPPLY_COUNT}
+                        // The floor is 0 rather than 1, because being out of
+                        // something is a real state to record and the whole
+                        // thing the feature is pointed at. `allowNull` is what
+                        // gets you back out of being a supply at all, so − at
+                        // the bottom still has somewhere to go.
+                        allowNull
+                        emptyLabel="Off"
+                        label="Supply"
+                        describeValue={n => (n === null ? 'not a supply' : formatSupplyLeft(n, supplyUnit))}
+                      />
+                      {supplyCount !== null && (
+                        <TextInput
+                          style={[styles.fieldBox, styles.targetUnitInput]}
+                          value={supplyUnit}
+                          onChangeText={setSupplyUnit}
+                          placeholder="e.g. filters"
+                          placeholderTextColor={colors.textTertiary}
+                          maxLength={MAX_TARGET_UNIT_LENGTH}
+                          autoCapitalize="none"
+                          returnKeyType="done"
+                          accessibilityLabel="What the supply is counted in, optional"
+                        />
+                      )}
+                    </View>
+                    {/* Says what the app now knows rather than what the field
+                        is for — the derived run-out day is the whole payoff of
+                        filling any of this in, so it's shown the moment it can
+                        be worked out. */}
+                    <Text style={styles.targetStepperCaption}>
+                      {supplyCount === null
+                        ? 'Not counting a supply'
+                        : supplyPreview?.runOut
+                          ? `${describeSupply({
+                              supplyCount, supplyUnit, supplyRefillCount, supplyReorderAt,
+                              supplyLeadDays, supplyDeclinedAtCount: null, supplyGroceryItemId,
+                            })}. ${describeSupplyRunOut(supplyPreview.runOut)}, going by the repeat.`
+                          : `${describeSupply({
+                              supplyCount, supplyUnit, supplyRefillCount, supplyReorderAt,
+                              supplyLeadDays, supplyDeclinedAtCount: null, supplyGroceryItemId,
+                            })}. One is used each time this is completed.`}
+                    </Text>
+                    {supplyCount !== null && (
+                      <>
+                        <View style={styles.supplyFieldRow}>
+                          <Text style={styles.supplyFieldLabel}>Pack size</Text>
+                          <CountStepper
+                            value={supplyRefillCount}
+                            onChange={setSupplyRefillCount}
+                            min={1}
+                            max={MAX_SUPPLY_COUNT}
+                            allowNull
+                            emptyLabel="Not set"
+                            label="Pack size"
+                            describeValue={n => (n === null ? 'not set' : `${n} per pack`)}
+                          />
+                        </View>
+                        <Text style={styles.supplyFieldHint}>
+                          How many arrive when you restock. Fills in the answer when you tick the order task off.
+                        </Text>
+
+                        <View style={styles.supplyFieldRow}>
+                          <Text style={styles.supplyFieldLabel}>Reorder at</Text>
+                          <CountStepper
+                            value={supplyReorderAt}
+                            onChange={n => setSupplyReorderAt(clampSupplyReorderAt(n))}
+                            min={1}
+                            max={MAX_SUPPLY_COUNT}
+                            label="Reorder at"
+                            describeValue={n => formatSupplyLeft(n ?? 1, supplyUnit)}
+                          />
+                        </View>
+                        <Text style={styles.supplyFieldHint}>
+                          Ask for more once the supply drops this low.
+                        </Text>
+
+                        <View style={styles.supplyFieldRow}>
+                          <Text style={styles.supplyFieldLabel}>Delivery time</Text>
+                          <CountStepper
+                            value={supplyLeadDays}
+                            onChange={setSupplyLeadDays}
+                            min={0}
+                            max={365}
+                            allowNull
+                            emptyLabel="Not set"
+                            label="Delivery time"
+                            describeValue={n => (n === null ? 'not set' : `${n} ${n === 1 ? 'day' : 'days'}`)}
+                          />
+                        </View>
+                        <Text style={styles.supplyFieldHint}>
+                          {supplyPreview?.orderBy
+                            ? `How long it takes to arrive, so the order goes in by ${format(supplyPreview.orderBy, 'd MMM')}.`
+                            : 'How long it takes to arrive, so the order goes in early enough to get here in time.'}
+                        </Text>
+
+                        {kitchenEnabled && (
+                          <CollapsibleField
+                            label="Stocked from"
+                            hint="Put this on the shopping list instead of adding a task to order it"
+                            summary={groceryItems.find(i => i.id === supplyGroceryItemId)?.name}
+                            emptySummary="Not from groceries"
+                            expanded={showSupplySource}
+                            onToggle={() => { animateLayout(); setShowSupplySource(v => !v); }}
+                          >
+                            <PillGroup
+                              noun="item"
+                              filterPlaceholder="Find or add an item…"
+                              options={[
+                                {
+                                  key: '',
+                                  label: 'Not from groceries',
+                                  selected: !supplyGroceryItemId,
+                                  // Pinned for the reason PillGroup pins every
+                                  // option meaning "no choice": burying the
+                                  // default behind a disclosure makes it look
+                                  // unavailable.
+                                  pinned: true,
+                                  onPress: () => setSupplyGroceryItemId(null),
+                                },
+                                ...groceryItems.map(i => ({
+                                  key: i.id,
+                                  label: i.name,
+                                  selected: i.id === supplyGroceryItemId,
+                                  onPress: () => setSupplyGroceryItemId(i.id),
+                                })),
+                              ]}
+                              onCreate={name => {
+                                // addToPantry rather than addByName: this is a
+                                // thing kept in a cupboard, not a thing wanted
+                                // on this week's list. The supply is what puts
+                                // it on the list, when it runs low.
+                                const created = addGroceryItem(name, { registerUndo: false });
+                                if (!created) return 'That name is already in the catalog';
+                                setSupplyGroceryItemId(created.id);
+                              }}
+                            />
+                          </CollapsibleField>
+                        )}
+                      </>
+                    )}
+                  </>
+                )}
+              </>
+            ),
+          }] : []),
         ]}
       />
 
@@ -4043,6 +4308,31 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Daily target's unit: one word, so it takes the rest of the stepper's line. */
   targetUnitInput: { flex: 1 },
+  /**
+   * A named number inside the Supply card: label on the left, stepper on the
+   * right. The daily target gets away with a bare stepper because the card has
+   * exactly one number in it; this card has four, so each needs saying which
+   * it is.
+   */
+  supplyFieldRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.sm,
+  },
+  supplyFieldLabel: { color: colors.text, fontSize: font.md, flexShrink: 1 },
+  /**
+   * The one line under each of those numbers saying what it does — this is the
+   * only in-app documentation these fields have, the same job an EditorRow's
+   * `hint` does for a row that has one.
+   *
+   * marginBottom as well as the top padding above, so the next label doesn't
+   * sit against this: a block that only spaces the side that mattered for its
+   * own layout is the mistake CLAUDE.md calls out.
+   */
+  supplyFieldHint: {
+    color: colors.textSecondary, fontSize: font.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,
+  },
   /** Extra task's title: a line of its own, and a touch taller for typing into. */
   extraTaskTitleInput: {
     marginHorizontal: spacing.md, marginTop: spacing.sm, height: 40,

@@ -70,6 +70,7 @@ import { describeDisposalHistory, wantsShelfLifePrompt } from '../utils/itemDisp
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
 import { wantedPantryChecks } from '../utils/pantryCheckTasks';
+import { canHoldSupply, describeSupply, supplyReorderReason } from '../utils/supply';
 import { findProjectStalls } from '../utils/projectPull';
 import { kitchenContextRows, plannedUsesToday } from '../utils/dayContextRows';
 import { planTrip, summarizeTrip, describeShopCoverage } from '../utils/shoppingTrip';
@@ -1547,6 +1548,45 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // the back-dated trips would have stamped a use-by date three weeks past,
     // and the demo would open with a "Use up" task arguing with the check.
     expect(oats.expiresAt).toBeNull();
+  });
+
+  it('seeds a supply that is running low, and the order the app wrote about it', () => {
+    const { tasks } = useTaskStore.getState();
+
+    const filter = tasks.find(t => t.title === 'Change the water filter')!;
+    expect(filter).toBeDefined();
+    // A supply only counts down by riding onto a successor, so it has to be on
+    // a repeating task or it would sit at its starting number for ever.
+    expect(canHoldSupply(filter)).toBe(true);
+    expect(filter.supplyCount).toBe(2);
+    expect(filter.supplyUnit).toBe('filters');
+    expect(filter.supplyRefillCount).toBe(6);
+
+    // And the real rule agrees it wants ordering, so the first foreground
+    // sweep doesn't clear the seeded row as describing a supply that's fine.
+    expect(supplyReorderReason(filter)).not.toBeNull();
+
+    const order = tasks.find(t => t.generatedKind === 'supplyReorder')!;
+    expect(order).toBeDefined();
+    expect(order.title).toBe('Order more filters');
+    expect(order.generatedSourceId).toBe(filter.id);
+    expect(order.category).toBe('Supplies');
+    // Completing it asks how many arrived — the answer is what puts the count
+    // back up, so without the question the supply could only ever fall.
+    expect(order.deliverableKind).toBe('number');
+    // And it carries the day the last filter runs out, plus the link to buy
+    // one, both inherited from the task it speaks for.
+    expect(order.deadline).not.toBeNull();
+    expect(order.linkUrl).toBe(filter.linkUrl);
+  });
+
+  it('seeds a healthy supply too, so the chip is not only ever a warning', () => {
+    const { tasks } = useTaskStore.getState();
+    const lenses = tasks.find(t => t.title === 'Swap contact lenses')!;
+    expect(lenses.supplyCount).toBe(9);
+    expect(describeSupply(lenses)).toBe('9 pairs left');
+    // Nowhere near asking for anything — this row is the at-rest state.
+    expect(supplyReorderReason(lenses)).toBeNull();
   });
 
   it('seeds the weekly meal-plan nudge as a stack of seven day tasks', () => {

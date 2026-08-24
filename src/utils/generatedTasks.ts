@@ -86,6 +86,7 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'leftoverUseUp',
   'mealPlanNudge',
   'projectReview',
+  'supplyReorder',
 ];
 
 /**
@@ -218,6 +219,20 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     sourced: true,
     categorized: true,
     defaultCategory: 'Projects',
+  },
+  supplyReorder: {
+    kind: 'supplyReorder',
+    label: 'Reorder tasks for supplies',
+    onHint: 'A task running low on supplies adds a task to order more',
+    offHint: 'A task running low on supplies adds no task',
+    icon: 'cube-outline',
+    // The first generator whose source is a *task*. Nothing about the
+    // mechanism minds — generatedSourceId is a string and never asked what
+    // kind of row it names — but it is the reason writeGeneratedOptOut's case
+    // here writes to useTaskStore rather than to one of the other stores.
+    sourced: true,
+    categorized: true,
+    defaultCategory: 'Supplies',
   },
   mealPlanNudge: {
     kind: 'mealPlanNudge',

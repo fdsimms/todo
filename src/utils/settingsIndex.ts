@@ -354,6 +354,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'restock', 'generated', 'automatic'], kitchen: true },
   { id: 'pantryCheckTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
     keywords: ['category', 'pantry', 'grocery', 'kitchen'], kitchen: true },
+  // Deliberately not `kitchen: true`, unlike the two pantry rows above: a
+  // supply is most often something the grocery half has never heard of (a
+  // filter, a cartridge, a lens), so the row has to stay findable with the
+  // whole kitchen switched off.
+  { id: 'supplyReorderTasks', groupId: 'tasksProjects', label: 'Reorder tasks for supplies', section: 'Tasks the app adds',
+    keywords: ['supply', 'stock', 'restock', 'order more', 'refill',
+      'running low', 'run out', 'consumable', 'filter', 'cartridge', 'generated', 'automatic'] },
+  { id: 'supplyReorderTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
+    keywords: ['category', 'supply', 'supplies', 'reorder', 'restock'] },
   // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
   // with the area gone there is nothing left for it to convert.
   { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',

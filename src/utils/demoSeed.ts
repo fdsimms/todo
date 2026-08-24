@@ -10,6 +10,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
+import { supplyReorderTitle } from './supply';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
@@ -671,6 +672,65 @@ export function seedDemoData(): void {
   });
   completeTask(budget.id, { deliverableValue: '2400' });
   updateTask(budget.id, { completedAt: setHours(subDays(today, 1), 9).toISOString() });
+
+  // --- Supplies: a countdown of a thing, and the order it asks for ---------
+  // Two, because the feature has two halves and only one of them is visible at
+  // rest. A supply with plenty left is a chip on a row; a supply that has run
+  // low is a task the app wrote — and with only the healthy one seeded, the
+  // half that does the work would read as something the app can't do.
+  const waterFilter = addTask({
+    title: 'Change the water filter',
+    notes: 'A supply: one filter goes every time this is done, and the app asks for more before the box runs out.',
+    category: 'Home',
+    dueDate: addDays(today, 3).toISOString(),
+    recurrenceType: 'monthly',
+    recurrenceInterval: 1,
+    supplyCount: 2,
+    supplyUnit: 'filters',
+    supplyRefillCount: 6,
+    supplyReorderAt: 2,
+    supplyLeadDays: 5,
+    // Where you actually buy it — inherited by the reorder task below, which
+    // is most of what makes that row one tap rather than a errand to
+    // remember. A real link rather than a placeholder, because a dead one on
+    // the demo's own row is worse than none.
+    linkUrl: 'https://www.google.com/search?q=fridge+water+filter',
+  });
+  // The order the app wrote about it. Seeded rather than left to
+  // `checkSupplyReorderTasks`, for the reason the pantry check and the quiet
+  // project's review task are: that pass runs on Today's focus and reads the
+  // *real* install's category setting, so a demo relying on it would show the
+  // row in a different section depending on the person's own preferences.
+  addCategory('Supplies');
+  setCategoryEmoji('Supplies', '📦');
+  useSettingsStore.getState().setSupplyReorderTaskCategory('Supplies');
+  addTask({
+    title: supplyReorderTitle(waterFilter),
+    dueDate: today.toISOString(),
+    // The day the last filter gets used, worked out from the repeat — this is
+    // what the lead time buys, and it reads on the row as a deadline countdown
+    // like any other.
+    deadline: addDays(today, 33).toISOString(),
+    linkUrl: waterFilter.linkUrl,
+    category: 'Supplies',
+    // Completing it asks how many arrived, pre-filled with the pack size, and
+    // the answer is what puts the count back up.
+    deliverableKind: 'number',
+    ...generatedBy('supplyReorder', waterFilter.id),
+  });
+  // The at-rest half: nowhere near needing anything, so the row just says how
+  // many are left.
+  addTask({
+    title: 'Swap contact lenses',
+    category: 'Health',
+    dueDate: addDays(today, 1).toISOString(),
+    recurrenceType: 'weekly',
+    recurrenceInterval: 2,
+    supplyCount: 9,
+    supplyUnit: 'pairs',
+    supplyRefillCount: 12,
+    supplyReorderAt: 2,
+  });
 
   // --- A template, and the blanks it fills in at apply time ----------------
   seedTemplates();
