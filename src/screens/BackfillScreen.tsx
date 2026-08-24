@@ -610,7 +610,7 @@ export function BackfillScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`Leave "${categoryField.label}" off for this category and don't ask again`}
               >
-                <Text style={styles.skipText}>Leave this off</Text>
+                <Text style={styles.skipText}>Don't ask again</Text>
               </PressableScale>
             </View>
           </ScrollView>
@@ -719,7 +719,7 @@ export function BackfillScreen() {
               accessibilityRole="button"
               accessibilityLabel={`Leave "${projectField.label}" off for this project and don't ask again`}
             >
-              <Text style={styles.skipText}>Leave this off</Text>
+              <Text style={styles.skipText}>Don't ask again</Text>
             </PressableScale>
           </View>
         </ScrollView>
