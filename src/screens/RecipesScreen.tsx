@@ -628,7 +628,12 @@ export function RecipesScreen() {
           onClear={handleClearTrip}
         />
       )}
-      {!selectionMode && !!sharedUrl && (
+      {/* Gated on the key for the same reason the add button's import menu is,
+          below: without one there is no import to offer, and this banner would
+          otherwise be the only route into a sheet that can only end at "No API
+          key". The queue is persisted, so a page shared before a key is added
+          isn't lost — it turns up once there's something to import it with. */}
+      {!selectionMode && !!anthropicApiKey && !!sharedUrl && (
         <SharedLinkBanner
           url={sharedUrl}
           remaining={sharedUrls.length - 1}

@@ -46,6 +46,13 @@ opens the ordinary `RecipeCreateSheet` on its link tab with the address already 
 - **One banner at a time, oldest first.** Addresses are canonicalised through
   `normalizeRecipeUrl` on the way in, so the queue holds exactly what the import would accept
   and a re-share collapses onto the entry already there rather than jumping the line.
+- **The banner is gated on `anthropicApiKey`, the same as the add button's import menu.**
+  Without a key there is no import to offer, and this would otherwise be the one route into a
+  sheet that can only end at "No API key". The extension keeps queueing either way — it's a
+  separate process and knows nothing about the keychain — and the queue persists, so a page
+  shared before a key is added turns up once there's something to import it with rather than
+  being dropped. The key lives in the keychain rather than the `settings` table, so this reads
+  the same inside demo mode as outside it.
 
 ---
 
