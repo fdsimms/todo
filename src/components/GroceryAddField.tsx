@@ -101,7 +101,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const addByName = useGroceryStore(s => s.addByName);
   const addManyFromText = useGroceryStore(s => s.addManyFromText);
   const setLastAction = useGroceryStore(s => s.setLastAction);
-  const removeFromListMany = useGroceryStore(s => s.removeFromListMany);
+  const undoForAdds = useGroceryStore(s => s.undoForAdds);
   const setOnHandUntil = useGroceryStore(s => s.setOnHandUntil);
   const setRunningLow = useGroceryStore(s => s.setRunningLow);
 
@@ -182,6 +182,10 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const acceptAlternatives = useCallback(() => {
     if (!alternatives) return;
     animateLayout();
+    // Which ids existed before, so the undo below can tell a row this minted
+    // from one it re-listed — the snapshot undoForAdds needs, taken at the only
+    // moment it is knowable.
+    const preexisting = new Set(useGroceryStore.getState().items.map(i => i.id));
     // An opaque id, not the typed line — see GroceryItem.choiceGroup for why
     // this half of the feature doesn't want a label.
     const group = generateId();
@@ -210,14 +214,19 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
     setRejectedPurpose(null);
     resetAttributes();
     // One combined undo, same reason addManyFromText combines its per-line
-    // ones — otherwise only the last of the two rows would be undoable.
+    // ones — otherwise only the last of the two rows would be undoable. Through
+    // undoForAdds, which deletes the rows this add minted and merely un-lists
+    // ones it re-listed; removeFromListMany parks everything, so undoing
+    // "limes or lemons" used to leave two rows the user had just taken back.
+    // Built here, not at undo time — it snapshots the rows as this add left
+    // them, note and quantity included. See undoForAdds.
     const addedIds = addedItems.map(i => i.id);
     setLastAction({
       label: `${addedItems.length} either/or items added`,
-      undo: () => removeFromListMany(addedIds),
+      undo: undoForAdds(addedIds, preexisting),
     });
     onAdded?.(addedItems);
-  }, [alternatives, addByName, tokens, setLastAction, removeFromListMany, onAdded, resetAttributes]);
+  }, [alternatives, addByName, tokens, setLastAction, undoForAdds, onAdded, resetAttributes]);
 
   const commit = useCallback(
     (

@@ -114,7 +114,6 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     note: '',
     onList: false,
     checked: false,
-    inCatalog: true,
     sortOrder: seq,
     purchaseCount: 0,
     lastAddedAt: null,
@@ -717,7 +716,7 @@ describe('classifyPlanned', () => {
   });
 
   it('classifies a known catalog row that is off the list as needToBuy, not probablyHave', () => {
-    const items = [item({ name: 'Flour', onList: false, inCatalog: true })];
+    const items = [item({ name: 'Flour', onList: false })];
     const planned = [{ name: 'Flour', nameKey: 'flour', quantity: '', aisle: null, source: 'Wed Bread' }];
     expect(classifyPlanned(planned, items, now)[0].category).toBe('needToBuy');
   });
@@ -757,7 +756,7 @@ describe('classifyPlanned', () => {
   });
 
   it('marks a row with a catalog row known, and one without unknown', () => {
-    const items = [item({ name: 'Flour', onList: false, inCatalog: true })];
+    const items = [item({ name: 'Flour', onList: false })];
     const planned = [
       { name: 'Flour', nameKey: 'flour', quantity: '', aisle: null, source: 'Wed Bread' },
       { name: 'Saffron', nameKey: 'saffron', quantity: '', aisle: null, source: 'Wed Bread' },
@@ -842,7 +841,7 @@ describe('restockRows', () => {
   });
 
   it('keeps a known item that is off the list', () => {
-    const items = [item({ name: 'Yukon Gold potatoes', onList: false, inCatalog: true })];
+    const items = [item({ name: 'Yukon Gold potatoes', onList: false })];
     const rows = restockRows(classifyPlanned([planned('Yukon Gold potatoes')], items, now));
     expect(rows.map(r => r.name)).toEqual(['Yukon Gold potatoes']);
   });
@@ -879,8 +878,8 @@ describe('restockRows', () => {
 
   it('names only the defensible lines out of a mixed recipe', () => {
     const items = [
-      item({ name: 'Yukon Gold potatoes', onList: false, inCatalog: true }),
-      item({ name: 'vegan butter', onList: false, inCatalog: true }),
+      item({ name: 'Yukon Gold potatoes', onList: false }),
+      item({ name: 'vegan butter', onList: false }),
       item({ name: 'sea salt', onList: false, isStaple: true }),
     ];
     const rows = restockRows(classifyPlanned(
@@ -903,7 +902,6 @@ describe('consumedRows', () => {
   const stocked = (name: string) => item({
     name,
     onList: false,
-    inCatalog: true,
     purchaseCount: 3,
     createdAt: new Date(2026, 4, 14).toISOString(),
     lastPurchasedAt: new Date(2026, 7, 2).toISOString(),
@@ -925,7 +923,6 @@ describe('consumedRows', () => {
     const asserted = item({
       name: 'Soy sauce',
       onList: false,
-      inCatalog: true,
       onHandUntil: new Date(2026, 7, 20).toISOString(),
     });
     const rows = consumedRows(classifyPlanned([planned('Soy sauce')], [asserted], now));
@@ -955,7 +952,6 @@ describe('consumedRows', () => {
     const out = item({
       name: 'Butter',
       onList: false,
-      inCatalog: true,
       purchaseCount: 3,
       createdAt: new Date(2026, 4, 14).toISOString(),
       lastPurchasedAt: new Date(2026, 7, 2).toISOString(),
@@ -968,7 +964,7 @@ describe('consumedRows', () => {
     // The property the whole design leans on: answering here moves a row from
     // this set into that one, so the buy offer follows from the consumption
     // answer rather than being asked up front.
-    const items = [stocked('Butter'), item({ name: 'Onions', onList: false, inCatalog: true })];
+    const items = [stocked('Butter'), item({ name: 'Onions', onList: false })];
     const classified = classifyPlanned(
       [planned('Butter'), planned('Onions'), planned('gochujang')],
       items,

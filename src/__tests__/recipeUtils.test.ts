@@ -1279,7 +1279,6 @@ function item(name: string, overrides: Partial<GroceryItem> & { nameKey?: string
     note: '',
     onList: false,
     checked: false,
-    inCatalog: true,
     sortOrder: seq,
     favorite: false,
     purchaseCount: 0,

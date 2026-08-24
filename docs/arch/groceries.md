@@ -37,6 +37,67 @@ never made, and it would outrank the lexicon for ever after.
 
 `Other` can't be renamed or deleted — it's the floor `aisleForName` returning null lands on.
 
+## A row leaves only when asked (`hasUserFacts`)
+
+There is one catalog and it is also the shopping list: `onList` says what's on it right now, and a
+row that comes off parks. There is no second axis.
+
+There used to be. `GroceryItem.inCatalog` marked a first-typed name as *provisional*, and taking a
+provisional row off the list deleted it rather than parking it — the guard against a catalog
+filling with typos. The cost was that every feature recording a fact about an item had to remember
+to promote its row first: `linkItemShop`, `linkItemShopMany`, `linkItemSub`, `addToPantry`,
+`addProduct`, `setPreferredProduct` and `setProductStrict` each carried their own copy of the same
+note, and a feature that forgot would have its fact destroyed by an unrelated "Remove from list"
+weeks later. Seven places remembering a rule is six chances to forget it.
+
+- **The fact is the protection now.** `hasUserFacts` (`src/utils/groceryFacts.ts`) derives the same
+  question at the point of use: has anyone put anything on this row — a purchase, a price, a
+  pantry claim, a brand, a store link, a substitute, a receipt alias, a typed note or quantity. A
+  new feature that hangs something off an item makes that item unsweepable as a side effect of the
+  thing it stored, with nothing to keep in step.
+- **`clearList` is the only caller**, and the only thing left that removes a row unasked. "I'm not
+  doing this trip after all" is a statement about the whole list at once, so a row that was never
+  anything but a line of it goes with it. Everything else parks.
+- **It is deliberately generous.** Keeping a junk row costs a line in a view that already ranks by
+  `familiarity` and buries it within weeks; dropping one wrongly destroys a substitute or a price
+  history with no undo. Anything arguable counts as a fact. What doesn't: an auto-filed aisle (kept
+  in `grocery_aisle_overrides` by `nameKey`, so it outlives the row anyway), a recipe stamp, a
+  recipe-owned quantity, and this trolley's own `choiceGroup`.
+- **`choiceGroup` is cleared by every path that takes a row off the list** — `removeFromList`,
+  `removeFromListMany`, `clearList` (in the SQL as well as in memory), `swapForSubstitute` and
+  `resolveChoice`. That used to be `resolveChoice`'s job alone, which was enough only while the
+  alternative was that the row got deleted. Carried off-list it would silently re-form the pair
+  when both names were added again, and it is exempt above on the express grounds that it dies
+  with the trolley, so something has to kill it.
+- **Undoing an *add* still deletes**, through `undoForAdds`. `addByName` mints or re-lists, and
+  only the caller knows which, so every add path snapshots the item ids that existed before it ran
+  and hands that set over: a minted row is deleted, a re-listed one parks. That used to be one call
+  to `removeFromList` for both, which worked only because provisionality made it mean two things.
+  Every add path goes through it, `GroceryAddField`'s either/or and `GroceryAISheet`'s recipe apply
+  included; a new one reaching for `removeFromListMany` instead will silently leak rows.
+- **It spares a minted row that grew a fact *since* the add, and that needs a snapshot, not a
+  predicate.** Nothing like `addProduct` or `linkItemShop` registers an undo of its own, so an
+  add's action stays armed for minutes, by which time the row may carry the brand you just named.
+  Asking `hasUserFacts` at undo time looks like the answer and is not: an add writes facts of its
+  own — a parsed "2 gal", a note typed into the add field, a Brand chip — so a row that has only
+  ever been added already answers true, and `addByName('2 gal milk')` became un-undoable. So
+  `undoForAdds` takes a `factSignature` when the add lands, takes another when the undo runs, and
+  deletes only when they match. **Build the undo at add time**, which is why it returns a closure
+  rather than being a plain action.
+- **`factSignature` and `hasUserFacts` read one table** (`FACT_READERS`), because the two must
+  never disagree about what counts. Written separately, the second drifts from the first on the
+  next field added and the failure is silent: an undo that deletes a row it should have kept. The
+  relation half is a *count* per item, not membership, so a second link landing on a row that
+  already had one still registers.
+- **`catalogPruneCandidates` asks the same question.** Its "never bought" test was always too weak
+  for an unrecoverable delete — it can't see a brand, a store link or a substitute, and a row
+  minted to hold one has no purchases by definition. That was rare while such rows were
+  provisional; it is ordinary now, so the prune offer uses `hasUserFacts` too.
+- **The `in_catalog` column is still in SQLite**, written `1` and never read, the same treatment
+  `task_groups.completed_at` gets. Dropping a column isn't this schema's migration style.
+
+---
+
 ## Products (`ItemProduct`) — which bread, under Bread
 
 A `GroceryItem` is the Platonic ideal: Bread is what recipes call for, what the pantry tracks,
@@ -276,9 +337,11 @@ tombstone per shop. This table is bounded by (items × stores you actually shop 
   in the item sheet to say "I can get this here". That's the whole distinction and it needs no
   second flag: `primaryShopFor` refuses to call an assertion "usually" (the app would be inventing
   a habit), while `exclusiveShopFor` counts it (availability is exactly what the tap claimed).
-  **`linkItemShop` promotes a provisional row** (`inCatalog`), for the same reason starring does:
-  saying where you get something is a statement about the item, not about this week's list. Without
-  it the next "Remove from list" deletes the row and silently takes the assertion with it.
+  **The link is its own protection** and needs no promotion step. It used to call one, because a
+  never-bought row was provisional and the next "Remove from list" deleted it, taking the assertion
+  with it. Removal parks now, and the one remaining sweep asks `hasUserFacts`, which counts a store
+  link. Saying where you get something is a statement about the item, not about this week's list,
+  and the statement's own existence is what keeps its row.
 - **Naming a store is optional and `null` is a real answer**, not a skipped step. It's a
   first-class pill in the finish sheet, it's the default until a trip has ever named one, and
   picking it finishes the trip exactly as every trip did before stores existed. A required
@@ -474,10 +537,11 @@ gesture onto it — that's the inventory again.
   from the list or from the catalog, so "I have flour" was unsayable until flour had been bought
   through the app once. One bit, the one the pills already own; the things it deliberately doesn't
   record are how much and until when.
-- **It never touches `onList`.** Saying you have something is not a plan to buy it. It promotes
-  `inCatalog` for the reason `linkItemShop` does — otherwise the next "Remove from list" would
-  delete the row and take the assertion with it — and it strips a typed quantity ("2 lb flour")
-  so the row keys on a name a real purchase can match.
+- **It never touches `onList`.** Saying you have something is not a plan to buy it. And it strips a
+  typed quantity ("2 lb flour") so the row keys on a name a real purchase can match. It used to
+  also promote `inCatalog`, so that the next "Remove from list" wouldn't delete the row and take
+  the claim with it; the on-hand claim now protects its own row through `hasUserFacts`, and
+  removal never deletes anything anyway.
 - **The field both filters and adds**, like `PillGroup`'s: what the search can't find is exactly
   what you're offered the chance to add, and "do I have flour" is the moment you learn you never
   said. It's also the one insert path besides `addByName`, so both go through `newItemRow` and a
@@ -789,11 +853,12 @@ has no dish decision to defer — but the loser then sat there looking outstandi
   label as a heading over its options; a grocery list renders no heading at all — each
   row just names its siblings — so a label would be a second thing to keep in step
   with nothing to show for it, and two lines typed alike would silently merge.
-- **It resolves destructively, where a recipe's pick doesn't.** `MealPlanEntry.recipeChoices`
+- **It resolves on the list, where a recipe's pick doesn't.** `MealPlanEntry.recipeChoices`
   is somewhere to put "mash on Tuesday" without editing the dish; a shopping list has
   nowhere to put "I chose apples". So the tick *is* the choice, and it's a real undo —
-  `resolveChoice` snapshots every row first and puts them back exactly, re-inserting the
-  provisional ones it deleted and taking the winner's tick off with them.
+  `resolveChoice` snapshots every row first and puts them back exactly, taking the winner's tick
+  off with them. The losers park off-list; they used to be *deleted* when never bought, which made
+  picking one option a destructive act on the others.
 - **Only rows still on the list are live options.** An off-list catalog row that once
   shared a group is history, not something to take away; and since `alternativeCaptions`
   drops a group that's down to one, a resolved pair stops captioning itself with no extra

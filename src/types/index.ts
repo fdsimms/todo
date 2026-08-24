@@ -1317,14 +1317,14 @@ export interface GroceryItem {
   onList: boolean;
   // Invariant: checked implies onList.
   checked: boolean;
-  // Whether the row has earned a place in the catalog in its own right, rather
-  // than only existing because it's on the list right now. A name typed for the
-  // first time is `false` — provisional — and taking it off the list deletes it
-  // instead of parking it, whether that's a removal, a finished trip that
-  // bought it, or a clear that abandoned it. Invariant: !onList implies
-  // inCatalog, which is what lets the catalog view and the pruner keep reading the
-  // whole off-list set.
-  inCatalog: boolean;
+  // There is deliberately no `inCatalog` here any more (#1998). Every row is a
+  // catalog row: coming off the list parks it, and the only thing that ever
+  // removes one unasked is `clearList` sweeping rows that carry nothing anyone
+  // put there (see `hasUserFacts` in `src/utils/groceryFacts.ts`). The flag it
+  // replaced had to be set by hand by every feature that recorded a fact about
+  // an item, and a feature that forgot destroyed that fact on the next
+  // unrelated "Remove from list". The `in_catalog` column is still in SQLite,
+  // written 1 and never read, the same way `task_groups.completed_at` is.
   sortOrder: number;
   // Bumped by finishShopping, never by clearList. Together with
   // lastPurchasedAt this *is* the autocomplete ranking signal, which is the
@@ -2270,12 +2270,12 @@ export const PREP_MAX_LENGTH = 60;
 export const RECIPE_SECTION_MAX_LENGTH = 40;
 
 // One line of a recipe's shopping implication — deliberately not a GroceryItem.
-// A GroceryItem is a forever-row carrying purchase counters that earned a place
-// in the catalog; "1 tsp smoked paprika" has not, and minting a catalog row for
-// every ingredient at *authoring* time is exactly what the provisional
-// `inCatalog` axis exists to prevent. It would also poison the catalog and
-// autocomplete rankings, which are scored on purchase history such a row would
-// never have.
+// A GroceryItem is a forever-row carrying purchase counters and everything the
+// app knows about a food; "1 tsp smoked paprika" is a line of a recipe. Minting
+// a catalog row for every ingredient at *authoring* time would poison the
+// catalog and the autocomplete rankings, which are scored on purchase history
+// such a row would never have. A row minted deliberately, one at a time, from
+// the ingredient sheet is the supported way across.
 //
 // The bridge to the catalog is `nameKey`, never an id — see the field.
 export interface RecipeIngredient {

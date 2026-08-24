@@ -209,7 +209,6 @@ function onHand(name: string): GroceryItem {
     nameKey: groceryNameKey(name),
     onList: false,
     checked: false,
-    inCatalog: true,
     isStaple: false,
     purchaseCount: 0,
     onHandUntil: new Date(Date.now() + 7 * 86_400_000).toISOString(),
