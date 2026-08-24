@@ -109,6 +109,10 @@ export function seedDemoData(): void {
     deadline: addDays(today, 2).toISOString(),
     tags: ['admin'],
     pinned: true,
+    // This is also the first task the seeded focus session below queues up —
+    // notes and a link only show on that screen once a task in the plan
+    // actually carries one.
+    linkUrl: 'https://example.com/q3-roadmap-draft',
   });
 
   // Nothing here says Work, #admin or XXS — the seeded title rule above does,

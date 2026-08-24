@@ -363,6 +363,13 @@ describe('demo mode', () => {
       if (step.kind === 'work') expect(ids.has(step.taskId!)).toBe(true);
     }
 
+    // The session's own task-details display (notes, link) has nothing to
+    // show unless the task the plan starts on actually carries one.
+    const byId = new Map(useTaskStore.getState().tasks.map(t => [t.id, t]));
+    const firstTask = byId.get(session!.steps[0].taskId!);
+    expect(firstTask?.notes).not.toBe('');
+    expect(firstTask?.linkUrl).not.toBeNull();
+
     useDemoStore.getState().exitDemoMode();
   });
 

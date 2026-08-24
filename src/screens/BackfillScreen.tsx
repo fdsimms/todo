@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Platform } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { format } from 'date-fns/format';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { ScreenHeader } from '../components/ScreenHeader';
@@ -21,12 +22,13 @@ import { spacing, radius, font, lineHeight, fontWeight, iconSize, interaction, t
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { displayTitleFor } from '../utils/visibilityUtils';
+import { activeMealSlotStepId } from '../utils/mealSlotTasks';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { formatDuration, EFFORT_MINUTES, minutesToEffort } from '../utils/effort';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import {
   BACKFILL_FIELDS, backfillCandidates, backfillFieldCounts, estimatePatchFor, dismissBackfillField,
-  type BackfillFieldId,
+  isFieldMissing, type BackfillFieldId,
 } from '../utils/fieldBackfill';
 import {
   CATEGORY_BACKFILL_FIELDS, categoryBackfillCandidates, categoryBackfillFieldCounts, dismissCategoryBackfillField,
@@ -107,6 +109,13 @@ const DURATION_UNIT_SEGMENTS = [
  * item's field is set it drops out on its own. Tasks, categories and
  * projects all carry a plain `id`, so the same `skippedIds` set works for
  * any of them without knowing which kind is active.
+ *
+ * The header's redo icon (task fields only, for now) starts the same loop
+ * over from scratch — every live task for the field, including ones already
+ * set — for someone who wants to revisit a field wholesale rather than just
+ * fill in the gaps. It's still one task at a time through the normal
+ * apply/skip/dismiss actions, so a value is only ever replaced when you
+ * reach that task and set a new one; nothing is cleared in bulk up front.
  */
 type ActiveField =
   | { kind: 'task'; id: BackfillFieldId }
@@ -121,6 +130,7 @@ export function BackfillScreen() {
 
   const tasks = useTaskStore(useShallow(s => s.tasks));
   const updateTask = useTaskStore(s => s.updateTask);
+  const setLastAction = useTaskStore(s => s.setLastAction);
   const getCategoryByName = useCategoryStore(s => s.getCategoryByName);
   const categories = useCategoryStore(useShallow(s => s.categories));
   const setCategoryHideOnVacation = useCategoryStore(s => s.setCategoryHideOnVacation);
@@ -133,6 +143,10 @@ export function BackfillScreen() {
 
   const [entityKind, setEntityKind] = useState<EntityKind>('task');
   const [active, setActive] = useState<ActiveField | null>(null);
+  // Redo-from-scratch (task fields only): widens the queue to every live
+  // task for the field instead of just the ones missing a value — see
+  // confirmStartOver.
+  const [fromScratch, setFromScratch] = useState(false);
   const [skippedIds, setSkippedIds] = useState<Set<string>>(new Set());
   const [sessionTotal, setSessionTotal] = useState(0);
   const [customOpen, setCustomOpen] = useState(false);
@@ -145,8 +159,10 @@ export function BackfillScreen() {
   const projectCounts = useMemo(() => projectBackfillFieldCounts(projects), [projects]);
 
   const taskQueue = useMemo(
-    () => active?.kind === 'task' ? backfillCandidates(tasks, active.id).filter(t => !skippedIds.has(t.id)) : [],
-    [tasks, active, skippedIds]
+    () => active?.kind === 'task'
+      ? backfillCandidates(tasks, active.id, { fromScratch }).filter(t => !skippedIds.has(t.id))
+      : [],
+    [tasks, active, fromScratch, skippedIds]
   );
   const categoryQueue = useMemo(
     () => active?.kind === 'category' ? categoryBackfillCandidates(categories, active.id).filter(c => !skippedIds.has(c.id)) : [],
@@ -183,6 +199,7 @@ export function BackfillScreen() {
   const chooseTaskField = (id: BackfillFieldId) => {
     haptics.tap();
     setActive({ kind: 'task', id });
+    setFromScratch(false);
     setSkippedIds(new Set());
     setSessionTotal(backfillCandidates(tasks, id).length);
   };
@@ -204,13 +221,68 @@ export function BackfillScreen() {
   const backToFields = () => {
     haptics.tap();
     setActive(null);
+    setFromScratch(false);
   };
 
+  // Widens the task queue to every live task for the field, including ones
+  // that already have a value or were dismissed — nothing is cleared by this
+  // alone, it just puts every task back in front of you to confirm or
+  // replace one at a time (see apply/dismiss below for how each one leaves
+  // the queue once you've actually reached it). Category and project fields
+  // have no redo-from-scratch mode of their own yet.
+  const startOver = () => {
+    if (active?.kind !== 'task') return;
+    haptics.tap();
+    setFromScratch(true);
+    setSkippedIds(new Set());
+    setSessionTotal(backfillCandidates(tasks, active.id, { fromScratch: true }).length);
+  };
+
+  const confirmStartOver = () => {
+    if (active?.kind !== 'task') return;
+    const label = BACKFILL_FIELDS.find(f => f.id === active.id)!.label.toLowerCase();
+    Alert.alert(
+      `Redo ${label} from scratch?`,
+      `Walks through every task again, one at a time, including ones that already have a ${label} set. Each task keeps its current value until you set a new one for it — nothing is cleared upfront.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Start over', onPress: startOver },
+      ]
+    );
+  };
+
+  // Every action below advances the queue by adding the current item to
+  // skippedIds, regardless of whether the underlying candidate filter would
+  // also have dropped it (e.g. applying a value in the normal,
+  // not-from-scratch task queue, or setting a category/project field) — in
+  // fromScratch mode the task filter doesn't drop already-set tasks on its
+  // own, so this is what actually moves past the current card there.
+  const advance = (id: string) => setSkippedIds(prev => new Set(prev).add(id));
+
+  // A tap here commits immediately and advances the queue, with no per-row
+  // confirm — registering the snapshot with setLastAction, same as
+  // TaskEditor's save, is what makes a mis-tap recoverable via shake-to-undo
+  // instead of a trip back into the task editor. Category and project fields
+  // don't go through setLastAction/shake-to-undo yet — see applyCategory,
+  // applySequential and applyNudge below.
   const apply = (patch: Partial<Task>) => {
-    if (!currentTask) return;
+    if (!currentTask || active?.kind !== 'task') return;
     haptics.tap();
     animateLayout();
+    const snapshot = { ...currentTask };
+    const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
     updateTask(currentTask.id, patch);
+    // Choosing and eating a given meal take about the same time every day,
+    // so a size given to "Choose breakfast" here is remembered under its
+    // step id and carried onto every future "Choose breakfast" at creation
+    // — see mealSlotStepEstimates. A recipe-backed "Cook X" step already has
+    // its own evidence and never reaches isFieldMissing in the first place.
+    if (active.id === 'estimate' && patch.estimatedMinutes != null) {
+      const stepId = activeMealSlotStepId(currentTask);
+      if (stepId) useSettingsStore.getState().setMealSlotStepEstimate(stepId, patch.estimatedMinutes);
+    }
+    setLastAction({ label: `${fieldLabel} set`, undo: () => updateTask(snapshot.id, snapshot) });
+    advance(currentTask.id);
   };
 
   // The category store has no generic "patch a category" setter (see
@@ -248,21 +320,26 @@ export function BackfillScreen() {
     if (!currentId) return;
     haptics.tap();
     animateLayout();
-    setSkippedIds(prev => new Set(prev).add(currentId));
+    advance(currentId);
   };
 
   // Unlike skip, this is a written, permanent decision about the item —
   // "this one genuinely doesn't need a time estimate" — so it goes through
   // updateTask/the category and project stores rather than the session-only
   // skippedIds, and the item never comes back into this field's queue, in
-  // this session or any other.
+  // this session or any other (or, for tasks, into a future from-scratch
+  // run of it).
   const dismiss = () => {
     if (!active) return;
     haptics.tap();
     animateLayout();
     if (active.kind === 'task') {
       if (!currentTask) return;
+      const snapshot = { ...currentTask };
+      const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
       updateTask(currentTask.id, dismissBackfillField(currentTask, active.id));
+      setLastAction({ label: `${fieldLabel} left unset`, undo: () => updateTask(snapshot.id, snapshot) });
+      advance(currentTask.id);
     } else if (active.kind === 'category') {
       if (!currentCategory) return;
       setCategoryBackfillDismissedFields(
@@ -388,9 +465,29 @@ export function BackfillScreen() {
 
   if (active.kind === 'task') {
     const field = BACKFILL_FIELDS.find(f => f.id === active.id)!;
+    // In a from-scratch run, "dismiss" often lands on a task that already has
+    // a value — the current value is left exactly as it is, so "leave
+    // unset" would misdescribe what the button does there.
+    const dismissLabel = currentTask && isFieldMissing(currentTask, active.id)
+      ? `Leave ${field.label.toLowerCase()} unset`
+      : `Don't ask again`;
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <DetailHeader title={field.label} onBack={backToFields} backAccessibilityLabel="Back to fields" />
+        <DetailHeader
+          title={field.label}
+          onBack={backToFields}
+          backAccessibilityLabel="Back to fields"
+          actions={
+            <TouchableOpacity
+              onPress={confirmStartOver}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Redo ${field.label.toLowerCase()} from scratch`}
+            >
+              <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
+            </TouchableOpacity>
+          }
+        />
         {sessionTotal > 0 && (
           <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
         )}
@@ -440,9 +537,9 @@ export function BackfillScreen() {
                 style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
-                accessibilityLabel={`Leave ${field.label.toLowerCase()} unset for this task and don't ask again`}
+                accessibilityLabel={`${dismissLabel} for this task`}
               >
-                <Text style={styles.skipText}>Leave {field.label.toLowerCase()} unset</Text>
+                <Text style={styles.skipText}>{dismissLabel}</Text>
               </PressableScale>
             </View>
           </ScrollView>
@@ -947,6 +1044,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   toggleButtonText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
 
   actionRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
-  skipButton: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md },
-  skipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.regular },
+  skipButton: {
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+    backgroundColor: colors.bgSecondary, borderRadius: radius.md,
+  },
+  skipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
 });

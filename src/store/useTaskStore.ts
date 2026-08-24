@@ -589,7 +589,10 @@ function writeMealSlotTasks(fromKey: string, toKey: string, slots: readonly Meal
       if (entry?.cookedAt) continue;
       const recipe = entry?.recipeId ? recipes.find(r => r.id === entry.recipeId) : undefined;
       useTaskStore.getState().addTask(
-        mealSlotTaskDraft(dayKey, slot, entry, category, recipe ? totalMinutes(recipe) : null),
+        mealSlotTaskDraft(
+          dayKey, slot, entry, category, recipe ? totalMinutes(recipe) : null,
+          useSettingsStore.getState().mealSlotStepEstimates
+        ),
         derivedId(spawnSeed.generated('mealSlot', sourceId, generatedTaskCountOf(tasks, 'mealSlot', sourceId))),
         { skipCategoryDefault: true, skipTitleRules: true },
       );
@@ -2334,6 +2337,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // let a mid-chain step burn a cycle of the count and let the end date
     // strand a chain half-finished.
     const datesBySchedule = advancesBySchedule || stepsBySchedule;
+    // A pinned chain step spawns its successor immediately, with no date and
+    // no wait — so clearing the pin on that successor would drop a pinned
+    // chain run out of the Pinned block mid-way through, which defeats the
+    // point of pinning it. It stays pinned across every immediate step and
+    // only clears when the chain actually ends (see pendingUnpinIds below) or
+    // the user unpins by hand. Per-step scheduling (stepsBySchedule) makes the
+    // next step wait for the recurrence instead, which reads the same as any
+    // other future occurrence, so that case resets the pin like one.
+    const chainStepStaysPinned = chainAdvances && !atChainEnd && !stepsBySchedule && task.pinned;
 
     // Calculate streak — see getStreakOutcome for the cadence-aware gap check (#691).
     // A miss skips all of it and breaks the streak outright (below). The gap
@@ -2535,7 +2547,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           deadline: nextDeadline,
           deferUntil: null,
           timeSegments: nextTimeSegments,
-          pinned: false, // pin resets on new occurrence
+          pinned: chainStepStaysPinned, // stays pinned through an immediate chain step; resets otherwise
           progressCount: 0, // a quota starts the new day empty
           // The question carries via ...effective, the answer doesn't: this
           // occurrence hasn't been decided yet. Same split actualMinutes makes,

@@ -103,6 +103,42 @@ describe('isFieldMissing', () => {
     expect(isFieldMissing({ ...baseTask, estimatedMinutes: 30 }, 'estimate')).toBe(false);
   });
 
+  it('treats the active chain step\'s own estimate as not missing, even with no task-level estimate', () => {
+    // A recipe-backed "Cook X" step (or a meal-slot step with a remembered
+    // default) already has a real duration on chainItems — the backfill
+    // wizard shouldn't ask for one it can already read.
+    const task = {
+      ...baseTask,
+      chainEnabled: true,
+      chainIndex: 0,
+      chainItems: [{ id: 's1', title: 'Cook', estimatedMinutes: 35 }, { id: 's2', title: 'Eat', estimatedMinutes: null }],
+    };
+    expect(isFieldMissing(task, 'estimate')).toBe(false);
+  });
+
+  it('still treats it as missing when the current step has no estimate of its own', () => {
+    const task = {
+      ...baseTask,
+      chainEnabled: true,
+      chainIndex: 1,
+      chainItems: [{ id: 's1', title: 'Cook', estimatedMinutes: 35 }, { id: 's2', title: 'Eat', estimatedMinutes: null }],
+    };
+    expect(isFieldMissing(task, 'estimate')).toBe(true);
+  });
+
+  it('excludes generated "use up" tasks from the estimate field entirely', () => {
+    // Every one names a different food with its own prep time — there's no
+    // step-type to remember a duration against, and no recipe to read one
+    // from either, so these are never asked about rather than asked forever.
+    expect(isFieldMissing({ ...baseTask, generatedKind: 'groceryUseUp' }, 'estimate')).toBe(false);
+    expect(isFieldMissing({ ...baseTask, generatedKind: 'leftoverUseUp' }, 'estimate')).toBe(false);
+  });
+
+  it('does not exclude a "use up" task from other fields', () => {
+    expect(isFieldMissing({ ...baseTask, generatedKind: 'groceryUseUp' }, 'priority')).toBe(true);
+    expect(isFieldMissing({ ...baseTask, generatedKind: 'groceryUseUp', category: 'Home' }, 'category')).toBe(false);
+  });
+
   it('treats priority 0 (None) as missing', () => {
     expect(isFieldMissing(baseTask, 'priority')).toBe(true);
     expect(isFieldMissing({ ...baseTask, priority: 2 }, 'priority')).toBe(false);
@@ -132,6 +168,15 @@ describe('backfillCandidates', () => {
       { ...baseTask, id: 'sub', parentId: 'test-1' },
       { ...baseTask, id: 'done', completed: true },
       { ...baseTask, id: 'gone', archived: true },
+      { ...baseTask, id: 'live' },
+    ];
+    expect(backfillCandidates(tasks, 'estimate').map(t => t.id)).toEqual(['live']);
+  });
+
+  it('excludes generated "use up" tasks from the estimate queue', () => {
+    const tasks: Task[] = [
+      { ...baseTask, id: 'grocery', generatedKind: 'groceryUseUp' },
+      { ...baseTask, id: 'leftover', generatedKind: 'leftoverUseUp' },
       { ...baseTask, id: 'live' },
     ];
     expect(backfillCandidates(tasks, 'estimate').map(t => t.id)).toEqual(['live']);
@@ -177,6 +222,36 @@ describe('backfillCandidates', () => {
       { ...baseTask, id: 'recurring-on', recurrenceType: 'daily', vacationPause: true },
     ];
     expect(backfillCandidates(tasks, 'vacation').map(t => t.id)).toEqual(['recurring-off']);
+  });
+
+  describe('fromScratch', () => {
+    it('includes tasks that already have the field set', () => {
+      const tasks: Task[] = [
+        { ...baseTask, id: 'a', estimatedMinutes: 30 },
+        { ...baseTask, id: 'b', estimatedMinutes: null },
+      ];
+      expect(backfillCandidates(tasks, 'estimate', { fromScratch: true }).map(t => t.id))
+        .toEqual(['a', 'b']);
+    });
+
+    it('includes tasks dismissed for that field', () => {
+      const tasks: Task[] = [
+        { ...baseTask, id: 'a', backfillDismissedFields: ['estimate'] },
+      ];
+      expect(backfillCandidates(tasks, 'estimate', { fromScratch: true }).map(t => t.id))
+        .toEqual(['a']);
+    });
+
+    it('still excludes subtasks, completed tasks and archived tasks', () => {
+      const tasks: Task[] = [
+        { ...baseTask, id: 'sub', parentId: 'test-1' },
+        { ...baseTask, id: 'done', completed: true },
+        { ...baseTask, id: 'gone', archived: true },
+        { ...baseTask, id: 'live' },
+      ];
+      expect(backfillCandidates(tasks, 'estimate', { fromScratch: true }).map(t => t.id))
+        .toEqual(['live']);
+    });
   });
 });
 

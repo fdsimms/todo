@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { Alert } from 'react-native';
 import type { Recipe } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { haptics } from '../utils/haptics';
+import { formatDuration } from '../utils/effort';
 import { describeCookTime, describePrepTime } from '../utils/recipeUtils';
 import {
   cookTimerElapsed,
@@ -17,6 +19,32 @@ import {
   prepTimerProgress,
   prepTimerRemaining,
 } from '../utils/recipeTimer';
+
+/**
+ * A recipe's estimate is only ever backfilled automatically, never overwritten
+ * (see applyMeasuredCookTime/applyMeasuredPrepTime) — one slow cook shouldn't
+ * silently rewrite a duration everyone cooking the recipe sees. Logging a time
+ * that ran past an *existing* estimate is still worth surfacing though, so
+ * this asks rather than writing: only when a target was already set and the
+ * measured time rounds to more minutes than it.
+ */
+function offerLongerEstimate(
+  recipeName: string,
+  verb: 'Cook' | 'Prep',
+  targetMinutes: number | null,
+  measuredMinutes: number,
+  apply: (minutes: number) => void
+) {
+  if (targetMinutes == null || measuredMinutes <= targetMinutes) return;
+  Alert.alert(
+    'Update the estimate?',
+    `${recipeName} took ${formatDuration(measuredMinutes)} to ${verb.toLowerCase()}, longer than the ${formatDuration(targetMinutes)} estimate. Update it to ${formatDuration(measuredMinutes)}?`,
+    [
+      { text: 'Not now', style: 'cancel' },
+      { text: 'Update', onPress: () => apply(measuredMinutes) },
+    ]
+  );
+}
 
 /** Everything RecipeTimerRow draws and calls, for one of a recipe's two timers. */
 export interface RecipeTimerBinding {
@@ -70,6 +98,8 @@ export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'
   const resetPrepTimer = useRecipeStore(s => s.resetPrepTimer);
   const stopPrepTimer = useRecipeStore(s => s.stopPrepTimer);
   const logManualPrepTime = useRecipeStore(s => s.logManualPrepTime);
+  const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
+  const setPrepMinutes = useRecipeStore(s => s.setPrepMinutes);
 
   const running = recipe ? (isCook ? isCookTimerRunning(recipe) : isPrepTimerRunning(recipe)) : false;
   const startedAt = isCook ? recipe?.timerStartedAt : recipe?.prepTimerStartedAt;
@@ -130,7 +160,12 @@ export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'
     },
     onLog: async () => {
       await haptics.success();
+      const target = isCook ? recipe.estimatedMinutes : recipe.prepMinutes;
+      const measured = Math.max(1, Math.round(
+        (isCook ? cookTimerElapsed(recipe, Date.now()) : prepTimerElapsed(recipe, Date.now())) / 60
+      ));
       (isCook ? stopCookTimer : stopPrepTimer)(recipe.id);
+      offerLongerEstimate(recipe.name, verb, target, measured, isCook ? m => setEstimatedMinutes(recipe.id, m) : m => setPrepMinutes(recipe.id, m));
     },
     onReset: async () => {
       await haptics.warning();
@@ -138,7 +173,9 @@ export function useRecipeTimer(recipe: Recipe | undefined, verb: 'Cook' | 'Prep'
     },
     onLogManual: async (minutes: number) => {
       await haptics.success();
+      const target = isCook ? recipe.estimatedMinutes : recipe.prepMinutes;
       (isCook ? logManualCookTime : logManualPrepTime)(recipe.id, minutes);
+      offerLongerEstimate(recipe.name, verb, target, Math.round(minutes), isCook ? m => setEstimatedMinutes(recipe.id, m) : m => setPrepMinutes(recipe.id, m));
     },
   };
 }

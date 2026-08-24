@@ -64,7 +64,10 @@ export function CollapsibleField({
   if (locked) {
     return (
       <View style={styles.section}>
-        <View style={styles.header} accessibilityLabel={`${label}: ${summary || emptySummary}. ${lockedHint ?? ''}`}>
+        <View
+          style={[styles.header, !!lockedHint && styles.headerExpanded]}
+          accessibilityLabel={`${label}: ${summary || emptySummary}. ${lockedHint ?? ''}`}
+        >
           <Text style={styles.label}>{label}</Text>
           <View style={styles.spacer} />
           <Text style={[styles.summary, styles.summaryLocked, !summary && styles.summaryEmpty]} numberOfLines={1}>
@@ -79,7 +82,7 @@ export function CollapsibleField({
   return (
     <View style={styles.section}>
       <TouchableOpacity
-        style={styles.header}
+        style={[styles.header, expanded && styles.headerExpanded]}
         onPress={handleToggle}
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="button"
@@ -115,6 +118,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   header: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
   },
+  // Only while something renders below the header — the hint, or straight to
+  // the controls when there's no hint (or it's hidden). Applying this
+  // unconditionally would also pad a collapsed field's bottom, stacking with
+  // `section`'s own paddingVertical.
+  headerExpanded: { marginBottom: spacing.sm },
   label: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: '700',
     textTransform: 'uppercase', letterSpacing: 0.8,
@@ -130,7 +138,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   summaryLocked: { color: colors.textSecondary },
   hint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
-    marginTop: spacing.xs,
   },
   /**
    * Only when something follows it. An expanded field is always hint-then-
