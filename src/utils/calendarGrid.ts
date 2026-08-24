@@ -3,6 +3,7 @@ import { endOfMonth } from 'date-fns/endOfMonth';
 import { startOfWeek } from 'date-fns/startOfWeek';
 import { endOfWeek } from 'date-fns/endOfWeek';
 import { addDays } from 'date-fns/addDays';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { WeekStart } from '../store/useSettingsStore';
 
 const SUNDAY_FIRST_HEADERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -64,4 +65,46 @@ export function buildCalendarGrid(displayMonth: Date, weekStartsOn: WeekStart = 
     days.push(addDays(days[days.length - 1], 1));
   }
   return days;
+}
+
+/**
+ * Whether a date picker may offer `day` at all, and where it may page back to
+ * — the three functions a picker needs to refuse days before `earliest`.
+ *
+ * `earliest` is nullable throughout and null means "no floor", so an
+ * unrestricted picker passes null rather than each call site branching. It is
+ * always a *day*: a floor of "today" means today is pickable and yesterday
+ * isn't, never "later than this moment". Picking a day is choosing a square on
+ * a grid, and half of today being unavailable is not something a month grid
+ * can show.
+ *
+ * The floor itself has to be a `dayResetTime`-aware "today"
+ * (`getLogicalToday`) — see CLAUDE.md on the grace window. These stay pure and
+ * take whatever they're given.
+ */
+
+/** True when `day` falls on an earlier calendar day than `earliest`. */
+export function isDayBefore(day: Date, earliest: Date): boolean {
+  return differenceInCalendarDays(day, earliest) < 0;
+}
+
+/**
+ * The month a picker should display, pulled forward to `earliest`'s month when
+ * the date it wanted to open on is behind the floor.
+ *
+ * Without this, a picker holding an old value opens on a month whose every
+ * cell is refused, with the back chevron disabled — which reads as a broken
+ * calendar rather than as a floor.
+ */
+export function clampMonthToEarliest(month: Date, earliest: Date | null): Date {
+  const start = startOfMonth(month);
+  if (!earliest) return start;
+  const floor = startOfMonth(earliest);
+  return start < floor ? floor : start;
+}
+
+/** Whether the back chevron has anywhere to go. */
+export function canPageToPreviousMonth(displayMonth: Date, earliest: Date | null): boolean {
+  if (!earliest) return true;
+  return startOfMonth(displayMonth) > startOfMonth(earliest);
 }

@@ -699,7 +699,14 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   cadence stores days and converts in `src/utils/nudgeCadence.ts`, so switching Weeks→Months keeps
   the count and only the stored day total changes.
 - `WhenPicker` (`src/components/WhenPicker.tsx`) — **the date picker.** Today/Tomorrow quick
-  buttons, a month grid, and (optionally) time-of-day segments and the AI "Suggest" button. This is
+  buttons, a month grid, and (optionally) time-of-day segments and the AI "Suggest" button.
+  `allowPast={false}` refuses days before today (dimmed cells, back chevron off, the opening
+  month clamped forward) — for a date that *places* something, like a chain step's answer
+  scheduling the next step. It's a flag rather than a `minDate` because the floor has to be the
+  logical today: a date parameter invites a call site to pass `new Date()`, which is the
+  grace-window bug below. Backdating stays the default, since a completion date or a deadline
+  that has already passed is a real thing to enter. The three pure bits are in
+  `src/utils/calendarGrid.ts` (`isDayBefore`, `clampMonthToEarliest`, `canPageToPreviousMonth`). This is
   the one users actually see most, from the row's own reschedule action, so it's the one to reach
   for **any time a new feature needs to ask "what date?"** — a settings screen, an editor field, a
   bulk action, a sheet. Set `showTimeOfDay`/`showSuggest` to `false` when the date being picked
