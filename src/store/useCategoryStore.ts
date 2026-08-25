@@ -286,8 +286,11 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'pantryCheckTaskCategory', current: s.pantryCheckTaskCategory, assign: s.setPantryCheckTaskCategory };
     case 'mealShortfall':
       return { key: 'mealShortfallTaskCategory', current: s.mealShortfallTaskCategory, assign: s.setMealShortfallTaskCategory };
+    // Inherits the source task's own category instead — see
+    // GeneratedKindSpec.categorized and checkSupplyReorderTasks.
+    // ensureGeneratedTaskCategory returns before this null is ever used.
     case 'supplyReorder':
-      return { key: 'supplyReorderTaskCategory', current: s.supplyReorderTaskCategory, assign: s.setSupplyReorderTaskCategory };
+      return null;
     // Reuses calendarEventCategory instead — see GeneratedKindSpec.categorized.
     // ensureGeneratedTaskCategory returns before this null is ever used.
     case 'calendarReview':

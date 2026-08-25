@@ -159,7 +159,9 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
   // calendarReview's arm returns calendarEventCategory rather than a category
   // of its own, for anything that calls this out of habit — but categorized:
   // false means the "File them under" row is never rendered for it, so
-  // neither arm below is actually reached in practice.
+  // that arm is never actually reached in practice. supplyReorder is
+  // categorized: false for a different reason (it inherits the source task's
+  // own category — see checkSupplyReorderTasks) and so has no arm here at all.
   const categoryOf = (kind: GeneratedKind): string | null => {
     switch (kind) {
       case 'mealSlot':
@@ -170,9 +172,9 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'projectReview': return s.projectReviewTaskCategory;
       case 'pantryCheck': return s.pantryCheckTaskCategory;
       case 'mealShortfall': return s.mealShortfallTaskCategory;
-      case 'supplyReorder': return s.supplyReorderTaskCategory;
       case 'calendarReview': return s.calendarEventCategory;
       case 'birthday': return s.birthdayTaskCategory;
+      case 'supplyReorder': return null;
     }
   };
 
@@ -188,9 +190,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'projectReview': s.setProjectReviewTaskCategory(category); break;
       case 'pantryCheck': s.setPantryCheckTaskCategory(category); break;
       case 'mealShortfall': s.setMealShortfallTaskCategory(category); break;
-      // Was missing entirely, so this generator's category pills selected
-      // nothing: every other switch in this file had its arm.
-      case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
+      case 'birthday': s.setBirthdayTaskCategory(category); break;
       // Unreached — see categoryOf above — but a real, honest answer rather
       // than a no-op: this is genuinely how calendarReview's category changes.
       case 'calendarReview': s.setCalendarEventCategory(category); break;

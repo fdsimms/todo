@@ -1687,7 +1687,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(order).toBeDefined();
     expect(order.title).toBe('Order more filters');
     expect(order.generatedSourceId).toBe(filter.id);
-    expect(order.category).toBe('Supplies');
+    // Filed under the same category as the task it's for, not a category of
+    // its own — see GeneratedKindSpec.categorized.
+    expect(order.category).toBe(filter.category);
     // Completing it asks how many arrived — the answer is what puts the count
     // back up, so without the question the supply could only ever fall.
     expect(order.deliverableKind).toBe('number');

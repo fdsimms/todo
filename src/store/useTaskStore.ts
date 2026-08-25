@@ -4301,8 +4301,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const wanted = wantedSupplyReorders(get().tasks, dayResetTime);
     if (wanted.length === 0) return;
 
-    ensureGeneratedTaskCategory('supplyReorder');
-    const category = useSettingsStore.getState().supplyReorderTaskCategory;
     // Noon today, the landing every other unattended writer picks: an offer
     // dated forward is an offer you can't see. The *lead time* is what decides
     // which day this row first appears (see supplyReorderReason), so by the
@@ -4343,7 +4341,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // "How many did you get?" on completion, which is what puts the
           // units back. See the restock block in completeTask.
           deliverableKind: 'number' as const,
-          category,
+          // Filed where the task it's for is filed, inherited the same way as
+          // linkUrl above — a filter tracked on a bathroom task and one
+          // tracked on a car task each want their own reorder task to land
+          // beside the task itself, not both funnelled into one shared
+          // "Supplies" category. See GeneratedKindSpec.categorized.
+          category: want.category,
           ...generatedBy('supplyReorder', want.taskId),
         }),
       });

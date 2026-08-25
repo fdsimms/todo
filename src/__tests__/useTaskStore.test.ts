@@ -3019,7 +3019,6 @@ describe('supplies', () => {
     weekStartsOn: 0,
     kitchenEnabled: false,
     supplyReorderTasks: true,
-    supplyReorderTaskCategory: 'Supplies',
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
     titleRules: [],
     collapsedCategories: [],
@@ -3140,9 +3139,26 @@ describe('supplies', () => {
       const [order] = liveOrders();
       expect(order.title).toBe('Order more filters');
       expect(order.generatedSourceId).toBe(task.id);
-      expect(order.category).toBe('Supplies');
       // The question that makes restocking one tap.
       expect(order.deliverableKind).toBe('number');
+    });
+
+    it('files the order under the same category as the task it is for', () => {
+      addSupplyTask({ supplyCount: 1, category: 'Bathroom' });
+
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      const [order] = liveOrders();
+      expect(order.category).toBe('Bathroom');
+    });
+
+    it('leaves the order uncategorized when the task it is for has no category', () => {
+      addSupplyTask({ supplyCount: 1, category: null });
+
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      const [order] = liveOrders();
+      expect(order.category).toBeNull();
     });
 
     it('carries the buying link and the run-out day onto the order', () => {
