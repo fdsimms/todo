@@ -9,9 +9,10 @@ import { haptics } from '../utils/haptics';
 
 interface Props {
   /**
-   * The bold half of the sentence, e.g. "3 ingredients". Usually a count,
-   * which is what the two consumption offers lead with; the leftovers one
-   * leads with the question instead, because there is nothing to count yet.
+   * The bold half of the sentence, e.g. "3 ingredients". A count where there is
+   * one to give; otherwise the opening of the question itself, which is what
+   * the pantry's "Finished the" leads with — there is nothing to count when the
+   * offer is about a single item.
    */
   lead: string;
   /** The rest of it, read straight on from `lead`. */
@@ -58,38 +59,37 @@ interface Props {
 
 /**
  * The passive offer, wherever the app has something to ask that the user is
- * free to ignore. Four of them exist and they are the same shape on purpose:
- * "you might be out of these" (CookedUseUpOffer), "these aren't on your
- * list" (MealPlanScreen's restock offer), "anything left over?"
- * (LogLeftoversOffer) and "how did that go?" (ItemDisposalOffer).
+ * free to ignore.
  *
- * It was `CookedOfferBanner` while all three of its callers were about a cook.
- * The pantry's question isn't, and a second component with the same styling is
- * the drift `SheetHeaderButton` and `InlineAction` were made to undo, so it
- * took a name that says what it is instead.
+ * **One caller now, and it's worth saying why the other three went.** This was
+ * `CookedOfferBanner` when all of it was about a cook: "you might be out of
+ * these", "these aren't on your list", "anything left over?". Those three were
+ * raised by one tap — marking a meal cooked — and ranked against each other so
+ * they'd arrive one at a time, which meant a tick about eating dinner produced
+ * a banner, and then another banner that looked exactly like it, and (on a
+ * first cooking) a native alert in front of both. They are one moment and they
+ * are one sheet now: `CookRecapSheet`. What's left here is the pantry's "how
+ * did that go?" (`ItemDisposalOffer`), which is genuinely passive — nothing
+ * just happened, the app noticed something on its own.
  *
- * This replaced opening `RecipeToListSheet` outright on the mark-cooked tap.
- * The sheet is a full-screen modal with a Cancel and an Add, and firing one at
- * a tick that had nothing to do with shopping made the app read as assuming
- * you wanted to re-buy a meal the moment you finished eating it. Three things
- * about that were wrong and only one of them was the timing: it also fired
- * with no idea whether anything needed buying (see `restockRows`), and it
- * arrived pre-ticked. So the offer is a banner — the same shape
- * `ProjectNudgeBanner` uses for the other "here's something you might want to
- * look at" on Today — and the sheet opens only if you ask for it.
+ * That is not a reversal of the note this component was written around, which
+ * is still the rule: **marking a meal cooked must not open `RecipeToListSheet`
+ * outright**. Three things about that were wrong and only one of them was the
+ * timing. It also fired with no idea whether anything needed buying (see
+ * `restockRows`), and it arrived pre-ticked — the app answering a question
+ * about shopping on your behalf off a tap about eating. A sheet that asks, with
+ * nothing ticked and a Skip in the corner, is a different object.
  *
- * **Every caller computes its count live and renders nothing at 0.** That's
- * what takes the place of a dismissal stamp: answering empties the set and the
+ * **A caller computes its count live and renders nothing at 0.** That's what
+ * takes the place of a dismissal stamp: answering empties the set and the
  * banner goes on its own, the way `StartTripPrompt` returns null rather than
  * hedging. The × is for "not now" — nothing is wrong with the offer, it just
- * isn't wanted, and it doesn't have to persist to be honest since both the
- * shop and the pantry stay reachable by hand.
+ * isn't wanted, and it doesn't have to persist to be honest since both the shop
+ * and the pantry stay reachable by hand.
  *
- * One banner at a time, and they are ranked rather than stacked: the
- * consumption question is the one only this moment can answer, so both the
- * restock offer (see MealPlanScreen) and the leftovers one (which ranks itself)
- * wait behind it. Two of these side by side is the noise the passive treatment
- * exists to avoid.
+ * If a second caller ever arrives, keep the one-at-a-time rule the cook offers
+ * had: two of these side by side is the noise the passive treatment exists to
+ * avoid.
  */
 export function OfferBanner({
   lead,

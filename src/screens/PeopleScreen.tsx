@@ -324,6 +324,7 @@ export function PeopleScreen() {
             email: draft.email,
             birthdayMonth: draft.birthdayMonth,
             birthdayDay: draft.birthdayDay,
+            birthYear: draft.birthYear,
           });
         }}
         onClose={() => setContactPickerVisible(false)}

@@ -121,3 +121,19 @@ export function alarmChainIds(taskId: string, count: number = ALARM_MAX_RINGS): 
   for (let i = 0; i < Math.max(0, count); i++) ids.push(taskAlarmUuid(taskId, i));
   return ids;
 }
+
+/**
+ * The UUID a cooking step timer's alarm rings under.
+ *
+ * Same derivation as a task's, through the same hash, because the problem is
+ * the same one: AlarmKit wants a `UUID` and `generateId()` doesn't produce
+ * one. Namespaced with a `step:` prefix so a step timer and a task can never
+ * derive the same alarm id, which would let cancelling one silence the other.
+ *
+ * A step timer rings once and only once: there is no chain. The whole premise
+ * of `'persistent'` is a task you might ignore, and a pan does its own
+ * escalating.
+ */
+export function stepTimerAlarmUuid(timerId: string): string {
+  return taskAlarmUuid(`step:${timerId}`);
+}

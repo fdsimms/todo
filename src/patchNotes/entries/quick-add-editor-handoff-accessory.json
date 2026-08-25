@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a rare bug where the # and @ shortcut buttons above the keyboard could become unreachable right after quick-adding a task that opens straight into the full editor.",
+  "date": "2026-08-25"
+}

@@ -703,9 +703,33 @@ describe('steps', () => {
       .toEqual([c.id, a.id, b.id]);
   });
 
+  it('sets and clears the timer length cook mode offers for a step', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const step = useRecipeStore.getState().addStep(r.id, 'Sear the meat in one layer')!;
+
+    useRecipeStore.getState().setStepTimerSeconds(r.id, step.id, 240);
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].timerSeconds).toBe(240);
+
+    // Cleared back to absent, not stored as null: a step nobody set a length on
+    // serializes exactly as it did before the field existed.
+    useRecipeStore.getState().setStepTimerSeconds(r.id, step.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0]).toEqual({ id: step.id, text: 'Sear the meat in one layer' });
+  });
+
+  it('treats a length outside the timer range as a clear', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const step = useRecipeStore.getState().addStep(r.id, 'Sear the meat')!;
+    useRecipeStore.getState().setStepTimerSeconds(r.id, step.id, 240);
+    useRecipeStore.getState().setStepTimerSeconds(r.id, step.id, 1);
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].timerSeconds).toBeUndefined();
+  });
+
   it('shrugs at a recipe or step id it does not hold', () => {
     seed([]);
     expect(useRecipeStore.getState().addStep('gone', 'Preheat the oven')).toBeNull();
+    useRecipeStore.getState().setStepTimerSeconds('gone', 'also gone', 240);
 
     const r = makeRecipe('Ragu');
     seed([r]);

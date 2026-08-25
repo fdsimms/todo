@@ -240,9 +240,6 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL,
       birthday_month INTEGER,
       birthday_day INTEGER,
-      -- Unread and never written: the "turning N" age reminder this backed was
-      -- removed. Left in place rather than dropped, since SQLite column drops
-      -- are a table rebuild and existing installs may still carry a value here.
       birth_year INTEGER,
       birthday_task_opt_out INTEGER NOT NULL DEFAULT 0,
       phone_number TEXT,
@@ -1051,11 +1048,23 @@ export function initDatabase(): void {
     // Who a planned meal is for (#2077). Empty for every meal planned before
     // this shipped, which reads as "nobody named" rather than as missing data.
     "ALTER TABLE meal_plan_entries ADD COLUMN person_ids TEXT NOT NULL DEFAULT '[]'",
+    // When a person's cadence was last turned on — see Person.cadenceSetAt.
+    // Null on every existing row, including everybody already opted in today;
+    // those keep reading as "no cadence-set anchor" (the reach-out pass falls
+    // back to its old immediate-due behavior for them) rather than being
+    // silently re-dated to now.
+    'ALTER TABLE people ADD COLUMN cadence_set_at TEXT',
     // The gift task's own opt-out, beside birthday_task_opt_out — see
     // Person.birthdayGiftTaskOptOut. Default 0 on every existing row, which
     // reads as "not opted out" and is correct: the generator itself ships off,
     // so no existing install sees a new task from this alone.
     'ALTER TABLE people ADD COLUMN birthday_gift_task_opt_out INTEGER NOT NULL DEFAULT 0',
+    // Days before due_date a reminder fires, an alternative to a fixed
+    // reminder_time the same way deadline_offset_days is to a fixed deadline
+    // (see Task.reminderOffsetDays). Null on every existing row, which reads
+    // as exactly the behaviour they already had — a reminder that tracks the
+    // due date's own day.
+    'ALTER TABLE tasks ADD COLUMN reminder_offset_days INTEGER',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1788,6 +1797,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     projectId: (row.project_id as string) ?? null,
     reminderTime: (row.reminder_time as string) ?? null,
     reminderKind: ((row.reminder_kind as Task['reminderKind']) ?? 'notification'),
+    reminderOffsetDays: (row.reminder_offset_days as number | null) ?? null,
     // Column names stay cycle_* — this is the pre-rename "Cycle" feature
     // (now "Chain") and renaming the columns would need a data migration
     // for existing installs. The JS-facing field names are the new ones.
@@ -1859,8 +1869,8 @@ export function dbInsertTask(task: Task): void {
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
-      person_ids, waiting_on_person_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      person_ids, waiting_on_person_id, reminder_offset_days
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1920,6 +1930,7 @@ export function dbInsertTask(task: Task): void {
       task.supplyDeclinedAtCount ?? null,
       task.supplyGroceryItemId ?? null,
       JSON.stringify(task.personIds), task.waitingOnPersonId ?? null,
+      task.reminderOffsetDays ?? null,
     ]
   );
 }
@@ -1944,7 +1955,7 @@ export function dbUpdateTask(task: Task): void {
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
-      person_ids=?, waiting_on_person_id=?
+      person_ids=?, waiting_on_person_id=?, reminder_offset_days=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2005,6 +2016,7 @@ export function dbUpdateTask(task: Task): void {
       task.supplyDeclinedAtCount ?? null,
       task.supplyGroceryItemId ?? null,
       JSON.stringify(task.personIds), task.waitingOnPersonId ?? null,
+      task.reminderOffsetDays ?? null,
       task.id,
     ]
   );
@@ -3972,6 +3984,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     createdAt: row.created_at as string,
     birthdayMonth: (row.birthday_month as number | null) ?? null,
     birthdayDay: (row.birthday_day as number | null) ?? null,
+    birthYear: (row.birth_year as number | null) ?? null,
     birthdayTaskOptOut: Boolean(row.birthday_task_opt_out),
     birthdayGiftTaskOptOut: Boolean(row.birthday_gift_task_opt_out),
     phoneNumber: (row.phone_number as string) ?? null,
@@ -3979,6 +3992,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     linkUrl: (row.link_url as string) ?? null,
     cadenceDays: (row.cadence_days as number) ?? 0,
     nudgeOptIn: Boolean(row.nudge_opt_in),
+    cadenceSetAt: (row.cadence_set_at as string) ?? null,
     reachOutDeclinedAt: (row.reach_out_declined_at as string) ?? null,
     askAbout: (row.ask_about as string) ?? '',
   };
@@ -3993,17 +4007,17 @@ export function dbInsertPerson(person: Person): void {
   db.runSync(
     `INSERT INTO people (
       id, name, nickname, notes, sort_order, archived, archived_at, created_at,
-      birthday_month, birthday_day, birthday_task_opt_out, birthday_gift_task_opt_out,
-      phone_number, email, link_url, cadence_days, nudge_opt_in, reach_out_declined_at, ask_about
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
+      phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at, ask_about
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
-      person.birthdayMonth, person.birthdayDay,
+      person.birthdayMonth, person.birthdayDay, person.birthYear,
       person.birthdayTaskOptOut ? 1 : 0,
       person.birthdayGiftTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
-      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.reachOutDeclinedAt, person.askAbout,
+      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
     ]
   );
 }
@@ -4012,17 +4026,17 @@ export function dbUpdatePerson(person: Person): void {
   db.runSync(
     `UPDATE people SET
       name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
-      birthday_month=?, birthday_day=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
-      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, reach_out_declined_at=?, ask_about=?
+      birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
+      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?, ask_about=?
     WHERE id=?`,
     [
       person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt,
-      person.birthdayMonth, person.birthdayDay,
+      person.birthdayMonth, person.birthdayDay, person.birthYear,
       person.birthdayTaskOptOut ? 1 : 0,
       person.birthdayGiftTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
-      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.reachOutDeclinedAt, person.askAbout,
+      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
       person.id,
     ]
   );

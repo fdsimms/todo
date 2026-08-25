@@ -16,7 +16,7 @@ render, so listing them adds lines without adding answers.
 
 - `src/utils/activeTrip.ts` — TRIP_MAX_MS, isTripLive, TRIP_STALE_MS, isTripStale, describeTripElapsed, resolveActiveTrip, TripMarkerKind, TripMarker, tripMarkerFor, describeTripMarker, +1 more
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, AiFeatureConfig, +2 more
-- `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds
+- `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
 - `src/utils/appLockAuth.ts` — AppLockCapability, AppLockSupport, getAppLockSupport, UnlockResult, authenticateForAppLock
 - `src/utils/archiveMatch.ts` — findArchivedMatch
@@ -49,7 +49,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/cookingStats.ts` — CookingWindow, MealCookCounts, CookedRecipe, EMPTY_MEAL_COOK_COUNTS, cookingWindow, mealCookCounts, leftoversFinishedIn, leftoverHistoryIn, mostCookedRecipes, hasCookingData
 - `src/utils/dailyAgenda.ts` — AgendaCounts, agendaCounts, agendaBody, nextAgendaTime
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
-- `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, getTaskDayStart, formatHHMM, formatTimeOfDay, getWeekStart, getLogicalToday, +20 more
+- `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, getTaskDayStart, formatHHMM, formatTimeOfDay, getWeekStart, getLogicalToday, +22 more
 - `src/utils/dayContextRows.ts` — eventContextRows, mealContextRows, KITCHEN_ROW_LIMIT, plannedUsesToday, kitchenContextRows, insertContextRows, withoutContextRows
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, describeDayLoad
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
@@ -111,7 +111,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/missed.ts` — isMissed, isRealCompletion, MostMissedGroup, mostMissed
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
-- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +16 more
+- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +18 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, CADENCE_UNIT_MAX, CadenceParts, toCadenceParts, fromCadenceParts, withCadenceUnit, describeCadence, cadenceUnitLabel
 - `src/utils/ordinal.ts` — ordinal
@@ -183,6 +183,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
 - `src/utils/startup.ts` — runStartupStep, runStartupSequence
 - `src/utils/stats.ts` — OnTimeSummary, onTimeSummary
+- `src/utils/stepTimers.ts` — StepDuration, MIN_STEP_TIMER_SECONDS, MAX_STEP_TIMER_SECONDS, parseStepDurations, formatStepDuration, describeStepDuration, stepTimerElapsed, stepTimerRemaining, stepTimerProgress, isStepTimerRunning, +9 more
 - `src/utils/stepper.ts` — StepRange, clampCount, stepCount, canStep, holdRepeatDelay
 - `src/utils/storeAliases.ts` — aliasKeyFor, gtinAliasText, aliasItemIdFor, AliasDraft, aliasDraftsFrom
 - `src/utils/substituteSuggestions.ts` — MAX_SUGGESTED_SUBSTITUTES, SuggestedSubstitute, RawSuggestedSubstitute, dedupeSuggestedSubstitutes
@@ -228,7 +229,7 @@ render, so listing them adds lines without adding answers.
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useGroceryStore.ts` — PlannedRow, PlanAddResult, useGroceryStore
 - `src/store/useLeftoverStore.ts` — LeftoverDraft, useLeftoverStore
-- `src/store/useMealPlanStore.ts` — MealPlanDraft, CookedOffer, LeftoverOffer, useMealPlanStore
+- `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, useMealPlanStore
 - `src/store/usePersonNoteStore.ts` — PersonNotePatch, usePersonNoteStore
 - `src/store/usePersonStore.ts` — blankPerson, displayNameOf, PersonPatch, usePersonStore
 - `src/store/useProjectCategoryStore.ts` — useProjectCategoryStore
@@ -236,6 +237,7 @@ render, so listing them adds lines without adding answers.
 - `src/store/useRecipeStore.ts` — CookStats, useRecipeStore
 - `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore
 - `src/store/useSharedLinkStore.ts` — useSharedLinkStore
+- `src/store/useStepTimerStore.ts` — useStepTimerStore
 - `src/store/useSyncStore.ts` — SyncPhase, useSyncStore, isSyncSupported
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
 - `src/store/useTaskStore.ts` — CONTENT_FIELDS, useTaskStore
@@ -261,6 +263,7 @@ render, so listing them adds lines without adding answers.
 - `src/hooks/useRowSelection.ts` — useRowSelection
 - `src/hooks/useSharedRecipeLinks.ts` — useSharedRecipeLinks
 - `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset
+- `src/hooks/useStepTimers.ts` — StepTimersBinding, useStepTimers
 - `src/hooks/useTaskSelection.ts` — useTaskSelection
 - `src/hooks/useTipSignals.ts` — useTipSignals
 

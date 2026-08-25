@@ -5,6 +5,7 @@ import { setDemoModeActive } from '../utils/demoState';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useSharedLinkStore } from './useSharedLinkStore';
+import { useStepTimerStore } from './useStepTimerStore';
 
 // Demo mode replaces the app's entire data source with a throwaway one, so
 // handing someone the phone shows them a believable task list and none of
@@ -44,6 +45,11 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // through to `settings`, so without this the real queue would still be on
     // screen inside the demo and the demo's own writes would land on it.
     useSharedLinkStore.getState().reload();
+    // And the step timer stack, for the same reason and with one more of its
+    // own: a real timer counting down the real dinner must not still be on
+    // screen inside the demo, where Pause would write to the scratch database
+    // and cancel an alarm the cook is relying on.
+    useStepTimerStore.getState().reload();
     seedDemoData();
     set({ active: true });
   },
@@ -63,6 +69,7 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // And back to the real queue, so the demo's invented shared link leaves
     // with the rest of the scratch database.
     useSharedLinkStore.getState().reload();
+    useStepTimerStore.getState().reload();
     set({ active: false });
   },
 }));

@@ -142,6 +142,7 @@ const baseTask: Task = {
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
+  reminderOffsetDays: null,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -1714,9 +1715,9 @@ describe('blocking', () => {
     const dustin = {
       id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
       archived: false, archivedAt: null, createdAt: NOW.toISOString(),
-      birthdayMonth: null, birthdayDay: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
+      birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
       phoneNumber: null, email: null, linkUrl: null,
-      cadenceDays: 0, nudgeOptIn: false, reachOutDeclinedAt: null, askAbout: '',
+      cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, askAbout: '',
     };
     const chasing = {
       ...baseTask,

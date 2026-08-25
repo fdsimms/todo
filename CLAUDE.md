@@ -313,6 +313,7 @@ exports.
 | reading a `quantity` string at all — amounts, units, containers | `src/utils/quantity.ts` — see `docs/arch/recipes.md` |
 | reading a recipe out one step at a time while cooking | `src/utils/cookMode.ts` + `src/components/CookModeSheet.tsx` — see `docs/arch/recipes.md` |
 | either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see `docs/arch/recipes.md` |
+| a timer for the cooking step you're on | `src/utils/stepTimers.ts` + `src/store/useStepTimerStore.ts` — see `docs/arch/recipes.md` |
 | a recipe page shared in from another app's share sheet | `src/utils/sharedRecipeLinks.ts` + `targets/todo-share/` — see `docs/arch/recipes.md` |
 | syncing between devices | `src/utils/syncEngine.ts` + `syncMerge.ts` + `cloudKitTransport.ts` + `src/store/useSyncStore.ts` |
 | exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
@@ -338,15 +339,14 @@ exports.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (6.2k), `components/TaskEditor.tsx` (4.7k), `db/database.ts` (4.2k),
-`store/useGroceryStore.ts` (4.1k), `screens/TodayScreen.tsx` (4.0k),
-`components/TaskItem.tsx` (3.6k), `types/index.ts` (3.6k),
-`components/QuickAddModal.tsx` (2.9k), `store/useSettingsStore.ts` (2.7k),
-`utils/demoSeed.ts` (2.4k).
+`store/useGroceryStore.ts` (4.1k), `screens/TodayScreen.tsx` (4.0k), `types/index.ts` (3.7k),
+`components/TaskItem.tsx` (3.6k), `components/QuickAddModal.tsx` (2.9k),
+`store/useSettingsStore.ts` (2.7k), `utils/demoSeed.ts` (2.4k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **206 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **208 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

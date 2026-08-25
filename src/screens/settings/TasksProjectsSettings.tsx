@@ -123,7 +123,9 @@ export function TasksProjectsSettings() {
   const kitchenOnToday = useSettingsStore(s => s.kitchenOnToday);
   const setKitchenOnToday = useSettingsStore(s => s.setKitchenOnToday);
   const setMealsOnToday = useSettingsStore(s => s.setMealsOnToday);
+  const cookRecapEnabled = useSettingsStore(s => s.cookRecapEnabled);
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
+  const setCookRecapEnabled = useSettingsStore(s => s.setCookRecapEnabled);
   const setRestockOfferEnabled = useSettingsStore(s => s.setRestockOfferEnabled);
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
@@ -593,10 +595,23 @@ export function TasksProjectsSettings() {
         />
         )}
         <SettingsRow
+          icon="restaurant-outline"
+          iconColor={cookRecapEnabled ? colors.accent : undefined}
+          label="Ask after cooking"
+          hint="When you mark a meal cooked, ask how it was, whether there are leftovers, and what it used up."
+          toggle={cookRecapEnabled}
+          onPress={() => setCookRecapEnabled(!cookRecapEnabled)}
+          accessibilityLabel="Ask after cooking"
+        />
+        {/* Indented under nothing, but it only does anything while the row
+            above is on: it governs one section of that sheet. Left as its own
+            row rather than folded in because "never shop from a recipe" and
+            "don't ask me anything" are different wants. */}
+        <SettingsRow
           icon="basket-outline"
           iconColor={restockOfferEnabled ? colors.accent : undefined}
           label="Restock after cooking"
-          hint="When you mark a meal cooked, offer to add its ingredients back to your list."
+          hint="Include what the meal used that isn't on your shopping list, with a button to add it."
           toggle={restockOfferEnabled}
           onPress={() => setRestockOfferEnabled(!restockOfferEnabled)}
           accessibilityLabel="Restock after cooking"

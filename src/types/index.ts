@@ -415,6 +415,14 @@ export interface Person {
   // are always written as a pair.
   birthdayMonth: number | null;
   birthdayDay: number | null;
+  // Recorded for its own sake, never derived from and never read to compute an
+  // age — that use (a "Turning 34" chip) was removed in #2083, and this is a
+  // second, unrelated life for the same column: something worth knowing about
+  // somebody, not an input to arithmetic. Optional even once a birthday is on
+  // file (most people's is the common case, see docs/arch/people.md), but
+  // never set on its own: clearing the birthday clears this too, the same
+  // "both halves together" rule birthdayMonth/Day already follow.
+  birthYear: number | null;
   // When the user deleted this person's birthday task (see
   // src/utils/birthdayTasks.ts). The per-source opt-out every generated task
   // writes on its source row, and unlike `Project.reviewDeclinedAt` a permanent
@@ -448,6 +456,15 @@ export interface Person {
   // feature is the half you get without asking for it. It is also what keeps
   // "ranking" a non-question, since most people have no cadence to compare.
   nudgeOptIn: boolean;
+  // When the cadence was last turned on — null while `cadenceDays` is 0. This is
+  // the clock a brand-new person with no history is measured against, so opting
+  // somebody in doesn't itself read as "it has already been long enough": the
+  // first nudge waits out the cadence from here, the same as it would once real
+  // history exists. Untouched by an editor tweak to the number while already
+  // opted in, only by the off→on transition; cleared when cadenceDays drops back
+  // to 0, so opting in again later starts the wait over rather than reading as
+  // still-running from the first time.
+  cadenceSetAt: string | null;
   // When the user last swiped away this person's reach-out task. A stamp that
   // lapses, never a verdict: the only permanent fields available are the two
   // above, and both mean "never chase me about this person again", which is far
@@ -851,6 +868,13 @@ export interface Task {
   // a plain notification; falls back to 'notification' wherever AlarmKit is
   // unavailable. Ignored when reminderTime is null.
   reminderKind: ReminderKind;
+  // Alternative to a fixed reminderTime, the same way deadlineOffsetDays is to
+  // a fixed deadline: when set, reminderTime is recomputed as this many days
+  // before dueDate (at reminderTime's own time-of-day) on every future
+  // occurrence — buildSeriesRow, completeTask's successor, skipNextRecurrence.
+  // Only meaningful (and only editable) when dueDate is set. Null keeps
+  // today's behaviour: a reminder that just tracks the due date's own day.
+  reminderOffsetDays: number | null;
 
   linkUrl: string | null; // URL/deep-link opened by the link button on the task row
 
@@ -3067,6 +3091,63 @@ export interface RecipePrepTask {
 export interface RecipeStep {
   id: string;
   text: string;
+  /**
+   * How long a timer started from this step should run, in seconds; null means
+   * "whatever the sentence says", which is the ordinary case.
+   *
+   * Cook mode reads durations straight out of the step text (see
+   * `parseStepDurations`), and for the great majority of steps that is the
+   * whole feature: the number is already written down, and a field asking for
+   * it again is a second copy to keep in step with the sentence. This exists
+   * for the two cases the text genuinely can't answer — a step that says
+   * "until the edges look dry" with a length only the cook knows, and one
+   * whose phrasing the parser reads wrong — and it is only ever set by hand
+   * from the step editor. **Nothing derived is ever written back here**: a
+   * parse is a reading of the text and stays one, so a step whose wording
+   * changes gets a new reading rather than an old answer.
+   */
+  timerSeconds?: number | null;
+}
+
+/**
+ * One countdown a cook started from a step of a recipe.
+ *
+ * A recipe's cook and prep timers are two fixed clocks measuring the whole
+ * cooking; these are ad hoc, several at once, and belong to a sentence rather
+ * than to the dish. That's why they're their own model and not a third pair of
+ * `Recipe` columns: "7 minutes on the tempeh" and "20 minutes on the rice" are
+ * two live timers during one cooking of one recipe, and a field pair can only
+ * ever hold one.
+ *
+ * The two raw fields are `startedAt`/`elapsedSeconds`, the same banked-segment
+ * pair `Task` and `Recipe` timers store — how much is left is always derived
+ * against the current clock (see `src/utils/stepTimers.ts`), so a phone
+ * backgrounded, killed or left face-down through the whole countdown comes
+ * back with the right answer.
+ */
+export interface StepTimer {
+  id: string;
+  /** The recipe the step belongs to, so a running timer can name its dish. */
+  recipeId: string;
+  /**
+   * `CookStep.id` — a `RecipeStep.id`, or the synthesized `<recipeId>:notes:<n>`
+   * of a step split out of a notes blob. Resolve-or-shrug like every other
+   * cross-row pointer here: an edit that deletes the step leaves the timer
+   * running, because the pan is still on the heat.
+   */
+  stepId: string;
+  /** The dish's name when the timer started, so the row reads without a lookup. */
+  recipeName: string;
+  /** "Step 2 of 3" as it read when the timer started. */
+  stepLabel: string;
+  /** What the countdown runs for. Fixed at start; "+1 min" adds to it. */
+  durationSeconds: number;
+  /** ISO instant the current run segment began; null while paused. */
+  startedAt: string | null;
+  /** Seconds banked by earlier segments. */
+  elapsedSeconds: number;
+  /** ISO instant this was created, so the footer stack keeps a stable order. */
+  createdAt: string;
 }
 
 // Shorter than TITLE_MAX_LENGTH for the same reason a grocery item's is: this
@@ -3105,9 +3186,8 @@ export const MEAL_SLOT_LABELS: Record<MealSlot, string> = {
 
 /**
  * A glyph per meal, borrowed from the time-of-day pills in quick add — the same
- * three parts of the day MEAL_SLOT_SEGMENTS hides each meal's task behind, so a
- * row and the behaviour agree. Snack gets the cup, since it's the one with no
- * part of the day to name.
+ * three parts of the day a meal's own slot names. Snack gets the cup, since
+ * it's the one with no part of the day to name.
  *
  * Beside the labels rather than in either of the two screens that draw it (the
  * Settings rows that switch a meal on, the meal chip on a task row), because

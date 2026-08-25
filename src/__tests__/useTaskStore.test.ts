@@ -299,6 +299,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
+  reminderOffsetDays: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -1581,6 +1582,48 @@ describe('completeTask', () => {
     expect(next?.deadlineMonthDay).toBe(-1);
     expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2026, 1, 20, 0, 0, 0).toISOString()); // Feb 20
     expect(new Date(next!.deadline!).toISOString()).toBe(new Date(2026, 1, 28, 0, 0, 0).toISOString()); // last day of Feb (2026 not leap)
+  });
+
+  it('recomputes a relative reminder against the next occurrence\'s dueDate', () => {
+    // Take out the trash every Thursday, remind 1 day before at 8pm the
+    // previous Wednesday — the same relative-offset shape as a deadline.
+    jest.setSystemTime(new Date(2025, 5, 12, 10, 0, 0)); // Thursday, June 12 2025 — due today
+    const task = makeTask({
+      id: 'recurring',
+      recurrenceType: 'weekly',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 12, 0, 0, 0).toISOString(), // Thursday, June 12 2025
+      reminderTime: new Date(2025, 5, 11, 20, 0, 0).toISOString(), // Wednesday, 8pm
+      reminderOffsetDays: 1,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
+    expect(next?.reminderOffsetDays).toBe(1);
+    expect(new Date(next!.dueDate!).toISOString()).toBe(new Date(2025, 5, 19, 0, 0, 0).toISOString()); // next Thursday
+    const reminder = new Date(next!.reminderTime!);
+    expect(reminder.toISOString()).toBe(new Date(2025, 5, 18, 20, 0, 0).toISOString()); // next Wednesday, 8pm
+  });
+
+  it('keeps a fixed reminder tracking the due date\'s own day when no offset is set', () => {
+    // Today's baseline behaviour (offset implicitly 0) must survive the new field.
+    const task = makeTask({
+      id: 'recurring',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      reminderTime: new Date(2025, 5, 10, 9, 30, 0).toISOString(),
+      reminderOffsetDays: null,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('recurring');
+
+    const next = useTaskStore.getState().tasks.find(t => t.id !== 'recurring');
+    const reminder = new Date(next!.reminderTime!);
+    expect(reminder.toDateString()).toBe(new Date(next!.dueDate!).toDateString());
+    expect(reminder.getHours()).toBe(9);
+    expect(reminder.getMinutes()).toBe(30);
   });
 
   it('stamps the next occurrence with previousOccurrenceId pointing back at the completed task', () => {
@@ -4488,7 +4531,7 @@ describe('checkMealSlotTasks', () => {
     expect(slotRows().filter(t => t.generatedSourceId === '2026-08-22#lunch')).toHaveLength(2);
   });
 
-  it('picks up the time gate on the step that finally finishes the chain', () => {
+  it('never gates the step that finishes the chain either — no slot hides any more', () => {
     useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
     useTaskStore.setState({ tasks: [] });
     useTaskStore.getState().checkMealSlotTasks();
@@ -4507,9 +4550,10 @@ describe('checkMealSlotTasks', () => {
       t => !t.completed && t.generatedSourceId === '2026-08-22#lunch'
     )!;
     expect(eat.chainIndex).toBe(2);
-    // "Eat lunch" finishes the chain — it's the meal itself, so it hides
-    // behind the afternoon segment same as any recurring task's own due time.
-    expect(eat.timeSegments).toEqual(['afternoon']);
+    // "Eat lunch" finishes the chain — it's the meal itself, but
+    // MEAL_SLOT_SEGMENTS maps every slot to no segment now, so it stays
+    // visible on Today same as every earlier step.
+    expect(eat.timeSegments).toEqual([]);
   });
 
   it('lets go of the source at the wrap of a repeating chain', () => {
@@ -4962,6 +5006,22 @@ describe('skipNextRecurrence', () => {
     const updated = useTaskStore.getState().tasks[0];
     expect(updated.dueDate).toBe(task.dueDate);
     expect(updated.recurrenceCount).toBe(1);
+  });
+
+  it('recomputes a relative reminder against the skipped-to occurrence', () => {
+    const task = makeTask({
+      id: 't1',
+      recurrenceType: 'weekly',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 12, 0, 0, 0).toISOString(), // Thursday
+      reminderTime: new Date(2025, 5, 11, 20, 0, 0).toISOString(), // Wednesday, 8pm
+      reminderOffsetDays: 1,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(new Date(updated.dueDate!).toISOString()).toBe(new Date(2025, 5, 19, 0, 0, 0).toISOString());
+    expect(new Date(updated.reminderTime!).toISOString()).toBe(new Date(2025, 5, 18, 20, 0, 0).toISOString());
   });
 
   it('advances only the chain position on a mid-chain step, leaving the schedule untouched', () => {
@@ -9231,6 +9291,22 @@ describe('addTaskSeries', () => {
     expect(second.getMinutes()).toBe(30);
   });
 
+  it('re-anchors a relative reminder onto the day before each date', () => {
+    const rows = useTaskStore.getState().addTaskSeries(
+      {
+        title: 'Dog',
+        reminderTime: new Date(2025, 8, 9, 8, 30, 0).toISOString(), // day before the 10th
+        reminderOffsetDays: 1,
+      },
+      [new Date(2025, 8, 10, 12, 0, 0), new Date(2025, 8, 15, 12, 0, 0)],
+    );
+    const second = new Date(rows[1].reminderTime!);
+    expect(second.getDate()).toBe(14); // day before the 15th
+    expect(second.getHours()).toBe(8);
+    expect(second.getMinutes()).toBe(30);
+    expect(rows[1].reminderOffsetDays).toBe(1);
+  });
+
   it('does nothing for an empty date list', () => {
     expect(useTaskStore.getState().addTaskSeries({ title: 'x' }, [])).toEqual([]);
     expect(useTaskStore.getState().tasks).toHaveLength(0);
@@ -9515,6 +9591,24 @@ describe('updateTask series fan-out', () => {
 
     const later = new Date(useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!.reminderTime!);
     expect(later.getDate()).toBe(15);
+    expect(later.getHours()).toBe(7);
+    expect(later.getMinutes()).toBe(15);
+  });
+
+  it("re-anchors a fanned-out relative reminder onto each date's offset day", () => {
+    const rows = useTaskStore.getState().addTaskSeries({ title: 'Dog' }, [
+      new Date(2025, 8, 10, 12, 0, 0),
+      new Date(2025, 8, 15, 12, 0, 0),
+    ]);
+    useTaskStore.getState().updateTask(rows[0].id, {
+      reminderTime: new Date(2025, 8, 9, 7, 15, 0).toISOString(), // day before the 10th
+      reminderOffsetDays: 1,
+    });
+
+    const laterTask = useTaskStore.getState().tasks.find(t => t.id === rows[1].id)!;
+    expect(laterTask.reminderOffsetDays).toBe(1);
+    const later = new Date(laterTask.reminderTime!);
+    expect(later.getDate()).toBe(14); // day before the 15th
     expect(later.getHours()).toBe(7);
     expect(later.getMinutes()).toBe(15);
   });

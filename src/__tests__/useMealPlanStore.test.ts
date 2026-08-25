@@ -179,13 +179,13 @@ beforeEach(() => {
   useGroceryStore.setState({ items: [] });
   useMealPlanStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
-    lastAction: null, cookedOffer: null, leftoverOffer: null, plannedSlotCounts: {}, cookingCounts: null,
+    lastAction: null, cookRecap: null, plannedSlotCounts: {}, cookingCounts: null,
   });
 });
 
-// ─── Fixtures for the cooked "out of anything?" offer ───────────────────────
+// ─── Fixtures for the post-cook recap ──────────────────────────────────────
 //
-// Only the handful of fields the offer's own pipeline reads
+// Only the handful of fields the recap's own pipeline reads
 // (plannedIngredientsForRecipe → classifyPlanned → consumedRows); cast rather
 // than filled out, since this suite is about which cook paths raise an offer
 // and the shapes themselves are pinned in mealPlanGroceries.test.ts.
@@ -1387,7 +1387,7 @@ describe('bulkReplaceItem', () => {
   });
 });
 
-describe('cookedOffer', () => {
+describe('cookRecap', () => {
   /** A cooked meal of `recipe`, with the catalog holding `stocked`. */
   function cook(recipe: Recipe, stocked: GroceryItem[]) {
     mockRecipeState.recipes = [recipe];
@@ -1400,10 +1400,13 @@ describe('cookedOffer', () => {
 
   const chili = () => recipeWith('Chili', ['soy sauce', 'cumin', 'gochujang']);
 
-  it('is raised by a cook, naming the dish', () => {
-    cook(chili(), [onHand('soy sauce'), onHand('cumin')]);
+  it('is raised by a cook, naming the meal and the dish', () => {
+    const dinner = cook(chili(), [onHand('soy sauce'), onHand('cumin')]);
 
-    expect(useMealPlanStore.getState().cookedOffer).toEqual({
+    expect(useMealPlanStore.getState().cookRecap).toEqual({
+      entryId: dinner.id,
+      title: 'Chili',
+      canLogLeftovers: true,
       recipeId: 'r-Chili',
       recipeName: 'Chili',
       choices: [],
@@ -1411,36 +1414,68 @@ describe('cookedOffer', () => {
     });
   });
 
-  // The gate that keeps it from being a prompt after every cook: the screen
-  // suppresses the restock banner while an offer is live, so one that would
-  // show nothing must not be set at all.
-  it('is not raised when the app claims nothing about any of the ingredients', () => {
+  // The gate the used-up banner needed and a sheet doesn't: each section is
+  // gated on its own subject, so a cooking the app can say nothing about the
+  // pantry for still has a rating and a fridge to ask about. CookRecap is what
+  // declines to open when every section turns out empty.
+  it('is raised even when the app claims nothing about any of the ingredients', () => {
     cook(chili(), []);
-    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+    expect(useMealPlanStore.getState().cookRecap?.recipeName).toBe('Chili');
   });
 
-  it('is not raised by a free-text meal, which has no ingredients to ask about', () => {
+  // A free-text meal has no ingredients and no rating, but it can still have
+  // left half a tray of it in the fridge.
+  it('is raised by a free-text meal, carrying no recipe', () => {
     useGroceryStore.setState({ items: [onHand('soy sauce')] });
-    const dinner = entry('2026-08-05', 'dinner', { title: 'Leftovers' });
+    const dinner = entry('2026-08-05', 'dinner', { title: 'Leftover night curry' });
     loadWeek([dinner]);
 
     useMealPlanStore.getState().setCooked(dinner.id, true);
 
-    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+    expect(useMealPlanStore.getState().cookRecap).toMatchObject({
+      title: 'Leftover night curry',
+      canLogLeftovers: true,
+      recipeId: null,
+      recipeName: null,
+    });
+  });
+
+  // Eating a tub of chilli closes that container out; it doesn't fill a new
+  // one. The recap is still raised — the cooking may have used things up — but
+  // with the fridge question withheld.
+  it('withholds the leftovers question from a meal that is itself leftovers', () => {
+    mockRecipeState.recipes = [];
+    const e = entry('2026-08-05', 'dinner', { title: 'Chilli', leftoverId: 'lo-1' });
+    loadWeek([e]);
+
+    useMealPlanStore.getState().setCooked(e.id, true);
+
+    expect(useMealPlanStore.getState().cookRecap?.canLogLeftovers).toBe(false);
+  });
+
+  it('withholds it from a meal with no name to call a container', () => {
+    mockRecipeState.recipes = [];
+    const e = entry('2026-08-05', 'dinner', { title: '  ' });
+    loadWeek([e]);
+
+    useMealPlanStore.getState().setCooked(e.id, true);
+
+    expect(useMealPlanStore.getState().cookRecap?.canLogLeftovers).toBe(false);
   });
 
   it('is retracted by un-cooking — the tap it was about is undone', () => {
     const dinner = cook(chili(), [onHand('soy sauce')]);
-    expect(useMealPlanStore.getState().cookedOffer).not.toBeNull();
+    expect(useMealPlanStore.getState().cookRecap).not.toBeNull();
 
     useMealPlanStore.getState().setCooked(dinner.id, false);
 
-    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+    expect(useMealPlanStore.getState().cookRecap).toBeNull();
   });
 
   // Ticking the "Cook X" task off on Today is a cooking too, and the whole
-  // reason this lives in the store rather than on the meal plan screen.
-  it('is raised by a cook logged from the task', () => {
+  // reason this lives in the store rather than on the meal plan screen. It is
+  // also the path that used to raise the leftovers question all by itself.
+  it('is raised by a cook logged from the task, leftovers question and all', () => {
     mockRecipeState.recipes = [chili()];
     useGroceryStore.setState({ items: [onHand('soy sauce')] });
     const dinner = entry('2026-08-05', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
@@ -1448,11 +1483,25 @@ describe('cookedOffer', () => {
 
     useMealPlanStore.getState().setCookedPaired(dinner.id, true);
 
-    expect(useMealPlanStore.getState().cookedOffer?.recipeName).toBe('Chili');
+    expect(useMealPlanStore.getState().cookRecap).toMatchObject({
+      recipeName: 'Chili',
+      canLogLeftovers: true,
+    });
   });
 
-  // Marking last week's dinners cooked on a Sunday is bookkeeping. Asking what
-  // each of them used up would be asking someone to recall five kitchens.
+  it('is retracted by un-ticking that same task', () => {
+    mockRecipeState.recipes = [chili()];
+    const dinner = entry('2026-08-05', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
+    loadWeek([dinner]);
+    useMealPlanStore.getState().setCookedPaired(dinner.id, true);
+
+    useMealPlanStore.getState().setCookedPaired(dinner.id, false);
+
+    expect(useMealPlanStore.getState().cookRecap).toBeNull();
+  });
+
+  // Marking last week's dinners cooked on a Sunday is bookkeeping. Asking about
+  // each of them would be asking someone to recall five kitchens.
   it('is never raised by a bulk mark', () => {
     mockRecipeState.recipes = [chili()];
     useGroceryStore.setState({ items: [onHand('soy sauce')] });
@@ -1462,7 +1511,7 @@ describe('cookedOffer', () => {
 
     useMealPlanStore.getState().bulkSetCooked([a.id, b.id], true);
 
-    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+    expect(useMealPlanStore.getState().cookRecap).toBeNull();
   });
 
   it('carries the entry’s own picks and batch, so it asks about what was actually made', () => {
@@ -1475,15 +1524,31 @@ describe('cookedOffer', () => {
 
     useMealPlanStore.getState().setCooked(dinner.id, true);
 
-    expect(useMealPlanStore.getState().cookedOffer).toMatchObject({ choices: ['c-1'], scale: 2 });
+    expect(useMealPlanStore.getState().cookRecap).toMatchObject({ choices: ['c-1'], scale: 2 });
   });
 
-  it('is cleared on request — dismissed, or answered out', () => {
+  // Resolve-or-shrug at the point the pointer is captured, so the sheet's
+  // sections don't each repeat a lookup that already failed.
+  it('carries no recipe when the one it names has since been deleted', () => {
+    mockRecipeState.recipes = [];
+    const dinner = entry('2026-08-05', 'dinner', { recipeId: 'r-gone', title: 'Chili' });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setCooked(dinner.id, true);
+
+    expect(useMealPlanStore.getState().cookRecap).toMatchObject({
+      title: 'Chili',
+      recipeId: null,
+      recipeName: null,
+    });
+  });
+
+  it('is cleared on request — skipped, or answered out', () => {
     cook(chili(), [onHand('soy sauce')]);
 
-    useMealPlanStore.getState().clearCookedOffer();
+    useMealPlanStore.getState().clearCookRecap();
 
-    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+    expect(useMealPlanStore.getState().cookRecap).toBeNull();
   });
 });
 
@@ -1575,101 +1640,6 @@ describe('a cooking marks what it used as opened', () => {
     useMealPlanStore.getState().setCooked(dinner.id, true);
 
     expect(openedOf('soy sauce')).toBeNull();
-  });
-});
-
-describe('leftoverOffer', () => {
-  const chili = () => recipeWith('Chili', ['soy sauce']);
-
-  /** A dinner in the loaded week, ready to be ticked either way. */
-  function dinner(overrides: Partial<MealPlanEntry> = {}) {
-    mockRecipeState.recipes = [chili()];
-    const e = entry('2026-08-05', 'dinner', { recipeId: 'r-Chili', title: 'Chili', ...overrides });
-    loadWeek([e]);
-    return e;
-  }
-
-  it('is raised by ticking the cook task, naming the meal and where it came from', () => {
-    const e = dinner();
-
-    useMealPlanStore.getState().setCookedPaired(e.id, true);
-
-    expect(useMealPlanStore.getState().leftoverOffer).toEqual({
-      entryId: e.id,
-      title: 'Chili',
-      recipeId: 'r-Chili',
-      choices: [],
-    });
-  });
-
-  // The meal plan already puts "Log leftovers" on the entry's own sheet, and
-  // that placement is deliberate — nothing about marking a meal cooked there
-  // should assume it left anything.
-  it('is not raised by marking cooked on the plan', () => {
-    const e = dinner();
-
-    useMealPlanStore.getState().setCooked(e.id, true);
-
-    expect(useMealPlanStore.getState().leftoverOffer).toBeNull();
-  });
-
-  it('carries the cooking’s own picks, so a losing component is never offered', () => {
-    const e = dinner({ recipeChoices: ['c-1'] });
-
-    useMealPlanStore.getState().setCookedPaired(e.id, true);
-
-    expect(useMealPlanStore.getState().leftoverOffer?.choices).toEqual(['c-1']);
-  });
-
-  it('is raised by a free-text meal, which leaves leftovers like any other', () => {
-    mockRecipeState.recipes = [];
-    const e = entry('2026-08-05', 'dinner', { title: 'Takeout curry' });
-    loadWeek([e]);
-
-    useMealPlanStore.getState().setCookedPaired(e.id, true);
-
-    expect(useMealPlanStore.getState().leftoverOffer?.title).toBe('Takeout curry');
-  });
-
-  // Eating a tub of chilli closes that container out; it doesn't fill a new one.
-  it('is not raised by a meal that is itself leftovers', () => {
-    mockRecipeState.recipes = [];
-    const e = entry('2026-08-05', 'dinner', { title: 'Chilli', leftoverId: 'lo-1' });
-    loadWeek([e]);
-
-    useMealPlanStore.getState().setCookedPaired(e.id, true);
-
-    expect(useMealPlanStore.getState().leftoverOffer).toBeNull();
-  });
-
-  it('is retracted by un-ticking, and by a cook marked anywhere else', () => {
-    const e = dinner();
-    useMealPlanStore.getState().setCookedPaired(e.id, true);
-    expect(useMealPlanStore.getState().leftoverOffer).not.toBeNull();
-
-    useMealPlanStore.getState().setCookedPaired(e.id, false);
-
-    expect(useMealPlanStore.getState().leftoverOffer).toBeNull();
-  });
-
-  it('is never raised by a bulk mark', () => {
-    mockRecipeState.recipes = [chili()];
-    const a = entry('2026-08-05', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
-    const b = entry('2026-08-06', 'dinner', { recipeId: 'r-Chili', title: 'Chili' });
-    loadWeek([a, b]);
-
-    useMealPlanStore.getState().bulkSetCooked([a.id, b.id], true);
-
-    expect(useMealPlanStore.getState().leftoverOffer).toBeNull();
-  });
-
-  it('is cleared on request — dismissed, or logged out', () => {
-    const e = dinner();
-    useMealPlanStore.getState().setCookedPaired(e.id, true);
-
-    useMealPlanStore.getState().clearLeftoverOffer();
-
-    expect(useMealPlanStore.getState().leftoverOffer).toBeNull();
   });
 });
 

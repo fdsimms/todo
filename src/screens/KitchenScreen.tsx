@@ -89,7 +89,7 @@ import { resetToGroceries } from '../navigation/navigationRef';
  * **The corrections stay where the thing lives.** A catalog row's trailing ✕
  * is the one this screen exists for most — it writes exactly what
  * `GroceryItemSheet`'s "Out of it" pill writes (`markOutOfMany`, same call
- * `CookedUseUpSheet` batches), in one tap, with the same undo everything else
+ * `CookRecapSheet` batches), in one tap, with the same undo everything else
  * in that store gets — and the row itself opens `GroceryItemSheet` with the
  * Pantry pills already showing (`initialField`) for anything past that one
  * bit. **A container carries no ✕**, deliberately: closing one out is a

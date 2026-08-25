@@ -63,6 +63,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   estimatedMinutes: null,
   reminderTime: null,
   reminderKind: 'notification',
+  reminderOffsetDays: null,
   linkUrl: null,
   phoneNumber: null,
   emailAddress: null,

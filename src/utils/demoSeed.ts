@@ -9,6 +9,7 @@ import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
@@ -429,6 +430,11 @@ export function seedDemoData(): void {
     dueDate: addDays(today, 16).toISOString(),
     deadline: addDays(today, 18).toISOString(),
     estimatedMinutes: 15,
+    // Reminder as a "days before due" offset (Task.reminderOffsetDays) rather
+    // than a fixed instant, so it keeps meaning "a couple of days' notice"
+    // however far the due date itself ends up moving.
+    reminderTime: setHours(addDays(today, 14), 9).toISOString(),
+    reminderOffsetDays: 2,
   });
 
   addTask({
@@ -825,6 +831,10 @@ function seedPeople(today: Date): void {
   updatePerson(dustin.id, {
     birthdayMonth: bdayNear.getMonth() + 1,
     birthdayDay: bdayNear.getDate(),
+    // A year on one of the two, so the seed shows the field exists without
+    // implying everybody's is worth knowing — it's never read back to say
+    // what age he's turning (#2083 removed that; this is a separate field).
+    birthYear: bdayNear.getFullYear() - 34,
     phoneNumber: '555 0148',
     notes: 'Climbs on Wednesdays. Allergic to shellfish.',
   });
@@ -1090,7 +1100,8 @@ function componentIdFor(parentId: string, childRecipeId: string): string | null 
  * groups by it and a missing type reads as a missing section, and one instance
  * of each of the features that are otherwise invisible: components (shared and
  * either/or), ingredient alternatives, sections, prep tasks, both duration
- * fields, a live cook timer, cook history, and all three attribution shapes.
+ * fields, a live cook timer, a hand-set step timer length, a step timer already
+ * counting down, cook history, and all three attribution shapes.
  */
 function seedRecipes(): DemoRecipes {
   const {
@@ -1118,6 +1129,7 @@ function seedRecipes(): DemoRecipes {
     markCooked,
     startCookTimer,
     addStep,
+    setStepTimerSeconds,
   } = useRecipeStore.getState();
 
   // --- Sides, first: the two dinners below reference them as components ----
@@ -1308,10 +1320,32 @@ function seedRecipes(): DemoRecipes {
     'Add the pepper, garlic and chile and stir-fry for two minutes.',
     'Serve over the rice.',
   ].forEach(text => addStep(stirFry.id, text));
+  // A hand-set timer length on the one step here whose sentence gives no time
+  // — the case RecipeStep.timerSeconds exists for. Every other step in the box
+  // is read straight out of its own text ("Simmer for 20 minutes", "stir-fry
+  // for two minutes"), which is what makes the field's own case invisible
+  // without this.
+  const searStep = useRecipeStore.getState().recipeById(stirFry.id)?.steps[1];
+  if (searStep) setStepTimerSeconds(stirFry.id, searStep.id, 4 * 60);
   // Cooked often enough to have a history worth reading.
   [0, 1, 2, 3, 4].forEach(() => markCooked(stirFry.id));
   // Tonight's dinner, mid-cook — the one place a live timer shows up.
   startCookTimer(stirFry.id);
+  // And one step timer counting down alongside it, on the step that names two
+  // minutes. Cook mode's footer stack, the Lock Screen activity and the row's
+  // own Pause/+1m/Again are all invisible until something is actually running:
+  // with an empty stack the screen reads as one that can't hold a step timer
+  // at all.
+  const stirFryStep = useRecipeStore.getState().recipeById(stirFry.id)?.steps[2];
+  if (stirFryStep) {
+    useStepTimerStore.getState().start({
+      recipeId: stirFry.id,
+      recipeName: stirFry.name,
+      stepId: stirFryStep.id,
+      stepLabel: 'Step 3 of 4',
+      durationSeconds: 2 * 60,
+    });
+  }
 
   const salmon = newRecipe('Lemon garlic salmon');
   addIngredientsFromText(
@@ -1343,7 +1377,9 @@ function seedRecipes(): DemoRecipes {
   if (defrost) updatePrepTask(salmon.id, defrost.id, { offsetDays: -1, reminderOffsetMinutes: 120 });
   [0, 1].forEach(() => markCooked(salmon.id));
   // Cooked it twice and decided against a third — the down side of the vote,
-  // set the same way the "How was it?" prompt sets it after Mark cooked.
+  // set the same way the post-cook sheet's "How was it?" section sets it. The
+  // stir-fry below is deliberately left unrated, so cooking tonight's dinner in
+  // the demo is what shows that section being asked.
   setVote(salmon.id, 'down');
   // The shared component — the same mash inside two different dinners, which
   // is the whole point of a reference rather than a copy.
@@ -2383,17 +2419,18 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     });
   }
 
-  // The nights above went through setCooked, which raises the "out of anything
-  // after X?" offer — so the last of them would leave demo mode opening on a
-  // banner about a dinner eight days ago.
+  // The nights above went through setCooked, which raises the post-cook sheet
+  // — so the last of them would drop demo mode straight into a sheet asking
+  // about a dinner eight days ago.
   //
   // It's cleared rather than left standing, and this is the one capability
-  // here that genuinely can't be seeded: the offer isn't a row, it's the app's
+  // here that genuinely can't be seeded: the recap isn't a row, it's the app's
   // answer to a tap you just made. Seeding one would be asserting a tap that
-  // never happened, and its only lasting output is an item marked out of —
-  // which is a *negative*, so it shows up as nothing at all. The honest way to
-  // see this feature is to mark a meal cooked, which the demo is fully set up
-  // for: tonight's stir-fry and its ingredients are all here.
-  useMealPlanStore.getState().clearCookedOffer();
+  // never happened, and its lasting outputs are a rating, a fridge row and an
+  // item marked out of — the last of which is a *negative*, so it shows up as
+  // nothing at all. The honest way to see this feature is to mark a meal
+  // cooked, which the demo is fully set up for: tonight's stir-fry, its
+  // ingredients and an unrated recipe are all here.
+  useMealPlanStore.getState().clearCookRecap();
 
 }

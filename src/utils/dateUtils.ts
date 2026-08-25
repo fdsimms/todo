@@ -584,6 +584,28 @@ export function describeDeadlineOffset(offsetDays: number): string {
  * lengths since it isn't a fixed day count from the due date. `day === -1`
  * means the last day of the month, same convention as recurrenceMonthDay.
  */
+/**
+ * Where a relative reminder (Task.reminderOffsetDays) lands: N days before
+ * dueDate, at whatever time-of-day the reminder itself carries — the caller
+ * still has to set the hours/minutes on the result. Same shape as
+ * getDeadlineFromOffset, kept as its own function so the two concepts (a
+ * reminder and a deadline) don't share a name that only means one of them.
+ */
+export function getReminderOffsetDate(dueDate: Date, offsetDays: number): Date {
+  return subDays(dueDate, offsetDays);
+}
+
+/**
+ * The user-facing wording for a relative reminder offset — owned here for the
+ * same reason describeDeadlineOffset is, so the editor's row summary and the
+ * picker's stepper label can't drift apart. Unlike a deadline, a reminder is
+ * always "before": there's no reading of "remind me after it's due".
+ */
+export function describeReminderOffset(offsetDays: number): string {
+  const unit = offsetDays === 1 ? 'day' : 'days';
+  return `${offsetDays} ${unit} before due`;
+}
+
 export function getDeadlineFromMonthDay(dueDate: Date, day: number): Date {
   return day === -1 ? lastDayOfMonth(dueDate) : setDate(dueDate, Math.min(day, lastDayOfMonth(dueDate).getDate()));
 }

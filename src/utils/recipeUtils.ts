@@ -1,4 +1,5 @@
 import type { GroceryItem, ItemSubLink, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSortOption, RecipeStep, RecipeVote } from '../types';
+import { MAX_STEP_TIMER_SECONDS, MIN_STEP_TIMER_SECONDS } from './stepTimers';
 import {
   RECIPE_CHOICE_GROUP_MAX_LENGTH,
   RECIPE_MEAL_TYPES,
@@ -248,9 +249,23 @@ export function normalizeStep(raw: unknown): RecipeStep | null {
   const r = raw as Partial<RecipeStep>;
   const text = typeof r.text === 'string' ? r.text.trim() : '';
   if (!text) return null;
+  // Only stored when someone actually set one: a step with no hand-set
+  // duration keeps the shape it has always had, so an install that upgrades
+  // into the field round-trips byte for byte. Out-of-range values are dropped
+  // rather than clamped — a stored 0 or a stored day means the row is wrong,
+  // and the sentence is a better answer than a repaired number.
+  const seconds = typeof r.timerSeconds === 'number' && Number.isFinite(r.timerSeconds)
+    ? Math.round(r.timerSeconds)
+    : null;
+  const timerSeconds = seconds !== null
+    && seconds >= MIN_STEP_TIMER_SECONDS
+    && seconds <= MAX_STEP_TIMER_SECONDS
+    ? seconds
+    : null;
   return {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     text,
+    ...(timerSeconds === null ? {} : { timerSeconds }),
   };
 }
 

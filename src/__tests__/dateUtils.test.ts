@@ -10,6 +10,8 @@ import {
   getDeadlineFromMonthDay,
   getDeadlineFromOffset,
   describeDeadlineOffset,
+  getReminderOffsetDate,
+  describeReminderOffset,
   getLogicalToday,
   getLogicalTomorrow,
   getLogicalNow,
@@ -92,6 +94,7 @@ const baseTask: Task = {
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
+  reminderOffsetDays: null,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -1318,6 +1321,32 @@ describe('describeDeadlineOffset', () => {
 
   it('describes a zero offset as the due date itself', () => {
     expect(describeDeadlineOffset(0)).toBe('on the due date');
+  });
+});
+
+// ─── getReminderOffsetDate / describeReminderOffset ──────────────────────────
+
+describe('getReminderOffsetDate', () => {
+  it('counts back from the due date', () => {
+    const result = getReminderOffsetDate(new Date(2026, 0, 20), 3);
+    expect(result.getMonth()).toBe(0);
+    expect(result.getDate()).toBe(17);
+  });
+
+  it('crosses a month boundary going backward', () => {
+    const result = getReminderOffsetDate(new Date(2026, 1, 2), 5);
+    expect(result.getMonth()).toBe(0);
+    expect(result.getDate()).toBe(28);
+  });
+});
+
+describe('describeReminderOffset', () => {
+  it('describes the offset as before the due date', () => {
+    expect(describeReminderOffset(3)).toBe('3 days before due');
+  });
+
+  it('singularises one day', () => {
+    expect(describeReminderOffset(1)).toBe('1 day before due');
   });
 });
 

@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Linking } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { haptics } from './haptics';
@@ -300,10 +301,12 @@ export function completeTaskUrlId(url: string): string | null {
   return id || null;
 }
 
-// `dundundun://stopTimer?key=cook:<id>|prep:<id>` — the peer of completeTask
-// above for a recipe's cook/prep Live Activity Done button. "Stop" here
-// means the same thing tapping Stop in the app does: log the elapsed time
-// (see stopCookTimer/stopPrepTimer in useRecipeStore.ts).
+// `dundundun://stopTimer?key=cook:<id>|prep:<id>|step:<id>` — the peer of
+// completeTask above for the Done button on a recipe's cook/prep Live Activity
+// and on a cooking step timer's. "Stop" means the same thing tapping Stop in
+// the app does, which differs by kind: a cook or prep timer logs its elapsed
+// time (stopCookTimer/stopPrepTimer in useRecipeStore.ts), and a step timer,
+// which measures nothing, is simply dismissed.
 const STOP_TIMER_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?stopTimer\\/?(?:\\?(.*))?$`, 'i');
 
 export function isStopTimerUrl(url: string): boolean {
@@ -447,6 +450,12 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     const key = stopTimerUrlKey(url);
     if (key?.startsWith('cook:')) useRecipeStore.getState().stopCookTimer(key.slice('cook:'.length));
     else if (key?.startsWith('prep:')) useRecipeStore.getState().stopPrepTimer(key.slice('prep:'.length));
+    // A cooking step timer's Done means "I've dealt with this pan": there is
+    // no elapsed time to log, so the timer just goes, the way the row's own
+    // dismiss does. Its alarm goes with it, which is the half that matters
+    // from a Lock Screen — Done on a timer still ticking must not leave one
+    // scheduled to ring about a pan that came off the heat.
+    else if (key?.startsWith('step:')) useStepTimerStore.getState().remove(key.slice('step:'.length));
     return true;
   }
   if (isOpenAppUrl(url)) {
