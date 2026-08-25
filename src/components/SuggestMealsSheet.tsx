@@ -3,6 +3,7 @@ import {
   Modal, View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet,
 } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
+import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import type { Leftover, Recipe, RecipeMealType } from '../types';
@@ -189,6 +190,7 @@ export function SuggestMealsSheet({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const navigation = useNavigation<any>();
 
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   // The preview reads like the recipe screen does, standing swaps included —
@@ -486,6 +488,23 @@ export function SuggestMealsSheet({
   }, [previewRecipe, recipesById, standingSwaps]);
 
   const openPreview = (recipe: Recipe) => { haptics.tap(); setPreviewRecipe(recipe); };
+
+  /**
+   * The preview only shows ingredients — for anything else (notes, steps,
+   * cook history) the real recipe box is the answer, and there was no way to
+   * get there from a suggestion short of dismissing this sheet, remembering
+   * the name, and finding it again in Recipes. Closes both modals: an RN
+   * `Modal` renders above the navigator, so the destination screen can't show
+   * through it, same reasoning as `FocusSessionSheet`'s own cross-navigation.
+   * That does mean any other picks made this session are lost — acceptable
+   * for a "go look at this recipe" action, not for a silent side effect.
+   */
+  const openInRecipeBox = (recipe: Recipe) => {
+    haptics.tap();
+    setPreviewRecipe(null);
+    onClose();
+    navigation.navigate('RecipeDetail', { recipeId: recipe.id });
+  };
 
   // ==== rows ====
 
@@ -915,6 +934,14 @@ export function SuggestMealsSheet({
               </View>
               <ScrollView contentContainerStyle={styles.previewList}>
                 <Text style={styles.previewMeta}>{describeRecipe(previewRecipe)}</Text>
+                <View style={styles.previewLinkRow}>
+                  <InlineAction
+                    label="View full recipe"
+                    icon="book-outline"
+                    onPress={() => openInRecipeBox(previewRecipe)}
+                    accessibilityLabel={`Open ${previewRecipe.name} in your recipe box`}
+                  />
+                </View>
                 {!!previewRecipe.notes && <Text style={styles.previewNotes}>{previewRecipe.notes}</Text>}
                 {previewGroups.length === 0 ? (
                   <Text style={styles.previewNotes}>This recipe has no ingredients yet.</Text>
@@ -985,7 +1012,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   filterChip: {
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.bgSecondary,
   },
   filterChipActive: { backgroundColor: colors.accent },
@@ -1090,6 +1117,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
 
   previewList: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
   previewMeta: { fontSize: font.sm, color: colors.textTertiary, lineHeight: lineHeight.sm },
+  // alignItems:'flex-start' so the pill sizes to its label instead of
+  // stretching to the ScrollView's full width, same as ideaCta above.
+  previewLinkRow: { alignItems: 'flex-start' },
   previewNotes: { fontSize: font.sm, color: colors.textSecondary, lineHeight: lineHeight.sm },
   previewGroup: { gap: spacing.xs },
   previewIngredientRow: {

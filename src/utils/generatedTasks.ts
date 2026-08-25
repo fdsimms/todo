@@ -5,13 +5,15 @@ export type { GeneratedKind };
 /**
  * The one mechanism behind every task this app writes without being asked.
  *
- * Eight features generate tasks unattended — each meal of the day becomes a task,
+ * Ten features generate tasks unattended — each meal of the day becomes a task,
  * a perishable grocery becomes "Use up X", a leftover about to go bad becomes
  * "Use up X", an opt-in weekly trigger becomes "Plan meals for…", a project
  * that has gone quiet becomes "Review X", a pantry guess that has run out
  * becomes "Check if you still have X", a task's supply running low becomes
- * "Order more X", and (once a day, when tomorrow has anything on it) the
- * calendar becomes "Review tomorrow's calendar". The first four were each
+ * "Order more X", (once a day, when tomorrow has anything on it) the
+ * calendar becomes "Review tomorrow's calendar", somebody's birthday becomes a
+ * task a few days out, and a planned meal the kitchen can't make becomes "Shop
+ * for Tue ragu". The first four were each
  * built by copying the last, which is fine twice and had reached four: four
  * nullable back-pointer columns on `Task`, four hand-written "don't pile up"
  * rules, and three near-identical copies of the same three-input opt-out, two
@@ -26,6 +28,10 @@ export type { GeneratedKind };
  * (`GroceryItem.pantryCheckDeclinedAt`), which is where the opt-out belongs and
  * not part of the mechanism at all. `supplyReorder` is the seventh, sourced
  * from a task rather than a row in another store (see `src/utils/supply.ts`).
+ * `birthday` is the ninth. `mealShortfall` is the tenth, and is the first whose
+ * source row is one the user edits freely and often, which is why its whole
+ * staleness rule is the creation predicate re-run (see
+ * `src/utils/mealShortfallTasks.ts`).
  * `calendarReview` is the eighth, and it costs the same shape again:
  * `calendarReviewTasks.ts`, an entry here, and a firing beside the other
  * time-based passes. It adds no column at all — its source is tomorrow's day
@@ -94,6 +100,12 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'pantryCheck',
   'leftoverUseUp',
   'mealPlanNudge',
+  // Beside the nudge rather than appended at the end, for the reason
+  // pantryCheck sits beside groceryUseUp: the two are a pair from the list's
+  // side. One asks you to plan the week and the other tells you the plan can't
+  // be cooked, they file under one category, and reading them together is how a
+  // person meets the meal plan in Settings.
+  'mealShortfall',
   'projectReview',
   'supplyReorder',
   'calendarReview',
@@ -140,12 +152,17 @@ export interface GeneratedKindSpec {
   /**
    * Whether the user can choose a category to file this kind under.
    *
-   * `false` for exactly one kind so far: `calendarReview` reuses
-   * `calendarEventCategory`, the setting calendar-event context rows already
-   * file under, rather than owning a second "File them under" pair — the task
-   * this generator writes and the events it's asking about are the same
-   * category by construction, and a picker offering to disagree with that
-   * would be a setting with no honest answer.
+   * `false` for two kinds. `calendarReview` reuses `calendarEventCategory`,
+   * the setting calendar-event context rows already file under, rather than
+   * owning a second "File them under" pair — the task this generator writes
+   * and the events it's asking about are the same category by construction,
+   * and a picker offering to disagree with that would be a setting with no
+   * honest answer. `supplyReorder` has no category setting for a different
+   * reason: its task always inherits the category of the task the supply
+   * belongs to (see `checkSupplyReorderTasks`), so there is no single global
+   * answer a picker could offer — a filter tracked on a bathroom task and one
+   * tracked on a car task each want their own reorder task filed where the
+   * task itself is, not both funnelled into one "Supplies" category.
    */
   categorized: boolean;
   /**
@@ -153,7 +170,9 @@ export interface GeneratedKindSpec {
    * on the generator's first switch-on (see ensureGeneratedTaskCategory).
    *
    * Unused when `categorized` is false — there's no category of its own to
-   * default.
+   * default. For `supplyReorder` that's because each task's category comes
+   * from its own source task rather than from one setting shared by every
+   * reorder task.
    *
    * Not a cosmetic default. These settings shipped defaulting to *no* category,
    * and an uncategorized task renders in the header-less loose block at the
@@ -280,8 +299,28 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // kind of row it names — but it is the reason writeGeneratedOptOut's case
     // here writes to useTaskStore rather than to one of the other stores.
     sourced: true,
+    // No "File them under" of its own — see GeneratedKindSpec.categorized.
+    // Each reorder task takes the category of the task its supply is on.
+    categorized: false,
+    defaultCategory: '',
+  },
+  mealShortfall: {
+    kind: 'mealShortfall',
+    label: 'Shopping tasks for planned meals',
+    onHint: 'A meal coming up that you lack ingredients for adds a task to shop',
+    offHint: 'A meal coming up that you lack ingredients for adds no task',
+    icon: 'cart-outline',
+    // Its source is a MealPlanEntry, and the opt-out it writes there
+    // (MealPlanEntry.shopTask) is what stops a swiped-away row coming straight
+    // back — this is the one generator whose source the user re-plans freely,
+    // so the tombstone does more work here than anywhere else.
+    sourced: true,
     categorized: true,
-    defaultCategory: 'Supplies',
+    // With the nudge and the meal tasks, for the reason those two share one:
+    // planning the week, cooking what you planned and shopping for it are one
+    // job to the person reading Today, and a third section would be a
+    // distinction only the code makes.
+    defaultCategory: 'Meal Plan',
   },
   mealPlanNudge: {
     kind: 'mealPlanNudge',

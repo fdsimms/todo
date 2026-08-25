@@ -296,6 +296,10 @@ describe('the registry', () => {
     // Sourced by the grocery item whose pantry guess ran out — the row its
     // linkUrl opens and its decline stamp is written on.
     expect(GENERATED_KIND_SPECS.pantryCheck.sourced).toBe(true);
+    // Sourced by the MealPlanEntry it shops for — the row its opt-out
+    // (MealPlanEntry.shopTask) is written on, and the one deleting the meal
+    // takes with it.
+    expect(GENERATED_KIND_SPECS.mealShortfall.sourced).toBe(true);
   });
 
   it('gives every kind a category to file under, the nudge included', () => {
@@ -303,7 +307,7 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['mealSlot', 'groceryUseUp', 'pantryCheck', 'leftoverUseUp', 'mealPlanNudge', 'projectReview', 'supplyReorder', 'birthday', 'reachOut']);
+      .toEqual(['mealSlot', 'groceryUseUp', 'pantryCheck', 'leftoverUseUp', 'mealPlanNudge', 'mealShortfall', 'projectReview', 'birthday', 'reachOut']);
   });
 
   it('shares one default category between planning the week and cooking it', () => {
@@ -311,6 +315,9 @@ describe('the registry', () => {
     // "cook what you planned" is one only the code makes.
     expect(GENERATED_KIND_SPECS.mealSlot.defaultCategory).toBe('Meal Plan');
     expect(GENERATED_KIND_SPECS.mealPlanNudge.defaultCategory).toBe('Meal Plan');
+    // And the third of that set: shopping for the week you planned is the same
+    // job again, from the other end.
+    expect(GENERATED_KIND_SPECS.mealShortfall.defaultCategory).toBe('Meal Plan');
     expect(GENERATED_KIND_SPECS.leftoverUseUp.defaultCategory).toBe('Leftovers');
     // And one section for the two questions about the kitchen cupboard: using
     // up a bag of spinach and checking whether there's still flour are one trip
@@ -318,10 +325,12 @@ describe('the registry', () => {
     expect(GENERATED_KIND_SPECS.groceryUseUp.defaultCategory).toBe('Groceries');
     expect(GENERATED_KIND_SPECS.pantryCheck.defaultCategory).toBe('Groceries');
     // Every categorized kind has one — an unfiled generator is one whose tasks
-    // pile up in the loose block above every section. calendarReview is the
-    // one exception: categorized: false, since it reuses calendarEventCategory
-    // instead of owning a category of its own.
+    // pile up in the loose block above every section. Two exceptions:
+    // calendarReview, which reuses calendarEventCategory instead of owning a
+    // category of its own, and supplyReorder, which inherits the category of
+    // the task its supply is on instead of sharing one global category.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).every(s => !!s.defaultCategory)).toBe(true);
     expect(GENERATED_KIND_SPECS.calendarReview.categorized).toBe(false);
+    expect(GENERATED_KIND_SPECS.supplyReorder.categorized).toBe(false);
   });
 });

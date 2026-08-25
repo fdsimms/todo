@@ -40,6 +40,7 @@ function entry(overrides: Partial<MealPlanEntry> = {}): MealPlanEntry {
     recipeChoices: [],
     recipeScale: 1,
     cookTask: null,
+    shopTask: null,
     calendarEventId: null,
     ...overrides,
   };

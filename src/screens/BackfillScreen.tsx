@@ -1017,6 +1017,7 @@ function FieldControl({
         onChange={onPriority}
         columns={2}
         options={PRIORITY_OPTIONS}
+        surface="page"
       />
     );
   }

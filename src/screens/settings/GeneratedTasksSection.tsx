@@ -15,6 +15,9 @@ import {
   GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
+  MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
+  MEAL_SHORTFALL_LEAD_DAYS_MAX,
+  MEAL_SHORTFALL_LEAD_DAYS_MIN,
   USE_UP_TASK_CAP_MAX,
   USE_UP_TASK_CAP_MIN,
 } from '../../types';
@@ -123,6 +126,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
       case 'projectReview': return s.projectReviewTasks;
       case 'pantryCheck': return s.pantryCheckTasks;
+      case 'mealShortfall': return s.mealShortfallTasks;
       case 'supplyReorder': return s.supplyReorderTasks;
       case 'calendarReview': return s.calendarReviewTasks;
       case 'birthday': return s.birthdayTasks;
@@ -140,6 +144,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': s.setMealPlanNudgeEnabled(next); break;
       case 'projectReview': s.setProjectReviewTasks(next); break;
       case 'pantryCheck': s.setPantryCheckTasks(next); break;
+      case 'mealShortfall': s.setMealShortfallTasks(next); break;
       case 'supplyReorder': s.setSupplyReorderTasks(next); break;
       case 'calendarReview': s.setCalendarReviewTasks(next); break;
       case 'birthday': s.setBirthdayTasks(next); break;
@@ -156,7 +161,9 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
   // calendarReview's arm returns calendarEventCategory rather than a category
   // of its own, for anything that calls this out of habit — but categorized:
   // false means the "File them under" row is never rendered for it, so
-  // neither arm below is actually reached in practice.
+  // that arm is never actually reached in practice. supplyReorder is
+  // categorized: false for a different reason (it inherits the source task's
+  // own category — see checkSupplyReorderTasks) and so has no arm here at all.
   const categoryOf = (kind: GeneratedKind): string | null => {
     switch (kind) {
       case 'mealSlot':
@@ -166,9 +173,10 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': return s.mealPlanNudgeTaskCategory;
       case 'projectReview': return s.projectReviewTaskCategory;
       case 'pantryCheck': return s.pantryCheckTaskCategory;
-      case 'supplyReorder': return s.supplyReorderTaskCategory;
+      case 'mealShortfall': return s.mealShortfallTaskCategory;
       case 'calendarReview': return s.calendarEventCategory;
       case 'birthday': return s.birthdayTaskCategory;
+      case 'supplyReorder': return null;
       case 'reachOut': return s.reachOutTaskCategory;
     }
   };
@@ -184,7 +192,8 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': s.setMealPlanNudgeTaskCategory(category); break;
       case 'projectReview': s.setProjectReviewTaskCategory(category); break;
       case 'pantryCheck': s.setPantryCheckTaskCategory(category); break;
-      case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
+      case 'mealShortfall': s.setMealShortfallTaskCategory(category); break;
+      case 'birthday': s.setBirthdayTaskCategory(category); break;
       // Unreached — see categoryOf above — but a real, honest answer rather
       // than a no-op: this is genuinely how calendarReview's category changes.
       case 'calendarReview': s.setCalendarEventCategory(category); break;
@@ -236,6 +245,38 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
               label="Days before the use-by date"
               describeValue={n =>
                 n === 0 ? 'On the use-by day' : `${n} ${n === 1 ? 'day' : 'days'} before`
+              }
+            />
+          </View>
+        </>
+      );
+    }
+
+    if (kind === 'mealShortfall') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="calendar-outline"
+            label="Show the task"
+            hint="How many days before the meal the shopping task falls due"
+            value={
+              s.mealShortfallLeadDays === 0
+                ? 'On the day'
+                : `${s.mealShortfallLeadDays} ${s.mealShortfallLeadDays === 1 ? 'day' : 'days'} before`
+            }
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.mealShortfallLeadDays}
+              onChange={next => s.setMealShortfallLeadDays(next ?? MEAL_SHORTFALL_LEAD_DAYS_DEFAULT)}
+              min={MEAL_SHORTFALL_LEAD_DAYS_MIN}
+              max={MEAL_SHORTFALL_LEAD_DAYS_MAX}
+              format={n => (n === 0 ? 'Day of' : `${n}d`)}
+              label="Days before the meal"
+              describeValue={n =>
+                n === 0 ? 'On the day of the meal' : `${n} ${n === 1 ? 'day' : 'days'} before`
               }
             />
           </View>

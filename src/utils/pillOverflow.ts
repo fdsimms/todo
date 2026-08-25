@@ -7,9 +7,9 @@
  * user-built with no ceiling at all — so the grocery item sheet rendered ~30
  * pills across two grids, burying the name/quantity/note fields it also holds.
  *
- * The rule is the same one `editorFold` applies to rows: show what's set plus
- * a handful, and put the rest behind one "N more". Two things differ, both
- * because a pill grid is a *picker* rather than a form:
+ * The rule: show what's set plus a handful, and put the rest behind one
+ * "N more". Two things differ from a plain overflow cap, both because a pill
+ * grid is a *picker* rather than a form:
  *
  *  - Past the cap the grid also earns a filter field, since a set big enough
  *    to hide from is a set big enough to be worth searching. That field
@@ -104,9 +104,9 @@ export function resolvePillOverflow<T extends OverflowPill>(
   const visible = options.filter(o => o.selected || o.pinned || filler.has(o));
   const hiddenCount = options.length - visible.length;
 
-  // Same trade `foldRows` makes: a "1 more" stands about as tall as the pill it
-  // conceals, so it costs a tap to save nothing — and you have to spend the tap
-  // to discover it was one thing.
+  // A "1 more" stands about as tall as the pill it conceals, so it costs a
+  // tap to save nothing — and you have to spend the tap to discover it was
+  // one thing.
   if (hiddenCount === 1) {
     return { visible: options, hiddenCount: 0, filterable, exact: null, noMatches: false };
   }

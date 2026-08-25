@@ -241,7 +241,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   button: {
     backgroundColor: colors.warning,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     borderRadius: radius.full,
   },
   buttonText: { color: colors.onWarning, fontSize: font.sm, fontWeight: fontWeight.bold },

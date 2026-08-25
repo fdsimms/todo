@@ -255,8 +255,9 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (seven generators now: `supplyReorder` is the newest, and the first whose source is a task) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (ten generators now: `mealShortfall` is the newest, and the one whose source the user re-plans freely) |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
+| a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |
@@ -334,10 +335,10 @@ exports.
 **Read narrowly.** 43 files are over 1,000 lines, 28 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (5.9k), `components/TaskEditor.tsx` (4.6k),
-`store/useGroceryStore.ts` (4.1k), `db/database.ts` (4.0k), `screens/TodayScreen.tsx` (4.0k),
+`store/useTaskStore.ts` (6.1k), `components/TaskEditor.tsx` (4.6k),
+`store/useGroceryStore.ts` (4.1k), `db/database.ts` (4.1k), `screens/TodayScreen.tsx` (4.0k),
 `components/TaskItem.tsx` (3.5k), `types/index.ts` (3.4k),
-`components/QuickAddModal.tsx` (2.8k), `store/useSettingsStore.ts` (2.5k),
+`components/QuickAddModal.tsx` (2.8k), `store/useSettingsStore.ts` (2.6k),
 `utils/demoSeed.ts` (2.3k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
@@ -444,7 +445,7 @@ decided, and the design system every screen is built from. Individual features a
 |---|---|
 | `docs/arch/groceries.md` | Aisles, stores, the active trip, the kitchen/pantry, either/or, substitutes, standing swaps |
 | `docs/arch/recipes.md` | Composed recipes, sections, quantities, scaling, unit conversion, cook mode |
-| `docs/arch/generated-tasks.md` | The five things that write a task unattended |
+| `docs/arch/generated-tasks.md` | The things that write a task unattended |
 | `docs/arch/month-grid.md` | The calendar month view and projected occurrences |
 | `docs/arch/template-questions.md` | What a template run asks before it creates anything |
 | `docs/arch/timed-tasks.md` | Countdowns, and splitting one across subtasks |
@@ -817,20 +818,20 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 **The task editor's fields are searchable, and the index is the JSX.** The magnifier in
 `TaskEditor`'s header opens a `SearchField` that filters the sheet down to matching rows
-(`src/utils/editorSearch.ts`, `searchTerms` on `EditorGroup`) — groups with no hit disappear,
-matching ones open regardless of the fold. Three decisions worth not re-deriving:
+(`src/utils/editorSearch.ts`, `searchTerms` on `EditorGroup`) — groups with no hit disappear.
+Every field always renders regardless of search; search only narrows which of them are on screen.
+Three decisions worth not re-deriving:
 
 - **An `EditorGroupRow` carries its own `keywords`**, so there is no `taskEditorIndex.ts` to keep in
-  step with the form the way `settingsIndex.ts` must. The rows already declare `label` and `set`
-  computed against the task being edited, which is exactly the index a search needs; a separate
-  file would be a second copy that goes stale, and #1229 correctly sized that as the expensive part.
-  **The keywords are the feature**, not a nicety — a tidier layout can't help someone looking for
-  *blocked*, *away*, *snooze* or *url*, and that gets worse with every field added.
+  step with the form the way `settingsIndex.ts` must. The rows already declare `label`, which is
+  exactly the index a search needs; a separate file would be a second copy that goes stale, and
+  #1229 correctly sized that as the expensive part. **The keywords are the feature**, not a nicety
+  — a tidier layout can't help someone looking for *blocked*, *away*, *snooze* or *url*, and that
+  gets worse with every field added.
 - **It filters in place; it does not scroll to a row.** `searchSettings` ranks and jumps because
   Settings renders a *result list* over rows that live behind a navigation step. These rows are the
   form, so the match is shown where it lives — which is also why `filterEditorRows` is deliberately
-  unranked (a form that re-sorts as you type is one you can't learn — the same call `foldRows` makes
-  about not hoisting set rows).
+  unranked (a form that re-sorts as you type is one you can't learn).
 - **It's behind the magnifier, not a permanent bar.** The sheet is dense, and a bar every task edit
   pays for to serve the edits that need it is the trade that made the editor long in the first place.
   Closing clears the query, and reopening the sheet resets it — handing someone back a filtered form

@@ -1,11 +1,9 @@
 /**
  * Finding a field in the task editor by name.
  *
- * The editor holds 26 rows across seven groups, and `editorFold.ts` keeps that
- * legible by hiding what a task doesn't use — but the two problems are
- * different. Folding answers "what does this task look like"; this answers "I
- * know the field exists, where is it", which folding actually makes slightly
- * harder, since an unset row is now behind a "3 more" or a folded group.
+ * The editor holds 26 rows across seven groups, all of them always on screen,
+ * so this answers "I know the field exists, where is it" — a tidier layout
+ * can't help with that on its own.
  *
  * The half a tidier layout can never give you is the *wrong word*. "Waiting
  * on" is what you'd look for as blocked, depends on, after; "Vacation pause"
@@ -62,9 +60,8 @@ export function matchesEditorQuery(item: EditorSearchable, terms: string[]): boo
  * one place the two diverge and it follows from where the results are shown:
  * Settings renders a result list, which has no order of its own to respect, so
  * the best match belongs at the top. These rows are rendered as the form
- * itself, where the order is meaningful (date, then deadline, then repeat) —
- * the same reason `foldRows` refuses to hoist a set row to the top of its
- * group. A form that re-sorts as you type is a form you can't learn.
+ * itself, where the order is meaningful (date, then deadline, then repeat). A
+ * form that re-sorts as you type is a form you can't learn.
  */
 export function filterEditorRows<T extends EditorSearchable>(rows: T[], terms: string[]): T[] {
   if (terms.length === 0) return rows;
