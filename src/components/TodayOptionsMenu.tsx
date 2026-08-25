@@ -37,6 +37,16 @@ interface Props {
    */
   onPullFromProjects: () => void;
   /**
+   * Opens the focus session setup sheet, seeded from the people you have a
+   * reach-out nudge for right now (#2091). Omitted rather than shown-and-
+   * explained like `onPullFromProjects`, since a project going quiet is
+   * always eventually true and this isn't — most of the time nobody is due,
+   * and a row that only sometimes does anything is worse than no row.
+   */
+  onBatchReachOuts?: () => void;
+  /** How many people it would start with, shown as the action's hint. */
+  reachOutCount?: number;
+  /**
    * Opens the sheet that orders Today's category sections. This is the only way
    * to reorder them — dragging a section header on the list itself is gone.
    */
@@ -59,6 +69,8 @@ export function TodayOptionsMenu({
   plannedLabel,
   onLookAhead,
   onPullFromProjects,
+  onBatchReachOuts,
+  reachOutCount,
   onReorderCategories,
   categoryCount,
 }: Props) {
@@ -172,6 +184,32 @@ export function TodayOptionsMenu({
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
           <View style={styles.optionSep} />
+          {onBatchReachOuts && (
+            <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                haptics.tap();
+                onBatchReachOuts();
+              }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel="Batch your reach-outs into a focus session"
+            >
+              <Ionicons name="people-outline" size={18} color={colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Reach out to people</Text>
+                <Text style={styles.optionHint}>
+                  {(reachOutCount ?? 0) === 1
+                    ? 'One person, in a focus session'
+                    : `${reachOutCount ?? 0} people, in one focus session`}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+            <View style={styles.optionSep} />
+            </>
+          )}
           <TouchableOpacity
             style={styles.optionRow}
             onPress={() => {

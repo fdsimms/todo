@@ -350,15 +350,21 @@ export function suggestFocusTasks(
  * since the ranking is the input, not something to improve on. The loop
  * still doesn't stop at the first task that fails to fit — a smaller one
  * further down can still round out the window.
+ *
+ * **A second caller uses this unchanged: "batch the reach-outs" (#2091).**
+ * The live `generatedKind: 'reachOut'` tasks are already the whole set — the
+ * cap on that generator (`MAX_REACH_OUT_TASKS`) does the ranking, the same
+ * way pinning does here — so this needed no reach-out-specific version, only
+ * a second caller. See `docs/arch/people.md`.
  */
 export function focusQueueFromPinned(
-  pinnedTasks: readonly Task[],
+  seedTasks: readonly Task[],
   ctx: FocusContext,
 ): string[] {
   const listed: Task[] = [];
   const picked: string[] = [];
 
-  for (const task of pinnedTasks) {
+  for (const task of seedTasks) {
     if (task.completed || task.archived || task.parentId !== null) continue;
     if (isBlocked(task, ctx.resolve)) continue;
     if (!fitsWindow(listed, task, ctx)) continue;

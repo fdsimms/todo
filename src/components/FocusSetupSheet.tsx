@@ -57,6 +57,13 @@ interface Props {
    * longer fits still deserves a replacement.
    */
   pinnedSeed?: readonly Task[];
+  /**
+   * The same shortcut, seeded from the live reach-out tasks instead — "batch
+   * the reach-outs" (#2091). Mutually exclusive with `pinnedSeed` in practice
+   * (nothing opens both at once); if a caller somehow passed both, pinned
+   * wins, on no principle stronger than it was here first.
+   */
+  reachOutSeed?: readonly Task[];
   onClose: () => void;
   /**
    * The queue, in run order, and the plan options to build it with. Empty
@@ -100,6 +107,12 @@ interface Props {
  * one, since pinning already is the ranking; everything past that point (the
  * window, the plan preview, ticking, swapping) is the same sheet.
  *
+ * `reachOutSeed` is a third entry point on the same mechanism — "batch the
+ * reach-outs" (#2091). The live reach-out tasks are already the whole
+ * shortlist (`MAX_REACH_OUT_TASKS` is the ranking, the way pinning is for the
+ * seed above), so it needed no new picking logic, only a second caller of
+ * `focusQueueFromPinned` and its own copy. See `docs/arch/people.md`.
+ *
  * The Breaks toggle is a per-session override, not a shortcut to Settings: it
  * only ever turns breaks *off* for the run about to start, never on past what
  * Settings already does, and it's dropped from the sheet entirely once
@@ -108,7 +121,7 @@ interface Props {
  * legitimate thing to ask for"). The plan preview and `onStart` both read the
  * same `effectivePlanOptions`, so what's shown is exactly what runs.
  */
-export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose, onStart }: Props) {
+export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOutSeed, onClose, onStart }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -170,22 +183,34 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
    * a task completed on the list behind the sheet doesn't reshuffle a
    * proposal mid-read.
    */
+  // Drives the four copy sites below, so none of them re-derives which seed
+  // is active on its own — see the note on `reachOutSeed`, pinned wins if
+  // both are somehow set.
+  const seedLabel: 'pinned' | 'reachOut' | null =
+    pinnedSeed && pinnedSeed.length > 0 ? 'pinned'
+    : reachOutSeed && reachOutSeed.length > 0 ? 'reachOut'
+    : null;
+
   const repick = (window: number | null) => {
     const nextCtx = buildFocusContext(allTasks, { windowMinutes: window, planOptions });
 
-    if (pinnedSeed && pinnedSeed.length > 0) {
+    const seed = pinnedSeed && pinnedSeed.length > 0
+      ? pinnedSeed
+      : reachOutSeed && reachOutSeed.length > 0 ? reachOutSeed : null;
+    if (seed) {
       // Union with the ordinary pool: a pinned task can be hidden from
       // `tasks` (pinnedTasks() ignores visibility on purpose) and still needs
       // to resolve here, and a swap still needs somewhere to draw a
-      // replacement from.
+      // replacement from. A reach-out task doesn't have that visibility gap,
+      // but unioning it the same way costs nothing and keeps one code path.
       const seen = new Set<string>();
       const snapshot: Task[] = [];
-      for (const t of [...pinnedSeed, ...tasks]) {
+      for (const t of [...seed, ...tasks]) {
         if (seen.has(t.id)) continue;
         seen.add(t.id);
         snapshot.push(t);
       }
-      const picked = focusQueueFromPinned(pinnedSeed, nextCtx);
+      const picked = focusQueueFromPinned(seed, nextCtx);
       setPool(snapshot);
       setCtx(nextCtx);
       setSlotIds(picked);
@@ -439,13 +464,23 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
 
         <View style={styles.card}>
           <View style={styles.header}>
-            <Text style={styles.sheetTitle}>{pinnedSeed ? 'Focus session · Pinned' : 'Focus session'}</Text>
+            <Text style={styles.sheetTitle}>
+              {seedLabel === 'pinned' ? 'Focus session · Pinned'
+                : seedLabel === 'reachOut' ? 'Focus session · Reach out'
+                : 'Focus session'}
+            </Text>
             <View style={styles.headerRight}>
               <View style={styles.countRow}>
                 <Ionicons name="hourglass-outline" size={13} color={colors.textTertiary} />
                 <Text style={styles.countText}>
                   <Text style={styles.countValue}>{selected.length}</Text>
-                  {pinnedSeed ? ` of ${slots.length} pinned` : ` of ${MAX_SUGGESTED_FOCUS}`}
+                  {seedLabel === 'pinned' ? ` of ${slots.length} pinned`
+                    // No trailing noun, unlike the pinned count beside it: the
+                    // title already says "Reach out" and repeating it as
+                    // "N of N reach-outs" is what pushed the header onto two
+                    // lines at 390pt — caught in the mock, not guessed at.
+                    : seedLabel === 'reachOut' ? ` of ${slots.length}`
+                    : ` of ${MAX_SUGGESTED_FOCUS}`}
                 </Text>
               </View>
               <TouchableOpacity
@@ -543,18 +578,24 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, onClose,
 
           {slots.length === 0 ? (
             <Text style={styles.emptyHint}>
-              {pinnedSeed
+              {seedLabel === 'pinned'
                 ? windowMinutes === null
                   ? 'Nothing to work with. Your pinned tasks are done, or waiting on another task.'
                   : `None of your pinned tasks fit in ${formatClockDuration(windowMinutes)}. Allow more time, or unpin one.`
+                : seedLabel === 'reachOut'
+                  ? windowMinutes === null
+                    ? 'Nothing to work with. Nobody is due for a reach-out right now.'
+                    : `None of your reach-outs fit in ${formatClockDuration(windowMinutes)}. Allow more time.`
                 : windowMinutes === null
                   ? 'Nothing to suggest. Everything on today is done, or waiting on another task.'
                   : `Nothing on today fits in ${formatClockDuration(windowMinutes)}. Allow more time, or shorten a task’s estimate.`}
             </Text>
           ) : (
             <Text style={styles.hint}>
-              {pinnedSeed
+              {seedLabel === 'pinned'
                 ? 'These run one at a time, in pinned order. Tap to include or skip, or swap a row for the next best task.'
+                : seedLabel === 'reachOut'
+                  ? 'These run one at a time. Tap to include or skip, or swap a row for the next best task.'
                 : 'These run one at a time, in this order. Tap to include or skip, or swap a row for the next best task.'}
             </Text>
           )}
