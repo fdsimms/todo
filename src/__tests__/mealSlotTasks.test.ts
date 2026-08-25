@@ -141,6 +141,14 @@ describe('the chain, given what the slot holds', () => {
     expect(mealSlotTaskTitle('dinner', takeaway)).toBe('Eat Takeaway');
   });
 
+  it('does not double up on "Eat" when the plan already reads as one', () => {
+    // "Eating out" is already the act of eating, so "Eat Eating out" would
+    // stutter — see the RecipePickerSheet preset chip of the same name.
+    const out = entry({ title: 'Eating out' });
+    expect(mealSlotChain('dinner', out).map(c => c.title)).toEqual(['Eating out']);
+    expect(mealSlotTaskTitle('dinner', out)).toBe('Eating out');
+  });
+
   it('gives its steps ids derived from the slot, so an unchanged chain compares equal', () => {
     const a = mealSlotChain('lunch', null);
     const b = mealSlotChain('lunch', null);
