@@ -466,11 +466,9 @@ interface SettingsStore {
    * about. Naming the meals you actually eat is the only thing the app can't
    * work out for itself — it knows what you planned, never what you skip.
    *
-   * Snack is off by default and the other three are on. A snack has no
-   * time-of-day segment (see MEAL_SLOT_SEGMENTS), so its task would sit on
-   * Today from the moment the day starts rather than surfacing when the meal
-   * does, and a day isn't incomplete for want of one — the same call
-   * MEAL_PLAN_NUDGE_SLOTS makes when it counts a day out of three.
+   * Snack is off by default and the other three are on: a day isn't
+   * incomplete for want of one — the same call MEAL_PLAN_NUDGE_SLOTS makes
+   * when it counts a day out of three.
    */
   mealSlotsEnabled: MealSlot[];
   /**

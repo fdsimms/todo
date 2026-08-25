@@ -3095,9 +3095,8 @@ export const MEAL_SLOT_LABELS: Record<MealSlot, string> = {
 
 /**
  * A glyph per meal, borrowed from the time-of-day pills in quick add — the same
- * three parts of the day MEAL_SLOT_SEGMENTS hides each meal's task behind, so a
- * row and the behaviour agree. Snack gets the cup, since it's the one with no
- * part of the day to name.
+ * three parts of the day a meal's own slot names. Snack gets the cup, since
+ * it's the one with no part of the day to name.
  *
  * Beside the labels rather than in either of the two screens that draw it (the
  * Settings rows that switch a meal on, the meal chip on a task row), because

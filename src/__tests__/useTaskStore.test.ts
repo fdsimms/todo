@@ -4488,7 +4488,7 @@ describe('checkMealSlotTasks', () => {
     expect(slotRows().filter(t => t.generatedSourceId === '2026-08-22#lunch')).toHaveLength(2);
   });
 
-  it('picks up the time gate on the step that finally finishes the chain', () => {
+  it('never gates the step that finishes the chain either — no slot hides any more', () => {
     useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['lunch'] }));
     useTaskStore.setState({ tasks: [] });
     useTaskStore.getState().checkMealSlotTasks();
@@ -4507,9 +4507,10 @@ describe('checkMealSlotTasks', () => {
       t => !t.completed && t.generatedSourceId === '2026-08-22#lunch'
     )!;
     expect(eat.chainIndex).toBe(2);
-    // "Eat lunch" finishes the chain — it's the meal itself, so it hides
-    // behind the afternoon segment same as any recurring task's own due time.
-    expect(eat.timeSegments).toEqual(['afternoon']);
+    // "Eat lunch" finishes the chain — it's the meal itself, but
+    // MEAL_SLOT_SEGMENTS maps every slot to no segment now, so it stays
+    // visible on Today same as every earlier step.
+    expect(eat.timeSegments).toEqual([]);
   });
 
   it('lets go of the source at the wrap of a repeating chain', () => {
