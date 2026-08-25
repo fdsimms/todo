@@ -395,3 +395,15 @@ point: "Choose lunch" named the slot before the sheet opened.
   `deloadPlan`/`projectPull` do. That fork is real and was deliberately left alone here: it's a
   product decision about all four at once, and this refactor is what makes it a change in one
   place instead of four.
+
+**An answered slot with a recipe to cook links to the recipe, not the meal plan day.** Until now
+`linkUrl` always opened the day on the Meal Plan screen — right for a leftover or a typed answer,
+which have nothing else to show, but wrong for "Cook X": the row exists to point at the thing you're
+about to do, and the meal plan names the meal without showing what's in it. `mealSlotLinkUrl` now
+reads the entry (`recipeLinkUrl`, `dundundun://recipe?id=…`, parsed by `deepLinks.isRecipeUrl` /
+`recipeUrlId` into `resetToRecipeDetail`) whenever `entry.recipeId && !entry.leftoverId` — exactly
+the condition `mealSlotChain` already uses to decide whether there's a Cook step at all. The link is
+carried unchanged into "Eat X" (`mealSlotDrift` writes `linkUrl` unconditionally, not just at
+`chainIndex === 0`): it's the same dish either way, and there's no second field to hold two
+destinations for one row. The picker link for an unanswered slot, and the meal-plan link for a
+leftover/takeout/typed answer, are unchanged.

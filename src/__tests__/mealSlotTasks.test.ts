@@ -236,10 +236,21 @@ describe('the fields a slot owns', () => {
   });
 
   it('offers the picker only while the slot is unanswered', () => {
-    expect(mealSlotLinkUrl('2026-08-22', 'lunch', false))
+    expect(mealSlotLinkUrl('2026-08-22', 'lunch', null))
       .toBe('dundundun://mealplan?date=2026-08-22&pick=lunch');
-    // Answered, so the row stops offering to re-decide.
-    expect(mealSlotLinkUrl('2026-08-22', 'lunch', true)).toBe('dundundun://mealplan?date=2026-08-22');
+    // Answered with no recipe (a leftover), so the row stops offering to
+    // re-decide but still has no recipe to open instead.
+    expect(mealSlotLinkUrl('2026-08-22', 'lunch', entry({ leftoverId: 'lo-1' })))
+      .toBe('dundundun://mealplan?date=2026-08-22');
+  });
+
+  it('opens the recipe itself once the slot holds one to cook', () => {
+    expect(mealSlotLinkUrl('2026-08-22', 'dinner', entry({ recipeId: 'r-1' })))
+      .toBe('dundundun://recipe?id=r-1');
+    // A leftover naming both a recipe and its own id has nothing to cook —
+    // there's no Cook step (see mealSlotChain) and so no recipe to open.
+    expect(mealSlotLinkUrl('2026-08-22', 'dinner', entry({ recipeId: 'r-1', leftoverId: 'lo-1' })))
+      .toBe('dundundun://mealplan?date=2026-08-22');
   });
 
   it('files a new task under the category it was given, and points back at its slot', () => {
@@ -289,7 +300,7 @@ describe('drift', () => {
     const updates = mealSlotDrift(task, '2026-08-22', 'dinner', planned)!;
     expect(updates.title).toBe('Chili');
     expect(updates.chainItems!.map(c => c.title)).toEqual(['Cook Chili', 'Eat Chili']);
-    expect(updates.linkUrl).toBe('dundundun://mealplan?date=2026-08-22');
+    expect(updates.linkUrl).toBe('dundundun://recipe?id=r1');
     // Still step 0 of its (now two-step) chain either way — nothing to write.
     expect(updates.timeSegments).toBeUndefined();
   });
