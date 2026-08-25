@@ -852,6 +852,15 @@ function seedPeople(today: Date): void {
   // would be seeding no reminder at all, and then the feature reads as absent.
   updateTask(coffee.id, { completedAt: addDays(today, -20).toISOString() });
 
+  // Two of them are coming for dinner tomorrow (#2077). Guests are the tie-in
+  // that makes the kitchen half and the people half one app, and a meal with
+  // nobody on it reads as a feature this app doesn't have — so one seeded meal
+  // carries them, which is also what puts a row under COMING UP on Ansley's and
+  // Mom's own screens without anything having been ticked off.
+  if (seededSalmonNightId) {
+    useMealPlanStore.getState().setMealGuests(seededSalmonNightId, [ansley.id, mom.id]);
+  }
+
   // The birthday task comes from the same pass the app runs at launch rather
   // than from a row written by hand here: a seeded row that skipped the
   // generator could drift from what the generator actually produces.
@@ -2026,6 +2035,16 @@ function seedMealPlanNudgeStack(
   });
 }
 
+/**
+ * Tomorrow's dinner, handed to `seedPeople` so it can name guests on it.
+ *
+ * A module-level handoff rather than a return value because the meals are
+ * seeded behind the kitchen switch and the people are not, so the two calls
+ * can't be chained — and null when the kitchen half is off, which the guest
+ * seeding reads as "nothing to be a guest at".
+ */
+let seededSalmonNightId: string | null = null;
+
 function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, stampAddedToList } =
     useMealPlanStore.getState();
@@ -2201,6 +2220,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // Captured for the shopping task seeded at the end of this function — it's
   // the night the kitchen can't currently make.
   const salmonNight = plan(1, 'dinner', { title: 'Lemon garlic salmon', recipeId: recipes.salmon });
+  seededSalmonNightId = salmonNight?.id ?? null;
 
   // Freeform — planning doesn't require a recipe, and a night that just says
   // "eating out" holds its place and counts like any other.

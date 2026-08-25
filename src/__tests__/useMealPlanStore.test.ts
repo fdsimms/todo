@@ -145,6 +145,7 @@ function entry(
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
+    personIds: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
@@ -791,6 +792,35 @@ describe('setRecipeChoices', () => {
 
     useMealPlanStore.getState().setRecipeChoices('gone', ['c-roast']);
 
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+  });
+});
+
+describe('setMealGuests', () => {
+  it('records who is coming and writes it back', () => {
+    const dinner = entry('2026-08-05', 'dinner');
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setMealGuests(dinner.id, ['p1', 'p2']);
+
+    expect(getEntries().find(e => e.id === dinner.id)!.personIds).toEqual(['p1', 'p2']);
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dinner.id, personIds: ['p1', 'p2'] })
+    );
+  });
+
+  it('replaces rather than merges, so unticking somebody removes them', () => {
+    const dinner = entry('2026-08-05', 'dinner', { personIds: ['p1', 'p2'] });
+    loadWeek([dinner]);
+
+    useMealPlanStore.getState().setMealGuests(dinner.id, ['p1']);
+
+    expect(getEntries().find(e => e.id === dinner.id)!.personIds).toEqual(['p1']);
+  });
+
+  it('is a no-op for an entry that is not loaded', () => {
+    loadWeek([]);
+    useMealPlanStore.getState().setMealGuests('missing', ['p1']);
     expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
   });
 });

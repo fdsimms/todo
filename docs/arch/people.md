@@ -374,6 +374,43 @@ assertion.
   it also avoids: the answer would be written into the scratch settings table,
   so a dismissal made in a demo is lost and the real install is asked again.
 
+## Guests on a planned meal
+
+`MealPlanEntry.personIds` and `mealGuests.ts`. The tie-in no other app can have,
+because no other app holds both halves: once a meal knows who is coming, a
+dietary note has somewhere to be useful (#2047) and somebody's own screen can
+say "dinner here on Thursday" without anything having been ticked off.
+
+- **The same JSON array `Task.personIds` uses**, and partly for the same reason:
+  `planMeal` copies an entry's shape around and a JSON column rides every copy
+  for free. Resolve-or-shrug at every reader, like `recipeId` and `leftoverId`
+  on the same row.
+- **The picker never creates a person.** Rule 3: adding somebody is a deliberate
+  act performed on the People screen, and a picker that could invent one from a
+  meal sheet is the thin end of a list you did not write. It is `PillGroup` with
+  no `onCreate`, so the affordance does not exist rather than being refused.
+- **Nothing shows when nobody has been added yet.** An empty guest picker is a
+  prompt to start filing your friends, which is the failure mode the whole doc
+  is about. The block renders only once the People screen has somebody in it.
+- **Copying a week forward drops the guests.** They sit on `cookedAt`'s side of
+  the line rather than `recipeScale`'s: who came on Tuesday is a fact about that
+  night, not about the dish, and a copied week claiming the same four people are
+  coming again is the app asserting something about other people's plans.
+  Re-inviting is a thing you do, and it is two taps on the copied meal.
+- **The meal's generated task does not carry them**, and this is the trap worth
+  naming. A `mealSlot` task is a chain, and completing a step spawns the next
+  row with `personIds` riding the `...effective` spread — one dinner would land
+  in a guest's history three times, which is exactly the "four times the
+  evidence for one afternoon" `personHistory` excludes subtasks to avoid. What a
+  *cooked* meal should write instead is #2078.
+- **A guest's own screen reads the meals straight from SQLite**, not off
+  `useMealPlanStore.entries`, which holds whatever week the meal plan screen last
+  showed. Same call `dbGetMealPlanEntry` makes for the same reason: loading a
+  different range into `entries` would move that screen's week out from under it.
+- **Nothing counts how often somebody comes over.** `mealGuests.ts` resolves ids
+  to names and answers "which meals name this person"; there is no derivation of
+  frequency, and adding one is the disease this doc exists to prevent.
+
 ## The birthday picker keeps only the month and the day
 
 `PersonEditor` opens `WhenPicker` on the current year and throws the year away.

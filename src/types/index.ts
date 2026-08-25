@@ -3086,6 +3086,24 @@ export interface MealPlanEntry {
    */
   recipeChoices: string[];
   /**
+   * Who this meal is for — see `docs/arch/people.md`. Empty on every meal
+   * planned before this shipped and on most meals after it, which is the
+   * common case rather than missing data: cooking for yourself is cooking.
+   *
+   * The same JSON array `Task.personIds` uses, for one of the same reasons —
+   * `planMeal` copies an entry's shape around (a moved meal, a replaced one),
+   * and a JSON column rides every copy for free where a join table needs
+   * explicit logic at each. Resolve-or-shrug like every other pointer here: a
+   * deleted person leaves their id behind and every reader skips it, exactly
+   * as `recipeId` and `leftoverId` fall back rather than blanking the night.
+   *
+   * **Deliberately not on the meal's generated task.** A `mealSlot` task is a
+   * chain, and completing a step spawns the next row with `personIds` riding
+   * the `...effective` spread — one dinner would land in a guest's history
+   * three times. See #2078 for what a *cooked* meal should write instead.
+   */
+  personIds: string[];
+  /**
    * How much of the recipe this meal makes — 1 for as-written, 2 for a doubled
    * Sunday, 0.5 for cooking for one. Applied to every ingredient quantity when
    * the meal is shopped for (see collectPlannedIngredients), components

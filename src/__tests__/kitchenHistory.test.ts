@@ -23,6 +23,7 @@ function entry(overrides: Partial<MealPlanEntry> & { id: string; date: string })
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
+    personIds: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,

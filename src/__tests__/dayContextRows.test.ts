@@ -66,6 +66,7 @@ function entry(slot: MealSlot, overrides: Partial<MealPlanEntry> = {}): MealPlan
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
+    personIds: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,

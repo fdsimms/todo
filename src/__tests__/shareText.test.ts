@@ -269,7 +269,7 @@ describe('buildWeekPlanShareText', () => {
     return {
       id: `m-${++seq}`, date, slot, recipeId: null, title: 'Meal', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
       ...overrides,
     };
   }
