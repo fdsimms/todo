@@ -124,6 +124,16 @@ import {
   wantedBirthdayTasks,
   staleBirthdayTasks,
 } from '../utils/birthdayTasks';
+import {
+  declinedRecently,
+  reachOutPersonId,
+  reachOutTitle,
+  reachOutsHandledRecently,
+  staleReachOutTasks,
+  wantedReachOuts,
+  type ReachOutCandidate,
+} from '../utils/reachOutTasks';
+import { lastTogether, personHistory } from '../utils/personHistory';
 import { usePersonStore } from './usePersonStore';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
@@ -1354,6 +1364,11 @@ interface TaskStore {
    * clear the ones whose reason has gone. See src/utils/birthdayTasks.ts.
    */
   checkBirthdayTasks: () => void;
+  /**
+   * Give everybody whose cadence has run out a "Catch up with X" task, and
+   * clear the ones whose reason has gone. See src/utils/reachOutTasks.ts.
+   */
+  checkReachOutTasks: () => void;
   /**
    * Write today's meal tasks, once per logical day — see the implementation
    * for why the day is both the unit and the whole opt-out.
@@ -4007,6 +4022,79 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       });
     });
     // No setLastAction, same reasoning as checkProjectReviewTasks above.
+  },
+
+  checkReachOutTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.reachOutTasks) return;
+
+    const tasks = get().tasks;
+    const people = usePersonStore.getState().people;
+    const today = getCurrentDayStart();
+
+    // The history is derived per person from the rows that name them, which is
+    // the same read the person's own screen does — there is no stored "last
+    // contacted" anywhere, by design.
+    const candidates: ReachOutCandidate[] = people
+      // Opted-in people only, so an install where nobody has been opted in does
+      // no work at all rather than building a history for everybody on every
+      // foreground.
+      .filter(p => p.nudgeOptIn && p.cadenceDays > 0 && !p.archived)
+      .map(person => {
+        const theirs = tasks.filter(t => t.personIds.includes(person.id));
+        return { person, lastTogether: lastTogether(personHistory(theirs)) };
+      });
+
+    const handled = reachOutsHandledRecently(tasks, today);
+    const wanted = wantedReachOuts(candidates, today, handled);
+
+    // Everybody still due, uncapped — a row that lost the contest for a slot is
+    // not stale, and deleting one the user deferred to Saturday would be the
+    // app taking back an offer it already made.
+    const stillDue = new Set(
+      wantedReachOuts(candidates, today, handled, candidates.length).map(w => w.personId)
+    );
+    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: the latter
+    // routes through deleteTask, which stamps the source's opt-out. Here that
+    // would record a decline the user never made and silence the person for a
+    // week on the strength of the app's own tidying up.
+    staleReachOutTasks(tasks, stillDue).forEach(task =>
+      dropGeneratedTask('reachOut', reachOutPersonId(task))
+    );
+
+    if (wanted.length === 0) return;
+
+    ensureGeneratedTaskCategory('reachOut');
+    const category = useSettingsStore.getState().reachOutTaskCategory;
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'reachOut',
+        sourceId: want.personId,
+        wanted: true,
+        // Chases the title only, and only when it has actually changed — a
+        // renamed person, or an "ask about" note added or answered since the
+        // row was written. Deliberately never the date: by the time a second
+        // sweep runs the user may have deferred this to Saturday.
+        drift: existing => (existing.title === want.title ? null : { title: want.title }),
+        draft: () => ({
+          title: want.title,
+          dueDate: dueDate.toISOString(),
+          linkUrl: personLinkUrl(want.personId),
+          // So the row's own call and text buttons work: the whole point is
+          // that the nudge is one tap from actually doing the thing.
+          phoneNumber: want.phoneNumber,
+          category,
+          // No personIds, for the reason the birthday task carries none: a task
+          // naming somebody is the record that something happened with them,
+          // and ticking this off would otherwise reset the very clock that
+          // wrote it without you having actually reached out.
+          ...generatedBy('reachOut', want.personId),
+        }),
+      });
+    });
   },
 
   /**

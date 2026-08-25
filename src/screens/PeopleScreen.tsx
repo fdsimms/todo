@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -42,6 +42,7 @@ import { getCurrentDayStart } from '../utils/dateUtils';
  */
 export function PeopleScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void }>();
   const route = useRoute<{ key: string; name: string; params?: { openPerson?: number; personId?: string } }>();
   const tabBarHeight = useBottomTabBarHeight();
   const colors = useColors();
@@ -52,7 +53,8 @@ export function PeopleScreen() {
   const reorderPeople = usePersonStore(s => s.reorderPeople);
   const birthdayLeadDays = useSettingsStore(s => s.birthdayLeadDays);
 
-  const [editingPerson, setEditingPerson] = useState<Person | null>(null);
+  // Only ever the person just created from "More details" — an existing one is
+  // edited from their own screen now, which is where the "…" lives.
   const [newPerson, setNewPerson] = useState<Person | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
@@ -62,22 +64,16 @@ export function PeopleScreen() {
     [people, showArchived]
   );
 
-  // The stamped-param handoff a birthday task's own row arrives through
-  // (dundundun://people?person=<id> — see utils/birthdayTasks.personLinkUrl),
-  // the same shape TodayScreen uses for the project review task's link. A
-  // person deleted between the task being written and the row being tapped
-  // resolves to nothing and simply lands on the list, which is the right answer.
+  // A link naming an archived person still has to land somewhere sensible: the
+  // detail screen is pushed on top of this list by resetToPeople, and this list
+  // filters archived people out, so flip the lens rather than leaving the back
+  // chevron pointing at a list that does not contain them.
   const [handledOpenPerson, setHandledOpenPerson] = useState<number | undefined>(undefined);
   useEffect(() => {
     if (route.params?.openPerson === undefined || route.params.openPerson === handledOpenPerson) return;
     setHandledOpenPerson(route.params.openPerson);
     const target = people.find(p => p.id === route.params?.personId);
-    if (target) {
-      // Archived people are filtered out of the list, so a link to one has to
-      // flip the lens as well as open the sheet or it would open over nothing.
-      if (target.archived) setShowArchived(true);
-      setEditingPerson(target);
-    }
+    if (target?.archived) setShowArchived(true);
   }, [route.params?.openPerson, route.params?.personId, handledOpenPerson, people]);
 
   const today = getCurrentDayStart();
@@ -152,13 +148,13 @@ export function PeopleScreen() {
             return (
               <TouchableOpacity
                 style={[styles.row, isActive && styles.rowActive]}
-                onPress={() => { haptics.tap(); setEditingPerson(person); }}
+                onPress={() => { haptics.tap(); navigation.navigate('PersonDetail', { personId: person.id }); }}
                 onLongPress={drag}
                 delayLongPress={interaction.delayLongPress}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={spokenMeta ? `${name}. ${spokenMeta}` : name}
-                accessibilityHint="Double tap to edit. Long press to reorder."
+                accessibilityHint="Double tap to open. Long press to reorder."
               >
                 <View style={[styles.avatar, { backgroundColor: colors.accentSubtle }]}>
                   <Text style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
@@ -216,10 +212,10 @@ export function PeopleScreen() {
       />
 
       <PersonEditor
-        visible={editingPerson !== null || newPerson !== null}
-        person={editingPerson ?? newPerson}
-        isNew={newPerson !== null}
-        onClose={() => { setEditingPerson(null); setNewPerson(null); }}
+        visible={newPerson !== null}
+        person={newPerson}
+        isNew
+        onClose={() => setNewPerson(null)}
       />
     </View>
   );

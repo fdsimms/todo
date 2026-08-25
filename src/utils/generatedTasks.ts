@@ -110,6 +110,7 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'supplyReorder',
   'calendarReview',
   'birthday',
+  'reachOut',
 ];
 
 /**
@@ -196,6 +197,18 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // The only generator whose trigger is known years ahead rather than derived
   // from something that just changed, which is why it is the one that can fire
   // a task *before* the thing it is about — see src/utils/birthdayTasks.ts.
+  // Silent on everybody until a person is explicitly opted in, which is the
+  // real gate — the setting below only decides whether the pass runs at all.
+  reachOut: {
+    kind: 'reachOut',
+    label: 'Reminders to keep in touch',
+    onHint: 'A person you asked to be reminded about gets a task when it has been a while',
+    offHint: 'People add no catch-up tasks',
+    icon: 'people-outline',
+    sourced: true,
+    categorized: true,
+    defaultCategory: 'People',
+  },
   birthday: {
     kind: 'birthday',
     label: 'Birthday reminders',

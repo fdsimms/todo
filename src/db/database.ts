@@ -247,7 +247,8 @@ export function initDatabase(): void {
       link_url TEXT,
       cadence_days INTEGER NOT NULL DEFAULT 0,
       nudge_opt_in INTEGER NOT NULL DEFAULT 0,
-      reach_out_declined_at TEXT
+      reach_out_declined_at TEXT,
+      ask_about TEXT NOT NULL DEFAULT ''
     );
 
     CREATE TABLE IF NOT EXISTS template_categories (
@@ -1020,6 +1021,10 @@ export function initDatabase(): void {
     // task" — the one value that suppresses the feature for ever after. See
     // MealPlanEntry.shopTask.
     'ALTER TABLE meal_plan_entries ADD COLUMN shop_task INTEGER',
+    // Something to ask them about next time — see Person.askAbout. Appended
+    // rather than added to the CREATE TABLE above, so an install that already
+    // has the people table picks it up.
+    "ALTER TABLE people ADD COLUMN ask_about TEXT NOT NULL DEFAULT ''",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -3859,6 +3864,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     cadenceDays: (row.cadence_days as number) ?? 0,
     nudgeOptIn: Boolean(row.nudge_opt_in),
     reachOutDeclinedAt: (row.reach_out_declined_at as string) ?? null,
+    askAbout: (row.ask_about as string) ?? '',
   };
 }
 
@@ -3872,15 +3878,15 @@ export function dbInsertPerson(person: Person): void {
     `INSERT INTO people (
       id, name, nickname, notes, sort_order, archived, archived_at, created_at,
       birthday_month, birthday_day, birth_year, birthday_task_opt_out,
-      phone_number, email, link_url, cadence_days, nudge_opt_in, reach_out_declined_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      phone_number, email, link_url, cadence_days, nudge_opt_in, reach_out_declined_at, ask_about
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
       person.birthdayMonth, person.birthdayDay, person.birthYear,
       person.birthdayTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
-      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.reachOutDeclinedAt,
+      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.reachOutDeclinedAt, person.askAbout,
     ]
   );
 }
@@ -3890,7 +3896,7 @@ export function dbUpdatePerson(person: Person): void {
     `UPDATE people SET
       name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?,
-      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, reach_out_declined_at=?
+      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, reach_out_declined_at=?, ask_about=?
     WHERE id=?`,
     [
       person.name, person.nickname, person.notes, person.sortOrder,
@@ -3898,7 +3904,7 @@ export function dbUpdatePerson(person: Person): void {
       person.birthdayMonth, person.birthdayDay, person.birthYear,
       person.birthdayTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
-      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.reachOutDeclinedAt,
+      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.reachOutDeclinedAt, person.askAbout,
       person.id,
     ]
   );

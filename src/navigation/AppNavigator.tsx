@@ -29,6 +29,7 @@ import { KitchenScreen } from '../screens/KitchenScreen';
 import { TemplateDetailScreen } from '../screens/TemplateDetailScreen';
 import { ProjectDetailScreen } from '../screens/ProjectDetailScreen';
 import { CategoryDetailScreen } from '../screens/CategoryDetailScreen';
+import { PersonDetailScreen } from '../screens/PersonDetailScreen';
 import { TipsScreen } from '../screens/TipsScreen';
 import { SideMenuDrawer } from '../components/SideMenuDrawer';
 import { SettingsScreen } from '../screens/SettingsScreen';
@@ -81,7 +82,7 @@ const KITCHEN_SCREENS = new Set(['Groceries', 'Recipes', 'MealPlan', 'Kitchen'])
 // drawer's current selection.
 const PUSHED_ROUTES = new Set([
   'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail',
-  'RecipeDetail',
+  'RecipeDetail', 'PersonDetail',
 ]);
 
 function MorePlaceholder() {
@@ -362,6 +363,11 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="CategoryDetail"
             component={CategoryDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="PersonDetail"
+            component={PersonDetailScreen}
             options={{ presentation: 'card' }}
           />
         </RootStack.Navigator>

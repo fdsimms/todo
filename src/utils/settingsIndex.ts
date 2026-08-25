@@ -388,6 +388,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'birthdayTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
     keywords: ['category', 'birthday', 'people'] },
+  { id: 'reachOutTasks', groupId: 'tasksProjects', label: 'Reminders to keep in touch', section: 'Tasks the app adds',
+    keywords: ['people', 'person', 'friend', 'family', 'catch up', 'cadence', 'nudge',
+      'reach out', 'contact', 'generated', 'automatic'] },
+  { id: 'reachOutTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
+    keywords: ['category', 'people', 'catch up'] },
   // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
   // with the area gone there is nothing left for it to convert.
   { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',

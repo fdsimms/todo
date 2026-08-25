@@ -126,6 +126,7 @@ function AppRoot() {
   const checkMealShortfallTasks = useTaskStore(s => s.checkMealShortfallTasks);
   const checkCalendarReviewTasks = useTaskStore(s => s.checkCalendarReviewTasks);
   const checkBirthdayTasks = useTaskStore(s => s.checkBirthdayTasks);
+  const checkReachOutTasks = useTaskStore(s => s.checkReachOutTasks);
   const checkScheduledTemplates = useTemplateStore(s => s.checkScheduledTemplates);
   const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
   const purgeOldMealPlanEntries = useMealPlanStore(s => s.purgeOldEntries);
@@ -209,6 +210,10 @@ function AppRoot() {
       // After initSettings for the same reason the meal pass is: the day a task
       // lands on is the logical one, and the lead time is a setting.
       ['check birthday tasks', checkBirthdayTasks],
+      // Beside the birthday pass and for the same reason: the trigger is time
+      // passing rather than a source changing. Does no work at all until
+      // somebody has been opted in.
+      ['check reach-out tasks', checkReachOutTasks],
       // A leftover can age from "fresh" into "soon" purely by time passing too
       // — same trigger as the two passes above, and it reads the leftovers
       // initTasks' fan-out has already loaded. This used to run only on
@@ -246,7 +251,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkMealShortfallTasks, checkBirthdayTasks, checkCalendarReviewTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkMealShortfallTasks, checkBirthdayTasks, checkReachOutTasks, checkCalendarReviewTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any

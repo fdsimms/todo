@@ -142,15 +142,19 @@ export function resetToFocusSession(): void {
  * names somebody — where a birthday task's row goes.
  *
  * A param rather than a second route, the shape resetToProjectPull already
- * uses: the sheet belongs to the list screen, so opening it from a link and
- * opening it from a row are the same code path.
+ * uses: the detail screen is pushed on top of the list, so arriving from a
+ * link and arriving from a row land in the same place with the same way back.
  */
 export function resetToPeople(personId?: string | null): void {
   if (!navigationRef.isReady()) return;
+  // The list first, always, so the back chevron on the detail screen has
+  // somewhere to go — a birthday task tapped from Today would otherwise push a
+  // card onto whatever tab happened to be underneath.
   navigationRef.navigate({
     name: 'People',
-    params: personId ? { openPerson: Date.now(), personId } : {},
+    params: personId ? { openPerson: Date.now(), personId } : undefined,
   });
+  if (personId) navigationRef.navigate({ name: 'PersonDetail', params: { personId } });
 }
 
 export function resetToProjectPull(projectId?: string | null): void {
