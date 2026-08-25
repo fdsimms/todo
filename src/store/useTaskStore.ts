@@ -5225,8 +5225,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().bulkDefer(ids, until);
   },
 
+  // Scoped to today's members, not the whole roster: pinnedTasks() ignores
+  // visibility once a task is pinned (see the Pinning note in CLAUDE.md), so
+  // pinning a member dated weeks out used to land it in the Pinned block and
+  // strand it there. Members not due today keep whatever pinned state they
+  // already had, even though the editor still lists them alongside the ones
+  // this actually toggles.
   pinGroup(groupId) {
-    const ids = get().groupRosterOf(groupId).filter(c => !c.completed).map(c => c.id);
+    const ids = get().groupRosterOf(groupId).filter(c => !c.completed && isRelevantToGroupToday(c)).map(c => c.id);
     if (ids.length === 0) return;
     const allPinned = ids.every(id => get().tasks.find(t => t.id === id)?.pinned);
     const nextPinned = !allPinned;

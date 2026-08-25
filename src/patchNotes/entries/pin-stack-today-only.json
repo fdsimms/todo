@@ -1,0 +1,4 @@
+{
+  "message": "Pinning a whole stack now only pins the tasks in it that are due today, instead of every task in the stack regardless of date",
+  "date": "2026-08-25"
+}

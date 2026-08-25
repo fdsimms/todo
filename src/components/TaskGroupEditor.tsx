@@ -134,9 +134,10 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const dueToday = members.filter(isRelevantToGroupToday);
   const doneToday = dueToday.filter(c => c.completed).length;
 
-  // Same roster pinGroup itself acts on — completed occurrences aren't
-  // members any more (see groupRoster) and can't be pinned.
-  const pinEligible = members.filter(c => !c.completed);
+  // Same subset pinGroup itself acts on — completed occurrences aren't
+  // members any more (see groupRoster) and a member not due today is left
+  // alone rather than stranded in the Pinned block regardless of its date.
+  const pinEligible = members.filter(c => !c.completed && isRelevantToGroupToday(c));
   const allPinned = pinEligible.length > 0 && pinEligible.every(c => c.pinned);
 
   const handlePin = () => {

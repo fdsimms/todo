@@ -383,10 +383,17 @@ export function seedDemoData(): void {
 
   // --- A stack (three independently-scheduled tasks under one label) --------
   const supplements = createGroup('Supplements', 'Health');
-  addNewGroupedTask(supplements.id, 'Vitamin D');
-  addNewGroupedTask(supplements.id, 'Omega-3');
+  const vitaminD = addNewGroupedTask(supplements.id, 'Vitamin D');
+  const omega3 = addNewGroupedTask(supplements.id, 'Omega-3');
   const iron = addNewGroupedTask(supplements.id, 'Iron');
-  updateTask(iron.id, { timeSegments: ['evening'] });
+  // pinGroup only pins members due today (see the Pinning note in CLAUDE.md),
+  // so all three need a date signal today for the pin-all demo below to
+  // actually catch all three rather than leaving some unpinned. Plain
+  // dueDates rather than a time segment, since an 'evening' segment would
+  // make the demo's own pin-all miss Iron until that time of day arrives.
+  updateTask(vitaminD.id, { dueDate: today.toISOString() });
+  updateTask(omega3.id, { dueDate: today.toISOString() });
+  updateTask(iron.id, { dueDate: today.toISOString() });
   // Pinned as a whole via the stack editor's pin button, so the Pinned Tasks
   // block shows a copy of all three alongside the lone pinned task above.
   pinGroup(supplements.id);
