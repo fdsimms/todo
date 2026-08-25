@@ -4647,6 +4647,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   skipNextRecurrence(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.recurrenceType === 'none') return;
+    // This rolls the row onto its next occurrence *in place* rather than
+    // spawning a fresh one, so it's the one other place (besides completeTask
+    // and rolloverQuotas) that has to apply a pending "this task only"
+    // edit's seriesDefaults revert itself — nothing else ever will for this
+    // row. Skipped without it, an occurrence-scoped content edit made just
+    // before a task expired (or was marked missed ahead of its day) never
+    // gets undone: the row that was supposed to carry it for one occurrence
+    // only just keeps rolling forward with it forever.
+    const effective: Task = { ...task, ...(task.seriesDefaults ?? {}) };
+    const contentReset: Partial<Task> = {};
+    for (const key of CONTENT_FIELDS) captureField(contentReset, effective, key);
     // Mirror completeTask's advancesBySchedule split: a mid-chain step never
     // consults the recurrence schedule, so skipping one should only move the
     // chain position — pushing dueDate/recurrenceCount here would burn a full
@@ -4661,24 +4672,25 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // recurrenceCount is left alone in both modes: skipping a step isn't
       // skipping a cycle (same reasoning as completeTask's two flags).
       if (!task.chainStepOnSchedule) {
-        get().updateTask(id, { chainIndex: task.chainIndex + 1 });
+        get().updateTask(id, { ...contentReset, chainIndex: task.chainIndex + 1 });
         return;
       }
       const stepDue = getNextDueDate(task, dayResetTime, { catchUp: true });
       if (!stepDue) {
-        get().updateTask(id, { chainIndex: task.chainIndex + 1 });
+        get().updateTask(id, { ...contentReset, chainIndex: task.chainIndex + 1 });
         return;
       }
-      let stepReminderTime: string | null = task.reminderTime;
-      if (task.reminderTime) {
-        const original = new Date(task.reminderTime);
+      let stepReminderTime: string | null = effective.reminderTime;
+      if (effective.reminderTime) {
+        const original = new Date(effective.reminderTime);
         const next = new Date(
-          task.reminderOffsetDays !== null ? getReminderOffsetDate(stepDue, task.reminderOffsetDays) : stepDue
+          effective.reminderOffsetDays !== null ? getReminderOffsetDate(stepDue, effective.reminderOffsetDays) : stepDue
         );
         next.setHours(original.getHours(), original.getMinutes(), 0, 0);
         stepReminderTime = next.toISOString();
       }
       get().updateTask(id, {
+        ...contentReset,
         chainIndex: task.chainIndex + 1,
         dueDate: stepDue.toISOString(),
         deferUntil: null,
@@ -4693,17 +4705,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // than on the day after they expired.
     const nextDue = getNextDueDate(task, dayResetTime, { catchUp: true });
     if (!nextDue) return;
-    let nextReminderTime: string | null = task.reminderTime;
-    if (task.reminderTime) {
-      const original = new Date(task.reminderTime);
+    let nextReminderTime: string | null = effective.reminderTime;
+    if (effective.reminderTime) {
+      const original = new Date(effective.reminderTime);
       const next = new Date(
-        task.reminderOffsetDays !== null ? getReminderOffsetDate(nextDue, task.reminderOffsetDays) : nextDue
+        effective.reminderOffsetDays !== null ? getReminderOffsetDate(nextDue, effective.reminderOffsetDays) : nextDue
       );
       next.setHours(original.getHours(), original.getMinutes(), 0, 0);
       nextReminderTime = next.toISOString();
     }
     const nextChainIndex = chainAdvances ? 0 : task.chainIndex;
     get().updateTask(id, {
+      ...contentReset,
       dueDate: nextDue.toISOString(),
       deferUntil: null,
       reminderTime: nextReminderTime,

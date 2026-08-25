@@ -5098,6 +5098,74 @@ describe('skipNextRecurrence', () => {
     expect(new Date(updated.dueDate!).getTime()).toBeGreaterThan(new Date(task.dueDate!).getTime());
     expect(updated.recurrenceCount).toBe(4);
   });
+
+  // This rolls the row onto its next occurrence in place rather than
+  // spawning a fresh one (see completeTask), so it's the one other path that
+  // has to apply a pending "this task only" edit's seriesDefaults revert
+  // itself — nothing else ever will for this row. Without it, a
+  // scope:'occurrence' edit made just before the task expired (or was
+  // marked missed ahead of its day, see markMissed) kept rolling forward
+  // with the one-off edit instead of reverting to the series' real value.
+  it('reverts a pending seriesDefaults content override when rolling forward in place', () => {
+    const task = makeTask({
+      id: 't1',
+      notes: 'just for today',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      seriesDefaults: { notes: 'series notes' },
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.notes).toBe('series notes');
+    expect(updated.seriesDefaults).toBeNull();
+  });
+
+  it('reverts seriesDefaults on a scheduled mid-chain step too', () => {
+    const task = makeTask({
+      id: 't1',
+      title: 'Just today',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      chainEnabled: true,
+      chainStepOnSchedule: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+      ],
+      chainIndex: 0,
+      seriesDefaults: { title: 'Series title' },
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.title).toBe('Series title');
+    expect(updated.seriesDefaults).toBeNull();
+  });
+
+  it('reverts seriesDefaults on an unscheduled mid-chain step too', () => {
+    const task = makeTask({
+      id: 't1',
+      title: 'Just today',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Step A', estimatedMinutes: null },
+        { id: 'b', title: 'Step B', estimatedMinutes: null },
+      ],
+      chainIndex: 0,
+      seriesDefaults: { title: 'Series title' },
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().skipNextRecurrence('t1');
+    const updated = useTaskStore.getState().tasks[0];
+    expect(updated.title).toBe('Series title');
+    expect(updated.seriesDefaults).toBeNull();
+  });
 });
 
 // ─── markMissed ─────────────────────────────────────────────────────────────
