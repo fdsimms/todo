@@ -82,6 +82,7 @@ export function ProjectsScreen() {
   const reorderProjectsWithCategoryUpdates = useProjectStore(s => s.reorderProjectsWithCategoryUpdates);
   const unarchiveProject = useTaskStore(s => s.unarchiveProject);
   const uncompleteProject = useTaskStore(s => s.uncompleteProject);
+  const completeProject = useTaskStore(s => s.completeProject);
   const allTasks = useTaskStore(s => s.tasks);
   const projectCategories = useProjectCategoryStore(useShallow(s => s.categories));
 
@@ -274,6 +275,15 @@ export function ProjectsScreen() {
     uncompleteProject(project.id);
   };
 
+  // Only reachable when projectProgress already reads every member done, so
+  // there's nothing left open to ask about archiving — see ProjectEditor's
+  // handleComplete for the version that has to.
+  const handleQuickComplete = (project: Project) => {
+    haptics.success();
+    animateLayout();
+    completeProject(project.id, { archiveRemaining: false });
+  };
+
   const renderRow = (item: ProjectListItem, drag?: () => void, isActive?: boolean) => {
     if (item.type === 'header') {
       return (
@@ -286,6 +296,9 @@ export function ProjectsScreen() {
     const progress = projectProgress(project.id, allTasks);
     const pastWindow = isProjectPastWindow(project, progress);
     const rangeLabel = dateRangeLabel(project);
+    // Only the active list needs this — completed projects already show their
+    // own restore affordance, and an archived one is filed away regardless.
+    const allDone = projectFilter === 'active' && progress.total > 0 && progress.done === progress.total;
     return (
       <TouchableOpacity
         style={[
@@ -321,6 +334,16 @@ export function ProjectsScreen() {
                 accessibilityLabel={`Restore ${project.title} to active`}
               >
                 <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
+              </TouchableOpacity>
+            )}
+            {allDone && (
+              <TouchableOpacity
+                onPress={() => handleQuickComplete(project)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Mark ${project.title} complete: every task is done`}
+              >
+                <Ionicons name="checkmark-circle" size={16} color={colors.green} />
               </TouchableOpacity>
             )}
             <TouchableOpacity

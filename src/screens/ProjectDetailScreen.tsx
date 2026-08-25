@@ -16,7 +16,8 @@ import { useShallow } from 'zustand/react/shallow';
 import { useAnswerFirstCompletion } from '../hooks/useAnswerFirstCompletion';
 import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
-import { useProjectStore, projectDecisions } from '../store/useProjectStore';
+import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
+import { OfferBanner } from '../components/OfferBanner';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { TaskItem } from '../components/TaskItem';
@@ -68,6 +69,7 @@ export function ProjectDetailScreen() {
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const setDeliverableValue = useTaskStore(s => s.setDeliverableValue);
+  const completeProject = useTaskStore(s => s.completeProject);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -84,6 +86,9 @@ export function ProjectDetailScreen() {
   const [existingSearch, setExistingSearch] = useState('');
   const [showCompleted, setShowCompleted] = useState(false);
   const [notesExpanded, setNotesExpanded] = useState(false);
+  // Not-now only, like every OfferBanner — reopening the project re-offers it,
+  // which is right since nothing else marks the project done for the user.
+  const [completeOfferDismissed, setCompleteOfferDismissed] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [flashTaskId, setFlashTaskId] = useState<string | null>(null);
   // The decision whose answer is being corrected. Held by id and read back off
@@ -141,6 +146,19 @@ export function ProjectDetailScreen() {
   const completedProjectTasks = projectTasks
     .filter(t => t.completed)
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
+  // Same identity-grouped count the Projects list badges its quick-complete
+  // action with — a recurring member never reads done here either.
+  const progress = project ? projectProgress(project.id, allTasks) : { done: 0, total: 0 };
+  const allDone = progress.total > 0 && progress.done === progress.total && !project?.completed;
+
+  const handleMarkComplete = () => {
+    if (!project) return;
+    haptics.success();
+    // Nothing open to ask about archiving — allDone already means every
+    // unarchived member is done, same guarantee ProjectsScreen's quick action
+    // relies on.
+    completeProject(project.id, { archiveRemaining: false });
+  };
   // What "Select all" covers, and what the bar counts against to decide it has
   // everything: the rows actually on screen. Completed tasks are collapsed
   // behind a toggle, and counting hidden rows would leave the bar stuck
@@ -287,6 +305,19 @@ export function ProjectDetailScreen() {
             </TouchableOpacity>
           }
         />
+
+        {allDone && !completeOfferDismissed && (
+          <OfferBanner
+            lead="Every task in this project"
+            rest="is complete."
+            actionLabel="Mark Complete"
+            onAction={handleMarkComplete}
+            onDismiss={() => setCompleteOfferDismissed(true)}
+            accessibilityLabel="Every task in this project is complete"
+            actionAccessibilityLabel={`Mark ${project?.title ?? 'this project'} complete`}
+            dismissAccessibilityLabel="Dismiss project complete notice"
+          />
+        )}
 
         {!!project?.notes && (
           // Collapsed to one line by default — the notes are a reference, not
