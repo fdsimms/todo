@@ -297,6 +297,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return null;
     case 'birthday':
       return { key: 'birthdayTaskCategory', current: s.birthdayTaskCategory, assign: s.setBirthdayTaskCategory };
+    case 'birthdayGift':
+      return { key: 'birthdayGiftTaskCategory', current: s.birthdayGiftTaskCategory, assign: s.setBirthdayGiftTaskCategory };
     case 'reachOut':
       return { key: 'reachOutTaskCategory', current: s.reachOutTaskCategory, assign: s.setReachOutTaskCategory };
   }
@@ -317,6 +319,7 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'supplyReorder': return s.supplyReorderTasks;
     case 'calendarReview': return s.calendarReviewTasks;
     case 'birthday': return s.birthdayTasks;
+    case 'birthdayGift': return s.birthdayGiftTasks;
     case 'reachOut': return s.reachOutTasks;
   }
 }
