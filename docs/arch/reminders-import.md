@@ -83,3 +83,69 @@ recording what it recognises is the entire backfill. It stays bounded by pruning
 still holds on every drain (`reconcileHandledReminders`), so with deletion on it empties itself.
 The name index survives as the *first* answer about a reminder the record has never seen, not as
 the record.
+
+## Two-way sync for the grocery list
+
+`groceryImportTwoWay` turns the grocery leg from a drain into a mirror: rows added here are
+written back as reminders, checking off either side completes the other, and removing an item
+deletes its reminder. `src/utils/groceryReminderMirror.ts` holds every rule, `mirrorOnce` in
+`remindersImportSync.ts` executes them. The task leg is untouched and has no such mode.
+
+**It replaces the one-way drain for that list rather than running beside it** (`drainTargets`
+skips the grocery target while it's on), and it is mutually exclusive with
+`groceryImportDelete`, which the setter enforces rather than the UI. Both would read the same
+list; deleting a reminder the moment it's read leaves nothing to mirror, and every row would be
+written straight back out on the next pass.
+
+**A link, not a name, is what stops a duplicate.** The import's name index is deliberately wide
+(above) because there a false match costs one skip and a false miss costs an unbounded
+re-import. That trade doesn't survive here: a name can't tell "the user deleted this reminder"
+from "we never pushed it", and getting it wrong either resurrects a row they just deleted or
+deletes one they just added. So each mirrored pair is a `GroceryReminderLink` — the two ids plus
+a **shadow** of the title and completion the pair last agreed on. Every pass is then a three-way
+diff: a side that differs from the shadow is the side that changed and wins, both changed is the
+only real conflict, and the app wins that because the rest of the row (its aisle, its price, its
+stores) lives here. Names still matter in exactly one place, and it's load-bearing: an unlinked
+reminder whose name key matches a row already on the list is **adopted** rather than added. That
+is what makes a second device, a re-picked list, and a name typed into both apps converge instead
+of duplicating.
+
+**It's a reconcile, not a set of hooks, and that isn't a shortcut.** `onList` is written by a
+dozen store actions, and anything done in the Reminders app while this one is closed is invisible
+until the next foreground — so a per-mutation push is permanently behind. A diff converges from
+whatever state it finds. It runs on the drain's own triggers plus a grocery-store subscription
+keyed on `groceryMirrorSignature` (the store notifies on every write, and a price or an aisle says
+nothing a reminder can hold). The mirror's own writes re-enter through that subscription and land
+on `rerunRequested`, which is safe only because a second pass over a settled pair is silent —
+`groceryReminderMirror.test.ts` pins that with the convergence cases, and a plan that kept finding
+work would be a loop writing to both apps for ever.
+
+Five things that are the way they are for a reason:
+
+- **The link record is device-local**, in the settings table under `groceryImportLinks`, not a
+  column on `grocery_items`. That table syncs (`SYNC_TRACKED_TABLES`) and an EventKit id names a
+  record on one device; a link that travelled would point at nothing on the other phone, or at
+  something else. Two devices on one iCloud list keep their own links and meet by adoption.
+- **`GroceryReminderLink.seen` is false for exactly one gap** — the pass that created the
+  reminder, which knows its id only because `createReminderAsync` returned it. A missing reminder
+  is how a deletion is recognised, and that read is only safe once a fetch has been seen to hold
+  it. Unconfirmed and missing means the link is dropped and the row gets a fresh reminder, never
+  that the row comes off the list. Same asymmetry the name index is built on: a duplicate reminder
+  is visible and recoverable, groceries quietly vanishing before a shop is neither.
+- **A failed delete keeps its link.** Dropping it would leave a reminder the next pass reads as
+  new and adds the row straight back for, which is the one thing this design exists to prevent.
+- **Every `updateReminderAsync` carries the whole title**, even when only the tick changed.
+  `saveReminderAsync` assigns `reminder.title = details.title` unconditionally
+  (`CalendarModule.swift`), so a partial update blanks the title of the row it meant to leave
+  alone. Same for `location`.
+- **A mirrored pass marks the whole list handled** (`rememberHandled(listId, present, present)`),
+  so switching two-way back off hands the one-way drain a clean slate rather than a list it reads
+  as one big backlog — including the reminders the mirror itself wrote.
+
+Ordering is the drain's own rule, applied on both sides: everything that creates runs before
+anything that destroys. The app-side writes go first (none of them destroy anything —
+`removeFromList` parks a row in the catalog with its aisle, stores and price intact), then the
+reminders that need writing or updating, then the deletes. And `isDemoModeActive()` gates both
+this and the drain, which it didn't before: demo mode swaps the whole database, so an ungated pass
+pushes a seeded list into the user's real Reminders list, or drains real reminders into rows that
+are about to be thrown away.

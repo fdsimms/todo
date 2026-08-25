@@ -7,6 +7,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { currentFocusStep, isFocusSessionFinished } from './focusPlan';
 import { formatStopwatch } from './effort';
 import { displayTitleFor } from './visibilityUtils';
+import { widgetBridge } from './widgetBridge';
 
 /**
  * Drives the "focus session" Live Activity (Lock Screen + Dynamic Island) —
@@ -150,21 +151,13 @@ export function buildFocusRun(
   return { key: JSON.stringify(run), ...run };
 }
 
-// Lazily required, same shape as syncNativeTripActivity in tripLiveActivity.ts,
-// so importing this module never crashes in Expo Go or on Android, where the
-// local `todo-widget-bridge` native module doesn't exist.
+// Through widgetBridge(), same as the other two Live Activities.
 function syncNativeFocusActivity(run: FocusRun | null): void {
-  if (Platform.OS !== 'ios') return;
-  try {
-    const { syncFocusLiveActivity } = require('todo-widget-bridge') as {
-      syncFocusLiveActivity: (jsonString: string) => Promise<boolean>;
-    };
-    // Fire-and-forget: nothing here needs to block on the native reconcile
-    // completing, and a failure must never surface anywhere in the app UI.
-    syncFocusLiveActivity(run ? JSON.stringify(run) : '').catch(() => {});
-  } catch {
-    // No dev client build with the native module present (e.g. Expo Go) — no-op.
-  }
+  const bridge = widgetBridge();
+  if (!bridge) return;
+  // Fire-and-forget: nothing here needs to block on the native reconcile
+  // completing, and a failure must never surface anywhere in the app UI.
+  bridge.syncFocusLiveActivity(run ? JSON.stringify(run) : '').catch(() => {});
 }
 
 let debounceTimer: ReturnType<typeof setTimeout> | null = null;

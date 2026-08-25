@@ -20,6 +20,8 @@ const mockCalendar = {
   requestRemindersPermissionsAsync: jest.fn(),
   getCalendarsAsync: jest.fn(),
   getRemindersAsync: jest.fn(),
+  createReminderAsync: jest.fn(),
+  updateReminderAsync: jest.fn(),
   deleteReminderAsync: jest.fn(),
   EntityTypes: { REMINDER: 'reminder', EVENT: 'event' },
 };
@@ -42,10 +44,35 @@ jest.mock('../store/useTaskStore', () => ({
 // reason as the task store: the real one reaches expo-sqlite, which doesn't
 // load under the node test env.
 const mockAddByName = jest.fn();
-let mockGroceryItems: { nameKey: string; onList: boolean }[] = [];
+// The two-way mirror drives four more of these, and reads three more fields per
+// row. Optional so the one-way blocks below can keep saying just what they mean.
+const mockGrocery = {
+  renameItem: jest.fn(() => true),
+  setQuantity: jest.fn(),
+  setCheckedMany: jest.fn(),
+  removeFromListMany: jest.fn(),
+};
+interface MockGroceryItem {
+  nameKey: string;
+  onList: boolean;
+  id?: string;
+  name?: string;
+  quantity?: string | null;
+  checked?: boolean;
+}
+let mockGroceryItems: MockGroceryItem[] = [];
 jest.mock('../store/useGroceryStore', () => ({
-  useGroceryStore: { getState: () => ({ addByName: mockAddByName, items: mockGroceryItems }) },
+  useGroceryStore: {
+    getState: () => ({ addByName: mockAddByName, items: mockGroceryItems, ...mockGrocery }),
+    subscribe: jest.fn(),
+  },
 }));
+
+// Demo mode swaps the whole database for a throwaway one, and both the drain
+// and the mirror write to the Reminders app. Mocked rather than imported so the
+// isolated require in freshSync() sees the same flag this file sets.
+let mockDemoMode = false;
+jest.mock('../utils/demoState', () => ({ isDemoModeActive: () => mockDemoMode }));
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let mockSettings: Record<string, any> = {};
@@ -106,6 +133,7 @@ beforeEach(() => {
   jest.resetAllMocks();
   mockTasks = [];
   mockGroceryItems = [];
+  mockDemoMode = false;
   mockSettingsRows = {};
   mockDb.dbGetSetting.mockImplementation((key: string) => mockSettingsRows[key] ?? null);
   mockDb.dbSetSetting.mockImplementation((key: string, value: string) => {
@@ -132,7 +160,10 @@ beforeEach(() => {
   });
   mockCalendar.getCalendarsAsync.mockResolvedValue([LIST]);
   mockCalendar.getRemindersAsync.mockResolvedValue([]);
+  mockCalendar.createReminderAsync.mockResolvedValue('created-1');
+  mockCalendar.updateReminderAsync.mockResolvedValue('updated-1');
   mockCalendar.deleteReminderAsync.mockResolvedValue(undefined);
+  mockGrocery.renameItem.mockReturnValue(true);
 });
 
 describe('importReminders — what it refuses to do', () => {
@@ -205,7 +236,7 @@ describe('importReminders — the create/delete contract', () => {
     expect(order).toEqual(['addTask', 'delete']);
     expect(mockAddTask).toHaveBeenCalledWith({ title: 'Task a' });
     expect(mockCalendar.deleteReminderAsync).toHaveBeenCalledWith('a');
-    expect(outcome).toEqual({ imported: 1, deleteFailed: 0, skipped: 0, reason: 'ok' });
+    expect(outcome).toEqual({ imported: 1, deleteFailed: 0, skipped: 0, mirrored: 0, reason: 'ok' });
   });
 
   it('parses a dictated date phrase against the logical day, not the wall clock', async () => {
@@ -268,7 +299,7 @@ describe('importReminders — the create/delete contract', () => {
     const outcome = await freshSync().importReminders();
 
     expect(mockAddTask).toHaveBeenCalledTimes(3);
-    expect(outcome).toEqual({ imported: 3, deleteFailed: 1, skipped: 0, reason: 'ok' });
+    expect(outcome).toEqual({ imported: 3, deleteFailed: 1, skipped: 0, mirrored: 0, reason: 'ok' });
   });
 
   it('does not import a reminder again once its delete has failed', async () => {
@@ -309,7 +340,7 @@ describe('importReminders — the create/delete contract', () => {
     expect(sync.lastImportOutcome()).toBeNull();
     mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
     await sync.importReminders();
-    expect(sync.lastImportOutcome()).toEqual({ imported: 1, deleteFailed: 0, skipped: 0, reason: 'ok' });
+    expect(sync.lastImportOutcome()).toEqual({ imported: 1, deleteFailed: 0, skipped: 0, mirrored: 0, reason: 'ok' });
   });
 
   it('does not import the same reminder twice when two triggers overlap', async () => {
@@ -645,7 +676,7 @@ describe('importReminders — with the reminders left in place', () => {
 
     const outcome = await freshSync().importReminders();
 
-    expect(outcome).toEqual({ imported: 1, deleteFailed: 0, skipped: 0, reason: 'ok' });
+    expect(outcome).toEqual({ imported: 1, deleteFailed: 0, skipped: 0, mirrored: 0, reason: 'ok' });
     expect(mockAddTask).toHaveBeenCalledWith({ title: 'book a haircut' });
     expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
   });
@@ -903,5 +934,257 @@ describe('importReminders — groceries left in place', () => {
 
     expect((await freshSync().importReminders()).imported).toBe(1);
     expect(mockAddByName).toHaveBeenCalledWith('eggs');
+  });
+});
+
+/**
+ * The two-way mirror. `groceryReminderMirror.test.ts` pins the rules; these
+ * cover the half that can only go wrong here — what actually gets called, in
+ * what order, and what the link record holds afterwards.
+ */
+describe('importReminders — the two-way grocery mirror', () => {
+  const MIRROR_LIST = {
+    id: 'list-2',
+    title: 'Groceries',
+    allowsModifications: true,
+    source: { id: 's', name: 'iCloud', type: 'CalDAV' },
+  };
+
+  const row = (over: Partial<MockGroceryItem> & { id: string; name: string }): MockGroceryItem => ({
+    nameKey: over.name.trim().toLowerCase(),
+    quantity: null,
+    onList: true,
+    checked: false,
+    ...over,
+  });
+
+  const links = () => JSON.parse(mockSettingsRows.groceryImportLinks || '{}');
+
+  beforeEach(() => {
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.groceryImportEnabled = true;
+    mockSettings.groceryImportListId = MIRROR_LIST.id;
+    mockSettings.groceryImportConfirmedListId = MIRROR_LIST.id;
+    mockSettings.groceryImportTwoWay = true;
+    mockSettings.groceryImportDelete = false;
+    mockCalendar.getCalendarsAsync.mockResolvedValue([MIRROR_LIST]);
+    mockAddByName.mockImplementation((raw: string) => ({
+      id: `i-${raw}`, name: raw, nameKey: raw.toLowerCase(), quantity: null, checked: false,
+    }));
+  });
+
+  it('writes a reminder for a row the list already had', async () => {
+    mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
+
+    const outcome = await freshSync().importReminders();
+
+    expect(mockCalendar.createReminderAsync).toHaveBeenCalledWith(MIRROR_LIST.id, { title: 'milk' });
+    expect(outcome.mirrored).toBe(1);
+    expect(outcome.reason).toBe('ok');
+    expect(links()[MIRROR_LIST.id]).toEqual([
+      { reminderId: 'created-1', itemId: 'i1', name: 'milk', checked: false, seen: false },
+    ]);
+  });
+
+  it('adds a row for a reminder the list has never heard of', async () => {
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'eggs' })]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(mockAddByName).toHaveBeenCalledWith('eggs', undefined, undefined, { registerUndo: false });
+    expect(outcome.imported).toBe(1);
+    expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
+  });
+
+  // The whole point of the exercise: both sides already say it, so neither gets
+  // a second copy.
+  it('links a name both sides already have instead of duplicating it', async () => {
+    mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'milk' })]);
+
+    const outcome = await freshSync().importReminders();
+
+    expect(mockAddByName).not.toHaveBeenCalled();
+    expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({ imported: 0, mirrored: 0, reason: 'ok' });
+    expect(links()[MIRROR_LIST.id]).toEqual([
+      { reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true },
+    ]);
+  });
+
+  it('completes the reminder when the row is checked off here', async () => {
+    mockSettingsRows.groceryImportLinks = JSON.stringify({
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+    });
+    mockGroceryItems = [row({ id: 'i1', name: 'milk', checked: true })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'milk' })]);
+
+    await freshSync().importReminders();
+
+    // The whole title, not just the flag — a partial update blanks it natively.
+    expect(mockCalendar.updateReminderAsync).toHaveBeenCalledWith('r1', {
+      title: 'milk',
+      completed: true,
+    });
+  });
+
+  it('checks the row off when the reminder is completed there', async () => {
+    mockSettingsRows.groceryImportLinks = JSON.stringify({
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+    });
+    mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('r1', { title: 'milk', completed: true }),
+    ]);
+
+    await freshSync().importReminders();
+
+    expect(mockGrocery.setCheckedMany).toHaveBeenCalledWith(['i1'], true);
+    expect(mockCalendar.updateReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('deletes the reminder when the row leaves the list', async () => {
+    mockSettingsRows.groceryImportLinks = JSON.stringify({
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+    });
+    mockGroceryItems = [row({ id: 'i1', name: 'milk', onList: false })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'milk' })]);
+
+    await freshSync().importReminders();
+
+    expect(mockCalendar.deleteReminderAsync).toHaveBeenCalledWith('r1');
+    expect(links()[MIRROR_LIST.id]).toBeUndefined();
+  });
+
+  // A dropped link is how a re-add happens: the surviving reminder reads as new
+  // next pass and puts the row back. So a failed delete keeps its link.
+  it('keeps the link when the delete fails', async () => {
+    const link = { reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true };
+    mockSettingsRows.groceryImportLinks = JSON.stringify({ [MIRROR_LIST.id]: [link] });
+    mockGroceryItems = [row({ id: 'i1', name: 'milk', onList: false })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'milk' })]);
+    mockCalendar.deleteReminderAsync.mockRejectedValue(new Error('nope'));
+
+    const outcome = await freshSync().importReminders();
+
+    expect(outcome.deleteFailed).toBe(1);
+    expect(links()[MIRROR_LIST.id]).toEqual([link]);
+    expect(mockAddByName).not.toHaveBeenCalled();
+  });
+
+  it('takes the row off the list when the reminder is deleted there', async () => {
+    mockSettingsRows.groceryImportLinks = JSON.stringify({
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+    });
+    mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([]);
+
+    await freshSync().importReminders();
+
+    expect(mockGrocery.removeFromListMany).toHaveBeenCalledWith(['i1']);
+    expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('renames the row when the reminder is renamed there', async () => {
+    mockSettingsRows.groceryImportLinks = JSON.stringify({
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+    });
+    mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([
+      reminder('r1', { title: '2 gal oat milk' }),
+    ]);
+
+    await freshSync().importReminders();
+
+    expect(mockGrocery.renameItem).toHaveBeenCalledWith('i1', 'oat milk');
+    expect(mockGrocery.setQuantity).toHaveBeenCalledWith('i1', '2 gal');
+  });
+
+  // Two rows already claim to be the same thing. The rename can't land, so the
+  // app's own name is what the shadow records — otherwise the next pass reads
+  // the reminder as changed again and retries for ever.
+  it('corrects the shadow when a rename collides', async () => {
+    mockSettingsRows.groceryImportLinks = JSON.stringify({
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+    });
+    mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'eggs' })]);
+    mockGrocery.renameItem.mockReturnValue(false);
+
+    await freshSync().importReminders();
+
+    expect(mockGrocery.setQuantity).not.toHaveBeenCalled();
+    expect(links()[MIRROR_LIST.id][0].name).toBe('milk');
+  });
+
+  it('never runs the one-way drain against a mirrored list', async () => {
+    mockSettings.groceryImportTwoWay = false;
+    mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'eggs' })]);
+
+    await freshSync().importReminders();
+
+    // The drain imported it, and nothing was written back out.
+    expect(mockAddByName).toHaveBeenCalledWith('eggs');
+    expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('forgets its links when the mirror is switched off', async () => {
+    mockSettingsRows.groceryImportLinks = JSON.stringify({
+      [MIRROR_LIST.id]: [{ reminderId: 'r1', itemId: 'i1', name: 'milk', checked: false, seen: true }],
+    });
+    mockSettings.groceryImportTwoWay = false;
+
+    await freshSync().importReminders();
+
+    expect(links()).toEqual({});
+  });
+
+  it('refuses to touch a read-only list', async () => {
+    mockCalendar.getCalendarsAsync.mockResolvedValue([
+      { ...MIRROR_LIST, allowsModifications: false },
+    ]);
+    mockGroceryItems = [row({ id: 'i1', name: 'milk' })];
+
+    expect((await freshSync().importReminders()).reason).toBe('list-readonly');
+    expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('marks everything in a mirrored list handled, so switching back off is not a backlog', async () => {
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('r1', { title: 'eggs' })]);
+
+    const sync = freshSync();
+    await sync.importReminders();
+
+    expect(JSON.parse(mockSettingsRows.remindersImportHandled)).toEqual({ [MIRROR_LIST.id]: ['r1'] });
+  });
+});
+
+describe('importReminders — demo mode', () => {
+  // The database under demo mode is a throwaway. A drain running against it
+  // imports the user's real reminders into rows that are about to be discarded
+  // and deletes them from the Reminders app on the way out.
+  it('drains nothing while demo mode is on', async () => {
+    mockDemoMode = true;
+    mockCalendar.getRemindersAsync.mockResolvedValue([reminder('a')]);
+
+    expect((await freshSync().importReminders()).reason).toBe('off');
+    expect(mockAddTask).not.toHaveBeenCalled();
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
+  });
+
+  it('mirrors nothing while demo mode is on', async () => {
+    mockDemoMode = true;
+    mockSettings.remindersImportEnabled = false;
+    mockSettings.groceryImportEnabled = true;
+    mockSettings.groceryImportListId = LIST.id;
+    mockSettings.groceryImportConfirmedListId = LIST.id;
+    mockSettings.groceryImportTwoWay = true;
+    mockGroceryItems = [{ id: 'i1', name: 'milk', nameKey: 'milk', onList: true, checked: false }];
+
+    await freshSync().importReminders();
+
+    expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
+    expect(mockCalendar.deleteReminderAsync).not.toHaveBeenCalled();
   });
 });
