@@ -72,7 +72,7 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions } from '../utils/parseTaskInput';
@@ -365,6 +365,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [deferUntil, setDeferUntil] = useState<Date | null>(null);
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [reminderKind, setReminderKind] = useState<ReminderKind>('notification');
+  const [reminderOffsetDays, setReminderOffsetDays] = useState<number | null>(null);
   // Whether the user has explicitly set or cleared the reminder this session —
   // gates applyDefaultReminderLead below so a pre-filled default never stomps
   // on a choice the user actually made (including "no reminder").
@@ -585,6 +586,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setDeferUntil(task.deferUntil ? new Date(task.deferUntil) : null);
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setReminderKind(task.reminderKind ?? 'notification');
+      setReminderOffsetDays(task.reminderOffsetDays ?? null);
       setReminderTouched(false);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceDays(task.recurrenceDays ?? []);
@@ -682,6 +684,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deferUntil: task?.deferUntil ?? null,
       reminderTime: task?.reminderTime ?? null,
       reminderKind: task?.reminderKind ?? 'notification',
+      reminderOffsetDays: task?.reminderOffsetDays ?? null,
       recurrenceType: task ? task.recurrenceType : (initialDraft?.recurrenceType ?? 'none'),
       recurrenceInterval: task ? task.recurrenceInterval : (initialDraft?.recurrenceInterval ?? 1),
       recurrenceDays: task ? (task.recurrenceDays ?? []) : (initialDraft?.recurrenceDays ?? []),
@@ -897,6 +900,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
+      reminderOffsetDays,
       recurrenceType, recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null ? recurrenceDays : [],
       recurrenceMonthDay: recurrenceType === 'monthly' && recurrenceWeekOrdinal === null ? recurrenceMonthDay : null,
@@ -1231,10 +1235,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPickerMode(mode);
   };
 
-  const confirmPicker = (confirmed: Date, kind?: ReminderKind) => {
+  const confirmPicker = (confirmed: Date, kind?: ReminderKind, offsetDays?: number | null) => {
     if (pickerMode === 'reminder') {
       setReminderTime(confirmed);
       if (kind) setReminderKind(kind);
+      setReminderOffsetDays(offsetDays ?? null);
       setReminderTouched(true);
     }
     setPickerMode('none');
@@ -1359,6 +1364,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
+      reminderOffsetDays,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
@@ -1750,8 +1756,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             visible={pickerMode !== 'none'}
             value={pickerDate}
             kind={reminderKind}
+            dueDate={dueDate}
+            offsetDays={reminderOffsetDays}
             onConfirm={confirmPicker}
-            onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderTouched(true); setPickerMode('none'); } : undefined}
+            onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTouched(true); setPickerMode('none'); } : undefined}
             onCancel={() => setPickerMode('none')}
           />
           <WhenPicker
@@ -2900,12 +2908,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     ? 'Ring an alarm at this time'
                     : 'Send a notification at this time'
               }
-              value={reminderTime ? `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}` : undefined}
+              value={
+                reminderTime
+                  ? reminderOffsetDays !== null
+                    ? `${describeReminderOffset(reminderOffsetDays)}, ${formatTimeOfDay(reminderTime)}`
+                    : `${format(reminderTime, 'MMM d')} at ${formatTimeOfDay(reminderTime)}`
+                  : undefined
+              }
               caption={reminderNudge
                 ? `Actually sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)} — moved past ${reminderNudge.meetingTitle ? `"${reminderNudge.meetingTitle}"` : 'a calendar event'}`
                 : undefined}
               onPress={() => openPicker('reminder')}
-              onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderTouched(true); } : undefined}
+              onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTouched(true); } : undefined}
             />
               </>
             ),

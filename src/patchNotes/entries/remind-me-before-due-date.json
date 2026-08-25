@@ -1,0 +1,4 @@
+{
+  "message": "Remind Me can now fire a set number of days before the task is due, instead of only on a fixed date. Picking that option also trims the sheet down so it fits without scrolling.",
+  "date": "2026-08-25"
+}

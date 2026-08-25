@@ -99,7 +99,7 @@ import {
   supplyReorderSourceId,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
@@ -183,7 +183,7 @@ interface UndoableAction {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'linkUrl', 'phoneNumber', 'emailAddress',
+  'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.
@@ -428,6 +428,7 @@ function newTaskFromDraft(
     projectId: draft.projectId ?? null,
     reminderTime: draft.reminderTime ?? null,
     reminderKind: draft.reminderKind ?? 'notification',
+    reminderOffsetDays: draft.reminderOffsetDays ?? null,
     chainEnabled: draft.chainEnabled ?? false,
     chainIndex: draft.chainIndex ?? 0,
     chainItems: draft.chainItems ?? [],
@@ -785,13 +786,15 @@ function calendarDayKey(d: Date): string {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
 }
 
-// Moves an absolute reminder instant onto `date`, keeping its time of day.
-// A set of dates shares an hour, not a moment — copying the source row's
-// reminderTime verbatim would fire every date's notification on the first one.
-function reanchorReminder(reminderTime: string | null, date: Date): string | null {
+// Moves an absolute reminder instant onto `date` (or, with a relative
+// reminder, onto the day `offsetDays` before it — see
+// Task.reminderOffsetDays), keeping its time of day. A set of dates shares an
+// hour, not a moment — copying the source row's reminderTime verbatim would
+// fire every date's notification on the first one.
+function reanchorReminder(reminderTime: string | null, date: Date, offsetDays: number | null = null): string | null {
   if (!reminderTime) return null;
   const original = new Date(reminderTime);
-  const next = new Date(date);
+  const next = new Date(offsetDays !== null ? getReminderOffsetDate(date, offsetDays) : date);
   next.setHours(original.getHours(), original.getMinutes(), 0, 0);
   return next.toISOString();
 }
@@ -891,7 +894,7 @@ function buildSeriesRow(
         : base.deadlineMonthDay !== null
           ? getDeadlineFromMonthDay(date, base.deadlineMonthDay).toISOString()
           : base.deadline,
-    reminderTime: reanchorReminder(base.reminderTime, date),
+    reminderTime: reanchorReminder(base.reminderTime, date, base.reminderOffsetDays),
   };
 }
 
@@ -2297,6 +2300,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (
         'reminderTime' in updates ||
         'reminderKind' in updates ||
+        'reminderOffsetDays' in updates ||
         'completed' in updates ||
         'archived' in updates ||
         'title' in updates ||
@@ -2360,9 +2364,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             ...t,
             ...fanOut,
             // reminderTime is absolute; every date keeps its own instant at
-            // the edited time of day rather than inheriting this row's.
+            // the edited time of day rather than inheriting this row's —
+            // reanchored onto the offset-relative day when reminderOffsetDays
+            // is part of what's being fanned out, same as buildSeriesRow.
             ...('reminderTime' in fanOut
-              ? { reminderTime: reanchorReminder(fanOut.reminderTime ?? null, new Date(t.dueDate!)) }
+              ? {
+                  reminderTime: reanchorReminder(
+                    fanOut.reminderTime ?? null,
+                    new Date(t.dueDate!),
+                    'reminderOffsetDays' in fanOut ? fanOut.reminderOffsetDays ?? null : t.reminderOffsetDays
+                  ),
+                }
               : {}),
             // A set shares one blocker, but no row can wait on itself. Picking
             // a later date of this same set as the blocker would otherwise
@@ -2759,7 +2771,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         let nextReminderTime: string | null = effective.reminderTime;
         if (effectiveDue && effective.reminderTime) {
           const original = new Date(effective.reminderTime);
-          const next = new Date(effectiveDue);
+          const next = new Date(
+            effective.reminderOffsetDays !== null
+              ? getReminderOffsetDate(effectiveDue, effective.reminderOffsetDays)
+              : effectiveDue
+          );
           next.setHours(original.getHours(), original.getMinutes(), 0, 0);
           nextReminderTime = next.toISOString();
         }
@@ -4656,7 +4672,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       let stepReminderTime: string | null = task.reminderTime;
       if (task.reminderTime) {
         const original = new Date(task.reminderTime);
-        const next = new Date(stepDue);
+        const next = new Date(
+          task.reminderOffsetDays !== null ? getReminderOffsetDate(stepDue, task.reminderOffsetDays) : stepDue
+        );
         next.setHours(original.getHours(), original.getMinutes(), 0, 0);
         stepReminderTime = next.toISOString();
       }
@@ -4678,7 +4696,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     let nextReminderTime: string | null = task.reminderTime;
     if (task.reminderTime) {
       const original = new Date(task.reminderTime);
-      const next = new Date(nextDue);
+      const next = new Date(
+        task.reminderOffsetDays !== null ? getReminderOffsetDate(nextDue, task.reminderOffsetDays) : nextDue
+      );
       next.setHours(original.getHours(), original.getMinutes(), 0, 0);
       nextReminderTime = next.toISOString();
     }
@@ -4960,6 +4980,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       allowOvershoot: false,
       reminderTime: null,
       reminderKind: 'notification',
+      reminderOffsetDays: null,
       chainEnabled: false,
       chainIndex: 0,
       chainItems: [],
@@ -5136,6 +5157,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       allowOvershoot: false,
       reminderTime: null,
       reminderKind: 'notification',
+      reminderOffsetDays: null,
       chainEnabled: false,
       chainIndex: 0,
       chainItems: [],
