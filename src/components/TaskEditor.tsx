@@ -833,12 +833,43 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return next;
   };
 
+  // Renaming an existing chain step or subtask (as opposed to typing a brand
+  // new one, above) has the identical race: the inline field's onBlur may not
+  // have fired — or its setState flushed — before Save reads the current
+  // title. Same explicit-commit fix, just against the row being edited rather
+  // than the "add new" field.
+  const commitPendingChainItemRename = (items: ChainItem[]): ChainItem[] => {
+    if (!editingChainItemId) return items;
+    const trimmed = chainItemTitleEdit.trim();
+    const current = items.find(c => c.id === editingChainItemId);
+    setEditingChainItemId(null);
+    if (!trimmed || !current || trimmed === current.title) return items;
+    const next = items.map(c => (c.id === editingChainItemId ? { ...c, title: trimmed } : c));
+    setChainItems(next);
+    return next;
+  };
+
+  const commitPendingSubtaskRename = (items: DraftSubtask[]): DraftSubtask[] => {
+    if (!editingSubtaskId) return items;
+    const trimmed = subtaskTitleEdit.trim();
+    const current = subtasks.find(s => s.id === editingSubtaskId);
+    setEditingSubtaskId(null);
+    if (!trimmed || !current || trimmed === current.title) return items;
+    if (task) {
+      updateTask(editingSubtaskId, { title: trimmed });
+      return items;
+    }
+    const next = items.map(s => (s.id === editingSubtaskId ? { ...s, title: trimmed } : s));
+    setDraftSubtasks(next);
+    return next;
+  };
+
   // ==== save ====
   const save = () => {
     if (!title.trim()) return;
 
-    const effectiveChainItems = commitPendingChainItem();
-    const effectiveDraftSubtasks = commitPendingSubtask();
+    const effectiveChainItems = commitPendingChainItemRename(commitPendingChainItem());
+    const effectiveDraftSubtasks = commitPendingSubtaskRename(commitPendingSubtask());
 
     if (!task) {
       const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), title.trim());
