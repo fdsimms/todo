@@ -357,6 +357,13 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'restock', 'generated', 'automatic'], kitchen: true },
   { id: 'pantryCheckTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
     keywords: ['category', 'pantry', 'grocery', 'kitchen'], kitchen: true },
+  { id: 'birthdayTasks', groupId: 'tasksProjects', label: 'Birthday reminders', section: 'Tasks the app adds',
+    keywords: ['people', 'person', 'friend', 'family', 'age', 'gift', 'present', 'card',
+      'generated', 'automatic'] },
+  { id: 'birthdayLeadDays', groupId: 'tasksProjects', label: 'Show the task', section: 'Tasks the app adds',
+    keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'birthdayTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
+    keywords: ['category', 'birthday', 'people'] },
   // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
   // with the area gone there is nothing left for it to convert.
   { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',

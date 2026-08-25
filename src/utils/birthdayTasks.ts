@@ -47,6 +47,21 @@ export function clampBirthdayLeadDays(days: number): number {
 }
 
 /**
+ * The stored setting, as a number — the read half, and deliberately not just
+ * `clampBirthdayLeadDays(Number(raw))`.
+ *
+ * `Number(null)` and `Number('')` are **0**, not `NaN`, so a clamp alone reads
+ * "nothing stored" as a deliberate zero and every install that had never
+ * touched the setting would get its birthday tasks on the morning of the
+ * birthday. Zero is a real answer somebody can choose, so the two cases have to
+ * be told apart before the string becomes a number rather than after.
+ */
+export function parseBirthdayLeadDays(raw: string | null | undefined): number {
+  if (raw === null || raw === undefined || raw.trim() === '') return DEFAULT_BIRTHDAY_LEAD_DAYS;
+  return clampBirthdayLeadDays(Number(raw));
+}
+
+/**
  * What a birthday task carries in `generatedSourceId`: the person, and the year
  * the birthday falls in.
  *

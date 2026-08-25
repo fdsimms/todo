@@ -47,6 +47,7 @@ import { hasRunningRecipeTimer } from '../utils/recipeTimer';
 import { screenShown } from '../utils/simpleMode';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { usePersonStore } from '../store/usePersonStore';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
@@ -225,6 +226,7 @@ function initialScreenFromSettings(): string {
   if (!screenShown(lastVisitedScreen, simpleMode, {
     stacks: useTaskGroupStore.getState().groups.length,
     templates: useTemplateStore.getState().templates.length,
+    people: usePersonStore.getState().people.length,
   })) return 'Today';
   // And Pantry, whose only route in is the hub pill row simplified mode
   // removes (see GroceriesHubPills). It isn't a `screenShown` case because it

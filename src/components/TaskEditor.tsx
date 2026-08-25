@@ -68,6 +68,7 @@ import { useCalendarStore } from '../store/useCalendarStore';
 import { nudgeReminderPastMeeting } from '../utils/reminderNudge';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
@@ -139,6 +140,8 @@ export interface TaskDraft {
   dueDate: Date | null;
   timeSegments: TimeOfDay[];
   tags: string[];
+  /** Who the task involves, carried over when quick add parses "@dustin" (#2045). */
+  personIds?: string[];
   category: string | null;
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;
@@ -177,7 +180,7 @@ type PickerMode = 'none' | 'reminder';
 type DraftSubtask = { id: string; title: string; completed: boolean; timedMinutes: number | null };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -216,6 +219,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
   const allGroups = useTaskGroupStore(useShallow(s => s.groups));
   const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));
+  // Archived people are out of the picker but never stripped off a task that
+  // already names them: filing somebody away is about the list, not about
+  // rewriting what you did together.
+  const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -292,6 +299,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const selectedGroup = allGroups.find(g => g.id === groupId) ?? null;
   const [project, setProject] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
+  const [personIds, setPersonIds] = useState<string[]>([]);
   const [dueDate, setDueDate] = useState<Date | null>(null);
   // Dates beyond the first. `dueDate` stays the set's earliest — everything
   // else in this editor (deadline offsets, month-day seeds, the When picker)
@@ -498,7 +506,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // Belongs to the task being edited, not to the sheet.
     kindMemory.current = { timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [] };
     if (task) {
-      setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags);
+      setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags); setPersonIds(task.personIds);
       setGroupId(task.groupId ?? null);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
       // The set's other live dates. Completed ones are left out: they're
@@ -598,6 +606,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       category: task ? (task.category ?? null) : (initialDraft?.category ?? null),
       projectId: task ? (task.projectId ?? null) : (initialDraft?.projectId ?? null),
       tags: task ? task.tags : (initialDraft?.tags ?? []),
+      // Key order matters: this is compared against `current` as a JSON string,
+      // so a field added to one has to sit in the same place in the other.
+      personIds: task ? task.personIds : (initialDraft?.personIds ?? []),
       dueDate: task ? (task.dueDate ?? null) : (initialDraft?.dueDate?.toISOString() ?? null),
       deadline: task
         ? (task.deadlineOffsetDays !== null && task.deadlineOffsetDays !== undefined && task.dueDate
@@ -770,7 +781,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const proceedWithSave = (effectiveChainItems: ChainItem[] = chainItems, effectiveDraftSubtasks: DraftSubtask[] = draftSubtasks) => {
     const resolvedExtraTaskTitle = extraTaskTitle.trim() || null;
     const data = {
-      title: title.trim(), notes, category, projectId: project, tags,
+      title: title.trim(), notes, category, projectId: project, tags, personIds,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
@@ -1203,7 +1214,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const handleCancel = () => {
     const current = JSON.stringify({
-      title, notes, category, projectId: project, tags,
+      title, notes, category, projectId: project, tags, personIds,
       dueDate: dueDate?.toISOString() ?? null,
       deadline: deadline?.toISOString() ?? null,
       deadlineOffsetDays,
@@ -3202,6 +3213,47 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          ...(people.length > 0 ? [{
+            key: 'people', label: 'People', primary: false, set: personIds.length > 0,
+            keywords: ['who', 'friend', 'family', 'with', 'together'],
+            node: (
+              <>
+              <CollapsibleField
+                label="People"
+                summary={personIds.length > 0
+                  ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
+                  : undefined}
+                hint="Who this is with. Ticking it off adds it to their history."
+                expanded={fieldOpen('people')}
+                onToggle={() => toggleField('people')}
+              >
+                <View style={styles.pillRow}>
+                  {people.map(p => {
+                    const on = personIds.includes(p.id);
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[styles.pill, on && styles.pillActiveNeutral]}
+                        // Multi-select, so the field deliberately does not
+                        // collapse on a tap the way the single-choice ones do:
+                        // "beach with Dustin and Ansley" is two taps, and
+                        // closing after the first would hide the second.
+                        onPress={() => {
+                          haptics.tap();
+                          setPersonIds(prev => on ? prev.filter(id => id !== p.id) : [...prev, p.id]);
+                        }}
+                        accessibilityRole="checkbox"
+                        accessibilityState={{ checked: on }}
+                      >
+                        <Text style={[styles.pillText, on && styles.pillTextActive]}>{displayNameOf(p)}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </CollapsibleField>
+              </>
+            ),
+          }] : []),
         ]}
       />
 

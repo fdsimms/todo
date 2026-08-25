@@ -23,6 +23,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { usePersonStore } from '../store/usePersonStore';
 import { screenShown } from '../utils/simpleMode';
 import { tipsFor } from '../utils/tips';
 
@@ -128,11 +129,12 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   // or template is edited.
   const stackCount = useTaskGroupStore(s => s.groups.length);
   const templateCount = useTemplateStore(s => s.templates.length);
+  const peopleCount = usePersonStore(s => s.people.length);
   const menuItems = useMemo(() => {
-    const counts = { stacks: stackCount, templates: templateCount };
+    const counts = { stacks: stackCount, templates: templateCount, people: peopleCount };
     return MENU_ITEMS.filter(i =>
       (kitchenEnabled || !i.kitchen) && screenShown(i.name, simpleMode, counts));
-  }, [kitchenEnabled, simpleMode, stackCount, templateCount]);
+  }, [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount]);
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const dragOffsetX = useRef(new Animated.Value(0)).current;

@@ -9,6 +9,7 @@ import {
   describeBirthdayAge,
   hasBirthday,
   nextBirthday,
+  parseBirthdayLeadDays,
   parseBirthdaySource,
   personLinkUrl,
   staleBirthdayTasks,
@@ -69,6 +70,24 @@ describe('the lead time', () => {
 
   it('caps at a month, past which the row is furniture', () => {
     expect(clampBirthdayLeadDays(400)).toBe(MAX_BIRTHDAY_LEAD_DAYS);
+  });
+
+  // Number(null) and Number('') are 0, not NaN, so a clamp alone reads "never
+  // stored" as a deliberate zero — and every install that had not touched the
+  // setting would get its birthday tasks on the morning of the birthday.
+  it('reads a missing stored value as the default, not as zero', () => {
+    expect(parseBirthdayLeadDays(null)).toBe(DEFAULT_BIRTHDAY_LEAD_DAYS);
+    expect(parseBirthdayLeadDays(undefined)).toBe(DEFAULT_BIRTHDAY_LEAD_DAYS);
+    expect(parseBirthdayLeadDays('')).toBe(DEFAULT_BIRTHDAY_LEAD_DAYS);
+    expect(parseBirthdayLeadDays('   ')).toBe(DEFAULT_BIRTHDAY_LEAD_DAYS);
+  });
+
+  it('still honours a stored zero, which is a real answer somebody chose', () => {
+    expect(parseBirthdayLeadDays('0')).toBe(0);
+  });
+
+  it('reads a stored value back', () => {
+    expect(parseBirthdayLeadDays('7')).toBe(7);
   });
 });
 

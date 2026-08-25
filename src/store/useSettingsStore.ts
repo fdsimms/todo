@@ -13,7 +13,7 @@ import {
   USE_UP_TASK_CAP_MAX,
   USE_UP_TASK_CAP_MIN,
 } from '../types';
-import { DEFAULT_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays } from '../utils/birthdayTasks';
+import { DEFAULT_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, parseBirthdayLeadDays } from '../utils/birthdayTasks';
 import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
@@ -1557,7 +1557,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const projectReviewTasks = dbGetSetting('projectReviewTasks') !== 'false';
     const projectReviewTaskCategory = dbGetSetting('projectReviewTaskCategory') || null;
     const birthdayTasks = dbGetSetting('birthdayTasks') !== 'false';
-    const birthdayLeadDays = clampBirthdayLeadDays(Number(dbGetSetting('birthdayLeadDays')));
+    const birthdayLeadDays = parseBirthdayLeadDays(dbGetSetting('birthdayLeadDays'));
     const birthdayTaskCategory = dbGetSetting('birthdayTaskCategory') || null;
     // `=== 'true'`, the opt-in reading the nudge takes rather than the one
     // above it: this generator adds a surface rather than replacing one, so an

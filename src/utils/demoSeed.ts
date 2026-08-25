@@ -4,6 +4,7 @@ import { setHours } from 'date-fns/setHours';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { usePersonStore } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -690,6 +691,66 @@ export function seedDemoData(): void {
     seedGroceries(recipes, today);
     seedMealPlanAndFridge(recipes, today);
   }
+
+  seedPeople(today);
+}
+
+// ---------------------------------------------------------------------------
+// People
+// ---------------------------------------------------------------------------
+
+/**
+ * A handful of people, hand-added, which is the whole shape of the feature:
+ * not an address book, just the people you want to keep up with. Three, because
+ * a list of thirty would be exactly the cold thing `docs/arch/people.md` is
+ * about, and the seed is what someone handed the phone actually sees.
+ */
+function seedPeople(today: Date): void {
+  const { createPerson, updatePerson } = usePersonStore.getState();
+  const { addTask, updateTask, completeTask } = useTaskStore.getState();
+
+  // One birthday inside the lead window so the generated task is genuinely on
+  // Today when demo mode opens — this generator is invisible until a birthday
+  // is close enough to fire, and a feature with no row in the seed reads as a
+  // feature the app doesn't have. One months off, so the list shows both.
+  const bdayNear = addDays(today, 2);
+  const bdayFar = addDays(today, 154);
+
+  const dustin = createPerson('Dustin');
+  updatePerson(dustin.id, {
+    birthdayMonth: bdayNear.getMonth() + 1,
+    birthdayDay: bdayNear.getDate(),
+    birthYear: bdayNear.getFullYear() - 34,
+    phoneNumber: '555 0148',
+    notes: 'Climbs on Wednesdays. Allergic to shellfish.',
+  });
+
+  const ansley = createPerson('Ansley');
+  updatePerson(ansley.id, {
+    birthdayMonth: bdayFar.getMonth() + 1,
+    birthdayDay: bdayFar.getDate(),
+    nickname: 'Ans',
+    phoneNumber: '555 0172',
+  });
+
+  // No birthday at all, which is the state most people are added in: a name is
+  // enough and everything else is optional.
+  const mom = createPerson('Mom');
+
+  // Tasks that name people, which is what a shared history is made of (#2045).
+  // One planned and one already done, so the link reads both ways rather than
+  // only as something upcoming.
+  const beach = addTask({ title: 'Beach day', dueDate: addDays(today, 5).toISOString() });
+  updateTask(beach.id, { personIds: [dustin.id, ansley.id] });
+
+  const coffee = addTask({ title: 'Coffee with Mom' });
+  updateTask(coffee.id, { personIds: [mom.id] });
+  completeTask(coffee.id);
+
+  // The birthday task comes from the same pass the app runs at launch rather
+  // than from a row written by hand here: a seeded row that skipped the
+  // generator could drift from what the generator actually produces.
+  useTaskStore.getState().checkBirthdayTasks();
 }
 
 // ---------------------------------------------------------------------------
@@ -2062,4 +2123,5 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // see this feature is to mark a meal cooked, which the demo is fully set up
   // for: tonight's stir-fry and its ingredients are all here.
   useMealPlanStore.getState().clearCookedOffer();
+
 }

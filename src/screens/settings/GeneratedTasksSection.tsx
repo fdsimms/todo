@@ -23,6 +23,7 @@ import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing, type Colors } from '../../theme';
 import { CountStepper } from '../../components/CountStepper';
+import { DEFAULT_BIRTHDAY_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS } from '../../utils/birthdayTasks';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
@@ -221,6 +222,42 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
               }
             />
           </View>
+        </>
+      );
+    }
+
+    if (kind === 'birthday') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="calendar-outline"
+            label="Show the task"
+            hint="How many days before the birthday the task falls due"
+            value={
+              s.birthdayLeadDays === 0
+                ? 'On the day'
+                : `${s.birthdayLeadDays} ${s.birthdayLeadDays === 1 ? 'day' : 'days'} before`
+            }
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.birthdayLeadDays}
+              onChange={next => s.setBirthdayLeadDays(next ?? DEFAULT_BIRTHDAY_LEAD_DAYS)}
+              min={0}
+              max={MAX_BIRTHDAY_LEAD_DAYS}
+              format={n => (n === 0 ? 'Day of' : `${n}d`)}
+              label="Days before the birthday"
+              describeValue={n =>
+                n === 0 ? 'On the birthday itself' : `${n} ${n === 1 ? 'day' : 'days'} before`
+              }
+            />
+          </View>
+          {/* Only ever moves when the row *surfaces*. The birthday itself rides
+              the task's deadline, so changing this never moves anybody's
+              birthday, and it deliberately doesn't re-date a row already on the
+              list — see birthdayDrift. */}
         </>
       );
     }
