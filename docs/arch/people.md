@@ -561,3 +561,64 @@ years a month at a time, where a birth *day* is at most eleven taps from
 wherever the grid opens. The year is a separate optional field with an "e.g."
 placeholder, because the year is the half people genuinely don't know, and a
 birthday with no year is the common case rather than missing data.
+
+## Templates that ask who
+
+A template question can be kind `'people'` (#2090) — "Who's coming?" on a
+Camping Trip template, answered once per apply, written onto `personIds` for
+every task the run creates. `TemplateQuestionKind` gained it as a fourth kind
+rather than a variant of `'choice'`, because a choice's answer set is a fixed
+list the author typed in the editor and its answer is one of them; a people
+question's set is whoever exists on the People screen at apply time, and its
+answer is a set of them, not one.
+
+- **The answer is the same JSON-array-in-a-string encoding `Task.personIds`
+  itself uses on its SQLite column**, because the rest of this module treats a
+  question's answer as one string (`Record<string, string>`, see
+  `resolveAnswers`), and a person picker's answer is a set. `personIdsFromAnswer`
+  / `personIdsToAnswer` in `templateQuestions.ts` are the two directions, and
+  `personIdsToAnswer([])` is deliberately `''` rather than `'[]'` — `resolveAnswers`
+  falls back to the default on a falsy typed answer, so unpicking the last
+  person by hand has to produce the same falsy string an untouched question
+  would, or the field gets stuck instead of handing itself back to the default.
+  Both shrug rather than throw on a hand-edited or corrupted answer, same as
+  every other cross-row pointer in this doc.
+- **`personIdsForAnswers(questions, answers)` unions every `'people'` question's
+  answer** into one list — a template can ask "who's on the flight" and "who's
+  at the hotel" separately, and a task naming either of them is a task naming
+  somebody.
+- **An unattended run never names anyone, and the guarantee lives in
+  `defaultAnswer`, not in `personIdsForAnswers`.** `checkScheduledTemplates`
+  calls `resolveAnswers(questions, {}, anchors)` — nothing typed — so every
+  `'people'` question resolves through `defaultAnswer`, which for this kind is
+  never anything but `''` (not the `'choice'` rule of defaulting to the first
+  option — nobody is the only honest default when nobody is present to pick).
+  That in turn depends on `normalizeTemplateQuestion` forcing `defaultValue`
+  (and `name`, so a stray value can't leak into a title substitution either)
+  to `''` for this kind regardless of what a hand-edited or restored row
+  claims — `personIdsForAnswers` itself stays generic and doesn't need to know
+  whether a person present is answering or an unattended run is, the same way
+  `placeholderValuesFor` beside it doesn't. A test pins the whole chain down:
+  `checkScheduledTemplates` never produces a task with a `personIds` override,
+  even on a template carrying a `'people'` question.
+- **`ApplyTemplateOptions.personIds` lands on every task built from a template
+  item, not on the run's container.** A run stack or run project has no
+  `personIds` field to set; a `'task'` container's own parent row and its
+  items' own subtask stubs (`addSubtask` takes no field overrides) don't get it
+  either. "Every task the run creates" means every leaf the apply actually
+  builds from an item, the same scope every other per-run override in
+  `applyTemplate` — `groupId`, `parentId`, `projectId` — already has.
+- **The picker is `PillGroup` with no `onCreate`, and it disappears entirely
+  when nobody has been added on the People screen yet** — the same two rules
+  "Guests on a planned meal" above states for the identical reason: rule 3
+  again. Here that means the one question row goes missing rather than a whole
+  block, since a template can ask a `'people'` question alongside an ordinary
+  one and the other question still has to render. `ApplyTemplateSheet` filters
+  it out of `visibleQuestions` before render, not just visually hides it, so a
+  lone `'people'` question on a template nobody has anyone for shows no
+  "Questions" section at all rather than an empty one.
+- **`PillGroup` gained an optional `pluralNoun` prop** for this caller.
+  Every existing `noun` pluralizes by appending "s" ("aisle" → "aisles"), which
+  the component's own "N more…" label already assumed; "person" doesn't
+  ("people", not "persons"). `pluralNoun="people"` overrides just that label;
+  every other caller is unaffected since the prop defaults to `` `${noun}s` ``.

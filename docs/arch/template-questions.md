@@ -55,6 +55,13 @@ beside it.
 - **Deleting a question takes it off the items conditioned on it.** Every reader shrugs a dangling
   condition off anyway (`liveConditions`, the house rule for cross-row pointers), but an item still
   carrying one would render an "Only when" with nothing under it.
-- **Only a choice can gate an item** — a number or free-text answer has no fixed set to tick, so
-  the item editor's Only when field lists choice questions alone, and hides itself entirely when
-  the template has none.
+- **Only a choice can gate an item** — a number, free-text or people answer has no fixed set to
+  tick, so the item editor's Only when field lists choice questions alone, and hides itself entirely
+  when the template has none.
+- **A `'people'` question is the one kind that fills no blank and offers no authored set.**
+  `normalizeTemplateQuestion` forces its `name` to `''` (nothing for `placeholderValuesFor` to key
+  on) the same way it forces `defaultValue` to `''` (nothing to default to but nobody). It still
+  flows through `resolveAnswers`/`defaultAnswer` like every other kind — it just answers with a set
+  of ids rather than a string a title could use, and gates nothing (see above). What that answer
+  means and where it goes is `docs/arch/people.md`, "Templates that ask who" — this file stays about
+  the question mechanism, that one's about the person it names.

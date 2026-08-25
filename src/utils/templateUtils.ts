@@ -91,16 +91,24 @@ function normalizeConditions(raw: unknown): TemplateItemCondition[] {
  */
 export function normalizeTemplateQuestion(raw: Partial<TemplateQuestion>): TemplateQuestion {
   const kind: TemplateQuestionKind =
-    raw.kind === 'number' || raw.kind === 'choice' ? raw.kind : 'text';
+    raw.kind === 'number' || raw.kind === 'choice' || raw.kind === 'people' ? raw.kind : 'text';
   const fromDates: TemplateQuestionSource =
     kind === 'number' && (raw.fromDates === 'days' || raw.fromDates === 'nights') ? raw.fromDates : 'none';
   return {
     id: raw.id ?? generateId(),
-    name: raw.name ?? '',
+    // A people question fills no blank — its answer is a set of ids, not text
+    // a title could sensibly inline (see personIdsForAnswers). Forced empty
+    // here, not just left empty by the editor, so a hand-edited or restored
+    // row can't carry a stray name into a substitution that would print raw
+    // JSON into a title.
+    name: kind === 'people' ? '' : (raw.name ?? ''),
     prompt: raw.prompt ?? '',
     kind,
     options: Array.isArray(raw.options) ? raw.options.filter((o): o is string => typeof o === 'string') : [],
-    defaultValue: raw.defaultValue ?? '',
+    // 'people' has no author-set default the way 'choice' has no
+    // defaultValue: what a run starts with is nobody, always, and that is
+    // load-bearing rather than incidental — see personIdsForAnswers.
+    defaultValue: kind === 'choice' || kind === 'people' ? '' : (raw.defaultValue ?? ''),
     fromDates,
   };
 }

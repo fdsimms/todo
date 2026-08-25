@@ -43,10 +43,15 @@ import {
   initialLeafSelection,
   reselectForAnswers,
   questionLabel,
+  personIdsFromAnswer,
+  personIdsToAnswer,
+  personIdsForAnswers,
 } from '../utils/templateQuestions';
 import { WhenPicker } from './WhenPicker';
 import { EditorRow } from './EditorRow';
-import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion } from '../types';
+import { PillGroup } from './PillGroup';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
+import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion, Person } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
@@ -135,6 +140,12 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
 
   const questions = useMemo(() => questionsForTree(tree, templatesById), [tree, templatesById]);
   const answers = resolveAnswers(questions, typedAnswers, anchors);
+  const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
+  // A 'people' question with nobody on the People screen yet would render an
+  // empty picker — exactly the "prompt to start filing your friends" rule 3
+  // (docs/arch/people.md) rules out — so it doesn't render at all, the same
+  // way MealEntrySheet's guest picker omits itself rather than showing empty.
+  const visibleQuestions = questions.filter(q => q.kind !== 'people' || people.length > 0);
 
   const hiddenY = useSheetHiddenOffset();
 
@@ -318,6 +329,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
       runName,
       placeholders: { ...placeholderValues, ...answerValues },
       targetProjectId: projectId,
+      personIds: personIdsForAnswers(questions, answers),
     });
     // Waits for the sheet to be fully gone — a caller opening the task editor
     // straight off this callback would stack two Modals mid-animation, the
@@ -475,15 +487,16 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
               the checklist both: the answers decide what's ticked below, so a
               question sitting under the list it changes would read as an
               afterthought. */}
-          {questions.length > 0 && (
+          {visibleQuestions.length > 0 && (
             <View style={styles.runBlock}>
               <Text style={styles.blanksLabel}>Questions</Text>
-              {questions.map(question => (
+              {visibleQuestions.map(question => (
                 <QuestionRow
                   key={question.id}
                   question={question}
                   value={answers[question.id] ?? ''}
                   onChange={value => setTypedAnswers(prev => ({ ...prev, [question.id]: value }))}
+                  people={people}
                   colors={colors}
                   styles={styles}
                 />
@@ -518,7 +531,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
             </View>
           )}
 
-          {(showRunField || placeholderNames.length > 0 || questions.length > 0) && <View style={styles.inlineSep} />}
+          {(showRunField || placeholderNames.length > 0 || visibleQuestions.length > 0) && <View style={styles.inlineSep} />}
 
           {/* Anchor dates */}
           <AnchorRow
@@ -606,11 +619,13 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
  * one line or wrap ragged, which is a row of pills again inside a box.
  */
 function QuestionRow({
-  question, value, onChange, colors, styles,
+  question, value, onChange, people, colors, styles,
 }: {
   question: TemplateQuestion;
   value: string;
   onChange: (value: string) => void;
+  /** Only read for a `'people'` question — guaranteed non-empty when one reaches this row, see visibleQuestions above. */
+  people: Person[];
   colors: Colors;
   styles: ReturnType<typeof makeStyles>;
 }) {
@@ -636,6 +651,29 @@ function QuestionRow({
             );
           })}
         </View>
+      ) : question.kind === 'people' ? (
+        // No onCreate: someone can be picked here but never invented here,
+        // same as MealEntrySheet's guest picker.
+        <PillGroup
+          noun="person"
+          pluralNoun="people"
+          surface="card"
+          options={people.map(p => {
+            const picked = personIdsFromAnswer(value).includes(p.id);
+            return {
+              key: p.id,
+              label: displayNameOf(p),
+              selected: picked,
+              onPress: () => {
+                haptics.tap();
+                const ids = personIdsFromAnswer(value);
+                onChange(personIdsToAnswer(
+                  picked ? ids.filter(id => id !== p.id) : [...ids, p.id]
+                ));
+              },
+            };
+          })}
+        />
       ) : (
         <TextInput
           style={styles.blankInput}

@@ -900,7 +900,7 @@ function seedPeople(today: Date): void {
 // ---------------------------------------------------------------------------
 
 /**
- * One template, with two blanks and two questions in it.
+ * One template, with two blanks and three questions in it.
  *
  * The blanks are half the reason this exists: `{destination}` is asked for once
  * in the apply sheet and lands in three item titles, and `{run}` inlines the
@@ -908,10 +908,12 @@ function seedPeople(today: Date): void {
  *
  * The questions are the other half, and they're the same argument one layer up
  * — a template that asks nothing looks exactly like an app that can't ask. So
- * this one asks both kinds: `{nights}` reads itself off the two anchor dates
- * and counts the shirts (and, halved, the jeans), while "What kind of trip?"
- * decides whether the laptop arrives ticked. Neither is visible anywhere until
- * a template declares one.
+ * this one asks all three kinds: `{nights}` reads itself off the two anchor
+ * dates and counts the shirts (and, halved, the jeans), "What kind of trip?"
+ * decides whether the laptop arrives ticked, and "Who's coming?" is the
+ * `'people'` kind (#2090) — answered by nobody here, same as the other two are
+ * never actually run from this seed. All three are invisible anywhere until a
+ * template declares one.
  */
 function seedTemplates(): void {
   const { addTemplate, addItem, addQuestion } = useTemplateStore.getState();
@@ -930,6 +932,9 @@ function seedTemplates(): void {
     kind: 'choice',
     options: ['Vacation', 'Work'],
   })!;
+  // No options, no name, no default to seed — a 'people' question has none of
+  // those, its answer set is read live off the People screen at apply time.
+  addQuestion(template.id, { prompt: "Who's coming?", kind: 'people' });
   const ITEMS: Partial<TemplateItem>[] = [
     // The decision item: applying the template produces a task that asks for
     // the dates when it's ticked, rather than one someone has to convert to a

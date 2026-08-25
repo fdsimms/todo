@@ -584,9 +584,10 @@ describe('demo mode', () => {
   });
 
   // A template that asks nothing looks exactly like an app that can't ask, and
-  // both kinds of question are invisible until one is declared — so the seed
-  // needs a count read off the dates and a choice that decides an item.
-  it('seeds a template that asks about the run, and an item conditioned on the answer', () => {
+  // every kind of question is invisible until one is declared — so the seed
+  // needs a count read off the dates, a choice that decides an item, and a
+  // people question, which has neither of those (no blank, no authored set).
+  it('seeds a template that asks all three question kinds, and an item conditioned on the choice', () => {
     useDemoStore.getState().enterDemoMode();
     const templates = useTemplateStore.getState().templates;
 
@@ -608,6 +609,13 @@ describe('demo mode', () => {
     expect(conditioned.length).toBeGreaterThan(0);
     expect(conditioned[0].conditions[0].questionId).toBe(choice.id);
     expect(choice.options).toEqual(expect.arrayContaining(conditioned[0].conditions[0].values));
+
+    // And a people question — no name to fill a blank with, no options, no
+    // default: normalizeTemplateQuestion forces all three empty for this kind.
+    const who = asking.questions.find(q => q.kind === 'people')!;
+    expect(who).toBeDefined();
+    expect(who.name).toBe('');
+    expect(who.defaultValue).toBe('');
   });
 
   // A decision task is invisible as a *capability* until something asks a

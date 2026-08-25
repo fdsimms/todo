@@ -768,6 +768,35 @@ describe('applyTemplate — placeholders', () => {
   });
 });
 
+describe('applyTemplate — personIds', () => {
+  it('stamps personIds onto every task the run creates', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({
+        items: [makeItem({ id: 'a', title: 'Book campsite' }), makeItem({ id: 'b', title: 'Pack tent' })],
+      })],
+    });
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a', 'b']), { start: null, end: null },
+      { personIds: ['p1', 'p2'] }
+    );
+    expect(mockAddTask.mock.calls[0][0].personIds).toEqual(['p1', 'p2']);
+    expect(mockAddTask.mock.calls[1][0].personIds).toEqual(['p1', 'p2']);
+  });
+
+  it('leaves personIds untouched when none are named — omitted or empty alike', () => {
+    useTemplateStore.setState({
+      templates: [makeTemplate({ items: [makeItem({ id: 'a', title: 'Book campsite' })] })],
+    });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null });
+    expect(mockAddTask.mock.calls[0][0].personIds).toBeUndefined();
+
+    useTemplateStore.getState().applyTemplate(
+      'tpl-1', new Set(['a']), { start: null, end: null }, { personIds: [] }
+    );
+    expect(mockAddTask.mock.calls[1][0].personIds).toBeUndefined();
+  });
+});
+
 describe('setTemplateContainer', () => {
   it('persists the choice', () => {
     useTemplateStore.setState({ templates: [makeTemplate()] });
@@ -1044,6 +1073,22 @@ describe('checkScheduledTemplates', () => {
     expect(mockAddTask).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Pack for a Work trip' })
     );
+  });
+
+  // The safety property the whole 'people' question design rests on: nobody
+  // is present to answer an unattended run, so it must never name anyone,
+  // even when the template carries a 'people' question. See
+  // personIdsForAnswers and defaultAnswer.
+  it('never names anyone from a people question — an unattended run has nobody to ask', () => {
+    seedDue({
+      questions: [{
+        id: 'q1', name: '', prompt: "Who's coming?", kind: 'people',
+        options: [], defaultValue: '', fromDates: 'none',
+      }],
+      items: [makeItem({ id: 'i1', title: 'Pack for the trip' })],
+    });
+    useTemplateStore.getState().checkScheduledTemplates();
+    expect(mockAddTask.mock.calls[0][0].personIds).toBeUndefined();
   });
 
   it('drops an item conditioned off by the default answer', () => {
