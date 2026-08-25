@@ -12,15 +12,19 @@ export function HighlightedText({
   style,
   highlightStyle,
   numberOfLines,
+  ellipsizeMode,
+  pointerEvents,
 }: {
   text: string;
   ranges: [number, number][];
   style?: object;
   highlightStyle?: object;
   numberOfLines?: number;
+  ellipsizeMode?: 'head' | 'middle' | 'tail' | 'clip';
+  pointerEvents?: 'none' | 'auto';
 }) {
   if (ranges.length === 0) {
-    return <Text style={style} numberOfLines={numberOfLines}>{text}</Text>;
+    return <Text style={style} numberOfLines={numberOfLines} ellipsizeMode={ellipsizeMode} pointerEvents={pointerEvents}>{text}</Text>;
   }
 
   const sorted = [...ranges].sort((a, b) => a[0] - b[0]);
@@ -35,7 +39,7 @@ export function HighlightedText({
   if (cursor < text.length) segments.push({ text: text.slice(cursor), highlight: false });
 
   return (
-    <Text style={style} numberOfLines={numberOfLines}>
+    <Text style={style} numberOfLines={numberOfLines} ellipsizeMode={ellipsizeMode} pointerEvents={pointerEvents}>
       {segments.map((seg, i) =>
         seg.highlight
           ? <Text key={i} style={highlightStyle}>{seg.text}</Text>

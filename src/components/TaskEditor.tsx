@@ -75,7 +75,9 @@ import { useShallow } from 'zustand/react/shallow';
 import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions } from '../utils/parseTaskInput';
+import { mergeRanges } from '../utils/ranges';
+import { HighlightedText } from './HighlightedText';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor } from '../utils/effort';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
@@ -733,6 +735,24 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     [title, dayResetTime]
   );
   const scheduleMatchEnd = parsedSchedule ? parsedSchedule.matchStart + parsedSchedule.matchedText.length : 0;
+
+  // Purely visual: an "@name" mention in the title stays tinted while editing
+  // too, but unlike quick add this field never parses one out of typed text —
+  // People is its own picker below (rule 3, docs/arch/people.md), so matching
+  // is restricted to whoever is already in `personIds` rather than the whole
+  // roster. Typing a fresh "@someone" here does nothing until they're added
+  // through that field.
+  const titleMentionRanges = useMemo(
+    () => mergeRanges(matchPersonMentions(title, people.filter(p => personIds.includes(p.id)))
+      .map((m): [number, number] => [m.start, m.end])),
+    [title, people, personIds]
+  );
+  const titleHighlightRanges = useMemo(() => {
+    const ranges = [...titleMentionRanges];
+    if (parsedSchedule) ranges.push([parsedSchedule.matchStart, scheduleMatchEnd]);
+    return mergeRanges(ranges);
+  }, [titleMentionRanges, parsedSchedule, scheduleMatchEnd]);
+  const hasTitleOverlay = parsedSchedule != null || titleMentionRanges.length > 0;
 
   // "Call Kristen", "Text the plumber", "Email the landlord" — a title that
   // implies a contact action with no data to power it. Purely a discoverability
@@ -1879,16 +1899,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
       {titleVisible && (
       <View style={styles.titleWrap}>
-        {parsedSchedule && (
-          <Text style={[styles.titleInput, styles.titleOverlay]} pointerEvents="none">
-            {title.slice(0, parsedSchedule.matchStart)}
-            <Text style={styles.titleHighlight}>{title.slice(parsedSchedule.matchStart, scheduleMatchEnd)}</Text>
-            {title.slice(scheduleMatchEnd)}
-          </Text>
+        {hasTitleOverlay && (
+          <HighlightedText
+            text={title}
+            ranges={titleHighlightRanges}
+            style={[styles.titleInput, styles.titleOverlay]}
+            highlightStyle={styles.titleHighlight}
+            pointerEvents="none"
+          />
         )}
         <TextInput
           ref={titleRef}
-          style={[styles.titleInput, parsedSchedule && styles.titleInputHidden]}
+          style={[styles.titleInput, hasTitleOverlay && styles.titleInputHidden]}
           value={title}
           onChangeText={setTitle}
           placeholder="Task title"
