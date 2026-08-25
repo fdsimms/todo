@@ -70,7 +70,14 @@ import { describeDisposalHistory, wantsShelfLifePrompt } from '../utils/itemDisp
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
 import { wantedPantryChecks } from '../utils/pantryCheckTasks';
-import { canHoldSupply, describeSupply, supplyReorderReason } from '../utils/supply';
+import {
+  canHoldSupply,
+  describeSupply,
+  describeSupplyStock,
+  suppliesStockedFrom,
+  supplyReorderReason,
+  wantedSupplyReorders,
+} from '../utils/supply';
 import { findProjectStalls } from '../utils/projectPull';
 import { kitchenContextRows, plannedUsesToday } from '../utils/dayContextRows';
 import { planTrip, summarizeTrip, describeShopCoverage } from '../utils/shoppingTrip';
@@ -1578,6 +1585,27 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // one, both inherited from the task it speaks for.
     expect(order.deadline).not.toBeNull();
     expect(order.linkUrl).toBe(filter.linkUrl);
+  });
+
+  it('seeds the linked half of the bridge, which writes no task at all', () => {
+    const { tasks } = useTaskStore.getState();
+    const { items } = useGroceryStore.getState();
+
+    const tablets = items.find(i => i.name === 'Dishwasher tablets')!;
+    const dishwasher = tasks.find(t => t.title === 'Run the dishwasher')!;
+    expect(dishwasher.supplyGroceryItemId).toBe(tablets.id);
+
+    // Low enough to be asking, and the answer is the shopping list rather than
+    // a row on Today — a task saying "buy X" beside a list line saying "buy X"
+    // is one errand and two nags.
+    expect(supplyReorderReason(dishwasher)).not.toBeNull();
+    expect(tablets.runningLowAt).not.toBeNull();
+    expect(tablets.onList).toBe(true);
+    expect(wantedSupplyReorders(tasks).map(w => w.taskId)).not.toContain(dishwasher.id);
+
+    // And the grocery side can say why that row is there.
+    expect(describeSupplyStock(suppliesStockedFrom(tablets.id, tasks)))
+      .toBe('Stocked for “Run the dishwasher”');
   });
 
   it('seeds a healthy supply too, so the chip is not only ever a warning', () => {

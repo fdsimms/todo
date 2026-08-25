@@ -119,6 +119,69 @@ app credits the least it can that still clears the threshold — enough that the
 buy-it/still-low/buy-it loop can't happen, and never a number it invented about
 a pack it has never seen.
 
+## Saying it out loud on the grocery side
+
+A linked supply acts on a screen the user may not be looking at, so both halves
+have to explain themselves.
+
+- **The item sheet** carries a third line in the provenance strip under the
+  name, beside `sourceRecipeTitle`'s: "Stocked for “Change the water filter”".
+  It *names* the task rather than linking to it, because no route in the app
+  opens a task by id and adding one to serve a caption would be a navigation
+  surface built for a sentence. It doubles as the warning before the Remove
+  action in that same sheet: deleting the row leaves the task pointing at
+  nothing, and this is where that becomes visible.
+- **The shopping-list row** takes the same slot and the same two suppressions as
+  the recipe caption (a user's own note and a store marker both outrank
+  provenance at a shelf), and sits behind the recipe stamp when a row somehow
+  carries both — that stamp is about *this* add, where a supply is a standing
+  arrangement.
+- Both strings come from `describeSupplyStock` / `describeSupplyStockCaption`
+  so the two surfaces can't drift; past two tasks they count rather than list,
+  because "for A, B and C" on a grocery row is a caption nobody finishes.
+
+**The Pantry row is deliberately not a third surface.** Its caption is built
+from `probablyHaveReason`'s vocabulary, which answers "why do I think you have
+this" — a different question, and threading tasks into `kitchenInventory` to
+answer a second one there would put a fourth rung on a ladder that isn't about
+provenance at all. Tapping the row opens the sheet, which says it.
+
+**The sweep passes `registerUndo: false`.** `setRunningLow` arms shake-to-undo
+with `Added "X" to the list`, which is right for the pill in the sheet and wrong
+for a pass that runs on launch, on foreground and on a completion: the user's
+next shake would undo an add they never made, pointing at an item they may never
+have opened. Same rule the completed-task purge follows by not going through
+`bulkDeleteTasks`.
+
+## Setting one up from quick add
+
+`parseSupplyInput` reads `<N> [unit] left` — "replace cpap filter 6 filters
+left". Three things decided that grammar:
+
+- **English, not a sigil.** This file's parsers read English and the only sigil
+  is `#` (`@` is reserved); see the note in `titleRules.ts` on why the
+  distinction matters.
+- **"left" is load-bearing**, exactly as the duration parser's leading "for"
+  is: a bare "6 filters" in a title is a shopping quantity. It's also the word
+  `formatSupplyLeft` already renders, so what you type is what the row shows
+  back.
+- **`x6` was rejected.** The parser has no collision, but `N×` is how the app
+  *renders a daily target*, so `x6` in a title reads as "six times a day" to
+  anyone who has seen one.
+
+Two rules hold it together. It is **not suffix-anchored**, unlike the schedule
+parse, so the two compose in either order: whichever tooltip is offered first
+shortens the title and the other fires on the remainder. And it is **only
+offered once the sheet has a repeat**, which is both the honest gate (a supply
+on a one-off never counts down) and the cheapest false-positive filter there is
+— "finish the report 3 spare left" is never asked about on a task with no
+repeat. Time units are refused outright rather than dropped, so "3 days left"
+can't set a count of 3 and leave a title reading "finish the report days".
+
+Only the count and the unit are sayable. Pack size, threshold and lead time all
+have workable defaults and stay in the editor, which is what "More details"
+hands the typed supply straight over to.
+
 ## The decline stamp, and the one thing it must not do
 
 `supplyDeclinedAtCount` records the count an offer was turned down at, and
@@ -140,13 +203,16 @@ the stamp on a save that only changed the lead time.
 
 ## Rules that are not obvious from the code
 
-- **A supply requires a recurrence** (`canHoldSupply`). The count rides onto the
-  successor `completeTask` spawns, exactly as `recurrenceCount` and the streak
-  do, so a task that spawns none has nowhere to put the decrement — it would sit
-  at its starting number for ever while the filters were actually being used.
-  The editor only offers the card on a repeating task, and `NO_RECURRENCE`
-  clears the supply when a task becomes a dated series, with the rule and for the
-  reason `showStreak` is cleared there.
+- **A supply requires a recurrence** (`canHoldSupply`), and `addTask` enforces
+  it rather than trusting the draft. The count rides onto the successor
+  `completeTask` spawns, exactly as `recurrenceCount` and the streak do, so a
+  task that spawns none has nowhere to put the decrement — it would sit at its
+  starting number for ever while the filters were actually being used, a chip
+  that lies with no way to tell from looking at it. The editor and quick add
+  both clear it on save, but `addTask` is the door every draft passes through,
+  including one assembled by a template, an import or a restored backup.
+  `NO_RECURRENCE` clears it again when a task becomes a dated series, with the
+  rule and for the reason `showStreak` is cleared there.
 - **A miss spends nothing.** This is the one place the supply and
   `recurrenceCount` deliberately disagree: a missed occurrence burns a cycle of
   the schedule (that is what breaks a streak) but does not burn a filter, because

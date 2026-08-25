@@ -72,6 +72,7 @@ import { describeListEstimate, estimateListTotal, priceToInput } from '../utils/
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
+import { describeSupplyStockCaption, suppliesStockedFrom } from '../utils/supply';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { alternativeCaptions } from '../utils/recipeComponents';
 import { buildGrocerySections, buildGroceryRecipeSections } from '../utils/grocerySuggest';
@@ -228,6 +229,28 @@ export function GroceryScreen() {
     () => alternativeCaptions(items.filter(i => i.onList && i.choiceGroup)),
     [items]
   );
+  // "For “Change the water filter”", per row — which task's supply keeps this
+  // one stocked. Only the screen can reach the task list, the same reason the
+  // either/or captions and the store markers are computed here rather than in
+  // the row.
+  //
+  // Built for the rows *on the list*, since that's where the question ("why is
+  // this here?") is asked; an off-list catalog row is being browsed, not
+  // explained. Selecting only the supply-carrying tasks keeps this off Today's
+  // write path — the list of tasks changes constantly and almost none of them
+  // have a supply.
+  const supplyTasks = useTaskStore(
+    useShallow(s => s.tasks.filter(t => t.supplyGroceryItemId !== null))
+  );
+  const stockedForById = useMemo(() => {
+    const out = new Map<string, string>();
+    for (const item of items) {
+      if (!item.onList) continue;
+      const caption = describeSupplyStockCaption(suppliesStockedFrom(item.id, supplyTasks));
+      if (caption) out.set(item.id, caption);
+    }
+    return out;
+  }, [items, supplyTasks]);
   const openRecipe = useCallback(
     (recipeId: string) => {
       haptics.tap();
@@ -1096,6 +1119,7 @@ export function GroceryScreen() {
           onSelect={toggleSelection}
           onSwipeSelect={id => enterSelectionMode(id)}
           alternatives={alternativeCaptionById.get(row.item.id)}
+          stockedFor={stockedForById.get(row.item.id)}
           product={preferredProductById.get(row.item.id)}
           storeMarker={storeMarkers.get(row.item.id)?.text}
           swapSubstituteId={storeMarkers.get(row.item.id)?.substituteId}
@@ -1103,7 +1127,7 @@ export function GroceryScreen() {
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, storeMarkers]
+    [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers]
   );
 
   // The "Start shopping" card, mounted either as the list's header or as a

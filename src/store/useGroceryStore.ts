@@ -666,8 +666,16 @@ interface GroceryStore {
    * happens (`setLastAction`), which is the honest answer for a mis-tap;
    * "I'm not nearly out any more" a week later is not a request to cancel the
    * shopping.
+   *
+   * `registerUndo: false` for a caller that isn't a person tapping the pill —
+   * today that means the supply sweep (see `checkSupplyReorderTasks`), which
+   * flags an item low because a task counted its last unit down. The add is
+   * real either way; what must not happen is it sitting under the user's next
+   * shake labelled as something they just did. Same opt-out `addToPantry`
+   * takes, and the same rule the completed-task purge follows by not going
+   * through `bulkDeleteTasks`.
    */
-  setRunningLow: (id: string, low: boolean) => void;
+  setRunningLow: (id: string, low: boolean, opts?: { registerUndo?: boolean }) => void;
   /**
    * The remembered shelf life — a dumb setter, unlike setExpiresAt: this
    * never touches expiresAt or the use-up task on its own. See
@@ -2653,7 +2661,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return updates.length;
   },
 
-  setRunningLow(id, low) {
+  setRunningLow(id, low, opts = {}) {
     const item = get().items.find(i => i.id === id);
     if (!item || !!item.runningLowAt === low) return;
     const wasOnList = item.onList;
@@ -2669,7 +2677,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
-    if (low && !wasOnList) {
+    if (low && !wasOnList && opts.registerUndo !== false) {
       get().setLastAction({
         label: `Added "${updated.name}" to the list`,
         undo: () => {

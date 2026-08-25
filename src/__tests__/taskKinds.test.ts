@@ -164,6 +164,7 @@ describe('typeSummary', () => {
 describe('QUICK_ADD_CHIP_LABELS', () => {
   const ALL_CHIPS: QuickAddChip[] = [
     'date', 'repeat', 'segment', 'priority', 'effort', 'tags', 'category', 'link', 'phone', 'email',
+    'supply',
   ];
 
   // The bug this table exists to prevent: a chip that reads as a bare glyph

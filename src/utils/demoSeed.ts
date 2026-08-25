@@ -1654,6 +1654,36 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     ...generatedBy('pantryCheck', itemNamed('Rolled oats').id),
   });
 
+  // --- A supply stocked from the shopping list -----------------------------
+  // The linked half of the supply bridge (see docs/arch/supplies.md), and the
+  // half that can't be seen without a row of its own: an unlinked supply writes
+  // an "Order more X" task, where a linked one puts the item on the *list* and
+  // writes no task at all. With only the unlinked case seeded, the entire
+  // grocery side of the feature reads as something the app doesn't do.
+  //
+  // Dishwasher tablets rather than a filter, because the linking is only ever
+  // the right answer for a thing you buy where you buy food — that's the whole
+  // rule deciding which of the two answers a supply gets.
+  addToPantry('Dishwasher tablets');
+  addTask({
+    title: 'Run the dishwasher',
+    notes: 'A supply stocked from the shopping list: one tablet a run, and the tablets go on the list when they get low.',
+    category: 'Home',
+    dueDate: today.toISOString(),
+    recurrenceType: 'daily',
+    recurrenceInterval: 2,
+    supplyCount: 4,
+    supplyUnit: 'tablets',
+    supplyRefillCount: 40,
+    supplyReorderAt: 5,
+    supplyGroceryItemId: itemNamed('Dishwasher tablets').id,
+  });
+  // Already low, so the row sits on the list saying what it's for. Written out
+  // rather than left to the sweep for the reason the pantry check above is:
+  // that pass runs on Today's focus, and a demo that only comes right after
+  // the second screen visit is a demo of nothing.
+  setRunningLow(itemNamed('Dishwasher tablets').id, true, { registerUndo: false });
+
   // The use-by half. The three finished trips above already stamped a date on
   // everything the shelf-life lexicon recognises, so most of that is here for
   // free — this is the pair the seed has to say out loud: a date corrected by

@@ -22,6 +22,8 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
+import { useTaskStore } from '../store/useTaskStore';
+import { describeSupplyStock, suppliesStockedFrom } from '../utils/supply';
 import { useColors } from '../theme/ThemeContext';
 import {
   spacing,
@@ -191,6 +193,13 @@ export function GroceryItemSheet({
   const clearItemUnavailable = useGroceryStore(s => s.clearItemUnavailable);
   const addShop = useGroceryStore(s => s.addShop);
   const items = useGroceryStore(useShallow(s => s.items));
+  // The tasks this row keeps stocked, for the provenance line under the name.
+  // Read through a selector rather than off the whole task list so the sheet
+  // doesn't re-render on every unrelated task write — the sheet is mounted for
+  // as long as it's open, and Today writes constantly.
+  const stockedFor = useTaskStore(
+    useShallow(s => (item ? suppliesStockedFrom(item.id, s.tasks) : []))
+  );
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
 
@@ -1393,6 +1402,22 @@ export function GroceryItemSheet({
             ) : (
               <Text style={styles.hint}>For the recipe “{item.sourceRecipeTitle}”</Text>
             )
+          )}
+          {/* The third entry in this strip, and the same job as the recipe line
+              above it: an account of why this row exists. A supply is the one
+              cause whose reason lives on a different screen entirely, so
+              without this a row that appeared on the list unasked has nothing
+              at all to say for itself.
+
+              Named, not linked, unlike the recipe: there is no route in the app
+              that opens a task by id, and adding one to serve a caption would
+              be a navigation surface built for a sentence. It doubles as the
+              warning before the Remove action further down this same sheet —
+              deleting the row leaves the task pointing at nothing (a deliberate
+              resolve-or-shrug, see suppliesWantingList), and this is where
+              someone can see that first. */}
+          {!!describeSupplyStock(stockedFor) && (
+            <Text style={styles.hint}>{describeSupplyStock(stockedFor)}</Text>
           )}
           {/* The either/or this row is one option of, and the way out of it.
               Unlinking is offered here rather than on the row because it's a

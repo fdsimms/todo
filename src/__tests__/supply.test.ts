@@ -10,6 +10,8 @@ import {
   clampSupplyReorderAt,
   describeSupply,
   describeSupplyRunOut,
+  describeSupplyStock,
+  describeSupplyStockCaption,
   formatSupplyLeft,
   isSupplyTask,
   restockedSupplyCount,
@@ -498,6 +500,33 @@ describe('suppliesStockedFrom', () => {
   it('ignores a task that names an item but tracks no supply', () => {
     const stray = supplyTask({ id: 'stray', supplyGroceryItemId: 'item-1', supplyCount: null });
     expect(suppliesStockedFrom('item-1', [stray])).toEqual([]);
+  });
+});
+
+describe('the provenance line', () => {
+  const t = (title: string) => ({ title });
+
+  it('names one task in the sheet and on the row, in each surface\'s own words', () => {
+    expect(describeSupplyStock([t('Change the water filter')]))
+      .toBe('Stocked for “Change the water filter”');
+    // Shorter on the row, and phrased to match the recipe caption beside it.
+    expect(describeSupplyStockCaption([t('Change the water filter')]))
+      .toBe('For “Change the water filter”');
+  });
+
+  it('names both when two tasks share an item', () => {
+    expect(describeSupplyStock([t('Filter at home'), t('Filter at work')]))
+      .toBe('Stocked for “Filter at home” and “Filter at work”');
+  });
+
+  it('counts instead of listing once naming stops being a sentence', () => {
+    expect(describeSupplyStock([t('A'), t('B'), t('C')])).toBe('Stocked for 3 tasks');
+    expect(describeSupplyStockCaption([t('A'), t('B'), t('C')])).toBe('For 3 tasks');
+  });
+
+  it('says nothing at all for an ordinary catalog row', () => {
+    expect(describeSupplyStock([])).toBeNull();
+    expect(describeSupplyStockCaption([])).toBeNull();
   });
 });
 

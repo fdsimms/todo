@@ -76,6 +76,7 @@ import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor } from '../
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
 import {
+  canHoldSupply,
   clampSupplyCount,
   clampSupplyLeadDays,
   clampSupplyRefillCount,
@@ -332,19 +333,43 @@ function newTaskFromDraft(
     progressCount: draft.progressCount ?? 0,
     targetUnit: normalizeTargetUnit(draft.targetUnit),
     allowOvershoot: draft.allowOvershoot ?? false,
-    supplyCount: draft.supplyCount ?? null,
-    // Same normaliser the daily target's unit uses, deliberately rather than a
-    // twin: both are a short free-text noun shown beside a number on a row, and
-    // two functions with one rule between them is how the copy drifts.
-    supplyUnit: normalizeTargetUnit(draft.supplyUnit),
-    supplyRefillCount: draft.supplyRefillCount ?? null,
-    supplyReorderAt: clampSupplyReorderAt(draft.supplyReorderAt),
-    supplyLeadDays: draft.supplyLeadDays ?? null,
-    // Never seeded from the draft: a decline is something the user does to a
-    // task that already exists, and a *new* task carrying one would start life
-    // with its first reorder offer already refused.
+    // Refused outright on a task that can't spend it, rather than trusted from
+    // the draft. A supply counts down by riding onto the successor completeTask
+    // spawns, so on a one-off it would sit at its starting number for ever
+    // while the filters were actually being used — a chip that lies, and no way
+    // to tell from looking at it. The editor and quick add both clear it on
+    // their own save; this is the door all of them pass through, and the one
+    // place a draft assembled anywhere else (a template, an import, a restored
+    // backup) is also checked. Same rule canHoldSupply states and NO_RECURRENCE
+    // enforces when a task becomes a dated series.
+    ...(canHoldSupply({
+      recurrenceType: draft.recurrenceType ?? 'none',
+      parentId: draft.parentId ?? null,
+    })
+      ? {
+          supplyCount: draft.supplyCount ?? null,
+          // Same normaliser the daily target's unit uses, deliberately rather
+          // than a twin: both are a short free-text noun shown beside a number
+          // on a row, and two functions with one rule between them is how the
+          // copy drifts.
+          supplyUnit: normalizeTargetUnit(draft.supplyUnit),
+          supplyRefillCount: draft.supplyRefillCount ?? null,
+          supplyReorderAt: clampSupplyReorderAt(draft.supplyReorderAt),
+          supplyLeadDays: draft.supplyLeadDays ?? null,
+          supplyGroceryItemId: draft.supplyGroceryItemId ?? null,
+        }
+      : {
+          supplyCount: null,
+          supplyUnit: null,
+          supplyRefillCount: null,
+          supplyReorderAt: DEFAULT_SUPPLY_REORDER_AT,
+          supplyLeadDays: null,
+          supplyGroceryItemId: null,
+        }),
+    // Never seeded from the draft either way: a decline is something the user
+    // does to a task that already exists, and a *new* task carrying one would
+    // start life with its first reorder offer already refused.
     supplyDeclinedAtCount: null,
-    supplyGroceryItemId: draft.supplyGroceryItemId ?? null,
     tags: draft.tags ?? [],
     category: skipCategoryDefault ? (draft.category ?? null) : (draft.category ?? defaults.category),
     sortOrder,
@@ -3995,7 +4020,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (settings.kitchenEnabled) {
       const grocery = useGroceryStore.getState();
       const lowIds = suppliesWantingList(tasks, grocery.items, dayResetTime);
-      lowIds.forEach(itemId => grocery.setRunningLow(itemId, true));
+      // registerUndo: false — nobody tapped anything. This runs from the launch
+      // sweep, the Today foreground and a completion, so the add left under the
+      // user's next shake would be labelled as something they had just done and
+      // point at an item they may never have opened. Same reason the completed
+      // task purge doesn't route through bulkDeleteTasks.
+      lowIds.forEach(itemId => grocery.setRunningLow(itemId, true, { registerUndo: false }));
     }
 
     if (!settings.supplyReorderTasks) return;

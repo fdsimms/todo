@@ -3096,13 +3096,28 @@ describe('supplies', () => {
       expect(rows[0].supplyCount).toBe(5);
     });
 
-    it('leaves a supply alone on a task that does not repeat', () => {
-      const task = addSupplyTask({ recurrenceType: 'none', supplyCount: 3 });
+    it('refuses a supply on a task that could never spend one', () => {
+      // The door every draft passes through — a template, an import or a
+      // restored backup can all carry one, and on a one-off it would sit at
+      // its starting number for ever while the filters were actually used.
+      const oneOff = addSupplyTask({ recurrenceType: 'none', supplyCount: 4, supplyUnit: 'filters' });
+
+      const stored = useTaskStore.getState().tasks.find(t => t.id === oneOff.id)!;
+      expect(stored.supplyCount).toBeNull();
+      expect(stored.supplyUnit).toBeNull();
+    });
+
+    it('spends nothing on a task that spawns no successor', () => {
+      // Belt and braces behind the addTask guard above: even with a count
+      // forced onto the row, a completion that spawns nothing has nowhere to
+      // put a decrement, which is the whole reason the guard exists.
+      const task = addSupplyTask();
+      useTaskStore.setState(s => ({
+        tasks: s.tasks.map(t => (t.id === task.id ? { ...t, recurrenceType: 'none' as const, supplyCount: 3 } : t)),
+      }));
 
       useTaskStore.getState().completeTask(task.id);
 
-      // Nothing spawns, so nothing is spent — which is why the editor only
-      // offers a supply on a repeating task at all.
       expect(useTaskStore.getState().tasks.find(t => t.id === task.id)!.supplyCount).toBe(3);
     });
   });

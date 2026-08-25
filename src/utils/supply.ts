@@ -463,6 +463,56 @@ export function suppliesStockedFrom<T extends Pick<Task, 'supplyGroceryItemId' |
 }
 
 /**
+ * How many task titles a provenance line names before it gives up and counts.
+ *
+ * Two, because "for A and B" is still a sentence and "for A, B and C" on a
+ * grocery row is a caption nobody finishes reading. Past it the count is the
+ * more useful thing anyway: the point of the line is that *something* depends
+ * on this row, and the sheet is one tap away for the detail.
+ */
+const MAX_NAMED_SUPPLY_TASKS = 2;
+
+/** `"A"`, `"A" and "B"`, or `3 tasks`. */
+function joinSupplyTitles(tasks: readonly Pick<Task, 'title'>[]): string | null {
+  if (tasks.length === 0) return null;
+  if (tasks.length > MAX_NAMED_SUPPLY_TASKS) return `${tasks.length} tasks`;
+  return tasks.map(t => `“${t.title}”`).join(' and ');
+}
+
+/**
+ * The item sheet's line: what this catalog row is being kept stocked for.
+ *
+ * Sits with `sourceRecipeTitle` in the sheet's provenance strip, and is written
+ * to read as its sibling ("For the recipe …" / "Stocked for …"). Null when
+ * nothing stocks from it, which is every row in an ordinary catalog.
+ *
+ * **It names the task rather than linking to it.** The recipe line next to it is
+ * a link because a recipe is a screen the app can open; there is no "open this
+ * task" route anywhere in the app, and inventing one to serve a caption would
+ * be a navigation surface added for a sentence. Naming is also all the line has
+ * to do: it exists so a row that appeared on the list unasked has an account of
+ * itself, and so someone about to delete this row can see something depends on
+ * it — the sheet being where that delete lives is what makes it a warning
+ * rather than a note.
+ */
+export function describeSupplyStock(tasks: readonly Pick<Task, 'title'>[]): string | null {
+  const named = joinSupplyTitles(tasks);
+  return named === null ? null : `Stocked for ${named}`;
+}
+
+/**
+ * The shopping-list row's caption, deliberately shorter than the sheet's.
+ *
+ * Mirrors the recipe caption on the same row ("For “Chili”"), because they
+ * answer the same question and a row that phrased one provenance differently
+ * from the other would read as two unrelated features.
+ */
+export function describeSupplyStockCaption(tasks: readonly Pick<Task, 'title'>[]): string | null {
+  const named = joinSupplyTitles(tasks);
+  return named === null ? null : `For ${named}`;
+}
+
+/**
  * What the reorder task's "How many did you get?" field should arrive holding,
  * as a string, or null when the app has nothing to offer.
  *
