@@ -64,6 +64,9 @@ import {
 import { formatScale } from '../utils/recipeScale';
 import { MEAL_PLAN_RETENTION_DAYS, LEFTOVER_RETENTION_DAYS } from '../types';
 import { isQuotaPartial, isMissed, displayTitleFor, quotaFraction } from '../utils/visibilityUtils';
+import { peopleOn } from '../utils/peopleRegistry';
+import { matchPersonMentions } from '../utils/parseTaskInput';
+import { HighlightedText } from '../components/HighlightedText';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { asksOnCompletion, deliverableKindFor, formatTaskDeliverable } from '../utils/deliverables';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
@@ -781,6 +784,14 @@ const LogbookRow = React.memo(function LogbookRow({
   // A miss outranks a partial in the glyph: a quota task marked missed is both,
   // and "you didn't do this" is the more important of the two things to say.
   const missed = isMissed(task);
+  // Same purely-visual pass TaskItem's row does: an "@name" mention stays
+  // literal in the title, tinted only where it names somebody this task
+  // actually links (peopleOn(task)), not the whole roster.
+  const displayTitle = displayTitleFor(task);
+  const titleMentionRanges: [number, number][] = useMemo(
+    () => matchPersonMentions(displayTitle, peopleOn(task)).map((m): [number, number] => [m.start, m.end]),
+    [displayTitle, task.personIds]
+  );
 
   // ==== render. Everything below is JSX ====
   return (
@@ -859,7 +870,7 @@ const LogbookRow = React.memo(function LogbookRow({
           activeOpacity={interaction.activeOpacity}
           accessible
           accessibilityLabel={[
-            displayTitleFor(task),
+            displayTitle,
             missed
               ? `missed, ${formatTime(task.completedAt!)}`
               : partial
@@ -874,7 +885,13 @@ const LogbookRow = React.memo(function LogbookRow({
             asksOnCompletion(task) ? (answer !== null ? `answered ${answer}` : 'no answer') : null,
           ].filter(Boolean).join(', ')}
         >
-          <Text style={styles.taskTitle} numberOfLines={1}>{displayTitleFor(task)}</Text>
+          <HighlightedText
+            text={displayTitle}
+            ranges={titleMentionRanges}
+            style={styles.taskTitle}
+            highlightStyle={styles.taskTitleMention}
+            numberOfLines={1}
+          />
           <View style={styles.metaRow}>
             <Text style={styles.taskTime}>{formatTime(task.completedAt!)}</Text>
             {/* Named, not just glyphed. The neutral × on the left says something is
@@ -1219,6 +1236,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     lineHeight: lineHeight.md,
     fontWeight: '400',
+  },
+  taskTitleMention: {
+    color: colors.accent,
+    fontWeight: fontWeight.semibold,
   },
   taskTime: {
     color: colors.textTertiary,

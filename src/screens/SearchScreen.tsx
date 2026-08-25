@@ -26,6 +26,9 @@ import type { SearchResult, GroupSearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch, searchGroups } from '../utils/fuzzySearch';
 import { collapseOccurrences, formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
 import { displayTitleFor, groupRoster, isQuotaPartial } from '../utils/visibilityUtils';
+import { peopleOn } from '../utils/peopleRegistry';
+import { matchPersonMentions } from '../utils/parseTaskInput';
+import { mergeRanges } from '../utils/ranges';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { tagColor } from '../utils/tagColor';
@@ -67,6 +70,14 @@ function SearchResultItem({ result, onPress, onTicked, categories, styles, color
     : null;
 
   const displayTitle = displayTitleFor(task);
+  // An "@name" mention stays literal in the title (see matchPersonMentions'
+  // doc comment) and is tinted the same as a matched query term — merged
+  // into one range set since the two can overlap (searching "brittany" with
+  // "@Brittany" in the title), and HighlightedText needs disjoint ranges.
+  const titleRanges = useMemo(
+    () => mergeRanges([...titleMatches, ...matchPersonMentions(displayTitle, peopleOn(task)).map((m): [number, number] => [m.start, m.end])]),
+    [titleMatches, displayTitle, task.personIds]
+  );
   const answer = formatTaskDeliverable(task);
   const category = categoryLabel(task.category, categories);
   // What this row stands for besides itself, when it's one date of a repeat
@@ -115,7 +126,7 @@ function SearchResultItem({ result, onPress, onTicked, categories, styles, color
       >
         <HighlightedText
           text={displayTitle}
-          ranges={titleMatches}
+          ranges={titleRanges}
           style={[styles.resultTitle, isCompleted && styles.resultTitleDone]}
           highlightStyle={styles.highlight}
           numberOfLines={2}

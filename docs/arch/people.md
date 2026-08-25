@@ -182,6 +182,37 @@ way `canBlock(undefined)` is false and chain walks stop on a missed lookup.
 Rewriting rows a delete isn't otherwise touching costs more than shrugging does,
 and the retention note makes the same call about `previousOccurrenceId`.
 
+## An "@name" mention stays in the title
+
+`matchPersonMentions` (`src/utils/parseTaskInput.ts`) is the one sigil-based
+quick-add parser that doesn't strip its match. `#category`, a pasted link, a
+phone number — all metadata, and all read fine gone from the title once
+they're a structured field. A person is frequently the sentence's own object:
+"Call Brittany" parsed the usual way leaves "Call", which is worse than doing
+nothing. So an "@name" resolves into `personIds` the same as any other
+mention, but the text stays, and every surface naming a task renders the
+matched span as a tinted token in place instead — `TaskItem`, `LogbookScreen`,
+Search and Quick Search, and `TaskEditor`'s own title field.
+
+- **It resolves live, with no tap to accept.** The other tooltip parsers in
+  `QuickAddModal` mutate the title (strip a phrase, replace it with nothing)
+  and need a confirm step for that reason — this one doesn't touch the text,
+  so there's nothing to confirm. `personIds` is simply derived from whatever
+  mentions are currently in the title; delete the "@name" and the link goes
+  with it.
+- **The rendering is purely visual and reads only `peopleOn(task)`, never the
+  whole roster.** A saved task's title might say "@Brittany" for a Brittany
+  who was later removed from `personIds` some other way (the People picker in
+  `TaskEditor`, a template's `'people'` question) — that shouldn't relight.
+  Matching against only the people the task actually names keeps the token
+  honest: it lights up because the task links them, not because the text
+  happens to spell a name that exists somewhere in the app.
+- **`TaskEditor`'s title field never parses one out of typed text.** It has
+  its own People picker (rule 3), so typing a fresh "@someone" there does
+  nothing until they're added through that field — the overlay there only
+  tints a mention already covered by `personIds`, the same restriction as
+  every other read-only surface, just applied to an editable field.
+
 ## History is completed tasks, and there is no interactions table
 
 A completed task carrying `personIds` **is** the record that something happened
@@ -350,7 +381,7 @@ assertion.
   whether today has room did not thereby ask for their past to be matched
   against their friends' names. It shows nothing at all until a name matches, so
   defaulting on costs a user who does not want it nothing they can see.
-- **Whole-word, exact, and ambiguity resolves to nobody.** `parsePeopleInput`'s
+- **Whole-word, exact, and ambiguity resolves to nobody.** `matchPersonMentions`'s
   refusal, one shelf over: "Dinner w/ Sam" with two Sams on file names neither,
   while "Dinner w/ Sam Ortiz" still names one. The extra rule here is
   `MIN_CALENDAR_NAME_LENGTH`, and the asymmetry with the `@` parser is the point

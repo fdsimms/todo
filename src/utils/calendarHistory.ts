@@ -54,7 +54,7 @@ export const PAST_CALENDAR_WINDOW_DAYS = 90;
  * cleverer rule because the alternative is scoring a match, and a score is
  * exactly what this feature may not have.
  *
- * **`parsePeopleInput` has no such floor and that asymmetry is the point.**
+ * **`matchPersonMentions` has no such floor and that asymmetry is the point.**
  * Typing "@al" is a deliberate act with a sigil in front of it; a calendar
  * title is a guess about text somebody wrote for another purpose entirely. The
  * guess gets the higher bar.
@@ -161,7 +161,7 @@ function escapeRegExp(value: string): string {
 /**
  * The names one person answers to, lowercased and long enough to risk.
  *
- * The same three `parsePeopleInput` builds — full name, nickname, and the first
+ * The same three `matchPersonMentions` builds — full name, nickname, and the first
  * word of the name so "Dustin Reyes" answers to "Dustin". Full names are how
  * people arrive from a contact card, and nobody writes a surname into their own
  * calendar.
@@ -188,7 +188,7 @@ function nameTokensOf(person: PersonName): string[] {
  * nobody. The boundaries are letters and digits rather than `\b`, so "Dustin's
  * place" still matches while "Dustinism" does not.
  *
- * **Ambiguity resolves to nobody**, the same refusal `parsePeopleInput` makes
+ * **Ambiguity resolves to nobody**, the same refusal `matchPersonMentions` makes
  * about "@sam" with two Sams registered. A token answering for two people is
  * dropped rather than guessed at — and the more specific token survives on its
  * own, so with a Dustin Reyes and a nickname-Dustin on file, "Dinner w/ Dustin
