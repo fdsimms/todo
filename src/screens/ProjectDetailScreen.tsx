@@ -30,7 +30,7 @@ import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { EmptyState } from '../components/EmptyState';
 import { ProjectDecisions } from '../components/ProjectDecisions';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
-import { FabMenu, type FabMenuItem } from '../components/Fab';
+import { FabMenu, FAB_SIZE, type FabMenuItem } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -395,7 +395,7 @@ export function ProjectDetailScreen() {
             // the box the empty state centres in.
             ListFooterComponent={
               completedProjectTasks.length === 0 ? null : (
-              <View style={styles.detailFooter}>
+              <View style={[styles.detailFooter, { paddingBottom: insets.bottom + FAB_SIZE + spacing.lg }]}>
                 {completedProjectTasks.length > 0 && (
                   <View style={styles.completedSection}>
                     <TouchableOpacity
@@ -527,8 +527,7 @@ export function ProjectDetailScreen() {
         <FabMenu
           items={addMenuItems}
           onSelect={handleAddMenuSelect}
-          bottom={spacing.xl}
-          size={48}
+          bottom={insets.bottom + spacing.xl}
           accessibilityLabel="Add task to project"
         />
 
@@ -630,8 +629,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   emptyContainer: { flexGrow: 1 },
   detailFooter: {
     paddingTop: spacing.sm,
-    // Clears the floating add button so the last row is never under it.
-    paddingBottom: spacing.xl * 2 + spacing.lg,
+    // paddingBottom is set inline, from insets.bottom, to clear the floating
+    // add button so the last row is never under it.
   },
   notesPreview: {
     flexDirection: 'row',

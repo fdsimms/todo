@@ -300,7 +300,6 @@ interface FabProps {
   /** Distance from the bottom of the screen; callers add their own tab bar / inset math. */
   bottom: number;
   icon?: React.ComponentProps<typeof Ionicons>['name'];
-  /** 48 for FABs inside detail screens, which sit closer to the content. */
   size?: number;
   disabled?: boolean;
   /** Lets the button be dragged into the list behind it. Omit for tap-only. */
