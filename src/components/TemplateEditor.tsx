@@ -132,6 +132,11 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
 
   if (!template) return null;
 
+  // Questions save as you go through their own sheet (see the comment on the
+  // card below), so this list has to track the store rather than the `template`
+  // prop, which is a draft snapshot that only catches up to the store on Done.
+  const liveQuestions = templates.find(t => t.id === template.id)?.questions ?? template.questions;
+
   return (
     <EditorSheet
       visible={visible}
@@ -388,7 +393,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
           Asked when you apply this template. An answer fills the blank of the same name in item
           titles, and items can be set to be included only for some answers.
         </Text>
-        {template.questions.map(question => (
+        {liveQuestions.map(question => (
           <TouchableOpacity
             key={question.id}
             style={styles.questionRow}
