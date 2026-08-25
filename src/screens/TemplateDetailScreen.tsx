@@ -398,8 +398,7 @@ export function TemplateDetailScreen() {
         <Fab
           onPress={() => setQuickAddVisible(true)}
           accessibilityLabel="Add item"
-          bottom={spacing.xl}
-          size={48}
+          bottom={insets.bottom + spacing.xl}
         />
       )}
 
