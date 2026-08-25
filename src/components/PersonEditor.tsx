@@ -76,6 +76,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   const [birthdayMonth, setBirthdayMonth] = useState<number | null>(null);
   const [birthdayDay, setBirthdayDay] = useState<number | null>(null);
   const [birthdayTaskOptOut, setBirthdayTaskOptOut] = useState(false);
+  const [birthdayGiftTaskOptOut, setBirthdayGiftTaskOptOut] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
@@ -101,6 +102,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
     setBirthdayMonth(person.birthdayMonth);
     setBirthdayDay(person.birthdayDay);
     setBirthdayTaskOptOut(person.birthdayTaskOptOut);
+    setBirthdayGiftTaskOptOut(person.birthdayGiftTaskOptOut);
     setPhoneNumber(formatPhoneInput(person.phoneNumber ?? ''));
     setEmail(person.email ?? '');
     setLinkUrl(person.linkUrl ?? '');
@@ -123,6 +125,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       birthdayMonth,
       birthdayDay,
       birthdayTaskOptOut,
+      birthdayGiftTaskOptOut,
       phoneNumber: phoneNumber.trim() || null,
       email: email.trim() || null,
       linkUrl: linkUrl.trim() || null,
@@ -249,6 +252,23 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
               </View>
               <View style={[styles.toggle, !birthdayTaskOptOut && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, !birthdayTaskOptOut && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.sep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); animateLayout(); setBirthdayGiftTaskOptOut(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: !birthdayGiftTaskOptOut }}
+              accessibilityLabel="Remind me to get a gift for this birthday"
+            >
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Remind me to get a gift</Text>
+                <Text style={styles.optionHint}>Adds a separate task to get one, earlier than the reminder above.</Text>
+              </View>
+              <View style={[styles.toggle, !birthdayGiftTaskOptOut && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, !birthdayGiftTaskOptOut && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
           </>

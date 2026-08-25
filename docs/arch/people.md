@@ -287,6 +287,49 @@ touched the setting would get its birthday tasks on the morning of the birthday.
 Zero is a real answer somebody can choose, so the two cases have to be told
 apart before the string becomes a number.
 
+### The birthday-gift task
+
+The eleventh generator (`birthdayGift` in the registry), living beside
+`birthday` in `birthdayTasks.ts` rather than in a file of its own — it reuses
+every rule above except the lead time and the title. Getting somebody a gift
+and marking their birthday are two different questions, and the row that used
+to carry both ("Ansley's birthday", with the gift ideas riding along as its
+notes) had no honest way to be ticked off for one without the other.
+
+- **Its own lead time, longer by default.** `DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS`
+  is ten days against the reminder's three, because buying or shipping
+  something is rarely a same-day job the way a card or a table booking can be.
+  A separate setting rather than a multiplier on the reminder's own, since the
+  two are unrelated numbers somebody might want unrelated answers to.
+- **It ships off, unlike the reminder beside it.** `birthday` ships on because
+  its real gate — a birthday entered at all — is a fact that predates the
+  feature; every install with people in it already made that choice before
+  this existed. `birthdayGift` rides the exact same fact, so shipping it on
+  would double every current birthday's task count for a want nobody had
+  actually stated. Same "ask first" call `pantryCheck` and `mealShortfall`
+  make for the identical reason: no recorded intent of its own to point to.
+- **Two opt-outs, not one.** `Person.birthdayGiftTaskOptOut` sits beside
+  `birthdayTaskOptOut`, same permanent-`false` shape, because "mark the day"
+  and "remind me to shop" are separable wants — someone might keep the first
+  and drop the second, but not the reverse: not wanting to be told a birthday
+  is coming rules out wanting a task about shopping for it too, so
+  `wantedBirthdayGiftTasks` honours both fields.
+- **Both tasks carry the gift ideas, not just one.** `giftIdeasText` is read
+  the same way at both drafts — creation only, never a reconcile, for the
+  reason the section below states. One row names the day, the other is the
+  shopping trip, and the ideas somebody wrote down in March are useful sitting
+  on either. This was a real choice rather than an oversight: moving the notes
+  onto the gift task alone would mean the reminder loses information the
+  moment somebody opts into the second task, and the two generators otherwise
+  know nothing about each other by design (see `generatedTasks.ts`'s note on
+  what a registry entry is not allowed to share).
+- **Same source id shape, same no-cap reasoning, same "dated today, not
+  backwards from the birthday" rule** — see the birthday section above for
+  why each of those is the way it is. The kind is what keeps two tasks sharing
+  one `personId#year` string from being read as each other's
+  (`generatedSourceOf`), the same guard that already separates every other
+  pair of generators sharing the mechanism.
+
 ## The reach-out nudge
 
 `reachOutTasks.ts`, and structurally `projectReviewTasks.ts` one shelf over.
