@@ -281,6 +281,52 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setEditingItemId(created.id);
   };
 
+  // Shared by the field's own "Create" pill and by picking an existing catalog
+  // item straight off the same grid — the two differ only in whether the name
+  // already has a row on the other side of nameKey. Splitting this out of
+  // onCreate is what lets tapping a pantry item resolve immediately instead of
+  // going through a "Create" that would just relink to the row that's already
+  // there.
+  const createAlternative = (raw: string): string | null => {
+    const typed = raw.trim().slice(0, GROCERY_NAME_MAX_LENGTH).trim();
+    if (!typed) return 'Name the ingredient.';
+    // Clones this line's quantity/prep/purpose/section/aisle onto the new
+    // row — the same default splitIngredientAlternatives already uses for
+    // "cheddar or manchego": two alternatives fill the same slot in the
+    // recipe, so sharing an amount is right far more often than not. A
+    // one-tap edit on the new row afterward covers the rest.
+    const currentName = name.trim() || ingredient.name;
+    const label = cleanChoiceGroup(groupLabel || currentName);
+    if (!label) return 'Name the ingredient.';
+    const created = splitIngredientAlternatives(
+      recipeId, ingredient.id, [currentName, typed], label
+    );
+    if (!created) return `“${typed}” is already on this recipe.`;
+    haptics.success();
+    animateLayout();
+    applyChoiceGroup(label);
+    return null;
+  };
+
+  // Every other line's own key, so a catalog item that's already an
+  // ingredient on this recipe isn't offered twice — once as a sibling below,
+  // once again as if it were still sitting unused in the groceries.
+  const otherIngredientKeys = new Set(
+    recipeIngredients.filter(other => other.id !== ingredient.id).map(other => other.nameKey)
+  );
+  // The rest of the catalog, offered as alternatives — so typing the name of
+  // something already in your groceries finds and links it (createAlternative
+  // resolves by nameKey the same way the catalog card above does) instead of
+  // only ever offering to "Create" what quietly already exists.
+  const catalogAlternativeOptions = groceryItems
+    .filter(item => item.id !== catalogItem?.id && !otherIngredientKeys.has(item.nameKey))
+    .map(item => ({
+      key: `catalog:${item.id}`,
+      label: item.name,
+      suffix: ' · in your groceries',
+      onPress: () => { haptics.tap(); createAlternative(item.name); },
+    }));
+
   // A preview of what mergeBack produces — this row's own typed name (not yet
   // saved) plus every sibling's stored one, "or"-joined the same way the
   // split offer shows its parts verbatim.
@@ -524,26 +570,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           limit={0}
           filterPlaceholder="Find or add an ingredient…"
           createMaxLength={GROCERY_NAME_MAX_LENGTH}
-          onCreate={raw => {
-            const typed = raw.trim().slice(0, GROCERY_NAME_MAX_LENGTH).trim();
-            if (!typed) return 'Name the ingredient.';
-            // Clones this line's quantity/prep/purpose/section/aisle onto the
-            // new row — the same default splitIngredientAlternatives already
-            // uses for "cheddar or manchego": two alternatives fill the same
-            // slot in the recipe, so sharing an amount is right far more often
-            // than not. A one-tap edit on the new row afterward covers the
-            // rest.
-            const currentName = name.trim() || ingredient.name;
-            const label = cleanChoiceGroup(groupLabel || currentName);
-            if (!label) return 'Name the ingredient.';
-            const created = splitIngredientAlternatives(
-              recipeId, ingredient.id, [currentName, typed], label
-            );
-            if (!created) return `“${typed}” is already on this recipe.`;
-            haptics.success();
-            animateLayout();
-            applyChoiceGroup(label);
-          }}
+          onCreate={createAlternative}
           options={[
             {
               key: '__none__',
@@ -578,6 +605,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
                   },
                 };
               }),
+            ...catalogAlternativeOptions,
           ]}
         />
         {!!groupLabel && (
