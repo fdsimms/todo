@@ -101,12 +101,53 @@ Every one of these is a thing a similar app does.
 - A score, streak, percentage, health bar, or any number that goes down.
 - Sorting people by neglect, anywhere, including as a non-default option.
 - Tiers, circles, or any grouping that ranks closeness.
-- Bulk address book import.
+- Bulk address book import, or any picker that shows the whole address book at
+  once. Filling one person in from Contacts is fine, and is the intended way
+  their birthday gets entered; see "Where the two lines actually fall" below.
 - A day count anywhere but the person's own detail screen.
 - Red, or any colour meaning late, on anything to do with a person.
 - A banner, tab badge, or header count about people.
-- Any reading of messages, call logs, or calendar attendees.
+- Any reading of messages, call logs, or calendar **attendees**. Event *titles*
+  are a different read and are in scope; again see below.
 - Anything leaving the device.
+
+## Where the two lines actually fall
+
+Two of the nevers above are narrower than they sound, and both have been read
+as broader than intended, so they are worth stating positively.
+
+**Contacts.** The objection is not to the system contact book, it is to a list
+you did not write. Pulling in 400 people produces one, and it then has to be
+sorted somehow, which is the whole disease. **Filling in one person from
+Contacts is the opposite of that** — it is the same deliberate act as typing
+their name, minus the typing, and it is how a birthday is meant to get entered
+in the first place (iOS stores one as `{day, month, year?}`, which is exactly
+the split `Person` uses, optional year included).
+
+So the rule is about the picker's *default view*, not about a count: it opens
+on a search field with nothing under it, and there is no "select all". You
+cannot bulk-select an address book you are never shown. That is also simply the
+better control — a contact book is mostly dentists, plumbers and someone from a
+wedding in 2019, so browsing it for the people you love means wading through
+noise.
+
+**Calendar.** "Attendees" and "event titles" are different reads and only the
+first is out. Attendees is a broad structured sweep of everyone you sit in a
+room with, twelve-person work meetings included. A title is *what you typed
+about your own plans*, and it is where the social ones actually live: most
+dinners with a friend are "Dinner w/ Dustin" in your own calendar, not an
+invite with an attendee list. The app already reads titles — `BusyEvent.title`
+renders on Today as a context row — so this is a new read of data already in
+memory rather than a new capability or a new permission.
+
+What stays absolutely fixed is that **a guess is never written down**. The app
+may notice that a past event's title contains the name of somebody already in
+your list, and it may *offer* that as history on that person's own screen. It
+may not decide it happened, and it may not extract a person it does not already
+know about. That is `probablyHaveReason` and `pantryCheck` again: guess what you
+cannot verify, carry the reason, and ask. It is a pull surface on a screen you
+navigated to on purpose, never a prompt on Today, for the same reason the day
+count is allowed in exactly one place.
 
 ## The link is an array on the task, not a join table
 
