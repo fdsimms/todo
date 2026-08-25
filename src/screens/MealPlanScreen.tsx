@@ -28,6 +28,8 @@ import { InlineAction } from '../components/InlineAction';
 import { PeriodNav } from '../components/PeriodNav';
 import { MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
+import { usePersonStore } from '../store/usePersonStore';
+import { describeGuests, guestsOn } from '../utils/mealGuests';
 import { RecipePickerSheet, type MealPick } from '../components/RecipePickerSheet';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { AddMealsToListSheet } from '../components/AddMealsToListSheet';
@@ -333,6 +335,10 @@ export function MealPlanScreen() {
   const setLastAction = useMealPlanStore(s => s.setLastAction);
   const setRecipeChoices = useMealPlanStore(s => s.setRecipeChoices);
   const setRecipeScale = useMealPlanStore(s => s.setRecipeScale);
+  const setMealGuests = useMealPlanStore(s => s.setMealGuests);
+  // Everybody, archived included: filing somebody away is about the People
+  // screen's list, not about a meal that already names them.
+  const people = usePersonStore(useShallow(s => s.people));
   const addedToListAt = useMealPlanStore(useShallow(s => s.addedToListAt));
   const bulkDeleteEntries = useMealPlanStore(s => s.bulkDeleteEntries);
   const bulkMoveEntries = useMealPlanStore(s => s.bulkMoveEntries);
@@ -1267,6 +1273,7 @@ export function MealPlanScreen() {
                             title={titleForEntry(entry, recipesById)}
                             hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
                             choices={describeEntryChoices(entry)}
+                            guests={describeGuests(guestsOn(entry, people))}
                             onPress={() => {
                               if (selectionMode) toggleSelection(entry.id);
                               else { haptics.tap(); setSelectedId(entry.id); }
@@ -1923,6 +1930,7 @@ export function MealPlanScreen() {
         }
         baseServings={selectedRecipe?.servings}
         baseServingsMax={selectedRecipe?.servingsMax}
+        onSetGuests={selected ? ids => setMealGuests(selected.id, ids) : undefined}
         onSetCooked={selected ? cooked => setCooked(selected, cooked) : undefined}
         onStartCooking={
           selected?.recipeId && recipesById.has(selected.recipeId)

@@ -159,6 +159,12 @@ export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt' | 'calendarEv
  *   cook the dish — the roast potatoes, the double batch — and repeating the
  *   week is repeating those too. This is the whole reason a copy beats
  *   re-planning by hand.
+ * - **Guests are dropped**, on `cookedAt`'s side of the line rather than
+ *   `recipeScale`'s. Who came on Tuesday is a fact about that night, not about
+ *   the dish, and a copied week claiming the same four people are coming again
+ *   is the app asserting something about other people's plans — the one thing
+ *   `docs/arch/people.md` rules out everywhere. Re-inviting is a thing you do,
+ *   and it is two taps on the copied meal.
  * - **`cookTask` carries**, for the same reason and unlike `cookedAt`: it says
  *   whether *this meal* is one you want reminding about, which is a fact about
  *   how you cook the dish rather than a record of a night that happened. A
@@ -185,6 +191,7 @@ export function weekCopyDrafts(
       cookedAt: null,
       leftoverId: null,
       recipeChoices: [...e.recipeChoices],
+      personIds: [],
       recipeScale: e.recipeScale,
       cookTask: e.cookTask,
       shopTask: e.shopTask,

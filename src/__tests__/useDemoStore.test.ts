@@ -901,6 +901,22 @@ describe('demo seed — people', () => {
     const tasks = useTaskStore.getState().tasks;
     expect(tasks.some(t => t.personIds.length > 1)).toBe(true);
   });
+
+  // Guests are the tie-in between the kitchen half and the people half, and a
+  // meal plan with nobody on it reads as a feature the app doesn't have.
+  it('seeds an upcoming meal with guests on it', () => {
+    const withGuests = useMealPlanStore.getState().entries.filter(e => e.personIds.length > 0);
+    expect(withGuests.length).toBeGreaterThan(0);
+    expect(withGuests.some(e => !e.cookedAt)).toBe(true);
+  });
+
+  it("seeds a meal that shows on its guests' own screens", () => {
+    const todayKey = dayKeyOf(new Date());
+    const guest = useMealPlanStore.getState().entries
+      .flatMap(e => e.personIds)
+      .find(Boolean)!;
+    expect(useMealPlanStore.getState().guestMealsFor(guest, todayKey, 60).length).toBeGreaterThan(0);
+  });
 });
 
 describe('demo seed — groceries, recipes, meals and the fridge', () => {

@@ -6,6 +6,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { DetailHeader } from '../components/DetailHeader';
@@ -16,7 +17,9 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
+import { slotLabel } from '../utils/mealPlan';
+import type { GuestMeal } from '../utils/mealGuests';
 import { suggestedHistoryEvents } from '../utils/calendarHistory';
 import { telUrl, smsUrl } from '../utils/phone';
 import { tasksNaming } from '../utils/peopleRegistry';
@@ -38,6 +41,15 @@ import {
 type RootStackParamList = {
   PersonDetail: { personId: string };
 };
+
+/**
+ * How far ahead to look for meals they are a guest at.
+ *
+ * Two months: a meal plan is written a week or two out, and the read is one
+ * range query rather than anything held in memory, so the horizon costs
+ * essentially nothing and a dinner somebody planned early still shows.
+ */
+const GUEST_MEAL_HORIZON_DAYS = 60;
 
 /** How many calendar offers show before the rest go behind "Show N more". */
 const SUGGESTION_PREVIEW_COUNT = 5;
@@ -99,6 +111,19 @@ export function PersonDetailScreen() {
   const handledHistory = useCalendarStore(s => s.handledHistory);
   const markHistoryHandled = useCalendarStore(s => s.markHistoryHandled);
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
+  const [guestMeals, setGuestMeals] = useState<GuestMeal[]>([]);
+  // Meal plan entries are read straight from SQLite rather than off the meal
+  // plan store's `entries`, which holds whatever week that screen last showed
+  // — see guestMealsFor. Re-read whenever a meal changes, so naming a guest on
+  // the meal plan and coming straight here shows it.
+  const mealEntries = useMealPlanStore(useShallow(s => s.entries));
+  const guestMealsFor = useMealPlanStore(s => s.guestMealsFor);
+
+  useEffect(() => {
+    setGuestMeals(
+      guestMealsFor(personId, dayKeyOf(getCurrentDayStart()), GUEST_MEAL_HORIZON_DAYS)
+    );
+  }, [personId, guestMealsFor, mealEntries]);
 
   // The one fetch, on open. `refreshPast` is never called on foreground: the
   // past window costs a quarter of events and nothing outside this screen reads
@@ -110,6 +135,36 @@ export function PersonDetailScreen() {
   const today = getCurrentDayStart();
   const last = lastTogether(history);
   const daysSince = daysSinceTogether(last, today);
+
+  /**
+   * Tasks and planned meals, merged and sorted by the day each falls on.
+   *
+   * Sorted on the day key rather than on the task's ISO instant, since a meal
+   * has no time of day to compare with — `MealPlanEntry.date` is a calendar day
+   * on purpose. A task and a dinner on the same day tie, and the task leads,
+   * which is the order they were already in.
+   */
+  const comingUp = useMemo(() => {
+    const rows: { key: string; title: string; when: string; icon: 'calendar-outline' | 'restaurant-outline'; day: string }[] = [
+      ...upcoming.map(entry => ({
+        key: `task:${entry.taskId}`,
+        title: entry.title,
+        when: new Date(entry.on).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+        icon: 'calendar-outline' as const,
+        day: dayKeyOf(new Date(entry.on)),
+      })),
+      ...guestMeals.map(meal => ({
+        key: `meal:${meal.entryId}`,
+        title: meal.title,
+        // The slot rather than a bare date: "Thu · Dinner" says what kind of
+        // evening it is, which is most of what the row is worth.
+        when: `${dayKeyToDate(meal.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · ${slotLabel(meal.slot)}`,
+        icon: 'restaurant-outline' as const,
+        day: meal.date,
+      })),
+    ];
+    return rows.sort((a, b) => a.day.localeCompare(b.day));
+  }, [upcoming, guestMeals]);
 
   // Built across everybody and then narrowed, so one event naming two people
   // resolves to the same set of ids on either of their screens.
@@ -274,19 +329,21 @@ export function PersonDetailScreen() {
           </View>
         )}
 
-        {upcoming.length > 0 && (
+        {/* Tasks and planned meals in one list, because "what is coming up with
+            this person" is one question and two sections answering it in date
+            order separately would read as two. A meal is not a task and never
+            becomes one — it keeps its own glyph and says which meal it is. */}
+        {comingUp.length > 0 && (
           <>
             <Text style={styles.groupLabel}>COMING UP</Text>
             <View style={styles.card}>
-              {upcoming.map((entry, i) => (
-                <View key={entry.taskId}>
+              {comingUp.map((item, i) => (
+                <View key={item.key}>
                   {i > 0 && <View style={styles.sep} />}
                   <View style={styles.entryRow}>
-                    <Ionicons name="calendar-outline" size={14} color={colors.accent} />
-                    <Text style={styles.entryTitle} numberOfLines={1}>{entry.title}</Text>
-                    <Text style={styles.entryDate}>
-                      {new Date(entry.on).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                    </Text>
+                    <Ionicons name={item.icon} size={14} color={colors.accent} />
+                    <Text style={styles.entryTitle} numberOfLines={1}>{item.title}</Text>
+                    <Text style={styles.entryDate}>{item.when}</Text>
                   </View>
                 </View>
               ))}

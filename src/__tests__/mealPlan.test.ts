@@ -48,6 +48,7 @@ function entry(
     cookedAt: null,
     leftoverId: null,
     recipeChoices: [],
+    personIds: [],
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
@@ -255,6 +256,18 @@ describe('shiftDayKey', () => {
 });
 
 describe('weekCopyDrafts', () => {
+  // Guests sit on cookedAt's side of the line rather than recipeScale's: who
+  // came on Tuesday is a fact about that night, and a copied week claiming the
+  // same people are coming again is the app asserting something about other
+  // people's plans.
+  it('drops the guests rather than re-inviting them', () => {
+    const drafts = weekCopyDrafts([
+      entry('2026-08-05', 'dinner', { personIds: ['p1', 'p2'] }),
+    ], 7);
+
+    expect(drafts[0].personIds).toEqual([]);
+  });
+
   it('shifts every entry by the offset, keeping its slot and order', () => {
     const drafts = weekCopyDrafts([
       entry('2026-08-05', 'dinner', { sortOrder: 2, title: 'Salad' }),

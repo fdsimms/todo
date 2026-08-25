@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
+import { useShallow } from 'zustand/react/shallow';
 import type { MealPlanEntry, MealSlot } from '../types';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -25,6 +26,8 @@ import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
 import type { ChoiceGroup } from '../utils/recipeComponents';
 import { RecipeScaleChips } from './RecipeScaleChips';
+import { PillGroup } from './PillGroup';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
@@ -67,6 +70,13 @@ interface Props {
   baseServings?: number | null;
   /** The high end of a range, for the "recipe says serves 4-6" caption. */
   baseServingsMax?: number | null;
+  /**
+   * Records who this meal is for — see MealPlanEntry.personIds. Absent (with
+   * the block) when nobody has been added on the People screen yet, since a
+   * picker with nothing in it is a prompt to start filing your friends, which
+   * is exactly what `docs/arch/people.md` rule 3 rules out.
+   */
+  onSetGuests?: (personIds: string[]) => void;
   /**
    * Ticks the meal off, or back on. Present either way now — the action used
    * to vanish once an entry was cooked, so the sheet could get you into that
@@ -139,7 +149,7 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onRemove, onRename, choiceGroups = [], onChoose,
-  onScale, baseServings, baseServingsMax, onSetCooked, onStartCooking, onOpenRecipe, onAddToList, onAddPrepTasks,
+  onScale, baseServings, baseServingsMax, onSetGuests, onSetCooked, onStartCooking, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
 }: Props) {
@@ -148,6 +158,12 @@ export function MealEntrySheet({
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { height: windowHeight } = useWindowDimensions();
   const cooked = !!entry?.cookedAt;
+
+  // Archived people are out of the picker but never stripped off a meal that
+  // already names them — the same split TaskEditor makes, and for the same
+  // reason: filing somebody away is about the list, not about last Tuesday.
+  const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
+  const guestIds = entry?.personIds ?? [];
 
   const hiddenY = useSheetHiddenOffset();
 
@@ -285,6 +301,42 @@ export function MealEntrySheet({
                 // flush to the card edge while every label above them is inset.
                 style={styles.scaleChips}
               />
+            </View>
+          )}
+
+          {/* Under the batch chips and above the choice groups: all three say
+              what gets cooked rather than where the meal sits, and who is
+              coming is the one a cook decides first. `PillGroup` rather than a
+              raw pill row because the people list has no ceiling — it caps
+              itself and grows a filter — and deliberately with no `onCreate`,
+              so somebody can be picked here but never invented here. */}
+          {!!onSetGuests && people.length > 0 && (
+            <View style={styles.guestBlock}>
+              <Text style={styles.label}>Guests</Text>
+              {/* The inset lives here because PillGroup carries none of its own
+                  — same reason scaleChips does it for RecipeScaleChips, and
+                  without it the pills sit flush to the card edge while the
+                  label above them is inset 16pt. */}
+              <View style={styles.guestPills}>
+              <PillGroup
+                noun="guest"
+                surface="card"
+                options={people.map(p => ({
+                  key: p.id,
+                  label: displayNameOf(p),
+                  selected: guestIds.includes(p.id),
+                  accessibilityLabel: `${displayNameOf(p)} is coming`,
+                  onPress: () => {
+                    haptics.tap();
+                    onSetGuests(
+                      guestIds.includes(p.id)
+                        ? guestIds.filter(id => id !== p.id)
+                        : [...guestIds, p.id]
+                    );
+                  },
+                }))}
+              />
+              </View>
             </View>
           )}
 
@@ -614,6 +666,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: spacing.md,
     paddingBottom: spacing.sm,
   },
+  guestBlock: { marginBottom: spacing.sm },
+  guestPills: { paddingHorizontal: spacing.md },
   scaleBlock: { paddingBottom: spacing.xs },
   scaleChips: { paddingHorizontal: spacing.md },
   chips: {
