@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 import { addDays } from 'date-fns/addDays';
-import type { Calendar as DeviceCalendar, Event } from 'expo-calendar';
+import type { Calendar as DeviceCalendar, Event } from 'expo-calendar/legacy';
 import type { BusyEvent } from './calendarBusy';
 
 /**
@@ -46,8 +46,8 @@ import type { BusyEvent } from './calendarBusy';
  * bundle before React mounts rather than just this feature. The type-only
  * imports above are erased at compile time and carry no such risk.
  */
-function calendar(): typeof import('expo-calendar') {
-  return require('expo-calendar');
+function calendar(): typeof import('expo-calendar/legacy') {
+  return require('expo-calendar/legacy');
 }
 
 export type CalendarPermission = 'granted' | 'denied' | 'undetermined' | 'unsupported';

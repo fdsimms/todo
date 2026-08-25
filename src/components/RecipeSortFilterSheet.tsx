@@ -208,7 +208,7 @@ export function RecipeSortFilterSheet({
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   modalRoot: { flex: 1, justifyContent: 'flex-end' },
-  overlay: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.backdrop },
+  overlay: { ...StyleSheet.absoluteFill, backgroundColor: colors.backdrop },
   sheet: {
     backgroundColor: colors.bgSecondary,
     borderTopLeftRadius: radius.lg,

@@ -97,7 +97,6 @@
       "./plugins/withShareExtension",
       "./plugins/withAlarmKit",
       "./plugins/withCloudKit",
-      "./plugins/withFmtConstevalFix",
       [
         "expo-quick-actions",
         {

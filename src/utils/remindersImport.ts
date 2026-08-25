@@ -1,5 +1,5 @@
 import { format } from 'date-fns/format';
-import type { Calendar as ReminderList, RecurrenceRule, Reminder } from 'expo-calendar';
+import type { Calendar as ReminderList, RecurrenceRule, Reminder } from 'expo-calendar/legacy';
 import type { RecurrenceType, Task, TaskDraft } from '../types';
 import { groceryNameKey, parseGroceryInput } from './groceryParse';
 import {

@@ -2880,7 +2880,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     overflow: 'hidden',
   },
   highlightScrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: colors.accent,
   },
   row: {

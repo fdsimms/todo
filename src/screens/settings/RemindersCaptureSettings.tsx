@@ -12,7 +12,7 @@ import {
   type RemindersPermission,
 } from '../../utils/remindersImportSync';
 import { findReminderList, reminderListOptions } from '../../utils/remindersImport';
-import type { Calendar as ReminderList } from 'expo-calendar';
+import type { Calendar as ReminderList } from 'expo-calendar/legacy';
 import { useColors } from '../../theme/ThemeContext';
 import { animateLayout } from '../../utils/layoutAnimation';
 import { SettingsSection } from './SettingsSection';

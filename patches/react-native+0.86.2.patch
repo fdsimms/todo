@@ -1,0 +1,27 @@
+diff --git a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+index 516ae35..8d5d9ea 100644
+--- a/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
++++ b/node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm
+@@ -460,9 +460,19 @@ void ObjCTurboModule::performVoidMethodInvocation(
+     @try {
+       [inv invokeWithTarget:strongModule];
+     } @catch (NSException *exception) {
+-      // Void methods are always async, re-throw instead of converting to
+-      // JSError, same as the async branch in performMethodInvocation.
+-      @throw exception;
++      // Upstream rethrows here (0.81 converted to a JSError first, 0.86 plain
++      // @throws) on the reasoning that void methods are always async. Either
++      // way the exception escapes across the libdispatch boundary this block
++      // runs on — invokeAsync is dispatch_async and invokeSync is
++      // dispatch_sync, and neither propagates it back to the caller — so it
++      // surfaces as an uncaught exception and aborts the whole process.
++      // Verified against a device crash trace. Log and swallow instead. See
++      // https://github.com/reactwg/react-native-new-architecture/discussions/276.
++      NSLog(
++          @"[RCTTurboModule] Uncaught exception in void method %s.%s: %@",
++          moduleName,
++          methodName,
++          exception);
+     } @finally {
+       [retainedObjectsForInvocation removeAllObjects];
+     }
