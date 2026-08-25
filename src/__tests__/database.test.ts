@@ -2706,6 +2706,7 @@ describe('meal plan entries', () => {
       recipeChoices: [],
       recipeScale: 1,
       cookTask: null,
+      shopTask: null,
       calendarEventId: null,
       cookedAt: null,
       leftoverId: null,
@@ -2925,7 +2926,7 @@ describe('leftovers', () => {
       id: 'meal-x', date: '2026-08-11', slot: 'dinner', recipeId: null,
       title: 'Chilli (1 day old)', sortOrder: 1, createdAt: '2026-08-11T00:00:00.000Z',
       cookedAt: null, leftoverId: 'lo-a', recipeChoices: [], recipeScale: 1, cookTask: null,
-      calendarEventId: null,
+      shopTask: null, calendarEventId: null,
     });
 
     dbDeleteLeftover('lo-a');

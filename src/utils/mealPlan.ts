@@ -163,6 +163,9 @@ export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt' | 'calendarEv
  *   whether *this meal* is one you want reminding about, which is a fact about
  *   how you cook the dish rather than a record of a night that happened. A
  *   week copied forward re-spawns the cook tasks, which is the point.
+ * - **`shopTask` carries** on the same reading — "don't warn me about this
+ *   one, I buy it fresh on the day" is a fact about the dish, and a copied week
+ *   that dropped it would ask again about every meal already answered.
  *
  * `sortOrder` carries as well, so two things on one dinner keep their order
  * relative to each other.
@@ -184,6 +187,7 @@ export function weekCopyDrafts(
       recipeChoices: [...e.recipeChoices],
       recipeScale: e.recipeScale,
       cookTask: e.cookTask,
+      shopTask: e.shopTask,
     }));
 }
 

@@ -84,6 +84,11 @@ export interface MealPlanDraft {
    * see MealPlanEntry.cookTask.
    */
   cookTask?: boolean | null;
+  /**
+   * The same, for "does this one get a Shop task?" — see
+   * MealPlanEntry.shopTask. Omitted (or null) leaves it to the setting.
+   */
+  shopTask?: boolean | null;
 }
 
 /**
@@ -387,6 +392,22 @@ interface MealPlanStore {
    * this meal reconciling it straight back.
    */
   setCookTask: (id: string, value: boolean | null) => void;
+  /**
+   * Says whether this meal gets a "Shop for X" task, or hands the decision
+   * back to the `mealShortfallTasks` setting with `null`.
+   *
+   * The peer of `setCookTask` above, and the same one caller passes `false`
+   * without a toggle having been touched — `useTaskStore.deleteTask`, where
+   * deleting the row *is* the user saying no to it.
+   *
+   * **Writes the flag and stops there, where setCookTask goes on to
+   * reconcile.** A shortfall task is never created by a plan change: it is
+   * raised by `checkMealShortfallTasks` when the meal comes into range and the
+   * kitchen is short, and creating one here would hand back the row the user
+   * just swiped away the moment they edited the meal. Turning it back on is
+   * answered by the next sweep, which is seconds away on any foreground.
+   */
+  setShopTask: (id: string, value: boolean | null) => void;
 
   /**
    * "Cooked" as a single user action: stamps `cookedAt` **and** bumps the
@@ -704,6 +725,9 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       // picker can pass an explicit answer, which is how "add a cook task" is
       // said at plan time.
       cookTask: draft.cookTask ?? null,
+      // Unanswered too, so mealShortfallTasks decides — see
+      // MealPlanEntry.shopTask.
+      shopTask: draft.shopTask ?? null,
       // Nothing on the device yet. reconcileMealEvent below writes the id
       // back if a calendar is picked.
       calendarEventId: null,
@@ -883,6 +907,17 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // without lunch being a meal you want asked about every day.
     if (value === true) createMealSlotTask(get, next);
     reconcileMealSlot(get, next);
+  },
+
+  setShopTask(id, value) {
+    const entry = resolveEntry(get, id);
+    if (!entry || entry.shopTask === value) return;
+    const next: MealPlanEntry = { ...entry, shopTask: value };
+    dbUpdateMealPlanEntry(next);
+    set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
+    // No reconcile and no create — see the interface note. The generator's own
+    // sweep owns both directions here, and a `false` written by a delete has
+    // already taken the row away by the time this runs.
   },
 
   setCookedPaired(id, cooked) {

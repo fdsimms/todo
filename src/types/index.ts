@@ -410,7 +410,12 @@ export type GeneratedKind =
   // A recurring task whose supply of a consumable is nearly spent becomes
   // "Order more X". The first generator whose source is a *task* rather than a
   // row in another store — see src/utils/supply.ts.
-  | 'supplyReorder';
+  | 'supplyReorder'
+  // A meal coming up that the kitchen can't currently make becomes "Shop for
+  // Tue ragu". The only generator whose source row is one the user edits freely
+  // and often, which is why its whole staleness rule is the creation predicate
+  // re-run — see src/utils/mealShortfallTasks.ts.
+  | 'mealShortfall';
 
 export interface Task {
   id: string;
@@ -1747,6 +1752,25 @@ export const GROCERY_USE_UP_LEAD_DAYS_DEFAULT = 1;
 export const GROCERY_USE_UP_LEAD_DAYS_MIN = 0;
 export const GROCERY_USE_UP_LEAD_DAYS_MAX = 14;
 
+// How many days ahead of a planned meal its "Shop for X" task is raised.
+//
+// The mirror image of the pair above — that one counts backwards from a date
+// something goes bad, this one counts backwards from a date something is
+// needed — so it gets its own constants rather than sharing them: the two are
+// answered by different habits and a person who shops on Saturdays has no
+// reason to want their yoghurt chased on the same cadence.
+//
+// Two rather than one, unlike the use-up default, because the failure being
+// prevented is different in kind. A use-up task that arrives late costs the
+// item; a shop that arrives late costs the meal, and "you need three things for
+// tomorrow" the evening before is exactly the blindsiding this generator
+// exists to stop. Zero is still sayable (tell me on the day), and the ceiling
+// matches the meal plan's own horizon — a warning about food a fortnight out is
+// a warning about a plan you'll re-make first.
+export const MEAL_SHORTFALL_LEAD_DAYS_DEFAULT = 2;
+export const MEAL_SHORTFALL_LEAD_DAYS_MIN = 0;
+export const MEAL_SHORTFALL_LEAD_DAYS_MAX = 14;
+
 // How many "Use up X" tasks — grocery and leftover use-up tasks together — are
 // allowed to be live at once (#1675). null (the default) is unlimited: this
 // is a governor for a well-stocked kitchen with both generators on, not a
@@ -2994,6 +3018,30 @@ export interface MealPlanEntry {
    * about the recipe, which may well be a component of something else.
    */
   cookTask: boolean | null;
+  /**
+   * Whether this meal gets a "Shop for Tue ragu" task when the kitchen can't
+   * currently make it — `true`/`false` when the user has said so for this meal,
+   * `null` when they haven't and `mealShortfallTasks` decides (see
+   * utils/mealShortfallTasks.ts).
+   *
+   * Exactly `cookTask`'s tri-state above, for exactly its reasons, and a
+   * separate field rather than a second reader of it because the two answer
+   * different questions about the same night: `cookTask` is "remind me to make
+   * this", this is "warn me if I can't". A meal you cook from memory every week
+   * wants the second and not the first; one you shop for on the day wants the
+   * reverse.
+   *
+   * The tombstone half matters more here than anywhere else, because this is
+   * the only generator whose source the user re-plans freely: every other way a
+   * shortfall task can go away is the app noticing the plan changed
+   * (`staleMealShortfallTasks`), so without a per-meal `false` a swiped-away row
+   * would come back on the very next sweep with the meal untouched.
+   *
+   * `null` for every meal planned before this shipped, which reads as "follow
+   * the setting" — and since the setting ships off, an existing install sees
+   * nothing new until it is switched on.
+   */
+  shopTask: boolean | null;
   /**
    * The device calendar event mirroring this meal, or null when there isn't
    * one (#1494) — the household's shared answer to "what's for dinner

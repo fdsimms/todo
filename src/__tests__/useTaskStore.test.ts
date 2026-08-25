@@ -10,6 +10,8 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { MAX_PROJECT_REVIEW_TASKS } from '../utils/projectReviewTasks';
 import { MAX_PANTRY_CHECK_TASKS } from '../utils/pantryCheckTasks';
+import { MAX_MEAL_SHORTFALL_TASKS } from '../utils/mealShortfallTasks';
+import { useMealPlanStore } from '../store/useMealPlanStore';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -3980,7 +3982,7 @@ describe('checkMealSlotTasks', () => {
     return {
       id: `m-${date}-${slot}`, date, slot, recipeId: null, title: 'Chili', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], recipeScale: 1, cookTask: null, calendarEventId: null,
+      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
       ...over,
     };
   }
@@ -4267,6 +4269,247 @@ describe('checkMealSlotTasks', () => {
     useTaskStore.setState({ tasks: [] });
     useTaskStore.getState().checkMealSlotTasks();
     expect(slotRows().map(t => t.id)).toEqual(first);
+  });
+});
+
+
+describe('checkMealShortfallTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    kitchenEnabled: true,
+    mealShortfallTasks: true,
+    mealShortfallLeadDays: 2,
+    mealShortfallTaskCategory: 'Meal Plan',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  function shortfallRecipe(id: string, name: string, ingredientNames: string[]): Recipe {
+    return {
+      id, name, nameKey: name.toLowerCase(), notes: '', sourceUrl: null, sourceName: null,
+      author: null, source: null, servings: null, servingsMax: null, recipeYield: null,
+      leftoverKeepDays: null, imagePath: null, mealType: null, tags: [],
+      ingredients: ingredientNames.map((n, i) => ({
+        id: `${id}-i${i}`, name: n, nameKey: n.toLowerCase(), quantity: '', aisle: null,
+        prep: null, purpose: null, section: null, choiceGroup: null,
+      })),
+      emptySections: [], components: [], prepTasks: [], steps: [], favorite: false, sortOrder: 1,
+      createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
+      estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
+      cookTimeCount: 0, totalCookMinutes: 0, sourceType: null, sourcePage: null, prepMinutes: null,
+      prepTimerStartedAt: null, prepTimerElapsedSeconds: 0, lastPrepMinutes: null, prepTimeCount: 0,
+      totalPrepMinutes: 0,
+    };
+  }
+
+  function shortfallEntry(date: string, recipeId: string | null, over: Partial<MealPlanEntry> = {}): MealPlanEntry {
+    return {
+      id: `m-${date}-${over.slot ?? 'dinner'}`, date, slot: 'dinner', recipeId, title: 'Ragu',
+      sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
+      recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+      ...over,
+    };
+  }
+
+  const shopRows = () =>
+    useTaskStore.getState().tasks.filter(
+      t => t.generatedKind === 'mealShortfall' && !t.completed && !t.archived
+    );
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 22, 9, 0, 0));
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    useMealPlanStore.setState({
+      entries: [shortfallEntry('2026-08-23', 'r1')], rangeStart: null, rangeEnd: null,
+    });
+    useRecipeStore.setState({ recipes: [shortfallRecipe('r1', 'Ragu', ['Onions'])] });
+    useGroceryStore.setState({
+      items: [], aisleOrder: [], hiddenAisles: [], aisleOverrides: {},
+      shops: [], itemShops: [], lastShopId: null, cartHoldIds: [],
+      pendingUseUpItemId: null, initialized: true,
+    });
+    // The sweep reads the entry window straight from SQLite while setShopTask
+    // writes through the store — in production those are the same table, so a
+    // mock returning a frozen array would hide every write the sweep must see.
+    (dbGetMealPlanEntries as jest.Mock).mockImplementation(
+      () => useMealPlanStore.getState().entries
+    );
+  });
+
+  afterEach(() => { jest.useRealTimers(); });
+
+  /** Re-plan the week under a live row, the way any meal-plan edit would. */
+  const replan = (...entries: MealPlanEntry[]) =>
+    useMealPlanStore.setState({ entries });
+
+  it('writes a shop for a meal in range the kitchen cannot make', () => {
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    const [row] = shopRows();
+    expect(row.title).toBe('Shop for Sun Ragu');
+    expect(row.generatedSourceId).toBe('m-2026-08-23-dinner');
+    // The meal plan, opened on the night in question — where the day header's
+    // cart button holds the sheet this row is asking for.
+    expect(row.linkUrl).toBe('dundundun://mealplan?date=2026-08-23');
+    expect(row.category).toBe('Meal Plan');
+  });
+
+  it('reads a window wider than the lead, so a meal that moved can still be seen', () => {
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    // One day either side of [today, today + lead]: a task whose entry is
+    // absent entirely reads as a deleted meal, which for one merely dragged to
+    // next week would be right by luck rather than by reading its new date.
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-08-21', '2026-08-25');
+  });
+
+  it('writes nothing for a meal it has everything for', () => {
+    useGroceryStore.setState({
+      items: [{
+        id: 'g-1', name: 'Onions', nameKey: 'onions', preferredProductId: null, productStrict: false,
+        aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
+        onList: true, checked: false, sortOrder: 1,
+        purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
+        onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+        isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
+        shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null,
+        usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null,
+        lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
+      }],
+    });
+
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(0);
+  });
+
+  it('is a no-op while the setting is off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ mealShortfallTasks: false }));
+
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(0);
+  });
+
+  // Same gate checkPantryCheckTasks takes: this reads the grocery catalog to
+  // decide what's missing, so with the area hidden it would be the one part of
+  // a switched-off feature still writing rows onto Today.
+  it('is a no-op while the whole grocery area is switched off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: false }));
+
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(0);
+  });
+
+  it('does not pile up a second task on the next sweep', () => {
+    useTaskStore.getState().checkMealShortfallTasks();
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(1);
+  });
+
+  // The whole point of the sweep, and the answer to a meal plan being a thing
+  // people re-plan: none of the ways a week changes knows a row is sitting on
+  // Today naming the old dish, so the clear pass re-runs the create predicate.
+  it('clears a task once the meal is re-planned to something free-text', () => {
+    useTaskStore.getState().checkMealShortfallTasks();
+    expect(shopRows()).toHaveLength(1);
+
+    replan(shortfallEntry('2026-08-23', null));
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(0);
+  });
+
+  it('clears a task once the meal is deleted', () => {
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    replan();
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(0);
+  });
+
+  it('clears a task once the meal is pushed out of range', () => {
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    replan(shortfallEntry('2026-08-23', 'r1', { date: '2026-08-25' }));
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(0);
+  });
+
+  it('clears a task once the meal is marked cooked', () => {
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    replan(shortfallEntry('2026-08-23', 'r1', { cookedAt: '2026-08-23T18:00:00.000Z' }));
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(0);
+  });
+
+  // Clearing must not read as the user declining, or the app's own tidying up
+  // would suppress the offer for this meal for ever.
+  it('does not stamp the meal as declined when it clears its own task', () => {
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(useMealPlanStore.getState().entries[0].shopTask).toBeNull();
+  });
+
+  it('takes a deleted task as a refusal for that meal, and does not hand it back', () => {
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    useTaskStore.getState().deleteTask(shopRows()[0].id);
+    expect(useMealPlanStore.getState().entries[0].shopTask).toBe(false);
+
+    useTaskStore.getState().checkMealShortfallTasks();
+    expect(shopRows()).toHaveLength(0);
+  });
+
+  // A meal is one event: having shopped for Sunday's ragu, a second row asking
+  // again would be an invention. The reading cook tasks had, inherited.
+  it('does not hand back a task the user has already ticked off', () => {
+    useTaskStore.getState().checkMealShortfallTasks();
+    useTaskStore.getState().completeTask(shopRows()[0].id);
+
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(0);
+  });
+
+  it('retitles a live row when the recipe is renamed, rather than replacing it', () => {
+    useTaskStore.getState().checkMealShortfallTasks();
+    const id = shopRows()[0].id;
+
+    useRecipeStore.setState({ recipes: [shortfallRecipe('r1', 'Ragu alla bolognese', ['Onions'])] });
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(1);
+    expect(shopRows()[0].id).toBe(id);
+    expect(shopRows()[0].title).toBe('Shop for Sun Ragu alla bolognese');
+  });
+
+  it('caps how many it asks at once', () => {
+    replan(...(['breakfast', 'lunch', 'dinner', 'snack'] as MealSlot[]).flatMap(slot => [
+      shortfallEntry('2026-08-22', 'r1', { slot }),
+      shortfallEntry('2026-08-23', 'r1', { slot }),
+    ]));
+
+    useTaskStore.getState().checkMealShortfallTasks();
+
+    expect(shopRows()).toHaveLength(MAX_MEAL_SHORTFALL_TASKS);
   });
 });
 
@@ -9817,7 +10060,7 @@ describe('completing a leftover-backed meal task', () => {
   const entry: MealPlanEntry = {
     id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
-    recipeChoices: [], recipeScale: 1, cookTask: null, calendarEventId: null,
+    recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
   };
   const seedEntry = (overrides: Partial<MealPlanEntry> = {}) => {
     const merged = { ...entry, ...overrides };
@@ -9907,7 +10150,7 @@ describe('completing a use-up task and its meal task for the same leftover', () 
   const entry: MealPlanEntry = {
     id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
-    recipeChoices: [], recipeScale: 1, cookTask: null, calendarEventId: null,
+    recipeChoices: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
   };
   const seedEntry = () => {
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry]);

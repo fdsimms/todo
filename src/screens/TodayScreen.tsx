@@ -920,6 +920,12 @@ export function TodayScreen() {
       // for the same reason: it turns something already true into something
       // visible. A no-op boolean check while the setting is off.
       useTaskStore.getState().checkPantryCheckTasks();
+      // On focus as well, for the pantry check's exact reason: a shortfall task
+      // is answered somewhere else entirely — its link opens the Meal Plan
+      // screen, and the add-to-list sheet there is what clears it — so hanging
+      // the sweep off the one place the stale row would actually be seen beats
+      // asking every grocery and meal-plan write to remember it.
+      useTaskStore.getState().checkMealShortfallTasks();
       // Same reasoning one row over: a supply crosses its lead time purely by
       // time passing (the run-out day stops being far enough away), and it
       // stops wanting anything the moment the user restocks it — including
@@ -956,6 +962,14 @@ export function TodayScreen() {
           // passing, and stops needing an answer the moment the user gives one
           // from the sheet this task links to.
           useTaskStore.getState().checkPantryCheckTasks();
+          // A meal comes into shopping range purely by time passing, and stops
+          // wanting a shop the moment the plan changes under it — re-planned,
+          // moved, cooked, or the ingredients added to the list. None of those
+          // mutations knows a row is sitting on Today naming the old dish, and
+          // wiring the ~15 that can change a week is the "four call sites and
+          // still missed one" the stacks note warns about. This pass re-runs the
+          // predicate instead. After checkMealSlotTasks, which can plan a meal.
+          useTaskStore.getState().checkMealShortfallTasks();
           // And the same for a supply whose lead time has come round while the
           // app sat in the background — a phone left open for a fortnight
           // never sees another cold start, and the whole point of a lead time

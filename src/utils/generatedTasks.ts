@@ -85,6 +85,12 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'pantryCheck',
   'leftoverUseUp',
   'mealPlanNudge',
+  // Beside the nudge rather than appended at the end, for the reason
+  // pantryCheck sits beside groceryUseUp: the two are a pair from the list's
+  // side. One asks you to plan the week and the other tells you the plan can't
+  // be cooked, they file under one category, and reading them together is how a
+  // person meets the meal plan in Settings.
+  'mealShortfall',
   'projectReview',
   'supplyReorder',
 ];
@@ -233,6 +239,24 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     sourced: true,
     categorized: true,
     defaultCategory: 'Supplies',
+  },
+  mealShortfall: {
+    kind: 'mealShortfall',
+    label: 'Shopping tasks for planned meals',
+    onHint: 'A meal coming up that you lack ingredients for adds a task to shop',
+    offHint: 'A meal coming up that you lack ingredients for adds no task',
+    icon: 'cart-outline',
+    // Its source is a MealPlanEntry, and the opt-out it writes there
+    // (MealPlanEntry.shopTask) is what stops a swiped-away row coming straight
+    // back — this is the one generator whose source the user re-plans freely,
+    // so the tombstone does more work here than anywhere else.
+    sourced: true,
+    categorized: true,
+    // With the nudge and the meal tasks, for the reason those two share one:
+    // planning the week, cooking what you planned and shopping for it are one
+    // job to the person reading Today, and a third section would be a
+    // distinction only the code makes.
+    defaultCategory: 'Meal Plan',
   },
   mealPlanNudge: {
     kind: 'mealPlanNudge',

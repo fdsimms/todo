@@ -15,6 +15,9 @@ import {
   GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
+  MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
+  MEAL_SHORTFALL_LEAD_DAYS_MAX,
+  MEAL_SHORTFALL_LEAD_DAYS_MIN,
   USE_UP_TASK_CAP_MAX,
   USE_UP_TASK_CAP_MIN,
 } from '../../types';
@@ -122,6 +125,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
       case 'projectReview': return s.projectReviewTasks;
       case 'pantryCheck': return s.pantryCheckTasks;
+      case 'mealShortfall': return s.mealShortfallTasks;
       case 'supplyReorder': return s.supplyReorderTasks;
     }
   };
@@ -136,6 +140,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': s.setMealPlanNudgeEnabled(next); break;
       case 'projectReview': s.setProjectReviewTasks(next); break;
       case 'pantryCheck': s.setPantryCheckTasks(next); break;
+      case 'mealShortfall': s.setMealShortfallTasks(next); break;
       case 'supplyReorder': s.setSupplyReorderTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
@@ -155,6 +160,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': return s.mealPlanNudgeTaskCategory;
       case 'projectReview': return s.projectReviewTaskCategory;
       case 'pantryCheck': return s.pantryCheckTaskCategory;
+      case 'mealShortfall': return s.mealShortfallTaskCategory;
       case 'supplyReorder': return s.supplyReorderTaskCategory;
     }
   };
@@ -170,6 +176,10 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': s.setMealPlanNudgeTaskCategory(category); break;
       case 'projectReview': s.setProjectReviewTaskCategory(category); break;
       case 'pantryCheck': s.setPantryCheckTaskCategory(category); break;
+      case 'mealShortfall': s.setMealShortfallTaskCategory(category); break;
+      // Was missing entirely, so this generator's category pills selected
+      // nothing: every other switch in this file had its arm.
+      case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
     }
   };
 
@@ -218,6 +228,38 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
               label="Days before the use-by date"
               describeValue={n =>
                 n === 0 ? 'On the use-by day' : `${n} ${n === 1 ? 'day' : 'days'} before`
+              }
+            />
+          </View>
+        </>
+      );
+    }
+
+    if (kind === 'mealShortfall') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="calendar-outline"
+            label="Show the task"
+            hint="How many days before the meal the shopping task falls due"
+            value={
+              s.mealShortfallLeadDays === 0
+                ? 'On the day'
+                : `${s.mealShortfallLeadDays} ${s.mealShortfallLeadDays === 1 ? 'day' : 'days'} before`
+            }
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.mealShortfallLeadDays}
+              onChange={next => s.setMealShortfallLeadDays(next ?? MEAL_SHORTFALL_LEAD_DAYS_DEFAULT)}
+              min={MEAL_SHORTFALL_LEAD_DAYS_MIN}
+              max={MEAL_SHORTFALL_LEAD_DAYS_MAX}
+              format={n => (n === 0 ? 'Day of' : `${n}d`)}
+              label="Days before the meal"
+              describeValue={n =>
+                n === 0 ? 'On the day of the meal' : `${n} ${n === 1 ? 'day' : 'days'} before`
               }
             />
           </View>
