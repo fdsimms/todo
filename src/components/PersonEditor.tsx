@@ -93,7 +93,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
     setBirthdayMonth(person.birthdayMonth);
     setBirthdayDay(person.birthdayDay);
     setBirthdayTaskOptOut(person.birthdayTaskOptOut);
-    setPhoneNumber(person.phoneNumber ?? '');
+    setPhoneNumber(formatPhoneInput(person.phoneNumber ?? ''));
     setEmail(person.email ?? '');
     setLinkUrl(person.linkUrl ?? '');
     setCadenceDays(person.cadenceDays);
