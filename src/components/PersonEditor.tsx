@@ -140,7 +140,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   const handleDelete = () => {
     Alert.alert(
       `Delete ${person.name}?`,
-      'Tasks that name them are kept, and stop showing their name.',
+      'Anything you wrote about them is deleted. Tasks that name them are kept, and stop showing their name.',
       [
         { text: 'Cancel', style: 'cancel' },
         {

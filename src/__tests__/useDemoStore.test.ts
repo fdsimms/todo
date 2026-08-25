@@ -48,6 +48,9 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { sharedLinkLabel } from '../utils/sharedRecipeLinks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { usePersonNoteStore } from '../store/usePersonNoteStore';
+import { isStaleNote } from '../utils/personNotes';
+import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
@@ -908,6 +911,36 @@ describe('demo seed — people', () => {
     const withGuests = useMealPlanStore.getState().entries.filter(e => e.personIds.length > 0);
     expect(withGuests.length).toBeGreaterThan(0);
     expect(withGuests.some(e => !e.cookedAt)).toBe(true);
+  });
+
+  it('seeds a note of every kind, since each one lands somewhere different', () => {
+    const notes = usePersonNoteStore.getState().notes;
+    for (const kind of PERSON_NOTE_KINDS) {
+      expect(notes.some(n => n.kind === kind)).toBe(true);
+    }
+  });
+
+  // The whole point of having written them down in March.
+  it("carries the gift ideas onto the birthday task they were written for", () => {
+    const notes = usePersonNoteStore.getState().notes;
+    const gift = notes.find(n => n.kind === 'gift')!;
+    const task = useTaskStore.getState().tasks
+      .find(t => t.generatedKind === 'birthday' && t.generatedSourceId?.startsWith(gift.personId));
+    expect(task).toBeDefined();
+    expect(task!.notes).toContain(gift.text);
+  });
+
+  it('seeds a dated note and one whose day has passed, which render differently', () => {
+    const today = getCurrentDayStart();
+    const dated = usePersonNoteStore.getState().notes.filter(n => n.relevantOn !== null);
+    expect(dated.some(n => !isStaleNote(n, today))).toBe(true);
+    expect(dated.some(n => isStaleNote(n, today))).toBe(true);
+  });
+
+  it('seeds a food note on somebody who is a guest at a seeded meal', () => {
+    const notes = usePersonNoteStore.getState().notes.filter(n => n.kind === 'food');
+    const guestIds = new Set(useMealPlanStore.getState().entries.flatMap(e => e.personIds));
+    expect(notes.some(n => guestIds.has(n.personId))).toBe(true);
   });
 
   it("seeds a meal that shows on its guests' own screens", () => {

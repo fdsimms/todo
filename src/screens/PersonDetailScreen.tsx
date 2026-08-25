@@ -7,12 +7,14 @@ import { useShallow } from 'zustand/react/shallow';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
+import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { PersonEditor } from '../components/PersonEditor';
+import { PersonNoteSheet } from '../components/PersonNoteSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -20,7 +22,15 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { slotLabel } from '../utils/mealPlan';
 import type { GuestMeal } from '../utils/mealGuests';
+import type { PersonNote, PersonNoteKind } from '../types';
+import { PERSON_NOTE_KINDS } from '../types';
 import { suggestedHistoryEvents } from '../utils/calendarHistory';
+import {
+  PERSON_NOTE_HEADINGS,
+  describeNoteDay,
+  isStaleNote,
+  notesOfKind,
+} from '../utils/personNotes';
 import { telUrl, smsUrl } from '../utils/phone';
 import { tasksNaming } from '../utils/peopleRegistry';
 import {
@@ -67,6 +77,15 @@ const SUGGESTION_PREVIEW_COUNT = 5;
  * stops the page reading as an obituary. A person you are seeing on Saturday
  * should say so before anything about March.
  *
+ * **What you know about them sits above both**, which looks like it argues with
+ * rule 1 ("lead with the good part") and does not. The headline fact rule 1 is
+ * about is "Last together: March 14", and that is the first thing on the page,
+ * in the summary row. What follows it is ordered by what somebody opens this
+ * screen *for*: the notes are short, few, and the thing you came to check
+ * before calling; the history is long and is the destination you scroll to. Put
+ * the notes under it and they are behind however many afternoons you have had
+ * together, which is the one place they are no use.
+ *
  * There is no score, no streak, no bar, and nothing comparing this person to
  * any other. The history is a list of things you did, which is the artifact the
  * whole feature is built around (rule 1).
@@ -112,6 +131,8 @@ export function PersonDetailScreen() {
   const markHistoryHandled = useCalendarStore(s => s.markHistoryHandled);
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
   const [guestMeals, setGuestMeals] = useState<GuestMeal[]>([]);
+  const allNotes = usePersonNoteStore(useShallow(s => s.notes));
+  const [noteSheet, setNoteSheet] = useState<{ note: PersonNote | null; kind: PersonNoteKind } | null>(null);
   // Meal plan entries are read straight from SQLite rather than off the meal
   // plan store's `entries`, which holds whatever week that screen last showed
   // — see guestMealsFor. Re-read whenever a meal changes, so naming a guest on
@@ -165,6 +186,23 @@ export function PersonDetailScreen() {
     ];
     return rows.sort((a, b) => a.day.localeCompare(b.day));
   }, [upcoming, guestMeals]);
+
+  /**
+   * The three kinds, each with its own heading, and each shown only when it
+   * has something in it.
+   *
+   * **A person with no notes shows no section at all**, never an empty prompt
+   * to start filing facts about your friends — that prompt is the thing this
+   * whole feature is trying not to be. The one way in is the "Add a note" row
+   * at the bottom, which says what it will do rather than sitting there as an
+   * empty heading waiting to be filled.
+   */
+  const noteSections = useMemo(
+    () => PERSON_NOTE_KINDS
+      .map(kind => ({ kind, notes: notesOfKind(allNotes, personId, kind, today) }))
+      .filter(section => section.notes.length > 0),
+    [allNotes, personId, today]
+  );
 
   // Built across everybody and then narrowed, so one event naming two people
   // resolves to the same set of ids on either of their screens.
@@ -442,11 +480,25 @@ export function PersonDetailScreen() {
         )}
 
         <View style={styles.addRow}>
+          <InlineAction
+            icon="create-outline"
+            label="Add a note"
+            variant="neutral"
+            onPress={() => { haptics.tap(); setNoteSheet({ note: null, kind: 'note' }); }}
+          />
           <InlineAction icon="add" label="Add to history" variant="neutral" onPress={addToHistory} />
         </View>
       </ScrollView>
 
       <PersonEditor visible={editing} person={person} onClose={() => setEditing(false)} />
+      <PersonNoteSheet
+        visible={noteSheet !== null}
+        personId={person.id}
+        personName={name}
+        note={noteSheet?.note ?? null}
+        initialKind={noteSheet?.kind ?? 'note'}
+        onClose={() => setNoteSheet(null)}
+      />
     </View>
   );
 }
@@ -515,6 +567,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 12,
   },
   entryTitle: { flex: 1, color: colors.text, fontSize: font.sm },
+  noteText: { flex: 1, color: colors.text, fontSize: font.sm, lineHeight: 19 },
+  // Dimmer, and that is the whole treatment: a note whose day has passed is
+  // shown quieter, never struck through, never coloured, and never deleted.
+  noteStale: { color: colors.textTertiary },
   // The title and its date stack rather than sitting on one line: the row also
   // carries two buttons, and an event title is long enough that all four across
   // a 390pt row truncates the one thing you have to read to answer.
@@ -537,6 +593,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 14,
   },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md },
-  addRow: { marginTop: spacing.md, alignItems: 'flex-start', paddingHorizontal: spacing.sm },
+  addRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm,
+    marginTop: spacing.md, alignItems: 'flex-start', paddingHorizontal: spacing.sm,
+  },
   moreRow: { alignItems: 'flex-start', paddingHorizontal: spacing.md, paddingVertical: 10 },
 });

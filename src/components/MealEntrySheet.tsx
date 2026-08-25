@@ -28,6 +28,9 @@ import type { ChoiceGroup } from '../utils/recipeComponents';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { PillGroup } from './PillGroup';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
+import { usePersonNoteStore } from '../store/usePersonNoteStore';
+import { guestFoodNotes } from '../utils/personNotes';
+import { getCurrentDayStart } from '../utils/dateUtils';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
@@ -164,6 +167,27 @@ export function MealEntrySheet({
   // reason: filing somebody away is about the list, not about last Tuesday.
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
   const guestIds = entry?.personIds ?? [];
+
+  /**
+   * What the guests at this meal can't or won't eat.
+   *
+   * The kitchen half of the app paying off in a way it could not without both
+   * halves (#2047): remembering that Ansley cannot eat shellfish, at the moment
+   * you are deciding what to cook her, is care rather than measurement.
+   *
+   * Read off every person rather than the filtered picker list, so an archived
+   * guest already on the meal still brings their note with them — filing
+   * somebody away is about the People screen's list, not about what they eat.
+   */
+  const allPeople = usePersonStore(useShallow(s => s.people));
+  const allNotes = usePersonNoteStore(useShallow(s => s.notes));
+  const foodNotes = useMemo(() => {
+    if (guestIds.length === 0) return [];
+    const guests = allPeople
+      .filter(p => guestIds.includes(p.id))
+      .map(p => ({ id: p.id, name: displayNameOf(p) }));
+    return guestFoodNotes(allNotes, guests, getCurrentDayStart());
+  }, [allNotes, allPeople, guestIds.join(',')]);
 
   const hiddenY = useSheetHiddenOffset();
 
@@ -337,6 +361,20 @@ export function MealEntrySheet({
                 }))}
               />
               </View>
+              {/* Directly under the guests, because it is a consequence of them
+                  and reads as nonsense anywhere else. Stated flatly and with
+                  nobody's name in a warning colour: this is a thing you wrote
+                  down, not an alert. */}
+              {foodNotes.length > 0 && (
+                <View style={styles.foodNotes}>
+                  {foodNotes.map((note, i) => (
+                    <Text key={`${note.personId}:${i}`} style={styles.foodNote}>
+                      <Text style={styles.foodNoteName}>{note.name}</Text>
+                      {`  ${note.text}`}
+                    </Text>
+                  ))}
+                </View>
+              )}
             </View>
           )}
 
@@ -668,6 +706,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   guestBlock: { marginBottom: spacing.sm },
   guestPills: { paddingHorizontal: spacing.md },
+  foodNotes: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: 3 },
+  foodNote: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18 },
+  foodNoteName: { color: colors.text, fontWeight: fontWeight.medium },
   scaleBlock: { paddingBottom: spacing.xs },
   scaleChips: { paddingHorizontal: spacing.md },
   chips: {

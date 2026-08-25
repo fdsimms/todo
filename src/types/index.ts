@@ -465,6 +465,71 @@ export interface Person {
 }
 
 /**
+ * What kind of thing a `PersonNote` is. Three, and each has exactly one place
+ * it shows up, which is what keeps them from blurring into one another:
+ *
+ * - `note` — something to remember, on the person's own screen.
+ * - `gift` — something to get them, carried onto the birthday task.
+ * - `food` — something about what they eat, shown on a meal they're a guest at.
+ */
+export type PersonNoteKind = 'note' | 'gift' | 'food';
+
+export const PERSON_NOTE_KINDS: readonly PersonNoteKind[] = ['note', 'gift', 'food'];
+
+/**
+ * One thing you wrote down about somebody — see `docs/arch/people.md`.
+ *
+ * Rule 7 in full, and the only genuinely novel part of the feature: the most
+ * valuable thing an app can do here is not "maintain relationship #4", it is
+ * "Ansley starts the new job in September, ask her about it". A note like that,
+ * resurfaced at the right moment, makes you a better friend, and it cannot be
+ * read as ranking anybody.
+ *
+ * **Rows rather than fields on `Person`**, unlike `askAbout` beside it. The
+ * argument the arch doc makes for `Task.personIds` being a JSON array does not
+ * apply here: task rows get copied constantly (a recurrence successor, a series
+ * member, a chain step) and a JSON column rides every copy for free, where a
+ * person row is never copied at all. What these need instead is to be added and
+ * removed one at a time and to carry their own date, which is a row.
+ *
+ * Everything about this is optional and empty by default. A person with no
+ * notes shows no section at all, never an empty prompt to start filing facts
+ * about your friends.
+ */
+export interface PersonNote {
+  id: string;
+  /**
+   * Whose note it is. Resolve-or-shrug like every other pointer in the people
+   * layer: a note whose person is gone is simply never read, and nothing
+   * rewrites rows a delete isn't otherwise touching.
+   */
+  personId: string;
+  kind: PersonNoteKind;
+  text: string;
+  createdAt: string;
+  /**
+   * The day this note is *about*, or null for one that is always true.
+   *
+   * **This is the whole distinction from `Person.notes`**, which is a static
+   * description. A dated note can go stale: "Ansley starts the new job in
+   * September" stops being a thing to ask about once you have asked, and the
+   * app's job is to show it quieter rather than to delete it or to nag. Null is
+   * the common case and is not missing data — "no shellfish" is not about a day.
+   *
+   * ISO, like every other date in the app.
+   */
+  relevantOn: string | null;
+  /**
+   * Filed away: kept, out of the way. The same "keep this, out of my way"
+   * archiving means everywhere else, and the reason a stale note is never
+   * deleted on the app's own initiative.
+   */
+  archivedAt: string | null;
+  /** Orders notes of one kind within one person. The user's own drag order. */
+  sortOrder: number;
+}
+
+/**
  * Which of the app's ten unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.

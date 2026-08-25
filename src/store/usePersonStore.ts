@@ -9,6 +9,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { registerPersonSource } from '../utils/peopleRegistry';
+import { usePersonNoteStore } from './usePersonNoteStore';
 
 /**
  * The people you want to keep track of — see `docs/arch/people.md`.
@@ -146,6 +147,13 @@ export const usePersonStore = create<PersonStore>((set, get) => ({
   },
 
   removePersonRow(id) {
+    // Their notes go with them, and this is the one place the people layer
+    // doesn't shrug at a dangling pointer. A note is *about* somebody and has
+    // no meaning without them, unlike a task naming them, which is still a
+    // thing you did — so leaving the rows would mean keeping a private file on
+    // somebody the user asked to be rid of. Done here rather than at the call
+    // site so it can't be forgotten by a second one.
+    usePersonNoteStore.getState().removeNotesFor(id);
     dbDeletePerson(id);
     set({ people: get().people.filter(p => p.id !== id) });
   },

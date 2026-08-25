@@ -1,6 +1,6 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Person, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
-import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
+import type { DeliverableKind, GeneratedKind, Person, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
@@ -249,6 +249,17 @@ export function initDatabase(): void {
       nudge_opt_in INTEGER NOT NULL DEFAULT 0,
       reach_out_declined_at TEXT,
       ask_about TEXT NOT NULL DEFAULT ''
+    );
+
+    CREATE TABLE IF NOT EXISTS person_notes (
+      id TEXT PRIMARY KEY NOT NULL,
+      person_id TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'note',
+      text TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      relevant_on TEXT,
+      archived_at TEXT,
+      sort_order REAL NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS template_categories (
@@ -571,6 +582,9 @@ export function initDatabase(): void {
     // the week on screen, and the purge horizon. Nothing ever asks for an entry
     // by recipe, so there's no second index here.
     'CREATE INDEX IF NOT EXISTS idx_meal_plan_entries_date ON meal_plan_entries(date)',
+    // Every read is "this person's notes" — the detail screen, the birthday
+    // task's gift ideas, a meal's guests — so the person is the index.
+    'CREATE INDEX IF NOT EXISTS idx_person_notes_person ON person_notes(person_id)',
     // Null for every existing row is exactly right: nothing predating this has
     // been asserted as on hand. See GroceryItem.onHandUntil.
     'ALTER TABLE grocery_items ADD COLUMN on_hand_until TEXT',
@@ -1271,6 +1285,9 @@ export const BACKUP_TABLES = [
   // Before tasks: a task's personIds point at these, so restoring the people
   // first means a restored task never names somebody who isn't there yet.
   'people',
+  // After people: a note points at one, so restoring the people first means a
+  // restored note never names somebody who isn't there yet.
+  'person_notes',
   'task_groups',
   'grocery_shops',
   'grocery_items',
@@ -3543,6 +3560,81 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
  * launch, which is the common case for a task ticked off on Today — and
  * `entries` holds only the loaded window. See cookTaskFor in useMealPlanStore.
  */
+/**
+ * One note, mapped off its row.
+ *
+ * An unrecognised `kind` reads as `note` rather than being dropped, the same
+ * call `rowToMealPlanEntry` makes about an unrecognised slot: a note that
+ * renders under the wrong heading is recoverable, one that vanishes is not.
+ */
+function rowToPersonNote(row: Record<string, unknown>): PersonNote {
+  return {
+    id: row.id as string,
+    personId: row.person_id as string,
+    kind: (PERSON_NOTE_KINDS as readonly string[]).includes(row.kind as string)
+      ? (row.kind as PersonNoteKind)
+      : 'note',
+    text: (row.text as string) ?? '',
+    createdAt: row.created_at as string,
+    relevantOn: (row.relevant_on as string | null) ?? null,
+    archivedAt: (row.archived_at as string | null) ?? null,
+    sortOrder: (row.sort_order as number) ?? 0,
+  };
+}
+
+/**
+ * Every note, in the order the screens want them.
+ *
+ * Read wholesale rather than per person: these are short strings and there are
+ * as many of them as somebody has bothered to write, which is a different order
+ * of magnitude from tasks or grocery rows. Scoping the read would cost a query
+ * per person on a screen that already holds them all.
+ */
+export function dbGetAllPersonNotes(): PersonNote[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM person_notes ORDER BY sort_order ASC, created_at ASC'
+  );
+  return rows.map(rowToPersonNote);
+}
+
+export function dbInsertPersonNote(note: PersonNote): void {
+  db.runSync(
+    `INSERT INTO person_notes (id, person_id, kind, text, created_at, relevant_on, archived_at, sort_order)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [
+      note.id, note.personId, note.kind, note.text, note.createdAt,
+      note.relevantOn ?? null, note.archivedAt ?? null, note.sortOrder,
+    ]
+  );
+}
+
+export function dbUpdatePersonNote(note: PersonNote): void {
+  db.runSync(
+    `UPDATE person_notes SET person_id=?, kind=?, text=?, relevant_on=?, archived_at=?, sort_order=? WHERE id=?`,
+    [
+      note.personId, note.kind, note.text,
+      note.relevantOn ?? null, note.archivedAt ?? null, note.sortOrder, note.id,
+    ]
+  );
+}
+
+export function dbDeletePersonNote(id: string): void {
+  db.runSync('DELETE FROM person_notes WHERE id = ?', [id]);
+}
+
+/**
+ * Every note belonging to one person, for the delete that follows theirs.
+ *
+ * **Deleting a person does delete their notes**, which is the one place the
+ * people layer does not shrug at a dangling pointer. A note is *about* that
+ * person and has no meaning without them — unlike a task naming them, which is
+ * still a thing you did — so leaving the rows would be keeping a private file
+ * on somebody the user asked to be rid of.
+ */
+export function dbDeletePersonNotesFor(personId: string): void {
+  db.runSync('DELETE FROM person_notes WHERE person_id = ?', [personId]);
+}
+
 export function dbGetMealPlanEntry(id: string): MealPlanEntry | null {
   const row = db.getFirstSync<Record<string, unknown>>(
     'SELECT * FROM meal_plan_entries WHERE id = ?',
