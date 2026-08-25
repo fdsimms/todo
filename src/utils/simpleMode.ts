@@ -174,7 +174,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'substitutes', label: 'Substitutes and standing swaps', area: 'kitchen' },
   { id: 'recipeComposition', label: 'Recipes inside recipes', area: 'kitchen' },
   { id: 'recipeScaling', label: 'Scaling a recipe', area: 'kitchen' },
-  { id: 'cookMode', label: 'Cook mode', area: 'kitchen' },
+  { id: 'cookMode', label: 'Reading a recipe step by step', area: 'kitchen' },
 ];
 
 /** The features in one area, for a Settings list that groups them. */
