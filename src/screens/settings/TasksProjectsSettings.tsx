@@ -762,8 +762,8 @@ export function TasksProjectsSettings() {
           iconColor={simpleTaskForm ? colors.accent : undefined}
           label="Show fewer fields"
           hint={simpleTaskForm
-            ? 'Quick add shows Date, Time of day and Repeat, and names its buttons; the editor opens the same three'
-            : 'Quick add and the editor show every field they have'}
+            ? 'Quick add shows Date, Time of day and Repeat, and names its buttons'
+            : 'Quick add shows every field it has'}
           toggle={simpleTaskForm}
           onPress={() => setSimpleTaskForm(!simpleTaskForm)}
         />

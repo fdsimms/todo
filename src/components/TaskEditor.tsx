@@ -1954,12 +1954,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       <EditorGroup
         label="Kind"
         divider="full"
-        startOpen
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'kind', label: 'Kind', primary: true, set: kind !== 'task',
+            key: 'kind', label: 'Kind', set: kind !== 'task',
             keywords: ['type', 'shape', 'timed', 'timer', 'quota', 'chain'],
             node: (
               <View style={styles.kindBlock}>
@@ -1979,10 +1978,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           // The chosen kind's own set-up, moved here verbatim from the three
-          // sections it used to be scattered across. `primary` because a kind
-          // you just picked and can't then configure is worse than no picker.
+          // sections it used to be scattered across.
           ...(kind === 'timed' ? [{
-            key: 'duration', label: 'Duration', primary: true, set: true,
+            key: 'duration', label: 'Duration', set: true,
             keywords: ['timer', 'countdown', 'minutes', 'how long', 'stopwatch', 'split', 'apportion'],
             node: (<>
             <CollapsibleField
@@ -2070,7 +2068,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             </>),
           }] : []),
           ...(kind === 'target' ? [{
-            key: 'dailyTarget', label: 'Daily target', primary: true, set: true,
+            key: 'dailyTarget', label: 'Daily target', set: true,
             keywords: ['quota', 'goal', 'times a day', 'count'],
             node: (<>
               <EditorRow
@@ -2154,7 +2152,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             </>),
           }] : []),
           ...(kind === 'chain' ? [{
-            key: 'chain', label: 'Chain', primary: true, set: true,
+            key: 'chain', label: 'Chain', set: true,
             keywords: ['steps', 'sequence', 'routine', 'order', 'next'],
             node: (<>
                 <CollapsibleField
@@ -2422,12 +2420,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       {/* Schedule — when the task surfaces, and how it repeats */}
       <EditorGroup
         label="Schedule"
-        startOpen
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'date', label: 'Date', primary: true, set: !!dueDate,
+            key: 'date', label: 'Date',
             keywords: ['when', 'schedule', 'today', 'tomorrow', 'defer', 'start', 'do it'],
             node: (
               <>
@@ -2490,7 +2487,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'deadline', label: 'Deadline', primary: true, set: !!deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null,
+            key: 'deadline', label: 'Deadline', set: !!deadline || deadlineOffsetDays !== null || deadlineMonthDay !== null,
             keywords: ['due', 'by', 'cutoff', 'hard date', 'late', 'overdue', 'calendar'],
             node: (
               <>
@@ -2689,7 +2686,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'timeOfDay', label: 'Time of day', primary: true, set: timeSegments.length > 0,
+            key: 'timeOfDay', label: 'Time of day',
             keywords: ['morning', 'afternoon', 'evening', 'segment', 'hide until', 'snooze'],
             node: (
               <>
@@ -2835,7 +2832,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           }] : []),
           {
-            key: 'remindMe', label: 'Remind me', primary: true, set: !!reminderTime,
+            key: 'remindMe', label: 'Remind me',
             keywords: ['notification', 'notify', 'alert', 'alarm', 'ping', 'time'],
             node: (
               <>
@@ -2860,7 +2857,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'repeat', label: 'Repeat', primary: true, set: recurrenceType !== 'none',
+            key: 'repeat', label: 'Repeat',
             keywords: ['recurring', 'recurrence', 'every', 'daily', 'weekly', 'monthly', 'schedule'],
             node: (
               <>
@@ -3098,11 +3095,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
       {/* Relationships — the fields that tie this task to another one: one it
           waits for, the ones it holds back, and one it creates. "Waiting on"
-          used to sit in Schedule, which is where it was hardest to find: it's
-          not primary, so on a task that wasn't using it the row lived behind
-          that group's "N more" with five schedule fields. A task using none of
-          them still shows one folded line — and setting any one opens the
-          group with the others beside it.
+          used to sit in Schedule, which is where it was hardest to find among
+          five other schedule fields.
 
           "Waiting on" and "Blocks" are the two ends of one pointer, which is
           why they sit together: `blockedById` still lives on the blocked task
@@ -3115,7 +3109,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'waitingOn', label: 'Waiting on', set: !!blockedById, primary: true,
+            key: 'waitingOn', label: 'Waiting on', set: !!blockedById,
             keywords: ['blocked', 'blocker', 'depends on', 'after', 'until'],
             node: (
               <>
@@ -3138,7 +3132,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // (canBeBlockerOf), and a subtask that held a top-level task back
           // would be a relationship settable from one end only.
           ...(task?.parentId ? [] : [{
-            key: 'blocks', label: 'Blocks', set: blocksIds.length > 0, primary: true,
+            key: 'blocks', label: 'Blocks', set: blocksIds.length > 0,
             keywords: ['blocking', 'holds up', 'waiting on this', 'before', 'first'],
             node: (
               <>
@@ -3358,7 +3352,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           }] : []),
           {
-            key: 'category', label: 'Category', primary: true, set: !!category,
+            key: 'category', label: 'Category',
             keywords: ['section', 'bucket', 'list'],
             node: (
               <>
@@ -3388,7 +3382,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           ...(projects.length > 0 ? [{
-            key: 'project', label: 'Project', primary: true, set: !!project,
+            key: 'project', label: 'Project',
             keywords: ['progress', 'goal'],
             node: (
               <>
@@ -3421,7 +3415,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           }] : []),
           {
-            key: 'tags', label: 'Tags', primary: true, set: tags.length > 0,
+            key: 'tags', label: 'Tags',
             keywords: ['labels', 'hashtag', 'filter'],
             node: (
               <>
@@ -3479,7 +3473,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           ...(people.length > 0 ? [{
-            key: 'people', label: 'People', primary: false, set: personIds.length > 0,
+            key: 'people', label: 'People', set: personIds.length > 0,
             keywords: ['who', 'friend', 'family', 'with', 'together'],
             node: (
               <>
@@ -3660,7 +3654,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'priority', label: 'Priority', primary: true, set: priority > 0,
+            key: 'priority', label: 'Priority',
             keywords: ['important', 'urgent', 'rank', 'flag', 'high', 'low'],
             node: (
               <>
@@ -3685,7 +3679,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'effort', label: 'Effort', primary: true, set: !!effort,
+            key: 'effort', label: 'Effort', set: !!effort,
             keywords: ['estimate', 'how long', 'minutes', 'size', 'workload'],
             node: (
               <>
@@ -3753,7 +3747,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'pin', label: 'Pin to Today', set: pinned,
+            key: 'pin', label: 'Pin to Today',
             keywords: ['pinned', 'top', 'stick', 'favourite', 'favorite'],
             node: (
               <>
@@ -3784,15 +3778,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           list rather than changing how the task behaves. */}
       <EditorGroup
         label="Task actions"
-        // Keeps the card open while a contact nudge is steering the user at the
-        // Phone/Email row it's about to reveal — those rows aren't `set` yet,
-        // so the group would otherwise fold right past them.
-        forceOpen={showPhoneNudge || showEmailNudge || showPhoneField || showEmailField}
         searchTerms={searchTerms}
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'link', label: 'Link', set: !!linkUrl, primary: true,
+            key: 'link', label: 'Link',
             keywords: ['url', 'website', 'open', 'app', 'address'],
             node: (
               <>
@@ -3855,7 +3845,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'phone', label: 'Phone', set: !!phoneNumber,
+            key: 'phone', label: 'Phone',
             keywords: ['call', 'text', 'number', 'sms', 'contact'],
             node: (
               <>
@@ -3905,7 +3895,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           },
           {
-            key: 'email', label: 'Email', set: !!emailAddress,
+            key: 'email', label: 'Email',
             keywords: ['mail', 'contact', 'compose', 'address'],
             node: (
               <>
@@ -3957,7 +3947,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         onMatchCount={reportMatches}
         rows={[
           {
-            key: 'vacation', label: 'Vacation pause', set: vacationPause, primary: true,
+            key: 'vacation', label: 'Vacation pause', set: vacationPause,
             keywords: ['away', 'holiday', 'skip', 'break', 'time off'],
             node: (
               <>
