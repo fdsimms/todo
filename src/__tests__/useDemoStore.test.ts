@@ -1657,14 +1657,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect([...ahead].some(date => !dinners.has(date))).toBe(true);
   });
 
-  it('leaves no post-cook offer standing, but sets tonight up to raise one', () => {
-    // The "out of anything after X?" offer is the app's answer to a tap you
-    // just made, so it can't be seeded — the past nights the seed marks cooked
-    // would otherwise leave demo mode opening on a banner about a dinner eight
-    // days ago. What *can* be checked is the claim the seed comment makes: that
-    // cooking tonight's dinner raises one, which is the only honest way to see
-    // this feature in the demo.
-    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+  it('leaves no post-cook recap standing, but sets tonight up to raise one', () => {
+    // The recap is the app's answer to a tap you just made, so it can't be
+    // seeded — the past nights the seed marks cooked would otherwise drop demo
+    // mode straight into a sheet about a dinner eight days ago. What *can* be
+    // checked is the claim the seed comment makes: that cooking tonight's
+    // dinner raises one, which is the only honest way to see this in the demo.
+    expect(useMealPlanStore.getState().cookRecap).toBeNull();
 
     const tonight = useMealPlanStore.getState().entries.find(
       e => e.title === 'Weeknight chicken stir-fry' && !e.cookedAt
@@ -1673,12 +1672,22 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     useMealPlanStore.getState().setCooked(tonight!.id, true);
 
-    // Raised because the stir-fry calls for rice and the seeded pantry claims
-    // you have rice — the offer can only ever take away a claim the app is
-    // already making, so the overlap is what makes it demonstrable at all.
-    expect(useMealPlanStore.getState().cookedOffer).toMatchObject({
+    // Worth showing because the stir-fry calls for rice and the seeded pantry
+    // claims you have rice — the sheet's pantry section can only ever take away
+    // a claim the app is already making, so that overlap is what makes it
+    // demonstrable rather than an empty section.
+    expect(useMealPlanStore.getState().cookRecap).toMatchObject({
       recipeName: 'Weeknight chicken stir-fry',
+      canLogLeftovers: true,
     });
+
+    // And the rating section has something to ask, which is the other half of
+    // the sheet being demonstrable: the seed rates the salmon and deliberately
+    // leaves tonight's dish unrated.
+    const stirFry = useRecipeStore.getState().recipes.find(
+      r => r.name === 'Weeknight chicken stir-fry'
+    );
+    expect(stirFry?.vote).toBeNull();
   });
 
   it('seeds meal tasks as chains, and a meal that deliberately has none', () => {

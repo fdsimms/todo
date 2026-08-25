@@ -14,7 +14,7 @@ import { LeftoverSheet } from './LeftoverSheet';
  * spinach the task was about could still read as on hand a week later.
  * useTaskStore.completeTask now points a session-only flag at the item
  * (pendingUseUpItemId / pendingUseUpLeftoverId, one per store, the same
- * shape useMealPlanStore's cookedOffer already uses for the cook task) and
+ * shape useMealPlanStore's cookRecap already uses for the cook task) and
  * this is what watches it — asking directly which way the item went, rather
  * than handing the user the item's whole editor and leaving them to work out
  * that "Out of it" on the Pantry field is the answer.

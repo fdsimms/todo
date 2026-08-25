@@ -228,7 +228,7 @@ render, so listing them adds lines without adding answers.
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useGroceryStore.ts` — PlannedRow, PlanAddResult, useGroceryStore
 - `src/store/useLeftoverStore.ts` — LeftoverDraft, useLeftoverStore
-- `src/store/useMealPlanStore.ts` — MealPlanDraft, CookedOffer, LeftoverOffer, useMealPlanStore
+- `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, useMealPlanStore
 - `src/store/usePersonNoteStore.ts` — PersonNotePatch, usePersonNoteStore
 - `src/store/usePersonStore.ts` — blankPerson, displayNameOf, PersonPatch, usePersonStore
 - `src/store/useProjectCategoryStore.ts` — useProjectCategoryStore

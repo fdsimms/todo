@@ -38,6 +38,7 @@ import { DemoBanner } from '../components/DemoBanner';
 import { UndoBar } from '../components/UndoBar';
 import { UseUpResolveSheet } from '../components/UseUpResolveSheet';
 import { FinishLeftoverPrompt } from '../components/FinishLeftoverPrompt';
+import { CookRecap } from '../components/CookRecap';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { border } from '../theme';
@@ -409,11 +410,19 @@ export default function AppNavigator() {
           doc comment for why it belongs beside DemoBanner. */}
       <UndoBar />
       {/* Same placement again, and for the same "not tied to a screen" reason:
-          it renders nothing (FinishLeftoverPrompt) or a plain Modal
-          (UseUpResolveSheet's LeftoverSheet), touching no navigation hooks,
-          so neither needs NavigationContainer. See their own doc comments. */}
+          each renders nothing (FinishLeftoverPrompt) or a plain Modal
+          (UseUpResolveSheet's LeftoverSheet, CookRecap's sheet), touching no
+          navigation hooks, so none needs NavigationContainer. See their own doc
+          comments. */}
       <FinishLeftoverPrompt />
       <UseUpResolveSheet />
+      {/* Mounted once here rather than on the two screens a meal is ticked off
+          from, which is what the offers it replaced did. A banner rendered
+          twice is invisible twice over — only the focused screen is on screen —
+          but `enableScreens(false)` keeps a blurred tab mounted (see CLAUDE.md),
+          so two copies of a *sheet* would each present a Modal for the same
+          cooking. Same reason FinishLeftoverPrompt above is mounted once. */}
+      <CookRecap />
     </>
   );
 }
