@@ -124,12 +124,21 @@ their name, minus the typing, and it is how a birthday is meant to get entered
 in the first place (iOS stores one as `{day, month, year?}`, which is exactly
 the split `Person` uses, optional year included).
 
-So the rule is about the picker's *default view*, not about a count: it opens
-on a search field with nothing under it, and there is no "select all". You
-cannot bulk-select an address book you are never shown. That is also simply the
-better control — a contact book is mostly dentists, plumbers and someone from a
-wedding in 2019, so browsing it for the people you love means wading through
-noise. See "Filling one person in from Contacts" below for how that lands.
+So the rule is about the picker's *default view*, not about a count: for a
+full grant it opens on a search field with nothing under it, and there is no
+"select all". You cannot bulk-select an address book you are never shown.
+That is also simply the better control — a contact book is mostly dentists,
+plumbers and someone from a wedding in 2019, so browsing it for the people
+you love means wading through noise.
+
+**A `'limited'` grant (iOS 18+'s own "Selected Contacts" access) is the one
+case where that noise is already gone**, and the picker's default view flips
+for it: iOS's own chooser is how the user picked that set, in the same
+deliberate, one-at-a-time spirit rule 3 asks for — so it is a list they wrote,
+not the address book this feature otherwise refuses to show. The sheet reads
+it once on open and browses it directly, no query required; a full grant is
+unaffected and still never reads without one. See "Filling one person in from
+Contacts" below for exactly where that read is gated. See "Filling one person in from Contacts" below for how that lands.
 
 **Calendar.** "Attendees" and "event titles" are different reads and only the
 first is out. Attendees is a broad structured sweep of everyone you sit in a
@@ -409,13 +418,28 @@ Entering a birthday by hand is the tedious half of adding somebody and the
 system contact book already has it.
 
 - **The default view is the rule, and it is enforced in the read rather than in
-  the UI.** `searchContacts` refuses a query shorter than
+  the UI — for a full grant.** `searchContacts` refuses a query shorter than
   `MIN_CONTACT_QUERY_LENGTH` outright instead of falling back to "everyone", and
   the name filter is passed *to* the native query rather than applied after it.
   So an unqueried picker doesn't merely hide the address book, it never reads
   it — which is the "you cannot bulk-select a book you are never shown" rule
   made structural rather than a layout decision one refactor could undo. There
   is no "select all" at any point, and no browse.
+- **A `'limited'` grant gets `fetchLimitedContacts` instead, and the same
+  discipline applies the other way.** `getContactsAccessScope` reads
+  `accessPrivileges` off the permission response (`'all' | 'limited'`, iOS 18+
+  only — anything older reads as `'all'`, since there is no narrower grant on
+  offer to have made) and `fetchLimitedContacts` re-checks it itself before
+  reading rather than trusting whichever screen called it, so a full grant
+  can't reach the browsable path by a UI mistake any more than a short query
+  can reach the address book on the other side. What it returns is not "the
+  address book minus noise" as a design choice — it is structurally incapable
+  of being more than the set iOS's own chooser bounded it to, because that
+  bound is enforced by the OS on every query the app makes, filtered or not.
+  `contactsImport.ts`'s `browsableContacts`/`filterBrowsableContacts` sort and
+  narrow that set locally, with no `MIN_CONTACT_QUERY_LENGTH` floor: it is
+  already small and already curated, so narrowing it to one letter is filtering
+  a list the user wrote, not opening one they didn't.
 - **One tap adds one person and the sheet stays open**, so a run of three is
   three taps without the picker ever becoming a checklist of everybody.
 - **The month arrives 0-indexed.** The native module follows the JS `Date`

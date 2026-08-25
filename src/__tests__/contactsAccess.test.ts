@@ -21,6 +21,8 @@ jest.mock('expo-contacts/legacy', () => ({
 }), { virtual: true });
 
 import {
+  fetchLimitedContacts,
+  getContactsAccessScope,
   getContactsPermission,
   requestContactsPermission,
   searchContacts,
@@ -153,6 +155,95 @@ describe('searchContacts', () => {
   it('reads nothing off iOS', async () => {
     mockPlatform = 'android';
     await expect(searchContacts('dustin')).resolves.toEqual([]);
+  });
+});
+
+describe('getContactsAccessScope', () => {
+  it('is "all" for a full grant', async () => {
+    mockGetPermissions.mockResolvedValue({ granted: true, status: 'granted', accessPrivileges: 'all' });
+    await expect(getContactsAccessScope()).resolves.toBe('all');
+  });
+
+  it('is "limited" for a limited grant', async () => {
+    mockGetPermissions.mockResolvedValue({ granted: true, status: 'granted', accessPrivileges: 'limited' });
+    await expect(getContactsAccessScope()).resolves.toBe('limited');
+  });
+
+  // Below iOS 18 the field doesn't exist at all, which reads the same as a full
+  // grant since there was never a narrower one on offer to have made.
+  it('is "all" when the field is absent', async () => {
+    mockGetPermissions.mockResolvedValue({ granted: true, status: 'granted' });
+    await expect(getContactsAccessScope()).resolves.toBe('all');
+  });
+
+  it('is "all" off iOS, without asking the module', async () => {
+    mockPlatform = 'android';
+    await expect(getContactsAccessScope()).resolves.toBe('all');
+    expect(mockGetPermissions).not.toHaveBeenCalled();
+  });
+
+  it('is "all" rather than throwing when the module is missing', async () => {
+    mockGetPermissions.mockRejectedValue(new Error('no native module'));
+    await expect(getContactsAccessScope()).resolves.toBe('all');
+  });
+});
+
+describe('fetchLimitedContacts', () => {
+  beforeEach(() => {
+    mockGetPermissions.mockResolvedValue({ granted: true, status: 'granted', accessPrivileges: 'limited' });
+  });
+
+  // Same reason as `searchContacts`: a real address book inside a demo would
+  // put real names on a screen handed to somebody else.
+  it('reads nothing in demo mode', async () => {
+    mockDemoActive = true;
+    await expect(fetchLimitedContacts()).resolves.toEqual([]);
+    expect(mockGetContacts).not.toHaveBeenCalled();
+    expect(mockGetPermissions).not.toHaveBeenCalled();
+  });
+
+  it('reads nothing without permission', async () => {
+    mockGetPermissions.mockResolvedValue({ granted: false, status: 'denied', canAskAgain: false });
+    await expect(fetchLimitedContacts()).resolves.toEqual([]);
+    expect(mockGetContacts).not.toHaveBeenCalled();
+  });
+
+  // The one thing this function must never do: read the whole book for a full
+  // grant, whatever the caller assumed. It checks for itself.
+  it('reads nothing for a full grant, regardless of what the caller thinks', async () => {
+    mockGetPermissions.mockResolvedValue({ granted: true, status: 'granted', accessPrivileges: 'all' });
+    await expect(fetchLimitedContacts()).resolves.toEqual([]);
+    expect(mockGetContacts).not.toHaveBeenCalled();
+  });
+
+  it('queries with no name filter, since the OS already bounded the set', async () => {
+    await fetchLimitedContacts();
+    const options = mockGetContacts.mock.calls[0][0] as { name?: string };
+    expect(options.name).toBeUndefined();
+  });
+
+  it('flattens what comes back', async () => {
+    mockGetContacts.mockResolvedValue({
+      data: [contact({ phoneNumbers: [{ number: '555 0148' }] } as Partial<ExistingContact>)],
+    });
+    await expect(fetchLimitedContacts()).resolves.toEqual([{
+      id: 'c1',
+      name: 'Dustin Reyes',
+      phoneNumber: '555 0148',
+      email: null,
+      birthdayMonth: null,
+      birthdayDay: null,
+    }]);
+  });
+
+  it('is empty rather than throwing when the read fails', async () => {
+    mockGetContacts.mockRejectedValue(new Error('boom'));
+    await expect(fetchLimitedContacts()).resolves.toEqual([]);
+  });
+
+  it('reads nothing off iOS', async () => {
+    mockPlatform = 'android';
+    await expect(fetchLimitedContacts()).resolves.toEqual([]);
   });
 });
 

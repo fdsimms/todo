@@ -3,10 +3,12 @@ import {
   MAX_CONTACT_RESULTS,
   MIN_CONTACT_QUERY_LENGTH,
   alreadyAdded,
+  browsableContacts,
   canSearchContacts,
   contactBirthday,
   contactPersonDraft,
   describeCandidateBirthday,
+  filterBrowsableContacts,
   normalizePhone,
   rankContacts,
   type ContactCandidate,
@@ -178,6 +180,69 @@ describe('rankContacts', () => {
 
   it('is empty when nothing matches', () => {
     expect(rankContacts([candidate({ name: 'Priya' })], 'dustin', nobody)).toEqual([]);
+  });
+});
+
+describe('browsableContacts', () => {
+  const nobody: Pick<Person, 'name' | 'nickname' | 'phoneNumber'>[] = [];
+
+  it('sorts alphabetically, since a browse list has no query position to rank by', () => {
+    const rows = [
+      candidate({ id: 'z', name: 'Zeke Ortiz' }),
+      candidate({ id: 'a', name: 'Ansley Reyes' }),
+      candidate({ id: 'm', name: 'Marianne Fields' }),
+    ];
+    expect(browsableContacts(rows, nobody).map(c => c.id)).toEqual(['a', 'm', 'z']);
+  });
+
+  it('leaves out somebody already added', () => {
+    const rows = [candidate({ name: 'Dustin Reyes' }), candidate({ id: 'c2', name: 'Priya' })];
+    const held = [person({ name: 'Dustin Reyes' })];
+    expect(browsableContacts(rows, held).map(c => c.id)).toEqual(['c2']);
+  });
+
+  it('drops a contact with no name', () => {
+    const rows = [candidate({ id: 'blank', name: ' ' }), candidate({ id: 'named', name: 'Dustin' })];
+    expect(browsableContacts(rows, nobody).map(c => c.id)).toEqual(['named']);
+  });
+
+  it('is empty for an empty set', () => {
+    expect(browsableContacts([], nobody)).toEqual([]);
+  });
+});
+
+describe('filterBrowsableContacts', () => {
+  const nobody: Pick<Person, 'name' | 'nickname' | 'phoneNumber'>[] = [];
+
+  it('is the whole browsable set for an empty query', () => {
+    const rows = [candidate({ id: 'z', name: 'Zeke Ortiz' }), candidate({ id: 'a', name: 'Ansley Reyes' })];
+    expect(filterBrowsableContacts(rows, '', nobody).map(c => c.id)).toEqual(['a', 'z']);
+    expect(filterBrowsableContacts(rows, '   ', nobody).map(c => c.id)).toEqual(['a', 'z']);
+  });
+
+  // Unlike `rankContacts`: the set is already the user's own curated one, so
+  // there is no "screen of near-everybody" risk a length floor guards against.
+  it('narrows on a single character, with no length floor', () => {
+    expect(filterBrowsableContacts([candidate({ name: 'Dustin Reyes' })], 'd', nobody).map(c => c.name))
+      .toEqual(['Dustin Reyes']);
+  });
+
+  it('ranks a match at the start of the name ahead of the middle', () => {
+    const rows = [
+      candidate({ id: 'mid', name: 'Bandana Supply' }),
+      candidate({ id: 'start', name: 'Dan Whitfield' }),
+    ];
+    expect(filterBrowsableContacts(rows, 'dan', nobody).map(c => c.id)).toEqual(['start', 'mid']);
+  });
+
+  it('leaves out somebody already added', () => {
+    const rows = [candidate({ name: 'Dustin Reyes' }), candidate({ id: 'c2', name: 'Dustin Clarke' })];
+    const held = [person({ name: 'Dustin Reyes' })];
+    expect(filterBrowsableContacts(rows, 'dustin', held).map(c => c.id)).toEqual(['c2']);
+  });
+
+  it('is empty when nothing matches', () => {
+    expect(filterBrowsableContacts([candidate({ name: 'Priya' })], 'dustin', nobody)).toEqual([]);
   });
 });
 
