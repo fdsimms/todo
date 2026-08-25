@@ -357,6 +357,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'restock', 'generated', 'automatic'], kitchen: true },
   { id: 'pantryCheckTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
     keywords: ['category', 'pantry', 'grocery', 'kitchen'], kitchen: true },
+  // No category entry of its own — it files under calendarEventCategory,
+  // already indexed above under Calendar.
+  { id: 'calendarReviewTasks', groupId: 'tasksProjects', label: 'Review tomorrow\'s calendar', section: 'Tasks the app adds',
+    keywords: ['events', 'agenda', 'schedule', 'generated', 'automatic'] },
   // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
   // with the area gone there is nothing left for it to convert.
   { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',

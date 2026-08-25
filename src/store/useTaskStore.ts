@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { addDays } from 'date-fns/addDays';
 import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule } from '../types';
 import {
   initDatabase,
@@ -65,7 +66,10 @@ import {
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
-import { generatedBy, generatedSourceOf, generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask } from '../utils/generatedTasks';
+import { generatedBy, generatedSourceOf, generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
+import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
+import { eventsIn } from '../utils/calendarBusy';
+import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { derivedId, spawnSeed } from '../utils/syncIds';
@@ -75,7 +79,7 @@ import { applyMeasuredTime } from '../utils/effort';
 import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor } from '../utils/deliverables';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
-import { getNextDueDate, getCurrentDayStart, getLogicalToday, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
@@ -471,6 +475,11 @@ function reconcileDeadlineEvent(task: Task): void {
  *   a square on the calendar, not a row — there is nothing to write "no" on,
  *   and deleting one of the seven means only that this day doesn't need
  *   planning, which the next firing has already moved past.
+ * - **`calendarReview` writes nothing either, for the same reason** — its
+ *   source id is tomorrow's day key, not a row. Its "don't hand it back" is
+ *   `calendarReviewLastDayKey`, set unconditionally by `checkCalendarReviewTasks`
+ *   the moment a day is considered, whatever the outcome, so a swiped-away task
+ *   isn't re-diagnosed on the very next sweep.
  */
 function writeGeneratedOptOut(task: Task, value: false | null): void {
   const sourceId = task.generatedSourceId;
@@ -478,6 +487,8 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
   const reconcileOff = { reconcile: false } as const;
   switch (task.generatedKind) {
     case 'mealPlanNudge':
+      return;
+    case 'calendarReview':
       return;
     // Nothing to write, for the nudge's reason: a day and a slot name a square
     // on the calendar, not a row. Swiping today's lunch task away is honoured
@@ -1233,6 +1244,11 @@ interface TaskStore {
    * restocked or put back on the list. See src/utils/pantryCheckTasks.ts.
    */
   checkPantryCheckTasks: () => void;
+  /**
+   * Once a day, a task to review tomorrow's calendar — only while tomorrow
+   * actually has something on it. See src/utils/calendarReviewTasks.ts.
+   */
+  checkCalendarReviewTasks: () => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook.
@@ -3771,6 +3787,87 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           ...generatedBy('pantryCheck', want.itemId),
         }),
       });
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  /**
+   * Once a day, a task to review tomorrow's calendar — only while tomorrow
+   * actually has something on it.
+   *
+   * Structurally this is `mealPlanNudge` one shelf over: no source row (its
+   * source id is tomorrow's day key), so no per-source stamp to decline onto,
+   * and the same settings-level idempotency mark in its place
+   * (`calendarReviewLastDayKey`, recorded unconditionally the moment a day is
+   * considered — see writeGeneratedOptOut). Unlike the nudge it writes at most
+   * one task, not a week's worth, so there is no cap and no stack.
+   */
+  checkCalendarReviewTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.calendarReviewTasks) return;
+    // Real device data has no place in a demo session — same refusal
+    // TodayScreen's own event rows make (`!demoActive`), and more load-bearing
+    // here: a context row is gone the moment demo mode ends, but a task this
+    // generator wrote would persist in the demo database as a fact about the
+    // real calendar.
+    if (isDemoModeActive()) return;
+    // Belt and braces alongside the `loaded` check below: calendarEventCategory
+    // is only ever populated while this is true (see ensureCalendarEventCategory),
+    // but this is the one generator that fires on time passing rather than on
+    // an edit to something the read produced, so without this it would be the
+    // one part of a switched-off feature still writing rows onto Today.
+    if (!settings.calendarReadEnabled) return;
+    // No category means nowhere to put it — the same rule eventContextRows
+    // follows for the day's own events.
+    if (!settings.calendarEventCategory) return;
+
+    const calendar = useCalendarStore.getState();
+    // Not the same question as `events` being empty — see CalendarState.loaded.
+    // An unread window must not be read as "tomorrow is free".
+    if (!calendar.loaded) return;
+
+    const tomorrowStart = getLogicalTomorrow(settings.dayResetTime);
+    const tomorrowKey = dayKeyOf(tomorrowStart);
+
+    // Clear a task left over from a previous day's "tomorrow" before deciding
+    // whether today's is wanted — same clear-first-create-second ordering
+    // checkProjectReviewTasks/checkPantryCheckTasks use. There's at most one of
+    // these, so no dropGeneratedTask lookup is needed: whatever's live and
+    // isn't about tomorrow is stale by construction.
+    const tasks = get().tasks;
+    liveGeneratedTasksOfKind(tasks, 'calendarReview')
+      .filter(task => calendarReviewDayKey(task) !== tomorrowKey)
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    // Recorded before the events check below, and unconditionally: a day
+    // already decided — created, or found to have nothing worth reviewing —
+    // must not be re-diagnosed on every later sweep this same day, the same
+    // idempotency checkMealPlanNudge's week key gives the nudge. Without it a
+    // task the user just swiped away would come straight back on the very next
+    // foreground, since nothing else is standing between a delete and a
+    // recreate here (see writeGeneratedOptOut).
+    if (settings.calendarReviewLastDayKey === tomorrowKey) return;
+    settings.setCalendarReviewLastDayKey(tomorrowKey);
+
+    const tomorrowEvents = eventsIn(calendar.events, tomorrowStart, addDays(tomorrowStart, 1));
+    if (!wantsCalendarReview(tomorrowEvents)) return;
+
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    reconcileGeneratedTask({
+      kind: 'calendarReview',
+      sourceId: tomorrowKey,
+      // Never false: the clear pass above already handles "not wanted".
+      wanted: true,
+      // The title never varies, so nothing to chase.
+      drift: () => null,
+      draft: () => ({
+        title: CALENDAR_REVIEW_TITLE,
+        dueDate: dueDate.toISOString(),
+        category: settings.calendarEventCategory,
+        ...generatedBy('calendarReview', tomorrowKey),
+      }),
     });
     // No setLastAction, same reasoning as checkMealPlanNudge above.
   },

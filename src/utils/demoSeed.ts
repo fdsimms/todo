@@ -20,6 +20,7 @@ import { generatedBy } from './generatedTasks';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
+import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -597,6 +598,27 @@ export function seedDemoData(): void {
     linkUrl: projectReviewLinkUrl(garage.id),
     category: 'Projects',
     ...generatedBy('projectReview', garage.id),
+  });
+
+  // The daily "review tomorrow's calendar" task — off by default, same
+  // reasoning as the pantry check above, so it's seeded directly rather than
+  // left to checkCalendarReviewTasks: that pass reads the real device
+  // calendar, which the demo must never touch (see isDemoModeActive in
+  // checkCalendarReviewTasks), and the real install's own settings, neither of
+  // which this fictional day should depend on.
+  //
+  // Filed under calendarEventCategory itself rather than a category of its
+  // own — this generator has none (see GeneratedKindSpec.categorized) — named
+  // here for the same reason projectReviewTaskCategory is above: the demo
+  // swaps the database, not the preferences.
+  addCategory('Calendar Events');
+  setCategoryEmoji('Calendar Events', '📅');
+  useSettingsStore.getState().setCalendarEventCategory('Calendar Events');
+  addTask({
+    title: CALENDAR_REVIEW_TITLE,
+    dueDate: today.toISOString(),
+    category: 'Calendar Events',
+    ...generatedBy('calendarReview', dayKeyOf(addDays(today, 1))),
   });
 
   // Marked complete rather than archived — demonstrates Project.completed,

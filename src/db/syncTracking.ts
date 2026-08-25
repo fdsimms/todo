@@ -196,6 +196,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'projectReviewTaskCategory',
   'pantryCheckTasks',
   'pantryCheckTaskCategory',
+  // calendarReviewLastDayKey is deliberately not here — state, not a
+  // preference, like mealPlanNudgeLastFiredWeekKey beside it.
+  'calendarReviewTasks',
 
   // Vocabularies the user builds. These are data as much as preference — a
   // tag that exists but is unused, and the walk round the shop — and a device

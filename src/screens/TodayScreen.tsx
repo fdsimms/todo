@@ -950,6 +950,11 @@ export function TodayScreen() {
           // passing, and stops needing an answer the moment the user gives one
           // from the sheet this task links to.
           useTaskStore.getState().checkPantryCheckTasks();
+          // And a third generator on the same shelf: which day is "tomorrow"
+          // rolls over purely by time passing too, and the calendar window this
+          // reads is kept current by useCalendarSync's own AppState listener
+          // rather than anything here.
+          useTaskStore.getState().checkCalendarReviewTasks();
           // And any template whose schedule came due while the app sat in the
           // background (#1781) — a weekly run would otherwise wait for the next
           // cold start, which for a phone left open all week never comes. Same

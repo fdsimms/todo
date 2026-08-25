@@ -383,7 +383,7 @@ export interface Project {
 export const DEFAULT_NUDGE_CADENCE_DAYS = 0;
 
 /**
- * Which of the app's six unattended generators wrote a task — see
+ * Which of the app's seven unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
  *
@@ -406,7 +406,12 @@ export type GeneratedKind =
   | 'leftoverUseUp'
   | 'mealPlanNudge'
   | 'projectReview'
-  | 'pantryCheck';
+  | 'pantryCheck'
+  // Once a day, a task to look at tomorrow's calendar — see
+  // src/utils/calendarReviewTasks.ts. Its source id is tomorrow's day key, the
+  // same "square on the calendar, not a row" position mealPlanNudge is in, and
+  // for the same reason writeGeneratedOptOut has nothing to write for it.
+  | 'calendarReview';
 
 export interface Task {
   id: string;
@@ -667,8 +672,9 @@ export interface Task {
   // — a source that has since been purged leaves this dangling, and a dangling
   // generated task is just a task.
   //
-  // generatedSourceId is null for a generator projected from no row at all: the
-  // meal-plan nudge comes off the calendar, so its tasks carry the kind alone.
+  // generatedSourceId is null only for a generator with nothing at all to
+  // point at. mealPlanNudge and calendarReview instead carry a day key — a
+  // square on the calendar, not a row (see generatedTasks.ts).
   generatedKind: GeneratedKind | null;
   generatedSourceId: string | null;
 
