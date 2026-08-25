@@ -20,6 +20,11 @@ jest.mock('../db/database', () => ({
   dbUpdateProject: jest.fn(),
   dbDeleteProject: jest.fn(),
   dbBatchUpdateProjectSortOrders: jest.fn(),
+  dbGetAllPeople: jest.fn().mockReturnValue([]),
+  dbInsertPerson: jest.fn(),
+  dbUpdatePerson: jest.fn(),
+  dbDeletePerson: jest.fn(),
+  dbBatchUpdatePersonSortOrders: jest.fn(),
 }));
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({

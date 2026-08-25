@@ -938,6 +938,12 @@ export function TodayScreen() {
           // task's own row, which nothing else would then clear. Same reason
           // the passes around it run here rather than waiting for a cold start.
           useTaskStore.getState().checkProjectReviewTasks();
+          // A birthday arrives purely by time passing, the same trigger as the
+          // passes around it, and a phone left open across midnight never sees
+          // another cold start — so without this somebody's birthday task would
+          // wait for a force-quit. Idempotent: the source id carries the year,
+          // so a second run finds the row already there and does nothing.
+          useTaskStore.getState().checkBirthdayTasks();
           // A day rolls over purely by time passing, and a phone left open
           // across midnight never sees another cold start — so without this
           // the window would stop advancing until the app was force-quit. It

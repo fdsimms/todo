@@ -159,6 +159,22 @@ export function describeBirthdayAge(age: number | null): string | null {
   return age === null ? null : `Turning ${age}`;
 }
 
+/** What a birthday task carries in `linkUrl`: the person it is about. */
+export const PEOPLE_LINK_URL = 'dundundun://people';
+
+/**
+ * The link one birthday task carries — that person's own screen, where their
+ * number, their notes and (from #2045) the history live.
+ *
+ * A query string rather than a path segment, the form `mealPlanNudgeLinkUrl`
+ * and `projectReviewLinkUrl` already established for this scheme. Falls back to
+ * the bare link for an empty id, so a malformed call can't mint a URL that
+ * scopes to nobody.
+ */
+export function personLinkUrl(personId: string): string {
+  return personId ? `${PEOPLE_LINK_URL}?person=${personId}` : PEOPLE_LINK_URL;
+}
+
 /** One person who should have a birthday task sitting on the list right now. */
 export interface BirthdayWant {
   personId: string;
@@ -203,10 +219,15 @@ export function wantedBirthdayTasks(
     // business. Without this every person on file would carry a row all year.
     if (away > lead) continue;
     const year = date.getFullYear();
-    // Clamped rather than computed backwards from the birthday, so a lead time
-    // longer than the days remaining still surfaces the row today instead of
-    // dating it into the past, where isTaskVisible would show it as overdue.
-    const dueDate = away >= lead ? addCalendarDays(date, -lead) : startOfDayNoon(today);
+    // Today, always — not `lead` days before the birthday, which sounds like
+    // the same thing and isn't. The window above is what decides *whether* the
+    // row exists, so by the time we get here the birthday is at most `lead`
+    // days off and the row wants to be seen now. Computing it backwards from
+    // the birthday would date it into the past whenever the app wasn't opened
+    // on the exact day the window opened (a weekend away, a flat battery), and
+    // `isTaskVisible` would render a birthday that hasn't happened yet as
+    // overdue. `deadline` carries the real date; this only says when to look.
+    const dueDate = startOfDayNoon(today);
     wants.push({
       personId: person.id,
       year,
@@ -224,12 +245,6 @@ export function wantedBirthdayTasks(
 function startOfDayNoon(day: Date): Date {
   const d = startOfDay(day);
   d.setHours(12, 0, 0, 0);
-  return d;
-}
-
-function addCalendarDays(date: Date, days: number): Date {
-  const d = new Date(date.getTime());
-  d.setDate(d.getDate() + days);
   return d;
 }
 
@@ -276,9 +291,11 @@ export function staleBirthdayTasks<
 export function birthdayDrift(
   task: Pick<Task, 'deadline'>,
   want: BirthdayWant
-): { dueDate: Date; deadline: Date } | null {
+): { dueDate: string; deadline: string } | null {
   const recorded = task.deadline ? startOfDay(new Date(task.deadline)).getTime() : null;
   const wanted = startOfDay(want.deadline).getTime();
   if (recorded === wanted) return null;
-  return { dueDate: want.dueDate, deadline: want.deadline };
+  // ISO, because these go straight onto the task — dates are stored and passed
+  // as ISO strings everywhere in this app.
+  return { dueDate: want.dueDate.toISOString(), deadline: want.deadline.toISOString() };
 }
