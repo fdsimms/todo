@@ -72,6 +72,10 @@ const MENU_ITEMS: MenuItemWithGate[] = [
   { name: 'Calendar', icon: 'calendar-outline', label: 'Calendar' },
   { name: 'Categories', icon: 'folder-outline', label: 'Categories' },
   { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
+  // With the other ways of grouping the same tasks, rather than down among
+  // Logbook/Archived: a person is something a task can belong to, the same as
+  // a category or a stack, not somewhere tasks end up.
+  { name: 'People', icon: 'people-outline', label: 'People' },
   { name: 'Stacks', icon: 'layers-outline', label: 'Stacks' },
   { name: 'Templates', icon: 'copy-outline', label: 'Templates' },
   { name: 'Logbook', icon: 'book-outline', label: 'Logbook' },

@@ -8,6 +8,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from '../components/SafeBlurView';
 import { TodayScreen } from '../screens/TodayScreen';
 import { TagsScreen } from '../screens/TagsScreen';
+import { PeopleScreen } from '../screens/PeopleScreen';
 import { CategoriesScreen } from '../screens/CategoriesScreen';
 import { GroceryScreen } from '../screens/GroceryScreen';
 import { StacksScreen } from '../screens/StacksScreen';
@@ -192,6 +193,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Calendar" component={CalendarScreen} options={HIDDEN} />
       <Tab.Screen name="Categories" component={CategoriesScreen} options={HIDDEN} />
       <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
+      <Tab.Screen name="People" component={PeopleScreen} options={HIDDEN} />
       <Tab.Screen name="Stacks" component={StacksScreen} options={HIDDEN} />
       <Tab.Screen name="Templates" component={TemplatesScreen} options={HIDDEN} />
       <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
