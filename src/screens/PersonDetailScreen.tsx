@@ -480,9 +480,10 @@ export function PersonDetailScreen() {
             icon="create-outline"
             label="Add a note"
             variant="neutral"
+            surface="page"
             onPress={() => { haptics.tap(); setNoteSheet({ note: null, kind: 'note' }); }}
           />
-          <InlineAction icon="add" label="Add to history" variant="neutral" onPress={addToHistory} />
+          <InlineAction icon="add" label="Add to history" variant="neutral" surface="page" onPress={addToHistory} />
         </View>
       </ScrollView>
 
