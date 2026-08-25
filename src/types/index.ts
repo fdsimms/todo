@@ -383,6 +383,76 @@ export interface Project {
 export const DEFAULT_NUDGE_CADENCE_DAYS = 0;
 
 /**
+ * Someone you want to keep track of — see `docs/arch/people.md`, which holds
+ * the rules this shape exists to serve and is not optional reading.
+ *
+ * The short version, because it decides what may and may not be added here: the
+ * app can never know the state of a friendship, only what got written down, so
+ * it never asserts a state. There is deliberately **no score, streak, tier,
+ * closeness rank or "last contacted" column**, and adding one is the way this
+ * feature turns into the thing it was built not to be. What "last together"
+ * means is derived from completed tasks carrying this person's id, at read
+ * time, the way `probablyHaveReason` derives a cupboard nobody can see into.
+ */
+export interface Person {
+  id: string;
+  name: string;
+  // What you'd actually call them, when that isn't their name. Display falls
+  // back to `name`, so leaving it empty is the normal case rather than a gap.
+  nickname: string;
+  notes: string;
+  // Hand-ordered, like categories and aisles, and never re-ranked by recency or
+  // by how long it's been. The order of this list is the only ranking the
+  // feature contains, and it's one the user made on purpose.
+  sortOrder: number;
+  archived: boolean;
+  archivedAt: string | null;
+  createdAt: string;
+
+  // Month (1-12) and day, held apart from the year because the year is the part
+  // people genuinely don't know — a birthday with no year is the common case and
+  // not missing data. Null month/day together mean no birthday on file; the two
+  // are always written as a pair.
+  birthdayMonth: number | null;
+  birthdayDay: number | null;
+  // Only ever used to say how old someone is turning. Absent is normal.
+  birthYear: number | null;
+  // When the user deleted this person's birthday task (see
+  // src/utils/birthdayTasks.ts). The per-source opt-out every generated task
+  // writes on its source row, and unlike `Project.reviewDeclinedAt` a permanent
+  // one: "don't remind me about this birthday" is a durable thing to have said,
+  // where "this project isn't worth reviewing today" is not.
+  birthdayTaskOptOut: boolean;
+
+  // Enough to reach them, and nothing more. phoneNumber is stored as typed, the
+  // same decision `Task.phoneNumber` documents — a canonical dial string needs a
+  // country the app never asks for. It's copied onto a generated task so the
+  // row's existing call and text buttons work, which is the whole reason it's
+  // here rather than left to the system contact card.
+  phoneNumber: string | null;
+  email: string | null;
+  // Anything else that opens them: a chat app, a profile. Same field and same
+  // meaning as `Task.linkUrl`.
+  linkUrl: string | null;
+
+  // Days of quiet before this person's reach-out nudge offers itself. 0 = never,
+  // which is what every person starts as. Stored as a plain day count and shown
+  // as "2 weeks" by nudgeCadence.ts, exactly like `Project.nudgeCadenceDays`.
+  cadenceDays: number;
+  // Off by default, and the real gate: nothing about a person may appear in any
+  // nudge surface until this is explicitly true. Same rule as
+  // `Project.nudgeOptIn` and for the same reason — the annoying half of a nudge
+  // feature is the half you get without asking for it. It is also what keeps
+  // "ranking" a non-question, since most people have no cadence to compare.
+  nudgeOptIn: boolean;
+  // When the user last swiped away this person's reach-out task. A stamp that
+  // lapses, never a verdict: the only permanent fields available are the two
+  // above, and both mean "never chase me about this person again", which is far
+  // more than one swipe says.
+  reachOutDeclinedAt: string | null;
+}
+
+/**
  * Which of the app's six unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
@@ -406,7 +476,11 @@ export type GeneratedKind =
   | 'leftoverUseUp'
   | 'mealPlanNudge'
   | 'projectReview'
-  | 'pantryCheck';
+  | 'pantryCheck'
+  // Somebody's birthday, a few days ahead of the day itself — see
+  // src/utils/birthdayTasks.ts. The only generator whose trigger is known years
+  // in advance rather than derived from something that just changed.
+  | 'birthday';
 
 export interface Task {
   id: string;
@@ -766,6 +840,25 @@ export interface Task {
   parentId: string | null;   // null = root task; set = subtask of that id
   groupId: string | null;    // null = ungrouped; set = grouped under that TaskGroup's id
   projectId: string | null;  // null = not in a project; independent of groupId/category — a task can carry both
+
+  /**
+   * Who this task involves — see `docs/arch/people.md`.
+   *
+   * An array on the row rather than a join table, unlike `grocery_item_shops`,
+   * and the deciding argument is that rows get *copied* constantly here:
+   * `completeTask` spreads `...effective` onto a recurrence successor,
+   * `buildSeriesRow` materialises a date set, chains spawn steps, templates
+   * instantiate. A JSON column rides every one of those for free. A join table
+   * needs explicit copy logic at each, and the failure mode is silent — a
+   * recurring "Sunday call with Mom" that quietly stops being about Mom at the
+   * second occurrence. Same shape and same reasoning as `tags`.
+   *
+   * This is also the entire interaction history: a completed task carrying an
+   * id *is* the record that something happened with that person, which is why
+   * there is no interactions table. Reverse lookups go through
+   * `peopleRegistry.ts`, never a scan.
+   */
+  personIds: string[];
 
   // Chain — steps through a list of items one at a time. Completing a
   // chained task advances to the next item and creates the next task on

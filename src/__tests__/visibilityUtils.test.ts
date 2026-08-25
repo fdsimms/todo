@@ -171,6 +171,7 @@ const baseTask: Task = {
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
 };
 
 // June 10, 2025 at 10:00 AM
@@ -1800,6 +1801,7 @@ describe('isSequenceBlocked', () => {
       nudgeOptIn: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
+      personIds: [],
     }]);
     registerTaskSource(() => tasks);
   };

@@ -104,6 +104,7 @@ const BASE: Task = {
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
 };
 
 let seq = 0;

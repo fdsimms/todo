@@ -105,6 +105,7 @@ const BASE: Task = {
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
 };
 
 function makeTask(overrides: Partial<Task>): Task {

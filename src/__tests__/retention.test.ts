@@ -68,6 +68,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
   streakCount: 0,
   streakDate: null,
   previousStreakCount: 0,

@@ -280,6 +280,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'projectReviewTaskCategory', current: s.projectReviewTaskCategory, assign: s.setProjectReviewTaskCategory };
     case 'pantryCheck':
       return { key: 'pantryCheckTaskCategory', current: s.pantryCheckTaskCategory, assign: s.setPantryCheckTaskCategory };
+    case 'birthday':
+      return { key: 'birthdayTaskCategory', current: s.birthdayTaskCategory, assign: s.setBirthdayTaskCategory };
   }
 }
 
@@ -294,6 +296,7 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
     case 'projectReview': return s.projectReviewTasks;
     case 'pantryCheck': return s.pantryCheckTasks;
+    case 'birthday': return s.birthdayTasks;
   }
 }
 

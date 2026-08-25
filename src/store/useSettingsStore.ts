@@ -13,6 +13,7 @@ import {
   USE_UP_TASK_CAP_MAX,
   USE_UP_TASK_CAP_MIN,
 } from '../types';
+import { DEFAULT_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays } from '../utils/birthdayTasks';
 import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
@@ -701,6 +702,21 @@ interface SettingsStore {
   // tasks render above every category section on Today, which is the position
   // this change exists to give back to real work.
   projectReviewTaskCategory: string | null;
+  // Whether a person with a birthday on file gets a task a few days before it
+  // (see src/utils/birthdayTasks.ts). Defaults ON, like projectReviewTasks and
+  // unlike the opt-in generators below: the real gate is per-person and is
+  // simply whether a birthday has been entered at all, so an install with no
+  // people in it sees nothing either way. Entering somebody's birthday is
+  // itself the request to be reminded of it.
+  birthdayTasks: boolean;
+  // How many days before the birthday the task lands. The row carries the
+  // birthday itself as its `deadline`, so this only moves when it *surfaces* —
+  // long enough to buy a card, short enough not to sit around. Zero is allowed
+  // and means "on the day".
+  birthdayLeadDays: number;
+  // Which category a birthday task files itself under, by name, or null for
+  // none — same setting as the other generators' for the same reason.
+  birthdayTaskCategory: string | null;
   // Whether an item the app has stopped being sure about gets a "Check if you
   // still have X" task (see src/utils/pantryCheckTasks.ts). Defaults OFF,
   // unlike projectReviewTasks above: that one replaced a banner that was
@@ -877,6 +893,9 @@ interface SettingsStore {
   setMealCalendarId: (id: string | null) => void;
   setProjectReviewTasks: (on: boolean) => void;
   setProjectReviewTaskCategory: (category: string | null) => void;
+  setBirthdayTasks: (on: boolean) => void;
+  setBirthdayLeadDays: (days: number) => void;
+  setBirthdayTaskCategory: (category: string | null) => void;
   setPantryCheckTasks: (on: boolean) => void;
   setPantryCheckTaskCategory: (category: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
@@ -1318,6 +1337,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealCalendarId: null,
   projectReviewTasks: true,
   projectReviewTaskCategory: null,
+  birthdayTasks: true,
+  birthdayLeadDays: DEFAULT_BIRTHDAY_LEAD_DAYS,
+  birthdayTaskCategory: null,
   pantryCheckTasks: false,
   pantryCheckTaskCategory: null,
   patchNotesQaStatus: {},
@@ -1534,6 +1556,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // the field note for why this one isn't opt-in like the nudge beside it.
     const projectReviewTasks = dbGetSetting('projectReviewTasks') !== 'false';
     const projectReviewTaskCategory = dbGetSetting('projectReviewTaskCategory') || null;
+    const birthdayTasks = dbGetSetting('birthdayTasks') !== 'false';
+    const birthdayLeadDays = clampBirthdayLeadDays(Number(dbGetSetting('birthdayLeadDays')));
+    const birthdayTaskCategory = dbGetSetting('birthdayTaskCategory') || null;
     // `=== 'true'`, the opt-in reading the nudge takes rather than the one
     // above it: this generator adds a surface rather than replacing one, so an
     // install that has never been asked stays silent. See the field note.
@@ -1618,7 +1643,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1853,6 +1878,22 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setProjectReviewTaskCategory(category: string | null) {
     dbSetSetting('projectReviewTaskCategory', category ?? '');
     set({ projectReviewTaskCategory: category });
+  },
+
+  setBirthdayTasks(on: boolean) {
+    dbSetSetting('birthdayTasks', on ? 'true' : 'false');
+    set({ birthdayTasks: on });
+  },
+
+  setBirthdayLeadDays(days: number) {
+    const clamped = clampBirthdayLeadDays(days);
+    dbSetSetting('birthdayLeadDays', String(clamped));
+    set({ birthdayLeadDays: clamped });
+  },
+
+  setBirthdayTaskCategory(category: string | null) {
+    dbSetSetting('birthdayTaskCategory', category ?? '');
+    set({ birthdayTaskCategory: category });
   },
 
   setPantryCheckTasks(on: boolean) {

@@ -33,7 +33,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   autoScheduledAt: null,
   createdAt: new Date().toISOString(), seenAt: null, dueDate: null, deadline: null,
   deadlineOffsetDays: null, deadlineMonthDay: null, deferUntil: null,
-  timeSegments: [], windowStart: null, windowEnd: null,
+  timeSegments: [], windowStart: null, windowEnd: null, personIds: [],
   recurrenceType: 'none', recurrenceInterval: 1, recurrenceDays: [],
   recurrenceMonthDay: null, recurrenceWeekOrdinal: null, recurrenceAnchorDay: null, recurrenceEndDate: null,
   recurrenceCount: null, recurrenceFromCompletion: false,
