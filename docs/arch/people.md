@@ -475,6 +475,36 @@ actually says:
   a person is a number about a person, and this feature has nowhere one may
   appear.
 
+## A warm year in review, in Stats
+
+`peopleStats.ts`. "Aggregates about you are fine; aggregates about individual
+people are the thing to refuse" — the non-goals in the original plan, and the
+one line this whole section exists to obey.
+
+- **No per-person breakdown, anywhere, including as intermediate state.** The
+  reach-out section above rules out sorting by neglect "even done invisibly
+  where nobody sees it" — this file holds the same line one step earlier: it
+  never builds a `Map<personId, count>` on the way to a total, because a
+  structure that *could* answer "who did I see most" is the disease this doc
+  exists to prevent whether or not a line of it ever reaches the screen. Two
+  plain integers, nothing keyed by a person id.
+- **Two independent facts, not one.** Time spent with somebody (a completed
+  top-level task naming them — the same two filters `personHistory()` uses:
+  `isRealCompletion`, so a miss stored as completed doesn't count, and
+  top-level only, so a subtask doesn't multiply one occasion) and meals cooked
+  with a guest (a `MealPlanEntry` gated on `cookedAt`, since a planned dinner
+  that never happened is not a time you had people over). Each renders only
+  when it has something to say, so a year with hosting but no tagged tasks (or
+  the reverse) still says the half that's true.
+- **Never a zero.** "You spent time with people 0 times this year" is the same
+  debt "94 days ago" is (rule 2) — the sentence is either a cheerful fact or it
+  says nothing.
+- **The meal count is its own SQLite read, not `useMealPlanStore.entries`.**
+  That store holds whatever window the meal plan screen last loaded, and a
+  calendar year is wider than the app ever loads on its own. Same shape
+  `cookingCounts`/`refreshCookingCounts` already use for the identical reason,
+  one integer stored rather than a year of rows kept around to produce it.
+
 ## Waiting on a person
 
 `Task.waitingOnPersonId`, and `canWaitOn` / `personBlockerOf` in `blocking.ts`.

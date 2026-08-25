@@ -284,6 +284,36 @@ describe('refreshPlannedSlotCounts', () => {
   });
 });
 
+describe('refreshPeopleYearMealCount', () => {
+  it('is null until something asks — an absent count is not a zero', () => {
+    expect(useMealPlanStore.getState().peopleYearMealCount).toBeNull();
+  });
+
+  it('counts a cooked meal with a guest out of the database, not the loaded week', () => {
+    loadWeek([entry('2026-03-05', 'dinner')]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-06-01', 'dinner', { cookedAt: '2026-06-01T19:00:00.000Z', personIds: ['p1'] }),
+      entry('2026-06-02', 'dinner', { cookedAt: '2026-06-02T19:00:00.000Z', personIds: [] }),
+      entry('2026-06-03', 'dinner', { personIds: ['p1'] }),
+    ]);
+
+    useMealPlanStore.getState().refreshPeopleYearMealCount('2026-01-01', '2026-12-31');
+
+    expect(useMealPlanStore.getState().peopleYearMealCount).toBe(1);
+    expect(dbGetMealPlanEntries).toHaveBeenLastCalledWith('2026-01-01', '2026-12-31');
+  });
+
+  it('does not re-render on an unchanged count', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([
+      entry('2026-06-01', 'dinner', { cookedAt: '2026-06-01T19:00:00.000Z', personIds: ['p1'] }),
+    ]);
+    useMealPlanStore.getState().refreshPeopleYearMealCount('2026-01-01', '2026-12-31');
+    const before = useMealPlanStore.getState();
+    useMealPlanStore.getState().refreshPeopleYearMealCount('2026-01-01', '2026-12-31');
+    expect(useMealPlanStore.getState()).toBe(before);
+  });
+});
+
 describe('refreshCookingCounts', () => {
   const window = { startKey: '2026-07-15', endKey: '2026-08-13', todayKey: '2026-08-13' };
   const cooked = (date: string, slot: MealSlot = 'dinner') =>

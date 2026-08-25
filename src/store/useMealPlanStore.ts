@@ -35,6 +35,7 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { generateId } from '../utils/id';
 import { normalizeScale } from '../utils/recipeScale';
 import { mealCookCounts, type CookingWindow, type MealCookCounts } from '../utils/cookingStats';
+import { mealsTogetherInRange } from '../utils/peopleStats';
 import { totalMinutes } from '../utils/recipeUtils';
 import {
   cleanMealTitle,
@@ -291,6 +292,28 @@ interface MealPlanStore {
    * so this stays four integers however much someone plans.
    */
   cookingCounts: MealCookCounts | null;
+
+  /**
+   * This year's cooked meals with a guest — see `peopleStats.ts`. Null until
+   * the reader asks (#2092), the same "nobody has looked" starting state
+   * `cookingCounts` uses.
+   *
+   * A count, not rows, for the reason `cookingCounts` is: a year of entries is
+   * read to produce it and nothing keeps them, so this stays one integer
+   * however much a year held.
+   */
+  peopleYearMealCount: number | null;
+
+  /**
+   * Recounts `peopleYearMealCount` from SQLite over `[startKey, endKey]`.
+   *
+   * Its own read rather than a widening of `refreshCookingCounts`'s window:
+   * that one is a rolling 30 days for "what have you been cooking lately",
+   * this is a calendar year for "your year", and the two questions don't share
+   * an answer. Pull, not push, same as `refreshCookingCounts` — the reader
+   * (Stats) calls this when it's actually looking.
+   */
+  refreshPeopleYearMealCount: (startKey: string, endKey: string) => void;
 
   /**
    * Recounts `cookingCounts` from SQLite over the given window.
@@ -584,6 +607,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   addedToListAt: {},
   plannedSlotCounts: {},
   cookingCounts: null,
+  peopleYearMealCount: null,
   cookHistory: null,
   initialized: false,
   lastAction: null,
@@ -626,6 +650,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         entries: sortMealEntries(dbGetMealPlanEntries(rangeStart, rangeEnd)),
         addedToListAt,
         cookingCounts: null,
+        peopleYearMealCount: null,
         cookHistory: null,
         initialized: true,
       });
@@ -637,6 +662,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       entries: [],
       addedToListAt,
       cookingCounts: null,
+      peopleYearMealCount: null,
       cookHistory: null,
       initialized: true,
     });
@@ -675,6 +701,12 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (unchanged) return;
 
     set({ plannedSlotCounts: next });
+  },
+
+  refreshPeopleYearMealCount(startKey, endKey) {
+    const next = mealsTogetherInRange(dbGetMealPlanEntries(startKey, endKey), startKey, endKey);
+    if (get().peopleYearMealCount === next) return;
+    set({ peopleYearMealCount: next });
   },
 
   refreshCookingCounts(window) {

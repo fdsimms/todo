@@ -50,6 +50,7 @@ import { sharedLinkLabel } from '../utils/sharedRecipeLinks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { isStaleNote } from '../utils/personNotes';
+import { mealYearRange, taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
 import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -923,6 +924,23 @@ describe('demo seed — people', () => {
     expect(person!.archived).toBe(false);
   });
 
+  // Both facts already fall out of the existing seed with no new rows: the
+  // completed "Coffee with Mom" and the cooked, guested salmon dinner. A
+  // regression guard rather than new demo content.
+  it('has a year in review to show, from the existing seed alone', () => {
+    const today = getCurrentDayStart();
+    const { startIso, endIso } = taskYearRange(today);
+    const timeCount = timeTogetherInRange(useTaskStore.getState().tasks, startIso, endIso);
+    expect(timeCount).toBeGreaterThan(0);
+
+    // entries only holds whatever ±14-day window seeding loaded — the real
+    // read goes through the same DB-backed action Stats uses, the same call
+    // refreshCookingCounts already makes for the same reason.
+    const { startKey, endKey } = mealYearRange(today);
+    useMealPlanStore.getState().refreshPeopleYearMealCount(startKey, endKey);
+    expect(useMealPlanStore.getState().peopleYearMealCount).toBeGreaterThan(0);
+  });
+
   it('seeds a note of every kind, since each one lands somewhere different', () => {
     const notes = usePersonNoteStore.getState().notes;
     for (const kind of PERSON_NOTE_KINDS) {
@@ -955,7 +973,11 @@ describe('demo seed — people', () => {
 
   it("seeds a meal that shows on its guests' own screens", () => {
     const todayKey = dayKeyOf(new Date());
+    // Specifically an uncooked meal's guest — a cooked one (the steak night,
+    // seeded for the year-in-review stat) has already happened and rightly
+    // has nothing upcoming.
     const guest = useMealPlanStore.getState().entries
+      .filter(e => !e.cookedAt)
       .flatMap(e => e.personIds)
       .find(Boolean)!;
     expect(useMealPlanStore.getState().guestMealsFor(guest, todayKey, 60).length).toBeGreaterThan(0);

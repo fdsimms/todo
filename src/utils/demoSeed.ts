@@ -867,6 +867,12 @@ function seedPeople(today: Date): void {
   if (seededSalmonNightId) {
     useMealPlanStore.getState().setMealGuests(seededSalmonNightId, [ansley.id, mom.id]);
   }
+  // Cooked for eight, so a guest already fits the plan without inventing a
+  // new meal — and it's the one that gives the year-in-review stat something
+  // to count, since the salmon dinner above deliberately isn't cooked yet.
+  if (seededSteakNightId) {
+    useMealPlanStore.getState().setMealGuests(seededSteakNightId, [dustin.id]);
+  }
 
   // The memory layer (#2047), which is rule 7 and the part that makes this a
   // feature you like rather than one you tolerate. Every kind gets one, and
@@ -2068,6 +2074,13 @@ function seedMealPlanNudgeStack(
  * seeding reads as "nothing to be a guest at".
  */
 let seededSalmonNightId: string | null = null;
+/**
+ * The steak dinner four days ago, handed to `seedPeople` for the same reason
+ * `seededSalmonNightId` is — but this one is already cooked, so it's what
+ * gives the year-in-review stat (#2092) something to count. The salmon dinner
+ * deliberately isn't it: that one has to stay uncooked for COMING UP.
+ */
+let seededSteakNightId: string | null = null;
 
 function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   const { loadRange, planMeal, setCooked, setRecipeScale, setRecipeChoices, stampAddedToList } =
@@ -2139,6 +2152,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     const roasted = componentIdFor(recipes.steak, recipes.roasties);
     if (roasted) setRecipeChoices(steakNight.id, [roasted]);
   }
+  seededSteakNightId = steakNight?.id ?? null;
   const stirFryNight = cooked(-1, 'dinner', {
     title: 'Weeknight chicken stir-fry',
     recipeId: recipes.stirFry,
