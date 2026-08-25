@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where renaming a chain step or subtask and immediately tapping Save (without tapping away first) could silently drop the new name.",
+  "date": "2026-08-25"
+}
