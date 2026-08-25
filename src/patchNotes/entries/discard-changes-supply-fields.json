@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the \"Discard changes?\" prompt appearing every time you closed a task without editing anything",
+  "date": "2026-08-25"
+}
