@@ -135,6 +135,8 @@ import {
 } from '../utils/reachOutTasks';
 import { lastTogether, personHistory } from '../utils/personHistory';
 import { usePersonStore } from './usePersonStore';
+import { usePersonNoteStore } from './usePersonNoteStore';
+import { giftIdeasText } from '../utils/personNotes';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
@@ -1605,6 +1607,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // database while tasks showed the new one would render demo tasks naming
     // real people, or the reverse.
     usePersonStore.getState().initialize();
+    // Immediately after the people, and on the same fan-out for the same
+    // database-swap reason: notes left pointed at the previous database would
+    // render real facts about real people under demo names.
+    usePersonNoteStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
@@ -4008,6 +4014,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // UI: TaskItem already renders both off this field.
           phoneNumber: want.phoneNumber,
           category,
+          // The gift ideas you wrote down in March, which is the whole point of
+          // having written them (#2047). **Creation only, never a reconcile** —
+          // `category` right above takes the same line, and `mealSlotTaskDraft`
+          // states the rule: a field the generator doesn't *own* is applied once
+          // and then belongs to the user. `notes` is emphatically theirs to
+          // edit, and a drift pass rewriting it would eat what they added on
+          // the day. In practice ideas are written months ahead and the row is
+          // written days ahead, so it arrives carrying them.
+          notes: giftIdeasText(usePersonNoteStore.getState().notes, want.personId, today),
           // Deliberately **no personIds**, for the reason projectReview carries
           // no projectId. A task naming somebody is the record that something
           // happened *with* them (see Task.personIds), and the app writing that

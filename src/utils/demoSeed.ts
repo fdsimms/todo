@@ -5,6 +5,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -860,6 +861,23 @@ function seedPeople(today: Date): void {
   if (seededSalmonNightId) {
     useMealPlanStore.getState().setMealGuests(seededSalmonNightId, [ansley.id, mom.id]);
   }
+
+  // The memory layer (#2047), which is rule 7 and the part that makes this a
+  // feature you like rather than one you tolerate. Every kind gets one, and
+  // each one lands somewhere: the gift ideas ride onto Dustin's birthday task
+  // (his birthday is two days away, so that task genuinely exists), the food
+  // notes show on the salmon dinner those two are guests at, and the dated one
+  // is what a note able to go stale actually looks like.
+  const { addNote } = usePersonNoteStore.getState();
+  addNote(dustin.id, 'gift', 'The bouldering gym membership');
+  addNote(dustin.id, 'gift', 'A proper chalk bag');
+  addNote(dustin.id, 'food', 'No shellfish');
+  addNote(ansley.id, 'note', 'Starts the new job in September, ask how it went', addDays(today, 16).toISOString());
+  addNote(ansley.id, 'food', "Doesn't drink");
+  addNote(mom.id, 'food', 'No shellfish');
+  // Its day has been and gone, which is the other half of the treatment: shown
+  // quieter, sunk below the live ones, and never deleted by the app.
+  addNote(mom.id, 'note', 'Ask how the hospital appointment went', subDays(today, 9).toISOString());
 
   // The birthday task comes from the same pass the app runs at launch rather
   // than from a row written by hand here: a seeded row that skipped the

@@ -120,6 +120,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/patchNotes.ts` — PatchNote
 - `src/utils/peopleRegistry.ts` — registerPersonSource, registerPersonTaskSource, resolvePerson, peopleOn, tasksNaming
 - `src/utils/personHistory.ts` — HistoryEntry, personHistory, UpcomingEntry, personUpcoming, lastTogether, describeLastTogether, daysSinceTogether, describeDaysSince
+- `src/utils/personNotes.ts` — PERSON_NOTE_LABELS, PERSON_NOTE_HEADINGS, PERSON_NOTE_HINTS, isLiveNote, isStaleNote, notesOfKind, notesFor, describeNoteDay, giftIdeasText, GuestFoodNote, +1 more
 - `src/utils/phone.ts` — phoneDigits, telUrl, isDialable, smsUrl, formatPhoneInput, looksLikePhoneNumber
 - `src/utils/pillOverflow.ts` — OverflowPill, PillOverflowResult, PillOverflowOptions, DEFAULT_PILL_LIMIT, resolvePillOverflow, PillSubmit, resolvePillSubmit
 - `src/utils/pinSuggest.ts` — MAX_SUGGESTED_PINS, PinContext, buildCoOccurrenceIndex, currentTimeSegment, buildPinContext, overdueDays, scoreTask, nextPinSuggestion, suggestPins, pinReason, +1 more
@@ -225,6 +226,7 @@ render, so listing them adds lines without adding answers.
 - `src/store/useGroceryStore.ts` — PlannedRow, PlanAddResult, useGroceryStore
 - `src/store/useLeftoverStore.ts` — LeftoverDraft, useLeftoverStore
 - `src/store/useMealPlanStore.ts` — MealPlanDraft, CookedOffer, LeftoverOffer, useMealPlanStore
+- `src/store/usePersonNoteStore.ts` — PersonNotePatch, usePersonNoteStore
 - `src/store/usePersonStore.ts` — blankPerson, displayNameOf, PersonPatch, usePersonStore
 - `src/store/useProjectCategoryStore.ts` — useProjectCategoryStore
 - `src/store/useProjectStore.ts` — projectProgress, projectDecisions, isProjectPastWindow, useProjectStore
@@ -261,7 +263,7 @@ render, so listing them adds lines without adding answers.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +132 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +137 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SYNC_DELETIONS_TABLE, NOW_EXPR, TOMBSTONE_RETENTION_DAYS, rowKeyExpr, +5 more
 
 ## `src/services`

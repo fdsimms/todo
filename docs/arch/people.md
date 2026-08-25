@@ -374,6 +374,66 @@ assertion.
   it also avoids: the answer would be written into the scratch settings table,
   so a dismissal made in a demo is lost and the real install is asked again.
 
+## The memory layer
+
+`PersonNote` and `personNotes.ts`. **Rule 7 in full, and the part that makes the
+feature a thing you like rather than a thing you tolerate.** The valuable thing
+is not "maintain relationship #4", it is "Ansley starts the new job in September,
+ask her about it". `Person.askAbout` shipped a one-field slice of this early, so
+the first nudge anybody sees is warm rather than clock-driven; this is the rest.
+
+**Three kinds, each with exactly one place it shows up**, which is what keeps
+them from blurring into one another and is what each kind's hint in the sheet
+actually says:
+
+| Kind | Where it lands |
+|---|---|
+| `note` | The person's own screen |
+| `gift` | The birthday task, as its notes |
+| `food` | A meal they're a guest at |
+
+- **Rows rather than fields on `Person`**, unlike `askAbout` beside them. The
+  argument this doc makes for `Task.personIds` being a JSON array does not
+  transfer: task rows get copied constantly (a recurrence successor, a series
+  member, a chain step) and a JSON column rides every copy for free, where a
+  person row is never copied at all. What these need instead is to be added and
+  removed one at a time and to carry their own date, which is a row.
+- **`relevantOn` is what separates a note from `Person.notes`.** That field is a
+  static description; a dated note can go stale, which is the entire point of
+  the distinction. Null is the common case and is not missing data — "no
+  shellfish" is not about a day, and treating an undated note as expiring would
+  quietly grey out the ones that are always true.
+- **Stale is a display state, never a delete.** A note whose day has passed is
+  shown quieter and sunk below the live ones. Nothing in the app deletes a note
+  on its own, and nothing is ever struck through or coloured: a note you meant
+  to act on is not a debt.
+- **Nothing ever says how long a note has been stale.** `describeNoteDay` counts
+  *forward* ("Today", "In 3 days") because anticipation is not a tally, and says
+  only "Passed" in the other direction. "94 days ago" about a thing you meant to
+  ask is precisely the scoreboard the top of this doc is about.
+- **A person with no notes shows no section at all.** Not an empty heading, not
+  a prompt to start filing facts about your friends. The one way in is an "Add a
+  note" row that says what it will do.
+- **Gift ideas are written onto the birthday task at creation only**, never on a
+  reconcile. `category` takes the same line and `mealSlotTaskDraft` states the
+  rule: a field the generator does not *own* is applied once and then belongs to
+  the user. `notes` is emphatically theirs to edit, and a drift pass rewriting it
+  would eat what they added on the day. In practice ideas are written months
+  ahead and the row days ahead, so it arrives carrying them.
+- **Stale gift and food notes are dropped rather than sunk.** A gift idea whose
+  day has passed is one you either bought or missed and a birthday task is not
+  the place to be shown either; a food note that has passed ("dairy-free until
+  March") is simply no longer true.
+- **Deleting a person deletes their notes**, and it is the one place this layer
+  does not shrug at a dangling pointer. A note is *about* somebody and has no
+  meaning without them, unlike a task naming them, which is still a thing you
+  did — leaving the rows would be keeping a private file on somebody the user
+  asked to be rid of. Done inside `removePersonRow` so a second call site can't
+  forget it, and the confirm says so.
+- **Nothing counts them.** There is no "3 notes" anywhere, because a count about
+  a person is a number about a person, and this feature has nowhere one may
+  appear.
+
 ## Guests on a planned meal
 
 `MealPlanEntry.personIds` and `mealGuests.ts`. The tie-in no other app can have,
