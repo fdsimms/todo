@@ -24,6 +24,15 @@ interface Props {
   withEmoji?: boolean;
   /** Label for the secondary "open the full editor" button; omit to hide it. */
   moreLabel?: string;
+  /**
+   * A second way to add the same kind of thing, beside typing its name rather
+   * than instead of it — People's "From Contacts". Omit for the sheets that
+   * have only the one way in, which is most of them.
+   *
+   * Enabled with the field empty, unlike `moreLabel`: it doesn't act on what
+   * has been typed, it replaces the typing.
+   */
+  altAction?: { icon: keyof typeof Ionicons.glyphMap; label: string; onPress: () => void };
   autoCapitalize?: 'none' | 'words';
   /** The trimmed name, plus the trimmed emoji when `withEmoji` is set. */
   onSubmit: (name: string, emoji: string | null) => void;
@@ -39,7 +48,7 @@ interface Props {
  * that's just "a name, maybe an emoji" shares this one.
  */
 export function QuickAddNameSheet({
-  visible, placeholder, withEmoji, moreLabel, autoCapitalize = 'words',
+  visible, placeholder, withEmoji, moreLabel, altAction, autoCapitalize = 'words',
   onSubmit, onOpenFull, onClose,
 }: Props) {
   const colors = useColors();
@@ -185,6 +194,19 @@ export function QuickAddNameSheet({
               <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
             </TouchableOpacity>
           </View>
+
+          {!!altAction && (
+            <TouchableOpacity
+              style={styles.moreBtn}
+              onPress={altAction.onPress}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={altAction.label}
+            >
+              <Ionicons name={altAction.icon} size={15} color={colors.textSecondary} />
+              <Text style={styles.moreBtnText}>{altAction.label}</Text>
+            </TouchableOpacity>
+          )}
 
           {!!moreLabel && !!onOpenFull && (
             <TouchableOpacity

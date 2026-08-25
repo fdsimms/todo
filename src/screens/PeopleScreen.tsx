@@ -13,6 +13,7 @@ import { EmptyState } from '../components/EmptyState';
 import { ReorderableList } from '../components/ReorderableList';
 import { PersonEditor } from '../components/PersonEditor';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
+import { ContactPickerSheet } from '../components/ContactPickerSheet';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
@@ -48,6 +49,7 @@ export function PeopleScreen() {
 
   const people = usePersonStore(useShallow(s => s.people));
   const createPerson = usePersonStore(s => s.createPerson);
+  const updatePerson = usePersonStore(s => s.updatePerson);
   const reorderPeople = usePersonStore(s => s.reorderPeople);
   const birthdayLeadDays = useSettingsStore(s => s.birthdayLeadDays);
 
@@ -55,6 +57,7 @@ export function PeopleScreen() {
   // edited from their own screen now, which is where the "…" lives.
   const [newPerson, setNewPerson] = useState<Person | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const [contactPickerVisible, setContactPickerVisible] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
 
   const visiblePeople = useMemo(
@@ -192,12 +195,36 @@ export function PeopleScreen() {
         placeholder="Name"
         autoCapitalize="words"
         moreLabel="More details"
+        // Beside typing a name rather than instead of it: the contact book has
+        // the birthday already, which is the tedious half of adding somebody.
+        // See docs/arch/people.md, "Where the two lines actually fall".
+        altAction={{
+          icon: 'person-add-outline',
+          label: 'From Contacts',
+          onPress: () => { setQuickAddVisible(false); setContactPickerVisible(true); },
+        }}
         onSubmit={(name) => { add(name); setQuickAddVisible(false); }}
         // Straight into the sheet with the row already created, so the birthday
         // (the reason most people are added at all) is one tap away rather than
         // needing the row to be found again afterwards.
         onOpenFull={(name) => { setNewPerson(add(name)); setQuickAddVisible(false); }}
         onClose={() => setQuickAddVisible(false)}
+      />
+
+      <ContactPickerSheet
+        visible={contactPickerVisible}
+        // One tap adds one person and the sheet stays open, so a run of them is
+        // possible without the picker ever becoming a checklist of everybody.
+        onPick={draft => {
+          const person = add(draft.name);
+          updatePerson(person.id, {
+            phoneNumber: draft.phoneNumber,
+            email: draft.email,
+            birthdayMonth: draft.birthdayMonth,
+            birthdayDay: draft.birthdayDay,
+          });
+        }}
+        onClose={() => setContactPickerVisible(false)}
       />
 
       <PersonEditor

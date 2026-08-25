@@ -48,6 +48,12 @@
         }
       ],
       [
+        "expo-contacts",
+        {
+          "contactsPermission": "Lets dundundun fill in one person you pick from your contacts, so you don't have to type their name, number and birthday. It reads only the contacts you search for, one at a time, and never copies your address book."
+        }
+      ],
+      [
         "expo-local-authentication",
         {
           "faceIDPermission": "Lets dundundun ask for Face ID before it opens, so an unlocked phone doesn't hand over your task list."
