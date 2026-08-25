@@ -308,6 +308,7 @@ exports.
 | which heading an ingredient sits under | `src/utils/recipeSections.ts` — see `docs/arch/recipes.md` |
 | halving or doubling a recipe | `src/utils/recipeScale.ts` — see `docs/arch/recipes.md` |
 | showing amounts in metric or US units | `src/utils/unitConvert.ts` — see `docs/arch/recipes.md` |
+| whether an ingredient line is something you already buy | `src/utils/ingredientCatalogMatch.ts` — see `docs/arch/recipes.md` |
 | reading a `quantity` string at all — amounts, units, containers | `src/utils/quantity.ts` — see `docs/arch/recipes.md` |
 | reading a recipe out one step at a time while cooking | `src/utils/cookMode.ts` + `src/components/CookModeSheet.tsx` — see `docs/arch/recipes.md` |
 | either of a recipe's two timers, from any screen | `src/hooks/useRecipeTimer.ts` — see `docs/arch/recipes.md` |
@@ -344,7 +345,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **197 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **198 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

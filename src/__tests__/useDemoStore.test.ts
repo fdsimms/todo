@@ -27,6 +27,7 @@ import { standingSwapMap } from '../utils/standingSwaps';
 import { normalizeGtin } from '../utils/gtin';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
 import { flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
+import { catalogMatchSummary, matchIngredientsToCatalog } from '../utils/ingredientCatalogMatch';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import { kitchenEvents, kitchenHistoryDays } from '../utils/kitchenHistory';
 import { mealSlotSourceId, parseMealSlotSource } from '../utils/mealSlotTasks';
@@ -908,6 +909,41 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
   afterEach(() => {
     useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds every catalog-match state a recipe line can be in', () => {
+    // The row badge and the "N of M in your groceries" count are invisible
+    // until a line is in each state, so without one of each the whole matching
+    // feature reads as one the app doesn't have. All three fall out of the
+    // seed as written rather than being staged for this: the stir-fry asks for
+    // "2 chicken breasts" against a catalog row called Chicken breast (the
+    // plural tolerance in matchWeight, and the commonest near-miss there is),
+    // its rice and garlic are catalog rows outright, and the salmon's own
+    // fillets are the ordinary case of an ingredient nobody has catalogued.
+    const recipes = useRecipeStore.getState().recipes;
+    const items = useGroceryStore.getState().items;
+    const lines = recipes.flatMap(r => r.ingredients.map(i => i.name));
+    const matches = matchIngredientsToCatalog(lines, items, new Date());
+    const summary = catalogMatchSummary(matches);
+
+    expect(summary.linked).toBeGreaterThan(0);
+    expect(summary.suggested).toBeGreaterThan(0);
+    expect(summary.unknown).toBeGreaterThan(0);
+
+    // Pinned by name as well as counted, so a reworded seed line can't quietly
+    // keep this passing by putting some *other* line into the suggested state.
+    const byName = new Map(lines.map((name, i) => [name, matches[i]]));
+    expect(byName.get('chicken breasts')?.kind).toBe('suggested');
+    expect(byName.get('chicken breasts')?.suggestedName).toBe('Chicken breast');
+    expect(byName.get('rice')?.kind).toBe('linked');
+    expect(byName.get('salmon fillets')?.kind).toBe('unknown');
+    // Lemons is a bare CATALOG name nothing else in the seed ever touches, so
+    // without its own quantity fact clearList sweeps it — same mechanism that
+    // drops Cheddar and Coriander, documented where the clear itself runs.
+    // Pinned here so a future edit that removes that fact fails loudly instead
+    // of quietly turning the salmon's own "lemon" line unplaceable.
+    expect(byName.get('lemon')?.kind).toBe('suggested');
+    expect(byName.get('lemon')?.suggestedName).toBe('Lemons');
   });
 
   it('seeds a grocery catalog bigger than the list, with a trip in progress', () => {

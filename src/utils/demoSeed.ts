@@ -1432,6 +1432,12 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // example of a recipe cost actually clearing recipeCost.ts's coverage floor
   // (see estimateRecipeCost in useDemoStore.test.ts).
   setQuantity(itemNamed('Potatoes').id, '5 lb');
+  // Lemon garlic salmon calls for a lemon, and without a fact of its own here
+  // Lemons is a bare CATALOG name — nothing else in the seed ever touches it —
+  // so clearList below sweeps it and the recipe's own "lemon" line reads as an
+  // ingredient nobody has ever catalogued. A quantity is the same minimal fact
+  // Bananas and Rice get for the same reason.
+  setQuantity(itemNamed('Lemons').id, '4');
   setNote(itemNamed('Black beans').id, 'The low-sodium ones');
   setNote(itemNamed('Bread').id, 'Seeded, from the back shelf');
   // A product is a clause beside the name, so this row is still plain "cottage

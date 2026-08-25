@@ -38,6 +38,11 @@ import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { PressableScale } from '../components/PressableScale';
 import { SortableList, type SortableRenderItem } from '../components/SortableList';
+import { IngredientCatalogMatchSheet } from '../components/IngredientCatalogMatchSheet';
+import {
+  catalogMatchSummary,
+  matchIngredientsToCatalog,
+} from '../utils/ingredientCatalogMatch';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { RecipeEditor } from '../components/RecipeEditor';
 import { RecipeIngredientSheet } from '../components/RecipeIngredientSheet';
@@ -219,6 +224,17 @@ export function RecipeDetailScreen() {
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
   const [componentPickerVisible, setComponentPickerVisible] = useState(false);
   const [choiceComponent, setChoiceComponent] = useState<ResolvedComponent | null>(null);
+  // The catalog-match review sheet, and what it's scoped to: null means the
+  // whole recipe (opened from the summary row), a list of ids means the lines
+  // one paste just added (opened from its banner).
+  const [matchSheetOpen, setMatchSheetOpen] = useState(false);
+  const [matchScopeIds, setMatchScopeIds] = useState<readonly string[] | null>(null);
+  // The banner a multi-line paste leaves behind, or null once dismissed or
+  // acted on. Session-only and deliberately not persisted: it reports on one
+  // paste that just happened, and a banner still sitting there tomorrow would
+  // be reporting on an edit nobody remembers making.
+  const [pasteResult, setPasteResult] =
+    useState<{ addedIds: string[]; added: number; unresolved: number } | null>(null);
   // Turns the list's own scroll off while a row is being dragged. Without it
   // the drag is silently dead — see the note on SortableList.onDragStateChange.
   const [dragging, setDragging] = useState(false);
@@ -271,12 +287,32 @@ export function RecipeDetailScreen() {
     const section = sectionDraft.trim() || null;
     // A multi-line paste is the common way a recipe arrives, so one field
     // handles both — splitGroceryLines tells them apart.
-    const added = splitGroceryLines(text).length > 1
+    const isPaste = splitGroceryLines(text).length > 1;
+    const before = new Set(recipe.ingredients.map(i => i.id));
+    const added = isPaste
       ? addIngredientsFromText(recipe.id, text, section)
       : (addIngredient(recipe.id, text, section) ? 1 : 0);
     setDraft('');
     if (added > 0) haptics.tap();
     else haptics.warning();
+    // Only a paste gets the banner. Adding one line at a time already shows
+    // its own answer — the row appears with its badge (or without one) right
+    // where you're looking — so a banner there would narrate what is already
+    // on screen. A paste is the case where six rows land at once, several
+    // scrolls of them, and nothing says which the app could place.
+    //
+    // Read back from the store rather than from `recipe`, which is this
+    // render's closure and predates the write by a line.
+    if (isPaste && added > 0) {
+      const after = useRecipeStore.getState().recipes.find(r => r.id === recipe.id)?.ingredients ?? [];
+      const addedIds = after.filter(i => !before.has(i.id)).map(i => i.id);
+      const now = new Date();
+      const unresolved = matchIngredientsToCatalog(
+        after.filter(i => !before.has(i.id)).map(i => i.name), groceryItems, now
+      ).filter(m => m.kind !== 'linked').length;
+      animateLayout();
+      setPasteResult(unresolved > 0 ? { addedIds, added, unresolved } : null);
+    }
     // Keep the keyboard up so adding several ingredients in a row doesn't
     // need a re-tap of the field each time — see the chain-step add input
     // in TaskEditor for the same pattern. The short delay lets the field's
@@ -562,6 +598,30 @@ export function RecipeDetailScreen() {
     return counts;
   }, [recipe.ingredients]);
 
+  // What each line resolves to in the grocery catalog — see
+  // ingredientCatalogMatch.ts. `nameKey` has always been that bridge, but
+  // nothing on this screen ever said whether a line had crossed it, so a line
+  // one character or one leading word off read exactly like a line naming
+  // something genuinely new.
+  //
+  // Keyed on the ingredients and the catalog together, because either moving
+  // changes the answer: renaming a line relinks it, and so does the catalog
+  // gaining the row it was looking for.
+  const catalogMatches = useMemo(
+    () => {
+      const now = new Date();
+      const matches = matchIngredientsToCatalog(
+        recipe.ingredients.map(i => i.name), groceryItems, now
+      );
+      return new Map(recipe.ingredients.map((ing, i) => [ing.id, matches[i]]));
+    },
+    [recipe.ingredients, groceryItems],
+  );
+  const catalogSummary = useMemo(
+    () => catalogMatchSummary([...catalogMatches.values()]),
+    [catalogMatches],
+  );
+
   const renderIngredient = (
     ingredient: RecipeIngredient,
     _index: number,
@@ -603,6 +663,20 @@ export function RecipeDetailScreen() {
     const isChoiceDefault = ingredientGroups.defaults.has(ingredient.id);
     const alternativeNote = ingredientAlternatives.get(ingredient.id);
     const splitInto = splittableCounts.get(ingredient.id);
+    // Only a line with something to act on gets a badge: an exact match is the
+    // healthy common case and a line naming something genuinely new is the
+    // other one, so marking either would put a glyph on most rows to say
+    // "nothing to do here". The count above the list is where a well-matched
+    // recipe says so instead.
+    //
+    // Suppressed while a split is offered, the same mutual exclusion the
+    // split pill and the "or manchego" caption already keep: "this line wants
+    // to be two" comes first, and each half gets matched on its own once it
+    // is. Two competing offers on one row is a row nobody reads.
+    const catalogMatch = catalogMatches.get(ingredient.id);
+    const catalogSuggestion = !splitInto && catalogMatch?.kind === 'suggested'
+      ? catalogMatch
+      : null;
     return (
       <View>
         {/* Its own treatment, deliberately not the section heading's. The two
@@ -690,6 +764,27 @@ export function RecipeDetailScreen() {
               >
                 <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.splitPillText}>Split into {splitInto}…</Text>
+              </PressableScale>
+            )}
+            {/* The same signpost the split pill is, for the same reason: it
+                names what it would link to, and opens the sheet where the
+                link is confirmed rather than being a second place to accept.
+                Naming the target is the whole point — an abstract glyph makes
+                you tap to find out what it even found. */}
+            {!!catalogSuggestion && !selectionMode && (
+              <PressableScale
+                style={styles.matchPill}
+                haptic
+                onPress={() => setEditingIngredient(ingredient)}
+                accessibilityLabel={
+                  `Did you mean ${catalogSuggestion.suggestedName}? It's in your groceries.`
+                }
+                accessibilityHint="Double tap to review the match"
+              >
+                <Ionicons name="basket-outline" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.matchPillText} numberOfLines={1}>
+                  {catalogSuggestion.suggestedName}?
+                </Text>
               </PressableScale>
             )}
           </View>
@@ -1149,6 +1244,31 @@ export function RecipeDetailScreen() {
             lines are priced to say (see recipeCost.ts's coverage floor). */}
         {!!costLine && <Text style={styles.summary}>{costLine}</Text>}
 
+        {/* Where a well-matched recipe says so. The per-row badge is reserved
+            for lines with something to act on, so without this line a recipe
+            whose every ingredient resolves looks identical to one the app has
+            never been able to place — which is the confusion the whole feature
+            started from. Doubles as the way into the review sheet, so the
+            batch pass needs no menu item of its own. */}
+        {catalogSummary.total > 0 && !selectionMode && (
+          <TouchableOpacity
+            style={styles.matchSummaryRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => { haptics.tap(); setMatchScopeIds(null); setMatchSheetOpen(true); }}
+            accessibilityRole="button"
+            accessibilityLabel={
+              `${catalogSummary.linked} of ${catalogSummary.total} ingredients are in your groceries`
+            }
+            accessibilityHint="Double tap to review the ones that aren't"
+          >
+            <Ionicons name="basket-outline" size={iconSize.sm} color={colors.textSecondary} />
+            <Text style={styles.matchSummaryText}>
+              {catalogSummary.linked} of {catalogSummary.total} in your groceries
+            </Text>
+            <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+          </TouchableOpacity>
+        )}
+
         {mergedIngredientRows.length === 0 && components.length === 0 ? (
           <Text style={styles.hint}>
             Type one ingredient at a time, or paste a whole list — “2 lb chicken thighs”
@@ -1177,6 +1297,46 @@ export function RecipeDetailScreen() {
             reading a doubled list deserves to know which lines the app didn't do
             the arithmetic for rather than assuming it did. */}
         {!!unscaledNote && <Text style={styles.scaleNote}>{unscaledNote}</Text>}
+
+        {/* Sits down here by the field that produced it rather than up at the
+            top of the screen: the add field is the last thing on this screen,
+            so after a paste that's where you're looking and a banner above the
+            list would land off-screen. Accent-tinted, not the warning yellow —
+            a pasted ingredient the app can't place is the ordinary case, not a
+            problem to clear. */}
+        {!!pasteResult && !selectionMode && (
+          <View style={styles.pasteBanner}>
+            <View style={styles.pasteBannerBody}>
+              <Text style={styles.pasteBannerTitle}>
+                {pasteResult.added} {pasteResult.added === 1 ? 'ingredient' : 'ingredients'} added
+              </Text>
+              <Text style={styles.pasteBannerDetail}>
+                {pasteResult.unresolved}{' '}
+                {pasteResult.unresolved === 1 ? "isn't" : "aren't"} in your groceries.
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                haptics.tap();
+                setMatchScopeIds(pasteResult.addedIds);
+                setMatchSheetOpen(true);
+              }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Review the ingredients that aren't in your groceries"
+            >
+              <Text style={styles.pasteBannerAction}>Review</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => { haptics.tap(); animateLayout(); setPasteResult(null); }}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss"
+            >
+              <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Which heading newly-typed ingredients below file under — a picker
             over headings this recipe already has, not a field you type a new
@@ -1468,6 +1628,20 @@ export function RecipeDetailScreen() {
         recipeId={recipe.id}
         ingredient={editingIngredient}
         onClose={() => setEditingIngredient(null)}
+      />
+
+      <IngredientCatalogMatchSheet
+        visible={matchSheetOpen}
+        recipeId={recipe.id}
+        scopeIds={matchScopeIds}
+        onClose={() => setMatchSheetOpen(false)}
+        onEditIngredient={ingredient => {
+          // Closes itself first: two Modals presented from one parent is the
+          // second one asking a presenter that's already presenting, so the
+          // ingredient sheet opens as this one leaves rather than on top of it.
+          setMatchSheetOpen(false);
+          setEditingIngredient(ingredient);
+        }}
       />
 
       <PrepTaskSheet
@@ -1826,6 +2000,61 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
+  // Deliberately identical to splitPill: the two are the same kind of thing —
+  // an offer the row makes, confirmed in the sheet it opens — and giving the
+  // second one its own treatment would say they differ in some way they don't.
+  // They can never appear on the same row (see catalogSuggestion), so there is
+  // nothing to tell apart at a glance.
+  matchPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.sm,
+    paddingVertical: 2,
+    paddingLeft: spacing.xs + 2,
+    paddingRight: spacing.sm,
+    marginTop: spacing.xs,
+  },
+  matchPillText: {
+    color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
+    // Capped so a long catalog name can't push the quantity pill off a narrow
+    // row; the sheet it opens shows the name in full.
+    maxWidth: 180,
+  },
+  // The count above the ingredients list. Reads as a quiet caption rather than
+  // a card, because it sits between the cost line and the list itself and a
+  // third card there would make the list look like it starts twice.
+  matchSummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+  },
+  matchSummaryText: {
+    flex: 1,
+    fontSize: font.sm,
+    color: colors.textSecondary,
+  },
+  pasteBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  pasteBannerBody: { flex: 1, gap: 2 },
+  pasteBannerTitle: { fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.text },
+  pasteBannerDetail: { fontSize: font.xs, color: colors.textSecondary },
+  pasteBannerAction: { fontSize: font.md, fontWeight: fontWeight.semibold, color: colors.accent },
   componentBrokenName: {
     color: colors.textTertiary,
   },
