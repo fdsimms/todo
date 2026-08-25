@@ -284,6 +284,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'projectReviewTaskCategory', current: s.projectReviewTaskCategory, assign: s.setProjectReviewTaskCategory };
     case 'pantryCheck':
       return { key: 'pantryCheckTaskCategory', current: s.pantryCheckTaskCategory, assign: s.setPantryCheckTaskCategory };
+    case 'mealShortfall':
+      return { key: 'mealShortfallTaskCategory', current: s.mealShortfallTaskCategory, assign: s.setMealShortfallTaskCategory };
     case 'supplyReorder':
       return { key: 'supplyReorderTaskCategory', current: s.supplyReorderTaskCategory, assign: s.setSupplyReorderTaskCategory };
     // Reuses calendarEventCategory instead — see GeneratedKindSpec.categorized.
@@ -306,6 +308,7 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
     case 'projectReview': return s.projectReviewTasks;
     case 'pantryCheck': return s.pantryCheckTasks;
+    case 'mealShortfall': return s.mealShortfallTasks;
     case 'supplyReorder': return s.supplyReorderTasks;
     case 'calendarReview': return s.calendarReviewTasks;
     case 'birthday': return s.birthdayTasks;

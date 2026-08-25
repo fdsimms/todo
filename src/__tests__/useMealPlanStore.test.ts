@@ -147,6 +147,7 @@ function entry(
     recipeChoices: [],
     recipeScale: 1,
     cookTask: null,
+    shopTask: null,
     calendarEventId: null,
     ...overrides,
   };

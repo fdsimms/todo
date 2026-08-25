@@ -71,6 +71,7 @@ import { describeDisposalHistory, wantsShelfLifePrompt } from '../utils/itemDisp
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
 import { wantedPantryChecks } from '../utils/pantryCheckTasks';
+import { mealShortfallRows, staleMealShortfallTasks } from '../utils/mealShortfallTasks';
 import {
   canHoldSupply,
   describeSupply,
@@ -1600,6 +1601,47 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // And the real rule agrees, so the first foreground sweep doesn't clear the
     // seeded row as describing an item that wants nothing.
     expect(wantedPantryChecks(items, tasks, new Date()).map(w => w.itemId)).toContain(oats.id);
+  });
+
+  it('seeds a meal the kitchen cannot make, and the task that says so', () => {
+    const { tasks } = useTaskStore.getState();
+    const { items, itemSubs } = useGroceryStore.getState();
+    const recipes = useRecipeStore.getState().recipes;
+    const recipesById = new Map(recipes.map(r => [r.id, r]));
+    const entries = useMealPlanStore.getState().entries;
+    const todayKey = dayKeyOf(new Date());
+
+    const shop = tasks.find(t => t.generatedKind === 'mealShortfall');
+    expect(shop).toBeDefined();
+    expect(shop!.title).toContain('Lemon garlic salmon');
+    expect(shop!.category).toBe('Meal Plan');
+
+    // It speaks for a real night, and one that is genuinely short: the catalog
+    // seeded above has no row at all for salmon fillets or asparagus, and
+    // butter is explicitly marked out of.
+    const night = entries.find(e => e.id === shop!.generatedSourceId);
+    expect(night).toBeDefined();
+    const missing = mealShortfallRows(
+      night!, recipesById, items, itemSubs, standingSwapMap(itemSubs, items), new Date()
+    );
+    expect(missing!.map(r => r.name.toLowerCase())).toEqual(
+      expect.arrayContaining(['salmon fillets', 'asparagus'])
+    );
+
+    // And the real rule agrees, so the first foreground sweep doesn't clear the
+    // seeded row — the same standard the pantry check above is held to.
+    //
+    // Judged on the *stale* pass rather than on wantedMealShortfalls, which is
+    // the distinction the cap makes: today's three meals are sooner and win the
+    // three slots, and losing that contest is deliberately not a reason to
+    // delete a row that already exists. Asserting the want would be asserting
+    // the cap, which is not what keeps this row alive.
+    expect(
+      staleMealShortfallTasks(
+        tasks, entries, recipesById, items, itemSubs, standingSwapMap(itemSubs, items),
+        todayKey, new Date()
+      )
+    ).toEqual([]);
   });
 
   it('seeds the daily task to review tomorrow\'s calendar', () => {

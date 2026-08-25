@@ -250,8 +250,9 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (seven generators now: `supplyReorder` is the newest, and the first whose source is a task) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (ten generators now: `mealShortfall` is the newest, and the one whose source the user re-plans freely) |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
+| a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |
@@ -329,16 +330,16 @@ exports.
 **Read narrowly.** 43 files are over 1,000 lines, 28 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (5.9k), `components/TaskEditor.tsx` (4.6k),
-`store/useGroceryStore.ts` (4.1k), `db/database.ts` (4.0k), `screens/TodayScreen.tsx` (4.0k),
+`store/useTaskStore.ts` (6.0k), `components/TaskEditor.tsx` (4.6k),
+`store/useGroceryStore.ts` (4.1k), `db/database.ts` (4.1k), `screens/TodayScreen.tsx` (4.0k),
 `components/TaskItem.tsx` (3.5k), `types/index.ts` (3.4k),
-`components/QuickAddModal.tsx` (2.7k), `store/useSettingsStore.ts` (2.5k),
-`utils/demoSeed.ts` (2.2k).
+`components/QuickAddModal.tsx` (2.7k), `store/useSettingsStore.ts` (2.6k),
+`utils/demoSeed.ts` (2.3k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **195 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **196 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -439,7 +440,7 @@ decided, and the design system every screen is built from. Individual features a
 |---|---|
 | `docs/arch/groceries.md` | Aisles, stores, the active trip, the kitchen/pantry, either/or, substitutes, standing swaps |
 | `docs/arch/recipes.md` | Composed recipes, sections, quantities, scaling, unit conversion, cook mode |
-| `docs/arch/generated-tasks.md` | The five things that write a task unattended |
+| `docs/arch/generated-tasks.md` | The things that write a task unattended |
 | `docs/arch/month-grid.md` | The calendar month view and projected occurrences |
 | `docs/arch/template-questions.md` | What a template run asks before it creates anything |
 | `docs/arch/timed-tasks.md` | Countdowns, and splitting one across subtasks |

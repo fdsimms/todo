@@ -357,6 +357,17 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'restock', 'generated', 'automatic'], kitchen: true },
   { id: 'pantryCheckTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
     keywords: ['category', 'pantry', 'grocery', 'kitchen'], kitchen: true },
+  // `kitchen: true` like the pantry rows above and unlike the supply ones
+  // below: this generator reads the grocery catalog to decide what's missing
+  // and its own pass refuses to run with the kitchen off, so a findable row
+  // would be a switch that does nothing.
+  { id: 'mealShortfallTasks', groupId: 'tasksProjects', label: 'Shopping tasks for planned meals', section: 'Tasks the app adds',
+    keywords: ['ingredients', 'missing', 'meal plan', 'grocery', 'buy', 'short',
+      'generated', 'automatic'], kitchen: true },
+  { id: 'mealShortfallLeadDays', groupId: 'tasksProjects', label: 'Show the task', section: 'Tasks the app adds',
+    keywords: ['days before', 'lead', 'ahead', 'warning', 'shop', 'meal'], kitchen: true },
+  { id: 'mealShortfallTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
+    keywords: ['category', 'shop', 'meal plan', 'grocery'], kitchen: true },
   // Deliberately not `kitchen: true`, unlike the two pantry rows above: a
   // supply is most often something the grocery half has never heard of (a
   // filter, a cartridge, a lens), so the row has to stay findable with the

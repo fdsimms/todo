@@ -1,4 +1,4 @@
-# Generated tasks: the eight things that write a task unattended
+# Generated tasks: the ten things that write a task unattended
 
 The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
 project reviews, pantry checks, supply reorders and the daily calendar review.
@@ -13,7 +13,7 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the eight things that write a task unattended
+## Generated tasks — the ten things that write a task unattended
 
 Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
@@ -33,7 +33,10 @@ opt-out already lives. `supplyReorder` is the seventh, sourced from a task rathe
 another store — see `src/utils/supply.ts` for its own rules. `calendarReview` is the eighth and adds
 no column at all: its source is tomorrow's day key rather than a row, so its opt-out is a
 settings-level mark (`calendarReviewLastDayKey`) rather than a stamp anywhere — see the section
-below.
+below. `birthday` is the ninth (`src/utils/birthdayTasks.ts`). `mealShortfall` is the tenth, and is
+the first whose *source row* is one the user edits freely and often — which is why its entire
+staleness rule is the creation predicate re-run, rather than a list of mutations to intercept; see
+the section below.
 
 - **`Task.generatedKind` + `Task.generatedSourceId` replaced `mealEntryId`/`groceryItemId`/
   `leftoverId`.** Those three columns are still on the table, backfilled from and then left
@@ -198,7 +201,7 @@ below.
   - **It ships off**, unlike `projectReview` beside it, which replaced a surface that was already
     on screen. This adds one.
 
-- **`calendarReview` is the seventh, and it's structurally `mealPlanNudge` one shelf over, not
+- **`calendarReview` is the eighth, and it's structurally `mealPlanNudge` one shelf over, not
   `projectReview`/`pantryCheck`.** Its source is tomorrow's day key rather than a row (a square on
   the calendar, not something a stamp can live on — the position the nudge is already in), so there
   is no per-source qualifying predicate, no capped set, and no stale-vs-still-qualifies distinction
@@ -232,6 +235,58 @@ below.
     which demo mode must never read from or expose the existence of. The demo's own example task is
     seeded directly in `demoSeed.ts`, the same way `pantryCheck`'s is, rather than left to the real
     sweep.
+
+- **`mealShortfall` is the tenth, and it fires on a *meal coming into range*.** Planning a week
+  has never required owning any of it, so a dish you can't cook was indistinguishable from one you
+  can right up until the night. `mealPlanGroceries.ts` has been able to answer "what's missing for
+  this meal" since the add-to-list sheets shipped; the only thing absent was something to say it
+  unprompted, on a day you have no reason to be thinking about Thursday.
+  - **Structurally it is `pantryCheck`, one shelf over** — same trigger shape (time passing, so it
+    runs from the launch sequence and the Today foreground *and* on focus), same clear-then-create
+    ordering, same cap of three, same `dropGeneratedTask` so the app's own tidying up never writes
+    the source's opt-out.
+  - **Its whole answer to a meal plan being a thing people re-plan is that the clear pass re-runs
+    the create predicate.** A week can change ~15 ways and none of those mutations knows a row is
+    sitting on Today naming the old dish — wiring each one is the "four call sites and still missed
+    one" the stacks note warns about. So `staleMealShortfallTasks` asks the creation question again
+    and every plan change falls out for free: entry deleted (the lookup misses), recipe swapped or
+    swapped for free text, ingredients bought or added to the list, marked cooked, moved out of
+    range. A meal merely *renamed* is chased by `drift` instead, the same split
+    `staleProjectReviewTasks` draws.
+  - **The window is the reason, not a grace period**, and that is the one place it departs from
+    `pantryCheck`. `PANTRY_CHECK_GRACE_DAYS` bounds *raising* a question and deliberately doesn't
+    judge a live row, since a question already asked doesn't expire. Here the window is the entire
+    justification (this task exists because a meal is imminent), so a meal that stops being imminent
+    takes its task with it in both directions: pushed to next week the shop is premature, and once
+    the day has passed it is moot.
+  - **It reads one day wider than the window on each side.** A task whose entry isn't in the set at
+    all is treated as a deleted meal, which for one merely dragged to next week would be the right
+    answer by luck rather than by reading its new date.
+  - **The qualifying set is every `needToBuy` row, `known` ones and not** — the opposite call
+    `restockRows` makes, and deliberately. That one narrows to `known` because after a cooking, a
+    recipe naming an item the app has never seen says nothing about whether the cook needs to buy
+    it; shopping *ahead* inverts it, since an item never bought is exactly what will be missing.
+    More to the point, `needToBuy` is what the add-to-list sheet this task links to already offers
+    pre-ticked, so narrowing here would let the row disagree with the sheet it opens — the one thing
+    `hasShoppableMeals` exists to prevent.
+  - **A finished one blocks for ever** (`blocksOnFinished`), alone among the generators still
+    firing. A meal is one event: having shopped for Tuesday's ragù, a second row would be an
+    invention. That is the reading cook tasks had, inherited because the source is the same kind of
+    thing — a night that happens once — not by copying.
+  - **Its opt-out is a permanent `false`, not a self-expiring stamp** (`MealPlanEntry.shopTask`,
+    beside `cookTask` and exactly its tri-state). `projectReview` and `pantryCheck` both decline
+    with a stamp because their sources come round again on their own; a meal on the 22nd does not,
+    so "I'm buying this fresh on the day" is an answer about that night and nothing else. It stays
+    bounded for free, since whatever deletes the meal deletes the "no".
+  - **It narrows `wantsGeneratedTask` rather than reusing it**, which is the one liberty taken with
+    the shared plumbing. That helper lets an explicit `true` spawn a task with the source not
+    qualifying — right for a cook task, wrong for one whose entire content is a list of things you
+    are missing. It would also thrash: the stale pass judges on the shortfall alone, so the create
+    pass would write the row and the clear pass delete it, once per sweep, for ever. `shopTask` only
+    ever subtracts, and both passes read it.
+  - **It ships off**, like `pantryCheck` and for its reason plus one of its own: this reads a plan
+    people keep loosely, and a half-filled week answered with shopping rows is the fastest way to
+    have the whole thing switched off.
 
 ## `mealSlot` — the fold that turned cook tasks into meal tasks
 
