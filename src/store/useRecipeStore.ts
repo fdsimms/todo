@@ -8,6 +8,7 @@ import {
   dbDeleteRecipe,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { MAX_STEP_TIMER_SECONDS, MIN_STEP_TIMER_SECONDS } from '../utils/stepTimers';
 import { groceryNameKey } from '../utils/groceryParse';
 import { deleteRecipeImage } from '../utils/recipePhoto';
 import {
@@ -328,6 +329,12 @@ interface RecipeStore {
   addStep: (recipeId: string, text: string) => RecipeStep | null;
   /** Editing a step down to nothing removes it — same as leaving an add field blank never creates one. */
   updateStep: (recipeId: string, stepId: string, text: string) => void;
+  /**
+   * Sets (or, with null, clears) the timer length cook mode offers for a step,
+   * for the step whose sentence has no number in it or whose number the parse
+   * reads wrong. Out of range is treated as a clear — see RecipeStep.timerSeconds.
+   */
+  setStepTimerSeconds: (recipeId: string, stepId: string, seconds: number | null) => void;
   removeStep: (recipeId: string, stepId: string) => void;
   /**
    * The new order. An id missing from `ids` keeps its place at the end rather
@@ -963,6 +970,28 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       if (s.id !== stepId) return s;
       touched = true;
       return { ...s, text: clean };
+    });
+    if (!touched) return;
+    save(set, { ...recipe, steps });
+  },
+
+  setStepTimerSeconds(recipeId, stepId, seconds) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const rounded = seconds === null || !Number.isFinite(seconds) ? null : Math.round(seconds);
+    const value = rounded !== null && rounded >= MIN_STEP_TIMER_SECONDS && rounded <= MAX_STEP_TIMER_SECONDS
+      ? rounded
+      : null;
+    let touched = false;
+    const steps = recipe.steps.map(s => {
+      if (s.id !== stepId) return s;
+      if ((s.timerSeconds ?? null) === value) return s;
+      touched = true;
+      // Cleared back to absent rather than stored as null, so a step nobody
+      // has set a length on serializes exactly as it did before the field
+      // existed.
+      const { timerSeconds: _dropped, ...rest } = s;
+      return value === null ? rest : { ...rest, timerSeconds: value };
     });
     if (!touched) return;
     save(set, { ...recipe, steps });

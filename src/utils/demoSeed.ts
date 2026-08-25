@@ -9,6 +9,7 @@ import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
@@ -1071,7 +1072,8 @@ function componentIdFor(parentId: string, childRecipeId: string): string | null 
  * groups by it and a missing type reads as a missing section, and one instance
  * of each of the features that are otherwise invisible: components (shared and
  * either/or), ingredient alternatives, sections, prep tasks, both duration
- * fields, a live cook timer, cook history, and all three attribution shapes.
+ * fields, a live cook timer, a hand-set step timer length, a step timer already
+ * counting down, cook history, and all three attribution shapes.
  */
 function seedRecipes(): DemoRecipes {
   const {
@@ -1099,6 +1101,7 @@ function seedRecipes(): DemoRecipes {
     markCooked,
     startCookTimer,
     addStep,
+    setStepTimerSeconds,
   } = useRecipeStore.getState();
 
   // --- Sides, first: the two dinners below reference them as components ----
@@ -1289,10 +1292,32 @@ function seedRecipes(): DemoRecipes {
     'Add the pepper, garlic and chile and stir-fry for two minutes.',
     'Serve over the rice.',
   ].forEach(text => addStep(stirFry.id, text));
+  // A hand-set timer length on the one step here whose sentence gives no time
+  // — the case RecipeStep.timerSeconds exists for. Every other step in the box
+  // is read straight out of its own text ("Simmer for 20 minutes", "stir-fry
+  // for two minutes"), which is what makes the field's own case invisible
+  // without this.
+  const searStep = useRecipeStore.getState().recipeById(stirFry.id)?.steps[1];
+  if (searStep) setStepTimerSeconds(stirFry.id, searStep.id, 4 * 60);
   // Cooked often enough to have a history worth reading.
   [0, 1, 2, 3, 4].forEach(() => markCooked(stirFry.id));
   // Tonight's dinner, mid-cook — the one place a live timer shows up.
   startCookTimer(stirFry.id);
+  // And one step timer counting down alongside it, on the step that names two
+  // minutes. Cook mode's footer stack, the Lock Screen activity and the row's
+  // own Pause/+1m/Again are all invisible until something is actually running:
+  // with an empty stack the screen reads as one that can't hold a step timer
+  // at all.
+  const stirFryStep = useRecipeStore.getState().recipeById(stirFry.id)?.steps[2];
+  if (stirFryStep) {
+    useStepTimerStore.getState().start({
+      recipeId: stirFry.id,
+      recipeName: stirFry.name,
+      stepId: stirFryStep.id,
+      stepLabel: 'Step 3 of 4',
+      durationSeconds: 2 * 60,
+    });
+  }
 
   const salmon = newRecipe('Lemon garlic salmon');
   addIngredientsFromText(

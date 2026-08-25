@@ -20,6 +20,7 @@ import { useTaskDeepLinks } from './src/utils/deepLinks';
 import { useHomeScreenQuickActions } from './src/utils/quickActions';
 import { useWidgetSync } from './src/utils/widgetSync';
 import { useSharedRecipeLinks } from './src/hooks/useSharedRecipeLinks';
+import { useStepTimerStore } from './src/store/useStepTimerStore';
 import { useTimerLiveActivitySync } from './src/utils/liveActivity';
 import { useTripLiveActivitySync } from './src/utils/tripLiveActivity';
 import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
@@ -243,6 +244,12 @@ function AppRoot() {
       // out — a container nobody said they finished survives this however old
       // it is, because that is exactly the one the nudge exists to surface.
       ['purge old leftovers', purgeOldLeftovers],
+      // Read back any cooking step timer that was still counting down when the
+      // app was last closed, and re-arm its alarm (#1712). After initSettings,
+      // which opens the database this reads from; before the permission
+      // request below, because rescheduling is idempotent and a permission
+      // that's already granted needs no waiting on.
+      ['restore cooking step timers', () => useStepTimerStore.getState().hydrate()],
       // Request notification permissions
       ['request notification permissions', requestNotificationPermissions],
       // AlarmKit has its own authorization, separate from UNUserNotificationCenter

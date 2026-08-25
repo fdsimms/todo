@@ -501,3 +501,66 @@ a **read plus one timer**, no schema change and nothing written — `cookSteps` 
   that happens *now*, so it leads, and hidden outright when the recipe has no method rather than
   offered greyed out. Its arrival is why the primary shortened to "Add to list": three buttons
   don't fit a 390pt line at the old label.
+
+### Step timers (`stepTimers.ts`) — the time the step already names
+
+A method sentence is where the number lives. "Cook, stirring occasionally, until mostly golden,
+7 to 9 minutes" is a recipe telling you exactly what to set a timer for, and until now every
+cook read that, picked up the same phone, and typed it into a different app. Cook mode reads it
+out of the step and offers it as a chip; a tap starts a countdown that lives in the footer, rings
+through a locked phone, and outlives the sheet.
+
+- **It parses to *offer*, never to act.** Nothing starts a timer by itself and nothing is written
+  back onto the recipe, which is the entire reason the parse can afford to be dumb about
+  ambiguity: a false positive costs a chip nobody presses. A parse that *started* something would
+  cost a burnt dinner. Same call `stepsFromNotes` makes about splitting a blob and
+  `splitAlternativeNames` makes about "chicken or vegetable stock" — read it, show it, let the
+  person finish the job.
+- **A range rings at the short end.** "7 to 9 minutes" starts a 7-minute timer, because the alarm
+  is a prompt to go and look at the pan rather than a claim that the food is done, and the early
+  end is the only one of the two that can't already be too late. `StepDuration.maxSeconds` keeps
+  the other end for the caption.
+- **Words count as numbers.** The demo box's own steak step says "Sear three minutes a side", and a
+  parser reading only digits is inert on a good share of a real recipe box. So are fractions in
+  both notations ("1 1/2 hours", "1½"), "half an hour", "an hour and a half", and the abbreviations
+  a method actually uses. There is deliberately **no bare `m`/`h`/`s`**: `parseTaskInput` can afford
+  those because its "for …" anchor says a duration is coming, and a method sentence has no anchor —
+  "5 m" in a recipe is a length more often than a time.
+- **A floor and a ceiling, not a cleverer parser.** Under five seconds is refused, which is how
+  "add a second layer" and "give it one second" are answered without teaching the parser what "a
+  second batch" means. Over twelve hours is refused too: an overnight brine is a real duration and a
+  terrible kitchen timer, and it wants a task with a reminder, which the app already has.
+- **Lengths are deduplicated, and `Again` is why.** "3 minutes per side, then 3 minutes more" is one
+  timer offered twice, and two identical chips read as a parser fault. A rung timer's own **Again**
+  is the answer to a duration used twice, along with the second batch and the other side.
+- **`RecipeStep.timerSeconds` is the override, and it replaces the parse rather than joining it.**
+  It exists for the step whose sentence gives no time ("until the edges look dry") and the one whose
+  wording the reading gets wrong; leaving the wrong chip next to the right one would defeat having
+  set it. Nothing derived is ever written into it — a parse is a reading of the text and stays one,
+  so a step whose wording changes gets a new reading rather than an old answer.
+- **`StepTimer` is its own model, in its own settings-backed store.** A recipe's cook and prep timers
+  are two fixed clocks measuring the whole cooking; these are ad hoc and several at once ("7 minutes
+  on the tempeh" and "20 on the rice" during one dish), so a field pair can't hold them. It persists
+  because the whole point of setting one is walking away: the sheet closes, the app backgrounds, the
+  phone locks, and an app that had forgotten a timer it was about to ring would be worse than one
+  that never offered. Same banked-segment pair (`startedAt`/`elapsedSeconds`) every other timer here
+  stores, so nothing is counted down in state. `pruneStaleStepTimers` bounds the stack at four hours
+  past ringing — long enough that someone who left the kitchen still finds out, short enough that
+  Thursday isn't holding Tuesday's tempeh.
+- **The offer scrolls with the step; the running timer doesn't.** Chips sit under the sentence they
+  were read out of, which is what makes it obvious the app didn't invent a number. Once started, the
+  timer belongs to the footer: pressing Next must not take a running countdown off screen, and Pause
+  has to be reachable without navigating back to the step that started it. The recipe screen shows
+  the same rows on its timer card, since closing cook mode mid-timer is the ordinary thing to do.
+- **A rung timer sinks to the bottom of the stack rather than jumping to the top.** It's the one row
+  that wants dealing with, which argues for the top — but the stack is what a thumb aims at with
+  hands full, and a row that jumps as it rings moves Pause out from under a finger already on its
+  way down. It turns orange and says "Time's up" instead.
+- **It rings through quiet hours and through the silent switch**, which is a deliberate divergence
+  from `scheduleTimerAlarm` and `scheduleFocusStepAlarm`. Those suppress inside quiet hours and are
+  right to: a task timer may have been left running for hours, and "your break is over" delivered at
+  7am is noise. This is minutes long and was started on purpose by someone standing at a stove, so
+  it goes out through AlarmKit where that's available (falling back to a notification with a sound
+  everywhere else). Someone cooking at 11pm with quiet hours from 10 has not asked the app to let
+  dinner burn.
+

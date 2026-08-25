@@ -36,6 +36,8 @@ import { useRowSelection } from '../hooks/useRowSelection';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
+import { StepTimerRow } from '../components/StepTimerRow';
+import { CountStepper } from '../components/CountStepper';
 import { PressableScale } from '../components/PressableScale';
 import { SortableList, type SortableRenderItem } from '../components/SortableList';
 import { IngredientCatalogMatchSheet } from '../components/IngredientCatalogMatchSheet';
@@ -54,9 +56,11 @@ import { RecipeComponentPicker } from '../components/RecipeComponentPicker';
 import { ComponentChoiceSheet } from '../components/ComponentChoiceSheet';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
+import { useStepTimers } from '../hooks/useStepTimers';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
 import { CookModeSheet } from '../components/CookModeSheet';
 import { cookSteps } from '../utils/cookMode';
+import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
 import { featureHidden, featureShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
@@ -119,6 +123,7 @@ export function RecipeDetailScreen() {
   const updateStep = useRecipeStore(s => s.updateStep);
   const removeStep = useRecipeStore(s => s.removeStep);
   const reorderSteps = useRecipeStore(s => s.reorderSteps);
+  const setStepTimerSeconds = useRecipeStore(s => s.setStepTimerSeconds);
   const setImage = useRecipeStore(s => s.setImage);
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
@@ -262,6 +267,10 @@ export function RecipeDetailScreen() {
   // below, which is why the hook tolerates an undefined recipe.
   const prepTimer = useRecipeTimer(recipe, 'Prep');
   const cookTimer = useRecipeTimer(recipe, 'Cook');
+  // Takes an undefined recipe id for the same reason the two above take an
+  // undefined recipe: this is called above the screen's own "the row is gone"
+  // guard.
+  const stepTimers = useStepTimers(recipe?.id);
 
   // The row can be gone while the screen is still mounted (deleted from the
   // editor), so this renders rather than crashing on the next read.
@@ -410,6 +419,12 @@ export function RecipeDetailScreen() {
       // silently ignore — no toast infra for this row-level action
     }
   };
+
+  // The step being edited, resolved live so its timer control reads the store
+  // rather than a copy of it — the length is written through on every press,
+  // the same way every other picker in this screen writes.
+  const editingStep = editingStepId === null ? null : recipe.steps.find(s => s.id === editingStepId) ?? null;
+  const editingStepParsed = editingStep === null ? null : parseStepDurations(editingStep.text)[0] ?? null;
 
   const submitStepDraft = () => {
     if (!stepDraft.trim()) return;
@@ -997,6 +1012,13 @@ export function RecipeDetailScreen() {
   // Numbered by position rather than a stored index — the order lives in the
   // array, same as ingredients and components; a stored number would be a
   // second thing a reorder has to keep in step with the list.
+  // The first duration only: the row is a one-line caption, and a step naming
+  // three of them is answered by opening cook mode, which offers all three.
+  const stepTimerLabel = (step: RecipeStep): string | null => {
+    const [offer] = stepDurationOffers(step);
+    return offer ? formatStepDuration(offer.seconds) : null;
+  };
+
   const renderStep = (step: RecipeStep, displayIndex: number, drag: () => void) => (
     <View
       key={step.id}
@@ -1012,6 +1034,13 @@ export function RecipeDetailScreen() {
         accessibilityHint="Double tap to edit"
       >
         <Text style={styles.ingredientName}>{step.text}</Text>
+        {/* What cook mode will offer for this step, said on the row so the
+            reading is visible before anyone is standing at a stove — and so a
+            step the parse gets nothing out of is obvious while it's still
+            being written. */}
+        {stepTimerLabel(step) !== null && (
+          <Text style={styles.stepTimerNote}>Timer · {stepTimerLabel(step)}</Text>
+        )}
       </TouchableOpacity>
       <TouchableOpacity
         onLongPress={drag}
@@ -1187,6 +1216,25 @@ export function RecipeDetailScreen() {
           <RecipeTimerRow verb="Prep" {...prepTimer} />
           <View style={styles.timerDivider} />
           <RecipeTimerRow verb="Cook" {...cookTimer} />
+          {/* Any step timer still counting down, on the same card as the two
+              clocks it's running alongside. Cook mode is where these are
+              started, and closing it is the ordinary thing to do while one
+              runs — so this is where a cook who came back to the recipe finds
+              them, rather than having to reopen cook mode to pause a pan. */}
+          {stepTimers.timers.map(timer => (
+            <React.Fragment key={timer.id}>
+              <View style={styles.timerDivider} />
+              <StepTimerRow
+                timer={timer}
+                now={stepTimers.now}
+                hideRecipeName
+                onToggle={() => stepTimers.toggle(timer)}
+                onAddTime={() => stepTimers.addTime(timer.id)}
+                onRestart={() => stepTimers.restart(timer.id)}
+                onRemove={() => stepTimers.remove(timer.id)}
+              />
+            </React.Fragment>
+          ))}
         </View>
 
         {/* The two ways the list leaves the app, on the card they act on
@@ -1468,6 +1516,36 @@ export function RecipeDetailScreen() {
             disabled={!stepDraft.trim()}
           />
         </View>
+
+        {/* Only while a step is open for editing. Cook mode reads the length out
+            of the sentence for nearly every step, so a control asking for it
+            again on every row would be a second copy of a number that's already
+            written down — this is here for the step that doesn't give one, and
+            the step whose wording the reading gets wrong. */}
+        {editingStep !== null && (
+          <>
+            <View style={styles.stepTimerEditRow}>
+              <Text style={styles.stepTimerEditLabel}>Timer length</Text>
+              <CountStepper
+                value={editingStep.timerSeconds != null ? Math.max(1, Math.round(editingStep.timerSeconds / 60)) : null}
+                onChange={next => setStepTimerSeconds(recipe.id, editingStep.id, next === null ? null : next * 60)}
+                min={1}
+                max={MAX_STEP_TIMER_SECONDS / 60}
+                allowNull
+                emptyLabel={editingStepParsed ? `${formatStepDuration(editingStepParsed.seconds)} from the text` : 'None'}
+                format={n => formatStepDuration(n * 60)}
+                label="step timer length"
+                describeValue={n => (n === null
+                  ? (editingStepParsed ? 'Read from the step text' : 'No timer')
+                  : `${n} minutes`)}
+              />
+            </View>
+            <Text style={styles.inputHint}>
+              Cook mode offers a timer for the time written in the step. Set a length here to
+              use it instead.
+            </Text>
+          </>
+        )}
 
         {/* The whole section goes in simplified mode, unless this recipe already
             uses components — a composed recipe that couldn't show its parts
@@ -1907,6 +1985,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Fixed width so a run of 1–20 doesn't shift the text beside it as the
   // digit count grows; right-aligned so the numbers themselves stay flush
   // against the text they number.
+  stepTimerNote: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    marginTop: 2,
+  },
+  stepTimerEditRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  stepTimerEditLabel: {
+    flex: 1,
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
   stepNumber: {
     width: 20,
     textAlign: 'right',

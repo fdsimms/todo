@@ -1,20 +1,25 @@
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
-import type { Task, Recipe } from '../types';
+import type { Task, Recipe, StepTimer } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { widgetBridge } from './widgetBridge';
 import { isTimedTask, timerRemaining } from './timer';
 import { hasCookTimer, cookTimerRemaining, hasPrepTimer, prepTimerRemaining } from './recipeTimer';
+import { isStepTimerRunning, stepTimerRemaining } from './stepTimers';
 import { displayTitleFor } from './visibilityUtils';
 
 /**
  * Drives the "running timer" Live Activity (Lock Screen + Dynamic Island) —
  * see docs/native-targets.md and targets/todo-widget/TimerLiveActivity.swift.
- * Covers a task's stopwatch/countdown (Task.timerStartedAt) and a recipe's
- * cook and prep timers (Recipe.timerStartedAt/prepTimerStartedAt) — three
- * independent sources of a "run", each surfaced as its own activity.
+ * Covers a task's stopwatch/countdown (Task.timerStartedAt), a recipe's cook
+ * and prep timers (Recipe.timerStartedAt/prepTimerStartedAt) and every
+ * cooking step timer counting down — four independent sources of a
+ * "run", each surfaced as its own activity. The step timers are the reason
+ * the desired set can hold several at once from one dish: three pans is
+ * three activities.
  *
  * A run is fully described by its start time and, for a countdown, the clock
  * time it ends at — both fixed the moment the timer starts (or resumes from a
@@ -35,13 +40,13 @@ function truncate(title: string): string {
   return title.length > TITLE_MAX ? `${title.slice(0, TITLE_MAX - 1)}…` : title;
 }
 
-export type TimerRunKind = 'task' | 'cook' | 'prep';
+export type TimerRunKind = 'task' | 'cook' | 'prep' | 'step';
 
 export interface TimerRun {
   /** How the native side tells which activities are still wanted — 'task:<id>' | 'cook:<id>' | 'prep:<id>'. */
   key: string;
   kind: TimerRunKind;
-  itemId: string; // task id, or recipe id for cook/prep
+  itemId: string; // task id, recipe id for cook/prep, or step timer id
   title: string;
   subtitle: string;
   symbolName: string;
@@ -58,6 +63,7 @@ export interface TimerRun {
 export function buildTimerRuns(
   tasks: Task[],
   recipes: Recipe[],
+  stepTimers: StepTimer[],
   opts: { enabled: boolean },
 ): TimerRun[] {
   if (!opts.enabled) return [];
@@ -121,6 +127,32 @@ export function buildTimerRuns(
     }
   }
 
+  for (const timer of stepTimers) {
+    if (!isStepTimerRunning(timer)) continue;
+    const startedAtMs = new Date(timer.startedAt as string).getTime();
+    // A step timer always has a target — it's a countdown by construction, so
+    // unlike the three above there's no stopwatch case to fall through to.
+    // Clamped for the reason the task branch gives: a countdown already past
+    // its end would hand SwiftUI an inverted range.
+    const targetEndMs = Math.max(
+      startedAtMs,
+      startedAtMs + stepTimerRemaining(timer, startedAtMs) * 1000,
+    );
+    runs.push({
+      key: `step:${timer.id}`,
+      kind: 'step',
+      itemId: timer.id,
+      // The dish on top and the step underneath, rather than the step text:
+      // what a Lock Screen has room for is which pan this is, and the method
+      // is on the phone the cook is about to pick up anyway.
+      title: truncate(timer.recipeName || 'Cooking'),
+      subtitle: timer.stepLabel,
+      symbolName: 'timer',
+      startedAtMs,
+      targetEndMs,
+    });
+  }
+
   return runs;
 }
 
@@ -159,6 +191,7 @@ export function useTimerLiveActivitySync(): void {
       const runs = buildTimerRuns(
         useTaskStore.getState().tasks,
         useRecipeStore.getState().recipes,
+        useStepTimerStore.getState().timers,
         { enabled },
       );
       scheduleSync(runs);
@@ -170,6 +203,9 @@ export function useTimerLiveActivitySync(): void {
     const unsubRecipes = useRecipeStore.subscribe((state, prevState) => {
       if (state.recipes !== prevState.recipes) sync();
     });
+    const unsubStepTimers = useStepTimerStore.subscribe((state, prevState) => {
+      if (state.timers !== prevState.timers) sync();
+    });
     const unsubSettings = useSettingsStore.subscribe((state, prevState) => {
       if (state.timerLiveActivity !== prevState.timerLiveActivity) sync();
     });
@@ -179,6 +215,7 @@ export function useTimerLiveActivitySync(): void {
     return () => {
       unsubTasks();
       unsubRecipes();
+      unsubStepTimers();
       unsubSettings();
     };
   }, []);

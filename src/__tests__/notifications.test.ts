@@ -2,7 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { Task } from '../types';
 import { nextAgendaTime } from '../utils/dailyAgenda';
-import { ALARM_MAX_RINGS, ALARM_RING_INTERVAL_MINUTES, taskAlarmUuid } from '../utils/alarmChain';
+import { ALARM_MAX_RINGS, ALARM_RING_INTERVAL_MINUTES, stepTimerAlarmUuid, taskAlarmUuid } from '../utils/alarmChain';
 
 jest.mock('expo-notifications', () => ({
   setNotificationHandler: jest.fn(),
@@ -69,6 +69,8 @@ import {
   rescheduleAllReminders,
   scheduleTimerAlarm,
   cancelTimerAlarm,
+  scheduleStepAlarm,
+  cancelStepAlarm,
   getNotificationPermission,
   upcomingReminders,
   pendingReminderStats,
@@ -84,7 +86,7 @@ import {
 } from '../utils/notifications';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { setDemoModeActive } from '../utils/demoState';
-import type { Shop } from '../types';
+import type { Shop, StepTimer } from '../types';
 
 const FUTURE = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 const PAST   = new Date(Date.now() - 10 * 60 * 1000).toISOString();
@@ -1202,5 +1204,100 @@ describe('demo mode suppresses scheduling', () => {
     expect(
       (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0].identifier
     ).toBe('after-demo');
+  });
+});
+
+// ─── Cooking step timers ─────────────────────────────────────────────────────
+
+const makeStepTimer = (overrides: Partial<StepTimer> = {}): StepTimer => ({
+  id: 'st1',
+  recipeId: 'r1',
+  stepId: 's2',
+  recipeName: 'Sticky, Spicy Tempeh',
+  stepLabel: 'Step 2 of 3',
+  durationSeconds: 7 * 60,
+  startedAt: new Date().toISOString(),
+  elapsedSeconds: 0,
+  createdAt: new Date().toISOString(),
+  ...overrides,
+});
+
+describe('scheduleStepAlarm', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAlarmKitAvailable = false;
+    Object.assign(mockSettings, DEFAULT_MOCK_SETTINGS);
+  });
+
+  afterEach(() => {
+    setDemoModeActive(false);
+    mockAlarmKitAvailable = false;
+  });
+
+  it('schedules against what is left, not the full length', async () => {
+    await scheduleStepAlarm(makeStepTimer({ elapsedSeconds: 120 }));
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    const ringsIn = (call.trigger.date as Date).getTime() - Date.now();
+    expect(Math.round(ringsIn / 1000)).toBe(5 * 60);
+  });
+
+  it('names the dish and the step', async () => {
+    await scheduleStepAlarm(makeStepTimer());
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.content.title).toBe('Sticky, Spicy Tempeh');
+    expect(call.content.body).toBe('Step 2 of 3: your 7m timer is up.');
+    expect(call.content.data).toEqual({ stepTimerId: 'st1', recipeId: 'r1' });
+  });
+
+  it('schedules nothing for a paused timer', async () => {
+    await scheduleStepAlarm(makeStepTimer({ startedAt: null, elapsedSeconds: 60 }));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('schedules nothing for a timer that has already rung', async () => {
+    await scheduleStepAlarm(makeStepTimer({ elapsedSeconds: 8 * 60 }));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('cancels whatever was pending before scheduling, so a nudge replaces rather than stacks', async () => {
+    await scheduleStepAlarm(makeStepTimer());
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('step-timer:st1');
+    expect(cancelNativeAlarm).toHaveBeenCalledWith(stepTimerAlarmUuid('st1'));
+  });
+
+  it('rings inside quiet hours, unlike a task timer or a focus step', async () => {
+    // Deliberate divergence: this countdown was started seconds ago by
+    // somebody standing at a stove — see scheduleStepAlarm's own note.
+    Object.assign(mockSettings, { quietHoursStart: '00:00', quietHoursEnd: '23:59' });
+    await scheduleStepAlarm(makeStepTimer());
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalled();
+  });
+
+  it('rings as a native alarm where AlarmKit can deliver one', async () => {
+    mockAlarmKitAvailable = true;
+    await scheduleStepAlarm(makeStepTimer());
+    expect(scheduleNativeAlarm).toHaveBeenCalledWith(
+      stepTimerAlarmUuid('st1'),
+      expect.any(Date),
+      'Sticky, Spicy Tempeh · Step 2 of 3'
+    );
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('schedules nothing in demo mode', async () => {
+    setDemoModeActive(true);
+    await scheduleStepAlarm(makeStepTimer());
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    expect(scheduleNativeAlarm).not.toHaveBeenCalled();
+  });
+
+  it('cancels in both backends without being told which one was used', async () => {
+    await cancelStepAlarm('st1');
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('step-timer:st1');
+    expect(cancelNativeAlarm).toHaveBeenCalledWith(stepTimerAlarmUuid('st1'));
+  });
+
+  it('gives a step timer and a task the same id different alarm uuids', () => {
+    expect(stepTimerAlarmUuid('x')).not.toBe(taskAlarmUuid('x'));
   });
 });

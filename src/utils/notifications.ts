@@ -1,9 +1,10 @@
 import * as Notifications from 'expo-notifications';
 import type { PermissionResponse } from 'expo-modules-core';
 import { Platform } from 'react-native';
-import type { Task } from '../types';
+import type { StepTimer, Task } from '../types';
 import type { FocusSession } from '../types';
 import { isTimedTask, isTimerRunning, timerRemaining } from './timer';
+import { formatStepDuration, isStepTimerRunning, stepTimerEndsAt } from './stepTimers';
 import {
   currentFocusStep,
   focusStepRemaining,
@@ -16,7 +17,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { nudgeReminderPastMeeting } from './reminderNudge';
 import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
-import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, taskAlarmUuid } from './alarmChain';
+import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, stepTimerAlarmUuid, taskAlarmUuid } from './alarmChain';
 import { isDemoModeActive } from './demoState';
 import { resolveActiveTrip } from './activeTrip';
 import type { Shop } from '../types';
@@ -513,6 +514,93 @@ export async function scheduleFocusStepAlarm(session: FocusSession | null): Prom
 
 export async function cancelFocusStepAlarm(): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(FOCUS_STEP_ALARM_ID).catch(() => {});
+}
+
+// ─── Cooking step timers ─────────────────────────────────────────────────────
+
+// One id per timer, namespaced away from task reminders and timer alarms for
+// the reason the timer's own note above gives. Several step timers run at once
+// by design, so unlike the focus step's single fixed id these can't share one.
+const stepAlarmNotificationId = (timerId: string): string => `step-timer:${timerId}`;
+
+/**
+ * Ring when a cooking step timer runs out.
+ *
+ * **Two deliberate divergences from every other alarm in this file**, both
+ * following from the same fact: this is a countdown the user started seconds
+ * ago and then walked away from a hot pan.
+ *
+ * - **Quiet hours don't apply.** `scheduleTimerAlarm` and
+ *   `scheduleFocusStepAlarm` suppress inside the window, and they're right to:
+ *   a task timer may have been left running for hours, and "your break is over"
+ *   delivered at 7am is noise. A step timer is minutes long and was started on
+ *   purpose by someone standing at a stove. Someone cooking at 11pm with quiet
+ *   hours from 10 has not asked the app to let dinner burn.
+ * - **It rings as a native alarm where AlarmKit can deliver one**, rather than
+ *   as a plain notification, so it comes through the silent switch and a focus
+ *   mode. That is what a kitchen timer is: the phone is face down on the
+ *   counter, or in another room, which is the entire reason a timer was set
+ *   rather than the cook just watching the pan. Everywhere AlarmKit isn't
+ *   available it falls back to a notification with a sound, the same degrade
+ *   `usesAlarmKit` gives a task reminder.
+ *
+ * Scheduled against what's *left* rather than the full length, so it lands
+ * correctly whether the timer just started, was resumed from a pause, or had a
+ * minute added to it. Always cancels first, so every one of those is a
+ * replacement rather than a second alarm behind the first.
+ */
+export async function scheduleStepAlarm(timer: StepTimer): Promise<void> {
+  // A step timer is started through the same store action inside demo mode,
+  // and an alarm is a side effect on the device rather than on the scratch
+  // database — it would outlive the demo it belongs to.
+  if (isDemoModeActive()) return;
+  await cancelStepAlarm(timer.id);
+  if (!isStepTimerRunning(timer)) return;
+
+  const triggerDate = stepTimerEndsAt(timer);
+  if (!triggerDate || triggerDate.getTime() <= Date.now()) return; // already up — the row says so on sight
+
+  const length = formatStepDuration(timer.durationSeconds);
+  const title = timer.recipeName || 'Cooking timer';
+  const body = timer.stepLabel
+    ? `${timer.stepLabel}: your ${length} timer is up.`
+    : `Your ${length} timer is up.`;
+
+  if (isAlarmKitAvailable()) {
+    // AlarmKit's alert carries one line, so it has to say both which dish and
+    // which step on its own.
+    const label = timer.stepLabel ? `${title} · ${timer.stepLabel}` : title;
+    await scheduleNativeAlarm(stepTimerAlarmUuid(timer.id), triggerDate, label);
+    return;
+  }
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: stepAlarmNotificationId(timer.id),
+    content: {
+      title,
+      body,
+      data: { stepTimerId: timer.id, recipeId: timer.recipeId },
+      sound: true,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+    },
+  });
+}
+
+/**
+ * Cancel a step timer's alarm in both backends without being told which one it
+ * used — same uninformed cancel `cancelAlarmChain` makes, and for the same
+ * reason: cancelling one that was never scheduled is a no-op, where failing to
+ * cancel one leaves a phone ringing about a pan that came off the heat ten
+ * minutes ago.
+ */
+export async function cancelStepAlarm(timerId: string): Promise<void> {
+  await Promise.all([
+    Notifications.cancelScheduledNotificationAsync(stepAlarmNotificationId(timerId)).catch(() => {}),
+    cancelNativeAlarm(stepTimerAlarmUuid(timerId)).catch(() => {}),
+  ]);
 }
 
 export async function rescheduleAllTimerAlarms(tasks: Task[]): Promise<void> {

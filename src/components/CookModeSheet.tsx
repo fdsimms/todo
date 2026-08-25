@@ -8,15 +8,19 @@ import type { Recipe } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
+import { useStepTimers } from '../hooks/useStepTimers';
 import { DetailHeader } from './DetailHeader';
 import { EmptyState } from './EmptyState';
 import { ProgressBar } from './ProgressBar';
 import { RecipeTimerRow } from './RecipeTimerRow';
+import { StepTimerRow } from './StepTimerRow';
+import { InlineAction } from './InlineAction';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMode';
+import { formatStepDuration, stepDurationOffers } from '../utils/stepTimers';
 import { flattenRecipeIngredients } from '../utils/recipeComponents';
 import { describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { formatScale, isUnscaled, scaleQuantity } from '../utils/recipeScale';
@@ -57,10 +61,21 @@ interface Props {
  * - **The cook timer is the recipe's own**, through `useRecipeTimer` and the
  *   same `RecipeTimerRow` the recipe screen draws — not a second stopwatch that
  *   looks like it. Starting one here and logging it there is the same timer.
- * - **Nothing here writes.** Position and the ingredient panel's fold are screen
- *   state, gone when the modal closes; finishing the last step closes it and
- *   logs nothing, because logging the cook time is the timer's own ✓ and an
- *   app that banked a time nobody confirmed would be inventing one.
+ * - **The time a step names is offered as a timer of its own** (see
+ *   `parseStepDurations`). The chips sit under the sentence they were read out
+ *   of, because that's what makes it obvious the app didn't invent a number;
+ *   the countdowns they start sit in the footer with the cook timer, because
+ *   pressing Next must not take a running timer off screen. Nothing starts one
+ *   unasked — the parse exists to make an offer, and a wrong reading costs a
+ *   chip nobody presses.
+ * - **Nothing here writes to the recipe.** Position and the ingredient panel's
+ *   fold are screen state, gone when the modal closes; finishing the last step
+ *   closes it and logs nothing, because logging the cook time is the timer's
+ *   own ✓ and an app that banked a time nobody confirmed would be inventing
+ *   one. A step timer is the one thing started here that outlives the sheet,
+ *   and it is stored beside the recipe rather than on it — a countdown someone
+ *   set for tonight's pan is not an edit to the dish, the same call `scale`
+ *   makes.
  *
  * Quantities in the ingredient panel run through the active scale *and* the
  * `unitSystem` setting, in that order (exact multiplication, then the rounding
@@ -84,6 +99,10 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
   // can see — running for as long as a cook timer does. The hook takes an
   // undefined recipe for exactly this.
   const cookTimer = useRecipeTimer(visible ? recipe : undefined, 'Cook');
+  // Same `visible ?` guard and for the same reason — a sheet mounted invisible
+  // must not hold a once-a-second interval open. Scoped to this recipe, so a
+  // timer left running on another dish stays on that dish's screen.
+  const stepTimers = useStepTimers(visible ? recipe.id : undefined);
 
   const standingSwaps = useMemo(
     () => standingSwapMap(itemSubs, groceryItems),
@@ -118,6 +137,11 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
       setIngredientsOpen(false);
     }
   }, [visible]);
+
+  // Read off the step being shown, and only that one: parsing the whole method
+  // up front would cost every open of the sheet a pass over text nobody is
+  // looking at, and the offer is only ever made about the step on screen.
+  const offers = useMemo(() => (step === null ? [] : stepDurationOffers(step)), [step]);
 
   const atLast = index >= 0 && index === steps.length - 1;
 
@@ -191,6 +215,36 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
               {step.fromNotes && (
                 <Text style={styles.fromNotes}>From this recipe’s notes</Text>
               )}
+
+              {/* The offer, under the sentence it was read out of rather than
+                  down in the footer: the number belongs to this step, and
+                  attaching it to the text is what makes it obvious the app
+                  didn't invent one. Starting it moves it to the footer, which
+                  is the half that must not scroll away. */}
+              {offers.length > 0 && (
+                <View style={styles.offers}>
+                  {offers.map(offer => (
+                    <InlineAction
+                      key={`${offer.start}:${offer.seconds}`}
+                      icon="timer-outline"
+                      label={`Set a ${formatStepDuration(offer.seconds)} timer`}
+                      accessibilityLabel={`Set a ${formatStepDuration(offer.seconds)} timer for ${describeStepPosition(index, steps.length)}`}
+                      onPress={() => stepTimers.start({
+                        recipeId: recipe.id,
+                        recipeName: recipe.name,
+                        stepId: step.id,
+                        stepLabel: describeStepPosition(index, steps.length),
+                        durationSeconds: offer.seconds,
+                      })}
+                    />
+                  ))}
+                </View>
+              )}
+              {offers.some(offer => offer.maxSeconds !== null) && (
+                <Text style={styles.offersNote}>
+                  Where the step gives a range, the timer runs for the shorter time.
+                </Text>
+              )}
             </ScrollView>
           </>
         )}
@@ -260,6 +314,37 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
             </View>
           )}
 
+          {/* Every countdown started from a step, whichever step it was started
+              from. They live here rather than under the step text because the
+              whole point of setting one is walking away from the step: pressing
+              Next must not take a running timer off screen with it, and Pause
+              has to be reachable without navigating back to the sentence that
+              started it. */}
+          {stepTimers.timers.length > 0 && (
+            // Capped rather than left to grow: the step text is what this
+            // screen is for, and four pans on the go would otherwise push it
+            // off the top. Three rows fit under the cap and a fourth scrolls,
+            // the same answer the ingredient panel gives to a long list. The
+            // card is the wrapper and the scroll is inside it, so the padding
+            // stays on the card rather than on a scrolling frame.
+            <View style={styles.timerCard}>
+              <ScrollView style={styles.stepTimerStack} nestedScrollEnabled>
+                {stepTimers.timers.map(timer => (
+                  <StepTimerRow
+                    key={timer.id}
+                    timer={timer}
+                    now={stepTimers.now}
+                    hideRecipeName
+                    onToggle={() => stepTimers.toggle(timer)}
+                    onAddTime={() => stepTimers.addTime(timer.id)}
+                    onRestart={() => stepTimers.restart(timer.id)}
+                    onRemove={() => stepTimers.remove(timer.id)}
+                  />
+                ))}
+              </ScrollView>
+            </View>
+          )}
+
           {/* The recipe's own cook timer, not a second one — see useRecipeTimer.
               It sits above the step controls and never scrolls away, which is
               the "already there" half of this feature: starting, pausing and
@@ -317,6 +402,23 @@ function ScreenAwake() {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  // Three rows of StepTimerRow plus the card's own padding. A fourth is a
+  // scroll rather than more height, so the tray can't grow without bound.
+  stepTimerStack: {
+    maxHeight: 210,
+    flexGrow: 0,
+  },
+  offers: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+  },
+  offersNote: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    marginTop: spacing.sm,
+  },
   root: {
     flex: 1,
     backgroundColor: colors.bg,
