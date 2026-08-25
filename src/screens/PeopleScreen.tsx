@@ -28,11 +28,16 @@ import { getCurrentDayStart } from '../utils/dateUtils';
 /**
  * The people list.
  *
- * **Ordered by hand and never re-ranked**, which is the single most load-bearing
- * thing about this screen. Sorting by "who haven't I seen in longest" is the
- * move that turns a list of the people in your life into a queue of the ones
- * you have let down, and `docs/arch/people.md` rules it out for good. The order
- * here is `sortOrder`, the same hand-drag the categories and aisles use.
+ * **Ordered by hand and never re-ranked by default**, which is the single most
+ * load-bearing thing about this screen. Sorting by "who haven't I seen in
+ * longest" is the move that turns a list of the people in your life into a
+ * queue of the ones you have let down, and `docs/arch/people.md` rules that
+ * out for good — `sortOrder`, the same hand-drag the categories and aisles
+ * use, is the only *automatic* ranking the feature contains. The optional
+ * alphabetical view is a neutral, opt-in lens on top of that: it never touches
+ * `sortOrder` itself, is off again on next launch, and disables drag while
+ * active so a reorder can't silently apply to the sorted view instead of the
+ * hand order underneath it.
  *
  * There is no count of anything per person, no colour that means late, and no
  * summary line about how a relationship is going. The one derived thing a row
@@ -59,11 +64,19 @@ export function PeopleScreen() {
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [contactPickerVisible, setContactPickerVisible] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  // Off by default: the hand-dragged order is the one ranking this feature is
+  // allowed to have (see the header comment and docs/arch/people.md, rule 3).
+  // This is a view lens on top of it, same session-only shape as showArchived
+  // above, not a replacement for it — sortOrder is untouched either way.
+  const [alphabetical, setAlphabetical] = useState(false);
 
-  const visiblePeople = useMemo(
-    () => people.filter(p => p.archived === showArchived),
-    [people, showArchived]
-  );
+  const visiblePeople = useMemo(() => {
+    const filtered = people.filter(p => p.archived === showArchived);
+    if (!alphabetical) return filtered;
+    return [...filtered].sort((a, b) =>
+      displayNameOf(a).localeCompare(displayNameOf(b), undefined, { sensitivity: 'base' })
+    );
+  }, [people, showArchived, alphabetical]);
 
   // A link naming an archived person still has to land somewhere sensible: the
   // detail screen is pushed on top of this list by resetToPeople, and this list
@@ -106,6 +119,12 @@ export function PeopleScreen() {
             accessibilityLabel: 'Add someone from Contacts',
           }]),
           {
+            icon: 'text-outline',
+            onPress: () => { haptics.tap(); animateLayout(); setAlphabetical(v => !v); },
+            active: alphabetical,
+            accessibilityLabel: alphabetical ? 'Sort by hand order' : 'Sort alphabetically',
+          },
+          {
             icon: 'archive-outline',
             onPress: () => { haptics.tap(); animateLayout(); setShowArchived(v => !v); },
             active: showArchived,
@@ -142,6 +161,11 @@ export function PeopleScreen() {
           onHoverChange={haptics.dragTick}
           onReorder={reordered => reorderPeople(reordered.map(p => p.id))}
           renderItem={({ item: person, drag, isActive }) => {
+            // A drag while sorted alphabetically would reorder the visible
+            // (sorted) rows rather than the hand order underneath them, so
+            // dragging is off for the duration rather than doing something
+            // the list isn't currently showing.
+            const canDrag = !alphabetical;
             const name = displayNameOf(person);
             const birthday = hasBirthday(person) ? nextBirthday(person, today) : null;
             // Only inside the same window the generator uses, so the row and
@@ -158,12 +182,12 @@ export function PeopleScreen() {
               <TouchableOpacity
                 style={[styles.row, isActive && styles.rowActive]}
                 onPress={() => { haptics.tap(); navigation.navigate('PersonDetail', { personId: person.id }); }}
-                onLongPress={drag}
+                onLongPress={canDrag ? drag : undefined}
                 delayLongPress={interaction.delayLongPress}
                 activeOpacity={interaction.activeOpacity}
                 accessibilityRole="button"
                 accessibilityLabel={spokenMeta ? `${name}. ${spokenMeta}` : name}
-                accessibilityHint="Double tap to open. Long press to reorder."
+                accessibilityHint={canDrag ? 'Double tap to open. Long press to reorder.' : 'Double tap to open.'}
               >
                 <View style={[styles.avatar, { backgroundColor: colors.accentSubtle }]}>
                   <Text style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
