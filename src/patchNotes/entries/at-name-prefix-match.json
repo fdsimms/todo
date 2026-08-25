@@ -1,4 +1,4 @@
 {
-  "message": "Typing \"@\" followed by a name now matches once you've typed at least 3 letters, instead of waiting for the whole name",
+  "message": "Typing \"@\" followed by a name now matches once you've typed at least 3 letters, instead of waiting for the whole name. If more than one person matches, you'll get a choice of who to pick instead of nothing at all",
   "date": "2026-08-25"
 }

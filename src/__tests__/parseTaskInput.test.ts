@@ -921,12 +921,14 @@ describe('parsePeopleInput', () => {
     expect(parsePeopleInput('email dustin@example.com', PEOPLE)).toBeNull();
   });
 
-  it('refuses a token two people answer to rather than guessing', () => {
+  it('offers a pick-one list for a token two people answer to, rather than guessing', () => {
     const twoSams = [
       { id: 'a', name: 'Sam Riley', nickname: '' },
       { id: 'b', name: 'Sam Okafor', nickname: '' },
     ];
-    expect(parsePeopleInput('lunch @sam', twoSams)).toBeNull();
+    const r = parsePeopleInput('lunch @sam', twoSams);
+    expect(r?.personIds).toEqual([]);
+    expect(r?.ambiguous?.candidates.map(c => c.id)).toEqual(['a', 'b']);
   });
 
   it('matches a unique prefix once at least 3 characters are typed', () => {
@@ -939,25 +941,40 @@ describe('parsePeopleInput', () => {
     expect(parsePeopleInput('hug @br', people)).toBeNull();
   });
 
-  it('refuses a prefix two people answer to rather than guessing', () => {
-    const twoBs = [
+  it('offers a pick-one list for a prefix two people answer to, then resolves once it is typed far enough to be unique', () => {
+    const twoBrits = [
       { id: 'a', name: 'Brittany', nickname: '' },
-      { id: 'b', name: 'Brandon', nickname: '' },
+      { id: 'b', name: 'Brittney', nickname: '' },
     ];
-    expect(parsePeopleInput('hug @br', twoBs)).toBeNull();
-    expect(parsePeopleInput('hug @bri', twoBs)).toEqual(expect.objectContaining({ personIds: ['a'] }));
+    // Under the prefix floor, there's no candidate search to be ambiguous about.
+    expect(parsePeopleInput('hug @br', twoBrits)).toBeNull();
+    const r = parsePeopleInput('hug @bri', twoBrits);
+    expect(r?.personIds).toEqual([]);
+    expect(r?.ambiguous?.candidates.map(c => c.name)).toEqual(['Brittany', 'Brittney']);
+    // "brittan" only Brittany answers to.
+    expect(parsePeopleInput('hug @brittan', twoBrits)).toEqual(expect.objectContaining({ personIds: ['a'] }));
   });
 
-  it('still resolves an unambiguous name when somebody else is ambiguous', () => {
+  it('still resolves an unambiguous name when somebody else is ambiguous, and leaves the other one for its own turn', () => {
     const people = [...PEOPLE, { id: 'p4', name: 'Dustin Two', nickname: '' }];
-    // "dustin" now names two, so it is left alone; "mom" still resolves.
+    // "dustin" now names two, so it is left alone; "mom" still resolves, and
+    // takes the one tooltip slot rather than the ambiguity also being offered.
     const r = parsePeopleInput('call @mom about @dustin', people);
     expect(r?.personIds).toEqual(['p3']);
     expect(r?.cleanTitle).toBe('call about @dustin');
+    expect(r?.ambiguous).toBeUndefined();
   });
 
   it('treats a bare token with nothing else as a literal title', () => {
     expect(parsePeopleInput('@dustin', PEOPLE)).toBeNull();
+  });
+
+  it('makes the same refusal for a bare ambiguous token with nothing else', () => {
+    const twoSams = [
+      { id: 'a', name: 'Sam Riley', nickname: '' },
+      { id: 'b', name: 'Sam Okafor', nickname: '' },
+    ];
+    expect(parsePeopleInput('@sam', twoSams)).toBeNull();
   });
 
   it('reports where the first token was, for the highlight', () => {

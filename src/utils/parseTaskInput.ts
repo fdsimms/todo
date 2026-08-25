@@ -932,9 +932,18 @@ export interface ParsedPeople {
   personIds: string[];
   /** Input minus every matched "@name" token, whitespace collapsed and trimmed. */
   cleanTitle: string;
-  /** Start of the first matched token — drives the tooltip highlight. */
+  /** Start of the first matched (or, with nothing matched, ambiguous) token — drives the tooltip highlight. */
   matchStart: number;
   matchEnd: number;
+  /**
+   * The first "@name" token — exact or by prefix — that names more than one
+   * person, offered so the tooltip can show a pick-one list instead of just
+   * refusing. Present only when nothing else in the title matched: once
+   * something has, the single tooltip slot shows that, and an ambiguous token
+   * elsewhere stays literal text until its own turn (see QuickAddModal's
+   * priority chain).
+   */
+  ambiguous?: { candidates: PersonToken[] };
 }
 
 /** The shape `parsePeopleInput` matches against: an id and the names it answers to. */
@@ -975,10 +984,14 @@ const MIN_PREFIX_LENGTH = 3;
  * people arrive from a contact card, and nobody types a surname mid-sentence.
  * Short of an exact match, a token of at least `MIN_PREFIX_LENGTH` characters
  * also matches a unique prefix, so "@brit" finds "Brittany" while it's still
- * being typed rather than only once the last letter lands. Ambiguity is left
- * unresolved rather than guessed, at either length: "@sam" with two Sams
- * registered keeps typing rather than locking in the wrong one, the same call
- * `parseCategoryAndTagsInput` makes about a prefix matching two categories.
+ * being typed rather than only once the last letter lands.
+ *
+ * A token more than one person answers to — "@sam" with two Sams registered,
+ * or "@bri" with a Brittany and a Brianna — is never guessed, but it isn't
+ * silently dropped either: the first such token (once nothing else in the
+ * title already matched) comes back on `ambiguous.candidates`, so the caller
+ * can offer a pick-one list rather than making someone keep typing until the
+ * name is unique. See QuickAddModal's tooltip for the one place this is read.
  *
  * **Deliberately never creates a person.** An unrecognized "@word" is left as
  * literal text, so an email address, a handle someone pasted, or a name you
@@ -1008,9 +1021,16 @@ export function parsePeopleInput(input: string, people: PersonToken[]): ParsedPe
     const first = person.name.trim().split(/\s+/)[0];
     if (first && first.toLowerCase() !== person.name.trim().toLowerCase()) add(first, person.id);
   }
+  // Candidate ids back to PersonToken, in the person's own list order — the
+  // same order the pick-one list is offered in.
+  const toCandidates = (ids: Iterable<string>): PersonToken[] => {
+    const set = new Set(ids);
+    return people.filter(p => set.has(p.id));
+  };
 
   const matched: string[] = [];
   const consumed: { start: number; end: number }[] = [];
+  let ambiguous: { start: number; end: number; candidates: PersonToken[] } | null = null;
 
   for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
     if (m.index === undefined) continue;
@@ -1026,6 +1046,11 @@ export function parsePeopleInput(input: string, people: PersonToken[]): ParsedPe
         if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
       }
       if (prefixIds.size === 1) hits = [...prefixIds];
+      else if (prefixIds.size > 1 && !ambiguous) {
+        ambiguous = { start: m.index, end: m.index + m[0].length, candidates: toCandidates(prefixIds) };
+      }
+    } else if (hits && hits.length > 1 && !ambiguous) {
+      ambiguous = { start: m.index, end: m.index + m[0].length, candidates: toCandidates(hits) };
     }
     // Exactly one, or nothing: two people answering to one token is left as
     // literal text rather than resolved to whichever was added first.
@@ -1034,7 +1059,22 @@ export function parsePeopleInput(input: string, people: PersonToken[]): ParsedPe
     consumed.push({ start: m.index, end: m.index + m[0].length });
   }
 
-  if (matched.length === 0) return null;
+  if (matched.length === 0) {
+    if (!ambiguous) return null;
+    // Same refusal as a bare exact token below: naming nobody-in-particular is
+    // not a title, so a mention that would leave nothing else once resolved
+    // gets no pick-one offer either.
+    const withoutToken = (input.slice(0, ambiguous.start) + input.slice(ambiguous.end))
+      .replace(/\s+/g, ' ').trim();
+    if (!withoutToken) return null;
+    return {
+      personIds: [],
+      cleanTitle: input.trim(),
+      matchStart: ambiguous.start,
+      matchEnd: ambiguous.end,
+      ambiguous: { candidates: ambiguous.candidates },
+    };
+  }
 
   let cleanTitle = input;
   for (let i = consumed.length - 1; i >= 0; i--) {

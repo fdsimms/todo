@@ -758,6 +758,18 @@ export function QuickAddModal({
     setPersonIds(prev => [...new Set([...prev, ...peopleParsed.personIds])]);
   };
 
+  // Apply one candidate picked off the ambiguous-token list — strips just
+  // that token, the way applyPeople strips every token it resolved.
+  const applyPersonCandidate = (personId: string) => {
+    if (!peopleParsed?.ambiguous) return;
+    haptics.success();
+    animateLayout();
+    const next = (title.slice(0, peopleParsed.matchStart) + title.slice(peopleParsed.matchEnd))
+      .replace(/\s+/g, ' ').trim();
+    setTitle(next);
+    setPersonIds(prev => [...new Set([...prev, personId])]);
+  };
+
   // Apply the detected link and strip it from the title.
   const applyLink = () => {
     if (!linkParsed) return;
@@ -1401,54 +1413,75 @@ export function QuickAddModal({
             >
               <View style={[styles.tooltipAnchor, { marginLeft: bubbleLeft }]}>
                 <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
-                <PressableScale
-                  style={styles.tooltipBubble}
-                  onPress={parsed ? applyParse : categoryTagsParsed ? applyCategoryTags : peopleParsed ? applyPeople : linkParsed ? applyLink : phoneParsed ? applyPhone : emailParsed ? applyEmail : durationParsed ? applyDuration : applySupply}
-                  onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
-                >
-                  <Ionicons
-                    name={
-                      parsed
-                        ? (parsed.schedule.recurrenceType !== 'none'
-                            ? 'repeat'
-                            : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
+                {peopleParsed?.ambiguous ? (
+                  // More than one person answers to this token — a row of small
+                  // pills, one per candidate, in place of the single "tap to
+                  // set" bubble every other match uses. See applyPersonCandidate.
+                  <View
+                    style={styles.tooltipCandidateRow}
+                    onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
+                  >
+                    {peopleParsed.ambiguous.candidates.map(candidate => (
+                      <PressableScale
+                        key={candidate.id}
+                        style={styles.tooltipCandidatePill}
+                        haptic
+                        onPress={() => applyPersonCandidate(candidate.id)}
+                      >
+                        <Text style={styles.tooltipText} numberOfLines={1}>{displayNameOf(candidate)}</Text>
+                      </PressableScale>
+                    ))}
+                  </View>
+                ) : (
+                  <PressableScale
+                    style={styles.tooltipBubble}
+                    onPress={parsed ? applyParse : categoryTagsParsed ? applyCategoryTags : peopleParsed ? applyPeople : linkParsed ? applyLink : phoneParsed ? applyPhone : emailParsed ? applyEmail : durationParsed ? applyDuration : applySupply}
+                    onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
+                  >
+                    <Ionicons
+                      name={
+                        parsed
+                          ? (parsed.schedule.recurrenceType !== 'none'
+                              ? 'repeat'
+                              : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
+                          : categoryTagsParsed
+                            ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
+                            : peopleParsed
+                              ? 'people-outline'
+                            : linkParsed
+                              ? 'link-outline'
+                              : phoneParsed
+                                ? 'call-outline'
+                                : emailParsed
+                                  ? 'mail-outline'
+                                  : durationParsed
+                                    ? 'timer-outline'
+                                    : 'cube-outline'
+                      }
+                      size={14}
+                      color={colors.onAccent}
+                    />
+                    <Text style={styles.tooltipText}>
+                      {parsed
+                        ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
                         : categoryTagsParsed
-                          ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
+                          ? categoryTagsLabel(categoryTagsParsed, categories)
                           : peopleParsed
-                            ? 'people-outline'
+                            ? peopleLabel(peopleParsed, people)
                           : linkParsed
-                            ? 'link-outline'
+                            ? linkLabel(linkParsed.url)
                             : phoneParsed
-                              ? 'call-outline'
+                              ? `Call ${phoneParsed.number}`
                               : emailParsed
-                                ? 'mail-outline'
+                                ? `Email ${emailParsed.address}`
                                 : durationParsed
-                                  ? 'timer-outline'
-                                  : 'cube-outline'
-                    }
-                    size={14}
-                    color={colors.onAccent}
-                  />
-                  <Text style={styles.tooltipText}>
-                    {parsed
-                      ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
-                      : categoryTagsParsed
-                        ? categoryTagsLabel(categoryTagsParsed, categories)
-                        : peopleParsed
-                          ? peopleLabel(peopleParsed, people)
-                        : linkParsed
-                          ? linkLabel(linkParsed.url)
-                          : phoneParsed
-                            ? `Call ${phoneParsed.number}`
-                            : emailParsed
-                              ? `Email ${emailParsed.address}`
-                              : durationParsed
-                                ? `Timer · ${formatDuration(durationParsed.minutes)}`
-                                : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
-                  </Text>
-                  <View style={styles.tooltipDot} />
-                  <Text style={styles.tooltipHint}>Tap to set</Text>
-                </PressableScale>
+                                  ? `Timer · ${formatDuration(durationParsed.minutes)}`
+                                  : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
+                    </Text>
+                    <View style={styles.tooltipDot} />
+                    <Text style={styles.tooltipHint}>Tap to set</Text>
+                  </PressableScale>
+                )}
               </View>
             </Animated.View>
           )}
@@ -2512,6 +2545,17 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+  },
+  tooltipCandidateRow: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    gap: 6,
+  },
+  tooltipCandidatePill: {
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: radius.md,
