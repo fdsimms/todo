@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
-import type { Calendar as ReminderList, Reminder } from 'expo-calendar';
+import type { Calendar as ReminderList, Reminder } from 'expo-calendar/legacy';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { useTaskStore } from '../store/useTaskStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -50,8 +50,8 @@ import {
  * or 'error', which is exactly the right answer for a device whose Reminders
  * bridge isn't there.
  */
-function calendar(): typeof import('expo-calendar') {
-  return require('expo-calendar');
+function calendar(): typeof import('expo-calendar/legacy') {
+  return require('expo-calendar/legacy');
 }
 
 export type RemindersPermission = 'granted' | 'denied' | 'undetermined' | 'unsupported';

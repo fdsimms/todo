@@ -903,18 +903,23 @@ The Today widget (`targets/todo-widget/`) is injected at prebuild time by custom
 
 Two fixes that look unrelated to the widget but are load-bearing for *any* second native target existing at all — don't revert them as dead code:
 - `enableScreens(false)` near the top of `App.tsx` — works around a `react-native-screens` crash (`RNSTabBarController`) that only reproduces in production builds once the app has more than one native target to build/sign.
-- `ios.buildReactNativeFromSource: true` in the `expo-build-properties` plugin config (`app.json`), plus `patches/react-native+0.81.5.patch` (applied via `patch-package` on `postinstall`) — RN 0.81 downloads a prebuilt Core binary by default, which bypasses the patch entirely; the patch itself fixes an RN bug where an `NSException` thrown inside a native module call gets rethrown across a dispatch-queue boundary instead of converted to a JS error, crashing the app. Both were required together — the patch alone has zero effect without also forcing a from-source build.
+- `ios.buildReactNativeFromSource: true` in the `expo-build-properties` plugin config (`app.json`), plus `patches/react-native+0.86.2.patch` (applied via `patch-package` on `postinstall`) — RN downloads a prebuilt Core binary by default, which bypasses the patch entirely; the patch itself fixes an RN bug where an `NSException` thrown inside a native module call escapes across a dispatch-queue boundary instead of being converted to a JS error, crashing the app. Both were required together — the patch alone has zero effect without also forcing a from-source build. **The patch is named for the exact RN version and has to be re-cut on every RN bump**, because `patch-package` matches on that filename: 0.81 threw `convertNSExceptionToJSError(...)` from the `@catch` and 0.86 plain `@throw`s instead, so the diff context changes even though the bug and the fix don't. Re-cut it by editing `node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTTurboModule.mm` and running `npx patch-package react-native`, then delete the old patch file.
 
-`enableScreens(false)` has a side effect worth knowing before reaching for `freezeOnBlur` on a tab screen: it forces `@react-navigation`'s `ScreenFallback` → `ResourceSavingView` path instead of the native `react-native-screens` implementation, and `ResourceSavingView` never forwards `freezeOnBlur` — it only moves blurred children `FAR_FAR_AWAY`. So a blurred tab screen stays mounted and keeps re-rendering on every store change; `freezeOnBlur` is inert in this app, and there's no escape hatch for it while `enableScreens` stays off.
+`enableScreens(false)` has a side effect worth knowing before reaching for `freezeOnBlur` on a tab screen: it sends `@react-navigation`'s `ScreenFallback` down its non-native branch instead of the `react-native-screens` implementation, and nothing on that branch forwards `freezeOnBlur`. So a blurred tab screen stays mounted and keeps re-rendering on every store change; `freezeOnBlur` is inert in this app, and there's no escape hatch for it while `enableScreens` stays off.
 
-That `FAR_FAR_AWAY` is `top: 30000`, which is also why **`automaticallyAdjustKeyboardInsets` must never be
+**What that fallback renders changed with React Navigation v7, and the difference matters.** Under v6 `MaybeScreen` fell back to `@react-navigation/elements`' `ResourceSavingView`, which keeps a blurred child mounted by moving it `FAR_FAR_AWAY` — `top: 30000`. Under v7 (`node_modules/@react-navigation/bottom-tabs/src/views/ScreenFallback.tsx`) it falls back to a plain `View` and nothing is parked off-screen, so a blurred tab screen now sits at its normal offset. `ResourceSavingView` is still exported and still does the 30,000pt trick; bottom tabs just no longer route through it.
+
+That 30,000 is why **`automaticallyAdjustKeyboardInsets` must never be
 passed bare** — use `useKeyboardInsetScroll` (`src/hooks/`), which is already wired into `ReorderableList`
 and every screen-level `FlatList` that had it. RN registers a keyboard listener on *every* mounted
 `RCTScrollView` and gates it on that prop alone, then sizes the inset from the scroll view's position in the
 window — so a blurred tab parked at y=30000 picks up a ~30,000pt bottom `contentInset`, and the keyboard
 *hiding* recomputes the same 30,000 rather than clearing it. Switch to that tab and there's a screenful of
 content above thirty thousand points of nothing. The hook passes the screen's own focus state, so a
-backgrounded list doesn't listen. It also re-clamps on `keyboardDidHide`, because shrinking an inset never
+backgrounded list doesn't listen. **v7 removing the parking does not make the hook removable**: the rest of
+it is about RN's own inset behavior, which is unchanged — the per-`RCTScrollView` keyboard listener gated on
+that one prop, and the `keyboardDidHide` re-clamp below, neither of which had anything to do with where the
+screen sat. It also re-clamps on `keyboardDidHide`, because shrinking an inset never
 re-clamps `contentOffset` (RN's own `scrollToOffset:` call short-circuits when the offset didn't change) —
 a list left resting inside an inset that goes away has no scroll range left to get back up. Same failure
 mode as the content-shrink clamp in `ReorderableList.onContentSizeChange`; math and tests in

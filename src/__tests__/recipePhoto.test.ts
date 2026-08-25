@@ -45,13 +45,25 @@ jest.mock('expo-file-system', () => {
 
   return {
     File: function MockFile(this: {
-      uri: string; exists: boolean; delete: () => void; move: (dest: unknown) => void;
+      uri: string; exists: boolean; delete: () => void; move: (dest: unknown) => Promise<void>;
       create: () => void; write: (content: string, options?: unknown) => void; base64Sync: () => string;
     }, ...uris: unknown[]) {
       this.uri = joinUri(uris);
       this.exists = mockFileExists;
       this.delete = () => mockDelete(this.uri);
-      this.move = (dest: unknown) => {
+      // Async on purpose: expo-file-system's `move()` returns a promise as of
+      // SDK 57. A synchronous mock here is what let an unawaited `move()` in
+      // pickRecipeImage pass this suite while being wrong against the real
+      // module, so the mock matches the real signature rather than the
+      // convenient one.
+      // `async` on purpose, and not merely promise-returning: expo-file-system's
+      // `move()` is a native async method as of SDK 57, so a failure arrives as
+      // a *rejection*, never a synchronous throw. A mock that throws
+      // synchronously is caught either way and so cannot tell an awaited call
+      // from an unawaited one — which is what let the floating `move()` in
+      // pickRecipeImage pass this suite while being wrong against the real
+      // module.
+      this.move = async (dest: unknown) => {
         const destUri = (dest as { uri: string }).uri;
         mockMove(this.uri, destUri);
         this.uri = destUri;
@@ -340,6 +352,23 @@ describe('pickRecipeImage', () => {
     expect(fromUri).toBe('file:///cache/out.jpg');
     expect(toUri).toContain('file:///documents/recipe-images/');
     expect(result).toMatchObject({ status: 'ok', image: { uri: toUri, width: 1200, height: 900 } });
+  });
+
+  // The regression this guards: `move()` is asynchronous as of SDK 57, and an
+  // unawaited one resolved `ok` before the file had landed, with the rejection
+  // escaping as an unhandled rejection instead of reaching the catch. Awaiting
+  // is what puts a failed move back inside the `failed` path.
+  it('reports a failure when the move into the document directory rejects', async () => {
+    mockRequestLibrary.mockResolvedValue(GRANTED);
+    mockLaunchLibrary.mockResolvedValue({
+      canceled: false, assets: [{ uri: 'file:///photo.jpg', width: 1200, height: 900 }],
+    });
+    stubPipeline({ uri: 'file:///cache/out.jpg', width: 1200, height: 900 });
+    mockMove.mockImplementation(() => { throw new Error('disk full'); });
+
+    await expect(pickRecipeImage('library')).resolves.toEqual({
+      status: 'failed', message: 'disk full',
+    });
   });
 
   it('reports a failure rather than rejecting when the manipulator throws', async () => {

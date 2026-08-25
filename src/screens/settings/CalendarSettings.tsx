@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { View, Alert, AppState, Linking } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { addDays } from 'date-fns/addDays';
-import type { Calendar as DeviceCalendar } from 'expo-calendar';
+import type { Calendar as DeviceCalendar } from 'expo-calendar/legacy';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useCalendarStore } from '../../store/useCalendarStore';
 import {

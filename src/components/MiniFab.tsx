@@ -377,7 +377,7 @@ const makeStyles = (colors: Colors, size: number) => {
       justifyContent: 'center',
     },
     well: {
-      ...StyleSheet.absoluteFillObject,
+      ...StyleSheet.absoluteFill,
       borderRadius: box / 2,
       alignItems: 'center',
       justifyContent: 'center',

@@ -125,7 +125,7 @@ export function useSpotlightLinger(active: boolean): boolean {
 export const useSpotlightElevation = useSpotlightLinger;
 
 const styles = StyleSheet.create({
-  scrim: StyleSheet.absoluteFillObject,
+  scrim: StyleSheet.absoluteFill,
   overlay: {
     position: 'absolute',
     top: 0,

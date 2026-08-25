@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import type { ExistingContact } from 'expo-contacts';
+import type { ExistingContact } from 'expo-contacts/legacy';
 import { isDemoModeActive } from './demoState';
 import {
   contactBirthday,
@@ -31,8 +31,8 @@ import {
  * killing the whole bundle before React mounts rather than just this feature.
  * The type-only import above is erased at compile time and carries no such risk.
  */
-function contacts(): typeof import('expo-contacts') {
-  return require('expo-contacts');
+function contacts(): typeof import('expo-contacts/legacy') {
+  return require('expo-contacts/legacy');
 }
 
 export type ContactsPermission = 'granted' | 'denied' | 'undetermined' | 'unsupported';

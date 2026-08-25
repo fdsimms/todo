@@ -1,4 +1,4 @@
-import type { Calendar as ReminderList, Reminder } from 'expo-calendar';
+import type { Calendar as ReminderList, Reminder } from 'expo-calendar/legacy';
 import {
   describePendingImport,
   draftFromReminder,

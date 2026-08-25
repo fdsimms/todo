@@ -1,4 +1,4 @@
-import type { Reminder } from 'expo-calendar';
+import type { Reminder } from 'expo-calendar/legacy';
 
 /**
  * This feature deletes reminders out of another app, so the ordering and
@@ -25,7 +25,7 @@ const mockCalendar = {
   deleteReminderAsync: jest.fn(),
   EntityTypes: { REMINDER: 'reminder', EVENT: 'event' },
 };
-jest.mock('expo-calendar', () => mockCalendar);
+jest.mock('expo-calendar/legacy', () => mockCalendar);
 
 jest.mock('react-native', () => ({
   Platform: { OS: 'ios' },

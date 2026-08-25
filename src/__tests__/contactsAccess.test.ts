@@ -1,4 +1,4 @@
-import type { ExistingContact } from 'expo-contacts';
+import type { ExistingContact } from 'expo-contacts/legacy';
 
 let mockPlatform = 'ios';
 jest.mock('react-native', () => ({
@@ -13,7 +13,7 @@ jest.mock('../utils/demoState', () => ({
 const mockGetPermissions = jest.fn();
 const mockRequestPermissions = jest.fn();
 const mockGetContacts = jest.fn();
-jest.mock('expo-contacts', () => ({
+jest.mock('expo-contacts/legacy', () => ({
   getPermissionsAsync: (...a: unknown[]) => mockGetPermissions(...a),
   requestPermissionsAsync: (...a: unknown[]) => mockRequestPermissions(...a),
   getContactsAsync: (...a: unknown[]) => mockGetContacts(...a),

@@ -198,7 +198,7 @@ function DayDropHighlight({ slot, children }: { slot: MealSlot | null; children:
 const dropHighlightStyles = StyleSheet.create({
   wrap: { position: 'relative' },
   highlight: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: radius.md,
     borderWidth: border.md,
     flexDirection: 'row',
@@ -2198,7 +2198,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Above the list and above the add button (zIndex 20), so nothing the
   // dragged container passes over is drawn on top of it.
   dragLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 30,
   },
   // Inset to match the fridge card's own margins, so the copy starts exactly
