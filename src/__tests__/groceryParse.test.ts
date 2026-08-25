@@ -345,6 +345,24 @@ describe('splitPrep', () => {
       prep: 'red or white',
     });
   });
+
+  // A leading quantity/unit is already gone by the time splitPrep runs (see
+  // makeIngredient), so a trailing parenthetical left in what's handed to it
+  // can only be describing what to do to the item — "8 oz tempeh (steamed 10
+  // min)" reaches here as just "tempeh (steamed 10 min)".
+  it('splits a trailing parenthetical left after the quantity into prep', () => {
+    expect(splitPrep('tempeh (steamed 10 min)')).toEqual({
+      name: 'tempeh',
+      prep: 'steamed 10 min',
+    });
+  });
+
+  it('prefers the comma clause over a parenthetical when both are present', () => {
+    expect(splitPrep('tempeh, pressed (steamed 10 min)')).toEqual({
+      name: 'tempeh',
+      prep: 'pressed (steamed 10 min)',
+    });
+  });
 });
 
 // ─── splitPurpose ────────────────────────────────────────────────────────────

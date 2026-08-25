@@ -312,6 +312,13 @@ describe('makeIngredient', () => {
     expect(result.nameKey).toBe('black beans');
   });
 
+  it('splits a trailing parenthetical left after the quantity into prep', () => {
+    const result = makeIngredient('8 oz tempeh (steamed 10 min)')!;
+    expect(result.name).toBe('tempeh');
+    expect(result.quantity).toBe('8 oz');
+    expect(result.prep).toBe('steamed 10 min');
+  });
+
   it('leaves prep null when there is no comma clause', () => {
     expect(makeIngredient('2 lb chicken thighs')!.prep).toBeNull();
   });

@@ -60,7 +60,7 @@ function ref(name: string, reference: string): ExtractedRecipeReference {
 }
 
 function item(name: string): RecipeGroceryItem {
-  return { name, quantity: '', aisle: 'Other', section: null };
+  return { name, quantity: '', aisle: 'Other', section: null, prep: null };
 }
 
 describe('referencePageNumber', () => {

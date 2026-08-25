@@ -7,6 +7,7 @@ import {
   RECIPE_SECTION_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
   SHOP_NAME_MAX_LENGTH,
+  PREP_MAX_LENGTH,
 } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 import { parsePriceInput } from '../utils/groceryPrice';
@@ -411,6 +412,14 @@ export interface RecipeGroceryItem {
    * field name, so nothing here has to translate it.
    */
   section: string | null;
+  /**
+   * What to do to it before it's used — "pressed and cubed", "steamed 10
+   * min" — read straight into RecipeIngredient.prep by normalizeIngredient.
+   * null when the source didn't attach one. This is where the prep clause
+   * `sharedRecipeInstructions` tells the model to strip out of `name`/
+   * `quantity` is supposed to land, rather than being discarded.
+   */
+  prep: string | null;
 }
 
 /** Same validation `suggestRecipeGroceries` always applied, now shared with extractRecipe. */
@@ -419,7 +428,7 @@ function parseExtractedItems(
   availableAisles: string[],
 ): RecipeGroceryItem[] {
   const items = raw as Array<
-    { name?: unknown; quantity?: unknown; aisle?: unknown; component?: unknown }
+    { name?: unknown; quantity?: unknown; aisle?: unknown; component?: unknown; prep?: unknown }
   > | undefined;
   if (!items) return [];
 
@@ -446,6 +455,9 @@ function parseExtractedItems(
       // normalizeIngredient reads this object.
       section: typeof item.component === 'string' && item.component.trim()
         ? item.component.trim().slice(0, RECIPE_SECTION_MAX_LENGTH)
+        : null,
+      prep: typeof item.prep === 'string' && item.prep.trim()
+        ? item.prep.trim().slice(0, PREP_MAX_LENGTH)
         : null,
     });
   }
@@ -527,7 +539,7 @@ function groceryItemsSchema(availableAisles: string[], description: string) {
         },
         quantity: {
           type: 'string',
-          description: 'The recipe\'s own amount, as written, with the prep dropped — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". Empty string if the recipe does not say.',
+          description: 'The recipe\'s own amount, as written, with any prep instruction moved to the "prep" field instead — "4 cloves", "2 cups", "1 tbsp", "2 tsp" — not a converted purchasable size ("1 bulb" for "4 cloves" is wrong). Abbreviate tablespoon/teaspoon as "tbsp"/"tsp". Empty string if the recipe does not say.',
         },
         aisle: {
           type: 'string',
@@ -536,6 +548,10 @@ function groceryItemsSchema(availableAisles: string[], description: string) {
         component: {
           type: 'string',
           description: 'The recipe\'s own label for the part this ingredient belongs to, e.g. "For the cake" or "For the frosting" — only when the source actually splits its ingredients that way. Empty string otherwise.',
+        },
+        prep: {
+          type: 'string',
+          description: `What to do to it before using it, in the recipe's own words — "pressed and cubed", "steamed 10 min", "minced" — the instruction dropped out of "name" and "quantity" above. Under ${PREP_MAX_LENGTH} characters. Empty string when the recipe states no prep for this item.`,
         },
       },
       required: ['name', 'quantity', 'aisle'],
@@ -635,7 +651,7 @@ export interface ExtractedRecipe {
  */
 function sharedRecipeInstructions(availableAisles: string[]): string[] {
   return [
-    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, just with the prep instruction dropped — "4 cloves" or "3 cloves", not "1 bulb". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method when deciding what goes on the shopping list, and skip water.',
+    'Name each shopping item the way a shop would label it, not the way the recipe prepares it — "garlic" rather than "3 cloves garlic, minced". Keep the recipe\'s own quantity and unit as stated, with the prep instruction moved to the "prep" field instead of "name" or "quantity" — "4 cloves" or "3 cloves", not "1 bulb", with "minced" in "prep". Never substitute your own guess at a purchasable equivalent; the recipe\'s stated amount is what the cook actually needs, and a bulb doesn\'t reliably yield a fixed number of cloves. Ignore the method when deciding what goes on the shopping list, and skip water.',
     `Sections available: ${availableAisles.join(', ')}. Use "Other" only when nothing else fits.`,
     'If the recipe\'s own ingredient list is split into labelled components — "For the cake" / "For the frosting", "For the marinade" / "For the dish" — carry that label into each item\'s "component" field. Leave it empty when the recipe lists everything as one plain list.',
   ];
