@@ -253,6 +253,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
+  supplyCount: null,
+  supplyUnit: null,
+  supplyRefillCount: null,
+  supplyReorderAt: 1,
+  supplyLeadDays: null,
+  supplyDeclinedAtCount: null,
+  supplyGroceryItemId: null,
   targetCount: null,
   targetUnit: null,
   progressCount: 0,
@@ -2987,6 +2994,292 @@ describe('checkProjectReviewTasks', () => {
     const [review] = reviewTasks();
     expect(review.title).toBe('Review Kitchen reno');
     expect(review.dueDate).toBe(saturday);
+  });
+});
+
+// ─── supplies ───────────────────────────────────────────────────────────────
+
+describe('supplies', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    weekStartsOn: 0,
+    kitchenEnabled: false,
+    supplyReorderTasks: true,
+    supplyReorderTaskCategory: 'Supplies',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const noon = (offset = 0) => {
+    const d = new Date();
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() + offset);
+    return d.toISOString();
+  };
+
+  const addSupplyTask = (overrides: Record<string, unknown> = {}) =>
+    useTaskStore.getState().addTask({
+      title: 'Replace CPAP filter',
+      dueDate: noon(0),
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      supplyCount: 5,
+      supplyUnit: 'filters',
+      supplyReorderAt: 1,
+      ...overrides,
+    });
+
+  const liveOrders = () =>
+    useTaskStore.getState().tasks.filter(
+      t => t.generatedKind === 'supplyReorder' && !t.completed && !t.archived
+    );
+
+  /** The fresh occurrence a completion spawned, which is where the count lands. */
+  const successorOf = (id: string) =>
+    useTaskStore.getState().tasks.find(t => t.previousOccurrenceId === id)!;
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  describe('counting down', () => {
+    it('spends one unit per completion, onto the successor', () => {
+      const task = addSupplyTask();
+
+      useTaskStore.getState().completeTask(task.id);
+
+      // The completed row keeps the count it was worked at — that is the
+      // record of what was true when it was done.
+      expect(useTaskStore.getState().tasks.find(t => t.id === task.id)!.supplyCount).toBe(5);
+      expect(successorOf(task.id).supplyCount).toBe(4);
+    });
+
+    it('spends nothing on a miss, because nobody changed a filter', () => {
+      // The one difference from recurrenceCount, which a miss does burn: a
+      // missed occurrence breaks a streak but does not use up a filter, and
+      // the unattended sweep is the one path that could empty a supply
+      // without anybody touching the app.
+      const task = addSupplyTask();
+
+      useTaskStore.getState().completeTask(task.id, { missed: true });
+
+      expect(successorOf(task.id).supplyCount).toBe(5);
+    });
+
+    it('floors at zero rather than going negative', () => {
+      const task = addSupplyTask({ supplyCount: 0 });
+
+      useTaskStore.getState().completeTask(task.id);
+
+      expect(successorOf(task.id).supplyCount).toBe(0);
+    });
+
+    it('gives the unit back when the completion is undone', () => {
+      // Free, and structurally so: the successor holds the decrement and
+      // uncompleteTask deletes the successor, so there is nothing to add back.
+      const task = addSupplyTask();
+      useTaskStore.getState().completeTask(task.id);
+      expect(successorOf(task.id).supplyCount).toBe(4);
+
+      useTaskStore.getState().uncompleteTask(task.id);
+
+      const rows = useTaskStore.getState().tasks.filter(t => t.supplyCount !== null);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].supplyCount).toBe(5);
+    });
+
+    it('refuses a supply on a task that could never spend one', () => {
+      // The door every draft passes through — a template, an import or a
+      // restored backup can all carry one, and on a one-off it would sit at
+      // its starting number for ever while the filters were actually used.
+      const oneOff = addSupplyTask({ recurrenceType: 'none', supplyCount: 4, supplyUnit: 'filters' });
+
+      const stored = useTaskStore.getState().tasks.find(t => t.id === oneOff.id)!;
+      expect(stored.supplyCount).toBeNull();
+      expect(stored.supplyUnit).toBeNull();
+    });
+
+    it('spends nothing on a task that spawns no successor', () => {
+      // Belt and braces behind the addTask guard above: even with a count
+      // forced onto the row, a completion that spawns nothing has nowhere to
+      // put a decrement, which is the whole reason the guard exists.
+      const task = addSupplyTask();
+      useTaskStore.setState(s => ({
+        tasks: s.tasks.map(t => (t.id === task.id ? { ...t, recurrenceType: 'none' as const, supplyCount: 3 } : t)),
+      }));
+
+      useTaskStore.getState().completeTask(task.id);
+
+      expect(useTaskStore.getState().tasks.find(t => t.id === task.id)!.supplyCount).toBe(3);
+    });
+  });
+
+  describe('asking for more', () => {
+    it('writes an order once the supply reaches its threshold', () => {
+      const task = addSupplyTask({ supplyCount: 1 });
+
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      const [order] = liveOrders();
+      expect(order.title).toBe('Order more filters');
+      expect(order.generatedSourceId).toBe(task.id);
+      expect(order.category).toBe('Supplies');
+      // The question that makes restocking one tap.
+      expect(order.deliverableKind).toBe('number');
+    });
+
+    it('carries the buying link and the run-out day onto the order', () => {
+      addSupplyTask({ supplyCount: 1, linkUrl: 'https://example.com/filters' });
+
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      const [order] = liveOrders();
+      expect(order.linkUrl).toBe('https://example.com/filters');
+      expect(order.deadline).not.toBeNull();
+    });
+
+    it('says nothing about a supply with plenty left', () => {
+      addSupplyTask({ supplyCount: 9 });
+
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      expect(liveOrders()).toHaveLength(0);
+    });
+
+    it('writes one order however many times it sweeps', () => {
+      addSupplyTask({ supplyCount: 1 });
+
+      useTaskStore.getState().checkSupplyReorderTasks();
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      expect(liveOrders()).toHaveLength(1);
+    });
+
+    it('clears the order once the supply is topped back up', () => {
+      const task = addSupplyTask({ supplyCount: 1 });
+      useTaskStore.getState().checkSupplyReorderTasks();
+      expect(liveOrders()).toHaveLength(1);
+
+      useTaskStore.getState().updateTask(task.id, { supplyCount: 8 });
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      expect(liveOrders()).toHaveLength(0);
+    });
+
+    it('writes nothing while the generator is switched off', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ supplyReorderTasks: false }));
+      addSupplyTask({ supplyCount: 0 });
+
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      expect(liveOrders()).toHaveLength(0);
+    });
+
+    it('asks as soon as the supply is spent, without waiting for a sweep', () => {
+      // Ticking the task off and being told nothing is the whole reason
+      // completeTask runs the pass itself.
+      const task = addSupplyTask({ supplyCount: 2 });
+
+      useTaskStore.getState().completeTask(task.id);
+
+      expect(liveOrders()).toHaveLength(1);
+    });
+  });
+
+  describe('being turned down', () => {
+    it('stays quiet after the order is swiped away', () => {
+      addSupplyTask({ supplyCount: 1 });
+      useTaskStore.getState().checkSupplyReorderTasks();
+      const [order] = liveOrders();
+
+      useTaskStore.getState().deleteTask(order.id);
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      expect(liveOrders()).toHaveLength(0);
+    });
+
+    it('stays quiet as the supply keeps falling after that', () => {
+      const task = addSupplyTask({ supplyCount: 1 });
+      useTaskStore.getState().checkSupplyReorderTasks();
+      useTaskStore.getState().deleteTask(liveOrders()[0].id);
+
+      useTaskStore.getState().completeTask(task.id);
+
+      // Down to zero and still silent: the order is already placed.
+      expect(successorOf(task.id).supplyCount).toBe(0);
+      expect(liveOrders()).toHaveLength(0);
+    });
+
+    it('asks again once a restock lifts the count past the refusal', () => {
+      const task = addSupplyTask({ supplyCount: 1 });
+      useTaskStore.getState().checkSupplyReorderTasks();
+      useTaskStore.getState().deleteTask(liveOrders()[0].id);
+
+      // A restock clears the stamp, so the *next* time it runs low it speaks
+      // up — without that, one swipe would silence this supply for ever.
+      useTaskStore.getState().updateTask(task.id, { supplyCount: 6 });
+      expect(useTaskStore.getState().tasks.find(t => t.id === task.id)!.supplyDeclinedAtCount).toBeNull();
+
+      useTaskStore.getState().updateTask(task.id, { supplyCount: 1 });
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      expect(liveOrders()).toHaveLength(1);
+    });
+  });
+
+  describe('restocking', () => {
+    it('adds the answered number to whatever was left', () => {
+      const task = addSupplyTask({ supplyCount: 1 });
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      useTaskStore.getState().completeTask(liveOrders()[0].id, { deliverableValue: '6' });
+
+      // Added, not replaced — the point of ordering early is that you still
+      // have some when the delivery lands.
+      expect(useTaskStore.getState().tasks.find(t => t.id === task.id)!.supplyCount).toBe(7);
+    });
+
+    it('clears the order it was answered from', () => {
+      addSupplyTask({ supplyCount: 1 });
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      useTaskStore.getState().completeTask(liveOrders()[0].id, { deliverableValue: '6' });
+
+      expect(liveOrders()).toHaveLength(0);
+    });
+
+    it('treats an unanswered tick as "dealt with", not as a restock', () => {
+      // Without this the supply would still be low, the next sweep would write
+      // an identical row, and the tick would have achieved nothing.
+      const task = addSupplyTask({ supplyCount: 1 });
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      useTaskStore.getState().completeTask(liveOrders()[0].id, { deliverableValue: null });
+      useTaskStore.getState().checkSupplyReorderTasks();
+
+      expect(useTaskStore.getState().tasks.find(t => t.id === task.id)!.supplyCount).toBe(1);
+      expect(liveOrders()).toHaveLength(0);
+    });
+  });
+
+  it('clears the supply when a task is turned into a dated series', () => {
+    // A series row is an ordinary one-off, so it spawns no successor and a
+    // supply on one could never count down.
+    const task = addSupplyTask();
+
+    useTaskStore.getState().applyTaskDates(task.id, [new Date(noon(1)), new Date(noon(4))]);
+
+    const rows = useTaskStore.getState().tasks.filter(t => t.seriesId !== null);
+    expect(rows.length).toBeGreaterThan(1);
+    rows.forEach(row => expect(row.supplyCount).toBeNull());
   });
 });
 
@@ -9021,6 +9314,13 @@ describe('pending Apple Reminders imports', () => {
     recurrenceType: 'daily' as const,
     recurrenceInterval: 1,
     recurrenceFromCompletion: true,
+    supplyCount: null,
+    supplyUnit: null,
+    supplyRefillCount: null,
+    supplyReorderAt: 1,
+    supplyLeadDays: null,
+    supplyDeclinedAtCount: null,
+    supplyGroceryItemId: null,
     title: 'go running',
   };
 

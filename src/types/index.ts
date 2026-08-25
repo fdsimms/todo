@@ -406,7 +406,11 @@ export type GeneratedKind =
   | 'leftoverUseUp'
   | 'mealPlanNudge'
   | 'projectReview'
-  | 'pantryCheck';
+  | 'pantryCheck'
+  // A recurring task whose supply of a consumable is nearly spent becomes
+  // "Order more X". The first generator whose source is a *task* rather than a
+  // row in another store — see src/utils/supply.ts.
+  | 'supplyReorder';
 
 export interface Task {
   id: string;
@@ -526,6 +530,91 @@ export interface Task {
   // under target — a normal completion, not a miss. Off by default, so an
   // existing quota task keeps completing the instant it hits target.
   allowOvershoot: boolean;
+
+  // Supply — how many units of a consumable are left, for a recurring task
+  // that spends one every time it's done. Replacing a CPAP filter monthly out
+  // of a box of six is the shape: the schedule says when, and this says how
+  // many times that can still happen before something has to be bought.
+  //
+  // **The app is the meter, and that's the whole reason this isn't the
+  // kitchen's job.** `probablyHaveReason` guesses what's in the cupboard from
+  // how long ago it was bought, because nothing tells it when a bag of flour
+  // gets used. Here the app *is* what records each use — a completion is a
+  // unit gone — so the count is exact rather than a decaying guess, and it
+  // works for the things the grocery side can't model at all (filters, lens
+  // solution, printer toner, the dog's flea treatment).
+  //
+  // Requires a recurrence to mean anything, the same way `targetCount`
+  // requires a daily one: the count rides onto the successor `completeTask`
+  // spawns (like `recurrenceCount` and the streak), so a task that spawns no
+  // successor has nowhere to put the decrement. The editor only offers the
+  // card on a repeating task.
+  //
+  // null = not a supply task, which is every task that has never been given
+  // one. 0 is a real value and means you have run out.
+  supplyCount: number | null;
+  // What the units are, e.g. "filters" — free text, optional, shown beside the
+  // number ("3 filters left"). Exactly `targetUnit`'s job for exactly
+  // `targetUnit`'s reason: the unit doesn't have to live in the title, and
+  // nothing pluralises it (see src/utils/quotaUnit.ts, whose formatter this
+  // reuses). null = show the bare count.
+  supplyUnit: string | null;
+  // How many arrive when you restock — "a box of six". Optional, and it earns
+  // its column three times over: it defaults the number the reorder task asks
+  // for (so topping back up is one tap rather than a keypad), it's what a
+  // linked grocery purchase restores the count to, and it is the one number
+  // that makes "3 left" legible as a fraction of anything. null = the app has
+  // no idea what a pack holds, and asks with an empty field.
+  supplyRefillCount: number | null;
+  // Ask for more once the count drops to this. 1 by default — "tell me when
+  // I'm on my last one" — never 0, because a reorder task that arrives the day
+  // you run out is a reorder task that arrived too late.
+  //
+  // Deliberately a *count* rather than only the lead time below, because a
+  // task whose next date can't be projected (`recurrenceFromCompletion`, a
+  // live chain — see `canProject`) has no run-out day to work back from, and
+  // the count is the only trigger such a task can have.
+  supplyReorderAt: number;
+  // How many days it takes to get more, or null when the user hasn't said.
+  //
+  // **This is the trigger that's actually right, where it can be computed.**
+  // A count threshold assumes every task burns its supply at the same speed:
+  // "two left" is two months of runway on a monthly filter change and two days
+  // on a daily pill, and only one of those leaves time for a delivery. With a
+  // lead time and a projectable schedule the app works backwards from the day
+  // the supply runs out instead — see `supplyRunOutDate` — and asks on the day
+  // that still leaves time. Both triggers are live at once and whichever fires
+  // first wins, so setting this never makes the app *quieter* than the count
+  // alone would have been.
+  supplyLeadDays: number | null;
+  // The count this task's reorder offer was last turned down at, or null if it
+  // hasn't been.
+  //
+  // The self-spending decline stamp, modelled on
+  // `GroceryItem.pantryCheckDeclinedAt` and spent against the same kind of
+  // thing: not the day (an order you've already placed shouldn't be asked
+  // about again tomorrow), but the state that made the question worth asking.
+  // The gate is `supplyCount > supplyDeclinedAtCount`, so while the count only
+  // ever falls — which is all completing a task can do to it — the question
+  // stays answered.
+  //
+  // **Cleared whenever the count rises**, in `updateTask` and nowhere else.
+  // Without that, a stamp written at 1 would silence the offer at 1 again
+  // after the next restock, and every restock after that: the suppression
+  // would outlive the thing it was about. See the note there for why it keys
+  // on the value rising rather than on the field being written.
+  supplyDeclinedAtCount: number | null;
+  // The grocery catalog row this supply is stocked from, or null for a supply
+  // bought anywhere else.
+  //
+  // The one bridge between the two halves of the app, and deliberately a
+  // pointer rather than a copy: a linked supply has no separate inventory
+  // number of its own to drift out of step with the catalog, it just knows
+  // which row to put on the shopping list when it gets low. See
+  // src/utils/supply.ts for what linking actually changes (the item goes on
+  // the list, the reorder task links to the list instead of a URL, and buying
+  // it tops the count back up to `supplyRefillCount`).
+  supplyGroceryItemId: string | null;
 
   tags: string[];
   category: string | null;

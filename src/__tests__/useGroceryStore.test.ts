@@ -4393,6 +4393,25 @@ describe('setRunningLow', () => {
     expect(undone.onList).toBe(false);
   });
 
+  it('arms no undo for a caller that is not a person tapping the pill', () => {
+    // The supply sweep flags an item low because a task counted its last unit
+    // down. It runs from the launch pass, the Today foreground and a
+    // completion, so an entry left under the user's next shake would be
+    // labelled as something they had just done, pointing at an item they may
+    // never have opened. Same rule the completed-task purge follows by not
+    // going through bulkDeleteTasks.
+    const flour = makeItem({ name: 'Flour', onList: false });
+    seed([flour]);
+    useGroceryStore.setState({ lastAction: null });
+
+    useGroceryStore.getState().setRunningLow(flour.id, true, { registerUndo: false });
+
+    // The add itself is real either way — only the undo entry is suppressed.
+    expect(useGroceryStore.getState().items[0].onList).toBe(true);
+    expect(useGroceryStore.getState().items[0].runningLowAt).not.toBeNull();
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+  });
+
   it('is cleared by a purchase, which is what refutes it', () => {
     const flour = makeItem({
       name: 'Flour', onList: true, checked: true, runningLowAt: '2026-08-01T09:00:00.000Z',

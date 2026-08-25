@@ -967,6 +967,21 @@ export function initDatabase(): void {
     // every existing row reads as "hasn't been asked", which is correct: the
     // screen didn't exist before this.
     "ALTER TABLE tasks ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
+    // How many units of a consumable a recurring task has left, and the four
+    // numbers that decide when to ask for more. NULL on every existing row,
+    // which reads as "not a supply task" — the state every task was in before
+    // this column existed. See Task.supplyCount and src/utils/supply.ts.
+    'ALTER TABLE tasks ADD COLUMN supply_count INTEGER',
+    'ALTER TABLE tasks ADD COLUMN supply_unit TEXT',
+    'ALTER TABLE tasks ADD COLUMN supply_refill_count INTEGER',
+    // NOT NULL with a default, unlike its neighbours, because it is only ever
+    // read alongside a non-null supply_count and "no threshold" is not a state
+    // the feature has: a supply with nothing to compare against would never
+    // ask for more. 1 is the floor the editor also enforces.
+    'ALTER TABLE tasks ADD COLUMN supply_reorder_at INTEGER NOT NULL DEFAULT 1',
+    'ALTER TABLE tasks ADD COLUMN supply_lead_days INTEGER',
+    'ALTER TABLE tasks ADD COLUMN supply_declined_at_count INTEGER',
+    'ALTER TABLE tasks ADD COLUMN supply_grocery_item_id TEXT',
     // Same mechanism as tasks.backfill_dismissed_fields above, for the
     // category-level fields (see src/utils/categoryBackfill.ts).
     "ALTER TABLE categories ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
@@ -1670,6 +1685,17 @@ function rowToTask(row: Record<string, unknown>): Task {
     progressCount: (row.progress_count as number) ?? 0,
     targetUnit: (row.target_unit as string | null) ?? null,
     allowOvershoot: Boolean(row.allow_overshoot),
+    supplyCount: (row.supply_count as number | null) ?? null,
+    supplyUnit: (row.supply_unit as string | null) ?? null,
+    supplyRefillCount: (row.supply_refill_count as number | null) ?? null,
+    // ?? 1 rather than ?? 0: the column defaults to 1 for rows written since
+    // the migration, and a row read back through a path that predates it (a
+    // backup restore, a sync payload from an older device) has to land on the
+    // same floor rather than on a threshold that can never fire.
+    supplyReorderAt: (row.supply_reorder_at as number | null) ?? 1,
+    supplyLeadDays: (row.supply_lead_days as number | null) ?? null,
+    supplyDeclinedAtCount: (row.supply_declined_at_count as number | null) ?? null,
+    supplyGroceryItemId: (row.supply_grocery_item_id as string | null) ?? null,
     tags: JSON.parse((row.tags as string) ?? '[]') as string[],
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
@@ -1753,8 +1779,10 @@ export function dbInsertTask(task: Task): void {
       generated_source_id, postpone_count, postpone_muted, drifting_since,
       extra_task_every_n, extra_task_title, extra_task_draft, extra_task_tally, previous_extra_task_tally,
       deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id, time_block_event_id,
-      streak_requires_window, backfill_dismissed_fields
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      streak_requires_window, backfill_dismissed_fields,
+      supply_count, supply_unit, supply_refill_count, supply_reorder_at,
+      supply_lead_days, supply_declined_at_count, supply_grocery_item_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1806,6 +1834,13 @@ export function dbInsertTask(task: Task): void {
       task.timeBlockEventId ?? null,
       task.streakRequiresWindow ? 1 : 0,
       JSON.stringify(task.backfillDismissedFields),
+      task.supplyCount ?? null,
+      task.supplyUnit ?? null,
+      task.supplyRefillCount ?? null,
+      task.supplyReorderAt,
+      task.supplyLeadDays ?? null,
+      task.supplyDeclinedAtCount ?? null,
+      task.supplyGroceryItemId ?? null,
     ]
   );
 }
@@ -1827,7 +1862,9 @@ export function dbUpdateTask(task: Task): void {
       generated_source_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
       extra_task_every_n=?, extra_task_title=?, extra_task_draft=?, extra_task_tally=?, previous_extra_task_tally=?,
       deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?, time_block_event_id=?,
-      streak_requires_window=?, backfill_dismissed_fields=?
+      streak_requires_window=?, backfill_dismissed_fields=?,
+      supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
+      supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -1880,6 +1917,13 @@ export function dbUpdateTask(task: Task): void {
       task.timeBlockEventId ?? null,
       task.streakRequiresWindow ? 1 : 0,
       JSON.stringify(task.backfillDismissedFields),
+      task.supplyCount ?? null,
+      task.supplyUnit ?? null,
+      task.supplyRefillCount ?? null,
+      task.supplyReorderAt,
+      task.supplyLeadDays ?? null,
+      task.supplyDeclinedAtCount ?? null,
+      task.supplyGroceryItemId ?? null,
       task.id,
     ]
   );
