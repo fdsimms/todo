@@ -129,12 +129,12 @@ describe('searchContacts', () => {
     expect(options.pageSize).toBeLessThanOrEqual(100);
   });
 
-  it('flattens what comes back', async () => {
+  it('flattens what comes back, year included when the contact has one', async () => {
     mockGetContacts.mockResolvedValue({
       data: [contact({
         phoneNumbers: [{ number: '555 0148' }],
         emails: [{ email: 'd@example.com' }],
-        birthday: { month: 2, day: 14 },
+        birthday: { month: 2, day: 14, year: 1992 },
       } as Partial<ExistingContact>)],
     });
     await expect(searchContacts('dustin')).resolves.toEqual([{
@@ -144,6 +144,7 @@ describe('searchContacts', () => {
       email: 'd@example.com',
       birthdayMonth: 3,
       birthdayDay: 14,
+      birthYear: 1992,
     }]);
   });
 
@@ -233,6 +234,7 @@ describe('fetchLimitedContacts', () => {
       email: null,
       birthdayMonth: null,
       birthdayDay: null,
+      birthYear: null,
     }]);
   });
 

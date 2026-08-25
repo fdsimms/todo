@@ -1,4 +1,4 @@
-# Generated tasks: the ten things that write a task unattended
+# Generated tasks: the eleven things that write a task unattended
 
 The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
 project reviews, pantry checks, supply reorders and the daily calendar review.
@@ -13,7 +13,7 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the ten things that write a task unattended
+## Generated tasks — the eleven things that write a task unattended
 
 Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
@@ -36,7 +36,9 @@ settings-level mark (`calendarReviewLastDayKey`) rather than a stamp anywhere �
 below. `birthday` is the ninth (`src/utils/birthdayTasks.ts`). `mealShortfall` is the tenth, and is
 the first whose *source row* is one the user edits freely and often — which is why its entire
 staleness rule is the creation predicate re-run, rather than a list of mutations to intercept; see
-the section below.
+the section below. `birthdayGift` is the eleventh, and costs no rules module of its own at all —
+it lives beside `birthday` in the same file and reuses every rule but the lead time and the title.
+See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where `birthday` ships on.
 
 - **`Task.generatedKind` + `Task.generatedSourceId` replaced `mealEntryId`/`groceryItemId`/
   `leftoverId`.** Those three columns are still on the table, backfilled from and then left

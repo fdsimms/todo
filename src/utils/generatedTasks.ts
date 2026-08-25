@@ -5,15 +5,16 @@ export type { GeneratedKind };
 /**
  * The one mechanism behind every task this app writes without being asked.
  *
- * Ten features generate tasks unattended — each meal of the day becomes a task,
- * a perishable grocery becomes "Use up X", a leftover about to go bad becomes
- * "Use up X", an opt-in weekly trigger becomes "Plan meals for…", a project
- * that has gone quiet becomes "Review X", a pantry guess that has run out
- * becomes "Check if you still have X", a task's supply running low becomes
- * "Order more X", (once a day, when tomorrow has anything on it) the
+ * Eleven features generate tasks unattended — each meal of the day becomes a
+ * task, a perishable grocery becomes "Use up X", a leftover about to go bad
+ * becomes "Use up X", an opt-in weekly trigger becomes "Plan meals for…", a
+ * project that has gone quiet becomes "Review X", a pantry guess that has run
+ * out becomes "Check if you still have X", a task's supply running low
+ * becomes "Order more X", (once a day, when tomorrow has anything on it) the
  * calendar becomes "Review tomorrow's calendar", somebody's birthday becomes a
- * task a few days out, and a planned meal the kitchen can't make becomes "Shop
- * for Tue ragu". The first four were each
+ * task a few days out (optionally with a second, earlier one to get them a
+ * gift), and a planned meal the kitchen can't make becomes "Shop for Tue
+ * ragu". The first four were each
  * built by copying the last, which is fine twice and had reached four: four
  * nullable back-pointer columns on `Task`, four hand-written "don't pile up"
  * rules, and three near-identical copies of the same three-input opt-out, two
@@ -31,7 +32,10 @@ export type { GeneratedKind };
  * `birthday` is the ninth. `mealShortfall` is the tenth, and is the first whose
  * source row is one the user edits freely and often, which is why its whole
  * staleness rule is the creation predicate re-run (see
- * `src/utils/mealShortfallTasks.ts`).
+ * `src/utils/mealShortfallTasks.ts`). `birthdayGift` is the eleventh, and costs
+ * no new rules module at all — it lives beside `birthday` in
+ * `src/utils/birthdayTasks.ts` and reuses everything but the lead setting and
+ * the title (see that file's own header).
  * `calendarReview` is the eighth, and it costs the same shape again:
  * `calendarReviewTasks.ts`, an entry here, and a firing beside the other
  * time-based passes. It adds no column at all — its source is tomorrow's day
@@ -110,6 +114,10 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'supplyReorder',
   'calendarReview',
   'birthday',
+  // Beside its pair, the same way pantryCheck sits beside groceryUseUp: to the
+  // person reading Settings, marking a birthday and shopping for it are one
+  // subject, not two unrelated rows to read past each other.
+  'birthdayGift',
   'reachOut',
 ];
 
@@ -214,6 +222,23 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     label: 'Birthday reminders',
     onHint: 'A person with a birthday on file gets a task a few days before it',
     offHint: 'Birthdays add no tasks',
+    icon: 'gift-outline',
+    sourced: true,
+    categorized: true,
+    defaultCategory: 'People',
+  },
+  // Ships off, unlike birthday just above it. Birthday's gate is a fact
+  // entered before this feature existed — the birthday itself — and every
+  // install with a birthday on file would get a second task the moment this
+  // shipped, for a want nobody had actually stated. Turning it on is one
+  // settings tap once somebody wants it, the same "ask first" call pantryCheck
+  // and mealShortfall make for the identical reason: no recorded intent of its
+  // own to point to.
+  birthdayGift: {
+    kind: 'birthdayGift',
+    label: 'Birthday gift reminders',
+    onHint: 'A person with a birthday on file gets a task to get them a gift',
+    offHint: 'Birthdays add no task to get a gift',
     icon: 'gift-outline',
     sourced: true,
     categorized: true,

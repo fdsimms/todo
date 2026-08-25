@@ -122,8 +122,6 @@ import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
-import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
-import { LogLeftoversOffer } from '../components/LogLeftoversOffer';
 import { useProjectStore } from '../store/useProjectStore';
 import { DayContextRow } from '../components/DayContextRow';
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
@@ -966,6 +964,9 @@ export function TodayScreen() {
           // wait for a force-quit. Idempotent: the source id carries the year,
           // so a second run finds the row already there and does nothing.
           useTaskStore.getState().checkBirthdayTasks();
+          // Beside it, same trigger, same idempotency (the source id carries
+          // the year) — off by default, so ordinarily a no-op check.
+          useTaskStore.getState().checkBirthdayGiftTasks();
           // Same trigger again: a cadence runs out by time passing, and stops
           // needing a row the moment anything lands in that person's history —
           // including from this very row, which nothing else would then clear.
@@ -3074,39 +3075,26 @@ export function TodayScreen() {
           <NewTasksBanner tasks={newTasks} onJumpToTask={jumpToTask} onDismiss={dismissNewTasksBanner} />
         )}
 
-        {/* Here as well as on the meal plan, because a meal is ticked off from
-            either: completing a "Cook X" task is a cooking, and the app's only
-            signal that something was *used up* shouldn't depend on which screen
-            the tap landed on. Renders nothing unless a cook just raised one. */}
-        {viewMode === 'today' && <CookedUseUpOffer />}
-
-        {/* The other half of the same tick, and the half the task list didn't
-            have: "Cook X" going green is the moment anyone knows whether there
-            are leftovers. Ranks itself behind the offer above, so the two never
-            stack. Renders nothing unless a cook task raised one. */}
-        {viewMode === 'today' && <LogLeftoversOffer />}
-
         {/* Last of the things above the list, because it's the least urgent of
             them by a distance: anything the app actually has to *ask* is above
             it, and a tip is only ever an aside.
 
             Explicitly suppressed while the new-tasks banner is up, which is
-            the one competing notice this screen knows the state of. The two
-            offers above self-gate internally (they draw nothing unless a cook
-            just raised one), so a tip can in principle land under one — bounded
-            by the fact that both are rare and clear themselves, and by the tip
-            side's own once-a-day limit. See `chooseTip`. */}
+            the one competing notice this screen knows the state of. The other
+            thing a tap here can raise, the post-cook sheet, is raised from the
+            navigator and covers the screen rather than sharing it, so a tip
+            underneath is never a thing you have to read past. See
+            `chooseTip`. */}
         {viewMode === 'today' && newTasks.length === 0 && <TipHost screen="today" />}
 
         {/*
           Nothing about the day's calendar or its menu renders above the list
           any more. Both were a fixed block here — which meant the top of the
           Today screen was never a task — and both are rows in the list itself
-          now (see contextRows / dayContextRows.ts). The one thing still
-          rendered from the kitchen is CookedUseUpOffer above, which is not a
-          standing block: it draws nothing at all unless a meal was just
-          cooked, and it's the moment the "out of anything?" question can be
-          asked at all.
+          now (see contextRows / dayContextRows.ts). Nor does the kitchen render
+          anything here any longer: what a cooking asks is a sheet raised from
+          the navigator (CookRecap), not a banner this screen has to make room
+          for above its own list.
         */}
         <SpotlightOverlay
           visible={spotlightActive}

@@ -255,7 +255,7 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (ten generators now: `mealShortfall` is the newest, and the one whose source the user re-plans freely) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (eleven generators now: `birthdayGift` is the newest, and the one whose source shares a file with the reminder beside it) |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
@@ -338,10 +338,10 @@ exports.
 **Read narrowly.** 44 files are over 1,000 lines, 28 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (6.1k), `components/TaskEditor.tsx` (4.7k), `db/database.ts` (4.2k),
-`store/useGroceryStore.ts` (4.1k), `screens/TodayScreen.tsx` (4.0k), `types/index.ts` (3.6k),
+`store/useTaskStore.ts` (6.2k), `components/TaskEditor.tsx` (4.7k), `db/database.ts` (4.2k),
+`store/useGroceryStore.ts` (4.1k), `screens/TodayScreen.tsx` (4.0k), `types/index.ts` (3.7k),
 `components/TaskItem.tsx` (3.6k), `components/QuickAddModal.tsx` (2.8k),
-`store/useSettingsStore.ts` (2.6k), `utils/demoSeed.ts` (2.4k).
+`store/useSettingsStore.ts` (2.7k), `utils/demoSeed.ts` (2.4k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.

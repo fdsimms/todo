@@ -1628,20 +1628,28 @@ export function RecipeDetailScreen() {
               than one of them going up into an already-crowded header. Plan is
               the quieter of the two: the list is what this screen has always
               been for, and shopping is the step that can't be undone by a tap.
-              Cook joined them as the third verb (#1695), for the same reason
-              and in the same place: it's the one that happens *now*, so it
-              leads. Its label is a word where the others are two, which is what
-              keeps three buttons on a 390pt line. */}
+              Cook mode joined them as the third verb (#1695), for the same
+              reason and in the same place: it's the one that happens *now*, so
+              it leads. Its label is a word where the others are two, which is
+              what keeps three buttons on a 390pt line.
+
+              It says "Steps", not "Cook", because "cook" was already taken:
+              a planned meal's sheet has a "Start cooking" row that starts the
+              recipe's timer and navigates here, so arriving that way and being
+              offered "Cook" read as though the tap hadn't worked. Both wore the
+              same flame glyph too. The button is named for what it shows
+              instead, matching the "Steps" section further up this screen, and
+              the flame stays with the timer. */}
           {cookableCount > 0 && !featureHidden('cookMode', simpleMode) && (
             <TouchableOpacity
               style={styles.secondary}
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); setCookModeVisible(true); }}
               accessibilityRole="button"
-              accessibilityLabel={`Cook ${recipe.name} one step at a time`}
+              accessibilityLabel={`Read ${recipe.name} one step at a time`}
             >
-              <Ionicons name="flame-outline" size={iconSize.sm} color={colors.accent} />
-              <Text style={styles.secondaryText}>Cook</Text>
+              <Ionicons name="list-outline" size={iconSize.sm} color={colors.accent} />
+              <Text style={styles.secondaryText}>Steps</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity

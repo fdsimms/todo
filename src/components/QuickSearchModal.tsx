@@ -25,6 +25,9 @@ import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
 import type { SearchResult } from '../utils/fuzzySearch';
 import { formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
 import { displayTitleFor } from '../utils/visibilityUtils';
+import { peopleOn } from '../utils/peopleRegistry';
+import { matchPersonMentions } from '../utils/parseTaskInput';
+import { mergeRanges } from '../utils/ranges';
 import { formatTaskDate } from '../utils/dateUtils';
 import { format } from 'date-fns/format';
 import { TaskCheckbox } from './TaskCheckbox';
@@ -82,6 +85,14 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
   const { task, titleMatches, projectName, projectMatches, occurrenceCount } = result;
   const categories = useCategoryStore(s => s.categories);
   const displayTitle = displayTitleFor(task);
+  // An "@name" mention stays literal in the title (see matchPersonMentions'
+  // doc comment) and is tinted the same as a matched query term — merged into
+  // one range set since the two can overlap, and HighlightedText needs
+  // disjoint ranges.
+  const titleRanges = useMemo(
+    () => mergeRanges([...titleMatches, ...matchPersonMentions(displayTitle, peopleOn(task)).map((m): [number, number] => [m.start, m.end])]),
+    [titleMatches, displayTitle, task.personIds]
+  );
   const category = categoryLabel(task.category, categories);
 
   // A completed row is placed by when it was done; a live one by the date it
@@ -153,7 +164,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
         <View style={styles.resultTitleRow}>
           <HighlightedText
             text={displayTitle}
-            ranges={titleMatches}
+            ranges={titleRanges}
             style={[styles.resultTitle, task.completed && styles.resultTitleDone]}
             highlightStyle={styles.highlight}
             numberOfLines={1}

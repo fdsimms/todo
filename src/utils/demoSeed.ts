@@ -24,6 +24,8 @@ import { generatedBy } from './generatedTasks';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
+import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
+import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
@@ -428,6 +430,11 @@ export function seedDemoData(): void {
     dueDate: addDays(today, 16).toISOString(),
     deadline: addDays(today, 18).toISOString(),
     estimatedMinutes: 15,
+    // Reminder as a "days before due" offset (Task.reminderOffsetDays) rather
+    // than a fixed instant, so it keeps meaning "a couple of days' notice"
+    // however far the due date itself ends up moving.
+    reminderTime: setHours(addDays(today, 14), 9).toISOString(),
+    reminderOffsetDays: 2,
   });
 
   addTask({
@@ -824,6 +831,10 @@ function seedPeople(today: Date): void {
   updatePerson(dustin.id, {
     birthdayMonth: bdayNear.getMonth() + 1,
     birthdayDay: bdayNear.getDate(),
+    // A year on one of the two, so the seed shows the field exists without
+    // implying everybody's is worth knowing — it's never read back to say
+    // what age he's turning (#2083 removed that; this is a separate field).
+    birthYear: bdayNear.getFullYear() - 34,
     phoneNumber: '555 0148',
     notes: 'Climbs on Wednesdays. Allergic to shellfish.',
   });
@@ -908,6 +919,23 @@ function seedPeople(today: Date): void {
   // than from a row written by hand here: a seeded row that skipped the
   // generator could drift from what the generator actually produces.
   useTaskStore.getState().checkBirthdayTasks();
+  // The gift task is written by hand instead, for pantryCheck's reason: that
+  // pass reads the real install's own settings, and this generator ships off,
+  // so a demo relying on it would show the feature only to people who had
+  // already found it. Its source id is copied off the birthday task's own
+  // rather than recomputed, so the two can never disagree about which year.
+  const dustinBirthdayTask = useTaskStore.getState().tasks
+    .find(t => t.generatedKind === 'birthday' && t.generatedSourceId?.startsWith(`${dustin.id}#`));
+  if (dustinBirthdayTask?.generatedSourceId) {
+    addTask({
+      title: birthdayGiftTitle(dustin),
+      dueDate: today.toISOString(),
+      linkUrl: personLinkUrl(dustin.id),
+      category: dustinBirthdayTask.category,
+      notes: giftIdeasText(usePersonNoteStore.getState().notes, dustin.id, today),
+      ...generatedBy('birthdayGift', dustinBirthdayTask.generatedSourceId),
+    });
+  }
   // And the reminder, through the same pass the app runs at launch. It finds
   // exactly one person opted in, so demo mode opens with one catch-up row
   // rather than a screen of them.
@@ -1349,7 +1377,9 @@ function seedRecipes(): DemoRecipes {
   if (defrost) updatePrepTask(salmon.id, defrost.id, { offsetDays: -1, reminderOffsetMinutes: 120 });
   [0, 1].forEach(() => markCooked(salmon.id));
   // Cooked it twice and decided against a third — the down side of the vote,
-  // set the same way the "How was it?" prompt sets it after Mark cooked.
+  // set the same way the post-cook sheet's "How was it?" section sets it. The
+  // stir-fry below is deliberately left unrated, so cooking tonight's dinner in
+  // the demo is what shows that section being asked.
   setVote(salmon.id, 'down');
   // The shared component — the same mash inside two different dinners, which
   // is the whole point of a reference rather than a copy.
@@ -2389,17 +2419,18 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     });
   }
 
-  // The nights above went through setCooked, which raises the "out of anything
-  // after X?" offer — so the last of them would leave demo mode opening on a
-  // banner about a dinner eight days ago.
+  // The nights above went through setCooked, which raises the post-cook sheet
+  // — so the last of them would drop demo mode straight into a sheet asking
+  // about a dinner eight days ago.
   //
   // It's cleared rather than left standing, and this is the one capability
-  // here that genuinely can't be seeded: the offer isn't a row, it's the app's
+  // here that genuinely can't be seeded: the recap isn't a row, it's the app's
   // answer to a tap you just made. Seeding one would be asserting a tap that
-  // never happened, and its only lasting output is an item marked out of —
-  // which is a *negative*, so it shows up as nothing at all. The honest way to
-  // see this feature is to mark a meal cooked, which the demo is fully set up
-  // for: tonight's stir-fry and its ingredients are all here.
-  useMealPlanStore.getState().clearCookedOffer();
+  // never happened, and its lasting outputs are a rating, a fridge row and an
+  // item marked out of — the last of which is a *negative*, so it shows up as
+  // nothing at all. The honest way to see this feature is to mark a meal
+  // cooked, which the demo is fully set up for: tonight's stir-fry, its
+  // ingredients and an unrated recipe are all here.
+  useMealPlanStore.getState().clearCookRecap();
 
 }

@@ -16,7 +16,14 @@ import {
   USE_UP_TASK_CAP_MAX,
   USE_UP_TASK_CAP_MIN,
 } from '../types';
-import { DEFAULT_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, parseBirthdayLeadDays } from '../utils/birthdayTasks';
+import {
+  DEFAULT_BIRTHDAY_LEAD_DAYS,
+  DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS,
+  clampBirthdayLeadDays,
+  clampBirthdayGiftLeadDays,
+  parseBirthdayLeadDays,
+  parseBirthdayGiftLeadDays,
+} from '../utils/birthdayTasks';
 import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
@@ -466,11 +473,9 @@ interface SettingsStore {
    * about. Naming the meals you actually eat is the only thing the app can't
    * work out for itself — it knows what you planned, never what you skip.
    *
-   * Snack is off by default and the other three are on. A snack has no
-   * time-of-day segment (see MEAL_SLOT_SEGMENTS), so its task would sit on
-   * Today from the moment the day starts rather than surfacing when the meal
-   * does, and a day isn't incomplete for want of one — the same call
-   * MEAL_PLAN_NUDGE_SLOTS makes when it counts a day out of three.
+   * Snack is off by default and the other three are on: a day isn't
+   * incomplete for want of one — the same call MEAL_PLAN_NUDGE_SLOTS makes
+   * when it counts a day out of three.
    */
   mealSlotsEnabled: MealSlot[];
   /**
@@ -510,12 +515,17 @@ interface SettingsStore {
    * resetToDefaults for the same reason as patchNotesQaStatus.
    */
   mealSlotStepEstimates: Record<string, number>;
-  // Whether marking a meal cooked can offer to restock the ingredients it used
-  // that aren't on the list — see OfferBanner and MealPlanScreen's
-  // restockOffer. Defaults on: the offer is already gated on the app being
-  // able to name known items missing from the list (see #1481), so this is a
-  // toggle for someone who never shops from a recipe, not a fix for a bad
-  // default.
+  // Whether marking a meal cooked opens the post-cook sheet at all — see
+  // CookRecap. Defaults on, and the sheet is already gated section by section
+  // on having something to ask (a rating it hasn't got, a fridge that could
+  // gain a container, pantry lines it can name), so this is the switch for
+  // someone who wants a tick to be only a tick.
+  cookRecapEnabled: boolean;
+  // Whether that sheet's restock half appears: the ingredients this meal used
+  // that aren't on the list, and the button that adds them — see CookRecap and
+  // restockRows. Defaults on: it is already gated on the app being able to name
+  // known items missing from the list (see #1481), so this is a toggle for
+  // someone who never shops from a recipe, not a fix for a bad default.
   restockOfferEnabled: boolean;
   // Whether a scanned barcode may be looked up against Open Food Facts to find
   // out what it is — see src/services/productLookup.ts.
@@ -732,6 +742,20 @@ interface SettingsStore {
   // Which category a birthday task files itself under, by name, or null for
   // none — same setting as the other generators' for the same reason.
   birthdayTaskCategory: string | null;
+  // Whether a person with a birthday on file also gets a task to get them a
+  // gift (see src/utils/birthdayTasks.ts). Defaults OFF, unlike birthdayTasks
+  // just above it: that one's gate is a fact entered before this feature
+  // existed, and shipping this one on would double every current birthday's
+  // task count for a want nobody had actually stated. Same "ask first" call
+  // pantryCheckTasks makes below.
+  birthdayGiftTasks: boolean;
+  // How many days before the birthday the gift task lands — its own setting,
+  // separate from birthdayLeadDays, because buying or shipping something
+  // usually needs more notice than a card does.
+  birthdayGiftLeadDays: number;
+  // Which category a birthday-gift task files itself under, by name, or null
+  // for none — same setting as the other generators' for the same reason.
+  birthdayGiftTaskCategory: string | null;
   // Whether a person whose cadence has run out gets a "Catch up with X" task
   // (see src/utils/reachOutTasks.ts). Ships ON, like birthdayTasks: the real
   // gate is per person and defaults to off, so an install where nobody has been
@@ -886,6 +910,7 @@ interface SettingsStore {
   setMealSlotsEnabled: (slots: MealSlot[]) => void;
   setMealSlotTasksWrittenThroughDayKey: (dayKey: string | null) => void;
   setMealSlotStepEstimate: (stepId: string, minutes: number) => void;
+  setCookRecapEnabled: (on: boolean) => void;
   setRestockOfferEnabled: (on: boolean) => void;
   setProductLookupEnabled: (on: boolean) => void;
   setSortOption: (sort: SortOption) => void;
@@ -961,6 +986,9 @@ interface SettingsStore {
   setBirthdayTasks: (on: boolean) => void;
   setBirthdayLeadDays: (days: number) => void;
   setBirthdayTaskCategory: (category: string | null) => void;
+  setBirthdayGiftTasks: (on: boolean) => void;
+  setBirthdayGiftLeadDays: (days: number) => void;
+  setBirthdayGiftTaskCategory: (category: string | null) => void;
   setReachOutTasks: (on: boolean) => void;
   setReachOutTaskCategory: (category: string | null) => void;
   setPantryCheckTasks: (on: boolean) => void;
@@ -1042,6 +1070,7 @@ const DEFAULT_SETTINGS = {
   mealCookTaskCategory: null,
   mealSlotsEnabled: [...DEFAULT_MEAL_SLOTS_ENABLED],
   mealSlotTasksWrittenThroughDayKey: null,
+  cookRecapEnabled: true,
   restockOfferEnabled: true,
   productLookupEnabled: true,
   groceryUseUpTasks: false,
@@ -1388,6 +1417,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealSlotsEnabled: [...DEFAULT_MEAL_SLOTS_ENABLED],
   mealSlotTasksWrittenThroughDayKey: null,
   mealSlotStepEstimates: {},
+  cookRecapEnabled: true,
   restockOfferEnabled: true,
   productLookupEnabled: true,
   groceryUseUpTasks: false,
@@ -1421,6 +1451,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   birthdayTasks: true,
   birthdayLeadDays: DEFAULT_BIRTHDAY_LEAD_DAYS,
   birthdayTaskCategory: null,
+  birthdayGiftTasks: false,
+  birthdayGiftLeadDays: DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS,
+  birthdayGiftTaskCategory: null,
   reachOutTasks: true,
   reachOutTaskCategory: null,
   pantryCheckTasks: false,
@@ -1566,7 +1599,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         mealSlotStepEstimates = {};
       }
     }
-    // Defaults on, same reading as mealCookTasks above.
+    // Both default on, same reading as mealCookTasks above.
+    const cookRecapEnabled = dbGetSetting('cookRecapEnabled') !== 'false';
     const restockOfferEnabled = dbGetSetting('restockOfferEnabled') !== 'false';
     // Reads `!== 'false'` like the booleans above it, so an install that
     // predates this setting gets the default without a migration.
@@ -1646,6 +1680,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const birthdayTasks = dbGetSetting('birthdayTasks') !== 'false';
     const birthdayLeadDays = parseBirthdayLeadDays(dbGetSetting('birthdayLeadDays'));
     const birthdayTaskCategory = dbGetSetting('birthdayTaskCategory') || null;
+    // Missing row reads as off, unlike birthdayTasks above — see the field's
+    // own doc comment for why this one ships off.
+    const birthdayGiftTasks = dbGetSetting('birthdayGiftTasks') === 'true';
+    const birthdayGiftLeadDays = parseBirthdayGiftLeadDays(dbGetSetting('birthdayGiftLeadDays'));
+    const birthdayGiftTaskCategory = dbGetSetting('birthdayGiftTaskCategory') || null;
     const reachOutTasks = dbGetSetting('reachOutTasks') !== 'false';
     const reachOutTaskCategory = dbGetSetting('reachOutTaskCategory') || null;
     // `=== 'true'`, the opt-in reading the nudge takes rather than the one
@@ -1758,7 +1797,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2009,6 +2048,22 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setBirthdayTaskCategory(category: string | null) {
     dbSetSetting('birthdayTaskCategory', category ?? '');
     set({ birthdayTaskCategory: category });
+  },
+
+  setBirthdayGiftTasks(on: boolean) {
+    dbSetSetting('birthdayGiftTasks', on ? 'true' : 'false');
+    set({ birthdayGiftTasks: on });
+  },
+
+  setBirthdayGiftLeadDays(days: number) {
+    const clamped = clampBirthdayGiftLeadDays(days);
+    dbSetSetting('birthdayGiftLeadDays', String(clamped));
+    set({ birthdayGiftLeadDays: clamped });
+  },
+
+  setBirthdayGiftTaskCategory(category: string | null) {
+    dbSetSetting('birthdayGiftTaskCategory', category ?? '');
+    set({ birthdayGiftTaskCategory: category });
   },
 
   setReachOutTasks(on: boolean) {
@@ -2321,9 +2376,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     });
   },
 
-  // Leaves an offer already standing when this is switched off mid-flight
-  // exactly where it is — see the note by setMealCookTasks. The flag is only
-  // consulted when a meal is marked cooked, not retroactively.
+  // Unlike the two below it, this one *is* consulted retroactively: CookRecap
+  // reads it on every render and clears a recap already standing when it goes
+  // off, because what this governs is a sheet that is on screen rather than a
+  // row already written. Switching it off with one open closes it.
+  setCookRecapEnabled(on: boolean) {
+    dbSetSetting('cookRecapEnabled', on ? 'true' : 'false');
+    set({ cookRecapEnabled: on });
+  },
+
+  // Read live by CookRecap, like the switch above it: what it governs is one
+  // section of a sheet that may be on screen, so switching it off takes that
+  // section away rather than waiting for the next cooking.
   setRestockOfferEnabled(on: boolean) {
     dbSetSetting('restockOfferEnabled', on ? 'true' : 'false');
     set({ restockOfferEnabled: on });

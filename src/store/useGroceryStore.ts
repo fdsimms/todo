@@ -242,7 +242,7 @@ interface GroceryStore {
    * the task and correcting the pantry happen in one motion instead of the
    * task going quiet with the pantry untouched. Set by
    * useTaskStore.completeTask, cleared by uncompleteTask (same shape as
-   * useMealPlanStore's cookedOffer) and once the prompt is answered or
+   * useMealPlanStore's cookRecap) and once the prompt is answered or
    * dismissed.
    *
    * Session-only, like the trip fields above: it's about a tap just made,
@@ -476,7 +476,7 @@ interface GroceryStore {
   setOnHandUntil: (id: string, until: string | null) => void;
   /**
    * "Out of it" for several rows at once — what a cook reports it used up
-   * (CookedUseUpSheet), where the item sheet's pill says it one row at a time.
+   * (CookRecapSheet), where the item sheet's pill says it one row at a time.
    *
    * Exactly the assertion that pill writes, batched: `OUT_OF_IT_UNTIL` on each,
    * nothing else touched. It's a separate action rather than a loop over
@@ -488,7 +488,7 @@ interface GroceryStore {
    * returns is what actually changed and an all-no-op call registers no undo.
    *
    * **`outcome` is for the caller that already knows how the thing left.** A
-   * cook reports what it used up, so `CookedUseUpSheet` passes `'usedUp'` and
+   * cook reports what it used up, so `CookRecapSheet` passes `'usedUp'` and
    * nothing is asked. Left off, a single-row call raises `disposalOffer`
    * instead, because a ✕ says only that the thing is gone. A multi-row call
    * with no outcome asks nothing at all: one question per row about a batch is

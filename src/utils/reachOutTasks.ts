@@ -141,8 +141,12 @@ export interface ReachOutCandidate {
  * is the honest trade, and the alternative is the app quietly deciding which
  * friend it thinks you have let down most.
  *
- * Somebody with no history at all counts as due once they are opted in: the
- * point of asking to be reminded about a new person is the first reminder.
+ * Somebody with no history at all is measured against `cadenceSetAt` instead —
+ * the day the cadence was turned on. Opting somebody in must not itself read as
+ * "it has already been long enough": the first nudge waits out the cadence from
+ * there, same as it eventually will from real history. A person with neither
+ * (an install that opted in before this field existed) falls back to counting
+ * as due immediately, which is the old behavior rather than a new one.
  */
 export function wantedReachOuts(
   candidates: readonly ReachOutCandidate[],
@@ -158,8 +162,9 @@ export function wantedReachOuts(
       if (person.archived) return false;
       if (handledRecently.has(person.id)) return false;
       if (declinedRecently(person, today)) return false;
-      if (!lastTogether) return true;
-      return differenceInCalendarDays(today, lastTogether) >= person.cadenceDays;
+      const anchor = lastTogether ?? (person.cadenceSetAt ? new Date(person.cadenceSetAt) : null);
+      if (!anchor) return true;
+      return differenceInCalendarDays(today, anchor) >= person.cadenceDays;
     })
     .sort((a, b) => a.person.sortOrder - b.person.sortOrder)
     .slice(0, Math.max(0, cap))

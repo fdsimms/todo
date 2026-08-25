@@ -41,7 +41,9 @@ export function blankPerson(name: string, sortOrder: number): Person {
     createdAt: new Date().toISOString(),
     birthdayMonth: null,
     birthdayDay: null,
+    birthYear: null,
     birthdayTaskOptOut: false,
+    birthdayGiftTaskOptOut: false,
     phoneNumber: null,
     email: null,
     linkUrl: null,
@@ -50,6 +52,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
     // never asks and never answers. See rule 4 in docs/arch/people.md.
     cadenceDays: 0,
     nudgeOptIn: false,
+    cadenceSetAt: null,
     reachOutDeclinedAt: null,
     askAbout: '',
   };
@@ -63,9 +66,9 @@ export function displayNameOf(person: Pick<Person, 'name' | 'nickname'>): string
 /** The fields the editor may write. Deliberately every field except identity and order. */
 export type PersonPatch = Partial<Pick<Person,
   | 'name' | 'nickname' | 'notes'
-  | 'birthdayMonth' | 'birthdayDay' | 'birthdayTaskOptOut'
+  | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'birthdayTaskOptOut' | 'birthdayGiftTaskOptOut'
   | 'phoneNumber' | 'email' | 'linkUrl'
-  | 'cadenceDays' | 'nudgeOptIn' | 'reachOutDeclinedAt' | 'askAbout'
+  | 'cadenceDays' | 'nudgeOptIn' | 'cadenceSetAt' | 'reachOutDeclinedAt' | 'askAbout'
 >>;
 
 interface PersonStore {

@@ -705,13 +705,13 @@ opened on Tuesday keeps a week from Tuesday.
   two places for one jar reads as a contradiction.
 
 **A cooking opens what it was made of, and that is the one pantry claim the app makes unasked.**
-`useMealPlanStore.setCooked` stamps `openedAt` on every line the cook offer would ask about
+`useMealPlanStore.setCooked` stamps `openedAt` on every line the post-cook sheet would ask about
 (`consumedRows` → `markOpenedMany`), which until then depended on somebody going to each item's own
-sheet and toggling it. The line it stops at is the one `CookedUseUpSheet` guards: *how much* is
+sheet and toggling it. The line it stops at is the one `CookRecapSheet` guards: *how much* is
 left is a question about real-world amounts only the person can answer, so consumption is still
 asked. That a packet got opened isn't a guess at all — you can't cook with a sealed jar.
 
-- **It writes over the offer's own set, so the offer's restraint carries**: only lines the app
+- **It writes over the sheet's own set, so that restraint carries**: only lines the app
   already claims you have, never a staple, never a name with no catalog row. A row that turns out
   to have been *finished* is marked out by the sheet, which outranks anything said here.
 - **It is dated to the meal's own day once that day has passed** (`openedAtForCook`), unlike every
@@ -799,12 +799,12 @@ up leftover chili" open two sheets through one mechanism and only one of them as
   on the tap, so the pantry is already correct and the answer is pure extra — which is what lets
   the cheapest correction in the app stay one tap, the trade this doc makes above when it gives a
   catalog row a ✕ and a container a sheet. An ignored question leaves nothing wrong.
-- **A caller that already knows passes the outcome and nothing is asked.** `CookedUseUpSheet`
+- **A caller that already knows passes the outcome and nothing is asked.** `CookRecapSheet`
   passes `'usedUp'`, because the cooking *is* the answer. It's also the one caller reporting
-  several rows at once, and a per-row question about a batch is the "recall five kitchens" the cook
-  offer already declines for `bulkSetCooked` — so the offer is raised only when exactly one row
+  several rows at once, and a per-row question about a batch is the "recall five kitchens" the
+  recap already declines for `bulkSetCooked` — so the offer is raised only when exactly one row
   actually changed.
-- **The offer is session-only, like `cookedOffer`.** It's about a tap just made, so there's nothing
+- **The offer is session-only, like `cookRecap`.** It's about a tap just made, so there's nothing
   for it to mean on the next launch and nothing to persist a dismissal for. A question about a bag
   of spinach thrown out last Tuesday is not one anybody can answer.
 - **Only the spoiled side is ever named, and it's always dated.** "Used it up 5 of 5 times" is not

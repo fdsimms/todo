@@ -151,6 +151,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
+  reminderOffsetDays: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],

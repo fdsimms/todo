@@ -715,6 +715,15 @@ describe('demo mode', () => {
     expect(persistent.every(t => t.reminderTime !== null)).toBe(true);
   });
 
+  it('seeds a reminder set as "N days before due" rather than a fixed instant', () => {
+    useDemoStore.getState().enterDemoMode();
+    const relative = useTaskStore.getState().tasks.filter(t => t.reminderOffsetDays !== null);
+
+    expect(relative.length).toBeGreaterThan(0);
+    // Only meaningful with both a due date and a reminder time to anchor.
+    expect(relative.every(t => t.dueDate !== null && t.reminderTime !== null)).toBe(true);
+  });
+
   // A title rule is invisible until something has actually been filed by one,
   // so proving the rule exists isn't enough — what this pins is that the
   // seeded task got its category, tag and effort from the rule and not from
@@ -876,6 +885,11 @@ describe('demo seed — people', () => {
     expect(people.some(p => p.birthdayMonth === null && p.birthdayDay === null)).toBe(true);
   });
 
+  it('seeds one birth year, so the field reads as present without implying everybody needs one', () => {
+    const people = usePersonStore.getState().people;
+    expect(people.some(p => p.birthYear !== null)).toBe(true);
+  });
+
   it('seeds a nickname, which is otherwise invisible', () => {
     expect(usePersonStore.getState().people.some(p => p.nickname !== '')).toBe(true);
   });
@@ -919,6 +933,19 @@ describe('demo seed — people', () => {
     // And it names nobody, so the app's own row can't enter a history meant to
     // hold what you actually did together.
     expect(birthdayTasks[0].personIds).toEqual([]);
+  });
+
+  // This generator ships off, so it's written by hand rather than through
+  // checkBirthdayGiftTasks — a demo relying on the real setting would show the
+  // feature only to people who had already found it.
+  it('puts a real birthday-gift task on the list, sharing the reminder\'s source year', () => {
+    const giftTasks = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'birthdayGift');
+    expect(giftTasks).toHaveLength(1);
+    expect(giftTasks[0].title).toMatch(/^Get /);
+    expect(giftTasks[0].personIds).toEqual([]);
+    const birthdayTask = useTaskStore.getState().tasks
+      .find(t => t.generatedKind === 'birthday' && t.generatedSourceId === giftTasks[0].generatedSourceId);
+    expect(birthdayTask).toBeDefined();
   });
 
   it('seeds tasks that name people, both planned and already done', () => {
@@ -982,6 +1009,12 @@ describe('demo seed — people', () => {
       .find(t => t.generatedKind === 'birthday' && t.generatedSourceId?.startsWith(gift.personId));
     expect(task).toBeDefined();
     expect(task!.notes).toContain(gift.text);
+    // And onto the gift task too — one names the day, the other is the
+    // shopping trip, and the ideas are useful sitting on either.
+    const giftTask = useTaskStore.getState().tasks
+      .find(t => t.generatedKind === 'birthdayGift' && t.generatedSourceId?.startsWith(gift.personId));
+    expect(giftTask).toBeDefined();
+    expect(giftTask!.notes).toContain(gift.text);
   });
 
   it('seeds a dated note and one whose day has passed, which render differently', () => {
@@ -1662,14 +1695,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect([...ahead].some(date => !dinners.has(date))).toBe(true);
   });
 
-  it('leaves no post-cook offer standing, but sets tonight up to raise one', () => {
-    // The "out of anything after X?" offer is the app's answer to a tap you
-    // just made, so it can't be seeded — the past nights the seed marks cooked
-    // would otherwise leave demo mode opening on a banner about a dinner eight
-    // days ago. What *can* be checked is the claim the seed comment makes: that
-    // cooking tonight's dinner raises one, which is the only honest way to see
-    // this feature in the demo.
-    expect(useMealPlanStore.getState().cookedOffer).toBeNull();
+  it('leaves no post-cook recap standing, but sets tonight up to raise one', () => {
+    // The recap is the app's answer to a tap you just made, so it can't be
+    // seeded — the past nights the seed marks cooked would otherwise drop demo
+    // mode straight into a sheet about a dinner eight days ago. What *can* be
+    // checked is the claim the seed comment makes: that cooking tonight's
+    // dinner raises one, which is the only honest way to see this in the demo.
+    expect(useMealPlanStore.getState().cookRecap).toBeNull();
 
     const tonight = useMealPlanStore.getState().entries.find(
       e => e.title === 'Weeknight chicken stir-fry' && !e.cookedAt
@@ -1678,12 +1710,22 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
 
     useMealPlanStore.getState().setCooked(tonight!.id, true);
 
-    // Raised because the stir-fry calls for rice and the seeded pantry claims
-    // you have rice — the offer can only ever take away a claim the app is
-    // already making, so the overlap is what makes it demonstrable at all.
-    expect(useMealPlanStore.getState().cookedOffer).toMatchObject({
+    // Worth showing because the stir-fry calls for rice and the seeded pantry
+    // claims you have rice — the sheet's pantry section can only ever take away
+    // a claim the app is already making, so that overlap is what makes it
+    // demonstrable rather than an empty section.
+    expect(useMealPlanStore.getState().cookRecap).toMatchObject({
       recipeName: 'Weeknight chicken stir-fry',
+      canLogLeftovers: true,
     });
+
+    // And the rating section has something to ask, which is the other half of
+    // the sheet being demonstrable: the seed rates the salmon and deliberately
+    // leaves tonight's dish unrated.
+    const stirFry = useRecipeStore.getState().recipes.find(
+      r => r.name === 'Weeknight chicken stir-fry'
+    );
+    expect(stirFry?.vote).toBeNull();
   });
 
   it('seeds meal tasks as chains, and a meal that deliberately has none', () => {
@@ -1705,8 +1747,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // it hasn't been decided. Both states in one screen is the seed's job.
     const days = new Set(mealTasks.map(t => parseMealSlotSource(t.generatedSourceId)!.dayKey));
     expect(days.size).toBeGreaterThan(1);
-    // Segmented to its slot — the mechanism that keeps dinner off the morning.
-    expect(mealTasks.some(t => t.timeSegments.includes('evening'))).toBe(true);
+    // No slot gates its task behind a time-of-day segment any more, so a
+    // meal task is visible on Today at any time of day, dinner included.
+    expect(mealTasks.every(t => t.timeSegments.length === 0)).toBe(true);
 
     // Today's answered slots step through cooking and then eating, so the chain
     // is visible in the seed rather than only on a day nobody has planned.
