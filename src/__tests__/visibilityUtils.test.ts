@@ -1714,7 +1714,7 @@ describe('blocking', () => {
     const dustin = {
       id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
       archived: false, archivedAt: null, createdAt: NOW.toISOString(),
-      birthdayMonth: null, birthdayDay: null, birthdayTaskOptOut: false,
+      birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false,
       phoneNumber: null, email: null, linkUrl: null,
       cadenceDays: 0, nudgeOptIn: false, reachOutDeclinedAt: null, askAbout: '',
     };

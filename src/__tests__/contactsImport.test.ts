@@ -20,6 +20,7 @@ function candidate(over: Partial<ContactCandidate> = {}): ContactCandidate {
     email: null,
     birthdayMonth: null,
     birthdayDay: null,
+    birthYear: null,
     ...over,
   };
 }
@@ -32,49 +33,64 @@ describe('contactBirthday', () => {
   // The one conversion in the feature, and it would fail silently: every value
   // is still in range a month early.
   it('converts the native 0-indexed month to the 1-12 the column stores', () => {
-    expect(contactBirthday({ month: 0, day: 14 })).toEqual({ birthdayMonth: 1, birthdayDay: 14 });
-    expect(contactBirthday({ month: 2, day: 14 })).toEqual({ birthdayMonth: 3, birthdayDay: 14 });
-    expect(contactBirthday({ month: 11, day: 25 })).toEqual({ birthdayMonth: 12, birthdayDay: 25 });
+    expect(contactBirthday({ month: 0, day: 14 })).toEqual({ birthdayMonth: 1, birthdayDay: 14, birthYear: null });
+    expect(contactBirthday({ month: 2, day: 14 })).toEqual({ birthdayMonth: 3, birthdayDay: 14, birthYear: null });
+    expect(contactBirthday({ month: 11, day: 25 })).toEqual({ birthdayMonth: 12, birthdayDay: 25, birthYear: null });
   });
 
-  it('keeps February 29, which is the whole reason the year is separate', () => {
-    expect(contactBirthday({ month: 1, day: 29 })).toEqual({ birthdayMonth: 2, birthdayDay: 29 });
+  it('keeps February 29, which a stored year could otherwise clamp away', () => {
+    expect(contactBirthday({ month: 1, day: 29 })).toEqual({ birthdayMonth: 2, birthdayDay: 29, birthYear: null });
+  });
+
+  it('carries a plausible year along with the month and day', () => {
+    expect(contactBirthday({ month: 2, day: 14, year: 1992 }))
+      .toEqual({ birthdayMonth: 3, birthdayDay: 14, birthYear: 1992 });
+  });
+
+  it('drops an implausible year rather than storing it', () => {
+    expect(contactBirthday({ month: 2, day: 14, year: 1899 })).toEqual({ birthdayMonth: 3, birthdayDay: 14, birthYear: null });
+    expect(contactBirthday({ month: 2, day: 14, year: new Date().getFullYear() + 1 }))
+      .toEqual({ birthdayMonth: 3, birthdayDay: 14, birthYear: null });
   });
 
   it('is nulls for a contact with no birthday', () => {
-    expect(contactBirthday(null)).toEqual({ birthdayMonth: null, birthdayDay: null });
-    expect(contactBirthday(undefined)).toEqual({ birthdayMonth: null, birthdayDay: null });
-    expect(contactBirthday({})).toEqual({ birthdayMonth: null, birthdayDay: null });
+    expect(contactBirthday(null)).toEqual({ birthdayMonth: null, birthdayDay: null, birthYear: null });
+    expect(contactBirthday(undefined)).toEqual({ birthdayMonth: null, birthdayDay: null, birthYear: null });
+    expect(contactBirthday({})).toEqual({ birthdayMonth: null, birthdayDay: null, birthYear: null });
   });
 
   it('refuses half a date, since a month with no day computes nothing', () => {
-    expect(contactBirthday({ month: 5 })).toEqual({ birthdayMonth: null, birthdayDay: null });
-    expect(contactBirthday({ day: 14 })).toEqual({ birthdayMonth: null, birthdayDay: null });
+    expect(contactBirthday({ month: 5 })).toEqual({ birthdayMonth: null, birthdayDay: null, birthYear: null });
+    expect(contactBirthday({ day: 14 })).toEqual({ birthdayMonth: null, birthdayDay: null, birthYear: null });
   });
 
   it('refuses a value out of range rather than storing it', () => {
-    expect(contactBirthday({ month: 12, day: 1 })).toEqual({ birthdayMonth: null, birthdayDay: null });
-    expect(contactBirthday({ month: -1, day: 1 })).toEqual({ birthdayMonth: null, birthdayDay: null });
-    expect(contactBirthday({ month: 0, day: 0 })).toEqual({ birthdayMonth: null, birthdayDay: null });
-    expect(contactBirthday({ month: 0, day: 32 })).toEqual({ birthdayMonth: null, birthdayDay: null });
+    expect(contactBirthday({ month: 12, day: 1 })).toEqual({ birthdayMonth: null, birthdayDay: null, birthYear: null });
+    expect(contactBirthday({ month: -1, day: 1 })).toEqual({ birthdayMonth: null, birthdayDay: null, birthYear: null });
+    expect(contactBirthday({ month: 0, day: 0 })).toEqual({ birthdayMonth: null, birthdayDay: null, birthYear: null });
+    expect(contactBirthday({ month: 0, day: 32 })).toEqual({ birthdayMonth: null, birthdayDay: null, birthYear: null });
   });
 
   it('refuses a non-number rather than coercing it', () => {
-    expect(contactBirthday({ month: NaN, day: 3 })).toEqual({ birthdayMonth: null, birthdayDay: null });
+    expect(contactBirthday({ month: NaN, day: 3 })).toEqual({ birthdayMonth: null, birthdayDay: null, birthYear: null });
   });
 });
 
 describe('describeCandidateBirthday', () => {
   it('says the month and the day', () => {
-    expect(describeCandidateBirthday({ birthdayMonth: 3, birthdayDay: 14 })).toBe('March 14');
+    expect(describeCandidateBirthday({ birthdayMonth: 3, birthdayDay: 14, birthYear: null })).toBe('March 14');
+  });
+
+  it('adds the year once one is on file', () => {
+    expect(describeCandidateBirthday({ birthdayMonth: 3, birthdayDay: 14, birthYear: 1992 })).toBe('March 14, 1992');
   });
 
   it('renders February 29 as itself rather than clamping it', () => {
-    expect(describeCandidateBirthday({ birthdayMonth: 2, birthdayDay: 29 })).toBe('February 29');
+    expect(describeCandidateBirthday({ birthdayMonth: 2, birthdayDay: 29, birthYear: null })).toBe('February 29');
   });
 
   it('says nothing when there is no birthday', () => {
-    expect(describeCandidateBirthday({ birthdayMonth: null, birthdayDay: null })).toBe('');
+    expect(describeCandidateBirthday({ birthdayMonth: null, birthdayDay: null, birthYear: null })).toBe('');
   });
 });
 
@@ -182,19 +198,21 @@ describe('rankContacts', () => {
 });
 
 describe('contactPersonDraft', () => {
-  it('carries the name, number, email and birthday', () => {
+  it('carries the name, number, email and birthday, year included', () => {
     expect(contactPersonDraft(candidate({
       name: '  Dustin Reyes ',
       phoneNumber: '555 0148',
       email: 'd@example.com',
       birthdayMonth: 3,
       birthdayDay: 14,
+      birthYear: 1992,
     }))).toEqual({
       name: 'Dustin Reyes',
       phoneNumber: '555 0148',
       email: 'd@example.com',
       birthdayMonth: 3,
       birthdayDay: 14,
+      birthYear: 1992,
     });
   });
 

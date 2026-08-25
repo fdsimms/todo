@@ -422,8 +422,11 @@ system contact book already has it.
   convention and `Person.birthdayMonth` is 1-12, so a straight copy puts every
   birthday a month early — silently, since every value is still in range. That
   conversion is the one piece of arithmetic in the feature and it has its own
-  test. The year is dropped because there is nowhere to put it any more (#2083),
-  which is fine: a year-less birthday was always the common case here.
+  test. **The year rides along too, when the contact has one** (`contactBirthday`)
+  — `Person.birthYear` came back for its own sake (#2103, see "The birthday
+  picker" below), so there is somewhere to put it again. It is still never kept
+  on its own: a year with no month/day is not a birthday, the same "both halves
+  together" rule the month and day already follow.
 - **A copy, never a link.** Nothing on a `Person` points back at a contact. A
   linked person would mean holding the permission indefinitely, a background
   reconcile, and rows changing under the user; a stale number is a smaller
@@ -610,14 +613,35 @@ say "dinner here on Thursday" without anything having been ticked off.
   to names and answers "which meals name this person"; there is no derivation of
   frequency, and adding one is the disease this doc exists to prevent.
 
-## The birthday picker keeps only the month and the day
+## The birthday picker is three wheels, not a calendar (#2103)
 
-`PersonEditor` opens `WhenPicker` on the current year and throws the year away.
-That is what makes paging sane: a birth *date* would mean paging back thirty
-years a month at a time, where a birth *day* is at most eleven taps from
-wherever the grid opens. The year is a separate optional field with an "e.g."
-placeholder, because the year is the half people genuinely don't know, and a
-birthday with no year is the common case rather than missing data.
+`PersonEditor` opens `BirthdayPicker`, not `WhenPicker`. `WhenPicker` is built
+for scheduling a task and it shows: a Today/Tomorrow shortcut row (a birthday
+being today or tomorrow is a ~1-in-180 chance, not a shortcut worth a whole
+row), a month calendar grid whose day-of-week and current-year placement mean
+nothing for a birthday, and day-load bars scored against the current year's
+actual tasks — all of it noise for "what month and day were they born". A
+birthday is a month and a day the user already knows, so three native spinner
+wheels (month, day, year) answer the question directly instead of routing it
+through a control built to answer a different one.
+
+**The year is a separate decision from the month and day, gated by its own
+"Include year" toggle, off by default.** The native spinner always shows some
+concrete year — there is no blank wheel position — so without an explicit
+toggle there would be no way to tell "this person's year is 1992" apart from
+"the wheel happened to be sitting on 1992". Off by default because a
+year-less birthday is the common case (people genuinely don't know it), and
+this is the one field on the sheet where silence is the honest default, not a
+gap. Turning it off doesn't clear a year already on file until Save; turning
+it on takes whatever year the wheel is currently sitting on.
+
+**`Person.birthYear` is never read to compute anything.** It existed once
+before, solely to back a "Turning 34" chip, and once that display was removed
+(#2083) the field had no purpose left, so it went too — the SQLite column
+stayed (`birth_year`, unread) because dropping a column means a table
+rebuild. This is a second, unrelated life for the same column: something
+worth recording about somebody, with nothing anywhere deriving an age from
+it. Don't wire one back up; that was tried and undone once already.
 
 ## Templates that ask who
 

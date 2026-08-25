@@ -47,16 +47,19 @@ export interface ContactCandidate {
   /** 1-12, already converted off the native module's 0-11 — see `contactBirthday`. */
   birthdayMonth: number | null;
   birthdayDay: number | null;
+  /** Only ever copied alongside a month and day — see `contactBirthday`. */
+  birthYear: number | null;
 }
 
 /** What gets written when one is picked. Deliberately a subset of `Person`. */
 export type ContactPersonDraft = Pick<
   Person,
-  'name' | 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay'
+  'name' | 'phoneNumber' | 'email' | 'birthdayMonth' | 'birthdayDay' | 'birthYear'
 >;
 
 /**
- * The month and day off a native contact's birthday, or nulls.
+ * The month, day and (if the contact has one) year off a native contact's
+ * birthday, or nulls.
  *
  * **`month` arrives 0-indexed and `Person.birthdayMonth` is 1-12.** The native
  * module follows the JS `Date` convention and this app's column follows the
@@ -65,30 +68,34 @@ export type ContactPersonDraft = Pick<
  * every value is still in range. This is the one conversion in the feature and
  * it has its own test.
  *
- * **The year is dropped, and that is not data loss.** `Person` has no birth
- * year any more (#2083 removed it), so there is nothing to put it in. A
- * year-less birthday was always the common case here anyway — which is why the
- * month and day were stored apart from it in the first place.
- *
- * Both halves together or neither: a month with no day is not a date anything
- * can be computed from, the same rule `PersonEditor`'s own clear follows.
+ * **The year rides along only when the month and day are both good.** `Person`
+ * keeps a year (#2083 removed it for a display that no longer exists, but the
+ * field itself came back for its own sake — see `Person.birthYear`), so a
+ * contact's year is no longer dropped on principle. But it is still never kept
+ * on its own: a year with no month/day is not a birthday anything can be
+ * computed from, the same "both halves together" rule `PersonEditor`'s own
+ * clear follows for month and day.
  */
 export function contactBirthday(
-  birthday: { month?: number | null; day?: number | null } | null | undefined
-): { birthdayMonth: number | null; birthdayDay: number | null } {
+  birthday: { month?: number | null; day?: number | null; year?: number | null } | null | undefined
+): { birthdayMonth: number | null; birthdayDay: number | null; birthYear: number | null } {
   const rawMonth = birthday?.month;
   const day = birthday?.day;
   if (
     typeof rawMonth !== 'number' || typeof day !== 'number' ||
     !Number.isFinite(rawMonth) || !Number.isFinite(day)
   ) {
-    return { birthdayMonth: null, birthdayDay: null };
+    return { birthdayMonth: null, birthdayDay: null, birthYear: null };
   }
   const month = rawMonth + 1;
   if (month < 1 || month > 12 || day < 1 || day > 31) {
-    return { birthdayMonth: null, birthdayDay: null };
+    return { birthdayMonth: null, birthdayDay: null, birthYear: null };
   }
-  return { birthdayMonth: month, birthdayDay: day };
+  const rawYear = birthday?.year;
+  const year = typeof rawYear === 'number' && Number.isInteger(rawYear) && rawYear > 1900 && rawYear <= new Date().getFullYear()
+    ? rawYear
+    : null;
+  return { birthdayMonth: month, birthdayDay: day, birthYear: year };
 }
 
 /** Digits only, so "(555) 018-2277" and "5550182277" are the same number. */
@@ -181,19 +188,20 @@ export function rankContacts(
 }
 
 /**
- * "March 14", or empty when there is no birthday on the contact.
+ * "March 14", or "March 14, 1992" when the contact carries a year too, or
+ * empty when there is no birthday on the contact.
  *
- * Month and day only, because that is all `Person` keeps (#2083 removed the
- * birth year) and all the row needs to say. Built in a **leap year** so a
+ * Built in a **leap year** when there's no real one to anchor to, so a
  * February 29 birthday renders as itself rather than being clamped to the 28th
  * by whichever year happened to be handy — the same trap `recurrenceAnchorDay`
  * exists to stop one shelf over.
  */
 export function describeCandidateBirthday(
-  candidate: Pick<ContactCandidate, 'birthdayMonth' | 'birthdayDay'>
+  candidate: Pick<ContactCandidate, 'birthdayMonth' | 'birthdayDay' | 'birthYear'>
 ): string {
   if (candidate.birthdayMonth === null || candidate.birthdayDay === null) return '';
-  return format(new Date(2024, candidate.birthdayMonth - 1, candidate.birthdayDay, 12), 'MMMM d');
+  const date = new Date(candidate.birthYear ?? 2024, candidate.birthdayMonth - 1, candidate.birthdayDay, 12);
+  return format(date, candidate.birthYear ? 'MMMM d, yyyy' : 'MMMM d');
 }
 
 /**
@@ -213,5 +221,6 @@ export function contactPersonDraft(candidate: ContactCandidate): ContactPersonDr
     email: email ? email : null,
     birthdayMonth: candidate.birthdayMonth,
     birthdayDay: candidate.birthdayDay,
+    birthYear: candidate.birthYear,
   };
 }

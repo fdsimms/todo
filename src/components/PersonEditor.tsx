@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Person } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { usePersonStore } from '../store/usePersonStore';
-import { WhenPicker } from './WhenPicker';
+import { BirthdayPicker } from './BirthdayPicker';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
@@ -29,12 +29,18 @@ interface Props {
   onClose: () => void;
 }
 
-/** "March 14", the way the birthday row reads back what's on file. */
-function describeBirthday(month: number | null, day: number | null): string | undefined {
+/**
+ * "March 14", or "March 14, 1992" once a year is on file — the way the
+ * birthday row reads back what's on file.
+ */
+function describeBirthday(month: number | null, day: number | null, year: number | null): string | undefined {
   if (month === null || day === null) return undefined;
-  const date = birthdayInYear({ birthdayMonth: month, birthdayDay: day }, 2024);
+  const date = birthdayInYear({ birthdayMonth: month, birthdayDay: day }, year ?? 2024);
   if (!date) return undefined;
-  return date.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+  return date.toLocaleDateString(
+    undefined,
+    year ? { month: 'long', day: 'numeric', year: 'numeric' } : { month: 'long', day: 'numeric' }
+  );
 }
 
 /**
@@ -67,6 +73,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   const [notes, setNotes] = useState('');
   const [birthdayMonth, setBirthdayMonth] = useState<number | null>(null);
   const [birthdayDay, setBirthdayDay] = useState<number | null>(null);
+  const [birthYear, setBirthYear] = useState<number | null>(null);
   const [birthdayTaskOptOut, setBirthdayTaskOptOut] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
@@ -93,6 +100,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
     setNotes(person.notes);
     setBirthdayMonth(person.birthdayMonth);
     setBirthdayDay(person.birthdayDay);
+    setBirthYear(person.birthYear);
     setBirthdayTaskOptOut(person.birthdayTaskOptOut);
     setPhoneNumber(person.phoneNumber ?? '');
     setEmail(person.email ?? '');
@@ -116,6 +124,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       notes: notes.trim(),
       birthdayMonth,
       birthdayDay,
+      birthYear,
       birthdayTaskOptOut,
       phoneNumber: phoneNumber.trim() || null,
       email: email.trim() || null,
@@ -169,29 +178,24 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         </>
       }
       footer={
-        <WhenPicker
+        <BirthdayPicker
           visible={showBirthdayPicker}
-          // The year shown is this year's, and it is thrown away — only the
-          // month and the day are kept (see Person.birthdayMonth). That is what
-          // makes paging sane: a birth *date* would mean paging back thirty
-          // years a month at a time, where a birth *day* is at most eleven taps
-          // from wherever the grid opens.
-          value={birthdaySet ? birthdayInYear({ birthdayMonth, birthdayDay }, new Date().getFullYear()) : null}
-          title="Birthday"
-          showTimeOfDay={false}
-          showSuggest={false}
-          onConfirm={(date) => {
-            if (date) {
-              setBirthdayMonth(date.getMonth() + 1);
-              setBirthdayDay(date.getDate());
-            }
+          month={birthdayMonth}
+          day={birthdayDay}
+          year={birthYear}
+          onConfirm={(month, day, year) => {
+            setBirthdayMonth(month);
+            setBirthdayDay(day);
+            setBirthYear(year);
             setShowBirthdayPicker(false);
           }}
           onClear={() => {
-            // Both halves together, always: a month with no day is not a date
-            // anything can be computed from.
+            // All three together, always: a year with no month/day has nothing
+            // to attach to, and a month with no day is not a date anything can
+            // be computed from.
             setBirthdayMonth(null);
             setBirthdayDay(null);
+            setBirthYear(null);
             setShowBirthdayPicker(false);
           }}
           onCancel={() => setShowBirthdayPicker(false)}
@@ -220,10 +224,10 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         <EditorRow
           icon="gift-outline"
           label="Birthday"
-          value={describeBirthday(birthdayMonth, birthdayDay)}
+          value={describeBirthday(birthdayMonth, birthdayDay, birthYear)}
           hint="Adds a task a few days before it, every year."
           onPress={() => setShowBirthdayPicker(true)}
-          onClear={birthdaySet ? () => { setBirthdayMonth(null); setBirthdayDay(null); } : undefined}
+          onClear={birthdaySet ? () => { setBirthdayMonth(null); setBirthdayDay(null); setBirthYear(null); } : undefined}
         />
         {birthdaySet && (
           <>

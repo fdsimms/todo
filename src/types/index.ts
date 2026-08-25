@@ -415,6 +415,14 @@ export interface Person {
   // are always written as a pair.
   birthdayMonth: number | null;
   birthdayDay: number | null;
+  // Recorded for its own sake, never derived from and never read to compute an
+  // age — that use (a "Turning 34" chip) was removed in #2083, and this is a
+  // second, unrelated life for the same column: something worth knowing about
+  // somebody, not an input to arithmetic. Optional even once a birthday is on
+  // file (most people's is the common case, see docs/arch/people.md), but
+  // never set on its own: clearing the birthday clears this too, the same
+  // "both halves together" rule birthdayMonth/Day already follow.
+  birthYear: number | null;
   // When the user deleted this person's birthday task (see
   // src/utils/birthdayTasks.ts). The per-source opt-out every generated task
   // writes on its source row, and unlike `Project.reviewDeclinedAt` a permanent
