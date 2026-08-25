@@ -279,9 +279,19 @@ export function mealSlotChain(
   // kept here to decide whether there is a step for making it. A leftover
   // points at the fridge, which is the opposite of a thing to cook.
   if (entry.recipeId && !entry.leftoverId) {
-    return [step('cook', `Cook ${entry.title}`, recipeMinutes), step('eat', `Eat ${entry.title}`)];
+    return [step('cook', `Cook ${entry.title}`, recipeMinutes), step('eat', eatStepTitle(entry.title))];
   }
-  return [step('eat', `Eat ${entry.title}`)];
+  return [step('eat', eatStepTitle(entry.title))];
+}
+
+/**
+ * The Eat step's title for an answered slot — `Eat ${title}` unless the title
+ * already reads as the act of eating on its own ("Eating out"), in which case
+ * prepending "Eat" would stutter ("Eat Eating out"). "Takeout"/"Leftovers"
+ * aren't verbs, so they still get the prefix; "Eating out" and "Eat out" are.
+ */
+function eatStepTitle(title: string): string {
+  return /^eat(ing)?\b/i.test(title) ? title : `Eat ${title}`;
 }
 
 /**
