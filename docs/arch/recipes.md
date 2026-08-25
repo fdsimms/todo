@@ -289,11 +289,48 @@ that a line can open to fix that.
   already resolves to something) and the manual editor (`RecipeIngredientSheet`, behind a "Link
   to an existing item" action). One picker, not two, for the same reason the ingredient/section
   pickers elsewhere in this doc are shared rather than duplicated per host.
-- **It doesn't replace `suggestShorterCatalogName`'s "Did you mean" nudge.** That one is a
-  narrower, zero-interaction correction for one specific case (a leading prep/unit word dropped
-  from an otherwise-exact catalog match) and stays exactly as safe as it always was; this picker
-  is the general, explicit tool for everything else, including a name that doesn't share a
-  leading word with its catalog match at all.
+- **It doesn't replace the "Did you mean" nudge.** That one is a zero-interaction correction
+  offered inline; this picker is the explicit tool you reach for when the nudge has nothing, or
+  has the wrong thing. What the nudge *is* widened once — see below.
+
+## Which lines resolve, said out loud (`ingredientCatalogMatch.ts`)
+
+`nameKey` is an exact match and nothing else, which is right for a stored pointer every reader
+trusts and is why plural tolerance lives in `matchWeight` rather than in `groceryNameKey`, "where
+merging two shelf items would be permanent". The cost was that nothing ever *said* whether a line
+had crossed the bridge: a line one character or one leading word off read exactly like a line
+naming something genuinely new, and the only way to find out was to open each one. #2061 was
+someone watching "skyr" offer to create itself while a Skyr row sat in the catalog.
+
+This module is the other half — everything the exact join can't say, computed at read time,
+offered, never written. Five tiers, strongest evidence first: an exact key (`linked`), then
+`suggestShorterCatalogName`'s confirmed leading-word trim, a whole-word prefix
+("greek yogurt plain" → Greek yogurt), `rankGrocerySuggestions`' own ranking (which is where
+plural tolerance already lived), and finally a single character's difference.
+
+- **Nothing here writes, and there is still no second key field.** Taking a suggestion renames
+  the line to the catalog item's own name and lets the existing derivation follow — the same
+  `commit(item.name)` convergence `CatalogLinkPicker` and `GroceryAddField` both use.
+- **The one-edit tier refuses ambiguity rather than ranking it.** Beet, beef and beer are all one
+  substitution apart and all real, so a tie suggests nothing; names under four characters are
+  skipped outright, since at three "ham"/"jam"/"yam" are all within one edit. It is not Damerau —
+  a transposition counts as two edits and is declined — because the picker is still there for
+  anything this won't guess at.
+- **`unknown` is not a defect.** Most ingredients are bought once and never need a row, so the
+  review sheet lists them and says so rather than presenting them as work.
+- **The badge and the sheet read the same call.** The row's pill is a signpost to
+  `RecipeIngredientSheet` (the same "not a second place to accept" rule the split pill follows),
+  so a row promising "Skyr?" that opened onto a sheet with nothing to accept would be the worst of
+  both. The sheet's own "Did you mean" is this call, not `suggestShorterCatalogName` alone.
+- **Only a line with something to act on is badged.** An exact match is the healthy common case
+  and an unplaceable line is the other one; marking either would put a glyph on most rows to say
+  "nothing to do here". The `N of M in your groceries` count above the list is where a
+  well-matched recipe says so, and it doubles as the way into the review sheet so the batch pass
+  needs no menu item. A badge is suppressed while a split is offered, the same mutual exclusion
+  the split pill and the "or manchego" caption already keep.
+- **Only a paste gets the banner.** Adding one line at a time already shows its own answer where
+  you are looking; a paste is the case where six rows land at once and nothing says which the app
+  could place.
 
 ## Quantities (`quantity.ts`) — the one place a quantity string is read
 

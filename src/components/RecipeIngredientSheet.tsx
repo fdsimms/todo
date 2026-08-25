@@ -23,7 +23,8 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors }
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { aisleForName } from '../utils/groceryAisles';
-import { groceryNameKey, splitAlternativeNames, suggestShorterCatalogName } from '../utils/groceryParse';
+import { groceryNameKey, splitAlternativeNames } from '../utils/groceryParse';
+import { matchIngredientToCatalog } from '../utils/ingredientCatalogMatch';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
@@ -88,10 +89,6 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
-  const catalogKeys = useMemo(
-    () => new Set(groceryItems.map(i => i.nameKey)),
-    [groceryItems]
-  );
 
   // Every heading this recipe already has, in list order — including one
   // declared with nothing under it yet (Recipe.emptySections). A section is a
@@ -228,11 +225,19 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // precedence addByName applies.
   const defaultAisle = rememberedAisleFor(name) ?? aisleForName(name) ?? 'Other';
 
-  // A one-tap correction for the offline parser's known limit: a leading
-  // prep/unit word it didn't recognise ("cloves garlic") stays in the name,
-  // but if the shorter name is already something in the catalog, that's
-  // confirmation rather than a guess — see suggestShorterCatalogName.
-  const catalogSuggestion = suggestShorterCatalogName(name, catalogKeys);
+  // A one-tap correction when this line doesn't resolve but something close
+  // does. It used to be `suggestShorterCatalogName` alone — the leading
+  // prep/unit word case ("cloves garlic" → "garlic"), which is still the
+  // strongest tier and still tried first. `matchIngredientToCatalog` widens it
+  // to the other four (whole-word prefix, the autocomplete's own ranking, and
+  // a single character's difference) without changing what a suggestion *is*:
+  // a name already real to this user, offered and never applied.
+  //
+  // It has to be this same call the row's badge makes, or the two disagree —
+  // the badge is a signpost to this sheet, so a row promising "Skyr?" that
+  // opened onto a sheet with nothing to accept would be the worst of both.
+  const catalogMatch = matchIngredientToCatalog(name, groceryItems, new Date());
+  const catalogSuggestion = catalogMatch.kind === 'suggested' ? catalogMatch.suggestedName : null;
 
   // "cheddar or manchego" wants to be two rows in a choice group, not one
   // catalog entry nothing can ever match — see splitAlternativeNames. Offered,
