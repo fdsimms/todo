@@ -101,6 +101,7 @@ import { EditorGroup } from './EditorGroup';
 import { editorSearchTerms, matchesEditorQuery } from '../utils/editorSearch';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { ExtraTaskSheet } from './ExtraTaskSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { describeBlocks } from '../utils/blocking';
@@ -203,6 +204,8 @@ type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'priority
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
 const DURATION_PRESETS = [5, 10, 15, 25, 30, 45, 60] as const;
+
+const TITLE_TOKEN_ACCESSORY_ID = 'taskEditorTitleTokenAccessory';
 
 // Matches the inline subtask checkbox in TaskItem, so a subtask looks the same
 // whether it's read in the expanded row or in this editor.
@@ -311,6 +314,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   }, []);
 
   const [title, setTitle] = useState('');
+  // Tracked only so TitleTokenAccessory's # / @ buttons know where to splice
+  // in a token — the input itself doesn't need this to render.
+  const [titleSelection, setTitleSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
   const [notes, setNotes] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   // Which stack the task will belong to once saved. Local like every other
@@ -538,7 +544,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // Belongs to the task being edited, not to the sheet.
     kindMemory.current = { timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [] };
     if (task) {
-      setTitle(task.title); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags); setPersonIds(task.personIds);
+      setTitle(task.title); setTitleSelection({ start: task.title.length, end: task.title.length }); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags); setPersonIds(task.personIds);
       setGroupId(task.groupId ?? null);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
       // The set's other live dates. Completed ones are left out: they're
@@ -599,7 +605,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setExtraTaskTitle(task.extraTaskTitle ?? '');
       setExtraTaskDraft(task.extraTaskDraft ?? null);
     } else {
-      setTitle(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
+      setTitle(initialDraft?.title ?? ''); setTitleSelection({ start: (initialDraft?.title ?? '').length, end: (initialDraft?.title ?? '').length }); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
       setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
@@ -738,12 +744,24 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     hadScheduleParse.current = parsedSchedule != null;
   }, [parsedSchedule]);
 
+  // Splices a token in at the current cursor position, same as a normal
+  // keypress would, rather than always appending to the end.
+  const insertTitleToken = (token: string) => {
+    haptics.tap();
+    const { start, end } = titleSelection;
+    const next = title.slice(0, start) + token + title.slice(end);
+    setTitle(next);
+    const cursor = start + token.length;
+    setTitleSelection({ start: cursor, end: cursor });
+  };
+
   // Apply the suggested schedule and strip the phrase from the title.
   const applyParsedSchedule = () => {
     if (!parsedSchedule) return;
     haptics.success();
     animateLayout();
     setTitle(parsedSchedule.cleanTitle);
+    setTitleSelection({ start: parsedSchedule.cleanTitle.length, end: parsedSchedule.cleanTitle.length });
     setDueDate(parsedSchedule.schedule.dueDate);
     if (parsedSchedule.schedule.deadline) {
       setDeadline(parsedSchedule.schedule.deadline);
@@ -1825,6 +1843,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             onClose={() => setShowExtraTaskSheet(false)}
           />
           <NumberPadAccessory />
+          <TitleTokenAccessory nativeID={TITLE_TOKEN_ACCESSORY_ID} onInsert={insertTitleToken} />
         </>
       }
     >
@@ -1871,6 +1890,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // glitching. Autocorrect off suppresses that native suggestion.
           autoCorrect={false}
           multiline blurOnSubmit
+          selection={titleSelection}
+          onSelectionChange={e => setTitleSelection(e.nativeEvent.selection)}
+          inputAccessoryViewID={Platform.OS === 'ios' ? TITLE_TOKEN_ACCESSORY_ID : undefined}
         />
       </View>
       )}
