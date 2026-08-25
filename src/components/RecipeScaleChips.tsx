@@ -157,7 +157,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chip: {
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     minWidth: 44,
     alignItems: 'center',
   },

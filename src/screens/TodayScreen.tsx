@@ -3842,7 +3842,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4,
   },
   viewModePill: {
-    paddingHorizontal: spacing.md, paddingVertical: 6,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
   viewModePillActive: { backgroundColor: colors.accent },

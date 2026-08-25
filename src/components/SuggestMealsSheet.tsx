@@ -985,7 +985,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   filterChip: {
     borderRadius: radius.full,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     backgroundColor: colors.bgSecondary,
   },
   filterChipActive: { backgroundColor: colors.accent },

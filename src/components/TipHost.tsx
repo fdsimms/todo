@@ -216,7 +216,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.xs,
     backgroundColor: colors.accent,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     borderRadius: radius.full,
   },
   linkText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold },

@@ -520,7 +520,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   pill: {
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
@@ -539,7 +539,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     fontSize: font.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
     minWidth: 100,
