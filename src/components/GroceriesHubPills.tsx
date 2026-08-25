@@ -148,7 +148,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillBadge: {
     position: 'absolute', top: -4, right: -4,
     minWidth: 16, height: 16, borderRadius: 8, paddingHorizontal: 3,
-    backgroundColor: colors.red, alignItems: 'center', justifyContent: 'center',
+    // Accent, not red: the Groceries badge is a plain "N to buy" count, not
+    // something urgent — the MealPlan pill overrides this per-row with
+    // freshnessColor since that one *is* reporting something time-sensitive.
+    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
   },
   pillBadgeText: { color: colors.onAccent, fontSize: 9, fontWeight: fontWeight.bold },
 });
