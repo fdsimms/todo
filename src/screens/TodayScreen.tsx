@@ -1813,6 +1813,17 @@ export function TodayScreen() {
   // The list the drag scrolls when it reaches the top or bottom of the screen.
   // One list now, so one control: the ReorderableList hands its own over.
   const todayScrollControl = useRef<DragScroller | null>(null);
+  // Same scroller and the same measured viewport (FabDropZoneProvider's own),
+  // handed to the nested SortableLists that reorder the pinned block and a
+  // stack's children — both sit inside this same list and can run past
+  // viewport height, so dragging a row in either one to the screen's edge
+  // should autoscroll this list exactly as the add-button drag already does.
+  // Stable identity (both refs, built once) so it isn't a fresh object every
+  // render for SortableList's autoscroll-prop effect to resync.
+  const pinnedAndStackAutoscroll = useMemo(() => ({
+    scroller: todayScrollControl,
+    getViewport: () => dropZonesRef.current?.getViewport() ?? { top: 0, bottom: 0 },
+  }), []);
   // What the drag is currently aimed at goes through a channel rather than
   // state: it changes as the finger crosses each row, and re-rendering this
   // screen re-runs every row's renderItem. The two things that do change with
@@ -2348,6 +2359,7 @@ export function TodayScreen() {
                 // The same drop slot the main list leaves behind — a stack's
                 // rows are the main list's rows, so the gap should read the same.
                 placeholderStyle={styles.stackDropSlot}
+                autoscroll={pinnedAndStackAutoscroll}
                 renderItem={(child, _displayIndex, childDrag, childIsActive) => (
                   <React.Fragment key={child.id}>
                     {renderTaskRow(child, {
@@ -2636,6 +2648,7 @@ export function TodayScreen() {
         onReorder={next => reorderPinnedTasks(next.map(t => t.id))}
         onDragStateChange={setDraggingPin}
         placeholderStyle={styles.stackDropSlot}
+        autoscroll={pinnedAndStackAutoscroll}
         renderItem={(task, _displayIndex, drag, isActive) =>
           renderTaskRow(task, {
             drag,
