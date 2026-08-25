@@ -711,6 +711,18 @@ interface SettingsStore {
   // Which category a pantry check files itself under, by name, or null for
   // none — same setting as the other generators' for the same reason.
   pantryCheckTaskCategory: string | null;
+  // Whether a recurring task running low on its supply gets an "Order more X"
+  // task (see src/utils/supply.ts). Defaults ON, unlike pantryCheckTasks above,
+  // and the difference is who asked: a pantry check is projected from a catalog
+  // of hundreds nobody opted in row by row, where a supply exists only because
+  // somebody typed a count into the editor. Turning the count on *is* the
+  // opt-in, so a second switch defaulting off would mean filling in the feature
+  // and then being told nothing. An install with no supplies sees nothing
+  // either way.
+  supplyReorderTasks: boolean;
+  // Which category a reorder task files itself under, by name, or null for
+  // none — same setting as the other generators' for the same reason.
+  supplyReorderTaskCategory: string | null;
   // Whether a task appears once a day to review tomorrow's calendar (see
   // src/utils/calendarReviewTasks.ts). Defaults OFF, the pantryCheckTasks
   // reading rather than projectReviewTasks': this adds a surface nobody had
@@ -898,6 +910,8 @@ interface SettingsStore {
   setProjectReviewTaskCategory: (category: string | null) => void;
   setPantryCheckTasks: (on: boolean) => void;
   setPantryCheckTaskCategory: (category: string | null) => void;
+  setSupplyReorderTasks: (on: boolean) => void;
+  setSupplyReorderTaskCategory: (category: string | null) => void;
   setCalendarReviewTasks: (on: boolean) => void;
   setCalendarReviewLastDayKey: (dayKey: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
@@ -1341,6 +1355,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   projectReviewTaskCategory: null,
   pantryCheckTasks: false,
   pantryCheckTaskCategory: null,
+  supplyReorderTasks: true,
+  supplyReorderTaskCategory: null,
   calendarReviewTasks: false,
   calendarReviewLastDayKey: null,
   patchNotesQaStatus: {},
@@ -1562,6 +1578,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // install that has never been asked stays silent. See the field note.
     const pantryCheckTasks = dbGetSetting('pantryCheckTasks') === 'true';
     const pantryCheckTaskCategory = dbGetSetting('pantryCheckTaskCategory') || null;
+    // Defaults ON, so an unset key reads as true rather than as false — the
+    // `!== 'false'` test rather than `=== 'true'`, same shape every other
+    // on-by-default setting here uses.
+    const supplyReorderTasks = dbGetSetting('supplyReorderTasks') !== 'false';
+    const supplyReorderTaskCategory = dbGetSetting('supplyReorderTaskCategory') || null;
     // `=== 'true'`, the same opt-in reading pantryCheckTasks takes and for the
     // same reason: this adds a surface rather than replacing one.
     const calendarReviewTasks = dbGetSetting('calendarReviewTasks') === 'true';
@@ -1645,7 +1666,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, calendarReviewTasks, calendarReviewLastDayKey, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, supplyReorderTasks, supplyReorderTaskCategory, calendarReviewTasks, calendarReviewLastDayKey, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1890,6 +1911,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setPantryCheckTaskCategory(category: string | null) {
     dbSetSetting('pantryCheckTaskCategory', category ?? '');
     set({ pantryCheckTaskCategory: category });
+  },
+
+  setSupplyReorderTasks(on: boolean) {
+    dbSetSetting('supplyReorderTasks', on ? 'true' : 'false');
+    set({ supplyReorderTasks: on });
+  },
+
+  setSupplyReorderTaskCategory(category: string | null) {
+    dbSetSetting('supplyReorderTaskCategory', category ?? '');
+    set({ supplyReorderTaskCategory: category });
   },
 
   setCalendarReviewTasks(on: boolean) {

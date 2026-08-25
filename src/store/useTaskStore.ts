@@ -79,6 +79,19 @@ import { applyMeasuredTime } from '../utils/effort';
 import { chainStepDatedByAnswer, deliverableDate, deliverableKindFor } from '../utils/deliverables';
 import { totalMinutes } from '../utils/recipeUtils';
 import { normalizeTargetUnit } from '../utils/quotaUnit';
+import {
+  canHoldSupply,
+  clampSupplyCount,
+  clampSupplyLeadDays,
+  clampSupplyRefillCount,
+  clampSupplyReorderAt,
+  DEFAULT_SUPPLY_REORDER_AT,
+  restockedSupplyCount,
+  staleSupplyReorderTasks,
+  suppliesWantingList,
+  supplyReorderSourceId,
+  wantedSupplyReorders,
+} from '../utils/supply';
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
@@ -324,6 +337,43 @@ function newTaskFromDraft(
     progressCount: draft.progressCount ?? 0,
     targetUnit: normalizeTargetUnit(draft.targetUnit),
     allowOvershoot: draft.allowOvershoot ?? false,
+    // Refused outright on a task that can't spend it, rather than trusted from
+    // the draft. A supply counts down by riding onto the successor completeTask
+    // spawns, so on a one-off it would sit at its starting number for ever
+    // while the filters were actually being used — a chip that lies, and no way
+    // to tell from looking at it. The editor and quick add both clear it on
+    // their own save; this is the door all of them pass through, and the one
+    // place a draft assembled anywhere else (a template, an import, a restored
+    // backup) is also checked. Same rule canHoldSupply states and NO_RECURRENCE
+    // enforces when a task becomes a dated series.
+    ...(canHoldSupply({
+      recurrenceType: draft.recurrenceType ?? 'none',
+      parentId: draft.parentId ?? null,
+    })
+      ? {
+          supplyCount: draft.supplyCount ?? null,
+          // Same normaliser the daily target's unit uses, deliberately rather
+          // than a twin: both are a short free-text noun shown beside a number
+          // on a row, and two functions with one rule between them is how the
+          // copy drifts.
+          supplyUnit: normalizeTargetUnit(draft.supplyUnit),
+          supplyRefillCount: draft.supplyRefillCount ?? null,
+          supplyReorderAt: clampSupplyReorderAt(draft.supplyReorderAt),
+          supplyLeadDays: draft.supplyLeadDays ?? null,
+          supplyGroceryItemId: draft.supplyGroceryItemId ?? null,
+        }
+      : {
+          supplyCount: null,
+          supplyUnit: null,
+          supplyRefillCount: null,
+          supplyReorderAt: DEFAULT_SUPPLY_REORDER_AT,
+          supplyLeadDays: null,
+          supplyGroceryItemId: null,
+        }),
+    // Never seeded from the draft either way: a decline is something the user
+    // does to a task that already exists, and a *new* task carrying one would
+    // start life with its first reorder offer already refused.
+    supplyDeclinedAtCount: null,
     tags: draft.tags ?? [],
     category: skipCategoryDefault ? (draft.category ?? null) : (draft.category ?? defaults.category),
     sortOrder,
@@ -537,6 +587,35 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       useLeftoverStore.getState()
         .setUseUpTask(sourceId, value, value === null ? reconcileOff : undefined);
       return;
+    // A stamp like projectReview's and pantryCheck's, spent against the supply
+    // rather than against the day: swiping "Order more filters" away means "not
+    // for these three filters", and asking again tomorrow about the same three
+    // is the nag those two stamps exist to avoid. It lapses by itself on the
+    // next restock (see updateTask, where a rising count clears it), so there
+    // is nothing here that could suppress the offer for good.
+    //
+    // The source is a *task*, so this is the one arm of this switch that writes
+    // back into this very store. Written directly rather than through
+    // updateTask: the caller is deleteTask, mid-write, and routing a second
+    // store action through it would run the postpone derivation and the
+    // series fan-out over a field that is neither.
+    //
+    // `value === null` is the undo path, and restores what the delete found:
+    // any stamp already sitting there was at a count this one or lower (a
+    // higher one would have suppressed the task rather than let it exist), so
+    // clearing it changes nothing a reader can see.
+    case 'supplyReorder': {
+      const source = useTaskStore.getState().tasks.find(t => t.id === sourceId);
+      if (!source || source.supplyCount === null) return;
+      const stamp = value === false ? source.supplyCount : null;
+      if (source.supplyDeclinedAtCount === stamp) return;
+      const patched = { ...source, supplyDeclinedAtCount: stamp };
+      dbUpdateTask(patched);
+      useTaskStore.setState(s => ({
+        tasks: s.tasks.map(t => (t.id === sourceId ? patched : t)),
+      }));
+      return;
+    }
     default:
       return;
   }
@@ -694,6 +773,8 @@ type RecurrenceFields = Pick<
   | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay'
   | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceEndDate' | 'recurrenceCount'
   | 'recurrenceFromCompletion' | 'showStreak' | 'streakRequiresWindow'
+  | 'supplyCount' | 'supplyUnit' | 'supplyRefillCount' | 'supplyReorderAt'
+  | 'supplyLeadDays' | 'supplyDeclinedAtCount' | 'supplyGroceryItemId'
 >;
 
 const NO_RECURRENCE: RecurrenceFields = {
@@ -706,6 +787,18 @@ const NO_RECURRENCE: RecurrenceFields = {
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
+  // A supply counts down by riding onto the successor completeTask spawns, and
+  // a series row spawns none (see canHoldSupply) — so a supply left on one
+  // would sit at its starting number for ever while the filters were actually
+  // being used, which is worse than not tracking it. Cleared with the rule for
+  // the same reason showStreak is: the state it describes stops existing.
+  supplyCount: null,
+  supplyUnit: null,
+  supplyRefillCount: null,
+  supplyReorderAt: DEFAULT_SUPPLY_REORDER_AT,
+  supplyLeadDays: null,
+  supplyDeclinedAtCount: null,
+  supplyGroceryItemId: null,
   // Only a recurring task has a streak to show, and the editor only offers the
   // toggle there — same reasoning as the showStreak reset in TaskEditor.
   showStreak: false,
@@ -1244,6 +1337,12 @@ interface TaskStore {
    * restocked or put back on the list. See src/utils/pantryCheckTasks.ts.
    */
   checkPantryCheckTasks: () => void;
+  /**
+   * Give every supply that's running low an "Order more X" task, put every
+   * *linked* supply's grocery item on the shopping list instead, and clear the
+   * rows whose supply has since been topped back up. See src/utils/supply.ts.
+   */
+  checkSupplyReorderTasks: () => void;
   /**
    * Once a day, a task to review tomorrow's calendar — only while tomorrow
    * actually has something on it. See src/utils/calendarReviewTasks.ts.
@@ -2034,6 +2133,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // Normalized on the way in, like addTask does, so a unit typed as
         // "  glasses " is stored the way every reader formats it.
         ...('targetUnit' in updates ? { targetUnit: normalizeTargetUnit(updates.targetUnit) } : {}),
+        // Same normalisation for the supply's unit, and the same clamps the
+        // draft path applies, so a value typed in the editor and a value
+        // arriving from a restore or another device are stored identically.
+        ...('supplyUnit' in updates ? { supplyUnit: normalizeTargetUnit(updates.supplyUnit) } : {}),
+        ...('supplyCount' in updates ? { supplyCount: clampSupplyCount(updates.supplyCount) } : {}),
+        ...('supplyReorderAt' in updates ? { supplyReorderAt: clampSupplyReorderAt(updates.supplyReorderAt) } : {}),
+        ...('supplyLeadDays' in updates ? { supplyLeadDays: clampSupplyLeadDays(updates.supplyLeadDays) } : {}),
+        ...('supplyRefillCount' in updates ? { supplyRefillCount: clampSupplyRefillCount(updates.supplyRefillCount) } : {}),
+        // **A supply going up clears the decline stamp, and this is the one
+        // place that happens.** The stamp means "I turned down the offer to
+        // reorder while there were N left", and it silences the offer at N or
+        // fewer — so left in place across a restock it would go quiet again the
+        // *next* time the count fell back to N, which is the one moment it most
+        // needs to speak. Restocking is the only thing that can raise a count
+        // (completing a task only ever spends one), and it reaches the store
+        // three ways — the reorder task's answer, the editor, a linked grocery
+        // purchase — so the clear lives here where all three pass rather than
+        // being remembered at each of them.
+        //
+        // Deliberately keyed on the value *rising*, not on `'supplyCount' in
+        // updates`: the editor writes the whole supply card on every save, so
+        // testing for the key would clear the stamp on a save that changed the
+        // lead time.
+        ...(('supplyCount' in updates
+          && clampSupplyCount(updates.supplyCount) !== null
+          && t.supplyCount !== null
+          && clampSupplyCount(updates.supplyCount)! > t.supplyCount)
+          ? { supplyDeclinedAtCount: null }
+          : {}),
         // Re-derived only when the update actually names part of the schedule.
         // Recomputing on every write would undo the field's whole purpose: the
         // successor completeTask spawns onto February carries the 31st it was
@@ -2623,6 +2751,33 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           chainIndex: nextChainIndex,
           recurrenceCount:
             advancesBySchedule && task.recurrenceCount !== null ? task.recurrenceCount - 1 : task.recurrenceCount,
+          // One unit spent per occurrence, riding onto the successor exactly
+          // as recurrenceCount and the streak do — the completed row keeps the
+          // count it was worked at, which is what makes uncompleting free: the
+          // successor holding the decrement is the row uncompleteTask deletes,
+          // so the unit comes back with it and nothing has to be added on.
+          //
+          // Two gates, and they are not the same gate:
+          //
+          // - `advancesBySchedule` mirrors recurrenceCount's. A mid-chain step
+          //   is one step of one occurrence, so "Replace filter" spending a
+          //   filter at every step of a five-step routine would empty the box
+          //   in a single morning.
+          // - **`!missed` has no counterpart on recurrenceCount, and that
+          //   difference is deliberate.** A missed occurrence still burns a
+          //   cycle of the schedule — that's what makes a streak break — but it
+          //   emphatically does not burn a filter, because nobody changed one.
+          //   The unattended sweep completing a task the user never touched is
+          //   the one path that could silently empty a supply, and it's the one
+          //   path that must not.
+          //
+          // Floored at 0 rather than allowed negative: -1 filters is not a
+          // state, and `describeSupply` renders 0 as "Out", which is the thing
+          // that actually happened.
+          supplyCount:
+            advancesBySchedule && !missed && task.supplyCount !== null
+              ? Math.max(0, task.supplyCount - 1)
+              : task.supplyCount,
           timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...effective
           timerElapsedSeconds: 0, // countdown restarts from the top; timedMinutes carries via ...effective
           // vacationPause carries over so recurring tasks stay paused across occurrences
@@ -2934,6 +3089,62 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
+    // Ticking "Order more filters" off is what puts the units back — the one
+    // place a supply ever goes up by itself.
+    //
+    // **This is the second reader of a deliverable's answer**, after a date
+    // step placing the step behind it (see src/utils/deliverables.ts, which
+    // says there is one). It is deliberately the same shape rather than the
+    // start of a general write-anywhere mechanism: one kind, one field, in this
+    // same function, reusing an answer the task was recording anyway. The
+    // reorder task is generated, so its `deliverableKind: 'number'` is set by
+    // the generator rather than by a user who could point it anywhere.
+    //
+    // **Completing it without an answer is not a no-op.** Left alone the supply
+    // would still be under its threshold, so the very next sweep would write an
+    // identical row and the tick would achieve nothing — the unrefusable-offer
+    // trap `projectsReviewedToday` exists to close. So an unanswered tick
+    // stamps the decline instead: a tick means "I've dealt with this" and
+    // nothing more, exactly the reading `pantryCheckTasks` gives one, and the
+    // stamp lapses by itself the moment a real restock raises the count.
+    if (!missed) {
+      const restockTaskId = supplyReorderSourceId(task);
+      if (restockTaskId) {
+        const source = get().tasks.find(t => t.id === restockTaskId);
+        if (source && source.supplyCount !== null) {
+          const answered = completed.deliverableValue;
+          const bought = answered === null ? null : Number(answered);
+          const restocked = restockedSupplyCount(source.supplyCount, bought);
+          get().updateTask(
+            restockTaskId,
+            restocked !== null && restocked > source.supplyCount
+              ? { supplyCount: restocked }
+              : { supplyDeclinedAtCount: source.supplyCount },
+            // The reorder task's date is the app's, not a schedule the user
+            // picked, and this write moves no date at all — same reasoning
+            // reconcileGeneratedTask passes it for a source-owned field.
+            { skipPostponeCount: true },
+          );
+        }
+      }
+    }
+
+    // Spending the second-to-last filter is the moment the offer to order more
+    // becomes true, and making it wait for the next foreground would mean
+    // ticking the task off and being told nothing — the same "don't make that
+    // wait for the next sweep" call `pullProjectTasks` makes about a project
+    // going quiet.
+    //
+    // Narrowed to the two completions that can actually change a supply, so an
+    // ordinary tick doesn't pay for a generator pass: this task held one (its
+    // successor is now a unit lighter), or this task *was* a reorder task (the
+    // block above either topped one up or stamped it). There is no loop in the
+    // second case — a completed row is in neither `wantedSupplyReorders` nor
+    // `liveGeneratedTasksOfKind`.
+    if (task.supplyCount !== null || task.generatedKind === 'supplyReorder') {
+      get().checkSupplyReorderTasks();
+    }
+
     if (completionHoldTimer) clearTimeout(completionHoldTimer);
     completionHoldTimer = setTimeout(() => {
       completionHoldTimer = null;
@@ -2967,8 +3178,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     (completionHoldTimer as unknown as { unref?: () => void }).unref?.();
     armCompletionCollapse();
 
+    // A recurrence that has just run out says so, instead of the task quietly
+    // never coming back.
+    //
+    // `recurrenceCount` has always been a countdown — "occurrences remaining,
+    // including this one" — and its ending was the one event in the app with no
+    // telling at all: getNextDueDate returns null, no successor is written, and
+    // a task the user had set to happen ten times simply wasn't there on the
+    // eleventh. Whether that was the schedule finishing or something going
+    // wrong was unanswerable from the outside.
+    //
+    // The undo bar is the right surface and not a consolation prize: it is
+    // already on screen for this exact completion, it is where the app's other
+    // "here is what that tap did" lines go, and it costs the user nothing to
+    // ignore. `recurs` is what separates it from an ordinary one-off, which
+    // also spawns nothing and always did.
+    const finishedRecurrence = recurs && advancesBySchedule && !missed && nextTask === null;
     get().setLastAction({
-      label: missed ? 'Task marked missed' : 'Task completed',
+      label: missed
+        ? 'Task marked missed'
+        : finishedRecurrence
+          ? 'Last one — this won\'t repeat again'
+          : 'Task completed',
       undo: () => {
         if (autoArchivedProjectId) {
           useProjectStore.getState().applyProjectArchived(autoArchivedProjectId, false);
@@ -3791,6 +4022,97 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // No setLastAction, same reasoning as checkMealPlanNudge above.
   },
 
+  checkSupplyReorderTasks() {
+    const settings = useSettingsStore.getState();
+    const { dayResetTime } = settings;
+    const tasks = get().tasks;
+
+    // The grocery half first, and outside the setting gate on purpose: putting
+    // a linked item on the shopping list is not the generator writing a task,
+    // it's the supply doing the one thing the user asked for by linking it.
+    // "Reorder tasks for supplies" is a switch about rows appearing on Today,
+    // and switching it off shouldn't quietly stop the list working too. It is
+    // still gated on the kitchen existing at all.
+    if (settings.kitchenEnabled) {
+      const grocery = useGroceryStore.getState();
+      const lowIds = suppliesWantingList(tasks, grocery.items, dayResetTime);
+      // registerUndo: false — nobody tapped anything. This runs from the launch
+      // sweep, the Today foreground and a completion, so the add left under the
+      // user's next shake would be labelled as something they had just done and
+      // point at an item they may never have opened. Same reason the completed
+      // task purge doesn't route through bulkDeleteTasks.
+      lowIds.forEach(itemId => grocery.setRunningLow(itemId, true, { registerUndo: false }));
+    }
+
+    if (!settings.supplyReorderTasks) return;
+
+    // Clear first, create second, and never the reverse — the same ordering
+    // checkProjectReviewTasks and checkPantryCheckTasks run on, for the same
+    // reason: the stale set includes the row for a supply the user has just
+    // restocked from this very task, and a create pass running first would be
+    // deciding against a list that still held it.
+    //
+    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: that routes
+    // through deleteTask, which writes the source's opt-out — here it would
+    // stamp supplyDeclinedAtCount on a task the user never turned down, and so
+    // silence the offer until the *next* restock on the strength of the app's
+    // own tidying up.
+    const stale = staleSupplyReorderTasks(tasks, dayResetTime);
+    stale.forEach(task => dropGeneratedTask('supplyReorder', supplyReorderSourceId(task)));
+
+    const wanted = wantedSupplyReorders(get().tasks, dayResetTime);
+    if (wanted.length === 0) return;
+
+    ensureGeneratedTaskCategory('supplyReorder');
+    const category = useSettingsStore.getState().supplyReorderTaskCategory;
+    // Noon today, the landing every other unattended writer picks: an offer
+    // dated forward is an offer you can't see. The *lead time* is what decides
+    // which day this row first appears (see supplyReorderReason), so by the
+    // time it's wanted at all, today is exactly when it wants to be read.
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'supplyReorder',
+        sourceId: want.taskId,
+        // Never false: the not-wanted half is decided over every supply at once
+        // and was handled by the drop pass above. A `false` here would delete
+        // through deleteTask and stamp the source as declined.
+        wanted: true,
+        // The title is the only thing a live row chases, and only when the
+        // supply has been renamed under it. Deliberately not the due date: by
+        // the time a second sweep runs the user may have deferred this row to
+        // Saturday, and rewriting it back to today would take that back. Nor
+        // the deadline — the run-out day moves every time the source is
+        // completed, and a deadline that walks forward under the row is one
+        // nobody can plan against.
+        drift: existing => (existing.title === want.title ? null : { title: want.title }),
+        draft: () => ({
+          title: want.title,
+          dueDate: dueDate.toISOString(),
+          // The day the last unit gets spent, when the schedule can say. This
+          // is the whole reason the lead time is worth asking for: the row
+          // carries a real "needed by" rather than a vague urgency, and every
+          // deadline surface in the app — the countdown chip, the calendar
+          // mirror, look-ahead — reads it for free.
+          deadline: want.runOut ? want.runOut.toISOString() : null,
+          // Where you actually buy it. A consumable ordered online is a task
+          // whose entire content is that link, and the source task already
+          // holds one for exactly this reason — so it's inherited rather than
+          // asked for twice.
+          linkUrl: want.linkUrl,
+          // "How many did you get?" on completion, which is what puts the
+          // units back. See the restock block in completeTask.
+          deliverableKind: 'number' as const,
+          category,
+          ...generatedBy('supplyReorder', want.taskId),
+        }),
+      });
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
   /**
    * Once a day, a task to review tomorrow's calendar — only while tomorrow
    * actually has something on it.
@@ -4171,6 +4493,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceEndDate: null,
       recurrenceCount: null,
       recurrenceFromCompletion: false,
+      supplyCount: null,
+      supplyUnit: null,
+      supplyRefillCount: null,
+      supplyReorderAt: 1,
+      supplyLeadDays: null,
+      supplyDeclinedAtCount: null,
+      supplyGroceryItemId: null,
       tags: [],
       category: null,
       sortOrder: maxOrder + 1,
@@ -4337,6 +4666,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceEndDate: null,
       recurrenceCount: null,
       recurrenceFromCompletion: false,
+      supplyCount: null,
+      supplyUnit: null,
+      supplyRefillCount: null,
+      supplyReorderAt: 1,
+      supplyLeadDays: null,
+      supplyDeclinedAtCount: null,
+      supplyGroceryItemId: null,
       tags: [],
       category: group?.category ?? null,
       sortOrder: maxOrder + 1,

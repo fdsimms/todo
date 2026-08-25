@@ -15,14 +15,27 @@ import { activeChainStep, nextChainStep, type ChainCarrier } from './chain';
  * and the editor all read the same formatter, so none of them can invent a
  * second spelling of the same answer.
  *
- * **There is exactly one place the value goes, and it is opt-in per step.** A
- * date step inside a chain can send its answer to the next step's due date
- * (`ChainItem.deliverableDatesNextStep`) — "Book haircut" answers with the
- * appointment and "Get haircut" lands on it. That is still deliberately not a
- * general write-anywhere mechanism: it is one reader, in one place
- * (`completeTask`), reusing the date the chain was already going to give that
- * successor. Everywhere else the value is stored typed and read back by the
- * Logbook, Search and a project's decisions. See #1253.
+ * **Two places the value goes, both in `completeTask`, and neither is a general
+ * write-anywhere mechanism.**
+ *
+ * 1. A date step inside a chain can send its answer to the next step's due date
+ *    (`ChainItem.deliverableDatesNextStep`) — "Book haircut" answers with the
+ *    appointment and "Get haircut" lands on it. Opt-in per step, and it reuses
+ *    the date the chain was already going to give that successor. See #1253.
+ * 2. A generated `'supplyReorder'` task's number answer tops the supply on the
+ *    task it was written for back up ("How many did you get?" → six filters).
+ *    See `src/utils/supply.ts`.
+ *
+ * The second was added on the terms the first set, and they're worth stating
+ * because they're what stops this becoming a scripting field: one kind, one
+ * destination field, written in this same function, reusing an answer the task
+ * was recording anyway. The reorder task is *generated*, so the kind that makes
+ * it write is set by the generator rather than by a user who could point it at
+ * anything. A third reader wanting looser terms than these is a different
+ * feature and should say so.
+ *
+ * Everywhere else the value is stored typed and read back by the Logbook,
+ * Search and a project's decisions.
  */
 
 /** Longest answer a 'text' deliverable will keep — "The Anchor, 7pm", not an essay. */

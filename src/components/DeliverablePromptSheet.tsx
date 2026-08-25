@@ -14,6 +14,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useTaskStore } from '../store/useTaskStore';
+import { supplyReorderPackSeed } from '../utils/supply';
 import { getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { isDayBefore } from '../utils/calendarGrid';
 import { displayTitleFor } from '../utils/visibilityUtils';
@@ -145,7 +147,18 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
     const storedDate = deliverableDate(stored);
     const staleForScheduling =
       datesStep !== null && storedDate !== null && isDayBefore(storedDate, getLogicalToday(dayResetTime));
-    setDraft(staleForScheduling ? '' : stored);
+    // A reorder task knows what a pack holds, so it answers its own question:
+    // "How many did you get?" arrives reading 6 rather than empty, and topping
+    // a supply back up is one tap. Only ever a *seed* — the field is editable,
+    // and a delivery that came up short is typed over.
+    //
+    // Behind `!stored` so it can never overwrite a real answer, which is the
+    // un-completing case the seeding above exists for.
+    // Read off the store rather than subscribed to: this runs once as the
+    // sheet opens, and a pack size changing underneath an open prompt is not a
+    // thing that happens.
+    const packSeed = !stored ? supplyReorderPackSeed(task, useTaskStore.getState().tasks) : null;
+    setDraft(staleForScheduling ? '' : (stored || packSeed || ''));
     setPickerOpen(false);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),

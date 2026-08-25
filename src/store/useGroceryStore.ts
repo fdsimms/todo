@@ -42,6 +42,7 @@ import {
   dbTransaction,
 } from '../db/database';
 import { useRecipeStore } from './useRecipeStore';
+import { clampSupplyReorderAt, restockedSupplyCount } from '../utils/supply';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
@@ -665,8 +666,16 @@ interface GroceryStore {
    * happens (`setLastAction`), which is the honest answer for a mis-tap;
    * "I'm not nearly out any more" a week later is not a request to cancel the
    * shopping.
+   *
+   * `registerUndo: false` for a caller that isn't a person tapping the pill —
+   * today that means the supply sweep (see `checkSupplyReorderTasks`), which
+   * flags an item low because a task counted its last unit down. The add is
+   * real either way; what must not happen is it sitting under the user's next
+   * shake labelled as something they just did. Same opt-out `addToPantry`
+   * takes, and the same rule the completed-task purge follows by not going
+   * through `bulkDeleteTasks`.
    */
-  setRunningLow: (id: string, low: boolean) => void;
+  setRunningLow: (id: string, low: boolean, opts?: { registerUndo?: boolean }) => void;
   /**
    * The remembered shelf life — a dumb setter, unlike setExpiresAt: this
    * never touches expiresAt or the use-up task on its own. See
@@ -1265,6 +1274,43 @@ function commitAisleOrder(order: string[], used: readonly string[]) {
  * bag bought this afternoon needs its own. Reading the wider set here would
  * mean a staple got exactly one use-up task, ever.
  */
+/**
+ * Top up every supply stocked from one of the items just bought, and hand back
+ * what each was on so the trip's undo can put it right.
+ *
+ * The closing half of the grocery bridge (see src/utils/supply.ts). A linked
+ * supply doesn't get a reorder task — its item goes on the shopping list
+ * instead — so the shopping trip is the *only* event that can ever put units
+ * back on it. Without this the count would fall to zero and stay there, the
+ * item would go back on the list on the next sweep, and buying it would change
+ * nothing: an unrefusable line on the shopping list, which is the same trap
+ * `projectsReviewedToday` closes one surface over.
+ *
+ * **`supplyRefillCount ?? reorderAt + 1` is the whole subtlety.** When the user
+ * has said what a pack holds, that's exact. When they haven't, the app credits
+ * the least it can that still clears the threshold — enough that the loop above
+ * can't happen, and never a number it made up about a pack it has never seen.
+ * The editor's hint on the field is what steers anyone who wants it exact.
+ */
+function restockLinkedSupplies(boughtItemIds: ReadonlySet<string>): Map<string, number> {
+  const taskStore = useTaskStore.getState();
+  const before = new Map<string, number>();
+  for (const task of taskStore.tasks) {
+    const itemId = task.supplyGroceryItemId;
+    if (!itemId || !boughtItemIds.has(itemId)) continue;
+    if (task.supplyCount === null || task.completed || task.archived) continue;
+    const credit = task.supplyRefillCount
+      ?? Math.max(1, clampSupplyReorderAt(task.supplyReorderAt) + 1 - task.supplyCount);
+    const next = restockedSupplyCount(task.supplyCount, credit);
+    if (next === null || next === task.supplyCount) continue;
+    before.set(task.id, task.supplyCount);
+    // skipPostponeCount: this write moves no date, and the row's own schedule
+    // is untouched — same reasoning reconcileGeneratedTask passes it.
+    taskStore.updateTask(task.id, { supplyCount: next }, { skipPostponeCount: true });
+  }
+  return before;
+}
+
 function reconcileUseUpTask(item: GroceryItem): void {
   const { groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, useUpTaskCap } =
     useSettingsStore.getState();
@@ -2615,7 +2661,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     return updates.length;
   },
 
-  setRunningLow(id, low) {
+  setRunningLow(id, low, opts = {}) {
     const item = get().items.find(i => i.id === id);
     if (!item || !!item.runningLowAt === low) return;
     const wasOnList = item.onList;
@@ -2631,7 +2677,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
-    if (low && !wasOnList) {
+    if (low && !wasOnList && opts.registerUndo !== false) {
       get().setLastAction({
         label: `Added "${updated.name}" to the list`,
         undo: () => {
@@ -3139,6 +3185,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (item) reconcileUseUpTask(item);
     }
 
+    // Coming home with the thing is what refills the supply it stocks. After
+    // the set() for the same reason the reconciles above are: each read has to
+    // see the rows as they now stand.
+    const supplyBefore = restockLinkedSupplies(done);
+
     get().setLastAction({
       label: `Bought ${ids.length} ${ids.length === 1 ? 'thing' : 'things'}`,
       destructive: true,
@@ -3171,6 +3222,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
             : s.itemShops,
           lastShopId: shop ? beforeLastShopId : s.lastShopId,
         }));
+        // The supplies this trip topped up go back to what they were on. The
+        // decline stamp each top-up cleared is deliberately *not* re-written:
+        // its only effect is to keep the app quiet, so restoring one would
+        // silence an offer about a supply that is once again low. Erring
+        // towards speaking up is the right way round for a stamp nobody can
+        // see.
+        for (const [taskId, count] of supplyBefore) {
+          useTaskStore.getState().updateTask(taskId, { supplyCount: count }, { skipPostponeCount: true });
+        }
         // Re-derive each use-up task against the item as it now stands — the
         // same call finishShopping itself makes above, so an undo that
         // reverts expiresAt reverts (or drops) the task spawned for it.

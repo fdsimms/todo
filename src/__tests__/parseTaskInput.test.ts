@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseCategoryAndTagsInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -797,5 +797,81 @@ describe('parseFromCompletionSuffix', () => {
     expect(parseFromCompletionSuffix('go running')).toBeNull();
     expect(parseFromCompletionSuffix('after completion')).toBeNull();
     expect(parseFromCompletionSuffix('')).toBeNull();
+  });
+});
+
+// ─── parseSupplyInput ────────────────────────────────────────────────────────
+
+describe('parseSupplyInput', () => {
+  it('reads a count and its unit out of the middle of a line', () => {
+    const r = parseSupplyInput('replace cpap filter 6 filters left every month')!;
+    expect(r.count).toBe(6);
+    expect(r.unit).toBe('filters');
+    expect(r.cleanTitle).toBe('replace cpap filter every month');
+  });
+
+  it('leaves the schedule behind for the schedule parser to find', () => {
+    // The two have to be sayable in one line, because a supply is meaningless
+    // without a repeat. Whichever tooltip is offered first shortens the title
+    // so the other can fire on what is left.
+    const supply = parseSupplyInput('replace cpap filter 6 filters left every month')!;
+    const schedule = parseTaskInput(supply.cleanTitle, NOW)!;
+    expect(schedule.cleanTitle).toBe('replace cpap filter');
+    expect(schedule.schedule.recurrenceType).toBe('monthly');
+  });
+
+  it('composes in the other order too', () => {
+    const schedule = parseTaskInput('replace cpap filter 6 filters left every month', NOW)!;
+    const supply = parseSupplyInput(schedule.cleanTitle)!;
+    expect(supply.count).toBe(6);
+    expect(supply.cleanTitle).toBe('replace cpap filter');
+  });
+
+  it('takes a bare count with no unit', () => {
+    const r = parseSupplyInput('swap the water filter 3 left')!;
+    expect(r.count).toBe(3);
+    expect(r.unit).toBeNull();
+    expect(r.cleanTitle).toBe('swap the water filter');
+  });
+
+  it('refuses a unit that means time remaining, rather than dropping it', () => {
+    // Read as a supply, "3 days left" would set a count of 3 and leave a title
+    // reading "finish the report days".
+    expect(parseSupplyInput('finish the report 3 days left')).toBeNull();
+    expect(parseSupplyInput('ship it 2 weeks left')).toBeNull();
+    expect(parseSupplyInput('call back 30 mins left')).toBeNull();
+  });
+
+  it('tidies up the punctuation a lifted phrase leaves behind', () => {
+    expect(parseSupplyInput('replace filter, 6 filters left, every month')?.cleanTitle)
+      .toBe('replace filter, every month');
+  });
+
+  it('reports the matched span so the tooltip can be positioned', () => {
+    const input = 'replace cpap filter 6 filters left';
+    const r = parseSupplyInput(input)!;
+    expect(input.slice(r.matchStart, r.matchEnd)).toBe('6 filters left');
+  });
+
+  it('does not fire without a title left over', () => {
+    expect(parseSupplyInput('6 filters left')).toBeNull();
+  });
+
+  it('rejects a zero, which is a sentence rather than a stock being set up', () => {
+    expect(parseSupplyInput('nothing 0 left')).toBeNull();
+  });
+
+  it('returns null when there is no supply phrase', () => {
+    expect(parseSupplyInput('replace cpap filter every month')).toBeNull();
+    expect(parseSupplyInput('')).toBeNull();
+  });
+
+  it('does not match inside a word', () => {
+    expect(parseSupplyInput('turn left at the lights')).toBeNull();
+  });
+
+  it('is case insensitive, and stores the unit the way the app renders it', () => {
+    expect(parseSupplyInput('Replace Filter 6 Filters LEFT')?.count).toBe(6);
+    expect(parseSupplyInput('Replace Filter 6 Filters LEFT')?.unit).toBe('filters');
   });
 });

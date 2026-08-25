@@ -5,15 +5,17 @@ export type { GeneratedKind };
 /**
  * The one mechanism behind every task this app writes without being asked.
  *
- * Six features generate tasks unattended — each meal of the day becomes a task,
+ * Eight features generate tasks unattended — each meal of the day becomes a task,
  * a perishable grocery becomes "Use up X", a leftover about to go bad becomes
  * "Use up X", an opt-in weekly trigger becomes "Plan meals for…", a project
- * that has gone quiet becomes "Review X", and a pantry guess that has run out
- * becomes "Check if you still have X". The first four were each built by
- * copying the last, which is fine twice and had reached four: four nullable
- * back-pointer columns on `Task`, four hand-written "don't pile up" rules, and
- * three near-identical copies of the same three-input opt-out, two of which
- * said so in their own headers (#1524).
+ * that has gone quiet becomes "Review X", a pantry guess that has run out
+ * becomes "Check if you still have X", a task's supply running low becomes
+ * "Order more X", and (once a day, when tomorrow has anything on it) the
+ * calendar becomes "Review tomorrow's calendar". The first four were each
+ * built by copying the last, which is fine twice and had reached four: four
+ * nullable back-pointer columns on `Task`, four hand-written "don't pile up"
+ * rules, and three near-identical copies of the same three-input opt-out, two
+ * of which said so in their own headers (#1524).
  *
  * The fifth is what that refactor was for. `projectReview` needed no
  * column and no reconcile of its own: a registry entry, a rules module
@@ -22,12 +24,14 @@ export type { GeneratedKind };
  * same: `pantryCheckTasks.ts`, an entry here, and a firing beside
  * `projectReview`'s — the one column it *did* add is on its source row
  * (`GroceryItem.pantryCheckDeclinedAt`), which is where the opt-out belongs and
- * not part of the mechanism at all. `calendarReview` is the seventh, and it
- * cost the same shape again: `calendarReviewTasks.ts`, an entry here, and a
- * firing beside the other two time-based passes. It adds no column at all —
- * its source is tomorrow's day key rather than a row, the position
- * `mealPlanNudge` is already in, so its "don't hand it back" is a settings-level
- * mark (`calendarReviewLastDayKey`) rather than a stamp on anything.
+ * not part of the mechanism at all. `supplyReorder` is the seventh, sourced
+ * from a task rather than a row in another store (see `src/utils/supply.ts`).
+ * `calendarReview` is the eighth, and it costs the same shape again:
+ * `calendarReviewTasks.ts`, an entry here, and a firing beside the other
+ * time-based passes. It adds no column at all — its source is tomorrow's day
+ * key rather than a row, the position `mealPlanNudge` is already in, so its
+ * "don't hand it back" is a settings-level mark (`calendarReviewLastDayKey`)
+ * rather than a stamp on anything.
  *
  * What's shared is the *plumbing*, and only the plumbing:
  *
@@ -91,6 +95,7 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'leftoverUseUp',
   'mealPlanNudge',
   'projectReview',
+  'supplyReorder',
   'calendarReview',
 ];
 
@@ -236,6 +241,20 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     sourced: true,
     categorized: true,
     defaultCategory: 'Projects',
+  },
+  supplyReorder: {
+    kind: 'supplyReorder',
+    label: 'Reorder tasks for supplies',
+    onHint: 'A task running low on supplies adds a task to order more',
+    offHint: 'A task running low on supplies adds no task',
+    icon: 'cube-outline',
+    // The first generator whose source is a *task*. Nothing about the
+    // mechanism minds — generatedSourceId is a string and never asked what
+    // kind of row it names — but it is the reason writeGeneratedOptOut's case
+    // here writes to useTaskStore rather than to one of the other stores.
+    sourced: true,
+    categorized: true,
+    defaultCategory: 'Supplies',
   },
   mealPlanNudge: {
     kind: 'mealPlanNudge',

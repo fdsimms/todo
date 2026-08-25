@@ -717,6 +717,98 @@ export function parseDurationInput(input: string): ParsedDuration | null {
   return { minutes, cleanTitle, matchStart, matchEnd };
 }
 
+export interface ParsedSupply {
+  /** How many units are on hand right now. */
+  count: number;
+  /** What they are ("filters"), or null when the phrase named no unit. */
+  unit: string | null;
+  /** Input minus the matched phrase, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+/**
+ * Units that mean *time remaining*, not a stock of anything.
+ *
+ * "finish the report 3 days left" is the one likely false positive this grammar
+ * has, and it's a bad one: read as a supply it would set a count of 3 and leave
+ * a title reading "finish the report days". The whole match is refused rather
+ * than the unit being dropped, for exactly that reason.
+ *
+ * The recurrence grammar already owns these words in its own end-condition
+ * clause ("for 3 weeks"), so refusing them here also keeps the two from
+ * disagreeing about one phrase.
+ */
+const SUPPLY_TIME_UNITS = new Set([
+  'day', 'days', 'week', 'weeks', 'month', 'months', 'year', 'years',
+  'hour', 'hours', 'hr', 'hrs', 'minute', 'minutes', 'min', 'mins',
+  'second', 'seconds', 'sec', 'secs',
+]);
+
+// "6 filters left", "30 left", "12 pairs left".
+//
+// The trailing "left" is doing the same work the duration pattern's leading
+// "for" does, and is just as non-optional: a bare "6 filters" in a title is a
+// shopping quantity, and "6" is a word in a sentence. "left" is the one English
+// word that turns a number into a stock, and it is also — deliberately — the
+// exact word `formatSupplyLeft` already uses to render one ("3 filters left"),
+// so the thing you type is the thing the row shows back.
+//
+// A sigil was the obvious alternative and is the wrong shape for this file: the
+// grammar here reads English (see titleRules.ts on why that distinction
+// matters), the only sigil is "#", and "@" is reserved. "x6" was the other
+// candidate and collides semantically rather than syntactically — "N×" is
+// already how the app *renders* a daily target (see formatQuotaTarget), so
+// "x6" in a title reads as "six times a day" to anyone who has seen one.
+const SUPPLY_PATTERN = /(?<!\w)(\d{1,4})\s+(?:([a-z][a-z0-9-]{0,15})\s+)?left(?!\w)/i;
+
+/**
+ * Pulls a supply phrase out of a quick-add title, so "replace cpap filter 6
+ * filters left" becomes a task titled "replace cpap filter" holding six
+ * filters.
+ *
+ * Follows `parseDurationInput`'s shape rather than the suffix-anchored schedule
+ * parse, and that matters more here than it does there: **a supply is only
+ * meaningful on a repeating task** (`canHoldSupply`), so the two have to be
+ * sayable in one line. Because this phrase can sit anywhere, the two compose in
+ * either order — the schedule parser finds "every month" as a suffix whether
+ * the supply phrase precedes it or follows it, and whichever tooltip is offered
+ * first rewrites the title so the other one can fire on the next keystroke.
+ *
+ * Deliberately does **not** import `supply.ts` for its clamps. That module
+ * reaches `dateUtils` and so the SQLite layer, which this one stays free of to
+ * remain pure and testable without native mocks (see the header note). The
+ * bound here is only a sanity ceiling; the real range lives in
+ * `clampSupplyCount`, which every write already goes through.
+ */
+export function parseSupplyInput(input: string): ParsedSupply | null {
+  const match = input.match(SUPPLY_PATTERN);
+  if (!match || match.index === undefined) return null;
+
+  const count = parseInt(match[1], 10);
+  // Zero is a real supply on a task that already has one, but nobody sets one
+  // up by typing "0 left" — read here it is far more likely to be a sentence.
+  if (!Number.isFinite(count) || count < 1) return null;
+
+  const rawUnit = match[2] ?? null;
+  if (rawUnit && SUPPLY_TIME_UNITS.has(rawUnit.toLowerCase())) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd))
+    // A phrase lifted out of the middle leaves its punctuation behind —
+    // "replace filter, 6 filters left, every month" would otherwise clean to a
+    // title with a doubled comma in it.
+    .replace(/\s*,\s*,\s*/g, ', ')
+    .replace(/\s+/g, ' ')
+    .replace(/^[,\s]+|[,\s]+$/g, '')
+    .trim();
+  if (!cleanTitle) return null; // "6 filters left" alone is a literal title
+
+  return { count, unit: rawUnit ? rawUnit.toLowerCase() : null, cleanTitle, matchStart, matchEnd };
+}
+
 export interface ParsedCategoryAndTags {
   /** The first token's category, if any matched — a task has one. */
   category: string | null;

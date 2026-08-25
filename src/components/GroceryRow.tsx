@@ -65,6 +65,17 @@ interface Props {
    */
   alternatives?: string;
   /**
+   * "For “Change the water filter”" — the task whose supply this row is kept
+   * stocked for, computed by the screen (only it can reach the task list) and
+   * absent for every ordinary row.
+   *
+   * Provenance, and it shares the recipe caption's slot and suppression rules
+   * rather than taking a sixth line: they answer the same question, and a row
+   * carrying both would be spending two lines on where it came from at a shelf
+   * where neither is what you're there to read.
+   */
+  stockedFor?: string;
+  /**
    * "Usually Trader Joe's" — what this row has to say about the store you're
    * standing in, computed by the screen (only it knows the trip) and absent
    * both when no trip is running and on the rows the store already covers.
@@ -115,6 +126,7 @@ export const GroceryRow = React.memo(function GroceryRow({
   onSwipeSelect,
   onOpenSubstitutes,
   alternatives,
+  stockedFor,
   storeMarker,
   swapSubstituteId,
   onSwapForSubstitute,
@@ -280,6 +292,17 @@ export const GroceryRow = React.memo(function GroceryRow({
           {!item.note && !storeMarker && !!item.sourceRecipeTitle && (
             <Text style={styles.note} numberOfLines={1}>
               For “{item.sourceRecipeTitle}”
+            </Text>
+          )}
+          {/* Same slot, same two suppressions, and behind the recipe stamp when
+              a row somehow carries both: that stamp is about *this* add, where
+              a supply is a standing arrangement that will still be true next
+              week. Without this line a row put on the list by a supply is the
+              only automatic add in the app that arrives with no account of
+              itself, and its cause is on a different screen. */}
+          {!item.note && !storeMarker && !item.sourceRecipeTitle && !!stockedFor && (
+            <Text style={styles.note} numberOfLines={1}>
+              {stockedFor}
             </Text>
           )}
           {/* Tappable only when the marker is carrying a substitute — every

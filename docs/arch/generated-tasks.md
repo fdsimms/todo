@@ -1,9 +1,10 @@
-# Generated tasks: the seven things that write a task unattended
+# Generated tasks: the eight things that write a task unattended
 
 The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
-project reviews, pantry checks and the daily calendar review. Read this before
-adding an eighth generator: the whole point of the refactor it describes is
-that a new one costs a rules module and a registry entry, not a column.
+project reviews, pantry checks, supply reorders and the daily calendar review.
+Read this before adding a ninth generator: the whole point of the refactor it
+describes is that a new one costs a rules module and a registry entry, not a
+column.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
 task. The rules here are settled decisions with the reasoning attached: don't
@@ -12,24 +13,27 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the seven things that write a task unattended
+## Generated tasks — the eight things that write a task unattended
 
 Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
-"Review X", a grocery whose pantry guess has run out becomes "Check if you still have X", and (once a
-day, when tomorrow has anything on it) the calendar becomes "Review tomorrow's calendar". The
-first four were each built by copying the last, which is fine twice and had reached
-four — four nullable back-pointer columns on `Task`, four hand-written "don't pile up" rules, three
-copies of one opt-out. They now share `src/utils/generatedTasks.ts` (pure: the kinds, the registry,
-the opt-out precedence, the lookups) and `src/store/generatedTaskSync.ts` (the create/update/delete).
+"Review X", a grocery whose pantry guess has run out becomes "Check if you still have X", a task's
+supply running low becomes "Order more X", and (once a day, when tomorrow has anything on it) the
+calendar becomes "Review tomorrow's calendar". The first four were each built by copying the last,
+which is fine twice and had reached four — four nullable back-pointer columns on `Task`, four
+hand-written "don't pile up" rules, three copies of one opt-out. They now share
+`src/utils/generatedTasks.ts` (pure: the kinds, the registry, the opt-out precedence, the lookups)
+and `src/store/generatedTaskSync.ts` (the create/update/delete).
 **A fifth generator should need neither a column nor a reconcile** — just its own rules module and a
 registry entry (#1524). `projectReview` is that fifth, and it cost exactly that: a rules module, a
 registry entry, a firing beside the nudge's, and no `extrasFor` case in Settings at all.
 `pantryCheck` is the sixth and cost the same; the one column it added
 (`GroceryItem.pantryCheckDeclinedAt`) is on its *source* row, which is where every generator's
-opt-out already lives. `calendarReview` is the seventh and adds no column at all: its source is
-tomorrow's day key rather than a row, so its opt-out is a settings-level mark
-(`calendarReviewLastDayKey`) rather than a stamp anywhere — see the section below.
+opt-out already lives. `supplyReorder` is the seventh, sourced from a task rather than a row in
+another store — see `src/utils/supply.ts` for its own rules. `calendarReview` is the eighth and adds
+no column at all: its source is tomorrow's day key rather than a row, so its opt-out is a
+settings-level mark (`calendarReviewLastDayKey`) rather than a stamp anywhere — see the section
+below.
 
 - **`Task.generatedKind` + `Task.generatedSourceId` replaced `mealEntryId`/`groceryItemId`/
   `leftoverId`.** Those three columns are still on the table, backfilled from and then left
