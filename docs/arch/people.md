@@ -129,7 +129,7 @@ on a search field with nothing under it, and there is no "select all". You
 cannot bulk-select an address book you are never shown. That is also simply the
 better control — a contact book is mostly dentists, plumbers and someone from a
 wedding in 2019, so browsing it for the people you love means wading through
-noise.
+noise. See "Filling one person in from Contacts" below for how that lands.
 
 **Calendar.** "Attendees" and "event titles" are different reads and only the
 first is out. Attendees is a broad structured sweep of everyone you sit in a
@@ -373,6 +373,47 @@ assertion.
   inside a demo and the gate has to be explicit. The second half is a plain bug
   it also avoids: the answer would be written into the scratch settings table,
   so a dismissal made in a demo is lost and the real install is asked again.
+
+## Filling one person in from Contacts
+
+`contactsImport.ts` (the rules) and `contactsAccess.ts` (permission and the one
+native read), the same split `calendarBusy.ts` and `calendarSync.ts` keep.
+Entering a birthday by hand is the tedious half of adding somebody and the
+system contact book already has it.
+
+- **The default view is the rule, and it is enforced in the read rather than in
+  the UI.** `searchContacts` refuses a query shorter than
+  `MIN_CONTACT_QUERY_LENGTH` outright instead of falling back to "everyone", and
+  the name filter is passed *to* the native query rather than applied after it.
+  So an unqueried picker doesn't merely hide the address book, it never reads
+  it — which is the "you cannot bulk-select a book you are never shown" rule
+  made structural rather than a layout decision one refactor could undo. There
+  is no "select all" at any point, and no browse.
+- **One tap adds one person and the sheet stays open**, so a run of three is
+  three taps without the picker ever becoming a checklist of everybody.
+- **The month arrives 0-indexed.** The native module follows the JS `Date`
+  convention and `Person.birthdayMonth` is 1-12, so a straight copy puts every
+  birthday a month early — silently, since every value is still in range. That
+  conversion is the one piece of arithmetic in the feature and it has its own
+  test. The year is dropped because there is nowhere to put it any more (#2083),
+  which is fine: a year-less birthday was always the common case here.
+- **A copy, never a link.** Nothing on a `Person` points back at a contact. A
+  linked person would mean holding the permission indefinitely, a background
+  reconcile, and rows changing under the user; a stale number is a smaller
+  problem than any of those. It also means the duplicate check has no id to work
+  from, so `alreadyAdded` matches on name (against both name and nickname) or on
+  the last seven digits of the phone — the digits so a country code on one side
+  doesn't defeat it, seven so short numbers don't collide.
+- **Refused or unavailable is the ordinary "type a name" path**, with one line
+  saying so and no nagging. The name field is literally the sheet behind this
+  one, so there is nothing here worth pushing.
+- **Demo mode reads nothing** (`isDemoModeActive`, with a test). It is the same
+  direction the past-calendar gate runs in: the read consumes nothing, but a
+  picker offering the real address book inside a demo puts real names on a
+  screen handed to somebody else. Nothing is seeded either, for the same reason
+  — there is no fake contact book to seed one from.
+- **It needs a fresh native build**, not a JS reload: `expo-contacts` is a native
+  module and its permission string is a config-plugin entry in `app.json`.
 
 ## The memory layer
 
