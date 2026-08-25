@@ -55,6 +55,7 @@ const BASE: Task = {
   recurrenceMonthDay: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
+  recurrenceAnchorDate: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,

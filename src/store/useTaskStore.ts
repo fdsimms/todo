@@ -358,6 +358,7 @@ function newTaskFromDraft(
     recurrenceMonthDay: draft.recurrenceMonthDay ?? null,
     recurrenceWeekOrdinal: draft.recurrenceWeekOrdinal ?? null,
     recurrenceAnchorDay: null,
+    recurrenceAnchorDate: null,
     recurrenceEndDate: draft.recurrenceEndDate ?? null,
     recurrenceCount: draft.recurrenceCount ?? null,
     recurrenceFromCompletion: draft.recurrenceFromCompletion ?? false,
@@ -811,7 +812,8 @@ const SCHEDULE_FIELDS = [
 type RecurrenceFields = Pick<
   Task,
   | 'recurrenceType' | 'recurrenceInterval' | 'recurrenceDays' | 'recurrenceMonthDay'
-  | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceEndDate' | 'recurrenceCount'
+  | 'recurrenceWeekOrdinal' | 'recurrenceAnchorDay' | 'recurrenceAnchorDate'
+  | 'recurrenceEndDate' | 'recurrenceCount'
   | 'recurrenceFromCompletion' | 'showStreak' | 'streakRequiresWindow'
   | 'supplyCount' | 'supplyUnit' | 'supplyRefillCount' | 'supplyReorderAt'
   | 'supplyLeadDays' | 'supplyDeclinedAtCount' | 'supplyGroceryItemId'
@@ -824,6 +826,7 @@ const NO_RECURRENCE: RecurrenceFields = {
   recurrenceMonthDay: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
+  recurrenceAnchorDate: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
@@ -2237,6 +2240,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(!('recurrenceAnchorDay' in updates) && SCHEDULE_FIELDS.some(f => f in updates)
           ? { recurrenceAnchorDay: recurrenceAnchorDayFor({ ...t, ...updates }) }
           : {}),
+        // A schedule field written without the anchor beside it is "this is the
+        // schedule now", so the grid's separate anchor goes with it (#1953) —
+        // the same trigger the anchor *day* above uses, so removing a
+        // recurrence outright leaves no stale anchor behind either. One rule
+        // here rather
+        // than a `recurrenceAnchorDate: null` at each of the call sites that
+        // re-date a row — the editor's Date row, skipNextRecurrence, the chain
+        // step on schedule, the expired sweep — because a call site that
+        // forgets it leaves a task stepping from a day it no longer sits on.
+        // A patch that names the field itself wins outright, which is both the
+        // pull-forward writing the two together and a whole-snapshot undo
+        // restoring what was there.
+        ...(!('recurrenceAnchorDate' in updates) && SCHEDULE_FIELDS.some(f => f in updates)
+          ? { recurrenceAnchorDate: null }
+          : {}),
       };
 
       // Re-filing a task must not, on its own, make it read as "new".
@@ -2782,6 +2800,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           dueDate: effectiveDue ? effectiveDue.toISOString() : null,
           deadline: nextDeadline,
           deferUntil: null,
+          // Dropped alongside the defer, and for the same reason: both say
+          // where *the occurrence just completed* actually sat, and neither is
+          // a fact about the one taking its place. The successor's own dueDate
+          // came off the grid, so it is the grid's anchor again (#1953). This
+          // one is explicit because the successor is built as a row rather than
+          // patched through updateTask, so the rule there doesn't reach it.
+          recurrenceAnchorDate: null,
           timeSegments: nextTimeSegments,
           pinned: chainStepStaysPinned, // stays pinned through an immediate chain step; resets otherwise
           progressCount: 0, // a quota starts the new day empty
@@ -4834,6 +4859,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceMonthDay: null,
       recurrenceWeekOrdinal: null,
       recurrenceAnchorDay: null,
+    recurrenceAnchorDate: null,
       recurrenceEndDate: null,
       recurrenceCount: null,
       recurrenceFromCompletion: false,
@@ -5008,6 +5034,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       recurrenceMonthDay: null,
       recurrenceWeekOrdinal: null,
       recurrenceAnchorDay: null,
+    recurrenceAnchorDate: null,
       recurrenceEndDate: null,
       recurrenceCount: null,
       recurrenceFromCompletion: false,

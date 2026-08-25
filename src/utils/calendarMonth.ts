@@ -226,6 +226,12 @@ function stepOccurrence(
     cursor: {
       ...cursor,
       dueDate: next.toISOString(),
+      // Cleared after the first step, and it has to be: the anchor is where
+      // *this* occurrence's grid is measured from (#1953), so carrying it onto
+      // the cursor would make every step compute the same next date off the
+      // same anchor — the walk would stall on one day rather than advancing.
+      // The projected date it just produced is the next cell's own anchor.
+      recurrenceAnchorDate: null,
       recurrenceCount: cursor.recurrenceCount !== null ? cursor.recurrenceCount - 1 : null,
     },
   };

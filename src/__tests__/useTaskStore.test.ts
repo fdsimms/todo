@@ -262,6 +262,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceMonthDay: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
+  recurrenceAnchorDate: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
@@ -503,6 +504,101 @@ describe('completeTask: catching an overdue recurrence up', () => {
     useTaskStore.getState().completeTask('bins');
     const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
     expect(new Date(next.dueDate!).toDateString()).toBe('Wed Jun 11 2025');
+  });
+});
+
+// ─── recurrenceAnchorDate ────────────────────────────────────────────────────
+
+// #1953. Pushing an occurrence out defers, so the stored date survives
+// underneath. Pulling one forward can't: the only way a task shows up on
+// Wednesday is for its date to *be* Wednesday, so it moves the date honestly
+// and hands the grid its own anchor.
+describe('pulling one occurrence of a repeating task forward', () => {
+  const friday = new Date(2026, 7, 28, 12).toISOString();
+  const wednesday = new Date(2026, 7, 26, 12).toISOString();
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 26, 10, 0, 0));
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const weekly = () => makeTask({
+    id: 'weekly',
+    title: 'Water the plants',
+    recurrenceType: 'weekly',
+    recurrenceInterval: 1,
+    dueDate: friday,
+  });
+
+  it('leaves the schedule where it was, so the next one is still on the Friday', () => {
+    useTaskStore.setState({ tasks: [weekly()] });
+    useTaskStore.getState().updateTask('weekly', {
+      dueDate: wednesday,
+      recurrenceAnchorDate: friday,
+      deferUntil: null,
+    });
+
+    const moved = useTaskStore.getState().tasks[0];
+    // The row genuinely sits on Wednesday, which is what makes it show up.
+    expect(new Date(moved.dueDate!).toDateString()).toBe('Wed Aug 26 2026');
+    expect(moved.recurrenceAnchorDate).toBe(friday);
+
+    useTaskStore.getState().completeTask('weekly');
+    const next = useTaskStore.getState().tasks.find(t => !t.completed)!;
+    expect(new Date(next.dueDate!).toDateString()).toBe('Fri Sep 04 2026');
+  });
+
+  it('hands the successor no anchor, since its own date came off the grid', () => {
+    useTaskStore.setState({ tasks: [{ ...weekly(), dueDate: wednesday, recurrenceAnchorDate: friday }] });
+    useTaskStore.getState().completeTask('weekly');
+    expect(useTaskStore.getState().tasks.find(t => !t.completed)!.recurrenceAnchorDate).toBeNull();
+  });
+
+  // Otherwise the second pull re-anchors the schedule onto the first pull's
+  // day, rotating it by the back door — the thing this exists to stop.
+  it('keeps the original anchor when the same occurrence is pulled twice', () => {
+    useTaskStore.setState({ tasks: [{ ...weekly(), dueDate: wednesday, recurrenceAnchorDate: friday }] });
+    const held = useTaskStore.getState().tasks[0];
+    useTaskStore.getState().updateTask('weekly', {
+      dueDate: new Date(2026, 7, 25, 12).toISOString(),
+      recurrenceAnchorDate: held.recurrenceAnchorDate ?? held.dueDate,
+      deferUntil: null,
+    });
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDate).toBe(friday);
+  });
+
+  // A dueDate written with no anchor beside it is "this is the schedule now",
+  // which is what the editor's Date row and every re-dating pass do.
+  it('clears the anchor on a plain reschedule', () => {
+    useTaskStore.setState({ tasks: [{ ...weekly(), dueDate: wednesday, recurrenceAnchorDate: friday }] });
+    useTaskStore.getState().updateTask('weekly', { dueDate: new Date(2026, 8, 1, 12).toISOString() });
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDate).toBeNull();
+  });
+
+  // Same trigger the anchor *day* uses, so a recurrence removed outright leaves
+  // no stale grid anchor behind on a row that no longer has a grid.
+  it('clears the anchor when the recurrence is removed', () => {
+    useTaskStore.setState({ tasks: [{ ...weekly(), dueDate: wednesday, recurrenceAnchorDate: friday }] });
+    useTaskStore.getState().updateTask('weekly', { recurrenceType: 'none' });
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDate).toBeNull();
+  });
+
+  it('leaves the anchor alone on a patch that says nothing about the date', () => {
+    useTaskStore.setState({ tasks: [{ ...weekly(), dueDate: wednesday, recurrenceAnchorDate: friday }] });
+    useTaskStore.getState().updateTask('weekly', { pinned: true });
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDate).toBe(friday);
+  });
+
+  it('restores it on a whole-snapshot undo', () => {
+    useTaskStore.setState({ tasks: [{ ...weekly(), dueDate: wednesday, recurrenceAnchorDate: friday }] });
+    const snapshot = { ...useTaskStore.getState().tasks[0] };
+    useTaskStore.getState().updateTask('weekly', { dueDate: new Date(2026, 8, 1, 12).toISOString() });
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDate).toBeNull();
+    useTaskStore.getState().updateTask('weekly', snapshot);
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDate).toBe(friday);
   });
 });
 
