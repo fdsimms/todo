@@ -192,6 +192,15 @@ export interface FabDropZonesHandle {
   end: (pageY: number, home?: FabHomeState, pageX?: number | null) => FabDropIntent;
   /** Clear the indicator without resolving anything (cancelled drag). */
   cancel: () => void;
+  /**
+   * The window-space top/bottom of the list area this provider wraps, last
+   * measured on mount/layout (and refreshed whenever an add-button drag
+   * begins). Exists so a second, unrelated drag — a nested `SortableList`
+   * reordering the pinned block or a stack's children — can autoscroll the
+   * same list without measuring its own copy of the same region (see
+   * `SortableList`'s `autoscroll` prop).
+   */
+  getViewport: () => { top: number; bottom: number };
 }
 
 interface Props {
@@ -470,6 +479,10 @@ export const FabDropZoneProvider = forwardRef<FabDropZonesHandle, Props>(
           return intent;
         },
         cancel: clear,
+        getViewport: () => ({
+          top: containerYRef.current,
+          bottom: containerYRef.current + containerHeightRef.current,
+        }),
       };
     }, [indicatorOpacity, indicatorTop, measureZone, scrollOffset]);
 

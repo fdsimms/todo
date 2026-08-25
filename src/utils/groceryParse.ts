@@ -293,6 +293,22 @@ export function splitPrep(name: string): { name: string; prep: string | null } {
     }
   }
 
+  // A trailing parenthetical left in the name after parseGroceryInput's own
+  // leading-quantity match already claimed the actual amount — "tempeh
+  // (steamed 10 min)". Reusing TRAILING_PARENS here is safe in a way it isn't
+  // inside parseGroceryInput: that call only fires when NO leading quantity
+  // was found, where a trailing paren is read as a size/quantity descriptor
+  // ("eggs (dozen)"). By the time a name reaches splitPrep, any leading
+  // quantity has already been extracted, so a paren clause left over can only
+  // be describing what to do to the item, not how much of it there is.
+  const parens = TRAILING_PARENS.exec(trimmed);
+  if (parens && parens[1].trim()) {
+    return {
+      name: parens[1].trim(),
+      prep: parens[2].trim().slice(0, PREP_MAX_LENGTH) || null,
+    };
+  }
+
   return { name: trimmed, prep: null };
 }
 

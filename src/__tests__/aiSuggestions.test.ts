@@ -431,8 +431,8 @@ describe('suggestRecipeGroceries', () => {
       })
     );
     await expect(suggestRecipeGroceries('some recipe', AISLES)).resolves.toEqual([
-      { name: 'garlic', quantity: '1 bulb', aisle: 'Produce', section: null },
-      { name: 'double cream', quantity: '300 ml', aisle: 'Dairy & Eggs', section: null },
+      { name: 'garlic', quantity: '1 bulb', aisle: 'Produce', section: null, prep: null },
+      { name: 'double cream', quantity: '300 ml', aisle: 'Dairy & Eggs', section: null, prep: null },
     ]);
   });
 
@@ -526,7 +526,7 @@ describe('extractRecipe', () => {
       servingsMax: null,
       prepMinutes: 45,
       recipeYield: null,
-      ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
+      ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null }],
       references: [],
       steps: [],
       prepTasks: [],
@@ -659,8 +659,25 @@ describe('extractRecipe', () => {
     );
     const result = await extractRecipe('some recipe', AISLES);
     expect(result.ingredients).toEqual([
-      { name: 'flour', quantity: '2 cups', aisle: 'Pantry', section: 'For the cake' },
-      { name: 'butter', quantity: '1 cup', aisle: 'Dairy & Eggs', section: null },
+      { name: 'flour', quantity: '2 cups', aisle: 'Pantry', section: 'For the cake', prep: null },
+      { name: 'butter', quantity: '1 cup', aisle: 'Dairy & Eggs', section: null, prep: null },
+    ]);
+  });
+
+  it('reads the model\'s prep field, clamped to PREP_MAX_LENGTH', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Tempeh Stir-Fry',
+        items: [
+          { name: 'tempeh', quantity: '1 block', aisle: 'Pantry', prep: 'pressed and cubed' },
+          { name: 'garlic', quantity: '2 cloves', aisle: 'Produce', prep: '  ' },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients).toEqual([
+      { name: 'tempeh', quantity: '1 block', aisle: 'Pantry', section: null, prep: 'pressed and cubed' },
+      { name: 'garlic', quantity: '2 cloves', aisle: 'Produce', section: null, prep: null },
     ]);
   });
 
@@ -918,7 +935,7 @@ describe('extractRecipe', () => {
         servingsMax: null,
         prepMinutes: 45,
         recipeYield: null,
-        ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null }],
+        ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null }],
         references: [],
         steps: [],
         prepTasks: [],
@@ -1002,7 +1019,7 @@ describe('extractRecipe', () => {
         })
       );
       await expect(suggestRecipeGroceries(PHOTO, AISLES)).resolves.toEqual([
-        { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null },
+        { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null },
       ]);
     });
   });
@@ -1256,8 +1273,8 @@ describe('draftMealRecipe', () => {
     }));
     const result = await draftMealRecipe('Lemon chicken', AISLES, 4);
     expect(result.ingredients).toEqual([
-      { name: 'chicken thighs', quantity: '1 kg', aisle: 'Meat', section: null },
-      { name: 'lemons', quantity: '2', aisle: 'Produce', section: null },
+      { name: 'chicken thighs', quantity: '1 kg', aisle: 'Meat', section: null, prep: null },
+      { name: 'lemons', quantity: '2', aisle: 'Produce', section: null, prep: null },
     ]);
   });
 

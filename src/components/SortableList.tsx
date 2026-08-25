@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { View, Animated, PanResponder, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 import { moveItem, dropIndexFromTranslation, rowDragOffset } from '../utils/reorder';
+import { autoscrollStep, AUTOSCROLL_INTERVAL_MS, type DragScroller } from '../utils/fabDrop';
 import { useTheme } from '../theme/ThemeContext';
 import { haptics } from '../utils/haptics';
 
@@ -93,6 +94,38 @@ interface Props<T extends { id: string }> {
    * a row's padding changed.
    */
   metricsRef?: { current: SortableMetrics | null };
+  /**
+   * Lets a drag in this list scroll an *enclosing* scrollable when the
+   * finger nears the top or bottom of the screen — for a list whose own rows
+   * can run past viewport height (the pinned block, a stack's children on
+   * Today). Omitted, dragging behaves exactly as the class doc above says:
+   * the enclosing scrollable is assumed to hold still.
+   *
+   * `scroller` is the same `DragScroller` handle `ReorderableList` hands out
+   * via `scrollControlRef` — already wired up for the add-button drag
+   * (`FabDropZoneProvider`), reused here rather than a second contract.
+   * `getViewport` answers the enclosing scrollable's window-space top/bottom
+   * — a getter rather than a measured value, since this list has no way to
+   * measure a container it isn't inside of; the caller already has one
+   * (`FabDropZonesHandle.getViewport`).
+   *
+   * The tricky part isn't triggering the scroll — that's the same edge-band
+   * math the add-button drag uses (autoscrollStep) — it's that this list's
+   * card position is otherwise pure finger-delta (see the class doc: no
+   * scroll-offset bookkeeping). Scrolling the *enclosing* list moves this
+   * list's content on screen while every row's own onLayout position (this
+   * list's local coordinate space) stays exactly where it was — so left
+   * alone, the floating card (rendered as a normal child of that content,
+   * unlike ReorderableList's own overlay) would drift away from the finger
+   * by the distance autoscrolled instead of staying pinned near the edge.
+   * `scrollCompensationRef` is the running total of that drift, folded into
+   * every card-position calculation below (onPanResponderMove and the
+   * autoscroll tick alike) so the two stay in lockstep.
+   */
+  autoscroll?: {
+    scroller: { current: DragScroller | null };
+    getViewport: () => { top: number; bottom: number };
+  };
 }
 
 /** What a caller placing something among these rows needs to know about them. */
@@ -128,6 +161,7 @@ export function SortableList<T extends { id: string }>({
   onHoverChange,
   placeholderStyle,
   metricsRef,
+  autoscroll,
 }: Props<T>) {
   const { shadows } = useTheme();
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -166,6 +200,19 @@ export function SortableList<T extends { id: string }>({
   const onDragOutRef = useRef(onDragOut);
   const onDragStateChangeRef = useRef(onDragStateChange);
   const onHoverChangeRef = useRef(onHoverChange);
+  const autoscrollRef = useRef(autoscroll);
+  // Raw pointer position (page coords), refreshed on every move so an
+  // autoscroll tick — which runs on a timer, not a touch event — can still
+  // answer "is the finger still in the edge band" and recompute the card's
+  // position from the same finger delta the last real move used.
+  const lastPageYRef = useRef(0);
+  // Running total of every autoscroll tick's scroll delta since this drag
+  // began. See the `autoscroll` prop doc: this is what keeps the floating
+  // card's position (pure finger-delta otherwise) in step with content that
+  // moved out from under it.
+  const scrollCompensationRef = useRef(0);
+  const autoscrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoscrollStepRef = useRef(0);
   const heightsRef = useRef<Map<string, number>>(new Map());
   const topsRef = useRef<Map<string, number>>(new Map());
   // translateY per row, owned here so they can be cleared synchronously at the
@@ -209,6 +256,7 @@ export function SortableList<T extends { id: string }>({
   useEffect(() => { onDragOutRef.current = onDragOut; }, [onDragOut]);
   useEffect(() => { onDragStateChangeRef.current = onDragStateChange; }, [onDragStateChange]);
   useEffect(() => { onHoverChangeRef.current = onHoverChange; }, [onHoverChange]);
+  useEffect(() => { autoscrollRef.current = autoscroll; }, [autoscroll]);
 
   // The parent has caught up; its data is the source of truth again.
   useEffect(() => {
@@ -328,6 +376,55 @@ export function SortableList<T extends { id: string }>({
     onHoverChangeRef.current?.(next);
   };
 
+  const stopAutoscroll = () => {
+    if (autoscrollTimerRef.current !== null) {
+      clearInterval(autoscrollTimerRef.current);
+      autoscrollTimerRef.current = null;
+    }
+  };
+
+  /**
+   * Ramp the enclosing list toward the finger's edge, ticking the same
+   * compensation into the card's position every step (see the `autoscroll`
+   * prop doc). Mirrors ReorderableList's own maybeAutoscroll/FabDropZoneProvider's,
+   * reusing the same edge-band function (autoscrollStep) so a drag entering
+   * the band feels identical regardless of which of the three drags it is.
+   */
+  const maybeAutoscroll = () => {
+    const auto = autoscrollRef.current;
+    if (!auto || activeIndexRef.current === null) return;
+    const viewport = auto.getViewport();
+    const step = autoscrollStep(lastPageYRef.current, viewport.top, viewport.bottom);
+    autoscrollStepRef.current = step;
+    if (step === 0) {
+      stopAutoscroll();
+      return;
+    }
+    if (autoscrollTimerRef.current !== null) return;
+    autoscrollTimerRef.current = setInterval(() => {
+      const list = autoscrollRef.current?.scroller.current;
+      if (!list || activeIndexRef.current === null || committingRef.current) {
+        stopAutoscroll();
+        return;
+      }
+      const from = list.getOffset();
+      const next = Math.max(0, Math.min(list.getMaxOffset(), from + autoscrollStepRef.current));
+      if (next === from) {
+        stopAutoscroll();
+        return;
+      }
+      list.scrollToOffset(next);
+      scrollCompensationRef.current += next - from;
+      cardTopRef.current = clampCardTop(
+        overlayTopRef.current
+          + (lastPageYRef.current - startPageYRef.current)
+          + scrollCompensationRef.current,
+      );
+      overlayY.setValue(cardTopRef.current - overlayTopRef.current);
+      updateHover();
+    }, AUTOSCROLL_INTERVAL_MS);
+  };
+
   /** Released far enough past either end of the list to mean "take it out". */
   const isDraggedOut = (): boolean => {
     const ai = activeIndexRef.current;
@@ -340,6 +437,7 @@ export function SortableList<T extends { id: string }>({
   /** Put the list back at rest without committing anything. */
   const resetDrag = () => {
     if (activeIndexRef.current === null) return;
+    stopAutoscroll();
     committingRef.current = false;
     activeIndexRef.current = null;
     hoverIndexRef.current = null;
@@ -369,6 +467,7 @@ export function SortableList<T extends { id: string }>({
     const ai = activeIndexRef.current;
     if (ai === null || committingRef.current) return;
     committingRef.current = true;
+    stopAutoscroll();
 
     const draggedOut = isDraggedOut();
     const hi = hoverIndexRef.current;
@@ -421,6 +520,8 @@ export function SortableList<T extends { id: string }>({
     // position and start the drag with a visible jump.
     startPageYRef.current = 0;
     startPageXRef.current = null;
+    lastPageYRef.current = 0;
+    scrollCompensationRef.current = 0;
     const top = topsRef.current.get(key) ?? 0;
     overlayTopRef.current = top;
     cardTopRef.current = top;
@@ -452,11 +553,15 @@ export function SortableList<T extends { id: string }>({
       onPanResponderGrant: e => {
         startPageYRef.current = e.nativeEvent.pageY;
         startPageXRef.current = e.nativeEvent.pageX;
+        lastPageYRef.current = e.nativeEvent.pageY;
       },
       onPanResponderMove: e => {
         if (activeIndexRef.current === null || committingRef.current) return;
+        lastPageYRef.current = e.nativeEvent.pageY;
         cardTopRef.current = clampCardTop(
-          overlayTopRef.current + (e.nativeEvent.pageY - startPageYRef.current),
+          overlayTopRef.current
+            + (e.nativeEvent.pageY - startPageYRef.current)
+            + scrollCompensationRef.current,
         );
         overlayY.setValue(cardTopRef.current - overlayTopRef.current);
         // Purely cosmetic, exactly as in the main list: drop targeting is
@@ -466,6 +571,7 @@ export function SortableList<T extends { id: string }>({
           overlayX.setValue(e.nativeEvent.pageX - startPageXRef.current);
         }
         updateHover();
+        maybeAutoscroll();
       },
       onPanResponderRelease: () => commitDrag(),
       onPanResponderTerminate: () => {
