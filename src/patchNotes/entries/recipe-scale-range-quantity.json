@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a recipe ingredient written as a range (\"1 to 2 tbsp\", \"1-2 tbsp\") scaling only the first number when halved or doubled, leaving the second one wrong",
+  "date": "2026-08-25"
+}

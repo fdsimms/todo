@@ -279,6 +279,11 @@ function convertOne(part: string, target: 'metric' | 'us'): ConvertedQuantity {
   // of something you have, so converting it renames a product off the shelf.
   if (q.container) return unchanged;
 
+  // A range ("1 to 2 tbsp"): converting the low end alone and rendering it in
+  // place of the whole range would silently drop the high end. recipeScale is
+  // the one reader built to carry both ends through; this one refuses.
+  if (q.rangeMax) return unchanged;
+
   if (!q.unit) return unchanged;
   const known = KNOWN_UNITS[q.unit];
   if (!known || known.system === target) return unchanged;
@@ -322,6 +327,9 @@ export function measureQuantity(quantity: string): MeasuredQuantity | null {
   if (q.amount === null) return null;
   const value = rationalToNumber(q.amount);
   if (value <= 0) return null;
+  // A range ("1 to 2 tbsp") names two amounts; measuring the low end alone
+  // would misreport how much the line actually calls for.
+  if (q.rangeMax) return null;
 
   // A bare sized container takes its unit from the size word, and its leading
   // amount *is* that size — "14 oz can" is fourteen ounces. A counted one

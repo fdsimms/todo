@@ -292,6 +292,9 @@ export function comparableQuantity(quantity: string | null): Comparable | null {
   if (q.amount === null) return null;
   const value = rationalToNumber(q.amount);
   if (value <= 0) return null;
+  // A range ("1 to 2 tbsp") names two amounts; pricing off the low end alone
+  // would misreport the per-unit cost.
+  if (q.rangeMax) return null;
   // '' for a bare number ("12") and for a counted container ("2 14 oz cans",
   // whose leading amount is followed by a second number rather than a word).
   const unit = q.unit ?? '';

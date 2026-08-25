@@ -202,6 +202,9 @@ export function substituteQuantity(
   const line = parseQuantity(text);
   const from = parseQuantity(ratioFrom);
   if (line.amount === null || from.amount === null) return unchanged;
+  // A range ("1 to 2 tbsp") on either side names two amounts; applying the
+  // ratio to the low end alone would silently drop the high end.
+  if (line.rangeMax || from.rangeMax) return unchanged;
   const fromValue = rationalToNumber(from.amount);
   if (fromValue === 0) return unchanged;
   if (!line.rest || !from.rest) return unchanged;
