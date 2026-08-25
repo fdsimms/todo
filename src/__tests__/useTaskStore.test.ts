@@ -6500,22 +6500,22 @@ describe('deferGroup', () => {
 });
 
 describe('pinGroup', () => {
-  it('pins every child when none are pinned', () => {
+  it('pins every child due today when none are pinned', () => {
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'a', groupId: 'g1', pinned: false }),
-        makeTask({ id: 'b', groupId: 'g1', pinned: false }),
+        makeTask({ id: 'a', groupId: 'g1', dueDate: new Date().toISOString(), pinned: false }),
+        makeTask({ id: 'b', groupId: 'g1', dueDate: new Date().toISOString(), pinned: false }),
       ],
     });
     useTaskStore.getState().pinGroup('g1');
     expect(useTaskStore.getState().tasks.every(t => t.pinned)).toBe(true);
   });
 
-  it('unpins every child when all are already pinned', () => {
+  it('unpins every child due today when all are already pinned', () => {
     useTaskStore.setState({
       tasks: [
-        makeTask({ id: 'a', groupId: 'g1', pinned: true }),
-        makeTask({ id: 'b', groupId: 'g1', pinned: true }),
+        makeTask({ id: 'a', groupId: 'g1', dueDate: new Date().toISOString(), pinned: true }),
+        makeTask({ id: 'b', groupId: 'g1', dueDate: new Date().toISOString(), pinned: true }),
       ],
     });
     useTaskStore.getState().pinGroup('g1');
@@ -6536,6 +6536,22 @@ describe('pinGroup', () => {
     const { tasks } = useTaskStore.getState();
     expect(tasks.find(t => t.id === 'live')?.pinned).toBe(true);
     expect(tasks.find(t => t.id === 'old')?.pinned).toBe(false);
+  });
+
+  it('leaves a member not due today alone — pinning it would strand it in the Pinned block', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'today', groupId: 'g1', dueDate: new Date().toISOString(), pinned: false }),
+        makeTask({
+          id: 'later', groupId: 'g1', pinned: false,
+          deferUntil: new Date(Date.now() + 3 * 86400000).toISOString(),
+        }),
+      ],
+    });
+    useTaskStore.getState().pinGroup('g1');
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'today')?.pinned).toBe(true);
+    expect(tasks.find(t => t.id === 'later')?.pinned).toBe(false);
   });
 });
 
