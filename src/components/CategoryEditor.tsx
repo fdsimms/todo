@@ -589,7 +589,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
   toggle: {
     width: 44, height: 26, borderRadius: radius.full,
-    backgroundColor: colors.bgTertiary, padding: 2, justifyContent: 'center',
+    backgroundColor: colors.bgQuaternary, padding: 2, justifyContent: 'center',
   },
   toggleOn: { backgroundColor: colors.accent },
   toggleKnob: { width: 22, height: 22, borderRadius: radius.full, backgroundColor: colors.bg },
