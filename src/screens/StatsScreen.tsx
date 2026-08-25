@@ -45,6 +45,13 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { describeFridgeHistory, outcomeCounts } from '../utils/leftovers';
 import { getLogicalToday } from '../utils/dateUtils';
 import {
+  describeMealsTogether,
+  describeTimeTogether,
+  mealYearRange,
+  taskYearRange,
+  timeTogetherInRange,
+} from '../utils/peopleStats';
+import {
   cookingWindow,
   hasCookingData,
   leftoversFinishedIn,
@@ -285,6 +292,15 @@ export function StatsScreen() {
   const refreshCookingCounts = useMealPlanStore(s => s.refreshCookingCounts);
   const [cookWindow, setCookWindow] = useState<CookingWindow | null>(null);
 
+  // This year's meals with a guest — its own read rather than a wider
+  // cookWindow, since "what have you cooked lately" (30 days) and "your year"
+  // don't share an answer. Independent of kitchenEnabled below: unlike the
+  // cooking section, this can be true from tasks alone even with the kitchen
+  // put away, so the fetch always runs and only the meals half of the
+  // sentence is withheld when it's off.
+  const peopleYearMealCount = useMealPlanStore(s => s.peopleYearMealCount);
+  const refreshPeopleYearMealCount = useMealPlanStore(s => s.refreshPeopleYearMealCount);
+
   // Gated at the point of use rather than by writing anything off, like
   // `mealsOnToday` in TodayScreen: someone who has put the kitchen away
   // shouldn't be shown what they cooked, and turning it back on restores the
@@ -306,6 +322,24 @@ export function StatsScreen() {
       refreshCookingCounts(next);
     }, [kitchenEnabled, refreshCookingCounts]),
   );
+
+  useFocusEffect(
+    useCallback(() => {
+      const { startKey, endKey } = mealYearRange(getLogicalToday());
+      refreshPeopleYearMealCount(startKey, endKey);
+    }, [refreshPeopleYearMealCount]),
+  );
+
+  // Off `tasks` rather than `done`: onTimeSummary above makes the same call,
+  // doing its own isRealCompletion/parentId check rather than assuming a
+  // pre-filtered list, so the function stands on its own if anything else
+  // ever wants it.
+  const timeTogetherCount = useMemo(() => {
+    const { startIso, endIso } = taskYearRange(now);
+    return timeTogetherInRange(tasks, startIso, endIso);
+  }, [tasks, now]);
+  const timeTogetherText = describeTimeTogether(timeTogetherCount);
+  const mealsTogetherText = kitchenEnabled ? describeMealsTogether(peopleYearMealCount ?? 0) : null;
 
   const fridge = useMemo(
     () => (kitchenEnabled && cookWindow ? leftoversFinishedIn(leftovers, cookWindow) : []),
@@ -674,6 +708,35 @@ export function StatsScreen() {
                     </View>
                   );
                 })}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/*
+            A warm year in review — see docs/arch/people.md. Two independent
+            facts, each gated on its own truthiness rather than as one row: a
+            year with hosting but no tagged tasks (or the reverse) should still
+            say the half that's true, and neither implies the other.
+
+            No per-person breakdown anywhere near this, including as
+            intermediate state — see the note on peopleStats.ts.
+          */}
+          {(!!timeTogetherText || !!mealsTogetherText) && (
+            <StaggerIn index={cookingStagger + 2}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>PEOPLE THIS YEAR</Text>
+              <View style={styles.card}>
+                {!!timeTogetherText && (
+                  <View style={[styles.row, !!mealsTogetherText && styles.rowBorder]}>
+                    <Text style={styles.rowText}>{timeTogetherText}</Text>
+                  </View>
+                )}
+                {!!mealsTogetherText && (
+                  <View style={styles.row}>
+                    <Text style={styles.rowText}>{mealsTogetherText}</Text>
+                  </View>
+                )}
               </View>
             </View>
             </StaggerIn>
