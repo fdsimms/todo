@@ -811,7 +811,6 @@ function seedPeople(today: Date): void {
   updatePerson(dustin.id, {
     birthdayMonth: bdayNear.getMonth() + 1,
     birthdayDay: bdayNear.getDate(),
-    birthYear: bdayNear.getFullYear() - 34,
     phoneNumber: '555 0148',
     notes: 'Climbs on Wednesdays. Allergic to shellfish.',
   });

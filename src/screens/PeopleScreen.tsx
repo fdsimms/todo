@@ -19,8 +19,6 @@ import { spacing, font, fontWeight, radius, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
-  ageTurning,
-  describeBirthdayAge,
   hasBirthday,
   nextBirthday,
 } from '../utils/birthdayTasks';
@@ -141,10 +139,7 @@ export function PeopleScreen() {
             const birthdayLabel = birthday
               ? birthday.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
               : null;
-            const age = birthday ? describeBirthdayAge(ageTurning(person, birthday.getFullYear())) : null;
-            const spokenMeta = [birthdayLabel ? `Birthday ${birthdayLabel}` : null, age]
-              .filter(Boolean)
-              .join('. ');
+            const spokenMeta = birthdayLabel ? `Birthday ${birthdayLabel}` : null;
             return (
               <TouchableOpacity
                 style={[styles.row, isActive && styles.rowActive]}
@@ -174,12 +169,6 @@ export function PeopleScreen() {
                       <Text style={[styles.metaText, soon && styles.metaSoon]} numberOfLines={1}>
                         {birthdayLabel}
                       </Text>
-                      {age && (
-                        <>
-                          <Text style={styles.metaDot}>·</Text>
-                          <Text style={styles.metaText} numberOfLines={1}>{age}</Text>
-                        </>
-                      )}
                     </View>
                   )}
                 </View>
@@ -247,5 +236,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   metaText: { color: colors.textTertiary, fontSize: font.xs },
   metaSoon: { color: colors.accent },
-  metaDot: { color: colors.textTertiary, fontSize: font.xs },
 });

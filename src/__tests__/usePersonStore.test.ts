@@ -23,7 +23,6 @@ describe('a new person', () => {
     expect(person.notes).toBe('');
     expect(person.birthdayMonth).toBeNull();
     expect(person.birthdayDay).toBeNull();
-    expect(person.birthYear).toBeNull();
     expect(person.archived).toBe(false);
   });
 

@@ -141,16 +141,6 @@ export function nextBirthday(
   return birthdayInYear(person, today.getFullYear() + 1);
 }
 
-/** How old they are turning, or null when the year isn't on file — which is normal. */
-export function ageTurning(
-  person: Pick<Person, 'birthYear'>,
-  birthdayYear: number
-): number | null {
-  if (person.birthYear === null || !Number.isInteger(person.birthYear)) return null;
-  const age = birthdayYear - person.birthYear;
-  return age > 0 && age < 150 ? age : null;
-}
-
 /**
  * The row's title.
  *
@@ -167,11 +157,6 @@ export function ageTurning(
 export function birthdayTitle(person: Pick<Person, 'name' | 'nickname'>): string {
   const who = person.nickname.trim() || person.name.trim();
   return `${who}'s birthday`;
-}
-
-/** The row's chip: "Turning 34", or nothing at all when the year isn't known. */
-export function describeBirthdayAge(age: number | null): string | null {
-  return age === null ? null : `Turning ${age}`;
 }
 
 /** What a birthday task carries in `linkUrl`: the person it is about. */
