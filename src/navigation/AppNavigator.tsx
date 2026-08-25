@@ -54,8 +54,22 @@ const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
 const EDGE_WIDTH = 20;
 
-// Screens only reachable via the drawer — hidden from the tab bar.
-const HIDDEN = { tabBarButton: () => null };
+// Screens only reachable via the drawer — hidden from the tab bar. There are
+// seventeen of these against four visible tabs, so how they're hidden matters.
+//
+// `tabBarButton: () => null` alone was the whole of this under React Navigation
+// v6, where `BottomTabItem` returned the button's own return value as the item
+// — so null rendered nothing and occupied nothing. v7 wraps that return value
+// in a `View` carrying `styles.bottomItem` (`flex: 1`), which renders whether
+// or not the button does: on its own, `() => null` would leave seventeen empty
+// but space-claiming flex slots, and the four real icons would each get 1/21 of
+// the bar instead of 1/4. `tabBarItemStyle` lands on that same wrapper after
+// `flex: 1` in the style array, so `display: 'none'` is what actually takes it
+// out of the layout (and out of the accessibility tree with it). The null
+// button stays because it's still the cheaper render — otherwise each hidden
+// tab builds a default pressable and a `MissingIcon` to put inside a box
+// nobody can see.
+const HIDDEN = { tabBarButton: () => null, tabBarItemStyle: { display: 'none' as const } };
 
 const DRAWER_TABS = new Set(['Search', 'Calendar', 'Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Backfill', 'Waiting', 'Drift', 'Archived', 'Recipes', 'MealPlan', 'Kitchen']);
 
