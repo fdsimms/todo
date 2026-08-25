@@ -43,6 +43,7 @@ const BASE: Task = {
   recurrenceMonthDay: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
+  recurrenceAnchorDate: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
@@ -247,6 +248,29 @@ describe('projectOccurrences', () => {
   it('never includes the task\'s own due date — that one is a real row', () => {
     const hits = projectOccurrences(daily(), FROM, TO, '00:00');
     expect(hits.every(d => d.getDate() !== 10 || d.getMonth() !== 7)).toBe(true);
+  });
+
+  // #1953: a pulled-forward occurrence sits off its own grid, so the projection
+  // has to draw the grid rather than the day it was moved to — and the cursor
+  // has to shed the anchor after the first step or the walk stalls on one day.
+  it('projects from the grid anchor when an occurrence has been pulled forward', () => {
+    const task = makeTask({
+      dueDate: iso(2026, 8, 12),
+      recurrenceAnchorDate: iso(2026, 8, 14),
+      recurrenceType: 'weekly',
+    });
+    const hits = projectOccurrences(task, FROM, at(2026, 9, 5), '00:00');
+    expect(hits.map(d => d.getDate())).toEqual([21, 28, 4]);
+  });
+
+  it('keeps advancing rather than stalling on the anchor', () => {
+    const task = makeTask({
+      dueDate: iso(2026, 8, 12),
+      recurrenceAnchorDate: iso(2026, 8, 14),
+      recurrenceType: 'daily',
+    });
+    const hits = projectOccurrences(task, FROM, at(2026, 8, 18), '00:00');
+    expect(hits.map(d => d.getDate())).toEqual([15, 16, 17, 18]);
   });
 
   it('honours an interval', () => {

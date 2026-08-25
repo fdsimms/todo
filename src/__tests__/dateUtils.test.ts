@@ -59,6 +59,7 @@ const baseTask: Task = {
   recurrenceMonthDay: null,
   recurrenceWeekOrdinal: null,
   recurrenceAnchorDay: null,
+  recurrenceAnchorDate: null,
   recurrenceEndDate: null,
   recurrenceCount: null,
   tags: [],
@@ -493,6 +494,90 @@ describe('getLogicalNow', () => {
 });
 
 // ─── getNextDueDate ───────────────────────────────────────────────────────────
+
+// #1953: pulling an occurrence forward has to move its real date, because
+// there is no "un-hide" to pair with deferUntil's hide — so the grid keeps its
+// own anchor and steps from that instead.
+describe('getNextDueDate with a grid anchor', () => {
+  it('steps from the anchor, not from the day the occurrence was pulled to', () => {
+    const friday = new Date(2026, 7, 28, 12);
+    const wednesday = new Date(2026, 7, 26, 12);
+    const pulled: Task = {
+      ...baseTask,
+      recurrenceType: 'weekly',
+      recurrenceInterval: 1,
+      dueDate: wednesday.toISOString(),
+      recurrenceAnchorDate: friday.toISOString(),
+    };
+    const next = getNextDueDate(pulled)!;
+    expect(next.getDay()).toBe(5);
+    expect(next.getDate()).toBe(4);
+    expect(next.getMonth()).toBe(8);
+  });
+
+  it('falls back to dueDate when there is no anchor, which is every existing row', () => {
+    const friday = new Date(2026, 7, 28, 12);
+    const plain: Task = {
+      ...baseTask,
+      recurrenceType: 'weekly',
+      recurrenceInterval: 1,
+      dueDate: friday.toISOString(),
+      recurrenceAnchorDate: null,
+    };
+    expect(getNextDueDate(plain)!.getDate()).toBe(4);
+  });
+
+  // recurrenceFromCompletion measures from the day you finished and has no grid
+  // to be knocked off, so the anchor is simply not its business.
+  it('is ignored by a from-completion rule', () => {
+    const fromCompletion: Task = {
+      ...baseTask,
+      recurrenceType: 'daily',
+      recurrenceInterval: 3,
+      recurrenceFromCompletion: true,
+      dueDate: new Date(2026, 7, 26, 12).toISOString(),
+      recurrenceAnchorDate: new Date(2020, 0, 1, 12).toISOString(),
+    };
+    const next = getNextDueDate(fromCompletion)!;
+    expect(next.getFullYear()).toBeGreaterThan(2020);
+  });
+
+  it('keeps a monthly task on the 31st after a pull forward', () => {
+    // The drift recurrenceAnchorDay exists to stop, arriving by the other door:
+    // read the moved date and the 31st is lost for good.
+    const pulled: Task = {
+      ...baseTask,
+      recurrenceType: 'monthly',
+      recurrenceInterval: 1,
+      dueDate: new Date(2026, 0, 28, 12).toISOString(),
+      recurrenceAnchorDate: new Date(2026, 0, 31, 12).toISOString(),
+      recurrenceAnchorDay: 31,
+    };
+    expect(getNextDueDate(pulled)!.getDate()).toBe(28); // February clamps
+  });
+
+  it('derives the month anchor day from the grid, not from the moved row', () => {
+    expect(recurrenceAnchorDayFor({
+      recurrenceType: 'monthly',
+      recurrenceMonthDay: null,
+      recurrenceWeekOrdinal: null,
+      recurrenceFromCompletion: false,
+      dueDate: new Date(2026, 0, 28, 12).toISOString(),
+      recurrenceAnchorDate: new Date(2026, 0, 31, 12).toISOString(),
+    })).toBe(31);
+  });
+
+  it('still derives it from dueDate when nothing has been pulled', () => {
+    expect(recurrenceAnchorDayFor({
+      recurrenceType: 'monthly',
+      recurrenceMonthDay: null,
+      recurrenceWeekOrdinal: null,
+      recurrenceFromCompletion: false,
+      dueDate: new Date(2026, 0, 31, 12).toISOString(),
+      recurrenceAnchorDate: null,
+    })).toBe(31);
+  });
+});
 
 describe('getNextDueDate', () => {
   beforeEach(() => {

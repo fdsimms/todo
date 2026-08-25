@@ -293,12 +293,17 @@ export function recurrenceAnchorDayFor(
   task: Pick<
     Task,
     'recurrenceType' | 'recurrenceMonthDay' | 'recurrenceWeekOrdinal' | 'recurrenceFromCompletion' | 'dueDate'
-  >,
+  > & Partial<Pick<Task, 'recurrenceAnchorDate'>>,
 ): number | null {
   if (task.recurrenceType !== 'monthly' && task.recurrenceType !== 'yearly') return null;
   if (task.recurrenceMonthDay !== null || task.recurrenceWeekOrdinal !== null) return null;
   if (task.recurrenceFromCompletion) return null;
-  return task.dueDate ? new Date(task.dueDate).getDate() : null;
+  // The grid's day, not the row's, for the same reason getNextDueDate steps
+  // from it: a monthly task pulled forward from the 31st to the 28th once must
+  // still come back on the 31st, and reading the moved date here would hand the
+  // drift straight back through the very field that exists to prevent it.
+  const anchorIso = task.recurrenceAnchorDate ?? task.dueDate;
+  return anchorIso ? new Date(anchorIso).getDate() : null;
 }
 
 /**
@@ -343,9 +348,18 @@ export function getNextDueDate(
 ): Date | null {
   // Fixed schedule: anchor to the previous due date so the recurrence grid doesn't drift.
   // After completion: anchor to today (the completion day) so it's always relative to when you finished.
+  //
+  // `recurrenceAnchorDate` first, and it is null on almost every task. It holds
+  // the grid's own day for the one case `dueDate` can't (#1953): an occurrence
+  // *pulled forward* has to move its real date, because there is no "un-hide"
+  // to pair with `deferUntil`'s hide, and without a separate anchor a Friday
+  // task done once on Wednesday became a Wednesday task for ever. Irrelevant
+  // under `recurrenceFromCompletion`, which measures from the day you finished
+  // and has no grid to be knocked off.
+  const anchorIso = task.recurrenceAnchorDate ?? task.dueDate;
   const base =
-    !task.recurrenceFromCompletion && task.dueDate
-      ? getTaskDayStart(new Date(task.dueDate), dayResetTime)
+    !task.recurrenceFromCompletion && anchorIso
+      ? getTaskDayStart(new Date(anchorIso), dayResetTime)
       : getDayStart(new Date(), dayResetTime);
 
   const step = (from: Date): Date => {

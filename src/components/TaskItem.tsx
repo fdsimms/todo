@@ -2752,29 +2752,47 @@ export const TaskItem = React.memo(function TaskItem({
             const snapshot = { ...task };
             // A recurring task's dueDate is the anchor its whole future grid is
             // measured from, and a series member's was hand-picked out of a set
-            // — so pushing either one out defers instead of overwriting the
-            // stored date, exactly as deloadPlan and lookAhead already do
-            // (isDateAnchored). Without this, moving one Tuesday occurrence to
-            // Thursday quietly made it a Thursday task for ever.
+            // — so moving one occurrence must not rebase the rest. Without
+            // this, dragging one Tuesday occurrence to Thursday quietly made it
+            // a Thursday task for ever.
             //
-            // Only for a move *later*: deferUntil can't pull a task in front of
-            // its own date, so an earlier pick still writes dueDate and still
-            // rotates the grid. That's the one move the schema can't express as
-            // "this occurrence only", and it's the same answer the editor's
-            // Date row gives — an explicit schedule edit.
-            const anchoredPush =
-              date != null &&
-              isDateAnchored(task) &&
-              task.dueDate != null &&
-              getTaskDayStart(date) > getTaskDayStart(new Date(task.dueDate));
+            // **The two directions need different mechanisms, and that isn't an
+            // asymmetry to tidy away (#1953).** A push *later* must also hide
+            // the task until then, or the one you moved to Saturday still sits
+            // on Today — which is exactly what `deferUntil` is, a floor laid
+            // over a stored date that survives underneath it. A pull *earlier*
+            // must do the opposite and surface the task, and there is no
+            // "un-hide" to pair with the hide: the only way a task shows up on
+            // Wednesday is for its date to *be* Wednesday. So an earlier pick
+            // moves `dueDate` honestly and hands the grid its own anchor to
+            // keep stepping from.
+            const anchored = date != null && isDateAnchored(task) && task.dueDate != null;
+            const picked = date ? getTaskDayStart(date) : null;
+            const stored = task.dueDate ? getTaskDayStart(new Date(task.dueDate)) : null;
+            const anchoredPush = anchored && picked !== null && stored !== null && picked > stored;
+            const anchoredPull = anchored && picked !== null && stored !== null && picked < stored;
             updateTask(
               task.id,
               anchoredPush && date
                 ? { deferUntil: date.toISOString(), timeSegments: segs }
+                : anchoredPull && date
+                  ? {
+                      dueDate: date.toISOString(),
+                      // Whatever the grid was already measured from, or the
+                      // date being moved off. Only ever set once: pulling a
+                      // second time must not re-anchor the schedule onto the
+                      // first pull's day, which would rotate it by the back
+                      // door — the very thing this exists to stop.
+                      recurrenceAnchorDate: task.recurrenceAnchorDate ?? task.dueDate,
+                      deferUntil: null,
+                      timeSegments: segs,
+                    }
                 // Clearing the defer is what makes the picked date the one that
                 // takes effect: a task already pushed out is hidden until the
                 // old deferUntil, and writing only dueDate would leave it
-                // sitting behind a date the user has just replaced.
+                // sitting behind a date the user has just replaced. Writing
+                // dueDate with no anchor beside it is a deliberate schedule
+                // edit, and updateTask clears the grid's anchor on exactly that.
                 : { dueDate: date ? date.toISOString() : null, deferUntil: null, timeSegments: segs },
             );
             setLastAction({

@@ -665,6 +665,32 @@ export interface Task {
   // Never shown: the picker still reads "same day as the due date", and this
   // follows dueDate on every deliberate edit, so that stays true.
   recurrenceAnchorDay: number | null;
+  /**
+   * The day the recurrence grid is measured from, when that is no longer
+   * `dueDate` — null on every task that hasn't been pulled forward, which is
+   * almost all of them.
+   *
+   * **`dueDate` does double duty**: it is both the date this occurrence sits on
+   * and the anchor the whole future grid steps from (see the Recurrence section
+   * in CLAUDE.md). Pushing an occurrence out doesn't have to disturb that —
+   * `deferUntil` is a floor laid over the stored date, so the anchor survives.
+   * Pulling one *forward* has no such option: the only way to make a task
+   * surface on Wednesday is for its date to *be* Wednesday, since there is no
+   * "un-hide" to pair with `deferUntil`'s hide. So the two directions genuinely
+   * need different mechanisms, and this is the second one: move `dueDate`
+   * honestly, and hand the grid its own anchor to keep stepping from.
+   *
+   * That split is why every reader of "what day is this on" is untouched by
+   * this field. Only the recurrence engine consults it — `getNextDueDate`'s
+   * base, the projection walk, and `recurrenceAnchorDayFor` — and everything
+   * else keeps reading the real `dueDate`.
+   *
+   * **Cleared by any deliberate schedule edit.** Writing `dueDate` without
+   * setting this in the same patch means "this is the schedule now", which is
+   * what the editor's Date row does and what every successor does, so the rule
+   * lives in `updateTask` rather than at each call site.
+   */
+  recurrenceAnchorDate: string | null;
   recurrenceEndDate: string | null;
   recurrenceCount: number | null; // occurrences remaining (including this one); null = unlimited
   recurrenceFromCompletion: boolean;
