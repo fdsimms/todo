@@ -137,6 +137,22 @@ export function resetToFocusSession(): void {
   navigationRef.navigate({ name: 'Today', params: { openFocusSession: Date.now() } });
 }
 
+/**
+ * The People list, with one person's sheet open on top of it when the link
+ * names somebody — where a birthday task's row goes.
+ *
+ * A param rather than a second route, the shape resetToProjectPull already
+ * uses: the sheet belongs to the list screen, so opening it from a link and
+ * opening it from a row are the same code path.
+ */
+export function resetToPeople(personId?: string | null): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({
+    name: 'People',
+    params: personId ? { openPerson: Date.now(), personId } : {},
+  });
+}
+
 export function resetToProjectPull(projectId?: string | null): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate({

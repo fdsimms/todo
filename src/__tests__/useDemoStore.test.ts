@@ -13,6 +13,7 @@ import { addDays } from 'date-fns/addDays';
 import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { usePersonStore } from '../store/usePersonStore';
 import { useProjectStore, projectDecisions } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
@@ -823,6 +824,60 @@ describe('demo mode', () => {
  * group, a per-store link, a container in the fridge — rather than re-testing
  * the stores, which have their own suites.
  */
+describe('demo seed — people', () => {
+  beforeEach(() => {
+    useDemoStore.getState().enterDemoMode();
+  });
+  afterEach(() => {
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  it('seeds a short, hand-added list rather than an address book', () => {
+    const people = usePersonStore.getState().people;
+    expect(people.length).toBeGreaterThan(0);
+    // Small on purpose: a long list is the cold thing the feature is built to
+    // avoid, so this guards the shape rather than an exact count.
+    expect(people.length).toBeLessThanOrEqual(6);
+  });
+
+  it('seeds somebody with no birthday, which is how most people are added', () => {
+    const people = usePersonStore.getState().people;
+    expect(people.some(p => p.birthdayMonth === null && p.birthdayDay === null)).toBe(true);
+  });
+
+  it('seeds a nickname, which is otherwise invisible', () => {
+    expect(usePersonStore.getState().people.some(p => p.nickname !== '')).toBe(true);
+  });
+
+  it('nobody is opted into a nudge, which is the default the feature rests on', () => {
+    const people = usePersonStore.getState().people;
+    expect(people.every(p => !p.nudgeOptIn && p.cadenceDays === 0)).toBe(true);
+  });
+
+  // The generator is invisible until a birthday is close enough to fire, so
+  // without a near birthday the seed would show the feature as absent.
+  it('puts a real birthday task on the list', () => {
+    const birthdayTasks = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'birthday');
+    expect(birthdayTasks.length).toBeGreaterThan(0);
+    // The birthday itself rides the deadline; the due date is only when to look.
+    expect(birthdayTasks[0].deadline).not.toBeNull();
+    // And it names nobody, so the app's own row can't enter a history meant to
+    // hold what you actually did together.
+    expect(birthdayTasks[0].personIds).toEqual([]);
+  });
+
+  it('seeds tasks that name people, both planned and already done', () => {
+    const tasks = useTaskStore.getState().tasks.filter(t => t.personIds.length > 0 && !t.generatedKind);
+    expect(tasks.some(t => !t.completed)).toBe(true);
+    expect(tasks.some(t => t.completed)).toBe(true);
+  });
+
+  it('seeds a task naming more than one person, which a single field could not hold', () => {
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.some(t => t.personIds.length > 1)).toBe(true);
+  });
+});
+
 describe('demo seed — groceries, recipes, meals and the fridge', () => {
   beforeEach(() => {
     useDemoStore.getState().enterDemoMode();
@@ -1587,6 +1642,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
         todayKey, new Date()
       )
     ).toEqual([]);
+  });
+
+  it('seeds the daily task to review tomorrow\'s calendar', () => {
+    const { tasks } = useTaskStore.getState();
+
+    const review = tasks.find(t => t.generatedKind === 'calendarReview');
+    expect(review).toBeDefined();
+    expect(review!.title).toBe('Review tomorrow\'s calendar');
+    // Filed under the day's own events category — this generator has no
+    // category setting of its own (see GeneratedKindSpec.categorized).
+    expect(review!.category).toBe('Calendar Events');
+    expect(useSettingsStore.getState().calendarEventCategory).toBe('Calendar Events');
+    expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
   });
 
   it('leaves that item free of a use-by date, so it carries one task and not two', () => {

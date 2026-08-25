@@ -1413,7 +1413,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   conditionBlock: { gap: spacing.xs, marginTop: spacing.sm },
   conditionLabel: { color: colors.textSecondary, fontSize: font.xs },
   conditionPill: {
-    paddingHorizontal: 12, paddingVertical: 6,
+    paddingHorizontal: 12, paddingVertical: spacing.sm,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
   conditionPillOn: { backgroundColor: colors.accent },

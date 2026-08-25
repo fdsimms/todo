@@ -110,6 +110,7 @@ const BASE: Task = {
   deliverableValue: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
   generatedKind: null,
   generatedSourceId: null,
   deadlineOnCalendar: false,

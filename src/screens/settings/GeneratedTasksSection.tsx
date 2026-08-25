@@ -26,6 +26,7 @@ import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing, type Colors } from '../../theme';
 import { CountStepper } from '../../components/CountStepper';
+import { DEFAULT_BIRTHDAY_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS } from '../../utils/birthdayTasks';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
@@ -127,6 +128,8 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'pantryCheck': return s.pantryCheckTasks;
       case 'mealShortfall': return s.mealShortfallTasks;
       case 'supplyReorder': return s.supplyReorderTasks;
+      case 'calendarReview': return s.calendarReviewTasks;
+      case 'birthday': return s.birthdayTasks;
     }
   };
 
@@ -142,6 +145,8 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'pantryCheck': s.setPantryCheckTasks(next); break;
       case 'mealShortfall': s.setMealShortfallTasks(next); break;
       case 'supplyReorder': s.setSupplyReorderTasks(next); break;
+      case 'calendarReview': s.setCalendarReviewTasks(next); break;
+      case 'birthday': s.setBirthdayTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -151,6 +156,10 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
     if (next) ensureGeneratedTaskCategory(kind, { force: true });
   };
 
+  // calendarReview's arm returns calendarEventCategory rather than a category
+  // of its own, for anything that calls this out of habit — but categorized:
+  // false means the "File them under" row is never rendered for it, so
+  // neither arm below is actually reached in practice.
   const categoryOf = (kind: GeneratedKind): string | null => {
     switch (kind) {
       case 'mealSlot':
@@ -162,6 +171,8 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'pantryCheck': return s.pantryCheckTaskCategory;
       case 'mealShortfall': return s.mealShortfallTaskCategory;
       case 'supplyReorder': return s.supplyReorderTaskCategory;
+      case 'calendarReview': return s.calendarEventCategory;
+      case 'birthday': return s.birthdayTaskCategory;
     }
   };
 
@@ -180,6 +191,9 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       // Was missing entirely, so this generator's category pills selected
       // nothing: every other switch in this file had its arm.
       case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
+      // Unreached — see categoryOf above — but a real, honest answer rather
+      // than a no-op: this is genuinely how calendarReview's category changes.
+      case 'calendarReview': s.setCalendarEventCategory(category); break;
     }
   };
 
@@ -263,6 +277,42 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
               }
             />
           </View>
+        </>
+      );
+    }
+
+    if (kind === 'birthday') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="calendar-outline"
+            label="Show the task"
+            hint="How many days before the birthday the task falls due"
+            value={
+              s.birthdayLeadDays === 0
+                ? 'On the day'
+                : `${s.birthdayLeadDays} ${s.birthdayLeadDays === 1 ? 'day' : 'days'} before`
+            }
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.birthdayLeadDays}
+              onChange={next => s.setBirthdayLeadDays(next ?? DEFAULT_BIRTHDAY_LEAD_DAYS)}
+              min={0}
+              max={MAX_BIRTHDAY_LEAD_DAYS}
+              format={n => (n === 0 ? 'Day of' : `${n}d`)}
+              label="Days before the birthday"
+              describeValue={n =>
+                n === 0 ? 'On the birthday itself' : `${n} ${n === 1 ? 'day' : 'days'} before`
+              }
+            />
+          </View>
+          {/* Only ever moves when the row *surfaces*. The birthday itself rides
+              the task's deadline, so changing this never moves anybody's
+              birthday, and it deliberately doesn't re-date a row already on the
+              list — see birthdayDrift. */}
         </>
       );
     }

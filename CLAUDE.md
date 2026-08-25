@@ -250,7 +250,7 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (eight generators now: `mealShortfall` is the newest, and the one whose source the user re-plans freely) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (ten generators now: `mealShortfall` is the newest, and the one whose source the user re-plans freely) |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
@@ -267,6 +267,7 @@ exports.
 | bulk selection | `src/hooks/useTaskSelection.ts` + `src/components/BulkActionBar.tsx` |
 | reminders | `src/utils/notifications.ts` |
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
+| the people you want to keep up with, and their birthdays | `src/store/usePersonStore.ts` + `src/utils/birthdayTasks.ts` — see `docs/arch/people.md` |
 | what demo mode shows | `src/utils/demoSeed.ts` — see Demo data below |
 | the switch that hides the advanced half of the app | `src/utils/simpleMode.ts` — see `docs/arch/simple-mode.md` |
 | what the widget shows | `src/utils/widgetSync.ts` → `src/utils/widgetBridge.ts` → `modules/todo-widget-bridge` |
@@ -329,16 +330,16 @@ exports.
 **Read narrowly.** 43 files are over 1,000 lines, 28 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (5.8k), `components/TaskEditor.tsx` (4.6k),
-`store/useGroceryStore.ts` (4.1k), `screens/TodayScreen.tsx` (4.0k), `db/database.ts` (3.9k),
-`components/TaskItem.tsx` (3.5k), `types/index.ts` (3.3k),
-`components/QuickAddModal.tsx` (2.7k), `store/useSettingsStore.ts` (2.5k),
-`screens/MealPlanScreen.tsx` (2.2k).
+`store/useTaskStore.ts` (6.0k), `components/TaskEditor.tsx` (4.6k),
+`store/useGroceryStore.ts` (4.1k), `db/database.ts` (4.1k), `screens/TodayScreen.tsx` (4.0k),
+`components/TaskItem.tsx` (3.5k), `types/index.ts` (3.4k),
+`components/QuickAddModal.tsx` (2.7k), `store/useSettingsStore.ts` (2.6k),
+`utils/demoSeed.ts` (2.3k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **192 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **196 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -447,6 +448,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/focus-sessions.md` | Focus sessions: the plan, its breaks, and why a step that runs out waits |
 | `docs/arch/reminders-import.md` | Apple Reminders import, and the data it deletes elsewhere |
 | `docs/arch/app-lock.md` | The Face ID gate and the API key in the keychain |
+| `docs/arch/people.md` | The people layer: why it never scores or ranks anybody, and how birthdays work |
 | `docs/arch/simple-mode.md` | Simplified mode: what the one switch hides, and the two rules that make it safe |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 

@@ -258,12 +258,16 @@ export function ensureCalendarEventCategory(opts: { force?: boolean } = {}): voi
   );
 }
 
-/** Each generator's category setting, as a pair this module can read and write. */
+/**
+ * Each generator's category setting, as a pair this module can read and
+ * write — null for a kind with no category setting of its own (see
+ * `GeneratedKindSpec.categorized`).
+ */
 function generatedCategorySetting(kind: GeneratedKind): {
   key: string;
   current: string | null;
   assign: (category: string) => void;
-} {
+} | null {
   const s = useSettingsStore.getState();
   switch (kind) {
     // Shared arm: mealSlot is the fold of mealCook and kept its settings keys.
@@ -284,6 +288,12 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'mealShortfallTaskCategory', current: s.mealShortfallTaskCategory, assign: s.setMealShortfallTaskCategory };
     case 'supplyReorder':
       return { key: 'supplyReorderTaskCategory', current: s.supplyReorderTaskCategory, assign: s.setSupplyReorderTaskCategory };
+    // Reuses calendarEventCategory instead — see GeneratedKindSpec.categorized.
+    // ensureGeneratedTaskCategory returns before this null is ever used.
+    case 'calendarReview':
+      return null;
+    case 'birthday':
+      return { key: 'birthdayTaskCategory', current: s.birthdayTaskCategory, assign: s.setBirthdayTaskCategory };
   }
 }
 
@@ -300,6 +310,8 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'pantryCheck': return s.pantryCheckTasks;
     case 'mealShortfall': return s.mealShortfallTasks;
     case 'supplyReorder': return s.supplyReorderTasks;
+    case 'calendarReview': return s.calendarReviewTasks;
+    case 'birthday': return s.birthdayTasks;
   }
 }
 
@@ -317,7 +329,9 @@ function generatorEnabled(kind: GeneratedKind): boolean {
  */
 export function ensureGeneratedTaskCategory(kind: GeneratedKind, opts: { force?: boolean } = {}): void {
   if (!generatorEnabled(kind)) return;
-  const { key, current, assign } = generatedCategorySetting(kind);
+  const setting = generatedCategorySetting(kind);
+  if (!setting) return;
+  const { key, current, assign } = setting;
   ensureCategoryFor(key, GENERATED_KIND_SPECS[kind].defaultCategory, current, assign, !!opts.force);
 }
 

@@ -492,7 +492,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   applyBtn: {
     paddingHorizontal: spacing.md,
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     borderRadius: radius.full,
     backgroundColor: colors.accent,
   },

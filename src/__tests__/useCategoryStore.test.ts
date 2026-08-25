@@ -73,6 +73,7 @@ beforeEach(() => {
     leftoverUseUpTaskCategory: null,
     mealPlanNudgeEnabled: false,
     mealPlanNudgeTaskCategory: null,
+    calendarReviewTasks: false,
   });
 });
 
@@ -144,5 +145,16 @@ describe('ensureGeneratedTaskCategory', () => {
     expect(s.leftoverUseUpTaskCategory).toBe('Leftovers');
     expect(s.mealCookTaskCategory).toBe('Meal Plan');
     expect(s.groceryUseUpTaskCategory).toBeNull();
+  });
+
+  // calendarReview reuses calendarEventCategory rather than owning a category
+  // setting (GeneratedKindSpec.categorized: false), so there's nothing for
+  // this to fill in even switched on — and, unlike every other kind, calling
+  // it must not throw.
+  it('leaves calendarReview alone, on or off', () => {
+    useSettingsStore.setState({ calendarReviewTasks: true });
+    expect(() => ensureGeneratedTaskCategory('calendarReview', { force: true })).not.toThrow();
+    expect(useCategoryStore.getState().categories).toEqual([]);
+    expect(() => ensureGeneratedTaskCategories()).not.toThrow();
   });
 });

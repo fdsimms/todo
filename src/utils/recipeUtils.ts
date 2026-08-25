@@ -463,7 +463,18 @@ export interface PantryCoverage {
    * real 0%, which `pantryCoverageForRecipe`'s own tests pin.
    */
   catalogMatches: number;
-  /** How many lines `classifyPlanned` currently calls "probably have" — grocerySuggest's pantry guess, or an explicit `onHandUntil` assertion. */
+  /**
+   * How many lines `classifyPlanned` currently calls "probably have" —
+   * grocerySuggest's pantry guess, an explicit `onHandUntil` assertion, or a
+   * `staple` row (`isStaple`, "I always have this"). Staples are their own
+   * `classifyPlanned` category — RecipeToListSheet needs to tell "always have
+   * it" apart from a purchase-history guess for its own two sections — but
+   * this coverage number answers a coarser question ("do I probably have
+   * this ingredient"), where a standing fact is at least as strong a yes as a
+   * recent-purchase guess. Folded in here rather than left out, or `total`
+   * and `catalogMatches` (which already count a staple, since it always has
+   * a catalog row) would silently outrun the numerator.
+   */
   probablyHave: number;
   /**
    * Ingredient lines with no pantry match of their own (`needToBuy`) whose
@@ -514,7 +525,7 @@ export function pantryCoverageForRecipe(
   const total = classified.length;
   const itemKeys = new Set(items.map(i => i.nameKey));
   const catalogMatches = classified.filter(row => itemKeys.has(row.nameKey)).length;
-  const probablyHave = classified.filter(row => row.category === 'probablyHave').length;
+  const probablyHave = classified.filter(row => row.category === 'probablyHave' || row.category === 'staple').length;
   const viaSubstitute = classified.filter(row => row.category === 'needToBuy' && row.reason !== null).length;
   const percent = catalogMatches > 0 ? Math.round((probablyHave / total) * 100) : null;
 

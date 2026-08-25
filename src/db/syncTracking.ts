@@ -60,6 +60,7 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'tasks', key: ['id'] },
   { name: 'task_groups', key: ['id'] },
   { name: 'projects', key: ['id'] },
+  { name: 'people', key: ['id'] },
   { name: 'categories', key: ['id'] },
   { name: 'project_categories', key: ['id'] },
   { name: 'template_categories', key: ['id'] },
@@ -196,6 +197,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'projectReviewTaskCategory',
   'pantryCheckTasks',
   'pantryCheckTaskCategory',
+  // calendarReviewLastDayKey is deliberately not here — state, not a
+  // preference, like mealPlanNudgeLastFiredWeekKey beside it.
+  'calendarReviewTasks',
 
   // Vocabularies the user builds. These are data as much as preference — a
   // tag that exists but is unused, and the walk round the shop — and a device

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { addDays } from 'date-fns/addDays';
 import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule } from '../types';
 import {
   initDatabase,
@@ -72,7 +73,10 @@ import {
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
-import { generatedBy, generatedSourceOf, generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask } from '../utils/generatedTasks';
+import { generatedBy, generatedSourceOf, generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
+import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
+import { eventsIn } from '../utils/calendarBusy';
+import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, TaskGroup } from '../types';
 import { generateId } from '../utils/id';
 import { derivedId, spawnSeed } from '../utils/syncIds';
@@ -95,7 +99,7 @@ import {
   supplyReorderSourceId,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalToday, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
@@ -112,6 +116,15 @@ import {
 import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { registerTaskSource } from '../utils/blockerRegistry';
+import { registerPersonTaskSource } from '../utils/peopleRegistry';
+import {
+  birthdayDrift,
+  parseBirthdaySource,
+  personLinkUrl,
+  wantedBirthdayTasks,
+  staleBirthdayTasks,
+} from '../utils/birthdayTasks';
+import { usePersonStore } from './usePersonStore';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
@@ -378,6 +391,7 @@ function newTaskFromDraft(
     // start life with its first reorder offer already refused.
     supplyDeclinedAtCount: null,
     tags: draft.tags ?? [],
+    personIds: draft.personIds ?? [],
     category: skipCategoryDefault ? (draft.category ?? null) : (draft.category ?? defaults.category),
     sortOrder,
     pinned: draft.pinned ?? false,
@@ -528,6 +542,11 @@ function reconcileDeadlineEvent(task: Task): void {
  *   a square on the calendar, not a row — there is nothing to write "no" on,
  *   and deleting one of the seven means only that this day doesn't need
  *   planning, which the next firing has already moved past.
+ * - **`calendarReview` writes nothing either, for the same reason** — its
+ *   source id is tomorrow's day key, not a row. Its "don't hand it back" is
+ *   `calendarReviewLastDayKey`, set unconditionally by `checkCalendarReviewTasks`
+ *   the moment a day is considered, whatever the outcome, so a swiped-away task
+ *   isn't re-diagnosed on the very next sweep.
  */
 function writeGeneratedOptOut(task: Task, value: false | null): void {
   const sourceId = task.generatedSourceId;
@@ -535,6 +554,8 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
   const reconcileOff = { reconcile: false } as const;
   switch (task.generatedKind) {
     case 'mealPlanNudge':
+      return;
+    case 'calendarReview':
       return;
     // Nothing to write, for the nudge's reason: a day and a slot name a square
     // on the calendar, not a row. Swiping today's lunch task away is honoured
@@ -1329,6 +1350,11 @@ interface TaskStore {
    */
   checkProjectReviewTasks: () => void;
   /**
+   * Give everybody with a birthday coming up a task a few days ahead of it, and
+   * clear the ones whose reason has gone. See src/utils/birthdayTasks.ts.
+   */
+  checkBirthdayTasks: () => void;
+  /**
    * Write today's meal tasks, once per logical day — see the implementation
    * for why the day is both the unit and the whole opt-out.
    */
@@ -1356,6 +1382,11 @@ interface TaskStore {
    * rows whose supply has since been topped back up. See src/utils/supply.ts.
    */
   checkSupplyReorderTasks: () => void;
+  /**
+   * Once a day, a task to review tomorrow's calendar — only while tomorrow
+   * actually has something on it. See src/utils/calendarReviewTasks.ts.
+   */
+  checkCalendarReviewTasks: () => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook.
@@ -1554,6 +1585,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useTaskGroupStore.getState().initialize();
     useProjectStore.getState().initialize();
     useProjectCategoryStore.getState().initialize();
+    // Rides the same fan-out as everything below it, and for the identical
+    // swap-the-database reason: a person list left pointed at the previous
+    // database while tasks showed the new one would render demo tasks naming
+    // real people, or the reverse.
+    usePersonStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
@@ -3893,6 +3929,86 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // No setLastAction, same reasoning as checkMealPlanNudge above.
   },
 
+  checkBirthdayTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.birthdayTasks) return;
+
+    const tasks = get().tasks;
+    const people = usePersonStore.getState().people;
+    // The clock is read here and passed down, so birthdayTasks.ts stays pure
+    // and every rule in it is testable without standing up the settings store.
+    // getCurrentDayStart rather than `new Date()`: this decides which day a task
+    // lands on, and a bare clock reading is off by one for anybody whose day
+    // starts after midnight.
+    const today = getCurrentDayStart();
+    const wanted = wantedBirthdayTasks(people, settings.birthdayLeadDays, today);
+
+    // Clear first, create second, and never the reverse — the same ordering
+    // checkProjectReviewTasks explains. The stale set here is wider than it
+    // looks: a person deleted, archived, or with their birthday cleared or
+    // corrected all leave a row naming a day that is nobody's birthday, and
+    // none of those mutations knows the row is sitting there.
+    const stale = staleBirthdayTasks(tasks, wanted);
+    // dropGeneratedTask, not deleteGeneratedTaskQuietly: the latter routes
+    // through deleteTask, which stamps the source's opt-out. Here that would
+    // set birthdayTaskOptOut on somebody the user never touched, silencing
+    // their birthday for good on the strength of the app's own tidying up.
+    stale.forEach(task => {
+      const source = parseBirthdaySource(task);
+      dropGeneratedTask('birthday', source ? `${source.personId}#${source.year}` : null);
+    });
+
+    if (wanted.length === 0) return;
+
+    // Ensured here as well as at startup because this generator ships ON:
+    // nobody flips the switch that would otherwise create the category, so the
+    // very first birthday task would land in the loose block above every
+    // section. Same reasoning as projectReview's.
+    ensureGeneratedTaskCategory('birthday');
+    const category = useSettingsStore.getState().birthdayTaskCategory;
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'birthday',
+        sourceId: want.sourceId,
+        // Never false: the not-wanted half is decided over the whole set at
+        // once and was handled by the drop pass above. A `false` here would
+        // delete through deleteTask and stamp the person as opted out.
+        wanted: true,
+        // Only ever chases a birthday that actually moved, read off the task's
+        // own deadline — see birthdayDrift. The lead-day setting deliberately
+        // doesn't move a live row: by the time it changes, the user may have
+        // deferred this one, and rewriting its date would undo that.
+        drift: existing => birthdayDrift(existing, want),
+        draft: () => ({
+          title: want.title,
+          dueDate: want.dueDate.toISOString(),
+          // The birthday itself, on the field that exists for a day that can't
+          // move. The lead time decides when the row surfaces; this is what it
+          // is actually about, and it's what a corrected birthday is compared
+          // against on the next sweep.
+          deadline: want.deadline.toISOString(),
+          linkUrl: personLinkUrl(want.personId),
+          // So the row's own call and text buttons work on the day, with no new
+          // UI: TaskItem already renders both off this field.
+          phoneNumber: want.phoneNumber,
+          category,
+          // Deliberately **no personIds**, for the reason projectReview carries
+          // no projectId. A task naming somebody is the record that something
+          // happened *with* them (see Task.personIds), and the app writing that
+          // record on its own behalf would put its own rows into a history
+          // meant to hold yours — and, once the reach-out nudge reads that
+          // history (#2046), ticking off "Ansley's birthday" would reset a
+          // clock you never actually reached out on. It points at its person
+          // through generatedSourceId, like every generator points at its
+          // source.
+          ...generatedBy('birthday', want.sourceId),
+        }),
+      });
+    });
+    // No setLastAction, same reasoning as checkProjectReviewTasks above.
+  },
+
   /**
    * Lay down meal tasks for the days ahead — one per meal the user says they
    * eat, for each day out to `MEAL_SLOT_TASK_DAYS`.
@@ -4235,6 +4351,87 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // No setLastAction, same reasoning as checkMealPlanNudge above.
   },
 
+  /**
+   * Once a day, a task to review tomorrow's calendar — only while tomorrow
+   * actually has something on it.
+   *
+   * Structurally this is `mealPlanNudge` one shelf over: no source row (its
+   * source id is tomorrow's day key), so no per-source stamp to decline onto,
+   * and the same settings-level idempotency mark in its place
+   * (`calendarReviewLastDayKey`, recorded unconditionally the moment a day is
+   * considered — see writeGeneratedOptOut). Unlike the nudge it writes at most
+   * one task, not a week's worth, so there is no cap and no stack.
+   */
+  checkCalendarReviewTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.calendarReviewTasks) return;
+    // Real device data has no place in a demo session — same refusal
+    // TodayScreen's own event rows make (`!demoActive`), and more load-bearing
+    // here: a context row is gone the moment demo mode ends, but a task this
+    // generator wrote would persist in the demo database as a fact about the
+    // real calendar.
+    if (isDemoModeActive()) return;
+    // Belt and braces alongside the `loaded` check below: calendarEventCategory
+    // is only ever populated while this is true (see ensureCalendarEventCategory),
+    // but this is the one generator that fires on time passing rather than on
+    // an edit to something the read produced, so without this it would be the
+    // one part of a switched-off feature still writing rows onto Today.
+    if (!settings.calendarReadEnabled) return;
+    // No category means nowhere to put it — the same rule eventContextRows
+    // follows for the day's own events.
+    if (!settings.calendarEventCategory) return;
+
+    const calendar = useCalendarStore.getState();
+    // Not the same question as `events` being empty — see CalendarState.loaded.
+    // An unread window must not be read as "tomorrow is free".
+    if (!calendar.loaded) return;
+
+    const tomorrowStart = getLogicalTomorrow(settings.dayResetTime);
+    const tomorrowKey = dayKeyOf(tomorrowStart);
+
+    // Clear a task left over from a previous day's "tomorrow" before deciding
+    // whether today's is wanted — same clear-first-create-second ordering
+    // checkProjectReviewTasks/checkPantryCheckTasks use. There's at most one of
+    // these, so no dropGeneratedTask lookup is needed: whatever's live and
+    // isn't about tomorrow is stale by construction.
+    const tasks = get().tasks;
+    liveGeneratedTasksOfKind(tasks, 'calendarReview')
+      .filter(task => calendarReviewDayKey(task) !== tomorrowKey)
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    // Recorded before the events check below, and unconditionally: a day
+    // already decided — created, or found to have nothing worth reviewing —
+    // must not be re-diagnosed on every later sweep this same day, the same
+    // idempotency checkMealPlanNudge's week key gives the nudge. Without it a
+    // task the user just swiped away would come straight back on the very next
+    // foreground, since nothing else is standing between a delete and a
+    // recreate here (see writeGeneratedOptOut).
+    if (settings.calendarReviewLastDayKey === tomorrowKey) return;
+    settings.setCalendarReviewLastDayKey(tomorrowKey);
+
+    const tomorrowEvents = eventsIn(calendar.events, tomorrowStart, addDays(tomorrowStart, 1));
+    if (!wantsCalendarReview(tomorrowEvents)) return;
+
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    reconcileGeneratedTask({
+      kind: 'calendarReview',
+      sourceId: tomorrowKey,
+      // Never false: the clear pass above already handles "not wanted".
+      wanted: true,
+      // The title never varies, so nothing to chase.
+      drift: () => null,
+      draft: () => ({
+        title: CALENDAR_REVIEW_TITLE,
+        dueDate: dueDate.toISOString(),
+        category: settings.calendarEventCategory,
+        ...generatedBy('calendarReview', tomorrowKey),
+      }),
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
   skipNextRecurrence(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.recurrenceType === 'none') return;
@@ -4542,6 +4739,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       supplyDeclinedAtCount: null,
       supplyGroceryItemId: null,
       tags: [],
+      personIds: [],
       category: null,
       sortOrder: maxOrder + 1,
       pinned: false,
@@ -4715,6 +4913,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       supplyDeclinedAtCount: null,
       supplyGroceryItemId: null,
       tags: [],
+      personIds: [],
       category: group?.category ?? null,
       sortOrder: maxOrder + 1,
       pinned: false,
@@ -5792,3 +5991,4 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 // it can't, since this module pulls in expo-sqlite and already imports it. See
 // src/utils/blockerRegistry.ts for why this is a getter rather than a snapshot.
 registerTaskSource(() => useTaskStore.getState().tasks);
+registerPersonTaskSource(() => useTaskStore.getState().tasks);

@@ -1,0 +1,4 @@
+{
+  "message": "Fixed meal suggestions undercounting ingredients marked \"always have it\" in the \"likely on hand\" count",
+  "date": "2026-08-25"
+}

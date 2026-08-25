@@ -129,6 +129,7 @@ const baseTask: Task = {
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
 };
 
 // June 10, 2025 10:00 AM — a Tuesday (getDay() === 2)

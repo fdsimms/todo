@@ -127,6 +127,7 @@ const BASE: Task = {
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
 };
 /** Noon on a day offset from today, which is where every real due date sits. */
 const dayFromToday = (offset: number): string => {

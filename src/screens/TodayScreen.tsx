@@ -950,6 +950,12 @@ export function TodayScreen() {
           // task's own row, which nothing else would then clear. Same reason
           // the passes around it run here rather than waiting for a cold start.
           useTaskStore.getState().checkProjectReviewTasks();
+          // A birthday arrives purely by time passing, the same trigger as the
+          // passes around it, and a phone left open across midnight never sees
+          // another cold start — so without this somebody's birthday task would
+          // wait for a force-quit. Idempotent: the source id carries the year,
+          // so a second run finds the row already there and does nothing.
+          useTaskStore.getState().checkBirthdayTasks();
           // A day rolls over purely by time passing, and a phone left open
           // across midnight never sees another cold start — so without this
           // the window would stop advancing until the app was force-quit. It
@@ -975,6 +981,11 @@ export function TodayScreen() {
           // never sees another cold start, and the whole point of a lead time
           // is that it fires on a day nobody opened the editor.
           useTaskStore.getState().checkSupplyReorderTasks();
+          // And a third generator on the same shelf: which day is "tomorrow"
+          // rolls over purely by time passing too, and the calendar window this
+          // reads is kept current by useCalendarSync's own AppState listener
+          // rather than anything here.
+          useTaskStore.getState().checkCalendarReviewTasks();
           // And any template whose schedule came due while the app sat in the
           // background (#1781) — a weekly run would otherwise wait for the next
           // cold start, which for a phone left open all week never comes. Same
@@ -3845,7 +3856,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingTop: 6, paddingBottom: 4,
   },
   viewModePill: {
-    paddingHorizontal: spacing.md, paddingVertical: 6,
+    paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
   viewModePillActive: { backgroundColor: colors.accent },

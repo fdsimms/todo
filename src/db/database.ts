@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Person, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -227,6 +227,27 @@ export function initDatabase(): void {
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL UNIQUE,
       sort_order REAL NOT NULL DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS people (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      nickname TEXT NOT NULL DEFAULT '',
+      notes TEXT NOT NULL DEFAULT '',
+      sort_order REAL NOT NULL DEFAULT 0,
+      archived INTEGER NOT NULL DEFAULT 0,
+      archived_at TEXT,
+      created_at TEXT NOT NULL,
+      birthday_month INTEGER,
+      birthday_day INTEGER,
+      birth_year INTEGER,
+      birthday_task_opt_out INTEGER NOT NULL DEFAULT 0,
+      phone_number TEXT,
+      email TEXT,
+      link_url TEXT,
+      cadence_days INTEGER NOT NULL DEFAULT 0,
+      nudge_opt_in INTEGER NOT NULL DEFAULT 0,
+      reach_out_declined_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS template_categories (
@@ -988,6 +1009,11 @@ export function initDatabase(): void {
     // Same mechanism again, for the project-level fields (see
     // src/utils/projectBackfill.ts).
     "ALTER TABLE projects ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
+    // Who a task involves — see Task.personIds. An array on the row rather than
+    // a join table because rows get copied constantly here (recurrence
+    // successors, series members, chain steps, template instantiation) and a
+    // JSON column rides `...effective` onto every one of them for free.
+    "ALTER TABLE tasks ADD COLUMN person_ids TEXT NOT NULL DEFAULT '[]'",
     // Nullable with no default, for cook_task's reason above: NULL is the third
     // state meaning "the user hasn't said, so the setting decides", and a
     // DEFAULT 0 would record every meal ever planned as an explicit "no shop
@@ -1234,6 +1260,9 @@ export const BACKUP_TABLES = [
   'project_categories',
   'template_categories',
   'projects',
+  // Before tasks: a task's personIds point at these, so restoring the people
+  // first means a restored task never names somebody who isn't there yet.
+  'people',
   'task_groups',
   'grocery_shops',
   'grocery_items',
@@ -1703,6 +1732,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     supplyDeclinedAtCount: (row.supply_declined_at_count as number | null) ?? null,
     supplyGroceryItemId: (row.supply_grocery_item_id as string | null) ?? null,
     tags: JSON.parse((row.tags as string) ?? '[]') as string[],
+    personIds: JSON.parse((row.person_ids as string) ?? '[]') as string[],
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     pinned: Boolean(row.pinned),
@@ -1787,8 +1817,9 @@ export function dbInsertTask(task: Task): void {
       deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id, time_block_event_id,
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
-      supply_lead_days, supply_declined_at_count, supply_grocery_item_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
+      person_ids
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1847,6 +1878,7 @@ export function dbInsertTask(task: Task): void {
       task.supplyLeadDays ?? null,
       task.supplyDeclinedAtCount ?? null,
       task.supplyGroceryItemId ?? null,
+      JSON.stringify(task.personIds),
     ]
   );
 }
@@ -1870,7 +1902,8 @@ export function dbUpdateTask(task: Task): void {
       deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?, time_block_event_id=?,
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
-      supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?
+      supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
+      person_ids=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -1930,6 +1963,7 @@ export function dbUpdateTask(task: Task): void {
       task.supplyLeadDays ?? null,
       task.supplyDeclinedAtCount ?? null,
       task.supplyGroceryItemId ?? null,
+      JSON.stringify(task.personIds),
       task.id,
     ]
   );
@@ -3799,6 +3833,85 @@ export function dbBatchUpdateProjectSortOrders(updates: { id: string; sortOrder:
   db.withTransactionSync(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE projects SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+    }
+  });
+}
+
+// ─── People ──────────────────────────────────────────────────────────────────
+
+function rowToPerson(row: Record<string, unknown>): Person {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    nickname: (row.nickname as string) ?? '',
+    notes: (row.notes as string) ?? '',
+    sortOrder: row.sort_order as number,
+    archived: Boolean(row.archived),
+    archivedAt: (row.archived_at as string) ?? null,
+    createdAt: row.created_at as string,
+    birthdayMonth: (row.birthday_month as number | null) ?? null,
+    birthdayDay: (row.birthday_day as number | null) ?? null,
+    birthYear: (row.birth_year as number | null) ?? null,
+    birthdayTaskOptOut: Boolean(row.birthday_task_opt_out),
+    phoneNumber: (row.phone_number as string) ?? null,
+    email: (row.email as string) ?? null,
+    linkUrl: (row.link_url as string) ?? null,
+    cadenceDays: (row.cadence_days as number) ?? 0,
+    nudgeOptIn: Boolean(row.nudge_opt_in),
+    reachOutDeclinedAt: (row.reach_out_declined_at as string) ?? null,
+  };
+}
+
+export function dbGetAllPeople(): Person[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM people ORDER BY sort_order ASC, name ASC');
+  return rows.map(rowToPerson);
+}
+
+export function dbInsertPerson(person: Person): void {
+  db.runSync(
+    `INSERT INTO people (
+      id, name, nickname, notes, sort_order, archived, archived_at, created_at,
+      birthday_month, birthday_day, birth_year, birthday_task_opt_out,
+      phone_number, email, link_url, cadence_days, nudge_opt_in, reach_out_declined_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    [
+      person.id, person.name, person.nickname, person.notes, person.sortOrder,
+      person.archived ? 1 : 0, person.archivedAt, person.createdAt,
+      person.birthdayMonth, person.birthdayDay, person.birthYear,
+      person.birthdayTaskOptOut ? 1 : 0,
+      person.phoneNumber, person.email, person.linkUrl,
+      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.reachOutDeclinedAt,
+    ]
+  );
+}
+
+export function dbUpdatePerson(person: Person): void {
+  db.runSync(
+    `UPDATE people SET
+      name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
+      birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?,
+      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, reach_out_declined_at=?
+    WHERE id=?`,
+    [
+      person.name, person.nickname, person.notes, person.sortOrder,
+      person.archived ? 1 : 0, person.archivedAt,
+      person.birthdayMonth, person.birthdayDay, person.birthYear,
+      person.birthdayTaskOptOut ? 1 : 0,
+      person.phoneNumber, person.email, person.linkUrl,
+      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.reachOutDeclinedAt,
+      person.id,
+    ]
+  );
+}
+
+export function dbDeletePerson(id: string): void {
+  db.runSync('DELETE FROM people WHERE id = ?', [id]);
+}
+
+export function dbBatchUpdatePersonSortOrders(updates: { id: string; sortOrder: number }[]): void {
+  db.withTransactionSync(() => {
+    for (const { id, sortOrder } of updates) {
+      db.runSync('UPDATE people SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
   });
 }

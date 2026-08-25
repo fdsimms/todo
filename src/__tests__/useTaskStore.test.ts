@@ -48,6 +48,7 @@ import {
 } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
+import { setDemoModeActive } from '../utils/demoState';
 import type { GroceryItem, Project, Task, TaskGroup, TitleRule } from '../types';
 
 jest.mock('../db/database', () => ({
@@ -72,6 +73,11 @@ jest.mock('../db/database', () => ({
   dbUpdateProject: jest.fn(),
   dbDeleteProject: jest.fn(),
   dbBatchUpdateProjectSortOrders: jest.fn(),
+  dbGetAllPeople: jest.fn().mockReturnValue([]),
+  dbInsertPerson: jest.fn(),
+  dbUpdatePerson: jest.fn(),
+  dbDeletePerson: jest.fn(),
+  dbBatchUpdatePersonSortOrders: jest.fn(),
   dbGetAllProjectCategories: jest.fn().mockReturnValue([]),
   dbInsertProjectCategory: jest.fn(),
   dbGetAllTemplateCategories: jest.fn().mockReturnValue([]),
@@ -214,7 +220,7 @@ jest.mock('../utils/calendarSync', () => ({
   updateTimeBlockEvent: jest.fn().mockResolvedValue(true),
 }));
 jest.mock('../store/useCalendarStore', () => ({
-  useCalendarStore: { getState: () => ({ events: [], loaded: false }) },
+  useCalendarStore: { getState: jest.fn(() => ({ events: [], loaded: false })) },
 }));
 
 jest.mock('react-native', () => ({
@@ -322,6 +328,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
   ...overrides,
 });
 
@@ -3514,6 +3521,189 @@ describe('checkPantryCheckTasks', () => {
     const [check] = checkTasks();
     expect(check.title).toBe('Check if you still have Plain flour');
     expect(check.dueDate).toBe(saturday);
+  });
+});
+
+// ─── checkCalendarReviewTasks ───────────────────────────────────────────────
+
+describe('checkCalendarReviewTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+  const { useCalendarStore } = jest.requireMock('../store/useCalendarStore') as {
+    useCalendarStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    calendarReviewTasks: true,
+    calendarReadEnabled: true,
+    calendarEventCategory: 'Calendar Events',
+    calendarReviewLastDayKey: null as string | null,
+    setCalendarReviewLastDayKey: jest.fn(),
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  // Aug 25 2026 9am — a fixed "now" so tomorrow's day key (2026-08-26) is
+  // deterministic regardless of when the suite runs.
+  const NOW = new Date(2026, 7, 25, 9, 0, 0);
+  const tomorrowEvent = (overrides: Record<string, unknown> = {}) => ({
+    id: 'e-1',
+    title: 'Dentist',
+    start: new Date(2026, 7, 26, 14, 0, 0).toISOString(),
+    end: new Date(2026, 7, 26, 15, 0, 0).toISOString(),
+    allDay: false,
+    calendarId: 'cal-1',
+    location: null,
+    status: 'confirmed',
+    availability: 'busy',
+    ...overrides,
+  });
+
+  const reviewTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'calendarReview' && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    useSettingsStore.getState.mockReturnValue(settings());
+    useCalendarStore.getState.mockReturnValue({ events: [], loaded: false });
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    // Restore the file's shared default so a later describe block that never
+    // touches the calendar store isn't left reading this block's last state.
+    useCalendarStore.getState.mockReturnValue({ events: [], loaded: false });
+  });
+
+  it('writes a task when tomorrow has an event', () => {
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    const [review] = reviewTasks();
+    expect(review.title).toBe('Review tomorrow\'s calendar');
+    expect(review.generatedSourceId).toBe('2026-08-26');
+    expect(review.category).toBe('Calendar Events');
+    expect(review.dueDate).not.toBeNull();
+  });
+
+  it('writes nothing when tomorrow has no events', () => {
+    useCalendarStore.getState.mockReturnValue({ events: [], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  it('is a no-op while the setting is off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ calendarReviewTasks: false }));
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  it('is a no-op while calendar reading is off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ calendarReadEnabled: false }));
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  it('is a no-op with nowhere to file the task', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ calendarEventCategory: null }));
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  // An empty array and a failed read look identical — only `loaded` tells them
+  // apart. Reading the first as the second would write a task for a day the
+  // app never actually looked at.
+  it('treats an unread window as unknown, not as tomorrow being free', () => {
+    const s = settings();
+    useSettingsStore.getState.mockReturnValue(s);
+    useCalendarStore.getState.mockReturnValue({ events: [], loaded: false });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+    // And the day must not be marked decided either — a failed read isn't a
+    // decision, so a successful read later the same day still gets to make one.
+    expect(s.setCalendarReviewLastDayKey).not.toHaveBeenCalled();
+  });
+
+  it('does not pile up a second task on the next sweep', () => {
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(1);
+  });
+
+  // The real device calendar has no place in a demo session. Unlike every
+  // other generator's qualifying condition, this one isn't a row in the demo's
+  // own throwaway database — someone can switch this setting on while browsing
+  // the demo, and without this gate the next sweep would write a task into the
+  // demo database revealing whether the real device's tomorrow has anything on
+  // it (see checkCalendarReviewTasks).
+  it('is a no-op in demo mode, however the setting is set', () => {
+    setDemoModeActive(true);
+    try {
+      useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+
+      useTaskStore.getState().checkCalendarReviewTasks();
+
+      expect(reviewTasks()).toHaveLength(0);
+    } finally {
+      setDemoModeActive(false);
+    }
+  });
+
+  // The whole reason calendarReviewLastDayKey exists: this generator has no
+  // source row to stamp a decline onto (see writeGeneratedOptOut), so nothing
+  // else stands between a delete and an immediate recreate on the next sweep.
+  // A day already marked decided must not be re-diagnosed, whatever the mark's
+  // outcome was.
+  it('does not hand back a task for a day already decided', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ calendarReviewLastDayKey: '2026-08-26' }));
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  // A day rolls over purely by time passing, and this is the one generator
+  // whose row would otherwise sit there describing a day that has already
+  // happened — its title never changes to say so.
+  it('clears yesterday\'s task once the day turns', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'stale-review',
+        title: 'Review tomorrow\'s calendar',
+        category: 'Calendar Events',
+        generatedKind: 'calendarReview',
+        generatedSourceId: '2026-08-25',
+      })],
+    });
+    useCalendarStore.getState.mockReturnValue({ events: [], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
   });
 });
 

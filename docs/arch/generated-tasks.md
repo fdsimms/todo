@@ -1,9 +1,10 @@
-# Generated tasks: the seven things that write a task unattended
+# Generated tasks: the ten things that write a task unattended
 
 The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
-project reviews and pantry checks. Read this before adding a seventh generator:
-the whole point of the refactor it describes is that a new one costs a rules
-module and a registry entry, not a column.
+project reviews, pantry checks, supply reorders and the daily calendar review.
+Read this before adding a ninth generator: the whole point of the refactor it
+describes is that a new one costs a rules module and a registry entry, not a
+column.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
 task. The rules here are settled decisions with the reasoning attached: don't
@@ -12,21 +13,30 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the seven things that write a task unattended
+## Generated tasks — the ten things that write a task unattended
 
 Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
-"Review X", and a grocery whose pantry guess has run out becomes "Check if you still have X". The
-first four were each built by copying the last, which is fine twice and had reached
-four — four nullable back-pointer columns on `Task`, four hand-written "don't pile up" rules, three
-copies of one opt-out. They now share `src/utils/generatedTasks.ts` (pure: the kinds, the registry,
-the opt-out precedence, the lookups) and `src/store/generatedTaskSync.ts` (the create/update/delete).
+"Review X", a grocery whose pantry guess has run out becomes "Check if you still have X", a task's
+supply running low becomes "Order more X", and (once a day, when tomorrow has anything on it) the
+calendar becomes "Review tomorrow's calendar". The first four were each built by copying the last,
+which is fine twice and had reached four — four nullable back-pointer columns on `Task`, four
+hand-written "don't pile up" rules, three copies of one opt-out. They now share
+`src/utils/generatedTasks.ts` (pure: the kinds, the registry, the opt-out precedence, the lookups)
+and `src/store/generatedTaskSync.ts` (the create/update/delete).
 **A fifth generator should need neither a column nor a reconcile** — just its own rules module and a
 registry entry (#1524). `projectReview` is that fifth, and it cost exactly that: a rules module, a
 registry entry, a firing beside the nudge's, and no `extrasFor` case in Settings at all.
 `pantryCheck` is the sixth and cost the same; the one column it added
 (`GroceryItem.pantryCheckDeclinedAt`) is on its *source* row, which is where every generator's
-opt-out already lives.
+opt-out already lives. `supplyReorder` is the seventh, sourced from a task rather than a row in
+another store — see `src/utils/supply.ts` for its own rules. `calendarReview` is the eighth and adds
+no column at all: its source is tomorrow's day key rather than a row, so its opt-out is a
+settings-level mark (`calendarReviewLastDayKey`) rather than a stamp anywhere — see the section
+below. `birthday` is the ninth (`src/utils/birthdayTasks.ts`). `mealShortfall` is the tenth, and is
+the first whose *source row* is one the user edits freely and often — which is why its entire
+staleness rule is the creation predicate re-run, rather than a list of mutations to intercept; see
+the section below.
 
 - **`Task.generatedKind` + `Task.generatedSourceId` replaced `mealEntryId`/`groceryItemId`/
   `leftoverId`.** Those three columns are still on the table, backfilled from and then left
@@ -191,7 +201,42 @@ opt-out already lives.
   - **It ships off**, unlike `projectReview` beside it, which replaced a surface that was already
     on screen. This adds one.
 
-- **`mealShortfall` is the seventh, and it fires on a *meal coming into range*.** Planning a week
+- **`calendarReview` is the eighth, and it's structurally `mealPlanNudge` one shelf over, not
+  `projectReview`/`pantryCheck`.** Its source is tomorrow's day key rather than a row (a square on
+  the calendar, not something a stamp can live on — the position the nudge is already in), so there
+  is no per-source qualifying predicate, no capped set, and no stale-vs-still-qualifies distinction
+  to draw: there is exactly one task, asking about exactly one day, and the only question is whether
+  that day has anything on it (`wantsCalendarReview`, in `calendarReviewTasks.ts`).
+  - **`calendarReviewLastDayKey` is the opt-out, and it has to do more work than
+    `mealPlanNudgeLastFiredWeekKey`.** The nudge's mark only ever prevents a second stack the *same*
+    week; nothing deletes a nudge task early enough for the mark to also need to block a recreate.
+    This generator's does: with no source row, nothing else stands between a swiped-away task and an
+    identical one on the very next foreground sweep (see `writeGeneratedOptOut`'s `calendarReview`
+    case, which — like the nudge's — writes nothing). So the mark is recorded unconditionally the
+    moment a day is considered, *before* the "does tomorrow have anything on it" check, and covers
+    every outcome: created, or found empty. A day already marked is never re-diagnosed, whatever the
+    mark's reason.
+  - **It reuses `calendarEventCategory` rather than owning a category of its own**
+    (`GeneratedKindSpec.categorized: false` — the one so far). The task and the events it's asking
+    about are one subject to the person reading the list, and a second "File them under" setting
+    would only ever be able to agree with the first or contradict it. `ensureGeneratedTaskCategory`
+    and the two switches in `useCategoryStore.ts` it dispatches through both return early for this
+    kind rather than gaining a real arm — there is nothing of its own to ensure or point at.
+  - **It fires on time passing, from the same two places `pantryCheck` does** (the launch sequence
+    and the Today foreground sweep) — but unlike every other generator, it reads state
+    (`useCalendarStore`) that nothing in the launch sequence populates synchronously; the window is
+    filled by `useCalendarSync`'s own effect. In practice the launch-sequence firing is close to a
+    no-op on a cold start and the foreground sweep does the real work, reading whatever the calendar
+    store already has rather than triggering a fresh read itself — the same staleness tolerance
+    every other `useCalendarStore` reader (`TodayScreen`'s event rows, time-block scheduling)
+    already lives with.
+  - **It's the one generator gated on `isDemoModeActive()`.** Every other generator's qualifying
+    condition is a row in the demo's own throwaway database; this one's is the real device calendar,
+    which demo mode must never read from or expose the existence of. The demo's own example task is
+    seeded directly in `demoSeed.ts`, the same way `pantryCheck`'s is, rather than left to the real
+    sweep.
+
+- **`mealShortfall` is the tenth, and it fires on a *meal coming into range*.** Planning a week
   has never required owning any of it, so a dish you can't cook was indistinguishable from one you
   can right up until the night. `mealPlanGroceries.ts` has been able to answer "what's missing for
   this meal" since the add-to-list sheets shipped; the only thing absent was something to say it

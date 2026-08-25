@@ -124,6 +124,7 @@ const baseTask = {
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
 } as Task;
 
 describe('completionTapFor', () => {
