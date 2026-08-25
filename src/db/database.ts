@@ -1032,6 +1032,8 @@ export function initDatabase(): void {
     // successors, series members, chain steps, template instantiation) and a
     // JSON column rides `...effective` onto every one of them for free.
     "ALTER TABLE tasks ADD COLUMN person_ids TEXT NOT NULL DEFAULT '[]'",
+    // Somebody you're waiting on (#2087). Null on every existing row.
+    'ALTER TABLE tasks ADD COLUMN waiting_on_person_id TEXT',
     // Where the recurrence grid steps from once an occurrence has been pulled
     // forward off it (#1953). Null on every existing row, which reads as
     // "dueDate is still the anchor" — i.e. exactly what they all mean today.
@@ -1746,6 +1748,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     recurrenceWeekOrdinal: (row.recurrence_week_ordinal as number | null) ?? null,
     recurrenceAnchorDay: (row.recurrence_anchor_day as number | null) ?? null,
     recurrenceAnchorDate: (row.recurrence_anchor_date as string | null) ?? null,
+    waitingOnPersonId: (row.waiting_on_person_id as string | null) ?? null,
     recurrenceEndDate: (row.recurrence_end_date as string) ?? null,
     recurrenceCount: (row.recurrence_count as number | null) ?? null,
     recurrenceFromCompletion: Boolean(row.recurrence_from_completion),
@@ -1851,8 +1854,8 @@ export function dbInsertTask(task: Task): void {
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
-      person_ids
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      person_ids, waiting_on_person_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1911,7 +1914,7 @@ export function dbInsertTask(task: Task): void {
       task.supplyLeadDays ?? null,
       task.supplyDeclinedAtCount ?? null,
       task.supplyGroceryItemId ?? null,
-      JSON.stringify(task.personIds),
+      JSON.stringify(task.personIds), task.waitingOnPersonId ?? null,
     ]
   );
 }
@@ -1936,7 +1939,7 @@ export function dbUpdateTask(task: Task): void {
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
-      person_ids=?
+      person_ids=?, waiting_on_person_id=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -1996,7 +1999,7 @@ export function dbUpdateTask(task: Task): void {
       task.supplyLeadDays ?? null,
       task.supplyDeclinedAtCount ?? null,
       task.supplyGroceryItemId ?? null,
-      JSON.stringify(task.personIds),
+      JSON.stringify(task.personIds), task.waitingOnPersonId ?? null,
       task.id,
     ]
   );

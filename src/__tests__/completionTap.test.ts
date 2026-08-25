@@ -116,6 +116,7 @@ const baseTask = {
   phoneNumber: null,
   emailAddress: null,
   blockedById: null,
+  waitingOnPersonId: null,
   deliverableKind: null,
   deliverableValue: null,
   generatedKind: null,

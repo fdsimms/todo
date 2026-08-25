@@ -1,6 +1,6 @@
-import { canBlock, blockerOf, isBlocked, wouldCycle, waitingOn, resolverFor, blockerAffinity, sortByBlockerAffinity, canBeBlockerOf, canBeBlockedBy, resolveBlocksEdit, describeBlocks } from '../utils/blocking';
+import { canBlock, blockerOf, isBlocked, wouldCycle, waitingOn, resolverFor, blockerAffinity, sortByBlockerAffinity, canBeBlockerOf, canBeBlockedBy, resolveBlocksEdit, describeBlocks, canWaitOn, personBlockerOf, isWaitingOnPerson } from '../utils/blocking';
 import { registerTaskSource, resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
-import type { Task } from '../types';
+import type { Person, Task } from '../types';
 
 const makeTask = (overrides: Partial<Task> = {}): Task => ({
   id: '1',
@@ -88,6 +88,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   phoneNumber: null,
   emailAddress: null,
   blockedById: null,
+  waitingOnPersonId: null,
   deliverableKind: null,
   deliverableValue: null,
   generatedKind: null,
@@ -422,5 +423,67 @@ describe('sortByBlockerAffinity', () => {
   it('leaves the order alone with no context at all', () => {
     const tasks = [makeTask({ id: 'x', groupId: 'g1' }), makeTask({ id: 'y', projectId: 'p1' })];
     expect(ids(sortByBlockerAffinity(tasks, {}))).toEqual(['x', 'y']);
+  });
+});
+
+
+// ─── waiting on a person (#2087) ─────────────────────────────────────────────
+
+const makePerson = (over: Partial<Person> & Pick<Person, 'id' | 'name'>): Person => ({
+  nickname: '', notes: '', sortOrder: 1, archived: false, archivedAt: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  birthdayMonth: null, birthdayDay: null, birthdayTaskOptOut: false,
+  phoneNumber: null, email: null, linkUrl: null,
+  cadenceDays: 0, nudgeOptIn: false, reachOutDeclinedAt: null, askAbout: '',
+  ...over,
+});
+
+const dustin = makePerson({ id: 'p1', name: 'Dustin' });
+const peopleBy = (...people: Person[]) => (id: string) => people.find(p => p.id === id);
+
+describe('canWaitOn', () => {
+  it('is true for somebody on file', () => {
+    expect(canWaitOn(dustin)).toBe(true);
+  });
+
+  // canBlock's shape exactly: a blocker that is gone frees its waiters rather
+  // than stranding them invisible with no user action able to recover them.
+  it('is false for somebody deleted, so their waiters are freed', () => {
+    expect(canWaitOn(undefined)).toBe(false);
+  });
+
+  it('is false for somebody archived, which is an explicit "out of my way"', () => {
+    expect(canWaitOn(makePerson({ id: 'p2', name: 'Filed', archived: true }))).toBe(false);
+  });
+});
+
+describe('personBlockerOf / isWaitingOnPerson', () => {
+  const resolve = peopleBy(dustin);
+
+  it('resolves the person a task is waiting on', () => {
+    const task = makeTask({ waitingOnPersonId: 'p1' });
+    expect(personBlockerOf(task, resolve)?.id).toBe('p1');
+    expect(isWaitingOnPerson(task, resolve)).toBe(true);
+  });
+
+  it('is nothing for a task waiting on nobody', () => {
+    expect(personBlockerOf(makeTask(), resolve)).toBeUndefined();
+    expect(isWaitingOnPerson(makeTask(), resolve)).toBe(false);
+  });
+
+  it('frees a task whose person has been deleted', () => {
+    const task = makeTask({ waitingOnPersonId: 'gone' });
+    expect(isWaitingOnPerson(task, resolve)).toBe(false);
+  });
+
+  it('frees a task whose person has been archived', () => {
+    const filed = makePerson({ id: 'p9', name: 'Filed', archived: true });
+    expect(isWaitingOnPerson(makeTask({ waitingOnPersonId: 'p9' }), peopleBy(filed))).toBe(false);
+  });
+
+  // The two are independent: waiting on Dustin for the photos is not time spent
+  // with Dustin, and it must never land in his history.
+  it('is unrelated to personIds', () => {
+    expect(isWaitingOnPerson(makeTask({ personIds: ['p1'] }), resolve)).toBe(false);
   });
 });

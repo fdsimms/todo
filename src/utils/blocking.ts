@@ -1,4 +1,4 @@
-import type { Task } from '../types';
+import type { Person, Task } from '../types';
 
 /**
  * "Waiting on" — task-to-task blocking (see Task.blockedById).
@@ -42,6 +42,42 @@ export function blockerOf(task: Task, resolve: TaskResolver): Task | undefined {
 /** True while `task` is held back by another task that isn't done yet. */
 export function isBlocked(task: Task, resolve: TaskResolver): boolean {
   return blockerOf(task, resolve) !== undefined;
+}
+
+/** Resolves a person id to their row, or undefined. `peopleRegistry` supplies it. */
+export type PersonResolver = (id: string) => Person | undefined;
+
+/**
+ * Somebody still worth waiting on: on file, and not filed away.
+ *
+ * **`canBlock` for people**, and deliberately the same shape. A deleted person
+ * resolves to nothing and an archived one is an explicit "out of my way", so
+ * either frees their waiters rather than stranding them — which is what makes a
+ * cascade unnecessary when a person is deleted, exactly as it is when a blocker
+ * task is. A stranded waiter is invisible with no user action able to recover
+ * it, which is the failure this shape exists to make impossible.
+ */
+export function canWaitOn(person: Person | undefined): boolean {
+  return person != null && !person.archived;
+}
+
+/** The person this task is waiting on, or undefined if it isn't waiting on one. */
+export function personBlockerOf(task: Pick<Task, 'waitingOnPersonId'>, resolve: PersonResolver): Person | undefined {
+  if (!task.waitingOnPersonId) return undefined;
+  const person = resolve(task.waitingOnPersonId);
+  return canWaitOn(person) ? person : undefined;
+}
+
+/**
+ * True while `task` is held back by somebody.
+ *
+ * **Nothing ends this on its own**, which is the one real difference from
+ * `isBlocked`: a blocker task completes and frees its waiters, and nobody
+ * completes a person. So the clearing action lives on the row and on the
+ * Waiting screen rather than only in the editor — see `Task.waitingOnPersonId`.
+ */
+export function isWaitingOnPerson(task: Pick<Task, 'waitingOnPersonId'>, resolve: PersonResolver): boolean {
+  return personBlockerOf(task, resolve) !== undefined;
 }
 
 /**

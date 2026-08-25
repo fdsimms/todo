@@ -199,7 +199,7 @@ type PickerMode = 'none' | 'reminder';
 type DraftSubtask = { id: string; title: string; completed: boolean; timedMinutes: number | null };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -390,6 +390,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [vacationPause, setVacationPause] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [blockedById, setBlockedById] = useState<string | null>(null);
+  const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
   const [showBlockerPicker, setShowBlockerPicker] = useState(false);
   // The other end of the same pointer: the tasks this one holds back. Draft
@@ -407,6 +408,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // rather than the whole list keeps unrelated task changes from re-rendering
   // the editor.
   const blockerTask = useTaskStore(s => (blockedById ? s.tasks.find(t => t.id === blockedById) : undefined));
+  // Archived people stay out of the picker but never off a task that already
+  // names one — the same split the People field makes. `canWaitOn` has already
+  // freed the wait by then, so the row reads as no longer waiting either way.
+  const waitingPerson = people.find(p => p.id === waitingOnPersonId);
   // Memoized because the picker keys its candidate list on this array's
   // identity: a fresh one every render would re-filter every task on every
   // keystroke in the editor behind it.
@@ -599,6 +604,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setBlockedById(task.blockedById ?? null);
+      setWaitingOnPersonId(task.waitingOnPersonId ?? null);
       setBlocksIds(blockedTasksOf(task.id).map(t => t.id));
       setDeliverableKind(task.deliverableKind ?? null);
       setExtraTaskEveryN(task.extraTaskEveryN ?? null);
@@ -626,6 +632,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setBlockedById(null);
+      setWaitingOnPersonId(null);
       setBlocksIds([]);
       setDeliverableKind(null);
       setExtraTaskEveryN(null);
@@ -698,6 +705,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       blockedById: task?.blockedById ?? null,
+      waitingOnPersonId: task?.waitingOnPersonId ?? null,
       deliverableKind: task?.deliverableKind ?? null,
       extraTaskEveryN: task?.extraTaskEveryN ?? null,
       extraTaskTitle: task?.extraTaskTitle ?? '',
@@ -908,6 +916,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       blockedById,
+      waitingOnPersonId,
       deliverableKind,
       // Both halves or neither: a count with no name would be a rule that can
       // never fire, and a name with no count is a leftover from clearing one.
@@ -1340,6 +1349,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       phoneNumber,
       emailAddress,
       blockedById,
+      waitingOnPersonId,
       deliverableKind,
       extraTaskEveryN,
       extraTaskTitle,
@@ -3150,6 +3160,54 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           },
+          // The same pointer with a person on the other end (#2087), so it sits
+          // directly under the task one rather than in the People group: both
+          // answer "what is holding this back", and separating them by which
+          // *kind* of thing you're waiting on is a distinction about the data
+          // model rather than about the question being asked.
+          //
+          // Only once somebody has been added, like the People field: a picker
+          // with nothing in it is a prompt to start filing your friends.
+          ...(people.length > 0 ? [{
+            key: 'waitingOnPerson', label: 'Waiting on someone', set: !!waitingOnPersonId,
+            keywords: ['blocked', 'person', 'friend', 'owes', 'chase', 'reply'],
+            node: (
+              <>
+              <CollapsibleField
+                label="Waiting on someone"
+                summary={waitingPerson ? displayNameOf(waitingPerson) : undefined}
+                hint="Stay hidden until they come back to you. Nothing clears this on its own."
+                expanded={fieldOpen('waitingOnPerson')}
+                onToggle={() => toggleField('waitingOnPerson')}
+              >
+                <View style={styles.pillRow}>
+                  {people.map(p => {
+                    const on = waitingOnPersonId === p.id;
+                    return (
+                      <TouchableOpacity
+                        key={p.id}
+                        style={[styles.pill, on && styles.pillActiveNeutral]}
+                        // Single-choice, so the field closes on a tap the way
+                        // the other one-answer pickers do — and tapping the
+                        // chosen one again clears it, which is the only way
+                        // out of a wait nothing else ends.
+                        onPress={() => {
+                          haptics.tap();
+                          setWaitingOnPersonId(on ? null : p.id);
+                          closeField('waitingOnPerson');
+                        }}
+                        accessibilityRole="radio"
+                        accessibilityState={{ selected: on }}
+                      >
+                        <Text style={[styles.pillText, on && styles.pillTextActive]}>{displayNameOf(p)}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </CollapsibleField>
+              </>
+            ),
+          }] : []),
           // Not on a subtask: the picker won't offer one as a blocker either
           // (canBeBlockerOf), and a subtask that held a top-level task back
           // would be a relationship settable from one end only.

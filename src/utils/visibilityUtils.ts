@@ -5,8 +5,9 @@ import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { activeChainStep } from './chain';
-import { isBlocked } from './blocking';
+import { isBlocked, isWaitingOnPerson } from './blocking';
 import { isSequenceHeld, resolveBlocker } from './blockerRegistry';
+import { resolvePerson } from './peopleRegistry';
 
 /**
  * True while this task is waiting on another task that isn't done yet — the
@@ -18,7 +19,10 @@ import { isSequenceHeld, resolveBlocker } from './blockerRegistry';
  */
 export function isTaskBlocked(task: Task): boolean {
   if (task.completed || task.archived) return false;
-  return isBlocked(task, resolveBlocker);
+  // Either kind of wait, and they hide a task identically — the Waiting screen
+  // can name what each one is waiting on, which is the test the sequential
+  // project gate below fails and why that one is a separate predicate.
+  return isBlocked(task, resolveBlocker) || isWaitingOnPerson(task, resolvePerson);
 }
 
 /**

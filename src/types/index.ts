@@ -887,6 +887,30 @@ export interface Task {
   blockedById: string | null;
 
   /**
+   * Somebody you are waiting on — "Waiting on Dustin to send the photos"
+   * (#2087). Null on every ordinary task.
+   *
+   * The same shape as `blockedById` with a person on the other end, and it
+   * hides the task from the daily lists the same way, so it inherits the
+   * Waiting screen. Resolve-or-shrug like every pointer in the people layer: a
+   * deleted or archived person frees their waiters rather than stranding them,
+   * exactly as `canBlock` frees the waiters of a completed or archived blocker
+   * task. That is what makes a cascade unnecessary on either delete.
+   *
+   * **The one real difference is that nothing ends it on its own.** A task
+   * blocked on a task frees itself when the blocker completes; nobody
+   * completes a person, so this is cleared by hand and by nothing else. That is
+   * why the clearing action sits on the row itself and on the Waiting screen
+   * rather than only in the editor — a hidden task with no obvious way back is
+   * how this becomes a way to lose one.
+   *
+   * Independent of `personIds`, which says a task is *with* somebody. Waiting
+   * on Dustin for the photos is not time spent with Dustin, and it must never
+   * land in his history.
+   */
+  waitingOnPersonId: string | null;
+
+  /**
    * "Ask on completion" — a task whose completion means recording a decision
    * ("Pick a date for the trip"), not just ticking a box. Null on every
    * ordinary task, which is almost all of them.

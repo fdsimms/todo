@@ -32,6 +32,7 @@ import {
   isCompletionOnTime,
 } from '../utils/visibilityUtils';
 import { registerTaskSource, registerProjectSource } from '../utils/blockerRegistry';
+import { registerPersonSource } from '../utils/peopleRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
 
@@ -170,6 +171,7 @@ const baseTask: Task = {
   phoneNumber: null,
   emailAddress: null,
   blockedById: null,
+  waitingOnPersonId: null,
   deliverableKind: null,
   deliverableValue: null,
   generatedKind: null,
@@ -1703,6 +1705,41 @@ describe('blocking', () => {
     withTasks([blocker, waiter]);
     expect(isTaskBlocked(waiter)).toBe(true);
     expect(isTaskVisible(waiter)).toBe(false);
+  });
+
+  // #2087: the same hiding, with a person on the other end. It earns the same
+  // treatment because the Waiting screen can name what it's waiting on, which
+  // is the test a sequential project fails.
+  it('hides a task waiting on somebody, and frees it when they go', () => {
+    const dustin = {
+      id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+      archived: false, archivedAt: null, createdAt: NOW.toISOString(),
+      birthdayMonth: null, birthdayDay: null, birthdayTaskOptOut: false,
+      phoneNumber: null, email: null, linkUrl: null,
+      cadenceDays: 0, nudgeOptIn: false, reachOutDeclinedAt: null, askAbout: '',
+    };
+    const chasing = {
+      ...baseTask,
+      id: 'chase',
+      title: 'Photos from the trip',
+      waitingOnPersonId: 'p1',
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+    };
+    withTasks([chasing]);
+
+    registerPersonSource(() => [dustin]);
+    expect(isTaskBlocked(chasing)).toBe(true);
+    expect(isTaskVisible(chasing)).toBe(false);
+
+    // Archived is an explicit "out of my way", and a stranded waiter is
+    // invisible with nothing able to recover it — so the wait ends.
+    registerPersonSource(() => [{ ...dustin, archived: true }]);
+    expect(isTaskBlocked(chasing)).toBe(false);
+
+    // Same for deleted.
+    registerPersonSource(() => []);
+    expect(isTaskBlocked(chasing)).toBe(false);
+    registerPersonSource(null);
   });
 
   it('keeps a blocked task out of Later — it has no moment to sort by', () => {

@@ -852,6 +852,13 @@ function seedPeople(today: Date): void {
   // would be seeding no reminder at all, and then the feature reads as absent.
   updateTask(coffee.id, { completedAt: addDays(today, -20).toISOString() });
 
+  // Something you're waiting on somebody for (#2087). It hides from Today the
+  // way a task blocked on another task does, so without a seeded one the
+  // Waiting screen's person sections read as a feature the app doesn't have —
+  // and unlike a task blocker, nothing ends this on its own.
+  const photos = addTask({ title: 'Photos from the trip' });
+  updateTask(photos.id, { waitingOnPersonId: dustin.id });
+
   // Two of them are coming for dinner tomorrow (#2077). Guests are the tie-in
   // that makes the kitchen half and the people half one app, and a meal with
   // nobody on it reads as a feature this app doesn't have — so one seeded meal

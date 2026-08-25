@@ -71,6 +71,8 @@ import {
   projectReviewProjectId,
 } from '../utils/projectReviewTasks';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
+import { resolvePerson } from '../utils/peopleRegistry';
+import { displayNameOf } from '../store/usePersonStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -982,6 +984,15 @@ export const TaskItem = React.memo(function TaskItem({
     return blocker ? displayTitleFor(blocker) : undefined;
   });
 
+  // Resolved through the registry rather than the store's array, the same way
+  // the blocker above is: a person who has been deleted or archived has already
+  // freed this task (canWaitOn), so the chip goes with the wait.
+  const waitingPersonName = useTaskStore(() => {
+    if (!task.waitingOnPersonId) return undefined;
+    const person = resolvePerson(task.waitingOnPersonId);
+    return person && !person.archived ? displayNameOf(person) : undefined;
+  });
+
   const activeChainItem =
     task.chainEnabled && task.chainItems.length > 0
       ? task.chainItems[task.chainIndex % task.chainItems.length]
@@ -1644,7 +1655,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -1708,6 +1719,31 @@ export const TaskItem = React.memo(function TaskItem({
                   After {blockerTitle}
                 </Text>
               </View>
+            )}
+            {/* Tappable where the blocker chip above isn't, and that asymmetry
+                is the point (#2087): a task waiting on a task frees itself when
+                the blocker is ticked off, where nobody completes a person. This
+                chip is the way out, so it has to be here on the row and not
+                only in the editor. */}
+            {!!waitingPersonName && (
+              <TouchableOpacity
+                style={styles.metaChip}
+                onPress={() => { haptics.tap(); animateLayout(); updateTask(task.id, { waitingOnPersonId: null }); }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="button"
+                accessibilityLabel={`Waiting on ${waitingPersonName}. Double tap to stop waiting.`}
+              >
+                <Ionicons name="hourglass" size={iconSize.xs} color={colors.textTertiary} />
+                <Text style={styles.blockingLabel} numberOfLines={1}>
+                  Waiting on {waitingPersonName}
+                </Text>
+                {/* The same glyph the Waiting screen releases a row with,
+                    rather than a new bordered-chip treatment: without it this
+                    is pixel-identical to the blocker chip beside it, which is
+                    not a button, and the one way out of a wait nothing else
+                    ends would be undiscoverable. */}
+                <Ionicons name="close" size={iconSize.xs} color={colors.textTertiary} />
+              </TouchableOpacity>
             )}
             {showStreakChip && (
               <View
