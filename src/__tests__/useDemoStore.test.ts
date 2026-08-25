@@ -14,7 +14,7 @@ import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
-import { useProjectStore, projectDecisions } from '../store/useProjectStore';
+import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
@@ -785,6 +785,18 @@ describe('demo mode', () => {
     const hallway = useProjectStore.getState().projects.find(p => p.title === 'Repaint the hallway');
     expect(hallway?.completed).toBe(true);
     expect(hallway?.archived).toBe(false);
+  });
+
+  it('seeds a project with every task done but not yet marked complete', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const gate = useProjectStore.getState().projects.find(p => p.title === 'Fix the back gate');
+    expect(gate?.completed).toBe(false);
+    expect(gate?.archived).toBe(false);
+
+    const progress = projectProgress(gate!.id, useTaskStore.getState().tasks);
+    expect(progress.total).toBeGreaterThan(0);
+    expect(progress.done).toBe(progress.total);
   });
 
   it('seeds a task that has been pushed enough times to trip the postpone check', () => {

@@ -643,6 +643,18 @@ export function seedDemoData(): void {
   });
   completeProject(hallway.id, { archiveRemaining: false });
 
+  // Every task done but the project itself left active — the state the
+  // "Mark complete" affordance on the Projects list and the project detail
+  // screen exists for. Left uncompleted on purpose, unlike the hallway
+  // above: that one demonstrates Project.completed, this one demonstrates
+  // the nudge to reach it.
+  const gate = createProject('Fix the back gate', null, null);
+  ['Buy a new hinge', 'Sand and repaint'].forEach(title => {
+    const t = addTask({ title, category: 'Home' });
+    addExistingToProject(t.id, gate.id);
+    completeTask(t.id);
+  });
+
   // --- Subtasks ------------------------------------------------------------
   const trip = addTask({
     title: 'Plan the Japan trip',
