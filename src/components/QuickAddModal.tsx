@@ -943,15 +943,18 @@ export function QuickAddModal({
     }, undefined, { skipTitleRules: true });
     // Files the task exactly as before either way; the setting only decides
     // whether the sheet hands off straight into the full editor for it
-    // (postCreateTask, rendered below) instead of just closing.
-    if (newTaskDefaults.openEditorAfterQuickAdd) {
-      setPostCreateTask(task);
-    }
-    // onCreated can switch Today's whole sub-view (Today/Later/Unscheduled/
-    // Inbox) to wherever the new task landed — deferred until the sheet has
-    // finished fading out, so that switch never happens behind a sheet that's
-    // still on screen. See dismiss's onDone.
-    dismiss(() => onCreated?.(task, seedActive));
+    // (postCreateTask, rendered below) instead of just closing. Deferred
+    // into dismiss's onDone, same as onCreated below: setting it before this
+    // sheet's own Modal has closed left both Modals — and both screens'
+    // NumberPadAccessory/TitleTokenAccessory InputAccessoryViews — mounted
+    // at once for the ~120ms fade, which could leave an accessory bar
+    // attached to the wrong window and stuck behind the keyboard.
+    dismiss(() => {
+      if (newTaskDefaults.openEditorAfterQuickAdd) {
+        setPostCreateTask(task);
+      }
+      onCreated?.(task, seedActive);
+    });
   };
 
   // ==== the exits: add, or hand the draft to the full editor ====
