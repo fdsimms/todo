@@ -228,10 +228,16 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  * - `dailyAgendaEnabled`, `dailyAgendaTime`, `reminderMeetingNudgeEnabled` —
  *   notification schedules. Shared, both devices would fire the same
  *   notification and every reminder would arrive twice.
- * - `calendarIds`, `calendarReadEnabled`, `deadlineCalendarId`,
- *   `mealCalendarId`, `remindersImport*`, `groceryImport*` — identifiers for
- *   calendars and lists that exist on one device. Wrong, not just useless,
- *   on the other.
+ * - `calendarIds`, `calendarReadEnabled`, `calendarPeopleHistory`,
+ *   `deadlineCalendarId`, `mealCalendarId`, `remindersImport*`,
+ *   `groceryImport*` — identifiers for calendars and lists that exist on one
+ *   device. Wrong, not just useless, on the other. `calendarPeopleHistory`
+ *   is a preference rather than an id, but it refines `calendarReadEnabled`
+ *   and is worth nothing on a device that isn't reading a calendar.
+ * - `calendarHistoryHandled` — which past events the user has already answered
+ *   about on a person's screen, keyed by EventKit event id. Same objection as
+ *   `groceryImportLinks`: an event id names a record on one device, so the
+ *   other phone would read it as answers about events it has never seen.
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
  * - `grocery_trip_shop_id`, `grocery_trip_started_at`,

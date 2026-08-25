@@ -226,6 +226,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['category', 'section', 'today', 'events on today', 'hide events', 'file', 'where'] },
   { id: 'reminderMeetingNudge', groupId: 'capture', label: 'Move reminders out of meetings', section: 'Calendar',
     keywords: ['notification', 'event', 'busy', 'nudge', 'delay', 'push back'] },
+  { id: 'calendarPeopleHistory', groupId: 'capture', label: 'Match events to people', section: 'Calendar',
+    keywords: ['friends', 'family', 'history', 'together', 'name', 'title', 'suggest', 'past'] },
   { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync'] },
   { id: 'mealCalendar', groupId: 'capture', label: 'Write meals to', section: 'Meals on your calendar',
