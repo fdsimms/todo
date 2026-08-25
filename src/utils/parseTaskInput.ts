@@ -941,6 +941,19 @@ export interface PersonToken {
   nickname: string;
 }
 
+/**
+ * A "@name" token more than one person answers to, offered so a caller can
+ * show a pick-one list instead of just refusing. See `findAmbiguousMention`.
+ */
+export interface AmbiguousMention {
+  start: number;
+  end: number;
+  /** The token text, lowercased, without the "@" — the key `overrides` (here
+   * and in `applyMentionOverrides`) is keyed by. */
+  token: string;
+  candidates: PersonToken[];
+}
+
 // An "@" immediately followed by a word, not itself preceded by a word
 // character, so an email address in a title ("mail bob@example.com") does not
 // false-positive on its domain. The comment on SUPPLY_PATTERN above reserved
@@ -950,6 +963,45 @@ export interface PersonToken {
 // ("@mary-jane", "@o'brien"). Matched globally rather than once, since a plan
 // can name several people.
 const PERSON_TOKEN_PATTERN = /(?<!\w)@([a-z][\w'-]*)/gi;
+
+// Below this many characters, a prefix is too likely to land on more than one
+// name to be worth trying — the same floor calendarHistory.ts's
+// MIN_CALENDAR_NAME_LENGTH uses, though that one guards a guess made from text
+// written for another purpose, not a deliberate "@" token.
+const MIN_PREFIX_LENGTH = 3;
+
+/**
+ * The three ways a person answers to a token — full name, nickname, and the
+ * first word of the name — indexed once per call so `matchPersonMentions` and
+ * `findAmbiguousMention` don't each rebuild it themselves. `toCandidates`
+ * turns a set of ids back into `PersonToken`s in the person's own list order,
+ * the order a pick-one list is offered in.
+ */
+function buildPersonNameIndex(people: PersonToken[]) {
+  // Built once per call rather than per token: a name can be reached three ways
+  // and the last writer would otherwise depend on iteration order.
+  const byName = new Map<string, string[]>();
+  const add = (key: string, id: string) => {
+    const k = key.trim().toLowerCase();
+    if (!k) return;
+    const held = byName.get(k);
+    if (held) { if (!held.includes(id)) held.push(id); }
+    else byName.set(k, [id]);
+  };
+  for (const person of people) {
+    add(person.name, person.id);
+    add(person.nickname, person.id);
+    // First word only, so "Dustin Reyes" answers to "@dustin". Skipped when the
+    // name is one word already, which the map above has covered.
+    const first = person.name.trim().split(/\s+/)[0];
+    if (first && first.toLowerCase() !== person.name.trim().toLowerCase()) add(first, person.id);
+  }
+  const toCandidates = (ids: Iterable<string>): PersonToken[] => {
+    const set = new Set(ids);
+    return people.filter(p => set.has(p.id));
+  };
+  return { byName, toCandidates };
+}
 
 /**
  * Finds every "@name" token in a title and resolves it against the given
@@ -970,9 +1022,13 @@ const PERSON_TOKEN_PATTERN = /(?<!\w)@([a-z][\w'-]*)/gi;
  * Matches a name or a nickname, exactly and case-insensitively, and also the
  * first word of a name so "@dustin" finds "Dustin Reyes" — full names are how
  * people arrive from a contact card, and nobody types a surname mid-sentence.
- * Ambiguity is left unresolved rather than guessed: "@sam" with two Sams
- * registered keeps typing rather than locking in the wrong one, the same call
- * `parseCategoryAndTagsInput` makes about a prefix matching two categories.
+ * Short of an exact match, a token of at least `MIN_PREFIX_LENGTH` characters
+ * also matches a unique prefix, so "@brit" finds "Brittany" while it's still
+ * being typed rather than only once the last letter lands.
+ *
+ * A token more than one person answers to — "@sam" with two Sams registered —
+ * is never guessed here; see `findAmbiguousMention` for the pick-one list
+ * offered instead of refusing outright.
  *
  * **Deliberately never creates a person.** An unrecognized "@word" is left as
  * literal text, so an email address, a handle someone pasted, or a name you
@@ -987,31 +1043,24 @@ const PERSON_TOKEN_PATTERN = /(?<!\w)@([a-z][\w'-]*)/gi;
  * someone the task no longer links.
  */
 export function matchPersonMentions(input: string, people: PersonToken[]): PersonMention[] {
-  // Built once per call rather than per token: a name can be reached three ways
-  // and the last writer would otherwise depend on iteration order.
-  const byName = new Map<string, string[]>();
-  const add = (key: string, id: string) => {
-    const k = key.trim().toLowerCase();
-    if (!k) return;
-    const held = byName.get(k);
-    if (held) { if (!held.includes(id)) held.push(id); }
-    else byName.set(k, [id]);
-  };
-  for (const person of people) {
-    add(person.name, person.id);
-    add(person.nickname, person.id);
-    // First word only, so "Dustin Reyes" answers to "@dustin". Skipped when the
-    // name is one word already, which the map above has covered.
-    const first = person.name.trim().split(/\s+/)[0];
-    if (first && first.toLowerCase() !== person.name.trim().toLowerCase()) add(first, person.id);
-  }
-
+  const { byName } = buildPersonNameIndex(people);
   const mentions: PersonMention[] = [];
 
   for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
     if (m.index === undefined) continue;
     const token = m[1].toLowerCase();
-    const hits = byName.get(token);
+    let hits = byName.get(token);
+    // No exact answer yet: try a unique prefix, so a name still being typed
+    // can resolve before its last letter lands. Only tried when there is no
+    // exact hit at all — an exact match that is itself ambiguous stays that
+    // way rather than widening the search and picking up more candidates.
+    if (!hits && token.length >= MIN_PREFIX_LENGTH) {
+      const prefixIds = new Set<string>();
+      for (const [key, ids] of byName) {
+        if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
+      }
+      if (prefixIds.size === 1) hits = [...prefixIds];
+    }
     // Exactly one, or nothing: two people answering to one token is left as
     // literal text rather than resolved to whichever was added first.
     if (!hits || hits.length !== 1) continue;
@@ -1019,6 +1068,83 @@ export function matchPersonMentions(input: string, people: PersonToken[]): Perso
   }
 
   return mentions;
+}
+
+/**
+ * The first "@name" token `matchPersonMentions` couldn't resolve because more
+ * than one person answers to it — exact ("@sam" with two Sams on file) or by
+ * prefix ("@bri" with a Brittany and a Brittney still both in the running).
+ * Surfaced so a caller can offer a pick-one list rather than only refusing:
+ * typing further can narrow a shared prefix, but two people who share an
+ * entire first name or nickname (two Sams) can never become unique that way
+ * no matter how much more gets typed.
+ *
+ * `overrides` — a lowercased token mapped to the person id it was resolved to
+ * — is how a caller's own pick reaches this function again: once resolved,
+ * that token stops being reported as ambiguous, so the list doesn't reappear
+ * once answered. The pick can't just rewrite the title text the way a unique
+ * prefix does, because the token grammar has no way to spell a two-word full
+ * name inline (`PERSON_TOKEN_PATTERN` is single-word only) — see
+ * `applyMentionOverrides`, the other half of this pair, for how the pick
+ * actually reaches `personIds`.
+ */
+export function findAmbiguousMention(
+  input: string,
+  people: PersonToken[],
+  overrides: Record<string, string> = {}
+): AmbiguousMention | null {
+  const { byName, toCandidates } = buildPersonNameIndex(people);
+
+  for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
+    if (m.index === undefined) continue;
+    const token = m[1].toLowerCase();
+    if (overrides[token]) continue;
+    const hits = byName.get(token);
+    if (hits) {
+      if (hits.length > 1) {
+        return { start: m.index, end: m.index + m[0].length, token, candidates: toCandidates(hits) };
+      }
+      continue;
+    }
+    if (token.length < MIN_PREFIX_LENGTH) continue;
+    const prefixIds = new Set<string>();
+    for (const [key, ids] of byName) {
+      if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
+    }
+    if (prefixIds.size > 1) {
+      return { start: m.index, end: m.index + m[0].length, token, candidates: toCandidates(prefixIds) };
+    }
+  }
+  return null;
+}
+
+/**
+ * Layers a caller's manual disambiguation picks on top of `matchPersonMentions`'
+ * live matches. `overrides` is keyed by lowercased token text (see
+ * `findAmbiguousMention`); any "@token" in the title whose text has a pick
+ * recorded, and that `matched` didn't already resolve on its own, is added as
+ * an extra mention using that pick's person id.
+ */
+export function applyMentionOverrides(
+  input: string,
+  matched: PersonMention[],
+  overrides: Record<string, string>
+): PersonMention[] {
+  if (Object.keys(overrides).length === 0) return matched;
+  const covered = new Set(matched.map(m => `${m.start}-${m.end}`));
+  const extra: PersonMention[] = [];
+  for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
+    if (m.index === undefined) continue;
+    const token = m[1].toLowerCase();
+    const personId = overrides[token];
+    if (!personId) continue;
+    const start = m.index;
+    const end = m.index + m[0].length;
+    if (covered.has(`${start}-${end}`)) continue;
+    extra.push({ start, end, personId });
+  }
+  if (extra.length === 0) return matched;
+  return [...matched, ...extra].sort((a, b) => a.start - b.start);
 }
 
 function joinDayNames(days: number[]): string {

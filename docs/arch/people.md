@@ -212,6 +212,24 @@ Search and Quick Search, and `TaskEditor`'s own title field.
   nothing until they're added through that field — the overlay there only
   tints a mention already covered by `personIds`, the same restriction as
   every other read-only surface, just applied to an editable field.
+- **A token can also resolve by a unique prefix, and an ambiguous one gets a
+  pick-one list instead of only refusing.** `matchPersonMentions` itself still
+  only ever returns a token that resolves cleanly — "@brit" matches "Brittany"
+  on its own once no one else answers to that prefix, and "@sam" with two Sams
+  on file still resolves to nothing. `findAmbiguousMention` is the other half:
+  it finds the first token more than one person answers to (exact or by
+  prefix) and hands back its candidates, which is what `QuickAddModal`'s
+  tooltip renders as a small pick-one row in place of the usual single "tap to
+  set" bubble. The pick can't just rewrite the token text the way typing a
+  longer prefix does — two people who share an entire first name or nickname
+  (two Sams) can never become unique that way, and the token grammar has no
+  way to spell a two-word full name inline (`PERSON_TOKEN_PATTERN` is
+  single-word only) — so it's recorded by token text instead
+  (`QuickAddModal`'s `personOverrides`) and layered back onto the live matches
+  by `applyMentionOverrides` on every render, the same derived-from-the-title
+  design as everything else in this section. This is quick-add-only: `TaskEditor`'s
+  title field never resolves a fresh token at all (the bullet above), so there
+  is nothing for it to disambiguate.
 
 ## History is completed tasks, and there is no interactions table
 
@@ -435,13 +453,15 @@ assertion.
   whether today has room did not thereby ask for their past to be matched
   against their friends' names. It shows nothing at all until a name matches, so
   defaulting on costs a user who does not want it nothing they can see.
-- **Whole-word, exact, and ambiguity resolves to nobody.** `matchPersonMentions`'s
-  refusal, one shelf over: "Dinner w/ Sam" with two Sams on file names neither,
-  while "Dinner w/ Sam Ortiz" still names one. The extra rule here is
-  `MIN_CALENDAR_NAME_LENGTH`, and the asymmetry with the `@` parser is the point
-  — typing "@al" is a deliberate act with a sigil in front of it, where a
-  calendar title is a guess about text written for another purpose, so the guess
-  gets the higher bar.
+- **Whole-word, exact, and ambiguity resolves to nobody — with no pick-one
+  offer, unlike the `@` parser.** `matchPersonMentions`'s refusal, one shelf
+  over: "Dinner w/ Sam" with two Sams on file names neither, while "Dinner w/
+  Sam Ortiz" still names one. The extra rule here is `MIN_CALENDAR_NAME_LENGTH`,
+  and the asymmetry with the `@` parser is the point — typing "@al" is a
+  deliberate act with a sigil in front of it, so an ambiguous one can offer a
+  tap-to-pick list (see the bullet above); a calendar title is a guess about
+  text written for another purpose, and the guess just gets the higher bar and
+  no such offer.
 - **All-day events are never offered.** `occupiesTime`'s own note already lists
   what they are: a birthday, a public holiday, a "Sarah out of office" marker.
   Every one would offer a date somebody's name is *on* as an afternoon you spent

@@ -69,7 +69,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, matchPersonMentions, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, matchPersonMentions, findAmbiguousMention, applyMentionOverrides, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { usePersonStore } from '../store/usePersonStore';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
@@ -318,6 +318,9 @@ export function QuickAddModal({
   const [windowStart, setWindowStart] = useState<string | null>(null);
   const [windowEnd, setWindowEnd] = useState<string | null>(null);
   const [tags, setTags] = useState<string[]>([]);
+  // Manual picks off the ambiguous-"@name" tooltip, keyed by lowercased token
+  // text — see applyAmbiguousCandidate and applyMentionOverrides.
+  const [personOverrides, setPersonOverrides] = useState<Record<string, string>>({});
   const [category, setCategory] = useState<string | null>(null);
   // Quick add has no project picker of its own — this is only ever written by
   // a title rule, which is the point: filing into a project as you type is
@@ -392,6 +395,7 @@ export function QuickAddModal({
       setWindowStart(seedRef.current?.windowStart ?? null);
       setWindowEnd(seedRef.current?.windowEnd ?? null);
       setTags([]);
+      setPersonOverrides({});
       // Applied after the reset rather than folded into it, so a drop's
       // category overrides the default instead of racing it.
       setCategory(seedRef.current?.category ?? newTaskDefaults.category);
@@ -552,13 +556,25 @@ export function QuickAddModal({
       : null),
     [title, parsed, categories, allTags]
   );
+  // "beach with @bri" where a Brittany and a Brittney both answer to it — the
+  // one case a "@name" token can't resolve on its own (see matchPersonMentions'
+  // doc comment) and so still needs the tooltip slot, right after the
+  // category/tag token for the same reason peopleParsed used to sit here: a
+  // sigil naming something that already exists. `personOverrides` is passed
+  // through so a token already resolved by a previous pick stops reappearing.
+  const ambiguousMention = useMemo(
+    () => (!parsed && !categoryTagsParsed && title.trim()
+      ? findAmbiguousMention(title, people, personOverrides)
+      : null),
+    [title, parsed, categoryTagsParsed, people, personOverrides]
+  );
   // Pasted URL/app-link detection — same tooltip mechanism as the schedule
   // parse above, just not suffix-anchored. Only checked when no schedule
-  // phrase or category/tag token matched, so the tooltips never compete for
-  // the same slot.
+  // phrase, category/tag token, or ambiguous mention matched, so the
+  // tooltips never compete for the same slot.
   const linkParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && title.trim() ? parseLinkInput(title) : null),
-    [title, parsed, categoryTagsParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && title.trim() ? parseLinkInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention]
   );
   // "call the doctor 555-123-4567" — the same mechanism again, for the number
   // rather than the URL. Checked after the link so a tel: URL someone pasted
@@ -566,8 +582,8 @@ export function QuickAddModal({
   // looksLikePhoneNumber): this one is reading prose full of digits, so a
   // year or a price must not light it up.
   const phoneParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
-    [title, parsed, categoryTagsParsed, linkParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, linkParsed]
   );
   // "email jane@example.com about the invoice" — the same mechanism again,
   // for an address rather than a number. Checked after phone so a title that
@@ -575,8 +591,8 @@ export function QuickAddModal({
   // priority chain, and email addresses don't collide with the phone pattern
   // since "@" and letters aren't dial digits.
   const emailParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
-    [title, parsed, categoryTagsParsed, linkParsed, phoneParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, linkParsed, phoneParsed]
   );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
   // tooltip slot, checked last, so a schedule, category/tag token, link or
@@ -587,8 +603,8 @@ export function QuickAddModal({
   // is one. Someone already part-way through a Chain or a Target has said what
   // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, categoryTagsParsed, linkParsed, phoneParsed, emailParsed, type]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, linkParsed, phoneParsed, emailParsed, type]
   );
   // "replace cpap filter 6 filters left" — a stock this task spends, not a
   // schedule. Last in the chain, so everything above still wins the one slot.
@@ -605,10 +621,10 @@ export function QuickAddModal({
   // and the schedule tooltip comes first (it needs the trailing text); tapping
   // it shortens the title, sets the repeat, and this fires on the remainder.
   const supplyParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !linkParsed && !phoneParsed && !emailParsed
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !linkParsed && !phoneParsed && !emailParsed
       && !durationParsed && recurrenceType !== 'none' && title.trim()
       ? parseSupplyInput(title) : null),
-    [title, parsed, categoryTagsParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
+    [title, parsed, categoryTagsParsed, ambiguousMention, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
   );
   const activeMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
@@ -617,6 +633,11 @@ export function QuickAddModal({
           matchStart: categoryTagsParsed.matchStart,
           matchedText: title.slice(categoryTagsParsed.matchStart, categoryTagsParsed.matchEnd),
         }
+      : ambiguousMention
+        ? {
+            matchStart: ambiguousMention.start,
+            matchedText: title.slice(ambiguousMention.start, ambiguousMention.end),
+          }
       : linkParsed
         ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
         : phoneParsed
@@ -643,7 +664,15 @@ export function QuickAddModal({
   // nothing to confirm. It resolves live as you type and renders as a token in
   // place; personIds is simply derived from whatever mentions are currently in
   // the title, the same way the tooltip parsers derive their own fields.
-  const personMentions = useMemo(() => matchPersonMentions(title, people), [title, people]);
+  //
+  // A token more than one person answers to can't resolve this way no matter
+  // what's typed next (see ambiguousMention above), so a pick made from that
+  // tooltip is layered on top here instead of changing the title text — see
+  // applyMentionOverrides' doc comment for why.
+  const personMentions = useMemo(() => {
+    const matched = matchPersonMentions(title, people);
+    return applyMentionOverrides(title, matched, personOverrides);
+  }, [title, people, personOverrides]);
   const personIds = useMemo(
     () => [...new Set(personMentions.map(m => m.personId))],
     [personMentions]
@@ -739,6 +768,20 @@ export function QuickAddModal({
     if (categoryTagsParsed.tags.length > 0) {
       setTags(prev => [...new Set([...prev, ...categoryTagsParsed.tags])]);
     }
+  };
+
+  // Record a pick off the ambiguous-token list. Unlike every other tooltip
+  // here, this doesn't touch the title text — matchPersonMentions can't be
+  // made to resolve "@sam" on its own no matter what's typed next when two
+  // people share the whole first name, and the token grammar has no way to
+  // spell a two-word full name inline to disambiguate that way either (see
+  // applyMentionOverrides). So the pick is recorded by token text instead,
+  // and layered back onto the live matches on every render.
+  const applyAmbiguousCandidate = (personId: string) => {
+    if (!ambiguousMention) return;
+    haptics.success();
+    animateLayout();
+    setPersonOverrides(prev => ({ ...prev, [ambiguousMention.token]: personId }));
   };
 
   // Apply the detected link and strip it from the title.
@@ -1389,50 +1432,73 @@ export function QuickAddModal({
             >
               <View style={[styles.tooltipAnchor, { marginLeft: bubbleLeft }]}>
                 <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
-                <PressableScale
-                  style={styles.tooltipBubble}
-                  onPress={parsed ? applyParse : categoryTagsParsed ? applyCategoryTags : linkParsed ? applyLink : phoneParsed ? applyPhone : emailParsed ? applyEmail : durationParsed ? applyDuration : applySupply}
-                  onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
-                >
-                  <Ionicons
-                    name={
-                      parsed
-                        ? (parsed.schedule.recurrenceType !== 'none'
-                            ? 'repeat'
-                            : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
+                {ambiguousMention ? (
+                  // More than one person answers to this token — a row of small
+                  // pills, one per candidate, in place of the single "tap to
+                  // set" bubble every other match uses. Full name (not just a
+                  // nickname/first name) on each pill, since disambiguating is
+                  // the entire point. See applyAmbiguousCandidate.
+                  <View
+                    style={styles.tooltipCandidateRow}
+                    onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
+                  >
+                    {ambiguousMention.candidates.map(candidate => (
+                      <PressableScale
+                        key={candidate.id}
+                        style={styles.tooltipCandidatePill}
+                        haptic
+                        onPress={() => applyAmbiguousCandidate(candidate.id)}
+                      >
+                        <Text style={styles.tooltipText} numberOfLines={1}>{candidate.name}</Text>
+                      </PressableScale>
+                    ))}
+                  </View>
+                ) : (
+                  <PressableScale
+                    style={styles.tooltipBubble}
+                    onPress={parsed ? applyParse : categoryTagsParsed ? applyCategoryTags : linkParsed ? applyLink : phoneParsed ? applyPhone : emailParsed ? applyEmail : durationParsed ? applyDuration : applySupply}
+                    onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
+                  >
+                    <Ionicons
+                      name={
+                        parsed
+                          ? (parsed.schedule.recurrenceType !== 'none'
+                              ? 'repeat'
+                              : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
+                          : categoryTagsParsed
+                            ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
+                            : linkParsed
+                              ? 'link-outline'
+                              : phoneParsed
+                                ? 'call-outline'
+                                : emailParsed
+                                  ? 'mail-outline'
+                                  : durationParsed
+                                    ? 'timer-outline'
+                                    : 'cube-outline'
+                      }
+                      size={14}
+                      color={colors.onAccent}
+                    />
+                    <Text style={styles.tooltipText}>
+                      {parsed
+                        ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
                         : categoryTagsParsed
-                          ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
+                          ? categoryTagsLabel(categoryTagsParsed, categories)
                           : linkParsed
-                            ? 'link-outline'
+                            ? linkLabel(linkParsed.url)
                             : phoneParsed
-                              ? 'call-outline'
+                              ? `Call ${phoneParsed.number}`
                               : emailParsed
-                                ? 'mail-outline'
+                                ? `Email ${emailParsed.address}`
                                 : durationParsed
-                                  ? 'timer-outline'
-                                  : 'cube-outline'
-                    }
-                    size={14}
-                    color={colors.onAccent}
-                  />
-                  <Text style={styles.tooltipText}>
-                    {parsed
-                      ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
-                      : categoryTagsParsed
-                        ? categoryTagsLabel(categoryTagsParsed, categories)
-                        : linkParsed
-                          ? linkLabel(linkParsed.url)
-                          : phoneParsed
-                            ? `Call ${phoneParsed.number}`
-                            : emailParsed
-                              ? `Email ${emailParsed.address}`
-                              : durationParsed
-                                ? `Timer · ${formatDuration(durationParsed.minutes)}`
-                                : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
-                  </Text>
-                  <View style={styles.tooltipDot} />
-                  <Text style={styles.tooltipHint}>Tap to set</Text>
-                </PressableScale>
+                                  ? `Timer · ${formatDuration(durationParsed.minutes)}`
+                                  : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
+                    </Text>
+                    <View style={styles.tooltipDot} />
+                    <Text style={styles.tooltipHint}>Tap to set</Text>
+                  </PressableScale>
+                )}
               </View>
             </Animated.View>
           )}
@@ -2496,6 +2562,17 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     alignItems: 'center',
     alignSelf: 'flex-start',
     gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: radius.md,
+    backgroundColor: colors.accent,
+  },
+  tooltipCandidateRow: {
+    flexDirection: 'row',
+    alignSelf: 'flex-start',
+    gap: 6,
+  },
+  tooltipCandidatePill: {
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: radius.md,
