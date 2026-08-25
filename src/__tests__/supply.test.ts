@@ -419,15 +419,17 @@ describe('wantedSupplyReorders', () => {
     expect(order).toEqual(['soon', 'later', 'unknown']);
   });
 
-  it('carries the deadline, the pack size and the buying link onto the want', () => {
+  it('carries the deadline, the pack size, the buying link and the category onto the want', () => {
     const task = supplyTask({
       supplyCount: 1,
       supplyRefillCount: 6,
       linkUrl: 'https://example.com/filters',
+      category: 'Bathroom',
     });
     const [want] = wantedSupplyReorders([task]);
     expect(want.refillCount).toBe(6);
     expect(want.linkUrl).toBe('https://example.com/filters');
+    expect(want.category).toBe('Bathroom');
     expect(dayKeyOf(want.runOut!)).toBe(dayKeyOf(new Date(task.dueDate!)));
   });
 

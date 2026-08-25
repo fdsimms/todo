@@ -151,12 +151,17 @@ export interface GeneratedKindSpec {
   /**
    * Whether the user can choose a category to file this kind under.
    *
-   * `false` for exactly one kind so far: `calendarReview` reuses
-   * `calendarEventCategory`, the setting calendar-event context rows already
-   * file under, rather than owning a second "File them under" pair — the task
-   * this generator writes and the events it's asking about are the same
-   * category by construction, and a picker offering to disagree with that
-   * would be a setting with no honest answer.
+   * `false` for two kinds. `calendarReview` reuses `calendarEventCategory`,
+   * the setting calendar-event context rows already file under, rather than
+   * owning a second "File them under" pair — the task this generator writes
+   * and the events it's asking about are the same category by construction,
+   * and a picker offering to disagree with that would be a setting with no
+   * honest answer. `supplyReorder` has no category setting for a different
+   * reason: its task always inherits the category of the task the supply
+   * belongs to (see `checkSupplyReorderTasks`), so there is no single global
+   * answer a picker could offer — a filter tracked on a bathroom task and one
+   * tracked on a car task each want their own reorder task filed where the
+   * task itself is, not both funnelled into one "Supplies" category.
    */
   categorized: boolean;
   /**
@@ -164,7 +169,9 @@ export interface GeneratedKindSpec {
    * on the generator's first switch-on (see ensureGeneratedTaskCategory).
    *
    * Unused when `categorized` is false — there's no category of its own to
-   * default.
+   * default. For `supplyReorder` that's because each task's category comes
+   * from its own source task rather than from one setting shared by every
+   * reorder task.
    *
    * Not a cosmetic default. These settings shipped defaulting to *no* category,
    * and an uncategorized task renders in the header-less loose block at the
@@ -279,8 +286,10 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // kind of row it names — but it is the reason writeGeneratedOptOut's case
     // here writes to useTaskStore rather than to one of the other stores.
     sourced: true,
-    categorized: true,
-    defaultCategory: 'Supplies',
+    // No "File them under" of its own — see GeneratedKindSpec.categorized.
+    // Each reorder task takes the category of the task its supply is on.
+    categorized: false,
+    defaultCategory: '',
   },
   mealShortfall: {
     kind: 'mealShortfall',

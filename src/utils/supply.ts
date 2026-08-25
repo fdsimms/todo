@@ -323,6 +323,8 @@ export interface SupplyReorderWant {
   refillCount: number | null;
   /** Where to buy it: the source task's own link, when it has one. */
   linkUrl: string | null;
+  /** Where to file it: the source task's own category, when it has one. */
+  category: string | null;
 }
 
 /**
@@ -358,6 +360,7 @@ export function wantedSupplyReorders(
       runOut,
       refillCount: clampSupplyRefillCount(task.supplyRefillCount),
       linkUrl: task.linkUrl ?? null,
+      category: task.category ?? null,
       // '~' sorts after every digit, so an unprojectable supply lands at the
       // back of the wanted set without a second comparator.
       sortKey: runOut ? dayKeyOf(runOut) : '~',

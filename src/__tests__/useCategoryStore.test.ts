@@ -157,4 +157,14 @@ describe('ensureGeneratedTaskCategory', () => {
     expect(useCategoryStore.getState().categories).toEqual([]);
     expect(() => ensureGeneratedTaskCategories()).not.toThrow();
   });
+
+  // supplyReorder inherits the category of the task its supply is on
+  // (GeneratedKindSpec.categorized: false) rather than owning a category
+  // setting of its own, so there's nothing for this to fill in either.
+  it('leaves supplyReorder alone, on or off', () => {
+    useSettingsStore.setState({ supplyReorderTasks: true });
+    expect(() => ensureGeneratedTaskCategory('supplyReorder', { force: true })).not.toThrow();
+    expect(useCategoryStore.getState().categories).toEqual([]);
+    expect(() => ensureGeneratedTaskCategories()).not.toThrow();
+  });
 });

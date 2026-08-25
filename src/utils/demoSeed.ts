@@ -722,12 +722,9 @@ export function seedDemoData(): void {
   });
   // The order the app wrote about it. Seeded rather than left to
   // `checkSupplyReorderTasks`, for the reason the pantry check and the quiet
-  // project's review task are: that pass runs on Today's focus and reads the
-  // *real* install's category setting, so a demo relying on it would show the
-  // row in a different section depending on the person's own preferences.
-  addCategory('Supplies');
-  setCategoryEmoji('Supplies', '📦');
-  useSettingsStore.getState().setSupplyReorderTaskCategory('Supplies');
+  // project's review task are: that pass runs on Today's focus, so a demo
+  // relying on it would show the row in a different place depending on the
+  // person's own preferences.
   addTask({
     title: supplyReorderTitle(waterFilter),
     dueDate: today.toISOString(),
@@ -736,7 +733,10 @@ export function seedDemoData(): void {
     // like any other.
     deadline: addDays(today, 33).toISOString(),
     linkUrl: waterFilter.linkUrl,
-    category: 'Supplies',
+    // Inherited from the task above, same as linkUrl — a reorder task files
+    // wherever the task its supply is on files, not into a category of its
+    // own. See GeneratedKindSpec.categorized.
+    category: waterFilter.category,
     // Completing it asks how many arrived, pre-filled with the pack size, and
     // the answer is what puts the count back up.
     deliverableKind: 'number',

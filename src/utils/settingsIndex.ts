@@ -372,11 +372,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // supply is most often something the grocery half has never heard of (a
   // filter, a cartridge, a lens), so the row has to stay findable with the
   // whole kitchen switched off.
+  // No category entry of its own — each reorder task takes the category of
+  // the task its supply is on.
   { id: 'supplyReorderTasks', groupId: 'tasksProjects', label: 'Reorder tasks for supplies', section: 'Tasks the app adds',
     keywords: ['supply', 'stock', 'restock', 'order more', 'refill',
       'running low', 'run out', 'consumable', 'filter', 'cartridge', 'generated', 'automatic'] },
-  { id: 'supplyReorderTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
-    keywords: ['category', 'supply', 'supplies', 'reorder', 'restock'] },
   // No category entry of its own — it files under calendarEventCategory,
   // already indexed above under Calendar.
   { id: 'calendarReviewTasks', groupId: 'tasksProjects', label: 'Review tomorrow\'s calendar', section: 'Tasks the app adds',
