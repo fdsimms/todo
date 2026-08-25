@@ -913,6 +913,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(byName.get('chicken breasts')?.suggestedName).toBe('Chicken breast');
     expect(byName.get('rice')?.kind).toBe('linked');
     expect(byName.get('salmon fillets')?.kind).toBe('unknown');
+    // Lemons is a bare CATALOG name nothing else in the seed ever touches, so
+    // without its own quantity fact clearList sweeps it — same mechanism that
+    // drops Cheddar and Coriander, documented where the clear itself runs.
+    // Pinned here so a future edit that removes that fact fails loudly instead
+    // of quietly turning the salmon's own "lemon" line unplaceable.
+    expect(byName.get('lemon')?.kind).toBe('suggested');
+    expect(byName.get('lemon')?.suggestedName).toBe('Lemons');
   });
 
   it('seeds a grocery catalog bigger than the list, with a trip in progress', () => {
