@@ -223,7 +223,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
                 maxLength={4}
               />
             </View>
-            <Text style={styles.sectionFooter}>
+            <Text style={styles.cardFooter}>
               Only used to say what age they are turning. Leave it blank if you don't know it.
             </Text>
             <View style={styles.sep} />
@@ -315,7 +315,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
               maxLength={TITLE_MAX_LENGTH}
             />
           </View>
-          <Text style={styles.sectionFooter}>Shown instead of their name, everywhere.</Text>
+          <Text style={styles.cardFooter}>Shown instead of their name, everywhere.</Text>
           <View style={styles.sep} />
           <TouchableOpacity
             style={styles.optionRow}
@@ -395,12 +395,24 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.separator,
     marginLeft: spacing.md,
   },
+  // Outside a card, so it lines up with the uppercase group label above it.
   sectionFooter: {
     color: colors.textTertiary,
     fontSize: font.xs,
     paddingHorizontal: spacing.sm,
     marginTop: spacing.sm,
     marginBottom: spacing.xs,
+  },
+  // Inside a card, so it lines up with the *rows* rather than with the label:
+  // spacing.md is the rows' own horizontal padding, and at spacing.sm this sat
+  // eight points to the left of everything it explains. Bottom padding because
+  // a separator follows it, and a caption touching a hairline reads as part of
+  // the next row rather than as a note on the last one.
+  cardFooter: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
   },
   optionRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
