@@ -182,12 +182,29 @@ export function mealSlotOf(task: Pick<Task, 'generatedKind' | 'generatedSourceId
 }
 
 /**
+ * `dundundun://recipe?id=…` — a meal-slot task's own link once the slot holds
+ * a recipe, so "Cook X" opens the recipe itself (ingredients, steps, Cook
+ * Mode) rather than the meal plan day it's cooked from. Parsed back out in
+ * `deepLinks.ts` (`isRecipeUrl`/`recipeUrlId`), which is what routes it to
+ * `resetToRecipeDetail`.
+ */
+export const RECIPE_LINK_URL = 'dundundun://recipe';
+
+/** The recipe-scoped counterpart of `kitchenLinkUrl`/`personLinkUrl` — same `?id=` shape. */
+export function recipeLinkUrl(recipeId: string): string {
+  return `${RECIPE_LINK_URL}?id=${encodeURIComponent(recipeId)}`;
+}
+
+/**
  * Where the row's link button goes.
  *
- * Two destinations, and which one applies is a fact about the slot rather than
- * about the step: an answered slot opens its day on the meal plan (exactly
- * where a cook task's link already went, #1625), and an unanswered one opens
- * the same day with the picker already up on the right slot.
+ * Three destinations, and which one applies is a fact about the slot rather
+ * than about the step: an unanswered slot opens its day on the meal plan with
+ * the picker already up on the right slot; an answered slot with a recipe to
+ * cook opens the recipe itself, exactly what "Cook X" is asking you to look
+ * at (until #1625 this went to the meal plan day instead, which named the
+ * meal but not what was in it); a leftover, takeout, or typed answer has no
+ * recipe to show, so it still opens the day.
  *
  * **The picker is reached by link rather than hosted on Today**, which is the
  * same call `projectReview` made — its task's link opens `ProjectPullSheet`
@@ -195,10 +212,16 @@ export function mealSlotOf(task: Pick<Task, 'generatedKind' | 'generatedSourceId
  * already mounted on the Meal Plan screen with the day's context around it, and
  * a second copy over Today would be a second place for "what am I eating"
  * to be answered, which is how two of these drift apart.
+ *
+ * The recipe link is deliberately not withheld once "Eat X" is the live step:
+ * it's the same meal, and `linkUrl` is a single field on a row that only ever
+ * holds one destination at a time (see `mealSlotDrift`, which updates it
+ * unconditionally on every reconcile, not just while the chain is at index 0).
  */
-export function mealSlotLinkUrl(dayKey: string, slot: MealSlot, answered: boolean): string {
+export function mealSlotLinkUrl(dayKey: string, slot: MealSlot, entry: MealPlanEntry | null): string {
+  if (entry?.recipeId && !entry.leftoverId) return recipeLinkUrl(entry.recipeId);
   const base = mealPlanNudgeLinkUrl(dayKey);
-  return answered ? base : `${base}&pick=${slot}`;
+  return entry ? base : `${base}&pick=${slot}`;
 }
 
 /** Whether this entry counts as an answer to its slot. */
@@ -316,7 +339,7 @@ export function mealSlotTaskFields(
     // hides behind the meal's time-of-day segment. At creation the task is
     // always on step 0 of the chain just computed above.
     timeSegments: mealSlotStepTimeSegments(slot, 0, chain.length),
-    linkUrl: mealSlotLinkUrl(dayKey, slot, isAnswered(entry)),
+    linkUrl: mealSlotLinkUrl(dayKey, slot, entry),
     chainEnabled: chain.length > 1,
     chainItems: chain,
   };

@@ -43,6 +43,16 @@ export function resetToRecipes(): void {
   navigationRef.navigate('Recipes');
 }
 
+// Where `dundundun://recipe?id=…` lands — a meal-slot cook task's own link
+// once the slot holds a recipe (mealSlotTasks.recipeLinkUrl). Recipes first,
+// always, so the back chevron on RecipeDetail has somewhere to go — the same
+// shape resetToPeople already uses for PersonDetail.
+export function resetToRecipeDetail(recipeId: string): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate('Recipes');
+  navigationRef.navigate({ name: 'RecipeDetail', params: { recipeId } });
+}
+
 // Where `dundundun://mealplan` lands — the third of the kitchen links, so a
 // recurring "Plan the week" task can open the week it's asking about.
 //

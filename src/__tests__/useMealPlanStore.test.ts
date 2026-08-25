@@ -1726,8 +1726,8 @@ describe('meal tasks', () => {
     expect(task.chainItems.map(c => c.title))
       .toEqual(['Cook Frijoles de la olla', 'Eat Frijoles de la olla']);
     expect(task.title).toBe('Frijoles de la olla');
-    // Answered, so the link stops offering to re-decide.
-    expect(task.linkUrl).toBe('dundundun://mealplan?date=2026-08-05');
+    // Answered with a recipe, so the link opens that instead of the day.
+    expect(task.linkUrl).toBe('dundundun://recipe?id=r1');
     expect(mockTaskState.addTask).not.toHaveBeenCalled();
   });
 

@@ -6,8 +6,10 @@ const mockSuccess = jest.fn();
 const mockResetToToday = jest.fn();
 const mockResetToGroceries = jest.fn();
 const mockResetToRecipes = jest.fn();
+const mockResetToRecipeDetail = jest.fn();
 const mockResetToMealPlan = jest.fn();
 const mockResetToKitchen = jest.fn();
+const mockResetToPeople = jest.fn();
 const mockResetToProjectPull = jest.fn();
 const mockOpenQuickAdd = jest.fn();
 const mockEnqueueWidgetCompletion = jest.fn();
@@ -47,8 +49,10 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToToday: (...args: unknown[]) => mockResetToToday(...args),
   resetToGroceries: (...args: unknown[]) => mockResetToGroceries(...args),
   resetToRecipes: (...args: unknown[]) => mockResetToRecipes(...args),
+  resetToRecipeDetail: (...args: unknown[]) => mockResetToRecipeDetail(...args),
   resetToMealPlan: (...args: unknown[]) => mockResetToMealPlan(...args),
   resetToKitchen: (...args: unknown[]) => mockResetToKitchen(...args),
+  resetToPeople: (...args: unknown[]) => mockResetToPeople(...args),
   resetToProjectPull: (...args: unknown[]) => mockResetToProjectPull(...args),
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
   openQuickAddFromShortcut: (...args: unknown[]) => mockOpenQuickAdd(...args),
@@ -63,6 +67,11 @@ import {
   mealPlanUrlDayKey,
   isKitchenUrl,
   kitchenUrlItemId,
+  isRecipesUrl,
+  isRecipeUrl,
+  recipeUrlId,
+  isPeopleUrl,
+  peopleUrlPersonId,
   isProjectsUrl,
   projectsUrlPullId,
   isQuickAddUrl,
@@ -454,8 +463,10 @@ describe('openInAppUrl', () => {
     mockResetToToday.mockClear();
     mockResetToGroceries.mockClear();
     mockResetToRecipes.mockClear();
+    mockResetToRecipeDetail.mockClear();
     mockResetToMealPlan.mockClear();
     mockResetToKitchen.mockClear();
+    mockResetToPeople.mockClear();
     mockResetToProjectPull.mockClear();
     mockOpenQuickAdd.mockClear();
     mockAddTask.mockClear();
@@ -579,6 +590,45 @@ describe('openInAppUrl', () => {
     expect(mockResetToRecipes).toHaveBeenCalledTimes(1);
     expect(mockResetToMealPlan).not.toHaveBeenCalled();
     expect(mockResetToGroceries).not.toHaveBeenCalled();
+  });
+
+  // A meal-slot cook task's own link once the slot holds a recipe (see
+  // mealSlotTasks.recipeLinkUrl) — "Cook X" opens the recipe rather than the
+  // meal plan day it's cooked from.
+  it('opens the named recipe directly', () => {
+    expect(isRecipeUrl('dundundun://recipe?id=r1')).toBe(true);
+    expect(recipeUrlId('dundundun://recipe?id=r1')).toBe('r1');
+    expect(openInAppUrl('dundundun://recipe?id=r1')).toBe(true);
+    expect(mockResetToRecipeDetail).toHaveBeenCalledWith('r1');
+    expect(mockResetToRecipes).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the recipe box for a malformed recipe link', () => {
+    expect(recipeUrlId('dundundun://recipe')).toBeNull();
+    expect(openInAppUrl('dundundun://recipe')).toBe(true);
+    expect(mockResetToRecipeDetail).not.toHaveBeenCalled();
+    expect(mockResetToRecipes).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not confuse the recipe link with the plural recipes link', () => {
+    expect(isRecipeUrl('dundundun://recipes')).toBe(false);
+    expect(isRecipesUrl('dundundun://recipe?id=r1')).toBe(false);
+  });
+
+  // A birthday task's own link (birthdayTasks.personLinkUrl) — had no handler
+  // here at all before, so a tap bounced out through Linking.openURL and
+  // landed nowhere.
+  it('opens the named person\'s page', () => {
+    expect(isPeopleUrl('dundundun://people?person=p1')).toBe(true);
+    expect(peopleUrlPersonId('dundundun://people?person=p1')).toBe('p1');
+    expect(openInAppUrl('dundundun://people?person=p1')).toBe(true);
+    expect(mockResetToPeople).toHaveBeenCalledWith('p1');
+  });
+
+  it('opens the people list for the bare people link', () => {
+    expect(peopleUrlPersonId('dundundun://people')).toBeNull();
+    expect(openInAppUrl('dundundun://people')).toBe(true);
+    expect(mockResetToPeople).toHaveBeenCalledWith(null);
   });
 
   // The widget's "+" button.

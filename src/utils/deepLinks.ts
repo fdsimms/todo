@@ -9,6 +9,7 @@ import {
   resetToToday,
   resetToGroceries,
   resetToRecipes,
+  resetToRecipeDetail,
   resetToMealPlan,
   resetToKitchen,
   resetToPeople,
@@ -150,6 +151,24 @@ export function isRecipesUrl(url: string): boolean {
   return typeof url === 'string' && RECIPES_RE.test(url.trim());
 }
 
+// `dundundun://recipe?id=…` — a meal-slot task's own link once the slot holds
+// a recipe (see mealSlotTasks.recipeLinkUrl), so "Cook X" opens that recipe
+// directly rather than the meal plan day it's cooked from.
+const RECIPE_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?recipe\\/?(?:\\?(.*))?$`, 'i');
+
+export function isRecipeUrl(url: string): boolean {
+  return typeof url === 'string' && RECIPE_RE.test(url.trim());
+}
+
+/** The recipe a recipe link asks to open, or null for a malformed one. */
+export function recipeUrlId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = RECIPE_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').id ?? '').trim();
+  return id || null;
+}
+
 // `dundundun://mealplan[?date=YYYY-MM-DD]` — the third kitchen link, so a
 // recurring "Plan the week" task opens the week it's asking about, and one of
 // the weekly nudge's seven day tasks opens on its own day.
@@ -238,6 +257,26 @@ export function projectsUrlPullId(url: string): string | null {
 
 export function isKitchenUrl(url: string): boolean {
   return typeof url === 'string' && KITCHEN_RE.test(url.trim());
+}
+
+// `dundundun://people?person=…` — a birthday task's own link
+// (birthdayTasks.personLinkUrl). Had no handler here at all until now, so a
+// tap fell through to Linking.openURL: an app-switch round trip that landed
+// nowhere, since the 'url' listener it bounces back through calls this same
+// function and found no match either.
+const PEOPLE_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?people\\/?(?:\\?(.*))?$`, 'i');
+
+export function isPeopleUrl(url: string): boolean {
+  return typeof url === 'string' && PEOPLE_RE.test(url.trim());
+}
+
+/** The person a people link asks to open, or null for the bare link. */
+export function peopleUrlPersonId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = PEOPLE_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').person ?? '').trim();
+  return id || null;
 }
 
 // `dundundun://completeTask?id=…` — the Done button on a task's timer Live
@@ -357,12 +396,22 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     resetToRecipes();
     return true;
   }
+  if (isRecipeUrl(url)) {
+    const id = recipeUrlId(url);
+    if (id) resetToRecipeDetail(id);
+    else resetToRecipes();
+    return true;
+  }
   if (isMealPlanUrl(url)) {
     resetToMealPlan(mealPlanUrlDayKey(url), mealPlanUrlPickSlot(url));
     return true;
   }
   if (isKitchenUrl(url)) {
     resetToKitchen(kitchenUrlItemId(url));
+    return true;
+  }
+  if (isPeopleUrl(url)) {
+    resetToPeople(peopleUrlPersonId(url));
     return true;
   }
   if (isProjectsUrl(url)) {
