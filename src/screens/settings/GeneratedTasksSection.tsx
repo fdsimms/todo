@@ -126,6 +126,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'supplyReorder': return s.supplyReorderTasks;
       case 'calendarReview': return s.calendarReviewTasks;
       case 'birthday': return s.birthdayTasks;
+      case 'reachOut': return s.reachOutTasks;
     }
   };
 
@@ -142,6 +143,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'supplyReorder': s.setSupplyReorderTasks(next); break;
       case 'calendarReview': s.setCalendarReviewTasks(next); break;
       case 'birthday': s.setBirthdayTasks(next); break;
+      case 'reachOut': s.setReachOutTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -167,6 +169,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'supplyReorder': return s.supplyReorderTaskCategory;
       case 'calendarReview': return s.calendarEventCategory;
       case 'birthday': return s.birthdayTaskCategory;
+      case 'reachOut': return s.reachOutTaskCategory;
     }
   };
 

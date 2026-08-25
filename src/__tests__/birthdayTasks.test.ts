@@ -37,6 +37,7 @@ const person = (overrides: Partial<Person> = {}): Person => ({
   cadenceDays: 0,
   nudgeOptIn: false,
   reachOutDeclinedAt: null,
+  askAbout: '',
   ...overrides,
 });
 

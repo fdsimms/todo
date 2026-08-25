@@ -247,6 +247,49 @@ touched the setting would get its birthday tasks on the morning of the birthday.
 Zero is a real answer somebody can choose, so the two cases have to be told
 apart before the string becomes a number.
 
+## The reach-out nudge
+
+`reachOutTasks.ts`, and structurally `projectReviewTasks.ts` one shelf over.
+The differences are where the care is, because a project can be behind and a
+person cannot.
+
+- **Nothing about anybody until they are opted in.** `nudgeOptIn` and
+  `cadenceDays` are both off on every new person, and the editor ties them
+  together: setting a cadence *is* the opt-in, and clearing it is how somebody
+  stops being nudged. The global setting only decides whether the pass runs.
+- **The cap forces the one choice the app has to make between people, and it
+  makes it on the user's own order.** Sorting the due set by longest-since is
+  the obvious answer and is exactly what the "never" list rules out, even done
+  invisibly where nobody sees it. So the tie breaks on `sortOrder`, the hand
+  drag on the People screen, which is the only ranking the feature may contain
+  because it is the one somebody made on purpose. The cost, stated plainly:
+  somebody low in a long list whose neighbours above are perpetually due could
+  wait. In practice the set rotates, since acting on a nudge resets that
+  person's clock. The alternative is the app quietly deciding which friend it
+  thinks you have let down most.
+- **A swipe-away holds for a week, not for a day.** `projectReview` scopes its
+  decline to the day, which is right there and nagging here: a nudge about
+  Sarah returning tomorrow morning reads as the app disagreeing with you about
+  a friendship. Floored at the cadence so a four-day cadence is not silenced
+  for seven, which is the objection to cadence-scoped declines pointed the only
+  way it actually bites.
+- **The note beats the clock.** `Person.askAbout` turns the title into "Ask
+  Ansley about the new job" instead of "Catch up with Ansley" — a reason to get
+  in touch rather than a prompt to. Rule 7, in one field.
+- **It carries no `personIds`**, for the reason the birthday task carries none:
+  ticking it off would otherwise reset the very clock that wrote it, without
+  you having actually reached out.
+
+**The cadence can be offered rather than declared**, which is rule 5 and the
+coldest interaction in the feature avoided. `observedCadenceDays` reads the
+history and `describeObservedCadence` says it in words that carry where the
+number came from. It is `rhythms.ts`'s discipline exactly: a sample floor
+(`MIN_CADENCE_SAMPLES`), silence below it, and the **median** gap rather than
+the mean, so one six-month stretch between otherwise-monthly visits does not
+double the answer. The offer never phrases itself as a shortfall, and a test
+asserts that — nothing here may read as the app's opinion about how often
+somebody ought to see their friends.
+
 ## The birthday picker keeps only the month and the day
 
 `PersonEditor` opens `WhenPicker` on the current year and throws the year away.

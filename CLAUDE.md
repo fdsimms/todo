@@ -190,6 +190,11 @@ them and committing the result is part of finishing the change, in the same comm
   (the map deliberately skips them).
 - **Adding a file to `src/`, or pushing one across 1,000 lines, changes the `repo-stats` block.**
   A new test file moves the suite count, which is why a pure test-only PR can still fail this.
+- **Stage a brand-new file before regenerating.** `build-module-map.js` enumerates through
+  `git ls-files`, so a module you just created is invisible to it until it's tracked: regenerate
+  first and the map comes out missing that file's line, `git status` looks clean because the map
+  matches what you generated, and CI fails on a file you did add. `git add -A` and *then*
+  regenerate, or regenerate a second time after staging.
 - **Run the generators (no `--check`) rather than trying to predict whether you're affected.**
   Both are idempotent and take milliseconds: if nothing changed they rewrite the same bytes and
   `git status` stays clean, so running them costs nothing and guessing costs a red PR.
@@ -333,12 +338,12 @@ them source rather than tests. The ten biggest source files:
 `store/useGroceryStore.ts` (4.1k), `db/database.ts` (4.0k), `screens/TodayScreen.tsx` (4.0k),
 `components/TaskItem.tsx` (3.5k), `types/index.ts` (3.4k),
 `components/QuickAddModal.tsx` (2.8k), `store/useSettingsStore.ts` (2.5k),
-`utils/demoSeed.ts` (2.2k).
+`utils/demoSeed.ts` (2.3k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **196 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **197 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
