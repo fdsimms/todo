@@ -16,11 +16,19 @@ import {
  * *which* contacts count, how they rank and what gets copied off them is in the
  * pure module, exactly the split `calendarSync.ts` and `calendarBusy.ts` keep.
  *
- * **Nothing here can return the whole address book.** The name filter is passed
- * to the native query rather than applied afterwards, so an unqueried picker
- * doesn't merely hide the book, it never reads it. That is the "you cannot
- * bulk-select an address book you are never shown" rule made structural rather
- * than a UI decision one refactor could undo.
+ * **`searchContacts` can never return the whole address book.** The name
+ * filter is passed to the native query rather than applied afterwards, so an
+ * unqueried picker doesn't merely hide the book, it never reads it. That is
+ * the "you cannot bulk-select an address book you are never shown" rule made
+ * structural rather than a UI decision one refactor could undo.
+ *
+ * **`fetchLimitedContacts` is the one exception, and it is gated the same
+ * way.** A `'limited'` grant means the address book itself, as this app can
+ * see it, already *is* the set the user hand-picked in iOS's own picker — so
+ * reading all of it is reading a list they wrote, not the one this feature
+ * refuses to show. It re-checks `accessPrivileges` itself before reading
+ * rather than trusting its caller, so a full grant can't reach this path by
+ * a UI mistake.
  */
 
 /**
@@ -46,6 +54,28 @@ export async function getContactsPermission(): Promise<ContactsPermission> {
     return existing.status === 'undetermined' || existing.canAskAgain ? 'undetermined' : 'denied';
   } catch {
     return 'unsupported';
+  }
+}
+
+/**
+ * `'all'` or `'limited'` — the scope of a granted permission. Only meaningful
+ * once `getContactsPermission()` is `'granted'`.
+ */
+export type ContactsAccessScope = 'all' | 'limited';
+
+/**
+ * `accessPrivileges` is iOS 18+ only (an app on an older OS, or one that has
+ * not yet been asked, gets `undefined`), which reads as `'all'` here since
+ * there is no narrower grant on offer to have made — the same answer this
+ * question would have had before the field existed at all.
+ */
+export async function getContactsAccessScope(): Promise<ContactsAccessScope> {
+  if (Platform.OS !== 'ios') return 'all';
+  try {
+    const existing = await contacts().getPermissionsAsync();
+    return existing.accessPrivileges === 'limited' ? 'limited' : 'all';
+  } catch {
+    return 'all';
   }
 }
 
@@ -118,6 +148,45 @@ export async function searchContacts(query: string): Promise<ContactCandidate[]>
       // like "a" that slipped past the length floor still can't pull a book
       // into memory.
       pageSize: MAX_CONTACT_RESULTS * 4,
+      pageOffset: 0,
+    });
+    return result.data
+      .map(toCandidate)
+      .filter((c): c is ContactCandidate => c !== null);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A native fetch ceiling, not a display cap like `MAX_CONTACT_RESULTS`. The
+ * OS already bounded this set to what the user chose in its own picker, so
+ * there is no book behind it the way a full search has to guard against —
+ * this only keeps the read itself from being unbounded.
+ */
+const MAX_LIMITED_CONTACTS = 1000;
+
+/**
+ * The whole pre-selected set for a `'limited'` grant, flattened and
+ * unfiltered — the one read `searchContacts` otherwise refuses to make. See
+ * the note at the top of this file for why that is allowed here: the OS
+ * picker is what made this a list the user wrote.
+ *
+ * Re-checks `accessPrivileges` itself rather than trusting the caller already
+ * did, the same discipline `searchContacts` applies to its own query floor —
+ * a browsable address book has to be structurally unreachable with a full
+ * grant, not merely absent from the UI that would normally ask for one.
+ */
+export async function fetchLimitedContacts(): Promise<ContactCandidate[]> {
+  if (Platform.OS !== 'ios') return [];
+  if (isDemoModeActive()) return [];
+  try {
+    const permission = await contacts().getPermissionsAsync();
+    if (!permission.granted || permission.accessPrivileges !== 'limited') return [];
+    const { Fields } = contacts();
+    const result = await contacts().getContactsAsync({
+      fields: [Fields.Name, Fields.PhoneNumbers, Fields.Emails, Fields.Birthday],
+      pageSize: MAX_LIMITED_CONTACTS,
       pageOffset: 0,
     });
     return result.data

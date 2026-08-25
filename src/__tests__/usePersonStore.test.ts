@@ -35,6 +35,7 @@ describe('a new person', () => {
     expect(person.cadenceDays).toBe(0);
     expect(person.reachOutDeclinedAt).toBeNull();
     expect(person.birthdayTaskOptOut).toBe(false);
+    expect(person.birthdayGiftTaskOptOut).toBe(false);
   });
 
   it('trims the name it was given', () => {

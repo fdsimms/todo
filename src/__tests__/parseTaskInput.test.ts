@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePeopleInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, matchPersonMentions, findAmbiguousMention, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -876,7 +876,7 @@ describe('parseSupplyInput', () => {
   });
 });
 
-describe('parsePeopleInput', () => {
+describe('matchPersonMentions', () => {
   const PEOPLE = [
     { id: 'p1', name: 'Dustin', nickname: '' },
     { id: 'p2', name: 'Ansley Brown', nickname: 'Ans' },
@@ -884,110 +884,158 @@ describe('parsePeopleInput', () => {
   ];
 
   it('pulls one person out of a plan', () => {
-    const r = parsePeopleInput('beach with @dustin', PEOPLE);
-    expect(r?.personIds).toEqual(['p1']);
-    expect(r?.cleanTitle).toBe('beach with');
+    const r = matchPersonMentions('beach with @dustin', PEOPLE);
+    expect(r).toEqual([{ start: 11, end: 18, personId: 'p1' }]);
   });
 
   it('pulls several, in the order they were typed', () => {
-    const r = parsePeopleInput('beach with @ansley @dustin', PEOPLE);
-    expect(r?.personIds).toEqual(['p2', 'p1']);
+    const r = matchPersonMentions('beach with @ansley @dustin', PEOPLE);
+    expect(r.map(m => m.personId)).toEqual(['p2', 'p1']);
   });
 
   it('matches a nickname', () => {
-    expect(parsePeopleInput('coffee @ans', PEOPLE)?.personIds).toEqual(['p2']);
+    expect(matchPersonMentions('coffee @ans', PEOPLE).map(m => m.personId)).toEqual(['p2']);
   });
 
   it('matches the first word of a full name, which is how a contact arrives', () => {
-    expect(parsePeopleInput('coffee @ansley', PEOPLE)?.personIds).toEqual(['p2']);
+    expect(matchPersonMentions('coffee @ansley', PEOPLE).map(m => m.personId)).toEqual(['p2']);
   });
 
   it('is case insensitive', () => {
-    expect(parsePeopleInput('call @Mom', PEOPLE)?.personIds).toEqual(['p3']);
+    expect(matchPersonMentions('call @Mom', PEOPLE).map(m => m.personId)).toEqual(['p3']);
   });
 
-  it('deduplicates somebody named twice', () => {
-    expect(parsePeopleInput('call @mom then @mom again', PEOPLE)?.personIds).toEqual(['p3']);
+  it('reports somebody named twice as two mentions, not deduplicated — that is the caller\'s job', () => {
+    expect(matchPersonMentions('call @mom then @mom again', PEOPLE).map(m => m.personId)).toEqual(['p3', 'p3']);
   });
 
   // Never creates a person: adding somebody is a deliberate act on the People
   // screen, not a side effect of a typo. See rule 3 in docs/arch/people.md.
   it('leaves an unknown token as literal text', () => {
-    expect(parsePeopleInput('ping @nobody about it', PEOPLE)).toBeNull();
+    expect(matchPersonMentions('ping @nobody about it', PEOPLE)).toEqual([]);
   });
 
   it('leaves an email address alone, since its @ follows a word character', () => {
-    expect(parsePeopleInput('email bob@example.com', PEOPLE)).toBeNull();
-    expect(parsePeopleInput('email dustin@example.com', PEOPLE)).toBeNull();
+    expect(matchPersonMentions('email bob@example.com', PEOPLE)).toEqual([]);
+    expect(matchPersonMentions('email dustin@example.com', PEOPLE)).toEqual([]);
   });
 
-  it('offers a pick-one list for a token two people answer to, rather than guessing', () => {
+  it('leaves a token two people answer to unmatched, rather than guessing', () => {
     const twoSams = [
       { id: 'a', name: 'Sam Riley', nickname: '' },
       { id: 'b', name: 'Sam Okafor', nickname: '' },
     ];
-    const r = parsePeopleInput('lunch @sam', twoSams);
-    expect(r?.personIds).toEqual([]);
-    expect(r?.ambiguous?.candidates.map(c => c.id)).toEqual(['a', 'b']);
+    expect(matchPersonMentions('lunch @sam', twoSams)).toEqual([]);
   });
 
   it('matches a unique prefix once at least 3 characters are typed', () => {
     const people = [...PEOPLE, { id: 'p5', name: 'Brittany', nickname: '' }];
-    expect(parsePeopleInput('hug @brittan', people)?.personIds).toEqual(['p5']);
+    expect(matchPersonMentions('hug @brittan', people).map(m => m.personId)).toEqual(['p5']);
   });
 
   it('leaves a prefix under 3 characters unmatched', () => {
     const people = [...PEOPLE, { id: 'p5', name: 'Brittany', nickname: '' }];
-    expect(parsePeopleInput('hug @br', people)).toBeNull();
+    expect(matchPersonMentions('hug @br', people)).toEqual([]);
   });
 
-  it('offers a pick-one list for a prefix two people answer to, then resolves once it is typed far enough to be unique', () => {
+  it('leaves an ambiguous prefix unmatched, then resolves once it is typed far enough to be unique', () => {
     const twoBrits = [
       { id: 'a', name: 'Brittany', nickname: '' },
       { id: 'b', name: 'Brittney', nickname: '' },
     ];
-    // Under the prefix floor, there's no candidate search to be ambiguous about.
-    expect(parsePeopleInput('hug @br', twoBrits)).toBeNull();
-    const r = parsePeopleInput('hug @bri', twoBrits);
-    expect(r?.personIds).toEqual([]);
-    expect(r?.ambiguous?.candidates.map(c => c.name)).toEqual(['Brittany', 'Brittney']);
+    expect(matchPersonMentions('hug @bri', twoBrits)).toEqual([]);
     // "brittan" only Brittany answers to.
-    expect(parsePeopleInput('hug @brittan', twoBrits)).toEqual(expect.objectContaining({ personIds: ['a'] }));
+    expect(matchPersonMentions('hug @brittan', twoBrits).map(m => m.personId)).toEqual(['a']);
   });
 
-  it('still resolves an unambiguous name when somebody else is ambiguous, and leaves the other one for its own turn', () => {
+  it('still resolves an unambiguous name when somebody else is ambiguous', () => {
     const people = [...PEOPLE, { id: 'p4', name: 'Dustin Two', nickname: '' }];
-    // "dustin" now names two, so it is left alone; "mom" still resolves, and
-    // takes the one tooltip slot rather than the ambiguity also being offered.
-    const r = parsePeopleInput('call @mom about @dustin', people);
-    expect(r?.personIds).toEqual(['p3']);
-    expect(r?.cleanTitle).toBe('call about @dustin');
-    expect(r?.ambiguous).toBeUndefined();
+    // "dustin" now names two, so it is left alone; "mom" still resolves.
+    const r = matchPersonMentions('call @mom about @dustin', people);
+    expect(r.map(m => m.personId)).toEqual(['p3']);
   });
 
-  it('treats a bare token with nothing else as a literal title', () => {
-    expect(parsePeopleInput('@dustin', PEOPLE)).toBeNull();
-  });
-
-  it('makes the same refusal for a bare ambiguous token with nothing else', () => {
-    const twoSams = [
-      { id: 'a', name: 'Sam Riley', nickname: '' },
-      { id: 'b', name: 'Sam Okafor', nickname: '' },
-    ];
-    expect(parsePeopleInput('@sam', twoSams)).toBeNull();
-  });
-
-  it('reports where the first token was, for the highlight', () => {
-    const r = parsePeopleInput('beach with @dustin', PEOPLE);
-    expect(r?.matchStart).toBe(11);
-    expect(r?.matchEnd).toBe(18);
-  });
-
-  it('collapses the whitespace a lifted token leaves behind', () => {
-    expect(parsePeopleInput('dinner @dustin at eight', PEOPLE)?.cleanTitle).toBe('dinner at eight');
+  it('resolves a bare token with nothing else in the title, since nothing is stripped', () => {
+    expect(matchPersonMentions('@dustin', PEOPLE)).toEqual([{ start: 0, end: 7, personId: 'p1' }]);
   });
 
   it('finds nobody in a title with no tokens at all', () => {
-    expect(parsePeopleInput('buy milk', PEOPLE)).toBeNull();
+    expect(matchPersonMentions('buy milk', PEOPLE)).toEqual([]);
+  });
+});
+
+describe('findAmbiguousMention', () => {
+  const twoSams = [
+    { id: 'a', name: 'Sam Riley', nickname: '' },
+    { id: 'b', name: 'Sam Okafor', nickname: '' },
+  ];
+  const twoBrits = [
+    { id: 'a', name: 'Brittany', nickname: '' },
+    { id: 'b', name: 'Brittney', nickname: '' },
+  ];
+
+  it('reports the candidates for a token two people answer to exactly', () => {
+    const r = findAmbiguousMention('lunch @sam', twoSams);
+    expect(r?.token).toBe('sam');
+    expect(r?.candidates.map(c => c.id)).toEqual(['a', 'b']);
+  });
+
+  it('reports the candidates for a prefix two people answer to', () => {
+    const r = findAmbiguousMention('hug @bri', twoBrits);
+    expect(r?.candidates.map(c => c.name)).toEqual(['Brittany', 'Brittney']);
+  });
+
+  it('is silent once a unique prefix resolves on its own', () => {
+    expect(findAmbiguousMention('hug @brittan', twoBrits)).toBeNull();
+  });
+
+  it('is silent under the prefix floor — nothing to search yet', () => {
+    expect(findAmbiguousMention('hug @br', twoBrits)).toBeNull();
+  });
+
+  it('is silent once the token has an override recorded for it', () => {
+    expect(findAmbiguousMention('lunch @sam', twoSams, { sam: 'a' })).toBeNull();
+  });
+
+  it('is silent when nothing is ambiguous', () => {
+    const PEOPLE = [{ id: 'p1', name: 'Dustin', nickname: '' }];
+    expect(findAmbiguousMention('beach with @dustin', PEOPLE)).toBeNull();
+  });
+
+  it('finds the first ambiguous token, skipping ones already resolved', () => {
+    const r = findAmbiguousMention('call @mom about @sam', [...twoSams, { id: 'c', name: 'Mom', nickname: '' }]);
+    expect(r?.token).toBe('sam');
+  });
+});
+
+describe('applyMentionOverrides', () => {
+  const twoSams = [
+    { id: 'a', name: 'Sam Riley', nickname: '' },
+    { id: 'b', name: 'Sam Okafor', nickname: '' },
+  ];
+
+  it('adds an extra mention for a token an override resolves', () => {
+    const matched = matchPersonMentions('lunch @sam', twoSams); // [] — ambiguous
+    const r = applyMentionOverrides('lunch @sam', matched, { sam: 'b' });
+    expect(r).toEqual([{ start: 6, end: 10, personId: 'b' }]);
+  });
+
+  it('leaves matched mentions untouched when there are no overrides', () => {
+    const matched = matchPersonMentions('beach with @dustin', [{ id: 'p1', name: 'Dustin', nickname: '' }]);
+    expect(applyMentionOverrides('beach with @dustin', matched, {})).toBe(matched);
+  });
+
+  it('does not double up a token matchPersonMentions already resolved on its own', () => {
+    const people = [{ id: 'p1', name: 'Dustin', nickname: '' }];
+    const matched = matchPersonMentions('beach with @dustin', people);
+    const r = applyMentionOverrides('beach with @dustin', matched, { dustin: 'p1' });
+    expect(r).toEqual(matched);
+  });
+
+  it('merges an override with a normally-resolved mention, in title order', () => {
+    const people = [...twoSams, { id: 'c', name: 'Mom', nickname: '' }];
+    const matched = matchPersonMentions('call @mom about @sam', people); // only "mom" resolves
+    const r = applyMentionOverrides('call @mom about @sam', matched, { sam: 'a' });
+    expect(r.map(m => m.personId)).toEqual(['c', 'a']);
   });
 });

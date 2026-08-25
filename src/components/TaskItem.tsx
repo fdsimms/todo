@@ -71,8 +71,10 @@ import {
   projectReviewProjectId,
 } from '../utils/projectReviewTasks';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
-import { resolvePerson } from '../utils/peopleRegistry';
+import { resolvePerson, peopleOn } from '../utils/peopleRegistry';
 import { displayNameOf } from '../store/usePersonStore';
+import { matchPersonMentions } from '../utils/parseTaskInput';
+import { HighlightedText } from './HighlightedText';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -1008,6 +1010,16 @@ export const TaskItem = React.memo(function TaskItem({
   // Computed once and reused by the expandable step list (#1237) and the row's
   // step-forward/back controls (#786) — same reasoning as chainStepIndex above.
   const chainStepPreview = chainStep ? chainPreview(task) : null;
+  // "@Brittany" stays literal in the title rather than being lifted into a
+  // separate field (see matchPersonMentions' doc comment), so this is a purely
+  // visual pass: find that span in the displayed text and tint it. Matched
+  // only against `peopleOn(task)` — the people the task actually names — not
+  // the whole roster, so a stray "@word" that isn't one of this task's own
+  // personIds is never relit as though it were.
+  const titleMentionRanges: [number, number][] = useMemo(
+    () => matchPersonMentions(displayTitle, peopleOn(task)).map((m): [number, number] => [m.start, m.end]),
+    [displayTitle, task.personIds]
+  );
 
   const hasExpandContent =
     task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null ||
@@ -1625,12 +1637,23 @@ export const TaskItem = React.memo(function TaskItem({
               // (handleTitleTap/saveTitle), even though the displayed text here
               // is the step's while one is active — matching the collapsed row.
               <TouchableOpacity style={styles.titleFlex} onPress={handleTitleTap} activeOpacity={interaction.activeOpacity} hitSlop={8}>
-                <Text style={styles.title} numberOfLines={2}>{displayTitle}</Text>
+                <HighlightedText
+                  text={displayTitle}
+                  ranges={titleMentionRanges}
+                  style={styles.title}
+                  highlightStyle={styles.titleMention}
+                  numberOfLines={2}
+                />
               </TouchableOpacity>
             ) : (
-              <Text style={[styles.title, styles.titleFlex, locked && styles.titleLocked]} numberOfLines={2} ellipsizeMode="tail">
-                {displayTitle}
-              </Text>
+              <HighlightedText
+                text={displayTitle}
+                ranges={titleMentionRanges}
+                style={[styles.title, styles.titleFlex, locked && styles.titleLocked]}
+                highlightStyle={styles.titleMention}
+                numberOfLines={2}
+                ellipsizeMode="tail"
+              />
             )}
             {chainStep && (
               <View style={styles.chainBadge}>
@@ -3028,6 +3051,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.md,
     lineHeight: lineHeight.md,
     fontWeight: fontWeight.regular,
+  },
+  // The tint an "@name" mention keeps once it's part of a saved title — same
+  // language quick add uses for a token still being composed.
+  titleMention: {
+    color: colors.accent,
+    fontWeight: fontWeight.semibold,
   },
   titleInput: {
     color: colors.text,

@@ -124,12 +124,21 @@ their name, minus the typing, and it is how a birthday is meant to get entered
 in the first place (iOS stores one as `{day, month, year?}`, which is exactly
 the split `Person` uses, optional year included).
 
-So the rule is about the picker's *default view*, not about a count: it opens
-on a search field with nothing under it, and there is no "select all". You
-cannot bulk-select an address book you are never shown. That is also simply the
-better control — a contact book is mostly dentists, plumbers and someone from a
-wedding in 2019, so browsing it for the people you love means wading through
-noise. See "Filling one person in from Contacts" below for how that lands.
+So the rule is about the picker's *default view*, not about a count: for a
+full grant it opens on a search field with nothing under it, and there is no
+"select all". You cannot bulk-select an address book you are never shown.
+That is also simply the better control — a contact book is mostly dentists,
+plumbers and someone from a wedding in 2019, so browsing it for the people
+you love means wading through noise.
+
+**A `'limited'` grant (iOS 18+'s own "Selected Contacts" access) is the one
+case where that noise is already gone**, and the picker's default view flips
+for it: iOS's own chooser is how the user picked that set, in the same
+deliberate, one-at-a-time spirit rule 3 asks for — so it is a list they wrote,
+not the address book this feature otherwise refuses to show. The sheet reads
+it once on open and browses it directly, no query required; a full grant is
+unaffected and still never reads without one. See "Filling one person in from
+Contacts" below for exactly where that read is gated. See "Filling one person in from Contacts" below for how that lands.
 
 **Calendar.** "Attendees" and "event titles" are different reads and only the
 first is out. Attendees is a broad structured sweep of everyone you sit in a
@@ -172,6 +181,55 @@ resolve-or-shrug (`resolvePerson` returns undefined, `peopleOn` skips), the same
 way `canBlock(undefined)` is false and chain walks stop on a missed lookup.
 Rewriting rows a delete isn't otherwise touching costs more than shrugging does,
 and the retention note makes the same call about `previousOccurrenceId`.
+
+## An "@name" mention stays in the title
+
+`matchPersonMentions` (`src/utils/parseTaskInput.ts`) is the one sigil-based
+quick-add parser that doesn't strip its match. `#category`, a pasted link, a
+phone number — all metadata, and all read fine gone from the title once
+they're a structured field. A person is frequently the sentence's own object:
+"Call Brittany" parsed the usual way leaves "Call", which is worse than doing
+nothing. So an "@name" resolves into `personIds` the same as any other
+mention, but the text stays, and every surface naming a task renders the
+matched span as a tinted token in place instead — `TaskItem`, `LogbookScreen`,
+Search and Quick Search, and `TaskEditor`'s own title field.
+
+- **It resolves live, with no tap to accept.** The other tooltip parsers in
+  `QuickAddModal` mutate the title (strip a phrase, replace it with nothing)
+  and need a confirm step for that reason — this one doesn't touch the text,
+  so there's nothing to confirm. `personIds` is simply derived from whatever
+  mentions are currently in the title; delete the "@name" and the link goes
+  with it.
+- **The rendering is purely visual and reads only `peopleOn(task)`, never the
+  whole roster.** A saved task's title might say "@Brittany" for a Brittany
+  who was later removed from `personIds` some other way (the People picker in
+  `TaskEditor`, a template's `'people'` question) — that shouldn't relight.
+  Matching against only the people the task actually names keeps the token
+  honest: it lights up because the task links them, not because the text
+  happens to spell a name that exists somewhere in the app.
+- **`TaskEditor`'s title field never parses one out of typed text.** It has
+  its own People picker (rule 3), so typing a fresh "@someone" there does
+  nothing until they're added through that field — the overlay there only
+  tints a mention already covered by `personIds`, the same restriction as
+  every other read-only surface, just applied to an editable field.
+- **A token can also resolve by a unique prefix, and an ambiguous one gets a
+  pick-one list instead of only refusing.** `matchPersonMentions` itself still
+  only ever returns a token that resolves cleanly — "@brit" matches "Brittany"
+  on its own once no one else answers to that prefix, and "@sam" with two Sams
+  on file still resolves to nothing. `findAmbiguousMention` is the other half:
+  it finds the first token more than one person answers to (exact or by
+  prefix) and hands back its candidates, which is what `QuickAddModal`'s
+  tooltip renders as a small pick-one row in place of the usual single "tap to
+  set" bubble. The pick can't just rewrite the token text the way typing a
+  longer prefix does — two people who share an entire first name or nickname
+  (two Sams) can never become unique that way, and the token grammar has no
+  way to spell a two-word full name inline (`PERSON_TOKEN_PATTERN` is
+  single-word only) — so it's recorded by token text instead
+  (`QuickAddModal`'s `personOverrides`) and layered back onto the live matches
+  by `applyMentionOverrides` on every render, the same derived-from-the-title
+  design as everything else in this section. This is quick-add-only: `TaskEditor`'s
+  title field never resolves a fresh token at all (the bullet above), so there
+  is nothing for it to disambiguate.
 
 ## History is completed tasks, and there is no interactions table
 
@@ -246,6 +304,49 @@ reads "nothing stored" as a deliberate zero, and every install that had never
 touched the setting would get its birthday tasks on the morning of the birthday.
 Zero is a real answer somebody can choose, so the two cases have to be told
 apart before the string becomes a number.
+
+### The birthday-gift task
+
+The eleventh generator (`birthdayGift` in the registry), living beside
+`birthday` in `birthdayTasks.ts` rather than in a file of its own — it reuses
+every rule above except the lead time and the title. Getting somebody a gift
+and marking their birthday are two different questions, and the row that used
+to carry both ("Ansley's birthday", with the gift ideas riding along as its
+notes) had no honest way to be ticked off for one without the other.
+
+- **Its own lead time, longer by default.** `DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS`
+  is ten days against the reminder's three, because buying or shipping
+  something is rarely a same-day job the way a card or a table booking can be.
+  A separate setting rather than a multiplier on the reminder's own, since the
+  two are unrelated numbers somebody might want unrelated answers to.
+- **It ships off, unlike the reminder beside it.** `birthday` ships on because
+  its real gate — a birthday entered at all — is a fact that predates the
+  feature; every install with people in it already made that choice before
+  this existed. `birthdayGift` rides the exact same fact, so shipping it on
+  would double every current birthday's task count for a want nobody had
+  actually stated. Same "ask first" call `pantryCheck` and `mealShortfall`
+  make for the identical reason: no recorded intent of its own to point to.
+- **Two opt-outs, not one.** `Person.birthdayGiftTaskOptOut` sits beside
+  `birthdayTaskOptOut`, same permanent-`false` shape, because "mark the day"
+  and "remind me to shop" are separable wants — someone might keep the first
+  and drop the second, but not the reverse: not wanting to be told a birthday
+  is coming rules out wanting a task about shopping for it too, so
+  `wantedBirthdayGiftTasks` honours both fields.
+- **Both tasks carry the gift ideas, not just one.** `giftIdeasText` is read
+  the same way at both drafts — creation only, never a reconcile, for the
+  reason the section below states. One row names the day, the other is the
+  shopping trip, and the ideas somebody wrote down in March are useful sitting
+  on either. This was a real choice rather than an oversight: moving the notes
+  onto the gift task alone would mean the reminder loses information the
+  moment somebody opts into the second task, and the two generators otherwise
+  know nothing about each other by design (see `generatedTasks.ts`'s note on
+  what a registry entry is not allowed to share).
+- **Same source id shape, same no-cap reasoning, same "dated today, not
+  backwards from the birthday" rule** — see the birthday section above for
+  why each of those is the way it is. The kind is what keeps two tasks sharing
+  one `personId#year` string from being read as each other's
+  (`generatedSourceOf`), the same guard that already separates every other
+  pair of generators sharing the mechanism.
 
 ## The reach-out nudge
 
@@ -341,13 +442,15 @@ assertion.
   whether today has room did not thereby ask for their past to be matched
   against their friends' names. It shows nothing at all until a name matches, so
   defaulting on costs a user who does not want it nothing they can see.
-- **Whole-word, exact, and ambiguity resolves to nobody.** `parsePeopleInput`'s
-  refusal, one shelf over: "Dinner w/ Sam" with two Sams on file names neither,
-  while "Dinner w/ Sam Ortiz" still names one. The extra rule here is
-  `MIN_CALENDAR_NAME_LENGTH`, and the asymmetry with the `@` parser is the point
-  — typing "@al" is a deliberate act with a sigil in front of it, where a
-  calendar title is a guess about text written for another purpose, so the guess
-  gets the higher bar.
+- **Whole-word, exact, and ambiguity resolves to nobody — with no pick-one
+  offer, unlike the `@` parser.** `matchPersonMentions`'s refusal, one shelf
+  over: "Dinner w/ Sam" with two Sams on file names neither, while "Dinner w/
+  Sam Ortiz" still names one. The extra rule here is `MIN_CALENDAR_NAME_LENGTH`,
+  and the asymmetry with the `@` parser is the point — typing "@al" is a
+  deliberate act with a sigil in front of it, so an ambiguous one can offer a
+  tap-to-pick list (see the bullet above); a calendar title is a guess about
+  text written for another purpose, and the guess just gets the higher bar and
+  no such offer.
 - **All-day events are never offered.** `occupiesTime`'s own note already lists
   what they are: a birthday, a public holiday, a "Sarah out of office" marker.
   Every one would offer a date somebody's name is *on* as an afternoon you spent
@@ -409,13 +512,28 @@ Entering a birthday by hand is the tedious half of adding somebody and the
 system contact book already has it.
 
 - **The default view is the rule, and it is enforced in the read rather than in
-  the UI.** `searchContacts` refuses a query shorter than
+  the UI — for a full grant.** `searchContacts` refuses a query shorter than
   `MIN_CONTACT_QUERY_LENGTH` outright instead of falling back to "everyone", and
   the name filter is passed *to* the native query rather than applied after it.
   So an unqueried picker doesn't merely hide the address book, it never reads
   it — which is the "you cannot bulk-select a book you are never shown" rule
   made structural rather than a layout decision one refactor could undo. There
   is no "select all" at any point, and no browse.
+- **A `'limited'` grant gets `fetchLimitedContacts` instead, and the same
+  discipline applies the other way.** `getContactsAccessScope` reads
+  `accessPrivileges` off the permission response (`'all' | 'limited'`, iOS 18+
+  only — anything older reads as `'all'`, since there is no narrower grant on
+  offer to have made) and `fetchLimitedContacts` re-checks it itself before
+  reading rather than trusting whichever screen called it, so a full grant
+  can't reach the browsable path by a UI mistake any more than a short query
+  can reach the address book on the other side. What it returns is not "the
+  address book minus noise" as a design choice — it is structurally incapable
+  of being more than the set iOS's own chooser bounded it to, because that
+  bound is enforced by the OS on every query the app makes, filtered or not.
+  `contactsImport.ts`'s `browsableContacts`/`filterBrowsableContacts` sort and
+  narrow that set locally, with no `MIN_CONTACT_QUERY_LENGTH` floor: it is
+  already small and already curated, so narrowing it to one letter is filtering
+  a list the user wrote, not opening one they didn't.
 - **One tap adds one person and the sheet stays open**, so a run of three is
   three taps without the picker ever becoming a checklist of everybody.
 - **The month arrives 0-indexed.** The native module follows the JS `Date`
