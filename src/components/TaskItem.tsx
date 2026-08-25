@@ -49,6 +49,7 @@ import { asksOnCompletion } from '../utils/deliverables';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
+import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { haptics } from '../utils/haptics';
 import { openInAppUrl } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
@@ -930,6 +931,20 @@ export const TaskItem = React.memo(function TaskItem({
   const quotaProgress = isQuota
     ? formatQuotaProgress(quotaLogged, task.targetCount!, task.targetUnit)
     : '';
+  // The supply chip: "3 filters left", or "Out of filters" once it's spent.
+  //
+  // Read straight off the row rather than projected — the run-out *date* lives
+  // in the editor, where there's room for a sentence, and a second date on a
+  // line that already carries the scheduled one would be two dates competing to
+  // be the row's answer to "when". The count is the number that changes on the
+  // tap you just made.
+  const supplyLabel = describeSupply(task);
+  // Tinted once the supply is at or under its own threshold, which is the same
+  // moment the app starts asking for more — so the chip and the reorder task
+  // can't disagree about whether this is low.
+  const supplyLow = task.supplyCount !== null
+    && task.supplyCount <= clampSupplyReorderAt(task.supplyReorderAt);
+  const supplyOut = task.supplyCount === 0;
   // When the next unit falls due. Shown for as long as the row is on borrowed
   // time on Today (quotaSettled), and *always* once the task has actually
   // dropped into on-pace/hidden territory (isOnPaceQuota) — that's the same
@@ -1629,7 +1644,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || timed || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -1718,6 +1733,28 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.quotaLabel} numberOfLines={1}>
                   {quotaProgress}{quotaReturnAt ? ` · next at ${quotaReturnAt}` : ''}
+                </Text>
+              </View>
+            )}
+            {supplyLabel !== null && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={supplyLabel}
+              >
+                <Ionicons
+                  name={supplyOut ? 'cube' : 'cube-outline'}
+                  size={iconSize.xs}
+                  color={supplyOut ? colors.red : supplyLow ? colors.orange : colors.textTertiary}
+                />
+                <Text
+                  style={[
+                    styles.supplyLabel,
+                    supplyLow && styles.supplyLabelLow,
+                    supplyOut && styles.supplyLabelOut,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {supplyLabel}
                 </Text>
               </View>
             )}
@@ -3072,6 +3109,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
+  /**
+   * The supply chip. Grey at rest like every other counter on this line — a
+   * supply with plenty left is a fact about the task, not a warning — and it
+   * only takes a colour once the app is actually asking for more.
+   */
+  supplyLabel: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
+  },
+  supplyLabelLow: { color: colors.orange },
+  supplyLabelOut: { color: colors.red },
   streakChipText: {
     color: colors.textTertiary,
     fontSize: font.xs,

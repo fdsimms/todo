@@ -5,15 +5,17 @@ export type { GeneratedKind };
 /**
  * The one mechanism behind every task this app writes without being asked.
  *
- * Six features generate tasks unattended — each meal of the day becomes a task,
+ * Eight features generate tasks unattended — each meal of the day becomes a task,
  * a perishable grocery becomes "Use up X", a leftover about to go bad becomes
  * "Use up X", an opt-in weekly trigger becomes "Plan meals for…", a project
- * that has gone quiet becomes "Review X", and a pantry guess that has run out
- * becomes "Check if you still have X". The first four were each built by
- * copying the last, which is fine twice and had reached four: four nullable
- * back-pointer columns on `Task`, four hand-written "don't pile up" rules, and
- * three near-identical copies of the same three-input opt-out, two of which
- * said so in their own headers (#1524).
+ * that has gone quiet becomes "Review X", a pantry guess that has run out
+ * becomes "Check if you still have X", a task's supply running low becomes
+ * "Order more X", and (once a day, when tomorrow has anything on it) the
+ * calendar becomes "Review tomorrow's calendar". The first four were each
+ * built by copying the last, which is fine twice and had reached four: four
+ * nullable back-pointer columns on `Task`, four hand-written "don't pile up"
+ * rules, and three near-identical copies of the same three-input opt-out, two
+ * of which said so in their own headers (#1524).
  *
  * The fifth is what that refactor was for. `projectReview` needed no
  * column and no reconcile of its own: a registry entry, a rules module
@@ -22,7 +24,14 @@ export type { GeneratedKind };
  * same: `pantryCheckTasks.ts`, an entry here, and a firing beside
  * `projectReview`'s — the one column it *did* add is on its source row
  * (`GroceryItem.pantryCheckDeclinedAt`), which is where the opt-out belongs and
- * not part of the mechanism at all.
+ * not part of the mechanism at all. `supplyReorder` is the seventh, sourced
+ * from a task rather than a row in another store (see `src/utils/supply.ts`).
+ * `calendarReview` is the eighth, and it costs the same shape again:
+ * `calendarReviewTasks.ts`, an entry here, and a firing beside the other
+ * time-based passes. It adds no column at all — its source is tomorrow's day
+ * key rather than a row, the position `mealPlanNudge` is already in, so its
+ * "don't hand it back" is a settings-level mark (`calendarReviewLastDayKey`)
+ * rather than a stamp on anything.
  *
  * What's shared is the *plumbing*, and only the plumbing:
  *
@@ -86,6 +95,8 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'leftoverUseUp',
   'mealPlanNudge',
   'projectReview',
+  'supplyReorder',
+  'calendarReview',
   'birthday',
 ];
 
@@ -125,11 +136,23 @@ export interface GeneratedKindSpec {
   icon: string;
   /** Whether tasks of this kind point back at a source row. */
   sourced: boolean;
-  /** Whether the user can choose a category to file this kind under. */
+  /**
+   * Whether the user can choose a category to file this kind under.
+   *
+   * `false` for exactly one kind so far: `calendarReview` reuses
+   * `calendarEventCategory`, the setting calendar-event context rows already
+   * file under, rather than owning a second "File them under" pair — the task
+   * this generator writes and the events it's asking about are the same
+   * category by construction, and a picker offering to disagree with that
+   * would be a setting with no honest answer.
+   */
   categorized: boolean;
   /**
    * The category this kind files under until the user says otherwise, created
    * on the generator's first switch-on (see ensureGeneratedTaskCategory).
+   *
+   * Unused when `categorized` is false — there's no category of its own to
+   * default.
    *
    * Not a cosmetic default. These settings shipped defaulting to *no* category,
    * and an uncategorized task renders in the header-less loose block at the
@@ -233,6 +256,20 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     categorized: true,
     defaultCategory: 'Projects',
   },
+  supplyReorder: {
+    kind: 'supplyReorder',
+    label: 'Reorder tasks for supplies',
+    onHint: 'A task running low on supplies adds a task to order more',
+    offHint: 'A task running low on supplies adds no task',
+    icon: 'cube-outline',
+    // The first generator whose source is a *task*. Nothing about the
+    // mechanism minds — generatedSourceId is a string and never asked what
+    // kind of row it names — but it is the reason writeGeneratedOptOut's case
+    // here writes to useTaskStore rather than to one of the other stores.
+    sourced: true,
+    categorized: true,
+    defaultCategory: 'Supplies',
+  },
   mealPlanNudge: {
     kind: 'mealPlanNudge',
     label: 'Plan meals for the week',
@@ -245,6 +282,20 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // Today however the rest were set up.
     categorized: true,
     defaultCategory: 'Meal Plan',
+  },
+  calendarReview: {
+    kind: 'calendarReview',
+    label: 'Review tomorrow\'s calendar',
+    onHint: 'Adds a task each day to review tomorrow\'s events',
+    offHint: 'No daily task to review tomorrow\'s events',
+    icon: 'calendar-clear-outline',
+    // Its source id is tomorrow's day key, the same "square on the calendar,
+    // not a row" position mealPlanNudge is in — see the type's own note.
+    sourced: false,
+    // Reuses calendarEventCategory rather than owning a category of its own —
+    // see the field's doc comment above.
+    categorized: false,
+    defaultCategory: '',
   },
 };
 

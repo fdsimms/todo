@@ -79,11 +79,18 @@ describe('editorRowShown', () => {
     expect(editorRowShown('waitingOn', true, false)).toBe(false);
     expect(editorRowShown('stack', true, false)).toBe(false);
     expect(editorRowShown('effort', true, false)).toBe(false);
+    // A supply is an advanced field on a repeating task, the same family as
+    // the daily target and the deliverable — and unlike a kind's set-up row
+    // it reports a real `set`, so it hides until a task actually has one.
+    expect(editorRowShown('supply', true, false)).toBe(false);
   });
 
   it('keeps the same row once the task uses it', () => {
     expect(editorRowShown('deadline', true, true)).toBe(true);
     expect(editorRowShown('waitingOn', true, true)).toBe(true);
+    // Rule 2: a supply already counting down stays editable, or simplified
+    // mode would strand a stock nobody could correct.
+    expect(editorRowShown('supply', true, true)).toBe(true);
   });
 
   // The three set-up rows report `set: true` always and only render for the

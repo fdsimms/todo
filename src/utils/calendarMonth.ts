@@ -179,28 +179,95 @@ export function projectOccurrences(
   let cursorKey = dayKeyOf(new Date(task.dueDate as string));
 
   for (let step = 0; step < MAX_PROJECTION_STEPS; step++) {
-    const next = getNextDueDate(cursor, dayResetTime);
-    // Out of occurrences: past recurrenceEndDate, or the count ran down.
-    if (next == null) break;
+    const advanced = stepOccurrence(cursor, cursorKey, dayResetTime);
+    // Out of occurrences: past recurrenceEndDate, the count ran down, or a rule
+    // that failed to advance.
+    if (advanced == null) break;
+    if (advanced.key > toKey) break;
 
-    const nextKey = dayKeyOf(next);
-    // A rule that doesn't advance is a rule that loops. Nothing in
-    // getNextDueDate should produce one, and if a future recurrence type ever
-    // does, truncating the month beats hanging on it.
-    if (nextKey <= cursorKey) break;
-    if (nextKey > toKey) break;
+    if (advanced.key >= fromKey) out.push(advanced.date);
 
-    if (nextKey >= fromKey) out.push(next);
-
-    cursorKey = nextKey;
-    cursor = {
-      ...cursor,
-      dueDate: next.toISOString(),
-      recurrenceCount: cursor.recurrenceCount !== null ? cursor.recurrenceCount - 1 : null,
-    };
+    cursorKey = advanced.key;
+    cursor = advanced.cursor;
   }
 
   return out;
+}
+
+/**
+ * One step of the walk: the next occurrence after `cursor`, and the cursor to
+ * ask again with.
+ *
+ * Extracted so `projectOccurrences` and `nthOccurrence` below genuinely share a
+ * walk rather than each keeping a copy of one. The copy is what the note in
+ * CLAUDE.md is about: `snoozeEngine` used to keep a private projection that had
+ * none of `canProject`'s refusals, and folded a `recurrenceFromCompletion`
+ * task's single answer into a set thirty times over. The subtle line is the
+ * `recurrenceCount` decrement, which is the whole reason a naive re-walk
+ * overshoots — `getNextDueDate` reads the count off the row it's handed, so a
+ * cursor that never runs down projects a three-time task for ever.
+ *
+ * Null means the walk is over, for any of the three reasons: no next date, or a
+ * rule that didn't move forward (nothing in `getNextDueDate` should produce
+ * one, but a stale answer beats a hang).
+ */
+function stepOccurrence(
+  cursor: Task,
+  cursorKey: string,
+  dayResetTime?: string,
+): { date: Date; key: string; cursor: Task } | null {
+  const next = getNextDueDate(cursor, dayResetTime);
+  if (next == null) return null;
+  const key = dayKeyOf(next);
+  if (key <= cursorKey) return null;
+  return {
+    date: next,
+    key,
+    cursor: {
+      ...cursor,
+      dueDate: next.toISOString(),
+      recurrenceCount: cursor.recurrenceCount !== null ? cursor.recurrenceCount - 1 : null,
+    },
+  };
+}
+
+/**
+ * The date of the `n`th occurrence *after* this task's own `dueDate`, or null
+ * if the schedule doesn't get that far.
+ *
+ * `n === 0` is the task's own due date, which is a real row rather than a
+ * projection — so it's returned straight off the task and costs no walk at all.
+ *
+ * The counted peer of `projectOccurrences`, added for supply run-out dates
+ * (`src/utils/supply.ts`): "I have six filters and use one per occurrence" is a
+ * question about the sixth occurrence, not about a date range, and answering it
+ * through the range walk would mean inventing a `to` far enough out to be sure
+ * of catching it — which for a monthly task with sixty doses is five years of
+ * grid to throw away.
+ *
+ * It inherits every one of `canProject`'s refusals, which is the point of
+ * routing through here: a `recurrenceFromCompletion` task has no projectable
+ * grid at all, and a run-out day computed off one would be a date the app
+ * invented. Null is the honest answer, and `supplyRunOutDate`'s callers fall
+ * back to the count threshold when they get it.
+ */
+export function nthOccurrence(task: Task, n: number, dayResetTime?: string): Date | null {
+  if (n < 0) return null;
+  if (!canProject(task)) return null;
+  if (n === 0) return new Date(task.dueDate as string);
+
+  let cursor: Task = task;
+  let cursorKey = dayKeyOf(new Date(task.dueDate as string));
+
+  for (let step = 0; step < MAX_PROJECTION_STEPS; step++) {
+    const advanced = stepOccurrence(cursor, cursorKey, dayResetTime);
+    if (advanced == null) return null;
+    if (step + 1 === n) return advanced.date;
+    cursorKey = advanced.key;
+    cursor = advanced.cursor;
+  }
+  // Past the backstop. Truncating beats hanging, same call the grid makes.
+  return null;
 }
 
 /**

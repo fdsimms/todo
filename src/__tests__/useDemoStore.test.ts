@@ -71,6 +71,14 @@ import { describeDisposalHistory, wantsShelfLifePrompt } from '../utils/itemDisp
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
 import { wantedPantryChecks } from '../utils/pantryCheckTasks';
+import {
+  canHoldSupply,
+  describeSupply,
+  describeSupplyStock,
+  suppliesStockedFrom,
+  supplyReorderReason,
+  wantedSupplyReorders,
+} from '../utils/supply';
 import { findProjectStalls } from '../utils/projectPull';
 import { kitchenContextRows, plannedUsesToday } from '../utils/dayContextRows';
 import { planTrip, summarizeTrip, describeShopCoverage } from '../utils/shoppingTrip';
@@ -1594,6 +1602,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(wantedPantryChecks(items, tasks, new Date()).map(w => w.itemId)).toContain(oats.id);
   });
 
+  it('seeds the daily task to review tomorrow\'s calendar', () => {
+    const { tasks } = useTaskStore.getState();
+
+    const review = tasks.find(t => t.generatedKind === 'calendarReview');
+    expect(review).toBeDefined();
+    expect(review!.title).toBe('Review tomorrow\'s calendar');
+    // Filed under the day's own events category — this generator has no
+    // category setting of its own (see GeneratedKindSpec.categorized).
+    expect(review!.category).toBe('Calendar Events');
+    expect(useSettingsStore.getState().calendarEventCategory).toBe('Calendar Events');
+    expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+  });
+
   it('leaves that item free of a use-by date, so it carries one task and not two', () => {
     const { items } = useGroceryStore.getState();
     const oats = items.find(i => i.name === 'Rolled oats')!;
@@ -1602,6 +1623,66 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // the back-dated trips would have stamped a use-by date three weeks past,
     // and the demo would open with a "Use up" task arguing with the check.
     expect(oats.expiresAt).toBeNull();
+  });
+
+  it('seeds a supply that is running low, and the order the app wrote about it', () => {
+    const { tasks } = useTaskStore.getState();
+
+    const filter = tasks.find(t => t.title === 'Change the water filter')!;
+    expect(filter).toBeDefined();
+    // A supply only counts down by riding onto a successor, so it has to be on
+    // a repeating task or it would sit at its starting number for ever.
+    expect(canHoldSupply(filter)).toBe(true);
+    expect(filter.supplyCount).toBe(2);
+    expect(filter.supplyUnit).toBe('filters');
+    expect(filter.supplyRefillCount).toBe(6);
+
+    // And the real rule agrees it wants ordering, so the first foreground
+    // sweep doesn't clear the seeded row as describing a supply that's fine.
+    expect(supplyReorderReason(filter)).not.toBeNull();
+
+    const order = tasks.find(t => t.generatedKind === 'supplyReorder')!;
+    expect(order).toBeDefined();
+    expect(order.title).toBe('Order more filters');
+    expect(order.generatedSourceId).toBe(filter.id);
+    expect(order.category).toBe('Supplies');
+    // Completing it asks how many arrived — the answer is what puts the count
+    // back up, so without the question the supply could only ever fall.
+    expect(order.deliverableKind).toBe('number');
+    // And it carries the day the last filter runs out, plus the link to buy
+    // one, both inherited from the task it speaks for.
+    expect(order.deadline).not.toBeNull();
+    expect(order.linkUrl).toBe(filter.linkUrl);
+  });
+
+  it('seeds the linked half of the bridge, which writes no task at all', () => {
+    const { tasks } = useTaskStore.getState();
+    const { items } = useGroceryStore.getState();
+
+    const tablets = items.find(i => i.name === 'Dishwasher tablets')!;
+    const dishwasher = tasks.find(t => t.title === 'Run the dishwasher')!;
+    expect(dishwasher.supplyGroceryItemId).toBe(tablets.id);
+
+    // Low enough to be asking, and the answer is the shopping list rather than
+    // a row on Today — a task saying "buy X" beside a list line saying "buy X"
+    // is one errand and two nags.
+    expect(supplyReorderReason(dishwasher)).not.toBeNull();
+    expect(tablets.runningLowAt).not.toBeNull();
+    expect(tablets.onList).toBe(true);
+    expect(wantedSupplyReorders(tasks).map(w => w.taskId)).not.toContain(dishwasher.id);
+
+    // And the grocery side can say why that row is there.
+    expect(describeSupplyStock(suppliesStockedFrom(tablets.id, tasks)))
+      .toBe('Stocked for “Run the dishwasher”');
+  });
+
+  it('seeds a healthy supply too, so the chip is not only ever a warning', () => {
+    const { tasks } = useTaskStore.getState();
+    const lenses = tasks.find(t => t.title === 'Swap contact lenses')!;
+    expect(lenses.supplyCount).toBe(9);
+    expect(describeSupply(lenses)).toBe('9 pairs left');
+    // Nowhere near asking for anything — this row is the at-rest state.
+    expect(supplyReorderReason(lenses)).toBeNull();
   });
 
   it('seeds the weekly meal-plan nudge as a stack of seven day tasks', () => {

@@ -721,6 +721,37 @@ describe('projectReviewTasks', () => {
   });
 });
 
+describe('calendarReviewTasks', () => {
+  it('defaults off, the opt-in reading pantryCheckTasks takes rather than projectReviewTasks\' — see the field note', () => {
+    expect(useSettingsStore.getState().calendarReviewTasks).toBe(false);
+    expect(useSettingsStore.getState().calendarReviewLastDayKey).toBeNull();
+  });
+
+  it('stores and persists the switch', () => {
+    useSettingsStore.getState().setCalendarReviewTasks(true);
+    expect(useSettingsStore.getState().calendarReviewTasks).toBe(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('calendarReviewTasks', 'true');
+  });
+
+  it('stores and clears the day-key mark through an empty string', () => {
+    useSettingsStore.getState().setCalendarReviewLastDayKey('2026-08-26');
+    expect(useSettingsStore.getState().calendarReviewLastDayKey).toBe('2026-08-26');
+    expect(dbSetSetting).toHaveBeenCalledWith('calendarReviewLastDayKey', '2026-08-26');
+
+    useSettingsStore.getState().setCalendarReviewLastDayKey(null);
+    expect(useSettingsStore.getState().calendarReviewLastDayKey).toBeNull();
+    expect(dbSetSetting).toHaveBeenCalledWith('calendarReviewLastDayKey', '');
+  });
+
+  it('resetToDefaults leaves it alone, like pantryCheckTasks and projectReviewTasks beside it', () => {
+    useSettingsStore.getState().setCalendarReviewTasks(true);
+    useSettingsStore.getState().setCalendarReviewLastDayKey('2026-08-26');
+    useSettingsStore.getState().resetToDefaults();
+    expect(useSettingsStore.getState().calendarReviewTasks).toBe(true);
+    expect(useSettingsStore.getState().calendarReviewLastDayKey).toBe('2026-08-26');
+  });
+});
+
 describe('lastVisitedScreen', () => {
   it('defaults to null when nothing is stored', () => {
     useSettingsStore.getState().initialize();

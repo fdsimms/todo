@@ -68,7 +68,8 @@ import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessor
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseCategoryAndTagsInput, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
 import { describeTitleRuleTargets, resolveTitleRules } from '../utils/titleRules';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
 import { tagColor } from '../utils/tagColor';
@@ -131,7 +132,7 @@ interface Props {
 // inside this one, the way the date chip opens WhenPicker. The sheet has room
 // to list every category, which this sheet — capped to the space above the
 // keyboard — does not.
-type ActivePanel = 'priority' | 'effort' | 'tags' | 'repeat' | 'segment' | 'link' | 'phone' | 'email' | null;
+type ActivePanel = 'priority' | 'effort' | 'tags' | 'repeat' | 'segment' | 'link' | 'phone' | 'email' | 'supply' | null;
 
 /** One attribute chip in the quick-add toolbar. See `chipDescriptors`. */
 interface ToolChipDescriptor {
@@ -342,6 +343,8 @@ export function QuickAddModal({
   const [recurrenceEndDate, setRecurrenceEndDate] = useState<string | null>(null);
   const [recurrenceCount, setRecurrenceCount] = useState<number | null>(null);
   const [recurrenceFromCompletion, setRecurrenceFromCompletion] = useState(false);
+  const [supplyCount, setSupplyCount] = useState<number | null>(null);
+  const [supplyUnit, setSupplyUnit] = useState('');
   // Natural-language suggestion measurements: mirror-text widths locate the
   // highlighted phrase so the tooltip can point at it.
   const [inputW, setInputW] = useState(0);
@@ -407,6 +410,8 @@ export function QuickAddModal({
       setRecurrenceEndDate(null);
       setRecurrenceCount(null);
       setRecurrenceFromCompletion(false);
+      setSupplyCount(null);
+      setSupplyUnit('');
       setProjectId(null);
       setRulesOptedOut(false);
       appliedRuleRef.current = null;
@@ -573,6 +578,26 @@ export function QuickAddModal({
     () => (!parsed && !categoryTagsParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
     [title, parsed, categoryTagsParsed, linkParsed, phoneParsed, emailParsed, type]
   );
+  // "replace cpap filter 6 filters left" — a stock this task spends, not a
+  // schedule. Last in the chain, so everything above still wins the one slot.
+  //
+  // **Offered only once the sheet has a repeat**, which is this parser's
+  // equivalent of the type gate above it. A supply counts down by riding onto
+  // the successor a completion spawns, so on a one-off it would sit at its
+  // starting number for ever (see canHoldSupply) — offering it there would be
+  // offering a field that does nothing. It also happens to be the cheapest
+  // false-positive filter available: "finish the report 3 spare left" on a
+  // task with no repeat never gets asked about.
+  //
+  // The order this composes in is the user's, not ours. Type the whole line
+  // and the schedule tooltip comes first (it needs the trailing text); tapping
+  // it shortens the title, sets the repeat, and this fires on the remainder.
+  const supplyParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !linkParsed && !phoneParsed && !emailParsed
+      && !durationParsed && recurrenceType !== 'none' && title.trim()
+      ? parseSupplyInput(title) : null),
+    [title, parsed, categoryTagsParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
+  );
   const activeMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
     : categoryTagsParsed
@@ -591,7 +616,12 @@ export function QuickAddModal({
                   matchStart: durationParsed.matchStart,
                   matchedText: title.slice(durationParsed.matchStart, durationParsed.matchEnd),
                 }
-              : null;
+              : supplyParsed
+                ? {
+                    matchStart: supplyParsed.matchStart,
+                    matchedText: title.slice(supplyParsed.matchStart, supplyParsed.matchEnd),
+                  }
+                : null;
   const matchEnd = activeMatch ? activeMatch.matchStart + activeMatch.matchedText.length : 0;
 
   // Suggest previously-used titles that match what's being typed. Suppressed
@@ -703,6 +733,15 @@ export function QuickAddModal({
     setType('timed');
     setTimedMinutes(durationParsed.minutes);
     setCustomTimedText('');
+  };
+
+  const applySupply = () => {
+    if (!supplyParsed) return;
+    haptics.success();
+    animateLayout();
+    setTitle(supplyParsed.cleanTitle);
+    setSupplyCount(clampSupplyCount(supplyParsed.count));
+    setSupplyUnit(supplyParsed.unit ?? '');
   };
 
   const addStep = (stepTitle: string) => {
@@ -817,6 +856,12 @@ export function QuickAddModal({
       recurrenceEndDate,
       recurrenceCount,
       recurrenceFromCompletion,
+      // Cleared with the repeat it depends on, the same reset the editor does
+      // on save: a supply rides onto a successor, and a one-off spawns none.
+      // `baked` is what decides recurrenceType here (a Target becomes daily),
+      // so this reads the same source rather than the raw chip state.
+      supplyCount: (baked.recurrenceType ?? 'none') !== 'none' ? supplyCount : null,
+      supplyUnit: (baked.recurrenceType ?? 'none') !== 'none' && supplyCount !== null ? supplyUnit.trim() || null : null,
       // addTask takes both, and ignores sortOrder — a drop that also wants a
       // position splices it in afterwards, from onCreated.
       ...(seedActive && seed?.groupId ? { groupId: seed.groupId } : {}),
@@ -893,6 +938,13 @@ export function QuickAddModal({
       recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate ? new Date(recurrenceEndDate) : null,
       recurrenceCount,
+      // Handed over as typed rather than cleared the way createTask clears it:
+      // the editor is where a repeat can still be added, and dropping the
+      // supply on the way in would lose it for someone who opened More details
+      // precisely to finish setting one up. The editor applies the same rule
+      // on its own save.
+      supplyCount,
+      supplyUnit: supplyUnit.trim() || null,
     });
   };
 
@@ -1076,6 +1128,15 @@ export function QuickAddModal({
       key: 'email', icon: 'mail-outline', panel: 'email',
       value: emailAddress, truncate: true,
     },
+    // Only once there's a repeat to spend it, the same gate the tooltip and
+    // the editor's own card live under: without one the field would be a
+    // number that never moves. It stays visible with a supply already set, so
+    // clearing the repeat can't strand a value with no way back to it.
+    ...(recurrenceType !== 'none' || supplyCount !== null ? [{
+      key: 'supply' as const, icon: 'cube-outline' as const, panel: 'supply' as const,
+      value: supplyCount !== null ? formatSupplyLeft(supplyCount, supplyUnit) : null,
+      truncate: true,
+    }] : []),
   ];
 
   const chipOverflow = resolvePillOverflow(
@@ -1268,7 +1329,7 @@ export function QuickAddModal({
                 <View style={[styles.tooltipCaret, { marginLeft: caretLeft }]} />
                 <PressableScale
                   style={styles.tooltipBubble}
-                  onPress={parsed ? applyParse : categoryTagsParsed ? applyCategoryTags : linkParsed ? applyLink : phoneParsed ? applyPhone : emailParsed ? applyEmail : applyDuration}
+                  onPress={parsed ? applyParse : categoryTagsParsed ? applyCategoryTags : linkParsed ? applyLink : phoneParsed ? applyPhone : emailParsed ? applyEmail : durationParsed ? applyDuration : applySupply}
                   onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                 >
                   <Ionicons
@@ -1285,7 +1346,9 @@ export function QuickAddModal({
                               ? 'call-outline'
                               : emailParsed
                                 ? 'mail-outline'
-                                : 'timer-outline'
+                                : durationParsed
+                                  ? 'timer-outline'
+                                  : 'cube-outline'
                     }
                     size={14}
                     color={colors.onAccent}
@@ -1301,7 +1364,9 @@ export function QuickAddModal({
                             ? `Call ${phoneParsed.number}`
                             : emailParsed
                               ? `Email ${emailParsed.address}`
-                              : `Timer · ${formatDuration(durationParsed!.minutes)}`}
+                              : durationParsed
+                                ? `Timer · ${formatDuration(durationParsed.minutes)}`
+                                : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
                   </Text>
                   <View style={styles.tooltipDot} />
                   <Text style={styles.tooltipHint}>Tap to set</Text>
@@ -1703,6 +1768,47 @@ export function QuickAddModal({
                   />
                 </View>
               )}
+            </View>
+          )}
+
+          {activePanel === 'supply' && (
+            <View style={styles.panel}>
+              <View style={styles.targetStepperRow}>
+                <CountStepper
+                  value={supplyCount}
+                  onChange={setSupplyCount}
+                  min={0}
+                  max={MAX_SUPPLY_COUNT}
+                  // The floor is 0 because being out of something is a real
+                  // state; allowNull is what gets you back out of tracking a
+                  // supply at all, so − at the bottom still has somewhere to go.
+                  allowNull
+                  emptyLabel="Off"
+                  label="Supply"
+                  describeValue={n => (n === null ? 'not a supply' : formatSupplyLeft(n, supplyUnit))}
+                />
+                {supplyCount !== null && (
+                  <TextInput
+                    style={styles.targetUnitInput}
+                    value={supplyUnit}
+                    onChangeText={setSupplyUnit}
+                    placeholder="e.g. filters"
+                    placeholderTextColor={colors.textTertiary}
+                    maxLength={MAX_TARGET_UNIT_LENGTH}
+                    autoCapitalize="none"
+                    accessibilityLabel="What the supply is counted in, optional"
+                    keyboardAppearance={isDark ? 'dark' : 'light'}
+                  />
+                )}
+              </View>
+              {/* The rest of the supply — pack size, threshold, delivery time —
+                  is deliberately only in the editor. They all have workable
+                  defaults, and quick add exists to get the task down. */}
+              <Text style={styles.targetStepperCaption}>
+                {supplyCount === null
+                  ? 'One is used each time this is done'
+                  : `One used per repeat. More details for the rest.`}
+              </Text>
             </View>
           )}
 

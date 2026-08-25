@@ -11,6 +11,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore, type WeekStart } from '../store/useSettingsStore';
+import { supplyReorderTitle } from './supply';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
@@ -21,6 +22,7 @@ import { generatedBy } from './generatedTasks';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
+import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -600,6 +602,27 @@ export function seedDemoData(): void {
     ...generatedBy('projectReview', garage.id),
   });
 
+  // The daily "review tomorrow's calendar" task — off by default, same
+  // reasoning as the pantry check above, so it's seeded directly rather than
+  // left to checkCalendarReviewTasks: that pass reads the real device
+  // calendar, which the demo must never touch (see isDemoModeActive in
+  // checkCalendarReviewTasks), and the real install's own settings, neither of
+  // which this fictional day should depend on.
+  //
+  // Filed under calendarEventCategory itself rather than a category of its
+  // own — this generator has none (see GeneratedKindSpec.categorized) — named
+  // here for the same reason projectReviewTaskCategory is above: the demo
+  // swaps the database, not the preferences.
+  addCategory('Calendar Events');
+  setCategoryEmoji('Calendar Events', '📅');
+  useSettingsStore.getState().setCalendarEventCategory('Calendar Events');
+  addTask({
+    title: CALENDAR_REVIEW_TITLE,
+    dueDate: today.toISOString(),
+    category: 'Calendar Events',
+    ...generatedBy('calendarReview', dayKeyOf(addDays(today, 1))),
+  });
+
   // Marked complete rather than archived — demonstrates Project.completed,
   // which has its own Completed list (see ProjectEditor's Mark complete row)
   // instead of disappearing into Archived the way finishing a project used to.
@@ -672,6 +695,65 @@ export function seedDemoData(): void {
   });
   completeTask(budget.id, { deliverableValue: '2400' });
   updateTask(budget.id, { completedAt: setHours(subDays(today, 1), 9).toISOString() });
+
+  // --- Supplies: a countdown of a thing, and the order it asks for ---------
+  // Two, because the feature has two halves and only one of them is visible at
+  // rest. A supply with plenty left is a chip on a row; a supply that has run
+  // low is a task the app wrote — and with only the healthy one seeded, the
+  // half that does the work would read as something the app can't do.
+  const waterFilter = addTask({
+    title: 'Change the water filter',
+    notes: 'A supply: one filter goes every time this is done, and the app asks for more before the box runs out.',
+    category: 'Home',
+    dueDate: addDays(today, 3).toISOString(),
+    recurrenceType: 'monthly',
+    recurrenceInterval: 1,
+    supplyCount: 2,
+    supplyUnit: 'filters',
+    supplyRefillCount: 6,
+    supplyReorderAt: 2,
+    supplyLeadDays: 5,
+    // Where you actually buy it — inherited by the reorder task below, which
+    // is most of what makes that row one tap rather than a errand to
+    // remember. A real link rather than a placeholder, because a dead one on
+    // the demo's own row is worse than none.
+    linkUrl: 'https://www.google.com/search?q=fridge+water+filter',
+  });
+  // The order the app wrote about it. Seeded rather than left to
+  // `checkSupplyReorderTasks`, for the reason the pantry check and the quiet
+  // project's review task are: that pass runs on Today's focus and reads the
+  // *real* install's category setting, so a demo relying on it would show the
+  // row in a different section depending on the person's own preferences.
+  addCategory('Supplies');
+  setCategoryEmoji('Supplies', '📦');
+  useSettingsStore.getState().setSupplyReorderTaskCategory('Supplies');
+  addTask({
+    title: supplyReorderTitle(waterFilter),
+    dueDate: today.toISOString(),
+    // The day the last filter gets used, worked out from the repeat — this is
+    // what the lead time buys, and it reads on the row as a deadline countdown
+    // like any other.
+    deadline: addDays(today, 33).toISOString(),
+    linkUrl: waterFilter.linkUrl,
+    category: 'Supplies',
+    // Completing it asks how many arrived, pre-filled with the pack size, and
+    // the answer is what puts the count back up.
+    deliverableKind: 'number',
+    ...generatedBy('supplyReorder', waterFilter.id),
+  });
+  // The at-rest half: nowhere near needing anything, so the row just says how
+  // many are left.
+  addTask({
+    title: 'Swap contact lenses',
+    category: 'Health',
+    dueDate: addDays(today, 1).toISOString(),
+    recurrenceType: 'weekly',
+    recurrenceInterval: 2,
+    supplyCount: 9,
+    supplyUnit: 'pairs',
+    supplyRefillCount: 12,
+    supplyReorderAt: 2,
+  });
 
   // --- A template, and the blanks it fills in at apply time ----------------
   seedTemplates();
@@ -1654,6 +1736,36 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     category: 'Groceries',
     ...generatedBy('pantryCheck', itemNamed('Rolled oats').id),
   });
+
+  // --- A supply stocked from the shopping list -----------------------------
+  // The linked half of the supply bridge (see docs/arch/supplies.md), and the
+  // half that can't be seen without a row of its own: an unlinked supply writes
+  // an "Order more X" task, where a linked one puts the item on the *list* and
+  // writes no task at all. With only the unlinked case seeded, the entire
+  // grocery side of the feature reads as something the app doesn't do.
+  //
+  // Dishwasher tablets rather than a filter, because the linking is only ever
+  // the right answer for a thing you buy where you buy food — that's the whole
+  // rule deciding which of the two answers a supply gets.
+  addToPantry('Dishwasher tablets');
+  addTask({
+    title: 'Run the dishwasher',
+    notes: 'A supply stocked from the shopping list: one tablet a run, and the tablets go on the list when they get low.',
+    category: 'Home',
+    dueDate: today.toISOString(),
+    recurrenceType: 'daily',
+    recurrenceInterval: 2,
+    supplyCount: 4,
+    supplyUnit: 'tablets',
+    supplyRefillCount: 40,
+    supplyReorderAt: 5,
+    supplyGroceryItemId: itemNamed('Dishwasher tablets').id,
+  });
+  // Already low, so the row sits on the list saying what it's for. Written out
+  // rather than left to the sweep for the reason the pantry check above is:
+  // that pass runs on Today's focus, and a demo that only comes right after
+  // the second screen visit is a demo of nothing.
+  setRunningLow(itemNamed('Dishwasher tablets').id, true, { registerUndo: false });
 
   // The use-by half. The three finished trips above already stamped a date on
   // everything the shelf-life lexicon recognises, so most of that is here for

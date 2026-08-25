@@ -920,6 +920,12 @@ export function TodayScreen() {
       // for the same reason: it turns something already true into something
       // visible. A no-op boolean check while the setting is off.
       useTaskStore.getState().checkPantryCheckTasks();
+      // Same reasoning one row over: a supply crosses its lead time purely by
+      // time passing (the run-out day stops being far enough away), and it
+      // stops wanting anything the moment the user restocks it — including
+      // from the reorder task's own completion prompt, which completeTask
+      // already sweeps for. This is the half that catches the clock.
+      useTaskStore.getState().checkSupplyReorderTasks();
       const interval = setInterval(() => forceRefresh(n => n + 1), 30000);
       // Also refresh the instant the app comes back to the foreground
       // (e.g. reopened the next morning), instead of waiting on the tick.
@@ -956,6 +962,16 @@ export function TodayScreen() {
           // passing, and stops needing an answer the moment the user gives one
           // from the sheet this task links to.
           useTaskStore.getState().checkPantryCheckTasks();
+          // And the same for a supply whose lead time has come round while the
+          // app sat in the background — a phone left open for a fortnight
+          // never sees another cold start, and the whole point of a lead time
+          // is that it fires on a day nobody opened the editor.
+          useTaskStore.getState().checkSupplyReorderTasks();
+          // And a third generator on the same shelf: which day is "tomorrow"
+          // rolls over purely by time passing too, and the calendar window this
+          // reads is kept current by useCalendarSync's own AppState listener
+          // rather than anything here.
+          useTaskStore.getState().checkCalendarReviewTasks();
           // And any template whose schedule came due while the app sat in the
           // background (#1781) — a weekly run would otherwise wait for the next
           // cold start, which for a phone left open all week never comes. Same

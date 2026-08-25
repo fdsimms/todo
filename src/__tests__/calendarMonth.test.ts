@@ -1,11 +1,13 @@
 import type { Task } from '../types';
 import type { DayBucket } from '../utils/calendarMonth';
+import { dayKeyOf } from '../utils/dateUtils';
 import {
   MAX_PROJECTION_STEPS,
   buildDayBuckets,
   canProject,
   dayDetail,
   dotsFor,
+  nthOccurrence,
   projectOccurrences,
   projectedDeadlineFor,
   summarizeDay,
@@ -44,6 +46,13 @@ const BASE: Task = {
   recurrenceEndDate: null,
   recurrenceCount: null,
   recurrenceFromCompletion: false,
+  supplyCount: null,
+  supplyUnit: null,
+  supplyRefillCount: null,
+  supplyReorderAt: 1,
+  supplyLeadDays: null,
+  supplyDeclinedAtCount: null,
+  supplyGroceryItemId: null,
   targetCount: null,
   targetUnit: null,
   allowOvershoot: false,
@@ -531,5 +540,70 @@ describe('summarizeDay', () => {
   it('renders nothing once every row on the day is complete', () => {
     const done = makeTask({ completed: true });
     expect(summarizeDay(detail({ due: [done, done], deadline: [done] }))).toBe('');
+  });
+});
+
+// ─── nthOccurrence ──────────────────────────────────────────────────────────
+
+describe('nthOccurrence', () => {
+  const daily = (overrides: Partial<Task> = {}): Task => ({
+    ...BASE,
+    dueDate: new Date('2026-03-01T12:00:00').toISOString(),
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+    ...overrides,
+  });
+
+  it('answers 0 with the task\'s own date, which is a real row and not a walk', () => {
+    expect(dayKeyOf(nthOccurrence(daily(), 0)!)).toBe('2026-03-01');
+  });
+
+  it('counts forward from there', () => {
+    expect(dayKeyOf(nthOccurrence(daily(), 1)!)).toBe('2026-03-02');
+    expect(dayKeyOf(nthOccurrence(daily(), 5)!)).toBe('2026-03-06');
+  });
+
+  it('runs the count down as it walks, the way completeTask does', () => {
+    // Without the decrement on the cursor, getNextDueDate reads the count off
+    // a row that never runs down and the walk projects for ever.
+    const limited = daily({ recurrenceCount: 3 });
+    expect(dayKeyOf(nthOccurrence(limited, 2)!)).toBe('2026-03-03');
+    expect(nthOccurrence(limited, 3)).toBeNull();
+  });
+
+  it('stops at the recurrence end date', () => {
+    const ending = daily({ recurrenceEndDate: new Date('2026-03-03T12:00:00').toISOString() });
+    expect(dayKeyOf(nthOccurrence(ending, 2)!)).toBe('2026-03-03');
+    expect(nthOccurrence(ending, 3)).toBeNull();
+  });
+
+  it('inherits every one of canProject\'s refusals', () => {
+    expect(nthOccurrence(daily({ recurrenceFromCompletion: true }), 1)).toBeNull();
+    expect(nthOccurrence(daily({ recurrenceType: 'none' }), 1)).toBeNull();
+    expect(nthOccurrence(daily({ completed: true }), 1)).toBeNull();
+    expect(nthOccurrence(daily({ archived: true }), 1)).toBeNull();
+    expect(nthOccurrence(daily({ dueDate: null }), 1)).toBeNull();
+  });
+
+  it('truncates rather than hanging past the projection backstop', () => {
+    expect(nthOccurrence(daily(), MAX_PROJECTION_STEPS + 1)).toBeNull();
+  });
+
+  it('refuses a negative index', () => {
+    expect(nthOccurrence(daily(), -1)).toBeNull();
+  });
+
+  it('walks the same grid projectOccurrences draws', () => {
+    // The two share one step function; this pins that they agree rather than
+    // drifting into two answers about one schedule.
+    const task = daily({ recurrenceType: 'weekly', recurrenceInterval: 2 });
+    const range = projectOccurrences(
+      task,
+      new Date('2026-03-01T12:00:00'),
+      new Date('2026-06-01T12:00:00'),
+    );
+    range.forEach((date, i) => {
+      expect(dayKeyOf(nthOccurrence(task, i + 1)!)).toBe(dayKeyOf(date));
+    });
   });
 });

@@ -151,6 +151,10 @@ export function RecipeCreateSheet({
   // the model read badly can be declined, not to protect existing content.
   const [applyMethod, setApplyMethod] = useState(true);
   const [applyPrepTasks, setApplyPrepTasks] = useState(true);
+  // Same "nothing to overwrite" reasoning as applyMethod/applyPrepTasks above —
+  // the recipe doesn't exist yet, so there's nothing of the user's own for this
+  // to land on top of.
+  const [applySource, setApplySource] = useState(true);
   // Working copies of everything the review list can correct, on the same
   // terms `ingredients` above has been on since #1608: `extracted` is what the
   // model said and is never written back to, these are what gets created.
@@ -161,6 +165,8 @@ export function RecipeCreateSheet({
   const [servingsText, setServingsText] = useState('');
   const [minutesText, setMinutesText] = useState('');
   const [yieldText, setYieldText] = useState('');
+  const [siteName, setSiteName] = useState('');
+  const [sourceAuthor, setSourceAuthor] = useState('');
   const edits = usePendingEdits();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   // Whichever add-menu item opened it — "From a link" and "From a photo" both
@@ -201,6 +207,7 @@ export function RecipeCreateSheet({
     setApplyDetails(true);
     setApplyMethod(true);
     setApplyPrepTasks(true);
+    setApplySource(true);
     setSteps([]);
     setAcceptedSteps(new Set());
     setPrepTasks([]);
@@ -208,6 +215,8 @@ export function RecipeCreateSheet({
     setServingsText('');
     setMinutesText('');
     setYieldText('');
+    setSiteName('');
+    setSourceAuthor('');
     resetInput();
     resetComponents();
   }, [resetInput, resetComponents]);
@@ -257,6 +266,10 @@ export function RecipeCreateSheet({
       setServingsText(formatServingsRange(result.servings, result.servingsMax) ?? '');
       setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
       setYieldText(result.recipeYield ?? '');
+      const { page } = resolved;
+      setApplySource(!!page);
+      setSiteName(page?.siteName ?? '');
+      setSourceAuthor(page?.author ?? '');
     } catch (e) {
       setError(describeImportError(e));
       setCanRetry(isRetryableImportError(e));
@@ -381,11 +394,15 @@ export function RecipeCreateSheet({
     // Everything a page told us about itself. Only ever set from structured
     // markup, so a paste and a photo leave all of it null as they always did.
     const { page } = input;
-    if (page) {
+    if (page && applySource) {
       setSourceUrl(recipe.id, page.url);
       setSourceType(recipe.id, 'website');
-      if (page.siteName) setSource(recipe.id, page.siteName);
-      if (page.author) setAuthor(recipe.id, page.author);
+      // The URL is the link that was pasted and isn't editable; the two the
+      // page merely claims about itself are.
+      const site = pendingText('source:site', siteName).trim();
+      const by = pendingText('source:author', sourceAuthor).trim();
+      if (site) setSource(recipe.id, site);
+      if (by) setAuthor(recipe.id, by);
     }
     // The page's own steps when it has them (verbatim structured data),
     // otherwise whatever the model read off the source itself. Both of these
@@ -437,6 +454,10 @@ export function RecipeCreateSheet({
   // Nothing to append after: this recipe doesn't exist yet.
   const methodMeta = methodRowMeta(acceptedSteps.size, steps.length, false);
   const prepTasksMeta = prepTasksRowMeta(acceptedPrepTasks.size, prepTasks.length, false);
+
+  // The URL is what identifies the page, so it stays on the row even though
+  // the two editable fields sit above it.
+  const sourceMeta = input.page?.url ?? '';
 
 
   // A deterministic failure — a mistyped address, a site that refuses us, a page
@@ -688,6 +709,44 @@ export function RecipeCreateSheet({
             edits={edits}
             editKeyPrefix="prep"
           />
+        )}
+
+        {!!input.page && (
+          <ImportApplyRow
+            checked={applySource}
+            onToggle={() => setApplySource(v => !v)}
+            title="Where it’s from"
+            meta={sourceMeta}
+            accessibilityLabel={`Where it’s from, ${sourceMeta}`}
+          >
+            <View style={styles.detailFields}>
+              <InlineEditableText
+                edits={edits}
+                editKey="source:site"
+                value={siteName}
+                onCommit={setSiteName}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. Serious Eats"
+                accessibilityLabel="site name"
+                maxLength={80}
+                numberOfLines={1}
+              />
+              <Text style={styles.detailSep}>·</Text>
+              <InlineEditableText
+                edits={edits}
+                editKey="source:author"
+                value={sourceAuthor}
+                onCommit={setSourceAuthor}
+                allowEmpty
+                textStyle={styles.detailValue}
+                placeholder="e.g. Kenji"
+                accessibilityLabel="author"
+                maxLength={80}
+                numberOfLines={1}
+              />
+            </View>
+          </ImportApplyRow>
         )}
 
         {renderReferences()}

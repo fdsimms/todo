@@ -38,6 +38,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   recurrenceMonthDay: null, recurrenceWeekOrdinal: null, recurrenceAnchorDay: null, recurrenceEndDate: null,
   recurrenceCount: null, recurrenceFromCompletion: false,
   targetCount: null, progressCount: 0, targetUnit: null, allowOvershoot: false,
+  supplyCount: null, supplyUnit: null, supplyRefillCount: null, supplyReorderAt: 1,
+  supplyLeadDays: null, supplyDeclinedAtCount: null, supplyGroceryItemId: null,
   tags: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0, priority: 0, effort: 0,
   estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', linkUrl: null,
   phoneNumber: null, emailAddress: null, blockedById: null,

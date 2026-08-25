@@ -48,6 +48,8 @@ const BLANK_SNOOZE_TASK: Task = {
   recurrenceType: 'none', recurrenceInterval: 1, recurrenceDays: [],
   recurrenceMonthDay: null, recurrenceWeekOrdinal: null, recurrenceAnchorDay: null, recurrenceEndDate: null,
   recurrenceCount: null, recurrenceFromCompletion: false,
+  supplyCount: null, supplyUnit: null, supplyRefillCount: null, supplyReorderAt: 1,
+  supplyLeadDays: null, supplyDeclinedAtCount: null, supplyGroceryItemId: null,
   targetCount: null, progressCount: 0, targetUnit: null, allowOvershoot: false,
   tags: [], personIds: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0, priority: 0, effort: 0,
   estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', linkUrl: null, phoneNumber: null, emailAddress: null, blockedById: null, deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
