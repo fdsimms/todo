@@ -250,7 +250,13 @@ export async function pickRecipeImage(source: RecipePhotoSource): Promise<Recipe
 
     const { File } = fileSystem();
     const dest = new File(recipeImageDirectory(), `${generateId()}.jpg`);
-    new File(saved.uri).move(dest);
+    // Awaited, not fire-and-forget: `move()` became asynchronous in SDK 57
+    // (it was synchronous through SDK 54). Left floating, this returned `ok`
+    // with `dest.uri` before the move had necessarily landed, and a rejection
+    // escaped the try/catch below as an unhandled rejection — so a photo that
+    // failed to save still reported success. `tsc` can't catch that: ignoring
+    // a returned promise isn't a type error.
+    await new File(saved.uri).move(dest);
 
     return { status: 'ok', image: { uri: dest.uri, width: saved.width, height: saved.height } };
   } catch (e) {
