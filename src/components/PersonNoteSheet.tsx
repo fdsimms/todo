@@ -10,7 +10,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 import { WhenPicker } from './WhenPicker';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import {
   PERSON_NOTE_HINTS,
@@ -162,9 +162,21 @@ export function PersonNoteSheet({ visible, personId, personName, note, initialKi
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  root: { backgroundColor: colors.bg },
-  header: { paddingHorizontal: spacing.md },
-  headerTitle: { flex: 1, textAlign: 'center', color: colors.text, fontSize: font.md },
+  // `flex: 1` is load-bearing, not decoration: EditorSheet's root is a plain
+  // View, so without it the root sizes to its content, the scroll's own
+  // `flex: 1` resolves against an auto height and collapses to nothing, and the
+  // sheet opens as a header over an empty screen. Same reason the header needs
+  // `flexDirection: 'row'` — a title with `flex: 1` in a column measures zero.
+  root: { flex: 1, backgroundColor: colors.bg },
+  header: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    paddingHorizontal: spacing.md, paddingVertical: spacing.md,
+    borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
+  },
+  headerTitle: {
+    flex: 1, textAlign: 'center', color: colors.text,
+    fontSize: font.md, fontWeight: fontWeight.semibold,
+  },
   // Matches the trash button's width so the title stays optically centred, the
   // same job SheetHeaderButton's own minWidth does on the other side.
   headerSpacer: { width: 20 },
