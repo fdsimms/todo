@@ -65,6 +65,7 @@ import { WeekdaySelector } from './WeekdaySelector';
 import { PressableScale } from './PressableScale';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
+import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
@@ -83,6 +84,8 @@ import { SegmentedControl } from './SegmentedControl';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
 import { ordinal } from '../utils/ordinal';
+
+const TITLE_TOKEN_ACCESSORY_ID = 'quickAddTitleTokenAccessory';
 
 interface Props {
   visible: boolean;
@@ -296,6 +299,9 @@ export function QuickAddModal({
 
   // ==== the draft: every field this sheet can set ====
   const [title, setTitle] = useState('');
+  // Tracked only so TitleTokenAccessory's # / @ buttons know where to splice
+  // in a token — the input itself doesn't need this to render.
+  const [titleSelection, setTitleSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
@@ -367,6 +373,7 @@ export function QuickAddModal({
   useEffect(() => {
     if (visible) {
       setTitle(initialTitle ?? '');
+      setTitleSelection({ start: (initialTitle ?? '').length, end: (initialTitle ?? '').length });
       setPriority(newTaskDefaults.priority ?? 0);
       setEffort(newTaskDefaults.effort ?? 0);
       setEstimatedMinutes(null);
@@ -635,7 +642,19 @@ export function QuickAddModal({
   const applySuggestion = (suggestion: string) => {
     haptics.tap();
     setTitle(suggestion);
+    setTitleSelection({ start: suggestion.length, end: suggestion.length });
     inputRef.current?.focus();
+  };
+
+  // Splices a token in at the current cursor position, same as a normal
+  // keypress would, rather than always appending to the end.
+  const insertTitleToken = (token: string) => {
+    haptics.tap();
+    const { start, end } = titleSelection;
+    const next = title.slice(0, start) + token + title.slice(end);
+    setTitle(next);
+    const cursor = start + token.length;
+    setTitleSelection({ start: cursor, end: cursor });
   };
 
   // Pop the tooltip in when a phrase is first detected (not on every keystroke
@@ -669,6 +688,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(parsed.cleanTitle);
+    setTitleSelection({ start: parsed.cleanTitle.length, end: parsed.cleanTitle.length });
     setDueDate(parsed.schedule.dueDate);
     setDeadline(parsed.schedule.deadline ?? null);
     setTimeSegments(parsed.schedule.timeSegments);
@@ -688,6 +708,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(categoryTagsParsed.cleanTitle);
+    setTitleSelection({ start: categoryTagsParsed.cleanTitle.length, end: categoryTagsParsed.cleanTitle.length });
     if (categoryTagsParsed.category) setCategory(categoryTagsParsed.category);
     if (categoryTagsParsed.tags.length > 0) {
       setTags(prev => [...new Set([...prev, ...categoryTagsParsed.tags])]);
@@ -700,6 +721,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(linkParsed.cleanTitle);
+    setTitleSelection({ start: linkParsed.cleanTitle.length, end: linkParsed.cleanTitle.length });
     setLinkUrl(linkParsed.url);
   };
 
@@ -709,6 +731,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(phoneParsed.cleanTitle);
+    setTitleSelection({ start: phoneParsed.cleanTitle.length, end: phoneParsed.cleanTitle.length });
     setPhoneNumber(phoneParsed.number);
   };
 
@@ -718,6 +741,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(emailParsed.cleanTitle);
+    setTitleSelection({ start: emailParsed.cleanTitle.length, end: emailParsed.cleanTitle.length });
     setEmailAddress(emailParsed.address);
   };
 
@@ -730,6 +754,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(durationParsed.cleanTitle);
+    setTitleSelection({ start: durationParsed.cleanTitle.length, end: durationParsed.cleanTitle.length });
     setType('timed');
     setTimedMinutes(durationParsed.minutes);
     setCustomTimedText('');
@@ -740,6 +765,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(supplyParsed.cleanTitle);
+    setTitleSelection({ start: supplyParsed.cleanTitle.length, end: supplyParsed.cleanTitle.length });
     setSupplyCount(clampSupplyCount(supplyParsed.count));
     setSupplyUnit(supplyParsed.unit ?? '');
   };
@@ -1258,6 +1284,9 @@ export function QuickAddModal({
                 blurOnSubmit={false}
                 onLayout={e => setInputW(e.nativeEvent.layout.width)}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
+                selection={titleSelection}
+                onSelectionChange={e => setTitleSelection(e.nativeEvent.selection)}
+                inputAccessoryViewID={Platform.OS === 'ios' ? TITLE_TOKEN_ACCESSORY_ID : undefined}
               />
               {/* Invisible mirrors of the input text — their widths locate the
                   highlighted phrase so the tooltip can point at it. */}
@@ -2129,6 +2158,7 @@ export function QuickAddModal({
         onClose={() => setCategoryPickerVisible(false)}
       />
       <NumberPadAccessory />
+      <TitleTokenAccessory nativeID={TITLE_TOKEN_ACCESSORY_ID} onInsert={insertTitleToken} />
     </Modal>
     {/* newTaskDefaults.openEditorAfterQuickAdd hand-off — see createTask. A
         sibling of the sheet above rather than something rendered inside it,
