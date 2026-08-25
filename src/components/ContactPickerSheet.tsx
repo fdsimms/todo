@@ -11,18 +11,21 @@ import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors }
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
-  MIN_CONTACT_QUERY_LENGTH,
   canSearchContacts,
   contactPersonDraft,
   describeCandidateBirthday,
+  filterBrowsableContacts,
   rankContacts,
   type ContactCandidate,
   type ContactPersonDraft,
 } from '../utils/contactsImport';
 import {
+  fetchLimitedContacts,
+  getContactsAccessScope,
   getContactsPermission,
   requestContactsPermission,
   searchContacts,
+  type ContactsAccessScope,
   type ContactsPermission,
 } from '../utils/contactsAccess';
 import { usePersonStore } from '../store/usePersonStore';
@@ -42,13 +45,21 @@ interface Props {
  * Filling one person in from the contact book — see `docs/arch/people.md`,
  * "Where the two lines actually fall", and `contactsImport.ts` for the rules.
  *
- * **It opens on a focused search field with nothing under it, and there is no
- * "select all" at any point.** That is the whole design rather than a layout
- * choice: the objection to an address book import was never to the contact book
- * itself, it was to *a list you did not write* — 400 people you do not think
- * about, which then has to be sorted somehow. You cannot bulk-select a book you
- * are never shown, and `searchContacts` refuses an empty query outright rather
- * than falling back to everyone, so the book is never even read.
+ * **For a full grant it opens on a focused search field with nothing under it,
+ * and there is no "select all" at any point.** That is the whole design rather
+ * than a layout choice: the objection to an address book import was never to
+ * the contact book itself, it was to *a list you did not write* — 400 people
+ * you do not think about, which then has to be sorted somehow. You cannot
+ * bulk-select a book you are never shown, and `searchContacts` refuses an
+ * empty query outright rather than falling back to everyone, so the book is
+ * never even read.
+ *
+ * **A `'limited'` grant is the opposite case**, and gets the opposite default
+ * view: iOS's own picker is how the user chose that set, so it is already a
+ * list they wrote rather than the address book this feature otherwise refuses
+ * to show. `fetchLimitedContacts` reads it once on open and the sheet shows it
+ * straight away, search field still there to narrow it further. See
+ * `contactsImport.ts` and `contactsAccess.ts` for where that split is drawn.
  *
  * **One tap adds one person and the sheet stays open**, so adding three people
  * is three taps without the picker ever becoming a checklist of everybody.
@@ -68,9 +79,12 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
   const people = usePersonStore(useShallow(s => s.people));
 
   const [permission, setPermission] = useState<ContactsPermission | null>(null);
+  const [scope, setScope] = useState<ContactsAccessScope | null>(null);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ContactCandidate[]>([]);
   const [searching, setSearching] = useState(false);
+  const [limited, setLimited] = useState<ContactCandidate[]>([]);
+  const [limitedLoading, setLimitedLoading] = useState(false);
   const [added, setAdded] = useState<string[]>([]);
 
   useEffect(() => {
@@ -78,17 +92,37 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
     setQuery('');
     setResults([]);
     setAdded([]);
+    setScope(null);
+    setLimited([]);
     let live = true;
     getContactsPermission().then(p => { if (live) setPermission(p); });
     return () => { live = false; };
   }, [visible]);
 
-  // Debounced, and the token guards against an earlier search landing after a
-  // later one: the field is typed into fast and the native read is async, so
-  // without it "dus" can overwrite the results for "dustin".
-  const searchToken = useRef(0);
+  // Once permission is settled, find out whether it's a full or a limited
+  // grant, then — only for a limited one — read the pre-selected set once up
+  // front, since it's small and already curated rather than a book to guard.
   useEffect(() => {
     if (!visible || permission !== 'granted') return;
+    let live = true;
+    getContactsAccessScope().then(async s => {
+      if (!live) return;
+      setScope(s);
+      if (s !== 'limited') return;
+      setLimitedLoading(true);
+      const all = await fetchLimitedContacts();
+      if (live) { setLimited(all); setLimitedLoading(false); }
+    });
+    return () => { live = false; };
+  }, [visible, permission]);
+
+  // Debounced, and the token guards against an earlier search landing after a
+  // later one: the field is typed into fast and the native read is async, so
+  // without it "dus" can overwrite the results for "dustin". Full access
+  // only — a limited grant filters the set it already fetched, locally.
+  const searchToken = useRef(0);
+  useEffect(() => {
+    if (!visible || permission !== 'granted' || scope !== 'all') return;
     if (!canSearchContacts(query)) { setResults([]); setSearching(false); return; }
     const token = ++searchToken.current;
     setSearching(true);
@@ -99,11 +133,15 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
       setSearching(false);
     }, SEARCH_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [query, visible, permission]);
+  }, [query, visible, permission, scope]);
 
   const shown = useMemo(
-    () => rankContacts(results, query, people).filter(c => !added.includes(c.id)),
-    [results, query, people, added]
+    () => (
+      scope === 'limited'
+        ? filterBrowsableContacts(limited, query, people)
+        : rankContacts(results, query, people)
+    ).filter(c => !added.includes(c.id)),
+    [scope, limited, results, query, people, added]
   );
 
   const pick = (candidate: ContactCandidate) => {
@@ -140,7 +178,12 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
         </>
       }
     >
-      {permission === 'granted' ? (
+      {permission === 'granted' && scope === null ? (
+        // Scope not resolved yet — one more async step past "granted" — so
+        // there's nothing to commit to rendering (search-only vs. browsable)
+        // until it lands.
+        <View style={styles.spinner}><ActivityIndicator color={colors.textTertiary} /></View>
+      ) : permission === 'granted' ? (
         <>
           <View style={styles.searchWrap}>
             <Ionicons name="search" size={iconSize.sm} color={colors.textTertiary} style={styles.searchIcon} />
@@ -149,26 +192,33 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
               style={styles.field}
               value={query}
               onChangeText={setQuery}
-              placeholder="Search your contacts"
+              placeholder={scope === 'limited' ? 'Search or browse below' : 'Search your contacts'}
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="words"
               autoCorrect={false}
               autoFocus
               returnKeyType="search"
-              accessibilityLabel="Search your contacts"
+              accessibilityLabel={scope === 'limited' ? 'Search or browse the contacts you shared' : 'Search your contacts'}
             />
           </View>
 
-          {/* Nothing under the field until somebody types, which is the rule
-              rather than an empty state — see the note at the top. */}
-          {!canSearchContacts(query) ? (
+          {/* A full grant shows nothing under the field until somebody types
+              — see the note at the top. A limited grant shows its (already
+              curated) set straight away instead. */}
+          {scope === 'all' && !canSearchContacts(query) ? (
             <Text style={styles.note}>
               Type a name to find somebody. Nothing is read from your contacts until you do.
             </Text>
-          ) : searching ? (
+          ) : (scope === 'limited' ? limitedLoading : searching) ? (
             <View style={styles.spinner}><ActivityIndicator color={colors.textTertiary} /></View>
           ) : shown.length === 0 ? (
-            <Text style={styles.note}>Nobody new matches “{query.trim()}”.</Text>
+            <Text style={styles.note}>
+              {scope === 'limited' && !query.trim()
+                ? (limited.length === 0
+                    ? 'None of the contacts you shared have a name to add.'
+                    : 'Everyone you shared is already added.')
+                : `Nobody new matches “${query.trim()}”.`}
+            </Text>
           ) : (
             <View style={styles.card}>
               {shown.map((candidate, i) => {
