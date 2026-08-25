@@ -17,7 +17,15 @@ import { birthdayInYear, hasBirthday } from '../utils/birthdayTasks';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { CountStepper } from './CountStepper';
-import { describeCadence } from '../utils/nudgeCadence';
+import {
+  describeCadence,
+  toCadenceParts,
+  fromCadenceParts,
+  withCadenceUnit,
+  CADENCE_UNITS,
+  CADENCE_UNIT_MAX,
+  cadenceUnitLabel,
+} from '../utils/nudgeCadence';
 import { personHistory } from '../utils/personHistory';
 import { describeObservedCadence, observedCadenceDays } from '../utils/reachOutTasks';
 
@@ -75,11 +83,11 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   const [birthdayDay, setBirthdayDay] = useState<number | null>(null);
   const [birthYear, setBirthYear] = useState<number | null>(null);
   const [birthdayTaskOptOut, setBirthdayTaskOptOut] = useState(false);
+  const [birthdayGiftTaskOptOut, setBirthdayGiftTaskOptOut] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [cadenceDays, setCadenceDays] = useState(0);
   const [askAbout, setAskAbout] = useState('');
 
@@ -102,13 +110,13 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
     setBirthdayDay(person.birthdayDay);
     setBirthYear(person.birthYear);
     setBirthdayTaskOptOut(person.birthdayTaskOptOut);
-    setPhoneNumber(person.phoneNumber ?? '');
+    setBirthdayGiftTaskOptOut(person.birthdayGiftTaskOptOut);
+    setPhoneNumber(formatPhoneInput(person.phoneNumber ?? ''));
     setEmail(person.email ?? '');
     setLinkUrl(person.linkUrl ?? '');
     setCadenceDays(person.cadenceDays);
     setAskAbout(person.askAbout);
     setShowBirthdayPicker(false);
-    setMoreOpen(false);
   }, [person, visible]);
 
   if (!person) return null;
@@ -126,6 +134,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       birthdayDay,
       birthYear,
       birthdayTaskOptOut,
+      birthdayGiftTaskOptOut,
       phoneNumber: phoneNumber.trim() || null,
       email: email.trim() || null,
       linkUrl: linkUrl.trim() || null,
@@ -159,6 +168,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   };
 
   const birthdaySet = hasBirthday({ birthdayMonth, birthdayDay });
+  const cadence = toCadenceParts(cadenceDays);
 
   return (
     <EditorSheet
@@ -248,6 +258,23 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
                 <View style={[styles.toggleKnob, !birthdayTaskOptOut && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
+            <View style={styles.sep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); animateLayout(); setBirthdayGiftTaskOptOut(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: !birthdayGiftTaskOptOut }}
+              accessibilityLabel="Remind me to get a gift for this birthday"
+            >
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Remind me to get a gift</Text>
+                <Text style={styles.optionHint}>Adds a separate task to get one, earlier than the reminder above.</Text>
+              </View>
+              <View style={[styles.toggle, !birthdayGiftTaskOptOut && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, !birthdayGiftTaskOptOut && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
           </>
         )}
       </View>
@@ -266,15 +293,33 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         </View>
         <View style={styles.cadenceRow}>
           <CountStepper
-            value={cadenceDays > 0 ? cadenceDays : null}
-            onChange={next => setCadenceDays(next ?? 0)}
+            value={cadence.count}
+            onChange={next => setCadenceDays(fromCadenceParts({ ...cadence, count: next }))}
             min={1}
-            max={365}
+            max={CADENCE_UNIT_MAX[cadence.unit]}
             allowNull
-            format={n => `${n}d`}
-            label="Days before a reminder"
-            describeValue={n => (n === null ? 'No reminder' : describeCadence(n))}
+            label="Time before a reminder"
+            describeValue={n => (n === null ? 'No reminder' : describeCadence(fromCadenceParts({ ...cadence, count: n })))}
           />
+          <View style={styles.pillRow}>
+            {CADENCE_UNITS.map(unit => {
+              // Off has no unit — leaving all three unlit is what says so.
+              const active = cadence.count !== null && cadence.unit === unit;
+              return (
+                <TouchableOpacity
+                  key={unit}
+                  style={[styles.pill, active && styles.pillActiveNeutral]}
+                  onPress={() => { haptics.tap(); setCadenceDays(fromCadenceParts(withCadenceUnit(cadence, unit))); }}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: active }}
+                >
+                  <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                    {cadenceUnitLabel(unit)}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
         </View>
         {/* The offer, and it only ever appears once there is enough history to
             say so honestly — see observedCadenceDays. Declaring a frequency for
@@ -356,48 +401,38 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         A birthday task carries their number, so you can call or text from the task itself.
       </Text>
 
-      <TouchableOpacity
-        style={styles.moreToggle}
-        onPress={() => { haptics.tap(); animateLayout(); setMoreOpen(v => !v); }}
-        activeOpacity={interaction.activeOpacity}
-        accessibilityRole="button"
-      >
-        <Text style={styles.groupLabelInline}>MORE</Text>
-        <Ionicons name={moreOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
-      </TouchableOpacity>
-      {moreOpen && (
-        <View style={styles.sectionCard}>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Nickname</Text>
-            <TextInput
-              style={styles.fieldInput}
-              value={nickname}
-              onChangeText={setNickname}
-              placeholder="e.g. Ans"
-              placeholderTextColor={colors.textTertiary}
-              maxLength={TITLE_MAX_LENGTH}
-            />
-          </View>
-          <Text style={styles.cardFooter}>Shown instead of their name, everywhere.</Text>
-          <View style={styles.sep} />
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={toggleArchived}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: archived }}
-            accessibilityLabel="Archive person"
-          >
-            <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Archive</Text>
-              <Text style={styles.optionHint}>Hides them from the list and stops their birthday task.</Text>
-            </View>
-            <View style={[styles.toggle, archived && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, archived && styles.toggleKnobOn]} />
-            </View>
-          </TouchableOpacity>
+      <Text style={styles.groupLabel}>MORE</Text>
+      <View style={styles.sectionCard}>
+        <View style={styles.fieldRow}>
+          <Text style={styles.fieldLabel}>Nickname</Text>
+          <TextInput
+            style={styles.fieldInput}
+            value={nickname}
+            onChangeText={setNickname}
+            placeholder="e.g. Ans"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={TITLE_MAX_LENGTH}
+          />
         </View>
-      )}
+        <Text style={styles.cardFooter}>Shown instead of their name, everywhere.</Text>
+        <View style={styles.sep} />
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={toggleArchived}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: archived }}
+          accessibilityLabel="Archive person"
+        >
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Archive</Text>
+            <Text style={styles.optionHint}>Hides them from the list and stops their birthday task.</Text>
+          </View>
+          <View style={[styles.toggle, archived && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, archived && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+      </View>
     </EditorSheet>
   );
 }
@@ -429,14 +464,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8, marginTop: spacing.lg, marginBottom: spacing.sm,
     paddingHorizontal: spacing.sm,
   },
-  groupLabelInline: {
-    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
-    letterSpacing: 0.8,
-  },
-  moreToggle: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginTop: spacing.lg, marginBottom: spacing.sm, paddingHorizontal: spacing.sm,
-  },
   sectionCard: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
@@ -448,7 +475,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   fieldLabel: { color: colors.text, fontSize: font.md, width: 92 },
   fieldLabelWide: { color: colors.text, fontSize: font.md, width: 84 },
-  cadenceRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
+  // The unit pills stay one group: at a narrow width the whole set drops to a
+  // second line rather than splitting "Months" off on its own.
+  cadenceRow: {
+    flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap',
+    gap: spacing.sm, paddingHorizontal: spacing.md, paddingBottom: spacing.md,
+  },
+  pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  pill: {
+    paddingHorizontal: 14, paddingVertical: 8,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+    alignItems: 'center',
+  },
+  pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
+  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  pillTextActive: { color: colors.text, fontWeight: '600' },
   offerRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     marginHorizontal: spacing.md, marginBottom: spacing.md,

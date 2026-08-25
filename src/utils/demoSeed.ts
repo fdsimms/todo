@@ -23,6 +23,8 @@ import { generatedBy } from './generatedTasks';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
+import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
+import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
@@ -911,6 +913,23 @@ function seedPeople(today: Date): void {
   // than from a row written by hand here: a seeded row that skipped the
   // generator could drift from what the generator actually produces.
   useTaskStore.getState().checkBirthdayTasks();
+  // The gift task is written by hand instead, for pantryCheck's reason: that
+  // pass reads the real install's own settings, and this generator ships off,
+  // so a demo relying on it would show the feature only to people who had
+  // already found it. Its source id is copied off the birthday task's own
+  // rather than recomputed, so the two can never disagree about which year.
+  const dustinBirthdayTask = useTaskStore.getState().tasks
+    .find(t => t.generatedKind === 'birthday' && t.generatedSourceId?.startsWith(`${dustin.id}#`));
+  if (dustinBirthdayTask?.generatedSourceId) {
+    addTask({
+      title: birthdayGiftTitle(dustin),
+      dueDate: today.toISOString(),
+      linkUrl: personLinkUrl(dustin.id),
+      category: dustinBirthdayTask.category,
+      notes: giftIdeasText(usePersonNoteStore.getState().notes, dustin.id, today),
+      ...generatedBy('birthdayGift', dustinBirthdayTask.generatedSourceId),
+    });
+  }
   // And the reminder, through the same pass the app runs at launch. It finds
   // exactly one person opted in, so demo mode opens with one catch-up row
   // rather than a screen of them.

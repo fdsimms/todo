@@ -429,6 +429,11 @@ export interface Person {
   // one: "don't remind me about this birthday" is a durable thing to have said,
   // where "this project isn't worth reviewing today" is not.
   birthdayTaskOptOut: boolean;
+  // The same permanent "no", one field over, for the gift task rather than the
+  // reminder itself (see src/utils/birthdayTasks.ts). A separate field because
+  // the two are separate decisions: somebody might want the day marked on
+  // their list without wanting a second row about buying anything for it.
+  birthdayGiftTaskOptOut: boolean;
 
   // Enough to reach them, and nothing more. phoneNumber is stored as typed, the
   // same decision `Task.phoneNumber` documents — a canonical dial string needs a
@@ -536,7 +541,7 @@ export interface PersonNote {
 }
 
 /**
- * Which of the app's ten unattended generators wrote a task — see
+ * Which of the app's eleven unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
  *
@@ -578,6 +583,11 @@ export type GeneratedKind =
   // src/utils/birthdayTasks.ts. The only generator whose trigger is known years
   // in advance rather than derived from something that just changed.
   | 'birthday'
+  // Getting them a gift, on its own separately configurable lead time — see
+  // src/utils/birthdayTasks.ts. Rides the same person and year in
+  // generatedSourceId that 'birthday' does; the kind is what keeps the two
+  // from being read as one another's task (see generatedSourceOf).
+  | 'birthdayGift'
   // A person you asked to be reminded about, whose cadence has run out — see
   // src/utils/reachOutTasks.ts. Silent on everybody until they are explicitly
   // opted in, which is what keeps "who am I neglecting" a question the app

@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePeopleInput, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, matchPersonMentions, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -876,7 +876,7 @@ describe('parseSupplyInput', () => {
   });
 });
 
-describe('parsePeopleInput', () => {
+describe('matchPersonMentions', () => {
   const PEOPLE = [
     { id: 'p1', name: 'Dustin', nickname: '' },
     { id: 'p2', name: 'Ansley Brown', nickname: 'Ans' },
@@ -884,41 +884,40 @@ describe('parsePeopleInput', () => {
   ];
 
   it('pulls one person out of a plan', () => {
-    const r = parsePeopleInput('beach with @dustin', PEOPLE);
-    expect(r?.personIds).toEqual(['p1']);
-    expect(r?.cleanTitle).toBe('beach with');
+    const r = matchPersonMentions('beach with @dustin', PEOPLE);
+    expect(r).toEqual([{ start: 11, end: 18, personId: 'p1' }]);
   });
 
   it('pulls several, in the order they were typed', () => {
-    const r = parsePeopleInput('beach with @ansley @dustin', PEOPLE);
-    expect(r?.personIds).toEqual(['p2', 'p1']);
+    const r = matchPersonMentions('beach with @ansley @dustin', PEOPLE);
+    expect(r.map(m => m.personId)).toEqual(['p2', 'p1']);
   });
 
   it('matches a nickname', () => {
-    expect(parsePeopleInput('coffee @ans', PEOPLE)?.personIds).toEqual(['p2']);
+    expect(matchPersonMentions('coffee @ans', PEOPLE).map(m => m.personId)).toEqual(['p2']);
   });
 
   it('matches the first word of a full name, which is how a contact arrives', () => {
-    expect(parsePeopleInput('coffee @ansley', PEOPLE)?.personIds).toEqual(['p2']);
+    expect(matchPersonMentions('coffee @ansley', PEOPLE).map(m => m.personId)).toEqual(['p2']);
   });
 
   it('is case insensitive', () => {
-    expect(parsePeopleInput('call @Mom', PEOPLE)?.personIds).toEqual(['p3']);
+    expect(matchPersonMentions('call @Mom', PEOPLE).map(m => m.personId)).toEqual(['p3']);
   });
 
-  it('deduplicates somebody named twice', () => {
-    expect(parsePeopleInput('call @mom then @mom again', PEOPLE)?.personIds).toEqual(['p3']);
+  it('reports somebody named twice as two mentions, not deduplicated — that is the caller\'s job', () => {
+    expect(matchPersonMentions('call @mom then @mom again', PEOPLE).map(m => m.personId)).toEqual(['p3', 'p3']);
   });
 
   // Never creates a person: adding somebody is a deliberate act on the People
   // screen, not a side effect of a typo. See rule 3 in docs/arch/people.md.
   it('leaves an unknown token as literal text', () => {
-    expect(parsePeopleInput('ping @nobody about it', PEOPLE)).toBeNull();
+    expect(matchPersonMentions('ping @nobody about it', PEOPLE)).toEqual([]);
   });
 
   it('leaves an email address alone, since its @ follows a word character', () => {
-    expect(parsePeopleInput('email bob@example.com', PEOPLE)).toBeNull();
-    expect(parsePeopleInput('email dustin@example.com', PEOPLE)).toBeNull();
+    expect(matchPersonMentions('email bob@example.com', PEOPLE)).toEqual([]);
+    expect(matchPersonMentions('email dustin@example.com', PEOPLE)).toEqual([]);
   });
 
   it('refuses a token two people answer to rather than guessing', () => {
@@ -926,32 +925,21 @@ describe('parsePeopleInput', () => {
       { id: 'a', name: 'Sam Riley', nickname: '' },
       { id: 'b', name: 'Sam Okafor', nickname: '' },
     ];
-    expect(parsePeopleInput('lunch @sam', twoSams)).toBeNull();
+    expect(matchPersonMentions('lunch @sam', twoSams)).toEqual([]);
   });
 
   it('still resolves an unambiguous name when somebody else is ambiguous', () => {
     const people = [...PEOPLE, { id: 'p4', name: 'Dustin Two', nickname: '' }];
     // "dustin" now names two, so it is left alone; "mom" still resolves.
-    const r = parsePeopleInput('call @mom about @dustin', people);
-    expect(r?.personIds).toEqual(['p3']);
-    expect(r?.cleanTitle).toBe('call about @dustin');
+    const r = matchPersonMentions('call @mom about @dustin', people);
+    expect(r.map(m => m.personId)).toEqual(['p3']);
   });
 
-  it('treats a bare token with nothing else as a literal title', () => {
-    expect(parsePeopleInput('@dustin', PEOPLE)).toBeNull();
-  });
-
-  it('reports where the first token was, for the highlight', () => {
-    const r = parsePeopleInput('beach with @dustin', PEOPLE);
-    expect(r?.matchStart).toBe(11);
-    expect(r?.matchEnd).toBe(18);
-  });
-
-  it('collapses the whitespace a lifted token leaves behind', () => {
-    expect(parsePeopleInput('dinner @dustin at eight', PEOPLE)?.cleanTitle).toBe('dinner at eight');
+  it('resolves a bare token with nothing else in the title, since nothing is stripped', () => {
+    expect(matchPersonMentions('@dustin', PEOPLE)).toEqual([{ start: 0, end: 7, personId: 'p1' }]);
   });
 
   it('finds nobody in a title with no tokens at all', () => {
-    expect(parsePeopleInput('buy milk', PEOPLE)).toBeNull();
+    expect(matchPersonMentions('buy milk', PEOPLE)).toEqual([]);
   });
 });

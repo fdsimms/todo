@@ -26,7 +26,11 @@ import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing, type Colors } from '../../theme';
 import { CountStepper } from '../../components/CountStepper';
-import { DEFAULT_BIRTHDAY_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS } from '../../utils/birthdayTasks';
+import {
+  DEFAULT_BIRTHDAY_LEAD_DAYS,
+  DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS,
+  MAX_BIRTHDAY_LEAD_DAYS,
+} from '../../utils/birthdayTasks';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
@@ -130,6 +134,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'supplyReorder': return s.supplyReorderTasks;
       case 'calendarReview': return s.calendarReviewTasks;
       case 'birthday': return s.birthdayTasks;
+      case 'birthdayGift': return s.birthdayGiftTasks;
       case 'reachOut': return s.reachOutTasks;
     }
   };
@@ -148,6 +153,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'supplyReorder': s.setSupplyReorderTasks(next); break;
       case 'calendarReview': s.setCalendarReviewTasks(next); break;
       case 'birthday': s.setBirthdayTasks(next); break;
+      case 'birthdayGift': s.setBirthdayGiftTasks(next); break;
       case 'reachOut': s.setReachOutTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
@@ -176,6 +182,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealShortfall': return s.mealShortfallTaskCategory;
       case 'calendarReview': return s.calendarEventCategory;
       case 'birthday': return s.birthdayTaskCategory;
+      case 'birthdayGift': return s.birthdayGiftTaskCategory;
       case 'supplyReorder': return null;
       case 'reachOut': return s.reachOutTaskCategory;
     }
@@ -194,6 +201,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'pantryCheck': s.setPantryCheckTaskCategory(category); break;
       case 'mealShortfall': s.setMealShortfallTaskCategory(category); break;
       case 'birthday': s.setBirthdayTaskCategory(category); break;
+      case 'birthdayGift': s.setBirthdayGiftTaskCategory(category); break;
       // Unreached — see categoryOf above — but a real, honest answer rather
       // than a no-op: this is genuinely how calendarReview's category changes.
       case 'calendarReview': s.setCalendarEventCategory(category); break;
@@ -316,6 +324,38 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
               the task's deadline, so changing this never moves anybody's
               birthday, and it deliberately doesn't re-date a row already on the
               list — see birthdayDrift. */}
+        </>
+      );
+    }
+
+    if (kind === 'birthdayGift') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="calendar-outline"
+            label="Show the task"
+            hint="How many days before the birthday the gift task falls due"
+            value={
+              s.birthdayGiftLeadDays === 0
+                ? 'On the day'
+                : `${s.birthdayGiftLeadDays} ${s.birthdayGiftLeadDays === 1 ? 'day' : 'days'} before`
+            }
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.birthdayGiftLeadDays}
+              onChange={next => s.setBirthdayGiftLeadDays(next ?? DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS)}
+              min={0}
+              max={MAX_BIRTHDAY_LEAD_DAYS}
+              format={n => (n === 0 ? 'Day of' : `${n}d`)}
+              label="Days before the birthday"
+              describeValue={n =>
+                n === 0 ? 'On the birthday itself' : `${n} ${n === 1 ? 'day' : 'days'} before`
+              }
+            />
+          </View>
         </>
       );
     }

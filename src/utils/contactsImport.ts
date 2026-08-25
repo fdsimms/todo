@@ -11,15 +11,23 @@ import type { Person } from '../types';
  * think about, which then has to be sorted somehow. Filling in one person is
  * the same deliberate act as typing their name, minus the typing.
  *
- * So: the picker opens on a search field with nothing under it, there is no
- * "select all" at any point, and nothing here ever returns a whole address
- * book — `searchContacts` refuses an empty query outright rather than falling
- * back to "everyone". You cannot bulk-select an address book you are never
- * shown.
+ * So: for a **full** grant, the picker opens on a search field with nothing
+ * under it, there is no "select all" at any point, and nothing here ever
+ * returns a whole address book — `searchContacts` refuses an empty query
+ * outright rather than falling back to "everyone". You cannot bulk-select an
+ * address book you are never shown.
  *
  * That is also simply the better control. A contact book is mostly dentists,
  * plumbers and somebody from a wedding in 2019, so browsing it for the people
  * you care about means wading through noise.
+ *
+ * **A `'limited'` grant is the one case where that noise is already gone**:
+ * iOS's own picker is how the user chose that set, which makes it a list they
+ * *did* write rather than the address book this feature refuses to show. So
+ * `browsableContacts`/`filterBrowsableContacts` show it directly, no query
+ * required — see `fetchLimitedContacts` in `contactsAccess.ts` for the read
+ * this is paired with, and the "Filling one person in from Contacts" section
+ * of `docs/arch/people.md` for the reasoning in full.
  *
  * Pure. The permission and the native read are `contactsAccess.ts`, the same
  * split `calendarBusy.ts` and `calendarSync.ts` keep.
@@ -146,26 +154,23 @@ export function canSearchContacts(query: string): boolean {
 }
 
 /**
- * The matches worth showing, already-added people removed and capped.
+ * Shared by `rankContacts` and `filterBrowsableContacts`: everybody matching
+ * `needle`, already-added people removed, ordered by where the query lands
+ * rather than alphabetically. A name that *starts* with what you typed is
+ * what you meant far more often than one that merely contains it, and a book
+ * with a Dan and a Jordan should put Dan first for "dan". Ties keep the order
+ * the candidates arrived in, which for a native query is the user's own
+ * system sort setting.
  *
- * Ordered by where the query lands rather than alphabetically: a name that
- * *starts* with what you typed is what you meant far more often than one that
- * merely contains it, and a book with a Dan and a Jordan should put Dan first
- * for "dan". Ties keep the order the system gave them, which on iOS is the
- * user's own sort setting.
- *
- * Contacts with no name at all are dropped: a row with nothing to read is a row
- * that can only be picked by accident.
+ * Contacts with no name at all are dropped: a row with nothing to read is a
+ * row that can only be picked by accident. No cap here — each caller applies
+ * its own, for its own reason.
  */
-export function rankContacts(
+function scoreContacts(
   candidates: readonly ContactCandidate[],
-  query: string,
-  people: readonly Pick<Person, 'name' | 'nickname' | 'phoneNumber'>[],
-  limit: number = MAX_CONTACT_RESULTS
+  needle: string,
+  people: readonly Pick<Person, 'name' | 'nickname' | 'phoneNumber'>[]
 ): ContactCandidate[] {
-  const needle = query.trim().toLowerCase();
-  if (!canSearchContacts(query)) return [];
-
   const scored: { candidate: ContactCandidate; rank: number; order: number }[] = [];
   candidates.forEach((candidate, order) => {
     const name = candidate.name.trim();
@@ -180,11 +185,60 @@ export function rankContacts(
     const rank = at === 0 ? 0 : /\s/.test(haystack[at - 1]) ? 1 : 2;
     scored.push({ candidate, rank, order });
   });
+  return scored.sort((a, b) => a.rank - b.rank || a.order - b.order).map(s => s.candidate);
+}
 
-  return scored
-    .sort((a, b) => a.rank - b.rank || a.order - b.order)
-    .slice(0, Math.max(0, limit))
-    .map(s => s.candidate);
+/**
+ * The matches worth showing for a full-access search, capped.
+ *
+ * Nothing at all for a query too short to search — `MIN_CONTACT_QUERY_LENGTH`
+ * is the floor a full address book needs, since a single letter matches a
+ * large fraction of any book and a screen of near-everybody is the browse
+ * view this half of the feature exists not to have.
+ */
+export function rankContacts(
+  candidates: readonly ContactCandidate[],
+  query: string,
+  people: readonly Pick<Person, 'name' | 'nickname' | 'phoneNumber'>[],
+  limit: number = MAX_CONTACT_RESULTS
+): ContactCandidate[] {
+  if (!canSearchContacts(query)) return [];
+  return scoreContacts(candidates, query.trim().toLowerCase(), people).slice(0, Math.max(0, limit));
+}
+
+/**
+ * The whole set, alphabetically, already-added people removed — the browse
+ * view for a `'limited'` grant (see `contactsAccess.ts`'s
+ * `fetchLimitedContacts`). Sorted by name rather than left in system order:
+ * it is a list to *find* somebody in, not a run of taps, and unlike a search
+ * match there is no query position to rank by.
+ */
+export function browsableContacts(
+  candidates: readonly ContactCandidate[],
+  people: readonly Pick<Person, 'name' | 'nickname' | 'phoneNumber'>[]
+): ContactCandidate[] {
+  return candidates
+    .filter(c => c.name.trim() && !alreadyAdded(c, people))
+    .sort((a, b) => a.name.trim().localeCompare(b.name.trim()));
+}
+
+/**
+ * `browsableContacts`, narrowed by whatever has been typed so far.
+ *
+ * **No length floor**, unlike `rankContacts`. That floor exists to stop a
+ * short query from reading as "everyone" against a full address book; here
+ * the candidates are already the pre-selected set a `'limited'` grant is
+ * bounded to, so narrowing it to one letter is filtering a list already
+ * curated by the user, not opening a book nobody asked to see.
+ */
+export function filterBrowsableContacts(
+  candidates: readonly ContactCandidate[],
+  query: string,
+  people: readonly Pick<Person, 'name' | 'nickname' | 'phoneNumber'>[]
+): ContactCandidate[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return browsableContacts(candidates, people);
+  return scoreContacts(candidates, needle, people);
 }
 
 /**

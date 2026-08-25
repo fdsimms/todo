@@ -119,10 +119,14 @@ import { registerTaskSource } from '../utils/blockerRegistry';
 import { registerPersonTaskSource } from '../utils/peopleRegistry';
 import {
   birthdayDrift,
+  birthdayGiftDrift,
   parseBirthdaySource,
+  parseBirthdayGiftSource,
   personLinkUrl,
   wantedBirthdayTasks,
+  wantedBirthdayGiftTasks,
   staleBirthdayTasks,
+  staleBirthdayGiftTasks,
 } from '../utils/birthdayTasks';
 import {
   declinedRecently,
@@ -1370,6 +1374,12 @@ interface TaskStore {
    * clear the ones whose reason has gone. See src/utils/birthdayTasks.ts.
    */
   checkBirthdayTasks: () => void;
+  /**
+   * Give everybody with a birthday coming up (who hasn't opted out) a task to
+   * get them a gift, on its own separately configured lead time, and clear the
+   * ones whose reason has gone. See src/utils/birthdayTasks.ts.
+   */
+  checkBirthdayGiftTasks: () => void;
   /**
    * Give everybody whose cadence has run out a "Catch up with X" task, and
    * clear the ones whose reason has gone. See src/utils/reachOutTasks.ts.
@@ -4063,6 +4073,60 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       });
     });
     // No setLastAction, same reasoning as checkProjectReviewTasks above.
+  },
+
+  checkBirthdayGiftTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.birthdayGiftTasks) return;
+
+    const tasks = get().tasks;
+    const people = usePersonStore.getState().people;
+    const today = getCurrentDayStart();
+    const wanted = wantedBirthdayGiftTasks(people, settings.birthdayGiftLeadDays, today);
+
+    // Same ordering as checkBirthdayTasks, for the same reason: a person
+    // deleted, archived, or with their birthday cleared or corrected all leave
+    // a row naming a day that is no longer anybody's gift to buy.
+    const stale = staleBirthdayGiftTasks(tasks, wanted);
+    stale.forEach(task => {
+      const source = parseBirthdayGiftSource(task);
+      dropGeneratedTask('birthdayGift', source ? `${source.personId}#${source.year}` : null);
+    });
+
+    if (wanted.length === 0) return;
+
+    // Ensured here rather than only at startup, for the reason birthday's own
+    // does — this generator ships off, so nobody flips a switch that would
+    // otherwise create the category on its own.
+    ensureGeneratedTaskCategory('birthdayGift');
+    const category = useSettingsStore.getState().birthdayGiftTaskCategory;
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'birthdayGift',
+        sourceId: want.sourceId,
+        wanted: true,
+        drift: existing => birthdayGiftDrift(existing, want),
+        draft: () => ({
+          title: want.title,
+          dueDate: want.dueDate.toISOString(),
+          deadline: want.deadline.toISOString(),
+          linkUrl: personLinkUrl(want.personId),
+          category,
+          // The gift ideas you wrote down in March — the same read the
+          // birthday task's own draft makes, and creation-only for the same
+          // reason (see the note there). Both tasks carry it rather than one
+          // stealing it from the other: one names the day, the other is the
+          // shopping trip, and the ideas are useful sitting on either.
+          notes: giftIdeasText(usePersonNoteStore.getState().notes, want.personId, today),
+          // No personIds and no phoneNumber, for birthday's own reasons: this
+          // is the app's own row, not a record of time spent with them, and
+          // there is nobody to call about a shopping errand.
+          ...generatedBy('birthdayGift', want.sourceId),
+        }),
+      });
+    });
+    // No setLastAction, same reasoning as checkBirthdayTasks above.
   },
 
   checkReachOutTasks() {
