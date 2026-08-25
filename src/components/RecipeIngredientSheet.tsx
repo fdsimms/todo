@@ -125,6 +125,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // Whether the "link to an existing item" picker is open — closed whenever a
   // different ingredient is opened, same as editingItemId below.
   const [linkOpen, setLinkOpen] = useState(false);
+  // The same, for the Alternatives card's own catalog picker. Two flags rather
+  // than one shared "a picker is open": they sit in different cards and either
+  // can be the one you want open.
+  const [altLinkOpen, setAltLinkOpen] = useState(false);
 
   useEffect(() => {
     if (!ingredient) return;
@@ -139,6 +143,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setNoSwap(!!ingredient.noSwap);
     setEditingItemId(null);
     setLinkOpen(false);
+    setAltLinkOpen(false);
   }, [ingredient]);
 
   // The catalog row this line resolves to. Above the early return, like every
@@ -308,24 +313,17 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     return null;
   };
 
-  // Every other line's own key, so a catalog item that's already an
-  // ingredient on this recipe isn't offered twice — once as a sibling below,
-  // once again as if it were still sitting unused in the groceries.
+  // Every other line's own key, so the catalog picker below can't offer
+  // something this recipe already lists — that's a sibling pill's job, and
+  // offering it twice makes one of the two a no-op the user can't predict.
   const otherIngredientKeys = new Set(
     recipeIngredients.filter(other => other.id !== ingredient.id).map(other => other.nameKey)
   );
-  // The rest of the catalog, offered as alternatives — so typing the name of
-  // something already in your groceries finds and links it (createAlternative
-  // resolves by nameKey the same way the catalog card above does) instead of
-  // only ever offering to "Create" what quietly already exists.
-  const catalogAlternativeOptions = groceryItems
-    .filter(item => item.id !== catalogItem?.id && !otherIngredientKeys.has(item.nameKey))
-    .map(item => ({
-      key: `catalog:${item.id}`,
-      label: item.name,
-      suffix: ' · in your groceries',
-      onPress: () => { haptics.tap(); createAlternative(item.name); },
-    }));
+  // What the catalog picker is allowed to offer as an alternative: everything
+  // except this line's own row and the recipe's other lines.
+  const alternativeCandidates = groceryItems.filter(
+    item => item.id !== catalogItem?.id && !otherIngredientKeys.has(item.nameKey)
+  );
 
   // A preview of what mergeBack produces — this row's own typed name (not yet
   // saved) plus every sibling's stored one, "or"-joined the same way the
@@ -605,9 +603,37 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
                   },
                 };
               }),
-            ...catalogAlternativeOptions,
           ]}
         />
+        {/* The catalog half of the same question, and deliberately the same
+            component the name field above uses rather than a second search of
+            its own: an alternative names something you can put in a trolley, so
+            "which of my groceries" is answered by the picker that already ranks
+            them (frequency × recency, plural-tolerant — see
+            rankGrocerySuggestions). The pills above stay the recipe's own
+            lines, which is a small closed set; dumping the whole catalog in
+            beside them made a grid with no ceiling out of a grid that had one,
+            and buried the siblings behind an "N more" counting hundreds. */}
+        <InlineAction
+          label="Find in your groceries"
+          icon="basket-outline"
+          variant="neutral"
+          style={styles.linkAction}
+          onPress={() => { haptics.tap(); animateLayout(); setAltLinkOpen(v => !v); }}
+          accessibilityLabel="Find an alternative in your groceries"
+        />
+        {altLinkOpen && (
+          <CatalogLinkPicker
+            items={alternativeCandidates}
+            initialQuery=""
+            onPick={item => {
+              const rejection = createAlternative(item.name);
+              if (rejection) { haptics.error(); return; }
+              animateLayout();
+              setAltLinkOpen(false);
+            }}
+          />
+        )}
         {!!groupLabel && (
           editingGroupName ? (
             <View style={styles.groupNameEditRow}>
