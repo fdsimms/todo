@@ -429,6 +429,11 @@ export function seedDemoData(): void {
     dueDate: addDays(today, 16).toISOString(),
     deadline: addDays(today, 18).toISOString(),
     estimatedMinutes: 15,
+    // Reminder as a "days before due" offset (Task.reminderOffsetDays) rather
+    // than a fixed instant, so it keeps meaning "a couple of days' notice"
+    // however far the due date itself ends up moving.
+    reminderTime: setHours(addDays(today, 14), 9).toISOString(),
+    reminderOffsetDays: 2,
   });
 
   addTask({

@@ -868,6 +868,13 @@ export interface Task {
   // a plain notification; falls back to 'notification' wherever AlarmKit is
   // unavailable. Ignored when reminderTime is null.
   reminderKind: ReminderKind;
+  // Alternative to a fixed reminderTime, the same way deadlineOffsetDays is to
+  // a fixed deadline: when set, reminderTime is recomputed as this many days
+  // before dueDate (at reminderTime's own time-of-day) on every future
+  // occurrence — buildSeriesRow, completeTask's successor, skipNextRecurrence.
+  // Only meaningful (and only editable) when dueDate is set. Null keeps
+  // today's behaviour: a reminder that just tracks the due date's own day.
+  reminderOffsetDays: number | null;
 
   linkUrl: string | null; // URL/deep-link opened by the link button on the task row
 

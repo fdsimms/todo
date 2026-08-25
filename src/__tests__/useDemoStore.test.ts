@@ -709,6 +709,15 @@ describe('demo mode', () => {
     expect(persistent.every(t => t.reminderTime !== null)).toBe(true);
   });
 
+  it('seeds a reminder set as "N days before due" rather than a fixed instant', () => {
+    useDemoStore.getState().enterDemoMode();
+    const relative = useTaskStore.getState().tasks.filter(t => t.reminderOffsetDays !== null);
+
+    expect(relative.length).toBeGreaterThan(0);
+    // Only meaningful with both a due date and a reminder time to anchor.
+    expect(relative.every(t => t.dueDate !== null && t.reminderTime !== null)).toBe(true);
+  });
+
   // A title rule is invisible until something has actually been filed by one,
   // so proving the rule exists isn't enough — what this pins is that the
   // seeded task got its category, tag and effort from the rule and not from

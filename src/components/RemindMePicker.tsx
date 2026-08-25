@@ -25,15 +25,25 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
-import { getLogicalNow } from '../utils/dateUtils';
+import { getLogicalNow, getReminderOffsetDate, describeReminderOffset } from '../utils/dateUtils';
 import { isAlarmKitAvailable } from 'todo-alarmkit-bridge';
+import { SegmentedControl } from './SegmentedControl';
+import { CountStepper } from './CountStepper';
 import type { ReminderKind } from '../types';
+
+type Mode = 'date' | 'before';
 
 interface Props {
   visible: boolean;
   value: Date | null;
   kind: ReminderKind;
-  onConfirm: (date: Date, kind: ReminderKind) => void;
+  // The task's own due date, and the reminder's current "N days before due"
+  // offset if it has one — see Task.reminderOffsetDays. dueDate gates whether
+  // the "Before due date" mode is even offered: there's nothing to count back
+  // from without one.
+  dueDate?: Date | null;
+  offsetDays?: number | null;
+  onConfirm: (date: Date, kind: ReminderKind, offsetDays: number | null) => void;
   onClear?: () => void;
   onCancel: () => void;
 }
@@ -45,7 +55,10 @@ const CELL_SIZE = Math.floor((CARD_WIDTH - spacing.md * 2 - CAL_PADDING * 2) / 7
 
 const alarmKitAvailable = isAlarmKitAvailable();
 
-export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCancel }: Props) {
+const BEFORE_DAYS_MIN = 1;
+const BEFORE_DAYS_MAX = 60;
+
+export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDays = null, onConfirm, onClear, onCancel }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   // Reactive, unlike the width above: read once at module load, a stale
@@ -64,6 +77,11 @@ export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCan
   const [nlText, setNlText] = useState('');
   const [pickerReady, setPickerReady] = useState(false);
   const [selectedKind, setSelectedKind] = useState<ReminderKind>(kind);
+  // 'before' is only ever the opening mode when there's an offset already set
+  // on the task and a due date to count it from — otherwise there's nothing
+  // to switch to it from, so it isn't even offered (see the toggle below).
+  const [mode, setMode] = useState<Mode>(offsetDays !== null && dueDate ? 'before' : 'date');
+  const [beforeDays, setBeforeDays] = useState(offsetDays ?? 1);
 
   useEffect(() => {
     if (!visible) {
@@ -78,6 +96,8 @@ export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCan
     setTimeDate(t);
     setNlText('');
     setSelectedKind(kind);
+    setMode(offsetDays !== null && dueDate ? 'before' : 'date');
+    setBeforeDays(offsetDays ?? 1);
   }, [visible]);
 
   const weekStartsOn = useSettingsStore(s => s.weekStartsOn);
@@ -111,11 +131,20 @@ export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCan
   };
 
   const confirm = () => {
+    if (mode === 'before') {
+      if (!dueDate) return;
+      const result = getReminderOffsetDate(dueDate, beforeDays);
+      result.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
+      onConfirm(result, selectedKind, beforeDays);
+      return;
+    }
     if (!selectedDate) return;
     const result = new Date(selectedDate);
     result.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
-    onConfirm(result, selectedKind);
+    onConfirm(result, selectedKind, null);
   };
+
+  const canConfirm = mode === 'before' ? !!dueDate : !!selectedDate;
 
   return (
     <Modal
@@ -142,6 +171,27 @@ export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCan
               </TouchableOpacity>
             </View>
 
+            {/* On a date vs before the task's own due date — only offered
+                when there's a due date to count back from. */}
+            {!!dueDate && (
+              <>
+                <View style={styles.modeSection}>
+                  <SegmentedControl<Mode>
+                    label="When"
+                    value={mode}
+                    onChange={setMode}
+                    options={[
+                      { value: 'date', label: 'On a date' },
+                      { value: 'before', label: 'Before due date' },
+                    ]}
+                  />
+                </View>
+                <View style={styles.sectionGap} />
+              </>
+            )}
+
+            {mode === 'date' && (
+              <>
             {/* Natural language input */}
             <View style={styles.nlSection}>
               <TextInput
@@ -229,6 +279,33 @@ export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCan
             </View>
 
             <View style={styles.sectionGap} />
+              </>
+            )}
+
+            {mode === 'before' && dueDate && (
+              <>
+                <View style={styles.beforeSection}>
+                  <Text style={styles.sectionLabel}>Before due date</Text>
+                  <View style={styles.beforeRow}>
+                    <CountStepper
+                      value={beforeDays}
+                      onChange={n => setBeforeDays(n ?? BEFORE_DAYS_MIN)}
+                      min={BEFORE_DAYS_MIN}
+                      max={BEFORE_DAYS_MAX}
+                      label="Days before due"
+                    />
+                    <Text style={styles.beforeLabel}>
+                      {describeReminderOffset(beforeDays)}
+                    </Text>
+                  </View>
+                  <Text style={styles.beforeHint}>
+                    Fires {format(getReminderOffsetDate(dueDate, beforeDays), 'MMM d')}, at the time below —
+                    and keeps counting back this many days on every future occurrence.
+                  </Text>
+                </View>
+                <View style={styles.sectionGap} />
+              </>
+            )}
 
             {/* Time section */}
             {pickerReady && (
@@ -336,9 +413,9 @@ export function RemindMePicker({ visible, value, kind, onConfirm, onClear, onCan
 
             {/* Done button */}
             <TouchableOpacity
-              style={[styles.doneBtn, !selectedDate && styles.doneBtnDisabled]}
+              style={[styles.doneBtn, !canConfirm && styles.doneBtnDisabled]}
               onPress={confirm}
-              disabled={!selectedDate}
+              disabled={!canConfirm}
               activeOpacity={interaction.activeOpacity}
             >
               <Text style={styles.doneBtnLabel}>Done</Text>
@@ -430,6 +507,30 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: spacing.xs + 2,
+  },
+  modeSection: {
+    marginHorizontal: spacing.md,
+  },
+  beforeSection: {
+    marginHorizontal: spacing.md,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    padding: spacing.sm + 2,
+  },
+  beforeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  beforeLabel: {
+    color: colors.text,
+    fontSize: font.sm,
+    fontWeight: fontWeight.medium,
+  },
+  beforeHint: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    marginTop: spacing.xs + 2,
   },
   calSection: {
     marginHorizontal: spacing.md,
