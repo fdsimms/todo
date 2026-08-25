@@ -88,6 +88,13 @@ export function defaultAnswer(question: TemplateQuestion, anchors: TemplateAncho
   const fromDates = answerFromDates(question, anchors);
   if (fromDates !== null) return fromDates;
   if (question.kind === 'choice') return question.options[0] ?? '';
+  // Deliberately not the choice rule above, and this is the one place that
+  // matters most: a 'people' question always starts at nobody, never at a
+  // guessed answer. checkScheduledTemplates() calls resolveAnswers with
+  // nothing typed, so this is what an unattended run's "who" resolves to —
+  // see personIdsForAnswers, and docs/arch/people.md on why a generated task
+  // carries no personIds. normalizeTemplateQuestion keeps defaultValue empty
+  // for this kind, so there is nothing here that could answer otherwise.
   return question.defaultValue;
 }
 
@@ -230,6 +237,62 @@ export function reselectForAnswers(
   return selected;
 }
 
+/**
+ * The person ids a 'people' answer names, or `[]` for one nobody has answered.
+ *
+ * Stored the same way `Task.personIds` itself is on its own SQLite column — a
+ * JSON array of ids — because a person picker's answer is a set and the
+ * answer model everywhere else in this module is one string per question
+ * (`Record<string, string>`, see `resolveAnswers`). Never throws: a
+ * corrupted or hand-edited answer reads as "nobody", the same resolve-or-shrug
+ * every other cross-row pointer in the people layer already follows.
+ */
+export function personIdsFromAnswer(raw: string): string[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The reverse of `personIdsFromAnswer` — what a pick actually writes into the answer string. */
+export function personIdsToAnswer(ids: readonly string[]): string {
+  return ids.length > 0 ? JSON.stringify(ids) : '';
+}
+
+/**
+ * Everybody named by any 'people' question's answer, across the whole set —
+ * what every task the run creates gets written onto its own `personIds`.
+ *
+ * **This is what makes an unattended run safe, and the safety lives in
+ * `defaultAnswer`, not here.** `docs/arch/people.md`: a generated task
+ * carries no `personIds`, because nobody present chose to name them. A
+ * scheduled run calls `resolveAnswers(questions, {}, anchors)` — nothing
+ * typed — so every 'people' question resolves through `defaultAnswer`, which
+ * never gives this kind anything but `''`. This function stays generic
+ * exactly because that's already guaranteed: it doesn't need to know whether
+ * a person present is answering or an unattended run is, the same way
+ * `placeholderValuesFor` beside it doesn't.
+ *
+ * Several 'people' questions union rather than pick one: a template can ask
+ * "who's on the flight" and "who's at the hotel" separately, and a task
+ * naming either of them is a task naming somebody, the same as `personIds`
+ * means everywhere else in the app.
+ */
+export function personIdsForAnswers(
+  questions: readonly TemplateQuestion[],
+  answers: Record<string, string>,
+): string[] {
+  const ids = new Set<string>();
+  for (const question of questions) {
+    if (question.kind !== 'people') continue;
+    for (const id of personIdsFromAnswer(answers[question.id] ?? '')) ids.add(id);
+  }
+  return [...ids];
+}
+
 /** What a question is called where it's listed — its prompt, or the blank it fills when it hasn't got one. */
 export function questionLabel(question: TemplateQuestion): string {
   return question.prompt.trim() || (question.name ? `{${question.name}}` : 'Question');
@@ -253,6 +316,8 @@ export function describeQuestion(question: TemplateQuestion): string {
         ? 'A number'
         : `A number, from the dates (${question.fromDates})`
     );
+  } else if (question.kind === 'people') {
+    parts.push('Who');
   } else {
     parts.push('Text');
   }

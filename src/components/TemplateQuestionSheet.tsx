@@ -34,12 +34,17 @@ const KIND_OPTIONS: { value: TemplateQuestionKind; label: string }[] = [
   { value: 'choice', label: 'A choice' },
   { value: 'number', label: 'A number' },
   { value: 'text', label: 'Text' },
+  { value: 'people', label: 'Who' },
 ];
 
 const KIND_NOTES: Record<TemplateQuestionKind, string> = {
   choice: 'Pick one of the answers below. Items can be set to be included only for some of them.',
   number: 'Type a count. Item titles can do arithmetic on it: "Pack {nights / 2} pairs of jeans".',
   text: 'Type anything. Fills the blank of the same name in item titles and notes.',
+  // Never creates a person, only picks from who's already been added — see
+  // docs/arch/people.md. No "N of N" here: unlike choice, there's no fixed
+  // answer list to name, and the sheet the answer is picked in says the rest.
+  people: "Pick who's coming when the template is applied. Every task the run creates names them.",
 };
 
 const SOURCE_OPTIONS: { value: TemplateQuestionSource; label: string }[] = [
@@ -100,8 +105,10 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
     const cleanedOptions = options.map(o => o.trim()).filter(Boolean);
     // A name is optional — a question can exist purely to condition items — but
     // one that's typed has to be a blank the engine will actually match again,
-    // or the title keeps its literal `{2 nights}` forever.
-    const cleanedName = name.trim() ? normalizePlaceholderName(name) : '';
+    // or the title keeps its literal `{2 nights}` forever. Forced empty for
+    // 'people' regardless of what's typed: the field isn't even shown for that
+    // kind (see above), so there's nothing here to validate.
+    const cleanedName = kind !== 'people' && name.trim() ? normalizePlaceholderName(name) : '';
     if (cleanedName === null) {
       haptics.warning();
       Alert.alert(
@@ -110,6 +117,9 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
       );
       return;
     }
+    // 'people' always has a prompt to fall back on requiring, since it has no
+    // blank to fill in instead — "Give the question something to say" is the
+    // only way this question can fail the check below.
     if (!prompt.trim() && !cleanedName) {
       haptics.warning();
       Alert.alert('Nothing to ask', 'Give the question something to say, or a blank for it to fill in.');
@@ -120,7 +130,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
       name: cleanedName,
       kind,
       options: kind === 'choice' ? cleanedOptions : [],
-      defaultValue: kind === 'choice' ? '' : defaultValue.trim(),
+      defaultValue: kind === 'choice' || kind === 'people' ? '' : defaultValue.trim(),
       fromDates: kind === 'number' ? fromDates : ('none' as TemplateQuestionSource),
     };
     if (question) updateQuestion(templateId, question.id, values);
@@ -227,7 +237,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
         </View>
       )}
 
-      {kind !== 'choice' && fromDates === 'none' && (
+      {kind !== 'choice' && kind !== 'people' && fromDates === 'none' && (
         <View style={styles.sectionCard}>
           <Text style={styles.fieldLabel}>DEFAULT</Text>
           <TextInput
@@ -244,28 +254,32 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
         </View>
       )}
 
-      <View style={styles.sectionCard}>
-        <Text style={styles.fieldLabel}>FILLS THE BLANK</Text>
-        <View style={styles.blankRow}>
-          <Text style={styles.brace}>{'{'}</Text>
-          <TextInput
-            style={styles.valueInput}
-            value={name}
-            onChangeText={setName}
-            placeholder="e.g. nights"
-            placeholderTextColor={colors.textTertiary}
-            autoCapitalize="none"
-            maxLength={TITLE_MAX_LENGTH}
-            returnKeyType="done"
-            accessibilityLabel="Blank this question fills"
-          />
-          <Text style={styles.brace}>{'}'}</Text>
+      {/* A people question fills no blank — its answer is a set of ids, not
+          text a title could sensibly inline (see personIdsForAnswers). */}
+      {kind !== 'people' && (
+        <View style={styles.sectionCard}>
+          <Text style={styles.fieldLabel}>FILLS THE BLANK</Text>
+          <View style={styles.blankRow}>
+            <Text style={styles.brace}>{'{'}</Text>
+            <TextInput
+              style={styles.valueInput}
+              value={name}
+              onChangeText={setName}
+              placeholder="e.g. nights"
+              placeholderTextColor={colors.textTertiary}
+              autoCapitalize="none"
+              maxLength={TITLE_MAX_LENGTH}
+              returnKeyType="done"
+              accessibilityLabel="Blank this question fills"
+            />
+            <Text style={styles.brace}>{'}'}</Text>
+          </View>
+          <Text style={styles.note}>
+            Item titles holding this blank get the answer written into them. Leave it empty for a
+            question that only decides which items are included.
+          </Text>
         </View>
-        <Text style={styles.note}>
-          Item titles holding this blank get the answer written into them. Leave it empty for a
-          question that only decides which items are included.
-        </Text>
-      </View>
+      )}
 
       {question && (
         <TouchableOpacity

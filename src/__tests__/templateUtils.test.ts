@@ -1,5 +1,6 @@
 import {
   normalizeTemplateItem,
+  normalizeTemplateQuestion,
   resolveOffsetDate,
   buildDraftsFromTemplate,
   formatOffsetLabel,
@@ -30,7 +31,7 @@ import {
   templateHasMissingRefs,
   describeMissingRefs,
 } from '../utils/templateUtils';
-import type { TaskTemplate, TemplateAnchor, TemplateItem } from '../types';
+import type { TaskTemplate, TemplateAnchor, TemplateItem, TemplateQuestion } from '../types';
 
 const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   id: 'item-1',
@@ -144,6 +145,48 @@ describe('normalizeTemplateItem', () => {
 
   it('preserves a stored deliverableKind', () => {
     expect(normalizeTemplateItem({ deliverableKind: 'date' }).deliverableKind).toBe('date');
+  });
+});
+
+describe('normalizeTemplateQuestion', () => {
+  it('falls back to "text" for an empty or unrecognised kind', () => {
+    expect(normalizeTemplateQuestion({}).kind).toBe('text');
+    const raw = { kind: 'essay' } as unknown as Partial<TemplateQuestion>;
+    expect(normalizeTemplateQuestion(raw).kind).toBe('text');
+  });
+
+  it('preserves each real kind, including people', () => {
+    expect(normalizeTemplateQuestion({ kind: 'number' }).kind).toBe('number');
+    expect(normalizeTemplateQuestion({ kind: 'choice' }).kind).toBe('choice');
+    expect(normalizeTemplateQuestion({ kind: 'people' }).kind).toBe('people');
+  });
+
+  // A people question fills no blank and starts every run at nobody — forced
+  // here rather than merely left blank by the editor, so a hand-edited or
+  // restored row can't carry a stray name into a title substitution, or a
+  // stray default into an unattended run's answer (see personIdsForAnswers).
+  it('clears name and defaultValue for a people question regardless of what raw claims', () => {
+    const question = normalizeTemplateQuestion({
+      kind: 'people',
+      name: 'guests',
+      defaultValue: 'p1',
+    });
+    expect(question.name).toBe('');
+    expect(question.defaultValue).toBe('');
+  });
+
+  it('keeps name and defaultValue for every other kind', () => {
+    expect(normalizeTemplateQuestion({ kind: 'text', name: 'city', defaultValue: 'Portland' }))
+      .toMatchObject({ name: 'city', defaultValue: 'Portland' });
+    // 'choice' already had no author-set default before 'people' existed —
+    // unaffected by this change, confirmed so the two don't drift apart.
+    expect(normalizeTemplateQuestion({ kind: 'choice', name: 'type', defaultValue: 'Work' }))
+      .toMatchObject({ name: 'type', defaultValue: '' });
+  });
+
+  it('does not crash on unknown future fields', () => {
+    const raw = { kind: 'people', extra: true } as unknown as Partial<TemplateQuestion>;
+    expect(() => normalizeTemplateQuestion(raw)).not.toThrow();
   });
 });
 

@@ -11,8 +11,11 @@ import {
   questionLabel,
   describeQuestion,
   describeConditions,
+  personIdsFromAnswer,
+  personIdsToAnswer,
+  personIdsForAnswers,
 } from '../utils/templateQuestions';
-import { normalizeTemplateItem, buildApplyTree } from '../utils/templateUtils';
+import { normalizeTemplateItem, normalizeTemplateQuestion, buildApplyTree } from '../utils/templateUtils';
 import type { TaskTemplate, TemplateItem, TemplateQuestion } from '../types';
 
 const makeQuestion = (overrides: Partial<TemplateQuestion> = {}): TemplateQuestion => ({
@@ -106,6 +109,14 @@ describe('defaultAnswer', () => {
     expect(defaultAnswer(question, noAnchors)).toBe('3');
     expect(defaultAnswer(question, { start: new Date('2026-03-03'), end: new Date('2026-03-05') })).toBe('2');
   });
+
+  // Not the choice rule above (first option): a 'people' question starts at
+  // nobody. normalizeTemplateQuestion is what guarantees defaultValue is ''
+  // for this kind, which is what makes this safe for an unattended run.
+  it('starts a people question at nobody', () => {
+    const question = normalizeTemplateQuestion({ kind: 'people', name: 'ignored', defaultValue: 'ignored' });
+    expect(defaultAnswer(question, noAnchors)).toBe('');
+  });
 });
 
 describe('resolveAnswers', () => {
@@ -118,6 +129,62 @@ describe('resolveAnswers', () => {
   // Clearing the box is how a field is handed back to the dates.
   it('treats an emptied answer as untouched', () => {
     expect(resolveAnswers([nights], { 'q-nights': '  ' }, anchors)['q-nights']).toBe('7');
+  });
+});
+
+describe('personIdsFromAnswer / personIdsToAnswer', () => {
+  it('reads a missing or empty answer as nobody', () => {
+    expect(personIdsFromAnswer('')).toEqual([]);
+  });
+
+  it('round-trips a set of ids', () => {
+    expect(personIdsFromAnswer(personIdsToAnswer(['p1', 'p2']))).toEqual(['p1', 'p2']);
+  });
+
+  // '', not '[]' — resolveAnswers falls back to the default on a falsy typed
+  // answer, and '[]' is truthy, so unpicking the last person by hand would
+  // get stuck instead of handing the field back to its (empty) default.
+  it('writes nobody picked as the empty string, not an empty array', () => {
+    expect(personIdsToAnswer([])).toBe('');
+  });
+
+  // A hand-edited or corrupted answer reads as nobody rather than throwing —
+  // resolve-or-shrug, same as every other cross-row pointer in the people layer.
+  it('shrugs at an answer that is not a JSON array of strings', () => {
+    expect(personIdsFromAnswer('not json')).toEqual([]);
+    expect(personIdsFromAnswer('{"not":"an array"}')).toEqual([]);
+    expect(personIdsFromAnswer('["p1",42,null]')).toEqual(['p1']);
+  });
+});
+
+describe('personIdsForAnswers', () => {
+  const whoQuestion = normalizeTemplateQuestion({ id: 'q-who', prompt: "Who's coming?", kind: 'people' });
+
+  it("reads the ids a 'people' question answered", () => {
+    const answers = { 'q-who': personIdsToAnswer(['p1', 'p2']) };
+    expect(personIdsForAnswers([whoQuestion], answers)).toEqual(['p1', 'p2']);
+  });
+
+  it('unions several people questions and dedupes', () => {
+    const second = { ...whoQuestion, id: 'q-who-2' };
+    const answers = {
+      'q-who': personIdsToAnswer(['p1', 'p2']),
+      'q-who-2': personIdsToAnswer(['p2', 'p3']),
+    };
+    expect(personIdsForAnswers([whoQuestion, second], answers).sort()).toEqual(['p1', 'p2', 'p3']);
+  });
+
+  it('ignores a question that is not the people kind', () => {
+    expect(personIdsForAnswers([makeQuestion()], { 'q-type': 'Work' })).toEqual([]);
+  });
+
+  // The safety property applyTemplate/checkScheduledTemplates depend on: an
+  // unattended run never names anyone, even when the template has a 'people'
+  // question, because resolveAnswers falls back to defaultAnswer — and
+  // defaultAnswer never gives this kind anything but ''.
+  it('is empty for an unattended run, even with a people question on the template', () => {
+    const answers = resolveAnswers([whoQuestion], {}, { start: null, end: null });
+    expect(personIdsForAnswers([whoQuestion], answers)).toEqual([]);
   });
 });
 
@@ -264,6 +331,9 @@ describe('labels', () => {
     expect(describeQuestion(makeQuestion({ options: [] }))).toBe('No answers yet · {trip type}');
     expect(describeQuestion(nights)).toBe('A number, from the dates (nights) · {nights}');
     expect(describeQuestion({ ...nights, fromDates: 'none' })).toBe('A number · {nights}');
+    // No trailing '· {name}' — normalizeTemplateQuestion always clears name
+    // for this kind, so there's never a blank for it to fill.
+    expect(describeQuestion(normalizeTemplateQuestion({ kind: 'people' }))).toBe('Who');
   });
 
   it('describes what an item is conditioned on, without doubling up the punctuation', () => {

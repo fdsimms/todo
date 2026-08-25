@@ -50,6 +50,12 @@ interface Props {
    */
   noun: string;
   /**
+   * Overrides the `${noun}s` the "N more…" label defaults to, for the one
+   * noun in the app whose plural isn't its singular plus "s" — "person"
+   * becomes "people", not "persons".
+   */
+  pluralNoun?: string;
+  /**
    * Adds one. Return a message to reject the name and keep the field open;
    * return nothing to accept it. Omit entirely for a grid you can only pick
    * from — the create affordance disappears with it.
@@ -84,6 +90,7 @@ interface Props {
 export function PillGroup({
   options,
   noun,
+  pluralNoun,
   onCreate,
   createMaxLength = 32,
   limit = DEFAULT_PILL_LIMIT,
@@ -223,7 +230,7 @@ export function PillGroup({
             onPress={revealAll}
             accessibilityRole="button"
             accessibilityState={{ expanded: false }}
-            accessibilityLabel={`Show ${hiddenCount} more ${noun}s`}
+            accessibilityLabel={`Show ${hiddenCount} more ${pluralNoun ?? `${noun}s`}`}
           >
             <Text style={[styles.pillText, styles.moreText]}>{hiddenCount} more</Text>
             <Ionicons name="chevron-down" size={12} color={colors.textSecondary} />

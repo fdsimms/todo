@@ -29,6 +29,7 @@ import {
   resolveAnswers,
   placeholderValuesFor,
   initialLeafSelection,
+  personIdsForAnswers,
 } from '../utils/templateQuestions';
 import { dueTemplateRun } from '../utils/templateSchedule';
 import { useSettingsStore } from './useSettingsStore';
@@ -42,6 +43,18 @@ export interface ApplyTemplateOptions {
   runName?: string;
   /** Values for `{name}` tokens in item titles/notes. `run` is bound to runName automatically. */
   placeholders?: Record<string, string>;
+  /**
+   * Everyone named by a `'people'` question, unioned across every such
+   * question on the run. Stamped onto every task the run creates directly
+   * from a template item — not onto a run stack/project (neither has a
+   * `personIds` field) and not onto a 'task' container's own parent row or
+   * its items' subtask stubs (`addSubtask` takes no field overrides). An
+   * unattended run always resolves this to `[]`: `resolveAnswers` falls
+   * back to `defaultAnswer`, which for a `'people'` question is always
+   * `question.defaultValue`, which `normalizeTemplateQuestion` guarantees is
+   * `''` for that kind. checkScheduledTemplates relies on exactly that.
+   */
+  personIds?: string[];
   /**
    * Land every created task in this existing project instead of the template's
    * own container. A resolved 'project' container would otherwise create a
@@ -457,6 +470,7 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         // addSubtask's convention below — only the run task above represents
         // the run inside a project.
         ...(projectId && !runTask ? { projectId } : {}),
+        ...(options?.personIds && options.personIds.length > 0 ? { personIds: options.personIds } : {}),
       }));
 
       // Second pass: subtasks and groups need ids that don't exist until
@@ -578,6 +592,10 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       get().applyTemplate(template.id, selectedIds, due.anchors, {
         runName: due.runName,
         placeholders: placeholderValuesFor(questions, answers),
+        // Always [] here: answers is {}, so every 'people' question resolves
+        // to defaultAnswer, which normalizeTemplateQuestion guarantees is ''
+        // for that kind. Nobody was asked, so nobody gets named.
+        personIds: personIdsForAnswers(questions, answers),
       });
     }
     // Deliberately no setLastAction, same reasoning as dripStalledProjects and

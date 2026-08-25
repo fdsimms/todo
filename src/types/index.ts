@@ -1274,7 +1274,13 @@ export type TemplateAnchor = 'start' | 'end';
 //   'number' — a typed count, which item titles can do arithmetic on
 //              ("Pack {nights} shirts", "Pack {nights / 2} pairs of jeans")
 //   'choice' — one of a fixed list, which items can be conditioned on
-export type TemplateQuestionKind = 'text' | 'number' | 'choice';
+//   'people' — any number of the people already added (#2090), written onto
+//              personIds for every task the run creates. Its own kind rather
+//              than a variant of 'choice': the answer set isn't a fixed,
+//              author-typed list, it's whoever exists at apply time, and the
+//              answer is a set rather than one of them — see
+//              personIdsForAnswers in templateQuestions.ts.
+export type TemplateQuestionKind = 'text' | 'number' | 'choice' | 'people';
 
 // Where a number question's answer comes from before anyone types one.
 // 'days' and 'nights' both count the run's own two anchor dates — a trip
