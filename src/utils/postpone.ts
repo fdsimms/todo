@@ -175,8 +175,8 @@ export interface DriftEntry {
  *
  * Ranked by count, then by the longest-running drift, then by title so the
  * order is stable across renders rather than dependent on row order — a list
- * that reshuffles under a finger when one task's count ticks is the failure
- * `foldRows` avoids by not re-sorting.
+ * that reshuffles under a finger when one task's count ticks is the failure a
+ * stable sort avoids.
  *
  * Split out from `driftingTasks()` below so a store selector can hand back
  * this array — filter+sort of the existing Task references, so its elements

@@ -48,7 +48,7 @@ describe('resolvePillOverflow', () => {
     });
 
     it('shows one over the cap rather than hiding a single pill', () => {
-      // A "1 more" costs a tap to save nothing — see the note in foldRows.
+      // A "1 more" costs a tap to save nothing.
       const r = resolvePillOverflow(many(DEFAULT_PILL_LIMIT + 1));
       expect(r.visible).toHaveLength(DEFAULT_PILL_LIMIT + 1);
       expect(r.hiddenCount).toBe(0);

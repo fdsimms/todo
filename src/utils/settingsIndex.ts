@@ -274,7 +274,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['keyword', 'expense', 'automatic', 'auto file', 'category', 'project', 'tag',
       'starts with', 'parse', 'shortcut', 'prefix', 'why did this'] },
   { id: 'simpleTaskForm', groupId: 'tasksProjects', label: 'Show fewer fields', section: 'Task form',
-    keywords: ['simple', 'quick add', 'editor', 'chips', 'declutter', 'basic', 'minimal'] },
+    keywords: ['simple', 'quick add', 'chips', 'declutter', 'basic', 'minimal'] },
   { id: 'autoArchiveProjects', groupId: 'tasksProjects', label: 'Auto-archive projects', section: 'Projects',
     keywords: ['finished', 'complete'] },
   { id: 'defaultProjectNudgeCadence', groupId: 'tasksProjects', label: 'Default nudge cadence', section: 'Projects',

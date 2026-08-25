@@ -339,7 +339,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **196 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **195 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -813,20 +813,20 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 
 **The task editor's fields are searchable, and the index is the JSX.** The magnifier in
 `TaskEditor`'s header opens a `SearchField` that filters the sheet down to matching rows
-(`src/utils/editorSearch.ts`, `searchTerms` on `EditorGroup`) — groups with no hit disappear,
-matching ones open regardless of the fold. Three decisions worth not re-deriving:
+(`src/utils/editorSearch.ts`, `searchTerms` on `EditorGroup`) — groups with no hit disappear.
+Every field always renders regardless of search; search only narrows which of them are on screen.
+Three decisions worth not re-deriving:
 
 - **An `EditorGroupRow` carries its own `keywords`**, so there is no `taskEditorIndex.ts` to keep in
-  step with the form the way `settingsIndex.ts` must. The rows already declare `label` and `set`
-  computed against the task being edited, which is exactly the index a search needs; a separate
-  file would be a second copy that goes stale, and #1229 correctly sized that as the expensive part.
-  **The keywords are the feature**, not a nicety — a tidier layout can't help someone looking for
-  *blocked*, *away*, *snooze* or *url*, and that gets worse with every field added.
+  step with the form the way `settingsIndex.ts` must. The rows already declare `label`, which is
+  exactly the index a search needs; a separate file would be a second copy that goes stale, and
+  #1229 correctly sized that as the expensive part. **The keywords are the feature**, not a nicety
+  — a tidier layout can't help someone looking for *blocked*, *away*, *snooze* or *url*, and that
+  gets worse with every field added.
 - **It filters in place; it does not scroll to a row.** `searchSettings` ranks and jumps because
   Settings renders a *result list* over rows that live behind a navigation step. These rows are the
   form, so the match is shown where it lives — which is also why `filterEditorRows` is deliberately
-  unranked (a form that re-sorts as you type is one you can't learn — the same call `foldRows` makes
-  about not hoisting set rows).
+  unranked (a form that re-sorts as you type is one you can't learn).
 - **It's behind the magnifier, not a permanent bar.** The sheet is dense, and a bar every task edit
   pays for to serve the edits that need it is the trade that made the editor long in the first place.
   Closing clears the query, and reopening the sheet resets it — handing someone back a filtered form
