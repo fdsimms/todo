@@ -816,8 +816,18 @@ function seedPeople(today: Date): void {
   });
 
   // No birthday at all, which is the state most people are added in: a name is
-  // enough and everything else is optional.
+  // enough and everything else is optional. She is the one person opted into a
+  // reminder, because the generator is invisible until somebody is — and she
+  // carries an "ask about" note, so the seeded row reads "Ask Mom about her
+  // garden" rather than the plain "Catch up with Mom". That is rule 7 in one
+  // row: the clock decides when to speak, the note decides what it says.
   const mom = createPerson('Mom');
+  updatePerson(mom.id, {
+    cadenceDays: 14,
+    nudgeOptIn: true,
+    askAbout: 'her garden',
+    phoneNumber: '555 0106',
+  });
 
   // Tasks that name people, which is what a shared history is made of (#2045).
   // One planned and one already done, so the link reads both ways rather than
@@ -828,11 +838,20 @@ function seedPeople(today: Date): void {
   const coffee = addTask({ title: 'Coffee with Mom' });
   updateTask(coffee.id, { personIds: [mom.id] });
   completeTask(coffee.id);
+  // Backdated past her cadence, which is what makes the reminder below actually
+  // fire. Written straight onto the row rather than through a store action
+  // because nothing completes a task *in the past* — the honest alternative
+  // would be seeding no reminder at all, and then the feature reads as absent.
+  updateTask(coffee.id, { completedAt: addDays(today, -20).toISOString() });
 
   // The birthday task comes from the same pass the app runs at launch rather
   // than from a row written by hand here: a seeded row that skipped the
   // generator could drift from what the generator actually produces.
   useTaskStore.getState().checkBirthdayTasks();
+  // And the reminder, through the same pass the app runs at launch. It finds
+  // exactly one person opted in, so demo mode opens with one catch-up row
+  // rather than a screen of them.
+  useTaskStore.getState().checkReachOutTasks();
 }
 
 // ---------------------------------------------------------------------------

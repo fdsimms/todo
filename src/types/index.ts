@@ -450,10 +450,22 @@ export interface Person {
   // above, and both mean "never chase me about this person again", which is far
   // more than one swipe says.
   reachOutDeclinedAt: string | null;
+  /**
+   * Something to ask them about next time — "the new job", "how the move went".
+   *
+   * Rule 7 in miniature, and the field that keeps the nudge from being purely a
+   * clock: when it is set, the reach-out task's title becomes "Ask Ansley about
+   * the new job" instead of "Catch up with Ansley". A reason to get in touch
+   * beats a prompt to.
+   *
+   * Empty on every person and never filled in by the app. It is a note you
+   * wrote, which is the whole point of it.
+   */
+  askAbout: string;
 }
 
 /**
- * Which of the app's nine unattended generators wrote a task — see
+ * Which of the app's ten unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
  *
@@ -489,7 +501,12 @@ export type GeneratedKind =
   // Somebody's birthday, a few days ahead of the day itself — see
   // src/utils/birthdayTasks.ts. The only generator whose trigger is known years
   // in advance rather than derived from something that just changed.
-  | 'birthday';
+  | 'birthday'
+  // A person you asked to be reminded about, whose cadence has run out — see
+  // src/utils/reachOutTasks.ts. Silent on everybody until they are explicitly
+  // opted in, which is what keeps "who am I neglecting" a question the app
+  // never asks.
+  | 'reachOut';
 
 export interface Task {
   id: string;

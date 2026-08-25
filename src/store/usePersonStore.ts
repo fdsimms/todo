@@ -51,6 +51,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
     cadenceDays: 0,
     nudgeOptIn: false,
     reachOutDeclinedAt: null,
+    askAbout: '',
   };
 }
 
@@ -64,7 +65,7 @@ export type PersonPatch = Partial<Pick<Person,
   | 'name' | 'nickname' | 'notes'
   | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'birthdayTaskOptOut'
   | 'phoneNumber' | 'email' | 'linkUrl'
-  | 'cadenceDays' | 'nudgeOptIn' | 'reachOutDeclinedAt'
+  | 'cadenceDays' | 'nudgeOptIn' | 'reachOutDeclinedAt' | 'askAbout'
 >>;
 
 interface PersonStore {

@@ -14,6 +14,12 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
 import { birthdayInYear, hasBirthday } from '../utils/birthdayTasks';
+import { useTaskStore } from '../store/useTaskStore';
+import { useShallow } from 'zustand/react/shallow';
+import { CountStepper } from './CountStepper';
+import { describeCadence } from '../utils/nudgeCadence';
+import { personHistory } from '../utils/personHistory';
+import { describeObservedCadence, observedCadenceDays } from '../utils/reachOutTasks';
 
 interface Props {
   visible: boolean;
@@ -68,6 +74,18 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   const [linkUrl, setLinkUrl] = useState('');
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [cadenceDays, setCadenceDays] = useState(0);
+  const [askAbout, setAskAbout] = useState('');
+
+  // Read here so the cadence offer can be built from this person's own history
+  // — the number in the offer has to come from what actually happened, which is
+  // the whole reason it is not the app's opinion (rule 5).
+  const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const observed = useMemo(() => {
+    if (!person) return null;
+    const theirs = allTasks.filter(t => t.personIds.includes(person.id));
+    return observedCadenceDays(personHistory(theirs));
+  }, [allTasks, person]);
 
   useEffect(() => {
     if (!person || !visible) return;
@@ -81,6 +99,8 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
     setPhoneNumber(person.phoneNumber ?? '');
     setEmail(person.email ?? '');
     setLinkUrl(person.linkUrl ?? '');
+    setCadenceDays(person.cadenceDays);
+    setAskAbout(person.askAbout);
     setShowBirthdayPicker(false);
     setMoreOpen(false);
   }, [person, visible]);
@@ -108,6 +128,11 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       phoneNumber: phoneNumber.trim() || null,
       email: email.trim() || null,
       linkUrl: linkUrl.trim() || null,
+      cadenceDays,
+      // The opt-in is the cadence: there is no separate switch to forget to
+      // flip, and clearing the cadence is how somebody stops being nudged.
+      nudgeOptIn: cadenceDays > 0,
+      askAbout: askAbout.trim(),
     });
     onClose();
   };
@@ -247,6 +272,64 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         )}
       </View>
 
+      <Text style={styles.groupLabel}>KEEPING IN TOUCH</Text>
+      <View style={styles.sectionCard}>
+        <View style={styles.optionRow}>
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Remind me if we haven't talked in a while</Text>
+            <Text style={styles.optionHint}>
+              {cadenceDays > 0
+                ? `Adds a task when it has been ${describeCadence(cadenceDays).toLowerCase()}.`
+                : 'Off. Nothing about them shows up unless you ask for it.'}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={cadenceDays > 0 ? cadenceDays : null}
+            onChange={next => setCadenceDays(next ?? 0)}
+            min={1}
+            max={365}
+            allowNull
+            format={n => `${n}d`}
+            label="Days before a reminder"
+            describeValue={n => (n === null ? 'No reminder' : describeCadence(n))}
+          />
+        </View>
+        {/* The offer, and it only ever appears once there is enough history to
+            say so honestly — see observedCadenceDays. Declaring a frequency for
+            somebody you love is the coldest interaction in the feature, and a
+            number that came out of your own history is not that. */}
+        {observed !== null && cadenceDays !== observed && (
+          <TouchableOpacity
+            style={styles.offerRow}
+            onPress={() => { haptics.tap(); animateLayout(); setCadenceDays(observed); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={`Use every ${observed} days`}
+          >
+            <Ionicons name="sparkles-outline" size={14} color={colors.accent} />
+            <Text style={styles.offerText}>
+              {describeObservedCadence(observed)}. Use that?
+            </Text>
+          </TouchableOpacity>
+        )}
+        <View style={styles.sep} />
+        <View style={styles.fieldRow}>
+          <Text style={styles.fieldLabelWide}>Ask about</Text>
+          <TextInput
+            style={styles.fieldInput}
+            value={askAbout}
+            onChangeText={setAskAbout}
+            placeholder="e.g. the new job"
+            placeholderTextColor={colors.textTertiary}
+          />
+        </View>
+        <Text style={styles.cardFooter}>
+          When this is filled in, the reminder says to ask about it instead of just saying to catch up.
+        </Text>
+      </View>
+
       <Text style={styles.groupLabel}>GETTING HOLD OF THEM</Text>
       <View style={styles.sectionCard}>
         <View style={styles.fieldRow}>
@@ -384,6 +467,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: 12,
   },
   fieldLabel: { color: colors.text, fontSize: font.md, width: 92 },
+  fieldLabelWide: { color: colors.text, fontSize: font.md, width: 84 },
+  cadenceRow: { paddingHorizontal: spacing.md, paddingBottom: spacing.md },
+  offerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    marginHorizontal: spacing.md, marginBottom: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: 10,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.md,
+  },
+  offerText: { flex: 1, color: colors.accent, fontSize: font.xs, lineHeight: 17 },
   fieldInput: {
     flex: 1, color: colors.text, fontSize: font.md, textAlign: 'right',
     // A fixed height rather than a lineHeight keeps the row from resizing as

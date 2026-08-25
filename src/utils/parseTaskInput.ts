@@ -927,6 +927,112 @@ export function parseCategoryAndTagsInput(
   };
 }
 
+export interface ParsedPeople {
+  /** Ids of the people the matched tokens named, in order, deduplicated. */
+  personIds: string[];
+  /** Input minus every matched "@name" token, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  /** Start of the first matched token — drives the tooltip highlight. */
+  matchStart: number;
+  matchEnd: number;
+}
+
+/** The shape `parsePeopleInput` matches against: an id and the names it answers to. */
+export interface PersonToken {
+  id: string;
+  name: string;
+  nickname: string;
+}
+
+// An "@" immediately followed by a word, not itself preceded by a word
+// character, so an email address in a title ("mail bob@example.com") does not
+// false-positive on its domain. The comment on SUPPLY_PATTERN above reserved
+// this sigil for exactly this; "#" stays category-or-tag.
+//
+// Apostrophes and hyphens are in the character class because names have them
+// ("@mary-jane", "@o'brien"). Matched globally rather than once, since a plan
+// can name several people.
+const PERSON_TOKEN_PATTERN = /(?<!\w)@([a-z][\w'-]*)/gi;
+
+/**
+ * Finds every "@name" token in a quick-add title and resolves it against the
+ * people already added, so "beach with @dustin @ansley sat" creates a task
+ * naming both and titled "beach with".
+ *
+ * **This is the whole reason there is no interactions table.** The record of
+ * having seen somebody is a side effect of writing a task you were writing
+ * anyway, rather than data entry about your friends — which is the failure mode
+ * `docs/arch/people.md` is largely about. See rule 3 there.
+ *
+ * Matches a name or a nickname, exactly and case-insensitively, and also the
+ * first word of a name so "@dustin" finds "Dustin Reyes" — full names are how
+ * people arrive from a contact card, and nobody types a surname mid-sentence.
+ * Ambiguity is left unresolved rather than guessed: "@sam" with two Sams
+ * registered keeps typing rather than locking in the wrong one, the same call
+ * `parseCategoryAndTagsInput` makes about a prefix matching two categories.
+ *
+ * **Deliberately never creates a person.** An unrecognized "@word" is left as
+ * literal text, so an email address, a handle someone pasted, or a name you
+ * have not added costs nothing and prompts nothing. Adding somebody is a
+ * deliberate act performed on the People screen (rule 3 again), not a side
+ * effect of a typo.
+ *
+ * `people` is passed in rather than read from a store, keeping this module free
+ * of any store dependency — see the header note.
+ */
+export function parsePeopleInput(input: string, people: PersonToken[]): ParsedPeople | null {
+  // Built once per call rather than per token: a name can be reached three ways
+  // and the last writer would otherwise depend on iteration order.
+  const byName = new Map<string, string[]>();
+  const add = (key: string, id: string) => {
+    const k = key.trim().toLowerCase();
+    if (!k) return;
+    const held = byName.get(k);
+    if (held) { if (!held.includes(id)) held.push(id); }
+    else byName.set(k, [id]);
+  };
+  for (const person of people) {
+    add(person.name, person.id);
+    add(person.nickname, person.id);
+    // First word only, so "Dustin Reyes" answers to "@dustin". Skipped when the
+    // name is one word already, which the map above has covered.
+    const first = person.name.trim().split(/\s+/)[0];
+    if (first && first.toLowerCase() !== person.name.trim().toLowerCase()) add(first, person.id);
+  }
+
+  const matched: string[] = [];
+  const consumed: { start: number; end: number }[] = [];
+
+  for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
+    if (m.index === undefined) continue;
+    const token = m[1].toLowerCase();
+    const hits = byName.get(token);
+    // Exactly one, or nothing: two people answering to one token is left as
+    // literal text rather than resolved to whichever was added first.
+    if (!hits || hits.length !== 1) continue;
+    if (!matched.includes(hits[0])) matched.push(hits[0]);
+    consumed.push({ start: m.index, end: m.index + m[0].length });
+  }
+
+  if (matched.length === 0) return null;
+
+  let cleanTitle = input;
+  for (let i = consumed.length - 1; i >= 0; i--) {
+    cleanTitle = cleanTitle.slice(0, consumed[i].start) + cleanTitle.slice(consumed[i].end);
+  }
+  cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
+  // A bare "@dustin" alone is a literal title, not a task about nobody — the
+  // same refusal the category parser makes about a lone "#home".
+  if (!cleanTitle) return null;
+
+  return {
+    personIds: matched,
+    cleanTitle,
+    matchStart: consumed[0].start,
+    matchEnd: consumed[0].end,
+  };
+}
+
 function joinDayNames(days: number[]): string {
   if (days.length === 1) return DAY_NAMES_FULL[days[0]];
   const names = days.map(d => DAY_NAMES_SHORT[d]);

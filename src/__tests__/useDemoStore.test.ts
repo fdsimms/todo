@@ -848,9 +848,33 @@ describe('demo seed — people', () => {
     expect(usePersonStore.getState().people.some(p => p.nickname !== '')).toBe(true);
   });
 
-  it('nobody is opted into a nudge, which is the default the feature rests on', () => {
+  // Off is the default the whole feature rests on, so the seed has to show it
+  // as the default rather than as a thing nobody uses: most people carry no
+  // cadence at all, and exactly one is opted in so the generator is visible.
+  it('leaves almost everybody with no cadence, which is the default', () => {
     const people = usePersonStore.getState().people;
-    expect(people.every(p => !p.nudgeOptIn && p.cadenceDays === 0)).toBe(true);
+    const optedIn = people.filter(p => p.nudgeOptIn);
+    expect(optedIn).toHaveLength(1);
+    expect(people.filter(p => !p.nudgeOptIn).every(p => p.cadenceDays === 0)).toBe(true);
+  });
+
+  it('an opted-in person has a real cadence behind the opt-in', () => {
+    const optedIn = usePersonStore.getState().people.find(p => p.nudgeOptIn)!;
+    expect(optedIn.cadenceDays).toBeGreaterThan(0);
+  });
+
+  // Rule 7 in one row: the clock decides when to speak, the note decides what
+  // it says. Seeding the plain "Catch up with X" would show the generator but
+  // not the thing that keeps it warm.
+  it('puts a real catch-up task on the list, worded from the note', () => {
+    const reachOuts = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'reachOut');
+    expect(reachOuts).toHaveLength(1);
+    expect(reachOuts[0].title).toMatch(/^Ask /);
+    // Same rule the birthday task follows: the app's own row must not enter a
+    // history meant to hold what you actually did together.
+    expect(reachOuts[0].personIds).toEqual([]);
+    // And it carries the number, so the row is one tap from actually doing it.
+    expect(reachOuts[0].phoneNumber).not.toBeNull();
   });
 
   // The generator is invisible until a birthday is close enough to fire, so

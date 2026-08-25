@@ -42,6 +42,7 @@ import { SwipeableRow } from '../components/SwipeableRow';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { SelectionDot } from '../components/SelectionDot';
 import { LogbookFilterSheet } from '../components/LogbookFilterSheet';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { useColors } from '../theme/ThemeContext';
@@ -235,6 +236,8 @@ export function LogbookScreen() {
   const [query, setQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedPerson, setSelectedPerson] = useState<string | null>(null);
+  const people = usePersonStore(useShallow(s => s.people));
   const [filterVisible, setFilterVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
@@ -277,6 +280,13 @@ export function LogbookScreen() {
     [availableTags]
   );
 
+  // Archived people stay filterable: a row that names somebody is history, and
+  // filing them away is about the list rather than about what you did together.
+  const peopleChipItems = useMemo(
+    () => people.map(p => ({ key: p.id, label: displayNameOf(p) })),
+    [people]
+  );
+
   const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
 
   // ==== the lists: completed rows narrowed by lens, search and filters ====
@@ -284,9 +294,10 @@ export function LogbookScreen() {
     let tasks = completedTasks;
     if (selectedCategory) tasks = tasks.filter(t => t.category === selectedCategory);
     if (selectedTag) tasks = tasks.filter(t => t.tags.includes(selectedTag));
+    if (selectedPerson) tasks = tasks.filter(t => t.personIds.includes(selectedPerson));
     if (debouncedQuery.trim()) tasks = fuzzySearch(tasks, debouncedQuery).map(r => r.task);
     return tasks;
-  }, [completedTasks, selectedCategory, selectedTag, debouncedQuery]);
+  }, [completedTasks, selectedCategory, selectedTag, selectedPerson, debouncedQuery]);
 
   // The category and tag filters are task vocabulary and don't reach this lens
   // (see LogbookLens), so the query is all that narrows it.
@@ -298,7 +309,7 @@ export function LogbookScreen() {
   const isFiltered =
     activeLens === 'cooking'
       ? query.trim().length > 0
-      : query.trim().length > 0 || selectedCategory !== null || selectedTag !== null;
+      : query.trim().length > 0 || selectedCategory !== null || selectedTag !== null || selectedPerson !== null;
 
   // Extra bottom padding so the last rows aren't hidden behind the floating
   // bulk bar, same as the other bulk-selecting screens.
@@ -719,6 +730,9 @@ export function LogbookScreen() {
         onSelectCategory={setSelectedCategory}
         selectedTag={selectedTag}
         onSelectTag={setSelectedTag}
+        people={peopleChipItems}
+        selectedPerson={selectedPerson}
+        onSelectPerson={setSelectedPerson}
       />
     </View>
   );

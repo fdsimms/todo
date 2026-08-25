@@ -31,6 +31,10 @@ interface Props {
   onSelectCategory: (key: string | null) => void;
   selectedTag: string | null;
   onSelectTag: (key: string | null) => void;
+  /** Empty when nobody has been added, which hides the section entirely. */
+  people: LogbookFilterOption[];
+  selectedPerson: string | null;
+  onSelectPerson: (key: string | null) => void;
 }
 
 /**
@@ -41,6 +45,7 @@ interface Props {
  */
 export function LogbookFilterSheet({
   visible, onClose, categories, tags, selectedCategory, onSelectCategory, selectedTag, onSelectTag,
+  people, selectedPerson, onSelectPerson,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -88,12 +93,13 @@ export function LogbookFilterSheet({
     })
   ).current;
 
-  const activeCount = (selectedCategory ? 1 : 0) + (selectedTag ? 1 : 0);
+  const activeCount = (selectedCategory ? 1 : 0) + (selectedTag ? 1 : 0) + (selectedPerson ? 1 : 0);
 
   const clearAll = () => {
     haptics.tap();
     onSelectCategory(null);
     onSelectTag(null);
+    onSelectPerson(null);
   };
 
   return (
@@ -140,6 +146,19 @@ export function LogbookFilterSheet({
                 onSelect={onSelectTag}
                 showDot
                 style={categories.length > 0 ? { marginTop: spacing.lg } : undefined}
+                styles={styles}
+                colors={colors}
+              />
+            )}
+            {/* Hidden entirely when nobody has been added, rather than showing
+                an empty group: the people layer is invisible until it is used. */}
+            {people.length > 0 && (
+              <FilterGroup
+                label="Person"
+                options={people}
+                selected={selectedPerson}
+                onSelect={onSelectPerson}
+                style={categories.length > 0 || tags.length > 0 ? { marginTop: spacing.lg } : undefined}
                 styles={styles}
                 colors={colors}
               />

@@ -950,6 +950,10 @@ export function TodayScreen() {
           // wait for a force-quit. Idempotent: the source id carries the year,
           // so a second run finds the row already there and does nothing.
           useTaskStore.getState().checkBirthdayTasks();
+          // Same trigger again: a cadence runs out by time passing, and stops
+          // needing a row the moment anything lands in that person's history —
+          // including from this very row, which nothing else would then clear.
+          useTaskStore.getState().checkReachOutTasks();
           // A day rolls over purely by time passing, and a phone left open
           // across midnight never sees another cold start — so without this
           // the window would stop advancing until the app was force-quit. It
