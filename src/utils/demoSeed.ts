@@ -825,6 +825,10 @@ function seedPeople(today: Date): void {
   updatePerson(dustin.id, {
     birthdayMonth: bdayNear.getMonth() + 1,
     birthdayDay: bdayNear.getDate(),
+    // A year on one of the two, so the seed shows the field exists without
+    // implying everybody's is worth knowing — it's never read back to say
+    // what age he's turning (#2083 removed that; this is a separate field).
+    birthYear: bdayNear.getFullYear() - 34,
     phoneNumber: '555 0148',
     notes: 'Climbs on Wednesdays. Allergic to shellfish.',
   });

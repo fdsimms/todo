@@ -870,6 +870,11 @@ describe('demo seed — people', () => {
     expect(people.some(p => p.birthdayMonth === null && p.birthdayDay === null)).toBe(true);
   });
 
+  it('seeds one birth year, so the field reads as present without implying everybody needs one', () => {
+    const people = usePersonStore.getState().people;
+    expect(people.some(p => p.birthYear !== null)).toBe(true);
+  });
+
   it('seeds a nickname, which is otherwise invisible', () => {
     expect(usePersonStore.getState().people.some(p => p.nickname !== '')).toBe(true);
   });

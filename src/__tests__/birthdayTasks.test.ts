@@ -35,6 +35,7 @@ const person = (overrides: Partial<Person> = {}): Person => ({
   createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: 3,
   birthdayDay: 14,
+  birthYear: null,
   birthdayTaskOptOut: false,
   birthdayGiftTaskOptOut: false,
   phoneNumber: null,
@@ -172,6 +173,11 @@ describe('when it next comes round', () => {
 
   it('rolls to next year once it has passed', () => {
     expect(nextBirthday(person(), noon(2026, 6, 1))).toEqual(noon(2027, 3, 14));
+  });
+
+  it("ignores birthYear entirely — it's never read to place or age this task", () => {
+    const withYear = person({ birthYear: 1992 });
+    expect(nextBirthday(withYear, noon(2026, 1, 5))).toEqual(nextBirthday(person(), noon(2026, 1, 5)));
   });
 });
 
