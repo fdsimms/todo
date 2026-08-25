@@ -497,6 +497,20 @@ describe('normalizeStep', () => {
     const s = normalizeStep({ id: 's1', text: 'Preheat the oven' })!;
     expect(s.id).toBe('s1');
   });
+
+  it('keeps a hand-set timer length', () => {
+    expect(normalizeStep({ id: 's1', text: 'Sear the chicken', timerSeconds: 240 })!.timerSeconds).toBe(240);
+  });
+
+  it('leaves the field off a step nobody set one on, so an old row round-trips unchanged', () => {
+    expect(normalizeStep({ id: 's1', text: 'Preheat the oven' })).toEqual({ id: 's1', text: 'Preheat the oven' });
+  });
+
+  it('drops a stored length outside what a step timer can be, rather than repairing it', () => {
+    expect(normalizeStep({ id: 's1', text: 'Sear', timerSeconds: 0 })!.timerSeconds).toBeUndefined();
+    expect(normalizeStep({ id: 's1', text: 'Sear', timerSeconds: 48 * 3600 })!.timerSeconds).toBeUndefined();
+    expect(normalizeStep({ id: 's1', text: 'Sear', timerSeconds: 'soon' })!.timerSeconds).toBeUndefined();
+  });
 });
 
 describe('parseSteps', () => {

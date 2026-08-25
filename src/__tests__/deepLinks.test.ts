@@ -14,6 +14,7 @@ const mockResetToProjectPull = jest.fn();
 const mockOpenQuickAdd = jest.fn();
 const mockEnqueueWidgetCompletion = jest.fn();
 const mockStopCookTimer = jest.fn();
+const mockRemoveStepTimer = jest.fn();
 const mockStopPrepTimer = jest.fn();
 const mockResetToFocusSession = jest.fn();
 const mockFocusAdvance = jest.fn();
@@ -34,6 +35,9 @@ jest.mock('../store/useWidgetCompletionStore', () => ({
 }));
 jest.mock('../store/useRecipeStore', () => ({
   useRecipeStore: { getState: () => ({ stopCookTimer: mockStopCookTimer, stopPrepTimer: mockStopPrepTimer }) },
+}));
+jest.mock('../store/useStepTimerStore', () => ({
+  useStepTimerStore: { getState: () => ({ remove: mockRemoveStepTimer }) },
 }));
 jest.mock('../store/useFocusStore', () => ({
   useFocusStore: {
@@ -389,6 +393,7 @@ describe('stopTimerUrlKey', () => {
   it('reads the run key off the link', () => {
     expect(stopTimerUrlKey('dundundun://stopTimer?key=cook:r1')).toBe('cook:r1');
     expect(stopTimerUrlKey('dundundun://stopTimer?key=prep:r1')).toBe('prep:r1');
+    expect(stopTimerUrlKey('dundundun://stopTimer?key=step:st1')).toBe('step:st1');
   });
 
   it('is null with no key, or for a different link', () => {
@@ -535,6 +540,15 @@ describe('openInAppUrl', () => {
     expect(openInAppUrl('dundundun://stopTimer?key=prep:r1')).toBe(true);
     expect(mockStopPrepTimer).toHaveBeenCalledWith('r1');
     expect(mockStopCookTimer).not.toHaveBeenCalled();
+  });
+
+  it('dismisses a cooking step timer for a step: key, cancelling its alarm with it', () => {
+    // Nothing to log — a step timer measures no elapsed time — so Done means
+    // the same thing the row's own dismiss does.
+    expect(openInAppUrl('dundundun://stopTimer?key=step:st1')).toBe(true);
+    expect(mockRemoveStepTimer).toHaveBeenCalledWith('st1');
+    expect(mockStopCookTimer).not.toHaveBeenCalled();
+    expect(mockStopPrepTimer).not.toHaveBeenCalled();
   });
 
   it('navigates to the week plan and claims the URL', () => {

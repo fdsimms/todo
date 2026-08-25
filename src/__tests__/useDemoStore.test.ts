@@ -45,8 +45,10 @@ import { extraTaskDraftIsEmpty, extraTaskRule } from '../utils/extraTask';
 import { isDialable } from '../utils/phone';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { sharedLinkLabel } from '../utils/sharedRecipeLinks';
+import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRemaining } from '../utils/stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { isStaleNote } from '../utils/personNotes';
@@ -177,6 +179,10 @@ jest.mock('../utils/notifications', () => ({
   // useGroceryStore's real startTrip/endTrip.
   scheduleTripReminder: jest.fn(),
   cancelTripReminder: jest.fn(),
+  // The seed starts a step timer, and the demo swap re-arms/cancels them
+  // either side of it.
+  scheduleStepAlarm: jest.fn().mockResolvedValue(undefined),
+  cancelStepAlarm: jest.fn().mockResolvedValue(undefined),
 }));
 
 // Same reason: useTaskStore.ts reaches calendarSync.ts (real react-native
@@ -1194,6 +1200,38 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // banner is offering work that's been done.
     const label = sharedLinkLabel(pendingUrls[0]);
     expect(useRecipeStore.getState().recipes.some(r => r.sourceUrl?.includes(label))).toBe(false);
+  });
+
+  it('seeds a cooking step timer already counting down', () => {
+    // The footer stack in cook mode, the row's own controls and the Lock Screen
+    // activity are all invisible with an empty stack, so a demo without one
+    // reads as a build that can't hold a step timer at all.
+    const timers = useStepTimerStore.getState().timers;
+    expect(timers.length).toBeGreaterThanOrEqual(1);
+    const [timer] = timers;
+    expect(isStepTimerRunning(timer)).toBe(true);
+    expect(stepTimerRemaining(timer)).toBeGreaterThan(0);
+    // Attached to a step of a recipe that really has one, and named so the row
+    // reads without resolving anything.
+    const recipe = useRecipeStore.getState().recipeById(timer.recipeId);
+    expect(recipe?.steps.some(step => step.id === timer.stepId)).toBe(true);
+    expect(timer.recipeName).toBe(recipe?.name);
+    expect(timer.stepLabel).toMatch(/^Step \d+ of \d+$/);
+  });
+
+  it('seeds a step whose timer length was set by hand, and steps that read theirs from the text', () => {
+    const steps = useRecipeStore.getState().recipes.flatMap(r => r.steps);
+
+    // The case RecipeStep.timerSeconds exists for: a sentence with no time in it.
+    const explicit = steps.find(step => step.timerSeconds != null);
+    expect(explicit).toBeDefined();
+    expect(parseStepDurations(explicit!.text)).toEqual([]);
+    expect(stepDurationOffers(explicit!).map(offer => offer.seconds)).toEqual([explicit!.timerSeconds]);
+
+    // And the ordinary case, which is most of the box: the number is already
+    // written down, so cook mode offers it without anyone having set a field.
+    const parsed = steps.filter(step => step.timerSeconds == null && parseStepDurations(step.text).length > 0);
+    expect(parsed.length).toBeGreaterThanOrEqual(2);
   });
 
   it('seeds an either/or on the list, from a recipe choice left for the shelf', () => {

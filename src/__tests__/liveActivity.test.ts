@@ -9,6 +9,7 @@ jest.mock('react-native', () => ({
 jest.mock('../store/useTaskStore', () => ({ useTaskStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 jest.mock('../store/useRecipeStore', () => ({ useRecipeStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 jest.mock('../store/useSettingsStore', () => ({ useSettingsStore: { subscribe: jest.fn(), getState: jest.fn() } }));
+jest.mock('../store/useStepTimerStore', () => ({ useStepTimerStore: { subscribe: jest.fn(), getState: jest.fn() } }));
 // Pulled in transitively via visibilityUtils.ts (displayTitleFor); this
 // suite's tasks never carry a category, so a stub that resolves nothing is
 // enough — mirrors snoozeEngine.test.ts's own mock of the same store.
@@ -17,7 +18,7 @@ jest.mock('../store/useCategoryStore', () => ({
 }));
 
 import { buildTimerRuns } from '../utils/liveActivity';
-import type { Task, Recipe, ChainItem } from '../types';
+import type { Task, Recipe, ChainItem, StepTimer } from '../types';
 
 const NOW = new Date(2026, 7, 11, 12, 0, 0).getTime();
 
@@ -175,30 +176,45 @@ function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
 
 const startedAgo = (secondsAgo: number) => new Date(NOW - secondsAgo * 1000).toISOString();
 
+function makeStepTimer(overrides: Partial<StepTimer> = {}): StepTimer {
+  return {
+    id: 'st1',
+    recipeId: 'r1',
+    stepId: 's2',
+    recipeName: 'Sticky, Spicy Tempeh',
+    stepLabel: 'Step 2 of 3',
+    durationSeconds: 7 * 60,
+    startedAt: startedAgo(0),
+    elapsedSeconds: 0,
+    createdAt: startedAgo(0),
+    ...overrides,
+  };
+}
+
 describe('buildTimerRuns', () => {
   it('returns nothing when disabled, even with runs in flight', () => {
     const tasks = [makeTask({ timerStartedAt: startedAgo(10) })];
-    expect(buildTimerRuns(tasks, [], { enabled: false })).toEqual([]);
+    expect(buildTimerRuns(tasks, [], [], { enabled: false })).toEqual([]);
   });
 
   it('ignores a task with no timer running', () => {
     const tasks = [makeTask({ timerStartedAt: null })];
-    expect(buildTimerRuns(tasks, [], { enabled: true })).toEqual([]);
+    expect(buildTimerRuns(tasks, [], [], { enabled: true })).toEqual([]);
   });
 
   it('ignores a completed task, even mid-timer', () => {
     const tasks = [makeTask({ timerStartedAt: startedAgo(5), completed: true })];
-    expect(buildTimerRuns(tasks, [], { enabled: true })).toEqual([]);
+    expect(buildTimerRuns(tasks, [], [], { enabled: true })).toEqual([]);
   });
 
   it('ignores an archived task, even mid-timer', () => {
     const tasks = [makeTask({ timerStartedAt: startedAgo(5), archived: true })];
-    expect(buildTimerRuns(tasks, [], { enabled: true })).toEqual([]);
+    expect(buildTimerRuns(tasks, [], [], { enabled: true })).toEqual([]);
   });
 
   it('builds a stopwatch run (no target) for an untimed running task', () => {
     const tasks = [makeTask({ id: 'abc', title: 'Practice Spanish', timerStartedAt: startedAgo(30) })];
-    const [run] = buildTimerRuns(tasks, [], { enabled: true });
+    const [run] = buildTimerRuns(tasks, [], [], { enabled: true });
     expect(run).toEqual({
       key: 'task:abc',
       kind: 'task',
@@ -215,7 +231,7 @@ describe('buildTimerRuns', () => {
     const tasks = [
       makeTask({ id: 'abc', timedMinutes: 15, timerElapsedSeconds: 60, timerStartedAt: startedAgo(0) }),
     ];
-    const [run] = buildTimerRuns(tasks, [], { enabled: true });
+    const [run] = buildTimerRuns(tasks, [], [], { enabled: true });
     // 15 minutes minus 60s already banked = 14 minutes left from the start instant.
     expect(run.targetEndMs).toBe(run.startedAtMs + 14 * 60 * 1000);
   });
@@ -225,7 +241,7 @@ describe('buildTimerRuns', () => {
     const tasks = [
       makeTask({ id: 'abc', timedMinutes: 5, timerElapsedSeconds: 10 * 60, timerStartedAt: startedAgo(0) }),
     ];
-    const [run] = buildTimerRuns(tasks, [], { enabled: true });
+    const [run] = buildTimerRuns(tasks, [], [], { enabled: true });
     expect(run.targetEndMs).toBe(run.startedAtMs);
   });
 
@@ -243,13 +259,13 @@ describe('buildTimerRuns', () => {
         ] as ChainItem[],
       }),
     ];
-    const [run] = buildTimerRuns(tasks, [], { enabled: true });
+    const [run] = buildTimerRuns(tasks, [], [], { enabled: true });
     expect(run.title).toBe('Journal');
   });
 
   it('builds a cook run for a recipe with a running cook timer', () => {
     const recipes = [makeRecipe({ id: 'r1', name: 'Chili', estimatedMinutes: 40, timerStartedAt: startedAgo(60) })];
-    const [run] = buildTimerRuns([], recipes, { enabled: true });
+    const [run] = buildTimerRuns([], recipes, [], { enabled: true });
     expect(run).toEqual({
       key: 'cook:r1',
       kind: 'cook',
@@ -274,7 +290,7 @@ describe('buildTimerRuns', () => {
         prepTimerStartedAt: startedAgo(30),
       }),
     ];
-    const runs = buildTimerRuns([], recipes, { enabled: true });
+    const runs = buildTimerRuns([], recipes, [], { enabled: true });
     expect(runs.map(r => r.key).sort()).toEqual(['cook:r1', 'prep:r1']);
     const prep = runs.find(r => r.kind === 'prep')!;
     expect(prep.subtitle).toBe('Prep');
@@ -283,18 +299,18 @@ describe('buildTimerRuns', () => {
 
   it('ignores a recipe with neither timer running', () => {
     const recipes = [makeRecipe({ timerStartedAt: null, prepTimerStartedAt: null })];
-    expect(buildTimerRuns([], recipes, { enabled: true })).toEqual([]);
+    expect(buildTimerRuns([], recipes, [], { enabled: true })).toEqual([]);
   });
 
   it('gives a cook/prep timer with no target duration a stopwatch run', () => {
     const recipes = [makeRecipe({ estimatedMinutes: null, timerStartedAt: startedAgo(10) })];
-    const [run] = buildTimerRuns([], recipes, { enabled: true });
+    const [run] = buildTimerRuns([], recipes, [], { enabled: true });
     expect(run.targetEndMs).toBeNull();
   });
 
   it('truncates a long title', () => {
     const tasks = [makeTask({ id: 'abc', title: 'x'.repeat(80), timerStartedAt: startedAgo(1) })];
-    const [run] = buildTimerRuns(tasks, [], { enabled: true });
+    const [run] = buildTimerRuns(tasks, [], [], { enabled: true });
     expect(run.title.length).toBe(60);
     expect(run.title.endsWith('…')).toBe(true);
   });
@@ -302,7 +318,42 @@ describe('buildTimerRuns', () => {
   it('combines a running task timer and running recipe timers into one list', () => {
     const tasks = [makeTask({ id: 't1', timerStartedAt: startedAgo(5) })];
     const recipes = [makeRecipe({ id: 'r1', timerStartedAt: startedAgo(5) })];
-    const runs = buildTimerRuns(tasks, recipes, { enabled: true });
+    const runs = buildTimerRuns(tasks, recipes, [], { enabled: true });
     expect(runs.map(r => r.key).sort()).toEqual(['cook:r1', 'task:t1']);
+  });
+
+  it('builds a countdown run for a running cooking step timer', () => {
+    const [run] = buildTimerRuns([], [], [makeStepTimer({ startedAt: startedAgo(60) })], { enabled: true });
+    expect(run).toEqual({
+      key: 'step:st1',
+      kind: 'step',
+      itemId: 'st1',
+      title: 'Sticky, Spicy Tempeh',
+      subtitle: 'Step 2 of 3',
+      symbolName: 'timer',
+      startedAtMs: NOW - 60_000,
+      targetEndMs: NOW - 60_000 + 7 * 60 * 1000,
+    });
+  });
+
+  it('ignores a paused step timer', () => {
+    const paused = makeStepTimer({ startedAt: null, elapsedSeconds: 120 });
+    expect(buildTimerRuns([], [], [paused], { enabled: true })).toEqual([]);
+  });
+
+  it('gives every running step timer its own activity', () => {
+    const timers = [
+      makeStepTimer({ id: 'st1', startedAt: startedAgo(10) }),
+      makeStepTimer({ id: 'st2', startedAt: startedAgo(20) }),
+    ];
+    expect(buildTimerRuns([], [], timers, { enabled: true }).map(r => r.key)).toEqual(['step:st1', 'step:st2']);
+  });
+
+  it('never hands SwiftUI an inverted range for a step timer resumed past its end', () => {
+    // Banked more than the whole duration, then resumed: remaining at the
+    // instant the run started is already negative.
+    const overdue = makeStepTimer({ startedAt: startedAgo(5), elapsedSeconds: 20 * 60 });
+    const [run] = buildTimerRuns([], [], [overdue], { enabled: true });
+    expect(run.targetEndMs).toBe(run.startedAtMs);
   });
 });

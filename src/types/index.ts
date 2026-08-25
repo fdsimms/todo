@@ -3091,6 +3091,63 @@ export interface RecipePrepTask {
 export interface RecipeStep {
   id: string;
   text: string;
+  /**
+   * How long a timer started from this step should run, in seconds; null means
+   * "whatever the sentence says", which is the ordinary case.
+   *
+   * Cook mode reads durations straight out of the step text (see
+   * `parseStepDurations`), and for the great majority of steps that is the
+   * whole feature: the number is already written down, and a field asking for
+   * it again is a second copy to keep in step with the sentence. This exists
+   * for the two cases the text genuinely can't answer — a step that says
+   * "until the edges look dry" with a length only the cook knows, and one
+   * whose phrasing the parser reads wrong — and it is only ever set by hand
+   * from the step editor. **Nothing derived is ever written back here**: a
+   * parse is a reading of the text and stays one, so a step whose wording
+   * changes gets a new reading rather than an old answer.
+   */
+  timerSeconds?: number | null;
+}
+
+/**
+ * One countdown a cook started from a step of a recipe.
+ *
+ * A recipe's cook and prep timers are two fixed clocks measuring the whole
+ * cooking; these are ad hoc, several at once, and belong to a sentence rather
+ * than to the dish. That's why they're their own model and not a third pair of
+ * `Recipe` columns: "7 minutes on the tempeh" and "20 minutes on the rice" are
+ * two live timers during one cooking of one recipe, and a field pair can only
+ * ever hold one.
+ *
+ * The two raw fields are `startedAt`/`elapsedSeconds`, the same banked-segment
+ * pair `Task` and `Recipe` timers store — how much is left is always derived
+ * against the current clock (see `src/utils/stepTimers.ts`), so a phone
+ * backgrounded, killed or left face-down through the whole countdown comes
+ * back with the right answer.
+ */
+export interface StepTimer {
+  id: string;
+  /** The recipe the step belongs to, so a running timer can name its dish. */
+  recipeId: string;
+  /**
+   * `CookStep.id` — a `RecipeStep.id`, or the synthesized `<recipeId>:notes:<n>`
+   * of a step split out of a notes blob. Resolve-or-shrug like every other
+   * cross-row pointer here: an edit that deletes the step leaves the timer
+   * running, because the pan is still on the heat.
+   */
+  stepId: string;
+  /** The dish's name when the timer started, so the row reads without a lookup. */
+  recipeName: string;
+  /** "Step 2 of 3" as it read when the timer started. */
+  stepLabel: string;
+  /** What the countdown runs for. Fixed at start; "+1 min" adds to it. */
+  durationSeconds: number;
+  /** ISO instant the current run segment began; null while paused. */
+  startedAt: string | null;
+  /** Seconds banked by earlier segments. */
+  elapsedSeconds: number;
+  /** ISO instant this was created, so the footer stack keeps a stable order. */
+  createdAt: string;
 }
 
 // Shorter than TITLE_MAX_LENGTH for the same reason a grocery item's is: this
