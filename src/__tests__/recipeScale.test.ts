@@ -36,6 +36,19 @@ describe('scaleQuantity', () => {
     expect(text('1 dozen', 2)).toBe('2 dozen');
   });
 
+  it('scales both ends of a "to" range, not just the leading number', () => {
+    // The bug: "1 to 2 tbsp" halved used to render "1/2 to 2 tbsp".
+    expect(text('1 to 2 tbsp', 0.5)).toBe('1/2 to 1 tbsp');
+    expect(text('1 to 2 tbsp', 2)).toBe('2 to 4 tbsp');
+    expect(text('1 to 2 cups', 2)).toBe('2 to 4 cups');
+    expect(text('1 to 2 cups', 0.5)).toBe('1/2 to 1 cup');
+  });
+
+  it('scales both ends of a hyphenated range', () => {
+    expect(text('1-2 tbsp', 0.5)).toBe('1/2-1 tbsp');
+    expect(text('1-2 tbsp', 2)).toBe('2-4 tbsp');
+  });
+
   it('normalizes a plural back to singular when the result is one', () => {
     expect(text('2 cans', 0.5)).toBe('1 can');
     expect(text('4 links', 0.5)).toBe('2 links');

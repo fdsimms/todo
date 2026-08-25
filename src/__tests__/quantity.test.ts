@@ -155,6 +155,47 @@ describe('isWholeAmount', () => {
     expect(isWholeAmount(parseQuantity('14 oz can'))).toBe(false);
     expect(isWholeAmount(parseQuantity('a bunch'))).toBe(false);
     expect(isWholeAmount(parseQuantity('x2'))).toBe(false);
+    // A range names two amounts, not one — summing its low end against
+    // another quantity would silently drop the high end.
+    expect(isWholeAmount(parseQuantity('1 to 2 tbsp'))).toBe(false);
+  });
+});
+
+describe('parseQuantity — a range', () => {
+  it('reads a "to" range as a low end, a high end, and the unit that follows', () => {
+    const q = parseQuantity('1 to 2 tbsp');
+    expect(rationalToNumber(q.amount!)).toBe(1);
+    expect(rationalToNumber(q.rangeMax!)).toBe(2);
+    expect(q.rangeSeparator).toBe('to');
+    expect(q.unit).toBe('tbsp');
+    expect(q.unitWritten).toBe('tbsp');
+    expect(q.trailing).toBe('');
+  });
+
+  it('reads a hyphenated range the same way', () => {
+    const q = parseQuantity('1-2 tbsp');
+    expect(rationalToNumber(q.amount!)).toBe(1);
+    expect(rationalToNumber(q.rangeMax!)).toBe(2);
+    expect(q.rangeSeparator).toBe('-');
+    expect(q.unit).toBe('tbsp');
+  });
+
+  it('reads fractional and mixed-number ends', () => {
+    const q = parseQuantity('1/2 to 3/4 cup');
+    expect(rationalToNumber(q.amount!)).toBe(0.5);
+    expect(rationalToNumber(q.rangeMax!)).toBe(0.75);
+  });
+
+  it('reads a unitless range too, and is null with no second amount at all', () => {
+    expect(rationalToNumber(parseQuantity('1 to 2').rangeMax!)).toBe(2);
+    expect(parseQuantity('1 to 2').unit).toBeNull();
+    // "to taste" has no digit after "to" — not a range, same refusal as before.
+    expect(parseQuantity('2 to taste').rangeMax).toBeNull();
+    expect(parseQuantity('2 to taste').unitWritten).toBe('to');
+    // "1-inch piece" is a compound, not a range — no digit follows the hyphen.
+    const inch = parseQuantity('1-inch piece');
+    expect(inch.rangeMax).toBeNull();
+    expect(inch.trailing).toBe('-inch piece');
   });
 });
 

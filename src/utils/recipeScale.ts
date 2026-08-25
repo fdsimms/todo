@@ -78,6 +78,10 @@ export interface ScaledQuantity {
  *   this way at all and refuses.
  * - **A counted sized container** ("2 14 oz cans") — the count scales, the size
  *   never does.
+ * - **A range** ("1 to 2 tbsp", "1-2 tbsp") — both ends scale by the same
+ *   factor and the unit agrees with the scaled high end, so "1 to 2 tbsp"
+ *   halved is "1/2 to 1 tbsp", not the low end alone with the high end
+ *   carried through unchanged.
  * - **Anything opening with an amount** — the amount scales and the first
  *   following word, if it's a known unit, agrees with the result.
  * - **Anything else** ("a pinch", "to taste", "dozen") — verbatim, flagged.
@@ -117,6 +121,18 @@ export function scaleQuantity(quantity: string, factor: number): ScaledQuantity 
       text: `${factor} ${sizeText} ${sizeUnit} ${inflectUnit(word, factor)}`,
       scaled: true,
     };
+  }
+
+  if (q.rangeMax) {
+    const scaledMin = multiplyRational(q.amount, multiplier);
+    const scaledMax = multiplyRational(q.rangeMax, multiplier);
+    const renderedMin = formatRational(scaledMin, q.decimal);
+    const renderedMax = formatRational(scaledMax, q.decimal);
+    const joined =
+      q.rangeSeparator === '-' ? `${renderedMin}-${renderedMax}` : `${renderedMin} to ${renderedMax}`;
+    if (!q.unitWritten) return { text: `${joined}${q.trailing}`, scaled: true };
+    const inflected = inflectUnit(q.unitWritten, rationalToNumber(scaledMax));
+    return { text: `${joined} ${inflected}${q.trailing}`, scaled: true };
   }
 
   const scaled = multiplyRational(q.amount, multiplier);

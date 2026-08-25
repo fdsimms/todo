@@ -325,6 +325,20 @@ export interface Quantity {
    * merging — refused it before this type existed and still does, for free.
    */
   countNotation: Rational | null;
+  /**
+   * The second amount of a range — "2" out of "1 to 2 tbsp" or "1-2 tbsp".
+   * `amount` stays the range's low end so every reader that ignores this field
+   * still gets a sane single number rather than nothing; only recipeScale has
+   * a use for the high end, to scale both ends by the same factor instead of
+   * only the leading one. Null whenever the line names a single amount.
+   */
+  rangeMax: Rational | null;
+  /**
+   * Which separator wrote the range — "to" ("1 to 2 tbsp") or "-" ("1-2
+   * tbsp") — so a caller re-rendering both scaled ends echoes the same
+   * notation rather than picking one. Null whenever `rangeMax` is.
+   */
+  rangeSeparator: 'to' | '-' | null;
 }
 
 // The three notations, in this order and for this reason: a mixed number has
@@ -349,6 +363,17 @@ const BARE_CONTAINER = /^([a-z]+)\.?\s+([a-z]+)$/i;
 
 /** A counted sized container's trailing half — "14 oz cans" out of "2 14 oz cans". */
 const COUNTED_CONTAINER = /^(\d+(?:\.\d+)?)\s*-?\s*([a-z]+)\.?\s+([a-z]+)$/i;
+
+/**
+ * A range's separator, right after the first amount — "to " ("1 to 2 tbsp")
+ * or a bare hyphen ("1-2 tbsp"). The mandatory trailing space on "to" is what
+ * keeps this from firing on "to taste"'s "to" followed by a non-amount, or on
+ * any other word that merely starts with "to"; a hyphen not followed by a
+ * second amount (a compound like "1-inch piece") is ruled out the same way,
+ * by the caller falling back to plain unit parsing when `readLeadingAmount`
+ * finds nothing after it.
+ */
+const RANGE_SEPARATOR = /^(?:to\s+|-\s*)/i;
 
 interface LeadingAmount {
   value: Rational;
@@ -408,6 +433,8 @@ export function parseQuantity(raw: string): Quantity {
     trailing: '',
     container: null,
     countNotation: null,
+    rangeMax: null,
+    rangeSeparator: null,
   };
   if (!text) return none;
 
@@ -454,6 +481,28 @@ export function parseQuantity(raw: string): Quantity {
     };
   }
 
+  const rangeSep = RANGE_SEPARATOR.exec(rest);
+  if (rangeSep) {
+    const afterSep = rest.slice(rangeSep[0].length);
+    const rangeAmount = readLeadingAmount(afterSep);
+    if (rangeAmount) {
+      const separator = rangeSep[0].trim().toLowerCase().startsWith('to') ? 'to' : '-';
+      const tail = afterSep.slice(rangeAmount.length).trim();
+      const rangeWord = LEADING_WORD.exec(tail);
+      if (!rangeWord) {
+        return { ...base, rangeMax: rangeAmount.value, rangeSeparator: separator, trailing: tail };
+      }
+      return {
+        ...base,
+        rangeMax: rangeAmount.value,
+        rangeSeparator: separator,
+        unit: unitKey(rangeWord[0]),
+        unitWritten: rangeWord[0],
+        trailing: tail.slice(rangeWord[0].length),
+      };
+    }
+  }
+
   const word = LEADING_WORD.exec(rest);
   if (!word) return { ...base, trailing: rest };
   return {
@@ -471,10 +520,12 @@ export function parseQuantity(raw: string): Quantity {
  *
  * Strict at both ends on purpose: "2 14 oz cans" and "1 cup, packed" are
  * measurements of something, but neither is one number in one unit, so both
- * get listed rather than summed.
+ * get listed rather than summed. Same reasoning rules out a range ("1 to 2
+ * tbsp") — it names two numbers, not one, so summing its `amount` (the low
+ * end) against another quantity would silently drop the high end.
  */
 export function isWholeAmount(
   quantity: Quantity,
 ): quantity is Quantity & { amount: Rational } {
-  return quantity.amount !== null && !quantity.container && !quantity.trailing;
+  return quantity.amount !== null && !quantity.container && !quantity.trailing && !quantity.rangeMax;
 }
