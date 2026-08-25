@@ -1,0 +1,4 @@
+{
+  "message": "A task can now be waiting on a person, not just on another task. It hides from Today and shows up under their name on the Waiting screen, and the chip on the row is the one tap that ends it. Lightening a busy day is also more reluctant to move anything with somebody on it.",
+  "date": "2026-08-25"
+}

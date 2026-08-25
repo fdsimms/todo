@@ -3,7 +3,10 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { useTaskStore } from '../store/useTaskStore';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
+import { resolvePerson } from '../utils/peopleRegistry';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -20,7 +23,7 @@ import { displayTitleFor, isTaskBlocked } from '../utils/visibilityUtils';
 import { describeBlockerWait } from '../utils/blockerStatus';
 import { asksOnCompletion } from '../utils/deliverables';
 import { formatTaskDate } from '../utils/dateUtils';
-import type { Task } from '../types';
+import type { Person, Task } from '../types';
 
 const CHECKBOX_SIZE = 22;
 
@@ -40,10 +43,23 @@ const CHECKBOX_SIZE = 22;
 // it (see TaskGroupTray, which this borrows wholesale rather than restating);
 // giving the header a card of its own is the version that reads as a selected
 // row, and was tried and rejected there.
+/**
+ * One heading and the tasks under it. Two kinds, because there are two things a
+ * task can be held by — see `Task.waitingOnPersonId` for how they differ.
+ */
+type WaitSection =
+  | { kind: 'task'; key: string; blocker: Task; data: Task[] }
+  | { kind: 'person'; key: string; person: Person; data: Task[] };
+
 export function WaitingScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const tabBarHeight = useBottomTabBarHeight();
   const waitingTasks = useTaskStore(useShallow(s => s.waitingTasks()));
+  // Subscribed so the sections rebuild when somebody is archived or deleted —
+  // either frees their waiters (see canWaitOn), and a stale list would keep
+  // showing a heading for a person who no longer holds anything.
+  const people = usePersonStore(useShallow(s => s.people));
   const tasks = useTaskStore(s => s.tasks);
   const updateTask = useTaskStore(s => s.updateTask);
   const completeTask = useTaskStore(s => s.completeTask);
@@ -73,21 +89,45 @@ export function WaitingScreen() {
   // "waiting on nothing" state for this list to render.
   const sections = useMemo(() => {
     const byId = new Map(tasks.map(t => [t.id, t]));
-    const grouped = new Map<string, { blockerId: string; blocker: Task; data: Task[] }>();
+    const byTask = new Map<string, WaitSection>();
+    const byPerson = new Map<string, WaitSection>();
     for (const task of waitingTasks) {
-      const blockerId = task.blockedById!;
-      const blocker = byId.get(blockerId);
-      if (!blocker) continue;
-      if (!grouped.has(blockerId)) grouped.set(blockerId, { blockerId, blocker, data: [] });
-      grouped.get(blockerId)!.data.push(task);
+      // A task can be held by both at once. It is filed under the blocker task,
+      // because that is the wait that ends on its own — listing it under the
+      // person too would show one row twice and offer to release it from a
+      // wait that isn't the one actually holding it.
+      if (task.blockedById) {
+        const blocker = byId.get(task.blockedById);
+        if (!blocker) continue;
+        const key = task.blockedById;
+        if (!byTask.has(key)) byTask.set(key, { kind: 'task', key, blocker, data: [] });
+        byTask.get(key)!.data.push(task);
+        continue;
+      }
+      const person = task.waitingOnPersonId ? resolvePerson(task.waitingOnPersonId) : undefined;
+      if (!person) continue;
+      const key = person.id;
+      if (!byPerson.has(key)) byPerson.set(key, { kind: 'person', key, person, data: [] });
+      byPerson.get(key)!.data.push(task);
     }
-    return Array.from(grouped.values());
-  }, [waitingTasks, tasks]);
+    // Tasks first, then people in the user's own People order. Deliberately not
+    // interleaved: the two answer the same question but there is no shared key
+    // to sort a task and a person by, and inventing one would mean ranking
+    // people against tasks.
+    return [
+      ...Array.from(byTask.values()),
+      ...Array.from(byPerson.values()).sort((a, b) =>
+        (a.kind === 'person' ? a.person.sortOrder : 0) - (b.kind === 'person' ? b.person.sortOrder : 0)),
+    ];
+  }, [waitingTasks, tasks, people]);
 
   const release = (task: Task) => {
     haptics.tap();
     animateLayout();
-    updateTask(task.id, { blockedById: null });
+    // Both, always: a task held by a person and a task alike leaves this screen
+    // by the same button, and clearing only the one the row happened to be
+    // filed under would leave it waiting on the other with nothing on screen.
+    updateTask(task.id, { blockedById: null, waitingOnPersonId: null });
   };
 
   const finishBlocker = (blocker: Task) => {
@@ -114,9 +154,58 @@ export function WaitingScreen() {
 
       <FlatList
         data={sections}
-        keyExtractor={section => section.blockerId}
+        keyExtractor={section => `${section.kind}:${section.key}`}
         contentContainerStyle={sections.length === 0 ? styles.emptyContainer : styles.listContent}
         renderItem={({ item: section }) => {
+          if (section.kind === 'person') {
+            const name = displayNameOf(section.person);
+            return (
+              <TaskGroupTray>
+                <View style={styles.blockerHeader}>
+                  {/* No checkbox: nobody completes a person, so there is no
+                      "finish this and release them" here. The hourglass is the
+                      same slot a blocker that is itself blocked gets, which
+                      keeps every header's title column aligned. */}
+                  <View style={styles.checkboxSlot}>
+                    <Ionicons name="person-outline" size={iconSize.sm} color={colors.textTertiary} />
+                  </View>
+                  <TouchableOpacity
+                    style={styles.blockerBody}
+                    onPress={() => navigation.navigate('People', { personId: section.person.id, openPerson: Date.now() })}
+                    activeOpacity={interaction.activeOpacity}
+                    accessible
+                    accessibilityRole="button"
+                    accessibilityLabel={`Waiting on ${name}`}
+                    accessibilityHint="Double tap to open their page"
+                  >
+                    <Text style={styles.blockerOverline}>Waiting on</Text>
+                    <Text style={styles.blockerTitle} numberOfLines={2}>{name}</Text>
+                  </TouchableOpacity>
+                  {/* Deliberately no "N waiting" badge, unlike a blocker task.
+                      docs/arch/people.md rules out a header count about people,
+                      and a number under somebody's name reads as a tally
+                      against them rather than as a fact about your own list. */}
+                </View>
+
+                <View style={styles.trayBody}>
+                  {section.data.map(task => (
+                    <WaiterRow
+                      key={task.id}
+                      task={task}
+                      categoryLabel={labelForCategory(task.category, getCategoryByName)}
+                      dateLabel={formatTaskDate(task, dayResetTime)}
+                      onPress={() => openEditor(task)}
+                      onRelease={() => release(task)}
+                      styles={styles}
+                      colors={colors}
+                      cardShadow={shadows.card}
+                    />
+                  ))}
+                </View>
+              </TaskGroupTray>
+            );
+          }
+
           const blockerTitle = displayTitleFor(section.blocker);
           // A blocker waiting on something else can't be ticked off from here:
           // it isn't actionable yet, which is the whole meaning of being

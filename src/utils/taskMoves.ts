@@ -30,7 +30,8 @@ export type DeloadBlocker =
   | 'chain'
   | 'streak'
   | 'started'
-  | 'high-priority';
+  | 'high-priority'
+  | 'people';
 
 /**
  * Blockers that leave the task movable but unchecked — the user can opt in.
@@ -45,6 +46,7 @@ export const SOFT_DELOAD_BLOCKERS: ReadonlySet<DeloadBlocker> = new Set([
   'streak',
   'started',
   'high-priority',
+  'people',
 ]);
 
 /** Where a task could go, in one of the sheet's two destination modes. */
@@ -88,6 +90,15 @@ export function deloadBlockerFor(task: Task): { blocker: DeloadBlocker; label: s
     return { blocker: 'started', label: 'Already started' };
   }
   if (task.priority === 3) return { blocker: 'high-priority', label: 'High priority' };
+  // Somebody else is involved, so moving this has a social cost the day-load
+  // math can't see: "beach with Dustin and Ansley" is not the same thing to
+  // push to Saturday as "clean the bathroom", even when the minutes agree
+  // (#2088). Soft rather than hard — the day might genuinely need to get
+  // lighter, and refusing outright would be the app deciding you can't
+  // reschedule seeing a friend. The label names the fact and judges nothing.
+  if (task.personIds.length > 0) {
+    return { blocker: 'people', label: 'Someone else is involved' };
+  }
   return null;
 }
 

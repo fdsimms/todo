@@ -475,6 +475,47 @@ actually says:
   a person is a number about a person, and this feature has nowhere one may
   appear.
 
+## Waiting on a person
+
+`Task.waitingOnPersonId`, and `canWaitOn` / `personBlockerOf` in `blocking.ts`.
+The same pointer as `blockedById` with a person on the other end, so it inherits
+the Waiting screen whole.
+
+- **It hides the task exactly as a task blocker does**, and it earns that
+  because the Waiting screen can *name* what it is waiting on. That is the test
+  the sequential-project gate fails, which is why that one is a separate
+  predicate rather than a clause inside `isTaskBlocked` and this one is a clause.
+- **Nothing ends it on its own, and that is the whole risk.** A blocker task
+  completes and frees its waiters; nobody completes a person. So the clearing
+  action is on the row itself (the chip is a button, unlike the blocker chip
+  beside it) and on the Waiting screen, not only in the editor. Hiding a task
+  behind a wait with no obvious way back is how this becomes a way to lose one.
+- **A deleted or archived person frees their waiters**, which is `canBlock`'s
+  shape exactly and for its reason: a stranded waiter is invisible with no user
+  action able to recover it. It is also what makes a cascade unnecessary when
+  somebody is deleted.
+- **No count under a person's name.** The blocker-task header carries a
+  "N waiting" badge and the person header deliberately does not: a number under
+  somebody's name reads as a tally against them rather than as a fact about your
+  own list. The name alone.
+- **Independent of `personIds`.** Waiting on Dustin for the photos is not time
+  spent with Dustin, and it must never land in his history. A task carrying both
+  is filed under its blocker task, so one row never appears twice.
+
+## Deload leaves people alone
+
+`deloadBlockerFor` reports a **soft** blocker for a task carrying `personIds`,
+joining `streak`, `started` and `high-priority`. Other people are involved, so
+moving it has a social cost the day-load math cannot see: "beach with Dustin and
+Ansley" is not the same thing to push to Saturday as "clean the bathroom", even
+when the minutes agree.
+
+Soft rather than hard, because the day might genuinely need to get lighter and
+refusing outright would be the app deciding you cannot reschedule seeing a
+friend. It sits last, so a pinned or urgent task still reports the harder reason
+it cannot move at all. The label names the fact and judges nothing, and
+`lookAhead` inherits it for free by asking the same helper.
+
 ## Guests on a planned meal
 
 `MealPlanEntry.personIds` and `mealGuests.ts`. The tie-in no other app can have,

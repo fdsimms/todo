@@ -457,6 +457,7 @@ function newTaskFromDraft(
     phoneNumber: draft.phoneNumber ?? null,
     emailAddress: draft.emailAddress ?? null,
     blockedById: draft.blockedById ?? null,
+    waitingOnPersonId: null,
     deliverableKind: draft.deliverableKind ?? null,
     // Never read off the draft: the question carries, the answer doesn't. A
     // template or a duplicate that arrived holding someone else's answer would
@@ -4920,6 +4921,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       phoneNumber: null,
       emailAddress: null,
       blockedById: null,
+      waitingOnPersonId: null,
       deliverableKind: null,
       deliverableValue: null,
       generatedKind: null,
@@ -5095,6 +5097,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       phoneNumber: null,
       emailAddress: null,
       blockedById: null,
+      waitingOnPersonId: null,
       deliverableKind: null,
       deliverableValue: null,
       generatedKind: null,
@@ -5869,10 +5872,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // Grouped by blocker so everything queued behind one task reads as a run,
   // rather than by sortOrder, which says nothing about what a task is waiting on.
   waitingTasks() {
+    // Keyed on whichever wait holds the task, so equal keys arrive adjacent and
+    // the screen only has to break the runs apart. The blocker task wins when
+    // both are set, matching how the screen files it.
+    const waitKey = (t: Task) => t.blockedById ?? t.waitingOnPersonId ?? '';
     return get().tasks
       .filter(isWaitingTask)
-      .sort((a, b) => (a.blockedById ?? '').localeCompare(b.blockedById ?? '')
-        || a.sortOrder - b.sortOrder);
+      .sort((a, b) => waitKey(a).localeCompare(waitKey(b)) || a.sortOrder - b.sortOrder);
   },
 
   // Reads the user's own threshold rather than a constant of its own: the

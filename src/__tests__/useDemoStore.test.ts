@@ -913,6 +913,16 @@ describe('demo seed — people', () => {
     expect(withGuests.some(e => !e.cookedAt)).toBe(true);
   });
 
+  // It hides from Today the way a blocked task does, so the Waiting screen's
+  // person sections have something to show.
+  it('seeds a task waiting on somebody', () => {
+    const waiting = useTaskStore.getState().tasks.filter(t => t.waitingOnPersonId !== null);
+    expect(waiting.length).toBeGreaterThan(0);
+    const person = usePersonStore.getState().people.find(p => p.id === waiting[0].waitingOnPersonId);
+    expect(person).toBeDefined();
+    expect(person!.archived).toBe(false);
+  });
+
   it('seeds a note of every kind, since each one lands somewhere different', () => {
     const notes = usePersonNoteStore.getState().notes;
     for (const kind of PERSON_NOTE_KINDS) {
