@@ -32,11 +32,16 @@ import { getCurrentDayStart } from '../utils/dateUtils';
 /**
  * The people list.
  *
- * **Ordered by hand and never re-ranked**, which is the single most load-bearing
- * thing about this screen. Sorting by "who haven't I seen in longest" is the
- * move that turns a list of the people in your life into a queue of the ones
- * you have let down, and `docs/arch/people.md` rules it out for good. The order
- * here is `sortOrder`, the same hand-drag the categories and aisles use.
+ * **Ordered by hand and never re-ranked by default**, which is the single most
+ * load-bearing thing about this screen. Sorting by "who haven't I seen in
+ * longest" is the move that turns a list of the people in your life into a
+ * queue of the ones you have let down, and `docs/arch/people.md` rules that
+ * out for good — `sortOrder`, the same hand-drag the categories and aisles
+ * use, is the only *automatic* ranking the feature contains. The optional
+ * alphabetical view is a neutral, opt-in lens on top of that: it never touches
+ * `sortOrder` itself, is off again on next launch, and disables drag while
+ * active so a reorder can't silently apply to the sorted view instead of the
+ * hand order underneath it.
  *
  * There is no count of anything per person, no colour that means late, and no
  * summary line about how a relationship is going. The one derived thing a row
@@ -65,6 +70,11 @@ export function PeopleScreen() {
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [contactPickerVisible, setContactPickerVisible] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  // Off by default: the hand-dragged order is the one ranking this feature is
+  // allowed to have (see the header comment and docs/arch/people.md, rule 3).
+  // This is a view lens on top of it, same session-only shape as showArchived
+  // above, not a replacement for it — sortOrder is untouched either way.
+  const [alphabetical, setAlphabetical] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // The same bulk-selection machinery every other selectable list uses — see
@@ -77,10 +87,13 @@ export function PeopleScreen() {
     exitSelection, selectAll, deselectAll, painting, paintProps,
   } = useRowSelection();
 
-  const visiblePeople = useMemo(
-    () => people.filter(p => p.archived === showArchived),
-    [people, showArchived]
-  );
+  const visiblePeople = useMemo(() => {
+    const filtered = people.filter(p => p.archived === showArchived);
+    if (!alphabetical) return filtered;
+    return [...filtered].sort((a, b) =>
+      displayNameOf(a).localeCompare(displayNameOf(b), undefined, { sensitivity: 'base' })
+    );
+  }, [people, showArchived, alphabetical]);
 
   // Archiving and unarchiving are both reversible, so — like ArchivedScreen's
   // own bulk restore — there is nothing to confirm. One call per row rather
@@ -159,6 +172,12 @@ export function PeopleScreen() {
             accessibilityLabel: 'Add someone from Contacts',
           }]),
           {
+            icon: 'text-outline',
+            onPress: () => { haptics.tap(); animateLayout(); setAlphabetical(v => !v); },
+            active: alphabetical,
+            accessibilityLabel: alphabetical ? 'Sort by hand order' : 'Sort alphabetically',
+          },
+          {
             icon: 'archive-outline',
             onPress: () => { haptics.tap(); animateLayout(); setShowArchived(v => !v); },
             active: showArchived,
@@ -222,6 +241,11 @@ export function PeopleScreen() {
               const birthdayLabel = birthday
                 ? birthday.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
                 : null;
+              // A drag while sorted alphabetically would reorder the visible
+              // (sorted) rows rather than the hand order underneath them, so
+              // dragging is off for the duration — same trade as being off
+              // while selecting, just for a different reason.
+              const canDrag = !selectionMode && !alphabetical;
               return (
                 <PersonRow
                   person={person}
@@ -236,10 +260,8 @@ export function PeopleScreen() {
                     haptics.tap();
                     navigation.navigate('PersonDetail', { personId: person.id });
                   }}
-                  // Dragging is off while selecting — the long press that would
-                  // start a reorder is how a mis-tapped row gets selected
-                  // instead, the same trade GroceryScreen makes for its own rows.
-                  onLongPress={selectionMode ? undefined : drag}
+                  onLongPress={canDrag ? drag : undefined}
+                  canDrag={canDrag}
                   onToggleSelect={() => toggleSelection(person.id)}
                   styles={styles}
                   colors={colors}
@@ -327,6 +349,9 @@ interface PersonRowProps {
   selected: boolean;
   onPress: () => void;
   onLongPress: (() => void) | undefined;
+  // Drag is also off while sorted alphabetically (see canDrag at the call
+  // site), which needs its own hint text distinct from selectionMode's.
+  canDrag: boolean;
   onToggleSelect: () => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
@@ -337,7 +362,7 @@ interface PersonRowProps {
  * while bulk-selecting. */
 function PersonRow({
   person, name, birthdayLabel, soon, isActive, selectionMode, selected,
-  onPress, onLongPress, onToggleSelect, styles, colors,
+  onPress, onLongPress, canDrag, onToggleSelect, styles, colors,
 }: PersonRowProps) {
   const paintRef = usePaintSelectionRow(person.id);
   const spokenMeta = birthdayLabel ? `Birthday ${birthdayLabel}` : null;
@@ -354,7 +379,7 @@ function PersonRow({
         activeOpacity={interaction.activeOpacity}
         accessibilityRole="button"
         accessibilityLabel={spokenMeta ? `${name}. ${spokenMeta}` : name}
-        accessibilityHint={selectionMode ? undefined : 'Double tap to open. Long press to reorder.'}
+        accessibilityHint={selectionMode ? undefined : canDrag ? 'Double tap to open. Long press to reorder.' : 'Double tap to open.'}
       >
         <View style={[styles.avatar, { backgroundColor: colors.accentSubtle }]}>
           <Text style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
