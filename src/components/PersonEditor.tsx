@@ -114,6 +114,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
 
   const saveAndClose = () => {
     const trimmedName = name.trim();
+    const nudgeOptIn = cadenceDays > 0;
     updatePerson(person.id, {
       // An empty name would leave an unidentifiable row, so the previous one
       // stands — the same refusal the other editors make about their titles.
@@ -129,7 +130,12 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       cadenceDays,
       // The opt-in is the cadence: there is no separate switch to forget to
       // flip, and clearing the cadence is how somebody stops being nudged.
-      nudgeOptIn: cadenceDays > 0,
+      nudgeOptIn,
+      // Stamped only on the off→on transition, so tweaking an already-running
+      // cadence's number doesn't restart the wait. Cleared on off, so opting in
+      // again later starts a fresh wait rather than reading as still running
+      // from the first time. See Person.cadenceSetAt.
+      cadenceSetAt: nudgeOptIn ? (person.nudgeOptIn ? person.cadenceSetAt : new Date().toISOString()) : null,
       askAbout: askAbout.trim(),
     });
     onClose();

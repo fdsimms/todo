@@ -1716,7 +1716,7 @@ describe('blocking', () => {
       archived: false, archivedAt: null, createdAt: NOW.toISOString(),
       birthdayMonth: null, birthdayDay: null, birthdayTaskOptOut: false,
       phoneNumber: null, email: null, linkUrl: null,
-      cadenceDays: 0, nudgeOptIn: false, reachOutDeclinedAt: null, askAbout: '',
+      cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, askAbout: '',
     };
     const chasing = {
       ...baseTask,

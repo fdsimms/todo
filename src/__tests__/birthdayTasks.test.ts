@@ -33,6 +33,7 @@ const person = (overrides: Partial<Person> = {}): Person => ({
   linkUrl: null,
   cadenceDays: 0,
   nudgeOptIn: false,
+  cadenceSetAt: null,
   reachOutDeclinedAt: null,
   askAbout: '',
   ...overrides,

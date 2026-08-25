@@ -289,6 +289,17 @@ person cannot.
   ticking it off would otherwise reset the very clock that wrote it, without
   you having actually reached out.
 
+**Somebody with no history is measured from when the cadence was turned on, not
+from nothing.** `Person.cadenceSetAt` is stamped on the off→on transition and
+cleared when the cadence is turned back off, and it is what `wantedReachOuts`
+measures against when `lastTogether` is null. Opting somebody in must not
+itself read as "it's already time" — that reads as a countdown that started
+before the user asked for one, which is exactly the debt-collector tone rule 2
+rules out. A person with neither history nor a `cadenceSetAt` (an install that
+opted in before this field existed) falls back to counting as due immediately,
+which is the original behavior preserved for existing installs rather than a
+silent re-date to today.
+
 **The cadence can be offered rather than declared**, which is rule 5 and the
 coldest interaction in the feature avoided. `observedCadenceDays` reads the
 history and `describeObservedCadence` says it in words that carry where the

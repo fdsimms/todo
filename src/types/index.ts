@@ -443,6 +443,15 @@ export interface Person {
   // feature is the half you get without asking for it. It is also what keeps
   // "ranking" a non-question, since most people have no cadence to compare.
   nudgeOptIn: boolean;
+  // When the cadence was last turned on — null while `cadenceDays` is 0. This is
+  // the clock a brand-new person with no history is measured against, so opting
+  // somebody in doesn't itself read as "it has already been long enough": the
+  // first nudge waits out the cadence from here, the same as it would once real
+  // history exists. Untouched by an editor tweak to the number while already
+  // opted in, only by the off→on transition; cleared when cadenceDays drops back
+  // to 0, so opting in again later starts the wait over rather than reading as
+  // still-running from the first time.
+  cadenceSetAt: string | null;
   // When the user last swiped away this person's reach-out task. A stamp that
   // lapses, never a verdict: the only permanent fields available are the two
   // above, and both mean "never chase me about this person again", which is far

@@ -1051,6 +1051,12 @@ export function initDatabase(): void {
     // Who a planned meal is for (#2077). Empty for every meal planned before
     // this shipped, which reads as "nobody named" rather than as missing data.
     "ALTER TABLE meal_plan_entries ADD COLUMN person_ids TEXT NOT NULL DEFAULT '[]'",
+    // When a person's cadence was last turned on — see Person.cadenceSetAt.
+    // Null on every existing row, including everybody already opted in today;
+    // those keep reading as "no cadence-set anchor" (the reach-out pass falls
+    // back to its old immediate-due behavior for them) rather than being
+    // silently re-dated to now.
+    'ALTER TABLE people ADD COLUMN cadence_set_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -3973,6 +3979,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     linkUrl: (row.link_url as string) ?? null,
     cadenceDays: (row.cadence_days as number) ?? 0,
     nudgeOptIn: Boolean(row.nudge_opt_in),
+    cadenceSetAt: (row.cadence_set_at as string) ?? null,
     reachOutDeclinedAt: (row.reach_out_declined_at as string) ?? null,
     askAbout: (row.ask_about as string) ?? '',
   };
@@ -3988,15 +3995,15 @@ export function dbInsertPerson(person: Person): void {
     `INSERT INTO people (
       id, name, nickname, notes, sort_order, archived, archived_at, created_at,
       birthday_month, birthday_day, birthday_task_opt_out,
-      phone_number, email, link_url, cadence_days, nudge_opt_in, reach_out_declined_at, ask_about
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at, ask_about
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
       person.birthdayMonth, person.birthdayDay,
       person.birthdayTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
-      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.reachOutDeclinedAt, person.askAbout,
+      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
     ]
   );
 }
@@ -4006,7 +4013,7 @@ export function dbUpdatePerson(person: Person): void {
     `UPDATE people SET
       name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
       birthday_month=?, birthday_day=?, birthday_task_opt_out=?,
-      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, reach_out_declined_at=?, ask_about=?
+      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?, ask_about=?
     WHERE id=?`,
     [
       person.name, person.nickname, person.notes, person.sortOrder,
@@ -4014,7 +4021,7 @@ export function dbUpdatePerson(person: Person): void {
       person.birthdayMonth, person.birthdayDay,
       person.birthdayTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
-      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.reachOutDeclinedAt, person.askAbout,
+      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
       person.id,
     ]
   );
