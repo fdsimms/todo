@@ -17,6 +17,7 @@ import { SegmentedControl } from '../components/SegmentedControl';
 import { CategoryPickerList } from '../components/CategoryPicker';
 import { CountStepper } from '../components/CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
+import { RemindMePicker } from '../components/RemindMePicker';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -42,7 +43,7 @@ import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, toCadenceParts, fromCadenceParts, withCadenceUnit, describeCadence, cadenceUnitLabel,
   type CadenceParts,
 } from '../utils/nudgeCadence';
-import { EFFORT_LABELS, type Effort, type Task } from '../types';
+import { EFFORT_LABELS, type Effort, type ReminderKind, type Task } from '../types';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -50,6 +51,7 @@ const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   category: 'folder-outline',
   streak: 'flame-outline',
   vacation: 'airplane-outline',
+  reminder: 'notifications-outline',
 };
 
 // Filled counterparts of the row icons above, for the per-card CTA button —
@@ -167,6 +169,7 @@ export function BackfillScreen() {
   const [customText, setCustomText] = useState('');
   const [customUnit, setCustomUnit] = useState<'min' | 'hr'>('min');
   const [nudgeDraft, setNudgeDraft] = useState<CadenceParts>({ count: null, unit: 'days' });
+  const [reminderPickerOpen, setReminderPickerOpen] = useState(false);
 
   const taskCounts = useMemo(() => backfillFieldCounts(tasks, categories), [tasks, categories]);
   const categoryCounts = useMemo(() => categoryBackfillFieldCounts(categories), [categories]);
@@ -205,7 +208,19 @@ export function BackfillScreen() {
     setCustomOpen(false);
     setCustomText('');
     setCustomUnit('min');
+    setReminderPickerOpen(false);
   }, [currentId]);
+
+  // Same default RemindMePicker's own caller (TaskEditor) opens with: 9am on
+  // the date being scheduled against. Every card reaching this field has a
+  // dueDate (see isFieldMissing's 'reminder' case) and no reminderTime yet,
+  // so there's no existing value to prefer over it.
+  const reminderDefaultDate = useMemo(() => {
+    if (!currentTask?.dueDate) return null;
+    const d = new Date(currentTask.dueDate);
+    d.setHours(9, 0, 0, 0);
+    return d;
+  }, [currentTask?.dueDate]);
 
   // The nudge-cadence draft starts from whatever the project already has
   // stored (usually 0/Never, but see isProjectFieldMissing's note on a
@@ -433,6 +448,11 @@ export function BackfillScreen() {
     apply({ effort: minutesToEffort(minutes), estimatedMinutes: minutes });
   };
 
+  const applyReminder = (date: Date, kind: ReminderKind, offsetDays: number | null) => {
+    apply({ reminderTime: date.toISOString(), reminderKind: kind, reminderOffsetDays: offsetDays });
+    setReminderPickerOpen(false);
+  };
+
   if (!active) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -602,6 +622,7 @@ export function BackfillScreen() {
               onCategory={name => apply({ category: name })}
               onStreak={() => apply({ showStreak: true })}
               onVacation={() => apply({ vacationPause: true })}
+              onReminder={() => { haptics.tap(); setReminderPickerOpen(true); }}
               customOpen={customOpen}
               customText={customText}
               customUnit={customUnit}
@@ -635,6 +656,15 @@ export function BackfillScreen() {
             bottomOffset={tabBarHeight}
           />
         )}
+        <RemindMePicker
+          visible={reminderPickerOpen}
+          value={reminderDefaultDate}
+          kind="notification"
+          dueDate={currentTask?.dueDate ? new Date(currentTask.dueDate) : null}
+          offsetDays={null}
+          onConfirm={applyReminder}
+          onCancel={() => setReminderPickerOpen(false)}
+        />
         <NumberPadAccessory />
       </View>
     );
@@ -933,6 +963,7 @@ interface FieldControlProps {
   onCategory: (name: string | null) => void;
   onStreak: () => void;
   onVacation: () => void;
+  onReminder: () => void;
   customOpen: boolean;
   customText: string;
   customUnit: 'min' | 'hr';
@@ -943,7 +974,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({
-  field, colors, styles, onEstimate, onPriority, onCategory, onStreak, onVacation,
+  field, colors, styles, onEstimate, onPriority, onCategory, onStreak, onVacation, onReminder,
   customOpen, customText, customUnit, onOpenCustom, onCustomTextChange, onCustomUnitChange, onCustomSubmit,
 }: FieldControlProps) {
   if (field === 'estimate') {
@@ -1044,15 +1075,29 @@ function FieldControl({
     );
   }
 
+  if (field === 'vacation') {
+    return (
+      <PressableScale
+        style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+        onPress={onVacation}
+        accessibilityRole="button"
+        accessibilityLabel="Turn on vacation pause"
+      >
+        <Ionicons name="airplane" size={iconSize.md} color={colors.onAccent} />
+        <Text style={styles.toggleButtonText}>Turn on vacation pause</Text>
+      </PressableScale>
+    );
+  }
+
   return (
     <PressableScale
       style={[styles.toggleButton, { backgroundColor: colors.accent }]}
-      onPress={onVacation}
+      onPress={onReminder}
       accessibilityRole="button"
-      accessibilityLabel="Turn on vacation pause"
+      accessibilityLabel="Set a reminder"
     >
-      <Ionicons name="airplane" size={iconSize.md} color={colors.onAccent} />
-      <Text style={styles.toggleButtonText}>Turn on vacation pause</Text>
+      <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
+      <Text style={styles.toggleButtonText}>Set a reminder</Text>
     </PressableScale>
   );
 }
