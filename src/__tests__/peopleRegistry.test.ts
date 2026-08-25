@@ -12,7 +12,7 @@ const person = (id: string, name: string): Person => ({
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
-  cadenceDays: 0, nudgeOptIn: false, reachOutDeclinedAt: null, askAbout: '',
+  cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, askAbout: '',
 });
 
 const task = (id: string, personIds: string[]) => ({ id, personIds }) as unknown as Task;

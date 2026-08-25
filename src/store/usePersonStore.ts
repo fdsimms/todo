@@ -52,6 +52,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
     // never asks and never answers. See rule 4 in docs/arch/people.md.
     cadenceDays: 0,
     nudgeOptIn: false,
+    cadenceSetAt: null,
     reachOutDeclinedAt: null,
     askAbout: '',
   };
@@ -67,7 +68,7 @@ export type PersonPatch = Partial<Pick<Person,
   | 'name' | 'nickname' | 'notes'
   | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'birthdayTaskOptOut' | 'birthdayGiftTaskOptOut'
   | 'phoneNumber' | 'email' | 'linkUrl'
-  | 'cadenceDays' | 'nudgeOptIn' | 'reachOutDeclinedAt' | 'askAbout'
+  | 'cadenceDays' | 'nudgeOptIn' | 'cadenceSetAt' | 'reachOutDeclinedAt' | 'askAbout'
 >>;
 
 interface PersonStore {
