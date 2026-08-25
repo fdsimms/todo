@@ -1495,6 +1495,12 @@ describe('countLikelyInPantry', () => {
     expect(countLikelyInPantry(r, [milk, onions], now)).toEqual({ probablyHave: 1, viaSubstitute: 0 });
   });
 
+  it('counts a staple ("always have it") ingredient as probably on hand', () => {
+    const salt = item('Salt', { nameKey: 'salt', isStaple: true, purchaseCount: 0 });
+    const r = recipe('Ragù', { ingredients: [ing('Salt', { nameKey: 'salt' })] });
+    expect(countLikelyInPantry(r, [salt], now)).toEqual({ probablyHave: 1, viaSubstitute: 0 });
+  });
+
   it('counts a component\'s ingredients when given the library', () => {
     const milk = item('Milk', {
       nameKey: 'milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
@@ -1593,6 +1599,23 @@ describe('pantryCoverageForRecipe', () => {
     const saffron = item('Saffron', { nameKey: 'saffron', purchaseCount: 0 });
     const r = recipe('Ragù', { ingredients: [ing('Saffron', { nameKey: 'saffron' })] });
     expect(pantryCoverageForRecipe(r, [saffron], now)).toEqual({ total: 1, catalogMatches: 1, probablyHave: 0, viaSubstitute: 0, percent: 0 });
+  });
+
+  it('folds staple ("always have it") ingredients into probablyHave, not just catalogMatches', () => {
+    // Salt and pepper are staples — never purchased, so they'd read as
+    // needToBuy off probablyHaveReason alone, but isStaple stands for "I
+    // always have this" regardless of purchase history.
+    const salt = item('Salt', { nameKey: 'salt', isStaple: true, purchaseCount: 0 });
+    const pepper = item('Pepper', { nameKey: 'pepper', isStaple: true, purchaseCount: 0 });
+    const r = recipe('Ragù', {
+      ingredients: [
+        ing('Salt', { nameKey: 'salt' }),
+        ing('Pepper', { nameKey: 'pepper' }),
+        ing('Saffron', { nameKey: 'saffron' }), // no catalog row
+      ],
+    });
+    expect(pantryCoverageForRecipe(r, [salt, pepper], now))
+      .toEqual({ total: 3, catalogMatches: 2, probablyHave: 2, viaSubstitute: 0, percent: 67 });
   });
 
   it('computes a percentage over the whole recipe, not just the catalog matches', () => {
