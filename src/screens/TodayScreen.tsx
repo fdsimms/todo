@@ -55,7 +55,7 @@ import {
   type TodayListItem,
   type LaterTodaySectionData,
 } from '../utils/taskGrouping';
-import { liveGeneratedTask } from '../utils/generatedTasks';
+import { liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { useDemoStore } from '../store/useDemoStore';
 import {
   eventContextRows,
@@ -521,6 +521,13 @@ export function TodayScreen() {
   );
   const allTasks = useTaskStore(s => s.tasks);
   const isEmptyDatabase = allTasks.length === 0;
+  // The whole shortlist "batch the reach-outs" (#2091) starts from — the cap
+  // on the generator is already the ranking, the same way pinnedTasks() is
+  // for its own seed above.
+  const reachOutTasks = useMemo(
+    () => liveGeneratedTasksOfKind(allTasks, 'reachOut'),
+    [allTasks],
+  );
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const updateTask = useTaskStore(s => s.updateTask);
   const clearAllPins = useTaskStore(s => s.clearAllPins);
@@ -593,6 +600,9 @@ export function TodayScreen() {
   // the pinned block instead of running the suggester. See FocusSetupSheet's
   // `pinnedSeed` prop.
   const [focusFromPinned, setFocusFromPinned] = useState(false);
+  // Same idea, seeded from the live reach-out tasks instead — see
+  // FocusSetupSheet's `reachOutSeed` prop and the "…" menu's new row.
+  const [focusFromReachOuts, setFocusFromReachOuts] = useState(false);
   const [focusSessionVisible, setFocusSessionVisible] = useState(false);
   const focusSession = useFocusStore(s => s.session);
   const startFocusSession = useFocusStore(s => s.startSession);
@@ -2611,11 +2621,16 @@ export function TodayScreen() {
               and while a session is already running — there's nothing to
               start. Opens the ordinary setup sheet seeded from this block
               instead of the suggester, so the window, plan preview and swap
-              still apply; see FocusSetupSheet's pinnedSeed prop. */}
+              still apply; see FocusSetupSheet's pinnedSeed prop. The "…" menu's
+              "Reach out to people" row is the same idea (reachOutSeed) — that
+              one lives there rather than here because it has nothing to
+              anchor a header button to; there's no pinned-tasks-style block
+              a reach-out set renders inside. */}
           {!selectionMode && !focusSession && (
             <TouchableOpacity
               onPress={() => {
                 haptics.tap();
+                setFocusFromReachOuts(false);
                 setFocusFromPinned(true);
                 setFocusSetupVisible(true);
               }}
@@ -2971,6 +2986,7 @@ export function TodayScreen() {
               return;
             }
             setFocusFromPinned(false);
+            setFocusFromReachOuts(false);
             setFocusSetupVisible(true);
           },
           active: focusSession !== null,
@@ -3709,6 +3725,13 @@ export function TodayScreen() {
             setPullScopeProjectIds(undefined);
             setPullVisible(true);
           }}
+          onBatchReachOuts={reachOutTasks.length > 0 && !focusSession ? () => {
+            setOptionsMenuVisible(false);
+            setFocusFromPinned(false);
+            setFocusFromReachOuts(true);
+            setFocusSetupVisible(true);
+          } : undefined}
+          reachOutCount={reachOutTasks.length}
           onReorderCategories={() => {
             setOptionsMenuVisible(false);
             setCategoryOrderVisible(true);
@@ -3751,6 +3774,7 @@ export function TodayScreen() {
           tasks={visibleTasks}
           allTasks={allTasks}
           pinnedSeed={focusFromPinned ? pinnedTasks : undefined}
+          reachOutSeed={focusFromReachOuts ? reachOutTasks : undefined}
           onClose={() => setFocusSetupVisible(false)}
           onStart={(queue, options) => {
             startFocusSession(queue, options);

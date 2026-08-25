@@ -290,6 +290,33 @@ double the answer. The offer never phrases itself as a shortfall, and a test
 asserts that — nothing here may read as the app's opinion about how often
 somebody ought to see their friends.
 
+## Batching the reach-outs into a focus session
+
+`FocusSetupSheet`'s `reachOutSeed` prop, and the "Reach out to people" row in
+the "…" menu. Fifteen minutes, four texts, done — rather than four separate
+small guilts spread across a week.
+
+- **No new plumbing, because the live reach-out set is already the whole
+  answer.** A reach-out nudge is an ordinary generated `Task`, so it needs
+  nothing `focusPlan.ts`/`useFocusStore.ts` don't already handle for any task:
+  no `estimatedMinutes` falls back to the same "assumed" default an
+  unestimated task always gets, and the row's call/text buttons already read
+  `phoneNumber` generically. The only genuinely new code is the entry point.
+- **`focusQueueFromPinned` is reused unchanged, not forked.** "Take this short
+  hand-picked list as-is, filtered by eligibility and window-fit" is exactly
+  what a ≤2-item reach-out list needs, and it's exactly what pinning already
+  needed — `MAX_REACH_OUT_TASKS` is the ranking here the way `pinnedOrder` is
+  there. A second, reach-out-flavoured copy of that function would be the
+  drift the shared-primitives notes elsewhere in this file exist to prevent.
+- **The menu row is omitted, not shown-and-explained, when there's nothing to
+  batch.** Unlike "Pull from projects" (always there, self-explains when
+  empty) — a quiet project is always eventually true, most of the time nobody
+  is due for a reach-out, and a row that only sometimes does anything is worse
+  than no row.
+- **Still no ranking by neglect.** The queue runs in the capped set's own
+  order, which is `sortOrder`-broken (see the reach-out nudge section above) —
+  batching doesn't get its own opinion about which person goes first.
+
 ## Calendar events offered as history
 
 `calendarHistory.ts`, and the rule it exists to hold: **the app may notice, and
