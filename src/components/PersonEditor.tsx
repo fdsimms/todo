@@ -72,7 +72,6 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   const [email, setEmail] = useState('');
   const [linkUrl, setLinkUrl] = useState('');
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
-  const [moreOpen, setMoreOpen] = useState(false);
   const [cadenceDays, setCadenceDays] = useState(0);
   const [askAbout, setAskAbout] = useState('');
 
@@ -100,7 +99,6 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
     setCadenceDays(person.cadenceDays);
     setAskAbout(person.askAbout);
     setShowBirthdayPicker(false);
-    setMoreOpen(false);
   }, [person, visible]);
 
   if (!person) return null;
@@ -352,48 +350,38 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         A birthday task carries their number, so you can call or text from the task itself.
       </Text>
 
-      <TouchableOpacity
-        style={styles.moreToggle}
-        onPress={() => { haptics.tap(); animateLayout(); setMoreOpen(v => !v); }}
-        activeOpacity={interaction.activeOpacity}
-        accessibilityRole="button"
-      >
-        <Text style={styles.groupLabelInline}>MORE</Text>
-        <Ionicons name={moreOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
-      </TouchableOpacity>
-      {moreOpen && (
-        <View style={styles.sectionCard}>
-          <View style={styles.fieldRow}>
-            <Text style={styles.fieldLabel}>Nickname</Text>
-            <TextInput
-              style={styles.fieldInput}
-              value={nickname}
-              onChangeText={setNickname}
-              placeholder="e.g. Ans"
-              placeholderTextColor={colors.textTertiary}
-              maxLength={TITLE_MAX_LENGTH}
-            />
-          </View>
-          <Text style={styles.cardFooter}>Shown instead of their name, everywhere.</Text>
-          <View style={styles.sep} />
-          <TouchableOpacity
-            style={styles.optionRow}
-            onPress={toggleArchived}
-            activeOpacity={interaction.activeOpacity}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: archived }}
-            accessibilityLabel="Archive person"
-          >
-            <View style={styles.optionContent}>
-              <Text style={styles.optionLabel}>Archive</Text>
-              <Text style={styles.optionHint}>Hides them from the list and stops their birthday task.</Text>
-            </View>
-            <View style={[styles.toggle, archived && styles.toggleOn]}>
-              <View style={[styles.toggleKnob, archived && styles.toggleKnobOn]} />
-            </View>
-          </TouchableOpacity>
+      <Text style={styles.groupLabel}>MORE</Text>
+      <View style={styles.sectionCard}>
+        <View style={styles.fieldRow}>
+          <Text style={styles.fieldLabel}>Nickname</Text>
+          <TextInput
+            style={styles.fieldInput}
+            value={nickname}
+            onChangeText={setNickname}
+            placeholder="e.g. Ans"
+            placeholderTextColor={colors.textTertiary}
+            maxLength={TITLE_MAX_LENGTH}
+          />
         </View>
-      )}
+        <Text style={styles.cardFooter}>Shown instead of their name, everywhere.</Text>
+        <View style={styles.sep} />
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={toggleArchived}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: archived }}
+          accessibilityLabel="Archive person"
+        >
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Archive</Text>
+            <Text style={styles.optionHint}>Hides them from the list and stops their birthday task.</Text>
+          </View>
+          <View style={[styles.toggle, archived && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, archived && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+      </View>
     </EditorSheet>
   );
 }
@@ -424,14 +412,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     letterSpacing: 0.8, marginTop: spacing.lg, marginBottom: spacing.sm,
     paddingHorizontal: spacing.sm,
-  },
-  groupLabelInline: {
-    color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
-    letterSpacing: 0.8,
-  },
-  moreToggle: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    marginTop: spacing.lg, marginBottom: spacing.sm, paddingHorizontal: spacing.sm,
   },
   sectionCard: {
     backgroundColor: colors.bgSecondary,
