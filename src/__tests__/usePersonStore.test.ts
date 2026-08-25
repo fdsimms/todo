@@ -23,6 +23,7 @@ describe('a new person', () => {
     expect(person.notes).toBe('');
     expect(person.birthdayMonth).toBeNull();
     expect(person.birthdayDay).toBeNull();
+    expect(person.birthYear).toBeNull();
     expect(person.archived).toBe(false);
   });
 
@@ -35,6 +36,7 @@ describe('a new person', () => {
     expect(person.cadenceDays).toBe(0);
     expect(person.reachOutDeclinedAt).toBeNull();
     expect(person.birthdayTaskOptOut).toBe(false);
+    expect(person.birthdayGiftTaskOptOut).toBe(false);
   });
 
   it('trims the name it was given', () => {

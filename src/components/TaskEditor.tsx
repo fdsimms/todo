@@ -75,7 +75,9 @@ import { useShallow } from 'zustand/react/shallow';
 import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, detectContactIntent } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions } from '../utils/parseTaskInput';
+import { mergeRanges } from '../utils/ranges';
+import { HighlightedText } from './HighlightedText';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor } from '../utils/effort';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
 import { CollapsibleField } from './CollapsibleField';
@@ -734,6 +736,24 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   );
   const scheduleMatchEnd = parsedSchedule ? parsedSchedule.matchStart + parsedSchedule.matchedText.length : 0;
 
+  // Purely visual: an "@name" mention in the title stays tinted while editing
+  // too, but unlike quick add this field never parses one out of typed text —
+  // People is its own picker below (rule 3, docs/arch/people.md), so matching
+  // is restricted to whoever is already in `personIds` rather than the whole
+  // roster. Typing a fresh "@someone" here does nothing until they're added
+  // through that field.
+  const titleMentionRanges = useMemo(
+    () => mergeRanges(matchPersonMentions(title, people.filter(p => personIds.includes(p.id)))
+      .map((m): [number, number] => [m.start, m.end])),
+    [title, people, personIds]
+  );
+  const titleHighlightRanges = useMemo(() => {
+    const ranges = [...titleMentionRanges];
+    if (parsedSchedule) ranges.push([parsedSchedule.matchStart, scheduleMatchEnd]);
+    return mergeRanges(ranges);
+  }, [titleMentionRanges, parsedSchedule, scheduleMatchEnd]);
+  const hasTitleOverlay = parsedSchedule != null || titleMentionRanges.length > 0;
+
   // "Call Kristen", "Text the plumber", "Email the landlord" — a title that
   // implies a contact action with no data to power it. Purely a discoverability
   // nudge toward the Phone/Email rows below (see #1152/#1153); never blocking,
@@ -1220,7 +1240,23 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPickerMode('none');
   };
 
+  const commitWindowValue = (which: 'start' | 'end', date: Date) => {
+    const hhmm = dateToHHMM(date);
+    if (which === 'start') {
+      setWindowStart(hhmm);
+      applyDefaultReminderLead(hhmm);
+    } else {
+      setWindowEnd(hhmm);
+    }
+  };
+
   const openWindowPicker = (which: 'start' | 'end') => {
+    // Switching pills before hitting Set commits the pill being left instead
+    // of discarding it, so dialing in Start and tapping End keeps the Start
+    // time you'd already picked.
+    if (windowPickerMode !== 'none' && windowPickerMode !== which) {
+      commitWindowValue(windowPickerMode, windowPickerDate);
+    }
     const current = which === 'start' ? windowStart : windowEnd;
     const fallback = which === 'start' ? '08:00' : '13:00';
     setWindowPickerDate(hhmmToDate(current ?? fallback));
@@ -1242,12 +1278,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   };
 
   const confirmWindowPicker = () => {
-    const hhmm = dateToHHMM(windowPickerDate);
-    if (windowPickerMode === 'start') {
-      setWindowStart(hhmm);
-      applyDefaultReminderLead(hhmm);
-    } else if (windowPickerMode === 'end') {
-      setWindowEnd(hhmm);
+    if (windowPickerMode !== 'none') {
+      commitWindowValue(windowPickerMode, windowPickerDate);
     }
     setWindowPickerMode('none');
   };
@@ -1879,16 +1911,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
       {titleVisible && (
       <View style={styles.titleWrap}>
-        {parsedSchedule && (
-          <Text style={[styles.titleInput, styles.titleOverlay]} pointerEvents="none">
-            {title.slice(0, parsedSchedule.matchStart)}
-            <Text style={styles.titleHighlight}>{title.slice(parsedSchedule.matchStart, scheduleMatchEnd)}</Text>
-            {title.slice(scheduleMatchEnd)}
-          </Text>
+        {hasTitleOverlay && (
+          <HighlightedText
+            text={title}
+            ranges={titleHighlightRanges}
+            style={[styles.titleInput, styles.titleOverlay]}
+            highlightStyle={styles.titleHighlight}
+            pointerEvents="none"
+          />
         )}
         <TextInput
           ref={titleRef}
-          style={[styles.titleInput, parsedSchedule && styles.titleInputHidden]}
+          style={[styles.titleInput, hasTitleOverlay && styles.titleInputHidden]}
           value={title}
           onChangeText={setTitle}
           placeholder="Task title"
@@ -2777,7 +2811,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               <>
                 <View style={styles.windowPillRow}>
                   <TouchableOpacity
-                    style={[styles.timePill, styles.windowPill, !!windowStart && styles.timePillActive]}
+                    style={[
+                      styles.timePill, styles.windowPill,
+                      !!windowStart && styles.timePillActive,
+                      windowPickerMode === 'start' && styles.timePillEditing,
+                    ]}
                     onPress={() => openWindowPicker('start')}
                   >
                     <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
@@ -2785,7 +2823,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.timePill, styles.windowPill, !!windowEnd && styles.timePillActive]}
+                    style={[
+                      styles.timePill, styles.windowPill,
+                      !!windowEnd && styles.timePillActive,
+                      windowPickerMode === 'end' && styles.timePillEditing,
+                    ]}
                     onPress={() => openWindowPicker('end')}
                   >
                     <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
@@ -2808,7 +2850,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmWindowPicker}>
-                        <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
+                        <Text style={[styles.pickerBtnText, { color: colors.onAccent }]}>Set</Text>
                       </TouchableOpacity>
                     </View>
                   </>
@@ -4376,8 +4418,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   timePill: {
     flex: 1, paddingVertical: 7, borderRadius: radius.full,
     backgroundColor: colors.bgTertiary, alignItems: 'center',
+    borderWidth: 2, borderColor: 'transparent',
   },
   timePillActive: { backgroundColor: colors.accent },
+  // Which of Start/End the wheel below is currently set to — separate from
+  // timePillActive, which just means "has a value", so a pill can show both,
+  // either, or neither.
+  timePillEditing: { borderColor: colors.text },
   timePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   timePillTextActive: { color: colors.bg, fontWeight: '600' },
   windowPillRow: {

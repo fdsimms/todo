@@ -415,12 +415,25 @@ export interface Person {
   // are always written as a pair.
   birthdayMonth: number | null;
   birthdayDay: number | null;
+  // Recorded for its own sake, never derived from and never read to compute an
+  // age — that use (a "Turning 34" chip) was removed in #2083, and this is a
+  // second, unrelated life for the same column: something worth knowing about
+  // somebody, not an input to arithmetic. Optional even once a birthday is on
+  // file (most people's is the common case, see docs/arch/people.md), but
+  // never set on its own: clearing the birthday clears this too, the same
+  // "both halves together" rule birthdayMonth/Day already follow.
+  birthYear: number | null;
   // When the user deleted this person's birthday task (see
   // src/utils/birthdayTasks.ts). The per-source opt-out every generated task
   // writes on its source row, and unlike `Project.reviewDeclinedAt` a permanent
   // one: "don't remind me about this birthday" is a durable thing to have said,
   // where "this project isn't worth reviewing today" is not.
   birthdayTaskOptOut: boolean;
+  // The same permanent "no", one field over, for the gift task rather than the
+  // reminder itself (see src/utils/birthdayTasks.ts). A separate field because
+  // the two are separate decisions: somebody might want the day marked on
+  // their list without wanting a second row about buying anything for it.
+  birthdayGiftTaskOptOut: boolean;
 
   // Enough to reach them, and nothing more. phoneNumber is stored as typed, the
   // same decision `Task.phoneNumber` documents — a canonical dial string needs a
@@ -537,7 +550,7 @@ export interface PersonNote {
 }
 
 /**
- * Which of the app's ten unattended generators wrote a task — see
+ * Which of the app's eleven unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
  *
@@ -579,6 +592,11 @@ export type GeneratedKind =
   // src/utils/birthdayTasks.ts. The only generator whose trigger is known years
   // in advance rather than derived from something that just changed.
   | 'birthday'
+  // Getting them a gift, on its own separately configurable lead time — see
+  // src/utils/birthdayTasks.ts. Rides the same person and year in
+  // generatedSourceId that 'birthday' does; the kind is what keeps the two
+  // from being read as one another's task (see generatedSourceOf).
+  | 'birthdayGift'
   // A person you asked to be reminded about, whose cadence has run out — see
   // src/utils/reachOutTasks.ts. Silent on everybody until they are explicitly
   // opted in, which is what keeps "who am I neglecting" a question the app
@@ -3104,9 +3122,8 @@ export const MEAL_SLOT_LABELS: Record<MealSlot, string> = {
 
 /**
  * A glyph per meal, borrowed from the time-of-day pills in quick add — the same
- * three parts of the day MEAL_SLOT_SEGMENTS hides each meal's task behind, so a
- * row and the behaviour agree. Snack gets the cup, since it's the one with no
- * part of the day to name.
+ * three parts of the day a meal's own slot names. Snack gets the cup, since
+ * it's the one with no part of the day to name.
  *
  * Beside the labels rather than in either of the two screens that draw it (the
  * Settings rows that switch a meal on, the meal chip on a task row), because

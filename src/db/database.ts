@@ -240,9 +240,6 @@ export function initDatabase(): void {
       created_at TEXT NOT NULL,
       birthday_month INTEGER,
       birthday_day INTEGER,
-      -- Unread and never written: the "turning N" age reminder this backed was
-      -- removed. Left in place rather than dropped, since SQLite column drops
-      -- are a table rebuild and existing installs may still carry a value here.
       birth_year INTEGER,
       birthday_task_opt_out INTEGER NOT NULL DEFAULT 0,
       phone_number TEXT,
@@ -1057,6 +1054,11 @@ export function initDatabase(): void {
     // back to its old immediate-due behavior for them) rather than being
     // silently re-dated to now.
     'ALTER TABLE people ADD COLUMN cadence_set_at TEXT',
+    // The gift task's own opt-out, beside birthday_task_opt_out — see
+    // Person.birthdayGiftTaskOptOut. Default 0 on every existing row, which
+    // reads as "not opted out" and is correct: the generator itself ships off,
+    // so no existing install sees a new task from this alone.
+    'ALTER TABLE people ADD COLUMN birthday_gift_task_opt_out INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -3973,7 +3975,9 @@ function rowToPerson(row: Record<string, unknown>): Person {
     createdAt: row.created_at as string,
     birthdayMonth: (row.birthday_month as number | null) ?? null,
     birthdayDay: (row.birthday_day as number | null) ?? null,
+    birthYear: (row.birth_year as number | null) ?? null,
     birthdayTaskOptOut: Boolean(row.birthday_task_opt_out),
+    birthdayGiftTaskOptOut: Boolean(row.birthday_gift_task_opt_out),
     phoneNumber: (row.phone_number as string) ?? null,
     email: (row.email as string) ?? null,
     linkUrl: (row.link_url as string) ?? null,
@@ -3994,14 +3998,15 @@ export function dbInsertPerson(person: Person): void {
   db.runSync(
     `INSERT INTO people (
       id, name, nickname, notes, sort_order, archived, archived_at, created_at,
-      birthday_month, birthday_day, birthday_task_opt_out,
+      birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
       phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at, ask_about
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
-      person.birthdayMonth, person.birthdayDay,
+      person.birthdayMonth, person.birthdayDay, person.birthYear,
       person.birthdayTaskOptOut ? 1 : 0,
+      person.birthdayGiftTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
       person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
     ]
@@ -4012,14 +4017,15 @@ export function dbUpdatePerson(person: Person): void {
   db.runSync(
     `UPDATE people SET
       name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
-      birthday_month=?, birthday_day=?, birthday_task_opt_out=?,
+      birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
       phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?, ask_about=?
     WHERE id=?`,
     [
       person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt,
-      person.birthdayMonth, person.birthdayDay,
+      person.birthdayMonth, person.birthdayDay, person.birthYear,
       person.birthdayTaskOptOut ? 1 : 0,
+      person.birthdayGiftTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
       person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
       person.id,

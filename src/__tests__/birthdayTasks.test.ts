@@ -1,18 +1,26 @@
 import type { Person, Task } from '../types';
 import {
   birthdayDrift,
+  birthdayGiftDrift,
+  birthdayGiftTitle,
   birthdayInYear,
   birthdaySourceId,
   birthdayTitle,
   clampBirthdayLeadDays,
+  clampBirthdayGiftLeadDays,
   hasBirthday,
   nextBirthday,
   parseBirthdayLeadDays,
+  parseBirthdayGiftLeadDays,
   parseBirthdaySource,
+  parseBirthdayGiftSource,
   personLinkUrl,
   staleBirthdayTasks,
+  staleBirthdayGiftTasks,
   wantedBirthdayTasks,
+  wantedBirthdayGiftTasks,
   DEFAULT_BIRTHDAY_LEAD_DAYS,
+  DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS,
   MAX_BIRTHDAY_LEAD_DAYS,
 } from '../utils/birthdayTasks';
 
@@ -27,7 +35,9 @@ const person = (overrides: Partial<Person> = {}): Person => ({
   createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: 3,
   birthdayDay: 14,
+  birthYear: null,
   birthdayTaskOptOut: false,
+  birthdayGiftTaskOptOut: false,
   phoneNumber: null,
   email: null,
   linkUrl: null,
@@ -164,6 +174,11 @@ describe('when it next comes round', () => {
 
   it('rolls to next year once it has passed', () => {
     expect(nextBirthday(person(), noon(2026, 6, 1))).toEqual(noon(2027, 3, 14));
+  });
+
+  it("ignores birthYear entirely — it's never read to place or age this task", () => {
+    const withYear = person({ birthYear: 1992 });
+    expect(nextBirthday(withYear, noon(2026, 1, 5))).toEqual(nextBirthday(person(), noon(2026, 1, 5)));
   });
 });
 
@@ -322,5 +337,93 @@ describe('the link', () => {
 
   it('falls back to the bare list rather than minting a link to nobody', () => {
     expect(personLinkUrl('')).toBe('dundundun://people');
+  });
+});
+
+describe('the gift task', () => {
+  it('has its own, longer default lead time', () => {
+    expect(DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS).toBeGreaterThan(DEFAULT_BIRTHDAY_LEAD_DAYS);
+    expect(clampBirthdayGiftLeadDays(NaN)).toBe(DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS);
+    expect(parseBirthdayGiftLeadDays(null)).toBe(DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS);
+    expect(parseBirthdayGiftLeadDays('0')).toBe(0);
+    expect(parseBirthdayGiftLeadDays('12')).toBe(12);
+  });
+
+  it('shares the source id shape with the reminder, scoped apart by kind', () => {
+    const sourceId = birthdaySourceId('abc', 2026);
+    expect(parseBirthdayGiftSource(genTask({ generatedKind: 'birthdayGift', generatedSourceId: sourceId })))
+      .toEqual({ personId: 'abc', year: 2026 });
+    // A birthday task carrying the identical string isn't read as a gift task.
+    expect(parseBirthdayGiftSource(genTask({ generatedKind: 'birthday', generatedSourceId: sourceId })))
+      .toBeNull();
+  });
+
+  it('names the action, unlike the reminder', () => {
+    expect(birthdayGiftTitle(person())).toBe("Get Ansley's birthday gift");
+  });
+
+  describe('who wants one right now', () => {
+    const lead = 10;
+
+    it('offers one inside the window', () => {
+      const wants = wantedBirthdayGiftTasks([person()], lead, noon(2026, 3, 6));
+      expect(wants).toHaveLength(1);
+      expect(wants[0].title).toBe("Get Ansley's birthday gift");
+      expect(wants[0].deadline).toEqual(noon(2026, 3, 14));
+    });
+
+    it('says nobody outside the window', () => {
+      expect(wantedBirthdayGiftTasks([person()], lead, noon(2026, 3, 1))).toEqual([]);
+    });
+
+    it('honours the reminder opt-out too — not wanting to be told rules out shopping for it', () => {
+      expect(wantedBirthdayGiftTasks([person({ birthdayTaskOptOut: true })], lead, noon(2026, 3, 6)))
+        .toEqual([]);
+    });
+
+    it('honours its own, narrower opt-out', () => {
+      expect(wantedBirthdayGiftTasks([person({ birthdayGiftTaskOptOut: true })], lead, noon(2026, 3, 6)))
+        .toEqual([]);
+    });
+
+    it('carries no cap, same as the reminder', () => {
+      const people = [
+        person({ id: 'a', name: 'A', birthdayMonth: 3, birthdayDay: 14 }),
+        person({ id: 'b', name: 'B', birthdayMonth: 3, birthdayDay: 15 }),
+      ];
+      expect(wantedBirthdayGiftTasks(people, lead, noon(2026, 3, 10))).toHaveLength(2);
+    });
+  });
+
+  describe('the rows whose reason has gone', () => {
+    it('clears one nobody wants any more', () => {
+      const live = genTask({ generatedKind: 'birthdayGift', generatedSourceId: 'p1#2026' });
+      expect(staleBirthdayGiftTasks([live], [])).toEqual([live]);
+    });
+
+    it('leaves a row that is still wanted alone', () => {
+      const live = genTask({ generatedKind: 'birthdayGift', generatedSourceId: 'p1#2026' });
+      const wants = wantedBirthdayGiftTasks([person()], 10, noon(2026, 3, 6));
+      expect(staleBirthdayGiftTasks([live], wants)).toEqual([]);
+    });
+
+    it("ignores the reminder's own tasks, despite sharing the source id shape", () => {
+      const reminder = genTask({ generatedKind: 'birthday', generatedSourceId: 'p1#2026' });
+      expect(staleBirthdayGiftTasks([reminder], [])).toEqual([]);
+    });
+  });
+
+  describe('chasing the date', () => {
+    const want = wantedBirthdayGiftTasks([person()], 10, noon(2026, 3, 6))[0];
+
+    it('leaves a row alone when the birthday has not moved', () => {
+      expect(birthdayGiftDrift({ deadline: noon(2026, 3, 14).toISOString() }, want)).toBeNull();
+    });
+
+    it('moves the row when the birthday itself was corrected', () => {
+      const drift = birthdayGiftDrift({ deadline: noon(2026, 3, 20).toISOString() }, want);
+      expect(drift).not.toBeNull();
+      expect(new Date(drift!.deadline)).toEqual(noon(2026, 3, 14));
+    });
   });
 });

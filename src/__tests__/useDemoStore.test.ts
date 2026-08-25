@@ -870,6 +870,11 @@ describe('demo seed — people', () => {
     expect(people.some(p => p.birthdayMonth === null && p.birthdayDay === null)).toBe(true);
   });
 
+  it('seeds one birth year, so the field reads as present without implying everybody needs one', () => {
+    const people = usePersonStore.getState().people;
+    expect(people.some(p => p.birthYear !== null)).toBe(true);
+  });
+
   it('seeds a nickname, which is otherwise invisible', () => {
     expect(usePersonStore.getState().people.some(p => p.nickname !== '')).toBe(true);
   });
@@ -913,6 +918,19 @@ describe('demo seed — people', () => {
     // And it names nobody, so the app's own row can't enter a history meant to
     // hold what you actually did together.
     expect(birthdayTasks[0].personIds).toEqual([]);
+  });
+
+  // This generator ships off, so it's written by hand rather than through
+  // checkBirthdayGiftTasks — a demo relying on the real setting would show the
+  // feature only to people who had already found it.
+  it('puts a real birthday-gift task on the list, sharing the reminder\'s source year', () => {
+    const giftTasks = useTaskStore.getState().tasks.filter(t => t.generatedKind === 'birthdayGift');
+    expect(giftTasks).toHaveLength(1);
+    expect(giftTasks[0].title).toMatch(/^Get /);
+    expect(giftTasks[0].personIds).toEqual([]);
+    const birthdayTask = useTaskStore.getState().tasks
+      .find(t => t.generatedKind === 'birthday' && t.generatedSourceId === giftTasks[0].generatedSourceId);
+    expect(birthdayTask).toBeDefined();
   });
 
   it('seeds tasks that name people, both planned and already done', () => {
@@ -976,6 +994,12 @@ describe('demo seed — people', () => {
       .find(t => t.generatedKind === 'birthday' && t.generatedSourceId?.startsWith(gift.personId));
     expect(task).toBeDefined();
     expect(task!.notes).toContain(gift.text);
+    // And onto the gift task too — one names the day, the other is the
+    // shopping trip, and the ideas are useful sitting on either.
+    const giftTask = useTaskStore.getState().tasks
+      .find(t => t.generatedKind === 'birthdayGift' && t.generatedSourceId?.startsWith(gift.personId));
+    expect(giftTask).toBeDefined();
+    expect(giftTask!.notes).toContain(gift.text);
   });
 
   it('seeds a dated note and one whose day has passed, which render differently', () => {
@@ -1667,8 +1691,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // it hasn't been decided. Both states in one screen is the seed's job.
     const days = new Set(mealTasks.map(t => parseMealSlotSource(t.generatedSourceId)!.dayKey));
     expect(days.size).toBeGreaterThan(1);
-    // Segmented to its slot — the mechanism that keeps dinner off the morning.
-    expect(mealTasks.some(t => t.timeSegments.includes('evening'))).toBe(true);
+    // No slot gates its task behind a time-of-day segment any more, so a
+    // meal task is visible on Today at any time of day, dinner included.
+    expect(mealTasks.every(t => t.timeSegments.length === 0)).toBe(true);
 
     // Today's answered slots step through cooking and then eating, so the chain
     // is visible in the seed rather than only on a day nobody has planned.

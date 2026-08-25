@@ -24,6 +24,15 @@ import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
  * exercisable from the `node` test environment without standing up the settings
  * store. The firing pass supplies `getCurrentDayStart()`; see
  * `checkBirthdayTasks`.
+ *
+ * **Two generators live in this one file**: the reminder above, and
+ * `wantedBirthdayGiftTasks` below it — getting the person a gift, on its own
+ * separately configured lead time so a card can surface three days out while
+ * a present that needs shipping surfaces ten. They share a file because they
+ * share everything but the lead setting and the title: the same source id
+ * shape (`personId#year`), the same no-cap reasoning, the same "dated today,
+ * not backwards from the birthday" rule. Splitting them would mean copying
+ * all of that rather than sharing it.
  */
 
 /**
@@ -37,13 +46,28 @@ import { generatedSourceOf, liveGeneratedTasksOfKind } from './generatedTasks';
  */
 export const DEFAULT_BIRTHDAY_LEAD_DAYS = 3;
 
+/**
+ * Days before the birthday that the gift task surfaces — longer than the
+ * reminder's own default, because buying or shipping something is rarely a
+ * same-day job the way a card or a table booking can be.
+ */
+export const DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS = 10;
+
 /** Nothing above a month: past that the row is furniture rather than a prompt. */
 export const MAX_BIRTHDAY_LEAD_DAYS = 30;
 
-/** Zero is allowed and means "on the day itself". */
-export function clampBirthdayLeadDays(days: number): number {
-  if (!Number.isFinite(days)) return DEFAULT_BIRTHDAY_LEAD_DAYS;
+/** Zero is allowed and means "on the day itself". Shared by both lead settings. */
+function clampLeadDays(days: number, fallback: number): number {
+  if (!Number.isFinite(days)) return fallback;
   return Math.min(MAX_BIRTHDAY_LEAD_DAYS, Math.max(0, Math.round(days)));
+}
+
+export function clampBirthdayLeadDays(days: number): number {
+  return clampLeadDays(days, DEFAULT_BIRTHDAY_LEAD_DAYS);
+}
+
+export function clampBirthdayGiftLeadDays(days: number): number {
+  return clampLeadDays(days, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS);
 }
 
 /**
@@ -61,6 +85,12 @@ export function parseBirthdayLeadDays(raw: string | null | undefined): number {
   return clampBirthdayLeadDays(Number(raw));
 }
 
+/** Same reading, for the gift task's own lead setting. */
+export function parseBirthdayGiftLeadDays(raw: string | null | undefined): number {
+  if (raw === null || raw === undefined || raw.trim() === '') return DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS;
+  return clampBirthdayGiftLeadDays(Number(raw));
+}
+
 /**
  * What a birthday task carries in `generatedSourceId`: the person, and the year
  * the birthday falls in.
@@ -75,17 +105,32 @@ export function birthdaySourceId(personId: string, year: number): string {
   return `${personId}#${year}`;
 }
 
-/** The person and year a birthday task speaks for, or null for any other task. */
-export function parseBirthdaySource(
-  task: Pick<Task, 'generatedKind' | 'generatedSourceId'>
+/** The person and year one of these two generators' source id speaks for. */
+function parsePersonYearSource(
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId'>,
+  kind: 'birthday' | 'birthdayGift'
 ): { personId: string; year: number } | null {
-  const raw = generatedSourceOf(task, 'birthday');
+  const raw = generatedSourceOf(task, kind);
   if (!raw) return null;
   const at = raw.lastIndexOf('#');
   if (at <= 0) return null;
   const year = Number(raw.slice(at + 1));
   if (!Number.isInteger(year)) return null;
   return { personId: raw.slice(0, at), year };
+}
+
+/** The person and year a birthday task speaks for, or null for any other task. */
+export function parseBirthdaySource(
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId'>
+): { personId: string; year: number } | null {
+  return parsePersonYearSource(task, 'birthday');
+}
+
+/** Same reading, for a birthday-gift task. */
+export function parseBirthdayGiftSource(
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId'>
+): { personId: string; year: number } | null {
+  return parsePersonYearSource(task, 'birthdayGift');
 }
 
 /** Whether this person has a birthday on file at all. Both halves or neither. */
@@ -157,6 +202,16 @@ export function nextBirthday(
 export function birthdayTitle(person: Pick<Person, 'name' | 'nickname'>): string {
   const who = person.nickname.trim() || person.name.trim();
   return `${who}'s birthday`;
+}
+
+/**
+ * The gift task's title — unlike `birthdayTitle`, this one does name the
+ * action, because a task whose entire reason to exist is "go get something"
+ * has no ambiguity to dodge the way the reminder does.
+ */
+export function birthdayGiftTitle(person: Pick<Person, 'name' | 'nickname'>): string {
+  const who = person.nickname.trim() || person.name.trim();
+  return `Get ${who}'s birthday gift`;
 }
 
 /** What a birthday task carries in `linkUrl`: the person it is about. */
@@ -297,5 +352,82 @@ export function birthdayDrift(
   if (recorded === wanted) return null;
   // ISO, because these go straight onto the task — dates are stored and passed
   // as ISO strings everywhere in this app.
+  return { dueDate: want.dueDate.toISOString(), deadline: want.deadline.toISOString() };
+}
+
+/**
+ * One person who should have a "get the gift" task sitting on the list right
+ * now — `BirthdayWant`'s twin, on its own separately configured lead time.
+ *
+ * No `phoneNumber`: this task is about shopping, not about reaching the
+ * person, so it carries nothing for the row's call/text buttons to read.
+ */
+export interface BirthdayGiftWant {
+  personId: string;
+  year: number;
+  sourceId: string;
+  title: string;
+  dueDate: Date;
+  deadline: Date;
+}
+
+/**
+ * Which people should have a "get the gift" task right now, soonest first —
+ * `wantedBirthdayTasks`'s twin, sharing every rule that isn't about the lead
+ * time or the title: no cap, for the same reason (every row names a real date
+ * that is genuinely about to happen), and dated today rather than backwards
+ * from the birthday, for the same reason (the app might not open on the exact
+ * day a window opens).
+ *
+ * **Honours both opt-outs.** `birthdayTaskOptOut` skips somebody here too: not
+ * wanting to be reminded a birthday is coming rules out wanting a task about
+ * shopping for it as well. `birthdayGiftTaskOptOut` is the narrower "no" —
+ * still mark the day, just not this.
+ */
+export function wantedBirthdayGiftTasks(
+  people: readonly Person[],
+  leadDays: number,
+  today: Date
+): BirthdayGiftWant[] {
+  const lead = clampBirthdayGiftLeadDays(leadDays);
+  const wants: BirthdayGiftWant[] = [];
+  for (const person of people) {
+    if (person.archived || person.birthdayTaskOptOut || person.birthdayGiftTaskOptOut) continue;
+    const date = nextBirthday(person, today);
+    if (!date) continue;
+    const away = differenceInCalendarDays(date, today);
+    if (away > lead) continue;
+    const year = date.getFullYear();
+    wants.push({
+      personId: person.id,
+      year,
+      sourceId: birthdaySourceId(person.id, year),
+      title: birthdayGiftTitle(person),
+      dueDate: startOfDayNoon(today),
+      deadline: date,
+    });
+  }
+  return wants.sort((a, b) => a.deadline.getTime() - b.deadline.getTime());
+}
+
+/** The gift tasks sitting there whose reason has gone — `staleBirthdayTasks`'s twin. */
+export function staleBirthdayGiftTasks<
+  T extends Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>
+>(tasks: readonly T[], wants: readonly BirthdayGiftWant[]): T[] {
+  const wanted = new Set(wants.map(w => w.sourceId));
+  return liveGeneratedTasksOfKind(tasks, 'birthdayGift').filter(task => {
+    const source = generatedSourceOf(task, 'birthdayGift');
+    return !source || !wanted.has(source);
+  });
+}
+
+/** Whether a live gift row's dates need rewriting — `birthdayDrift`'s twin. */
+export function birthdayGiftDrift(
+  task: Pick<Task, 'deadline'>,
+  want: BirthdayGiftWant
+): { dueDate: string; deadline: string } | null {
+  const recorded = task.deadline ? startOfDay(new Date(task.deadline)).getTime() : null;
+  const wanted = startOfDay(want.deadline).getTime();
+  if (recorded === wanted) return null;
   return { dueDate: want.dueDate.toISOString(), deadline: want.deadline.toISOString() };
 }

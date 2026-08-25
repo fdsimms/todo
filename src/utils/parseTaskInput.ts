@@ -927,17 +927,14 @@ export function parseCategoryAndTagsInput(
   };
 }
 
-export interface ParsedPeople {
-  /** Ids of the people the matched tokens named, in order, deduplicated. */
-  personIds: string[];
-  /** Input minus every matched "@name" token, whitespace collapsed and trimmed. */
-  cleanTitle: string;
-  /** Start of the first matched token — drives the tooltip highlight. */
-  matchStart: number;
-  matchEnd: number;
+/** One resolved "@name" token: where it sits in the title, and who it names. */
+export interface PersonMention {
+  start: number;
+  end: number;
+  personId: string;
 }
 
-/** The shape `parsePeopleInput` matches against: an id and the names it answers to. */
+/** The shape `matchPersonMentions` matches against: an id and the names it answers to. */
 export interface PersonToken {
   id: string;
   name: string;
@@ -955,9 +952,15 @@ export interface PersonToken {
 const PERSON_TOKEN_PATTERN = /(?<!\w)@([a-z][\w'-]*)/gi;
 
 /**
- * Finds every "@name" token in a quick-add title and resolves it against the
- * people already added, so "beach with @dustin @ansley sat" creates a task
- * naming both and titled "beach with".
+ * Finds every "@name" token in a title and resolves it against the given
+ * people, so "beach with @dustin @ansley sat" names both. Returns every match
+ * with its position in the string, in order — not just the first — since
+ * unlike the sigil-based parsers beside this one, a mention is never stripped
+ * out of the title. It is data about who the sentence is about, and the
+ * sentence usually needs it grammatically ("call @dustin" is "call Dustin");
+ * "#category"/a URL/a phone number are metadata that reads fine gone, a name
+ * often is not. So the caller's job is to render the matched span as a token
+ * in place, not to lift it out — the mention lives in the title for good.
  *
  * **This is the whole reason there is no interactions table.** The record of
  * having seen somebody is a side effect of writing a task you were writing
@@ -978,9 +981,12 @@ const PERSON_TOKEN_PATTERN = /(?<!\w)@([a-z][\w'-]*)/gi;
  * effect of a typo.
  *
  * `people` is passed in rather than read from a store, keeping this module free
- * of any store dependency — see the header note.
+ * of any store dependency — see the header note. A caller rendering an
+ * already-saved task should pass only the people it actually names
+ * (`peopleOn(task)`), not the whole roster, so a mention can't relight for
+ * someone the task no longer links.
  */
-export function parsePeopleInput(input: string, people: PersonToken[]): ParsedPeople | null {
+export function matchPersonMentions(input: string, people: PersonToken[]): PersonMention[] {
   // Built once per call rather than per token: a name can be reached three ways
   // and the last writer would otherwise depend on iteration order.
   const byName = new Map<string, string[]>();
@@ -1000,8 +1006,7 @@ export function parsePeopleInput(input: string, people: PersonToken[]): ParsedPe
     if (first && first.toLowerCase() !== person.name.trim().toLowerCase()) add(first, person.id);
   }
 
-  const matched: string[] = [];
-  const consumed: { start: number; end: number }[] = [];
+  const mentions: PersonMention[] = [];
 
   for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
     if (m.index === undefined) continue;
@@ -1010,27 +1015,10 @@ export function parsePeopleInput(input: string, people: PersonToken[]): ParsedPe
     // Exactly one, or nothing: two people answering to one token is left as
     // literal text rather than resolved to whichever was added first.
     if (!hits || hits.length !== 1) continue;
-    if (!matched.includes(hits[0])) matched.push(hits[0]);
-    consumed.push({ start: m.index, end: m.index + m[0].length });
+    mentions.push({ start: m.index, end: m.index + m[0].length, personId: hits[0] });
   }
 
-  if (matched.length === 0) return null;
-
-  let cleanTitle = input;
-  for (let i = consumed.length - 1; i >= 0; i--) {
-    cleanTitle = cleanTitle.slice(0, consumed[i].start) + cleanTitle.slice(consumed[i].end);
-  }
-  cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
-  // A bare "@dustin" alone is a literal title, not a task about nobody — the
-  // same refusal the category parser makes about a lone "#home".
-  if (!cleanTitle) return null;
-
-  return {
-    personIds: matched,
-    cleanTitle,
-    matchStart: consumed[0].start,
-    matchEnd: consumed[0].end,
-  };
+  return mentions;
 }
 
 function joinDayNames(days: number[]): string {

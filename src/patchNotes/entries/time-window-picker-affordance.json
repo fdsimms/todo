@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the time window picker: it now shows which of Start/End you're setting, keeps the time you'd dialed in when you switch between them without tapping Set, and the Set button text is readable again",
+  "date": "2026-08-25"
+}

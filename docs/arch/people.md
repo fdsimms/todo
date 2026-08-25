@@ -182,6 +182,37 @@ way `canBlock(undefined)` is false and chain walks stop on a missed lookup.
 Rewriting rows a delete isn't otherwise touching costs more than shrugging does,
 and the retention note makes the same call about `previousOccurrenceId`.
 
+## An "@name" mention stays in the title
+
+`matchPersonMentions` (`src/utils/parseTaskInput.ts`) is the one sigil-based
+quick-add parser that doesn't strip its match. `#category`, a pasted link, a
+phone number — all metadata, and all read fine gone from the title once
+they're a structured field. A person is frequently the sentence's own object:
+"Call Brittany" parsed the usual way leaves "Call", which is worse than doing
+nothing. So an "@name" resolves into `personIds` the same as any other
+mention, but the text stays, and every surface naming a task renders the
+matched span as a tinted token in place instead — `TaskItem`, `LogbookScreen`,
+Search and Quick Search, and `TaskEditor`'s own title field.
+
+- **It resolves live, with no tap to accept.** The other tooltip parsers in
+  `QuickAddModal` mutate the title (strip a phrase, replace it with nothing)
+  and need a confirm step for that reason — this one doesn't touch the text,
+  so there's nothing to confirm. `personIds` is simply derived from whatever
+  mentions are currently in the title; delete the "@name" and the link goes
+  with it.
+- **The rendering is purely visual and reads only `peopleOn(task)`, never the
+  whole roster.** A saved task's title might say "@Brittany" for a Brittany
+  who was later removed from `personIds` some other way (the People picker in
+  `TaskEditor`, a template's `'people'` question) — that shouldn't relight.
+  Matching against only the people the task actually names keeps the token
+  honest: it lights up because the task links them, not because the text
+  happens to spell a name that exists somewhere in the app.
+- **`TaskEditor`'s title field never parses one out of typed text.** It has
+  its own People picker (rule 3), so typing a fresh "@someone" there does
+  nothing until they're added through that field — the overlay there only
+  tints a mention already covered by `personIds`, the same restriction as
+  every other read-only surface, just applied to an editable field.
+
 ## History is completed tasks, and there is no interactions table
 
 A completed task carrying `personIds` **is** the record that something happened
@@ -255,6 +286,49 @@ reads "nothing stored" as a deliberate zero, and every install that had never
 touched the setting would get its birthday tasks on the morning of the birthday.
 Zero is a real answer somebody can choose, so the two cases have to be told
 apart before the string becomes a number.
+
+### The birthday-gift task
+
+The eleventh generator (`birthdayGift` in the registry), living beside
+`birthday` in `birthdayTasks.ts` rather than in a file of its own — it reuses
+every rule above except the lead time and the title. Getting somebody a gift
+and marking their birthday are two different questions, and the row that used
+to carry both ("Ansley's birthday", with the gift ideas riding along as its
+notes) had no honest way to be ticked off for one without the other.
+
+- **Its own lead time, longer by default.** `DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS`
+  is ten days against the reminder's three, because buying or shipping
+  something is rarely a same-day job the way a card or a table booking can be.
+  A separate setting rather than a multiplier on the reminder's own, since the
+  two are unrelated numbers somebody might want unrelated answers to.
+- **It ships off, unlike the reminder beside it.** `birthday` ships on because
+  its real gate — a birthday entered at all — is a fact that predates the
+  feature; every install with people in it already made that choice before
+  this existed. `birthdayGift` rides the exact same fact, so shipping it on
+  would double every current birthday's task count for a want nobody had
+  actually stated. Same "ask first" call `pantryCheck` and `mealShortfall`
+  make for the identical reason: no recorded intent of its own to point to.
+- **Two opt-outs, not one.** `Person.birthdayGiftTaskOptOut` sits beside
+  `birthdayTaskOptOut`, same permanent-`false` shape, because "mark the day"
+  and "remind me to shop" are separable wants — someone might keep the first
+  and drop the second, but not the reverse: not wanting to be told a birthday
+  is coming rules out wanting a task about shopping for it too, so
+  `wantedBirthdayGiftTasks` honours both fields.
+- **Both tasks carry the gift ideas, not just one.** `giftIdeasText` is read
+  the same way at both drafts — creation only, never a reconcile, for the
+  reason the section below states. One row names the day, the other is the
+  shopping trip, and the ideas somebody wrote down in March are useful sitting
+  on either. This was a real choice rather than an oversight: moving the notes
+  onto the gift task alone would mean the reminder loses information the
+  moment somebody opts into the second task, and the two generators otherwise
+  know nothing about each other by design (see `generatedTasks.ts`'s note on
+  what a registry entry is not allowed to share).
+- **Same source id shape, same no-cap reasoning, same "dated today, not
+  backwards from the birthday" rule** — see the birthday section above for
+  why each of those is the way it is. The kind is what keeps two tasks sharing
+  one `personId#year` string from being read as each other's
+  (`generatedSourceOf`), the same guard that already separates every other
+  pair of generators sharing the mechanism.
 
 ## The reach-out nudge
 
@@ -361,7 +435,7 @@ assertion.
   whether today has room did not thereby ask for their past to be matched
   against their friends' names. It shows nothing at all until a name matches, so
   defaulting on costs a user who does not want it nothing they can see.
-- **Whole-word, exact, and ambiguity resolves to nobody.** `parsePeopleInput`'s
+- **Whole-word, exact, and ambiguity resolves to nobody.** `matchPersonMentions`'s
   refusal, one shelf over: "Dinner w/ Sam" with two Sams on file names neither,
   while "Dinner w/ Sam Ortiz" still names one. The extra rule here is
   `MIN_CALENDAR_NAME_LENGTH`, and the asymmetry with the `@` parser is the point
@@ -457,8 +531,11 @@ system contact book already has it.
   convention and `Person.birthdayMonth` is 1-12, so a straight copy puts every
   birthday a month early — silently, since every value is still in range. That
   conversion is the one piece of arithmetic in the feature and it has its own
-  test. The year is dropped because there is nowhere to put it any more (#2083),
-  which is fine: a year-less birthday was always the common case here.
+  test. **The year rides along too, when the contact has one** (`contactBirthday`)
+  — `Person.birthYear` came back for its own sake (#2103, see "The birthday
+  picker" below), so there is somewhere to put it again. It is still never kept
+  on its own: a year with no month/day is not a birthday, the same "both halves
+  together" rule the month and day already follow.
 - **A copy, never a link.** Nothing on a `Person` points back at a contact. A
   linked person would mean holding the permission indefinitely, a background
   reconcile, and rows changing under the user; a stale number is a smaller
@@ -645,14 +722,35 @@ say "dinner here on Thursday" without anything having been ticked off.
   to names and answers "which meals name this person"; there is no derivation of
   frequency, and adding one is the disease this doc exists to prevent.
 
-## The birthday picker keeps only the month and the day
+## The birthday picker is three wheels, not a calendar (#2103)
 
-`PersonEditor` opens `WhenPicker` on the current year and throws the year away.
-That is what makes paging sane: a birth *date* would mean paging back thirty
-years a month at a time, where a birth *day* is at most eleven taps from
-wherever the grid opens. The year is a separate optional field with an "e.g."
-placeholder, because the year is the half people genuinely don't know, and a
-birthday with no year is the common case rather than missing data.
+`PersonEditor` opens `BirthdayPicker`, not `WhenPicker`. `WhenPicker` is built
+for scheduling a task and it shows: a Today/Tomorrow shortcut row (a birthday
+being today or tomorrow is a ~1-in-180 chance, not a shortcut worth a whole
+row), a month calendar grid whose day-of-week and current-year placement mean
+nothing for a birthday, and day-load bars scored against the current year's
+actual tasks — all of it noise for "what month and day were they born". A
+birthday is a month and a day the user already knows, so three native spinner
+wheels (month, day, year) answer the question directly instead of routing it
+through a control built to answer a different one.
+
+**The year is a separate decision from the month and day, gated by its own
+"Include year" toggle, off by default.** The native spinner always shows some
+concrete year — there is no blank wheel position — so without an explicit
+toggle there would be no way to tell "this person's year is 1992" apart from
+"the wheel happened to be sitting on 1992". Off by default because a
+year-less birthday is the common case (people genuinely don't know it), and
+this is the one field on the sheet where silence is the honest default, not a
+gap. Turning it off doesn't clear a year already on file until Save; turning
+it on takes whatever year the wheel is currently sitting on.
+
+**`Person.birthYear` is never read to compute anything.** It existed once
+before, solely to back a "Turning 34" chip, and once that display was removed
+(#2083) the field had no purpose left, so it went too — the SQLite column
+stayed (`birth_year`, unread) because dropping a column means a table
+rebuild. This is a second, unrelated life for the same column: something
+worth recording about somebody, with nothing anywhere deriving an age from
+it. Don't wire one back up; that was tried and undone once already.
 
 ## Templates that ask who
 
