@@ -290,6 +290,90 @@ double the answer. The offer never phrases itself as a shortfall, and a test
 asserts that — nothing here may read as the app's opinion about how often
 somebody ought to see their friends.
 
+## Calendar events offered as history
+
+`calendarHistory.ts`, and the rule it exists to hold: **the app may notice, and
+it may ask. It may not decide.** Every claim in the section above about titles
+and attendees is settled; what follows is how the offer is kept from becoming an
+assertion.
+
+- **A pull surface, on the person's own screen and nowhere else.** No prompt on
+  Today, no banner, no badge, no count. Same argument that lets the day count
+  live in exactly one place: you went there to look, so nothing arrived
+  uninvited. It is also why there is no cap on how many may be offered, only a
+  "Show N more" once past five, which is display rather than suppression.
+- **The fetch is its own window, and it is paid for where it is read.**
+  `useCalendarStore`'s existing window is forward-looking, two weeks wide, and
+  refreshed on every foreground because Today asks about it. Nothing on Today
+  asks about last month, so `refreshPast` is called from the person's screen and
+  from nowhere else. Widening the foreground window instead would charge every
+  launch for a quarter of events to serve a screen most launches never open.
+- **Its own switch** (`calendarPeopleHistory`), on by default once calendar
+  reading is. This is a genuinely new *read* rather than a new use of data
+  already in memory, and somebody who turned calendar reading on to be told
+  whether today has room did not thereby ask for their past to be matched
+  against their friends' names. It shows nothing at all until a name matches, so
+  defaulting on costs a user who does not want it nothing they can see.
+- **Whole-word, exact, and ambiguity resolves to nobody.** `parsePeopleInput`'s
+  refusal, one shelf over: "Dinner w/ Sam" with two Sams on file names neither,
+  while "Dinner w/ Sam Ortiz" still names one. The extra rule here is
+  `MIN_CALENDAR_NAME_LENGTH`, and the asymmetry with the `@` parser is the point
+  — typing "@al" is a deliberate act with a sigil in front of it, where a
+  calendar title is a guess about text written for another purpose, so the guess
+  gets the higher bar.
+- **All-day events are never offered.** `occupiesTime`'s own note already lists
+  what they are: a birthday, a public holiday, a "Sarah out of office" marker.
+  Every one would offer a date somebody's name is *on* as an afternoon you spent
+  together, which is the app inventing the one thing it must never invent.
+  Availability is deliberately not filtered on the same line — marking a dinner
+  Free says it does not block your calendar, which is a different claim from
+  whether it happened.
+- **Accepting produces the same record everything else does**: an ordinary
+  completed task carrying `personIds`, through the same helper the manual "Add
+  to history" row uses, backdated to the event. No second kind of record, and
+  once you have confirmed it, it is not a guess any more.
+- **An accepted offer carries everybody the title named.** "Beach with Dustin and
+  Ansley" is one afternoon, and recording it once from each of their screens
+  would put one afternoon in the Logbook twice.
+- **The answered record is keyed by event, not by pair, and both answers share
+  it.** Accepted and dismissed both mean "don't ask again", so there is one
+  record and nothing to keep in step. Keying by event rather than by
+  (event, person) means an evening turned down on one screen does not come back
+  on another's, which is the app taking an answer rather than asking twice about
+  one thing.
+- **The key carries the occurrence's day, because an event id is not one
+  occurrence.** EventKit hands back every instance of a recurring event under
+  the same identifier, so a standing "Lunch w/ Mom" is one id and thirteen
+  lunches. `birthdaySourceId`'s `personId#year` and `mealSlot`'s
+  `2026-08-22#lunch` answer the same problem the same way. The day is the
+  event's own calendar day and deliberately **not** the logical one: it is an
+  identity, not a scheduling decision, and reading it through `dayResetTime`
+  would mean moving that setting silently re-keys the record and hands back
+  every dismissal at once.
+- **It is bounded by the window, which is what makes it allowed to exist.**
+  `docs/arch/generated-tasks.md` rules out a generic `(kind, sourceId)`
+  suppression record precisely because nothing prunes it. Here the pruning is
+  arithmetic rather than a pass over anything: an event older than
+  `PAST_CALENDAR_WINDOW_DAYS` can never be offered again, so its answer is
+  dropped. The one thing that has to hold for that to be safe is that no offer
+  is ever made for an event starting before the floor — EventKit returns events
+  *overlapping* a range, so a long event that began earlier comes back with the
+  rest, and offering one would write an answer already past the pruning line.
+  `suggestedHistoryEvents` refuses those, and a test pins it.
+- **It does not sync**, for `groceryImportLinks`' reason: an EventKit id names a
+  record on one device, so the other phone would read the record as answers
+  about events it has never seen.
+- **It is the one calendar reader gated on demo mode**, and the asymmetry is
+  deliberate. The other four show calendar events as calendar events, which is
+  honest whichever database is mounted; this one's output is a claim *about a
+  demo row*, and the seed invents a Dustin. Without the gate a real event
+  mentioning a real Dustin would be offered as history for the invented one, on
+  a screen handed to somebody else. `enterDemoMode` deliberately does not
+  re-initialize the settings store, so the real calendar settings are live
+  inside a demo and the gate has to be explicit. The second half is a plain bug
+  it also avoids: the answer would be written into the scratch settings table,
+  so a dismissal made in a demo is lost and the real install is asked again.
+
 ## The birthday picker keeps only the month and the day
 
 `PersonEditor` opens `WhenPicker` on the current year and throws the year away.

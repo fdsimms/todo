@@ -41,6 +41,8 @@ import { haptics } from '../../utils/haptics';
  */
 export function CalendarSettings() {
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
+  const calendarPeopleHistory = useSettingsStore(s => s.calendarPeopleHistory);
+  const setCalendarPeopleHistory = useSettingsStore(s => s.setCalendarPeopleHistory);
   const setCalendarReadEnabled = useSettingsStore(s => s.setCalendarReadEnabled);
   const calendarIds = useSettingsStore(s => s.calendarIds);
   const setCalendarIds = useSettingsStore(s => s.setCalendarIds);
@@ -396,6 +398,23 @@ export function CalendarSettings() {
             toggle={reminderMeetingNudgeEnabled}
             onPress={() => setReminderMeetingNudgeEnabled(!reminderMeetingNudgeEnabled)}
             accessibilityLabel="Move reminders out of meetings"
+          />
+        </>
+      )}
+
+      {calendarReadEnabled && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            icon="people-outline"
+            iconColor={calendarPeopleHistory ? colors.accent : undefined}
+            label="Match events to people"
+            hint={calendarPeopleHistory
+              ? "A person's screen offers past events with their name in the title"
+              : 'Past events are never matched to the people you track'}
+            toggle={calendarPeopleHistory}
+            onPress={() => setCalendarPeopleHistory(!calendarPeopleHistory)}
+            accessibilityLabel="Match events to people"
           />
         </>
       )}

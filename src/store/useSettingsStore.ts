@@ -672,6 +672,18 @@ interface SettingsStore {
   // escape hatch for anyone who'd rather see the reminder fire where it was
   // set and dismiss it themselves.
   reminderMeetingNudgeEnabled: boolean;
+  // Whether a person's own screen offers past calendar events whose title
+  // mentions them as history (#2053). A refinement of calendarReadEnabled the
+  // same way the row above is, and it exists as its own switch because it is a
+  // genuinely new *read*: the window the app already holds is forward-looking,
+  // and this fetches a quarter of the past on demand. Somebody who turned
+  // calendar reading on to be told whether today has room did not thereby ask
+  // for their past to be matched against their friends' names.
+  //
+  // Defaults on once calendar reading is, because it is a pull surface behind
+  // two deliberate acts — see docs/arch/people.md — and shows nothing at all
+  // until a name actually matches.
+  calendarPeopleHistory: boolean;
   // Which calendar a task's deadline is mirrored onto as an all-day event
   // (#1493), separate from `calendarIds` — those are what's *read*, this is
   // the one place the app *writes*. Null means the write is off: there is no
@@ -941,6 +953,7 @@ interface SettingsStore {
   setCollapsedCategories: (categories: string[]) => void;
   setCollapsedRecipeSections: (sections: string[]) => void;
   setReminderMeetingNudgeEnabled: (on: boolean) => void;
+  setCalendarPeopleHistory: (on: boolean) => void;
   setDeadlineCalendarId: (id: string | null) => void;
   setMealCalendarId: (id: string | null) => void;
   setProjectReviewTasks: (on: boolean) => void;
@@ -1048,6 +1061,7 @@ const DEFAULT_SETTINGS = {
   remindersImportReview: true,
   calendarReadEnabled: false,
   reminderMeetingNudgeEnabled: true,
+  calendarPeopleHistory: true,
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
   mealPlanNudgeWeekday: DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY,
@@ -1399,6 +1413,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   calendarIds: [],
   calendarEventCategory: null,
   reminderMeetingNudgeEnabled: true,
+  calendarPeopleHistory: true,
   deadlineCalendarId: null,
   mealCalendarId: null,
   projectReviewTasks: true,
@@ -1621,6 +1636,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // on — same "absent means the default behavior" rule remindersImportDelete
     // uses, so an existing calendar-read user doesn't lose the nudge silently.
     const reminderMeetingNudgeEnabled = dbGetSetting('reminderMeetingNudgeEnabled') !== 'false';
+    const calendarPeopleHistory = dbGetSetting('calendarPeopleHistory') !== 'false';
     const deadlineCalendarId = dbGetSetting('deadlineCalendarId') || null;
     const mealCalendarId = dbGetSetting('mealCalendarId') || null;
     // `!== 'false'`: defaults on, the same reading mealCookTasks takes — see
@@ -1742,7 +1758,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2470,6 +2486,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setReminderMeetingNudgeEnabled(on: boolean) {
     dbSetSetting('reminderMeetingNudgeEnabled', on ? 'true' : 'false');
     set({ reminderMeetingNudgeEnabled: on });
+  },
+
+  setCalendarPeopleHistory(on: boolean) {
+    dbSetSetting('calendarPeopleHistory', on ? 'true' : 'false');
+    set({ calendarPeopleHistory: on });
   },
 
   setDeadlineCalendarId(id: string | null) {
