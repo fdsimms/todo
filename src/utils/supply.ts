@@ -426,6 +426,43 @@ export function suppliesWantingList(
 }
 
 /**
+ * The live supplies stocked from a grocery item, in the order the tasks come.
+ *
+ * The read `suppliesWantingList` doesn't do: that one answers "which items
+ * should go on the list right now", pointing task to item, and this points back
+ * the other way so the grocery side can say *why* a row appeared and what is
+ * counting on it.
+ *
+ * Without it the link is one-directional and invisible from the half that acts
+ * on it. A recipe-sourced row explains itself (`sourceRecipeTitle`, rendered
+ * both on the row and in the item sheet); a row put there by a supply had no
+ * account of itself at all, and it's the one whose cause lives on a completely
+ * different screen. `runningLowAt` is no help either — it has no row caption of
+ * its own, and its copy reads throughout as something the user said by hand,
+ * which for a supply-driven flag is not what happened.
+ *
+ * Completed and archived tasks are excluded on the same terms
+ * `liveGeneratedTask` uses: a filed-away task is not still counting on the
+ * cupboard, and naming it would be the sheet reporting a dependency that has
+ * stopped existing.
+ *
+ * Returns every match rather than the first, because two tasks genuinely can
+ * stock from one item (a filter changed at home and one at the office) and a
+ * sheet that named only one of them would be quietly wrong about the other.
+ */
+export function suppliesStockedFrom<T extends Pick<Task, 'supplyGroceryItemId' | 'supplyCount' | 'completed' | 'archived'>>(
+  itemId: string,
+  tasks: readonly T[],
+): T[] {
+  return tasks.filter(
+    t => t.supplyGroceryItemId === itemId
+      && t.supplyCount !== null
+      && !t.completed
+      && !t.archived
+  );
+}
+
+/**
  * What the reorder task's "How many did you get?" field should arrive holding,
  * as a string, or null when the app has nothing to offer.
  *

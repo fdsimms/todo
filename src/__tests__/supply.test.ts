@@ -14,6 +14,7 @@ import {
   isSupplyTask,
   restockedSupplyCount,
   staleSupplyReorderTasks,
+  suppliesStockedFrom,
   suppliesWantingList,
   supplyOrderByDate,
   supplyReorderReason,
@@ -467,6 +468,36 @@ describe('staleSupplyReorderTasks', () => {
     const source = supplyTask({ id: 'src', supplyCount: 8 });
     const done = reorderTask('src', { completed: true });
     expect(staleSupplyReorderTasks([source, done])).toEqual([]);
+  });
+});
+
+describe('suppliesStockedFrom', () => {
+  it('names the supplies a catalog item stocks', () => {
+    const a = supplyTask({ id: 'a', supplyGroceryItemId: 'item-1' });
+    const b = supplyTask({ id: 'b', supplyGroceryItemId: 'item-2' });
+    expect(suppliesStockedFrom('item-1', [a, b]).map(t => t.id)).toEqual(['a']);
+  });
+
+  it('names every one of them, since two tasks can share an item', () => {
+    // A filter changed at home and one at the office. A sheet naming only the
+    // first would be quietly wrong about the second.
+    const home = supplyTask({ id: 'home', supplyGroceryItemId: 'item-1' });
+    const work = supplyTask({ id: 'work', supplyGroceryItemId: 'item-1' });
+    expect(suppliesStockedFrom('item-1', [home, work]).map(t => t.id)).toEqual(['home', 'work']);
+  });
+
+  it('ignores a task that has been finished or filed away', () => {
+    // Same two exclusions liveGeneratedTask makes: neither is still counting
+    // on the cupboard, so naming them would report a dependency that has
+    // stopped existing.
+    const done = supplyTask({ id: 'done', supplyGroceryItemId: 'item-1', completed: true });
+    const filed = supplyTask({ id: 'filed', supplyGroceryItemId: 'item-1', archived: true });
+    expect(suppliesStockedFrom('item-1', [done, filed])).toEqual([]);
+  });
+
+  it('ignores a task that names an item but tracks no supply', () => {
+    const stray = supplyTask({ id: 'stray', supplyGroceryItemId: 'item-1', supplyCount: null });
+    expect(suppliesStockedFrom('item-1', [stray])).toEqual([]);
   });
 });
 
