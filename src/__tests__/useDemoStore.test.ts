@@ -1547,6 +1547,19 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(wantedPantryChecks(items, tasks, new Date()).map(w => w.itemId)).toContain(oats.id);
   });
 
+  it('seeds the daily task to review tomorrow\'s calendar', () => {
+    const { tasks } = useTaskStore.getState();
+
+    const review = tasks.find(t => t.generatedKind === 'calendarReview');
+    expect(review).toBeDefined();
+    expect(review!.title).toBe('Review tomorrow\'s calendar');
+    // Filed under the day's own events category — this generator has no
+    // category setting of its own (see GeneratedKindSpec.categorized).
+    expect(review!.category).toBe('Calendar Events');
+    expect(useSettingsStore.getState().calendarEventCategory).toBe('Calendar Events');
+    expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+  });
+
   it('leaves that item free of a use-by date, so it carries one task and not two', () => {
     const { items } = useGroceryStore.getState();
     const oats = items.find(i => i.name === 'Rolled oats')!;

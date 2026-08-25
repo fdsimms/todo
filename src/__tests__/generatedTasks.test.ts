@@ -317,8 +317,11 @@ describe('the registry', () => {
     // to the same place.
     expect(GENERATED_KIND_SPECS.groceryUseUp.defaultCategory).toBe('Groceries');
     expect(GENERATED_KIND_SPECS.pantryCheck.defaultCategory).toBe('Groceries');
-    // Every kind has one — an unfiled generator is one whose tasks pile up in
-    // the loose block above every section.
-    expect(GENERATED_KIND_LIST.every(s => !!s.defaultCategory)).toBe(true);
+    // Every categorized kind has one — an unfiled generator is one whose tasks
+    // pile up in the loose block above every section. calendarReview is the
+    // one exception: categorized: false, since it reuses calendarEventCategory
+    // instead of owning a category of its own.
+    expect(GENERATED_KIND_LIST.filter(s => s.categorized).every(s => !!s.defaultCategory)).toBe(true);
+    expect(GENERATED_KIND_SPECS.calendarReview.categorized).toBe(false);
   });
 });

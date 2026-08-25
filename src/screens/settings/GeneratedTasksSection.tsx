@@ -123,6 +123,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'projectReview': return s.projectReviewTasks;
       case 'pantryCheck': return s.pantryCheckTasks;
       case 'supplyReorder': return s.supplyReorderTasks;
+      case 'calendarReview': return s.calendarReviewTasks;
     }
   };
 
@@ -137,6 +138,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'projectReview': s.setProjectReviewTasks(next); break;
       case 'pantryCheck': s.setPantryCheckTasks(next); break;
       case 'supplyReorder': s.setSupplyReorderTasks(next); break;
+      case 'calendarReview': s.setCalendarReviewTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -146,6 +148,10 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
     if (next) ensureGeneratedTaskCategory(kind, { force: true });
   };
 
+  // calendarReview's arm returns calendarEventCategory rather than a category
+  // of its own, for anything that calls this out of habit — but categorized:
+  // false means the "File them under" row is never rendered for it, so
+  // neither arm below is actually reached in practice.
   const categoryOf = (kind: GeneratedKind): string | null => {
     switch (kind) {
       case 'mealSlot':
@@ -156,6 +162,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'projectReview': return s.projectReviewTaskCategory;
       case 'pantryCheck': return s.pantryCheckTaskCategory;
       case 'supplyReorder': return s.supplyReorderTaskCategory;
+      case 'calendarReview': return s.calendarEventCategory;
     }
   };
 
@@ -170,6 +177,10 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': s.setMealPlanNudgeTaskCategory(category); break;
       case 'projectReview': s.setProjectReviewTaskCategory(category); break;
       case 'pantryCheck': s.setPantryCheckTaskCategory(category); break;
+      case 'supplyReorder': s.setSupplyReorderTaskCategory(category); break;
+      // Unreached — see categoryOf above — but a real, honest answer rather
+      // than a no-op: this is genuinely how calendarReview's category changes.
+      case 'calendarReview': s.setCalendarEventCategory(category); break;
     }
   };
 
