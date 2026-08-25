@@ -237,11 +237,13 @@ interface GroceryStore {
   setGroceryGroupBy: (groupBy: 'aisle' | 'recipe') => void;
   /**
    * The item a just-completed "Use up X" task points at — what
-   * UseUpResolveSheet (mounted in AppNavigator) shows as soon as it's set,
-   * so completing the task and correcting the pantry happen in one motion
-   * instead of the task going quiet with the pantry untouched. Set by
+   * UseUpResolveSheet (mounted in AppNavigator) asks about as soon as it's
+   * set, with an explicit "Used it up" / "Went bad" prompt, so completing
+   * the task and correcting the pantry happen in one motion instead of the
+   * task going quiet with the pantry untouched. Set by
    * useTaskStore.completeTask, cleared by uncompleteTask (same shape as
-   * useMealPlanStore's cookedOffer) and by the sheet's own onClose.
+   * useMealPlanStore's cookedOffer) and once the prompt is answered or
+   * dismissed.
    *
    * Session-only, like the trip fields above: it's about a tap just made,
    * so there's nothing for it to mean on the next launch.

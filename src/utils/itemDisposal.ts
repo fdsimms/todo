@@ -7,10 +7,12 @@ import type { GroceryItem } from '../types';
  * **The fact the pantry half was throwing away.** The fridge has recorded this
  * since leftovers shipped — `LeftoverOutcome` is 'eaten' | 'tossed', captured
  * by `LeftoverSheet`'s two buttons and read back by `describeFridgeHistory` —
- * while a catalog row's "Out of it" was one bit. The asymmetry is at its most
- * visible in `UseUpResolveSheet`: completing "Use up spinach" and completing
- * "Use up leftover chili" open two sheets through one mechanism, and only one
- * of them asked what happened.
+ * while a catalog row's "Out of it" was one bit. The asymmetry used to be at
+ * its most visible in `UseUpResolveSheet`: completing "Use up spinach" opened
+ * the item's whole editor with nothing on screen actually asking the
+ * question, while completing "Use up leftover chili" opened LeftoverSheet's
+ * own Finished it/Threw it out. Both now ask directly — see that component's
+ * doc comment.
  *
  * **This is not a shelf-life estimator, and the difference matters.** The
  * obvious reason to want it is to learn how long things really keep, and that
