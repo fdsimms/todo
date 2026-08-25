@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a completed \"Cook X\"/\"Eat X\" meal task briefly showing its old step count badge instead of reading as done",
+  "date": "2026-08-25"
+}

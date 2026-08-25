@@ -996,13 +996,19 @@ export const TaskItem = React.memo(function TaskItem({
   });
 
   const activeChainItem =
-    task.chainEnabled && task.chainItems.length > 0
+    !task.completed && task.chainEnabled && task.chainItems.length > 0
       ? task.chainItems[task.chainIndex % task.chainItems.length]
       : null;
   // A multi-step chain drives the row's title (collapsed and expanded alike,
   // plus its accessibility label — see displayTitleFor) with a compact
   // step-count badge beside it, instead of a second subtitle line, so the
   // row stays the same height as the others.
+  //
+  // Gated on !task.completed: a completed row still carries the chain fields
+  // its last live step had (completeTask never clears them off the row it
+  // finished), so without the gate a completed chain step kept showing its
+  // old "N/M" position for as long as the row was on screen — most visibly
+  // during the completion hold, right when the row is meant to read as done.
   const chainStep = activeChainItem && task.chainItems.length > 1 ? activeChainItem : null;
   const chainStepIndex = task.chainItems.length > 0 ? task.chainIndex % task.chainItems.length : 0;
   const chainPosition = chainStep ? `${chainStepIndex + 1}/${task.chainItems.length}` : '';
