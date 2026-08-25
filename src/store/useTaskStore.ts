@@ -57,6 +57,13 @@ import {
   wantedPantryChecks,
 } from '../utils/pantryCheckTasks';
 import {
+  mealShortfallEntryId,
+  mealShortfallLinkUrl,
+  staleMealShortfallTasks,
+  wantedMealShortfalls,
+} from '../utils/mealShortfallTasks';
+import { standingSwapMap } from '../utils/standingSwaps';
+import {
   dueMealPlanNudge,
   mealPlanNudgeLinkUrl,
   mealPlanNudgeSuppressed,
@@ -573,6 +580,17 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       return;
     case 'mealCook':
       useMealPlanStore.getState().setCookTask(sourceId, value);
+      return;
+    // A permanent `false` rather than one of the self-expiring stamps above,
+    // and the difference is what the swipe means. A quiet project and a lapsed
+    // pantry guess both come round again on their own, so a stamp spent against
+    // the day or the purchase is the honest record of "not right now". A meal
+    // on the 22nd happens once: "don't warn me about this one, I'm buying it
+    // fresh" is an answer about that night and nothing else, and the row it's
+    // written on is deleted with the meal. That is the bounded-for-free
+    // property generatedTasks.ts asks a per-source opt-out to have.
+    case 'mealShortfall':
+      useMealPlanStore.getState().setShopTask(sourceId, value);
       return;
     case 'groceryUseUp':
       useGroceryStore.getState()
@@ -1352,6 +1370,12 @@ interface TaskStore {
    * restocked or put back on the list. See src/utils/pantryCheckTasks.ts.
    */
   checkPantryCheckTasks: () => void;
+  /**
+   * Give every planned meal the kitchen can't currently make a "Shop for X"
+   * task, and clear the ones whose meal has since been re-planned, moved,
+   * cooked, deleted or shopped for. See src/utils/mealShortfallTasks.ts.
+   */
+  checkMealShortfallTasks: () => void;
   /**
    * Give every supply that's running low an "Order more X" task, put every
    * *linked* supply's grocery item on the shopping list instead, and clear the
@@ -4116,6 +4140,120 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           linkUrl: pantryCheckLinkUrl(want.itemId),
           category,
           ...generatedBy('pantryCheck', want.itemId),
+        }),
+      });
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  /**
+   * Raise a "Shop for X" task for every meal coming up that the kitchen can't
+   * currently make, and clear the ones whose meal has changed under them.
+   *
+   * **The whole answer to a meal plan being a thing people re-plan is that the
+   * clear pass re-runs the create predicate** rather than intercepting the ~15
+   * mutations that can change a week. See `staleMealShortfallTasks` for the
+   * list of plan changes that fall out of it for free.
+   *
+   * Reads the entry window straight from the database rather than from
+   * `useMealPlanStore.entries`, for the reason `refreshPlannedSlotCounts` does:
+   * that array is the single range the Meal Plan screen happens to be showing,
+   * which is usually not the two days this is asking about and is empty until
+   * the screen has been opened at all.
+   */
+  checkMealShortfallTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.mealShortfallTasks) return;
+    // The whole grocery area can be switched off, and this generator reads the
+    // catalog to decide what's missing — without this gate it would be part of
+    // a hidden feature still writing rows onto Today. Same gate
+    // checkPantryCheckTasks takes, and for the same reason.
+    if (!settings.kitchenEnabled) return;
+
+    const tasks = get().tasks;
+    const leadDays = settings.mealShortfallLeadDays;
+    // The *logical* today: this decides which meals are close enough to shop
+    // for, which is a scheduling decision, and at 1am with a 2am reset the
+    // calendar date would open the window a day early. See CLAUDE.md.
+    const todayKey = dayKeyOf(getLogicalToday());
+    // One `now` for both passes, so the create and the clear can't disagree
+    // about a pantry guess landing exactly on its boundary. Bare `new Date()`
+    // on purpose — `probablyHaveReason` measures real elapsed days from a till
+    // receipt, not logical ones.
+    const now = new Date();
+
+    // Read one day wider than the window on each side so the clear pass can see
+    // a meal that has just moved *out* of range: a task whose entry isn't in
+    // this set at all is treated as an entry that no longer exists, which for a
+    // meal merely dragged to next week would be the right answer by luck rather
+    // than by reading its new date.
+    const entries = dbGetMealPlanEntries(
+      shiftDayKey(todayKey, -1),
+      shiftDayKey(todayKey, Math.max(0, leadDays) + 1)
+    );
+    const recipes = useRecipeStore.getState().recipes;
+    const recipesById = new Map(recipes.map(r => [r.id, r]));
+    const { items, itemSubs } = useGroceryStore.getState();
+    const swaps = standingSwapMap(itemSubs, items);
+
+    // Clear first, create second, and never the reverse — the ordering
+    // checkPantryCheckTasks and checkProjectReviewTasks both run on, for the
+    // same reason: the stale set includes the row for a meal the user has just
+    // shopped for from this very task, and a create pass running first would be
+    // deciding against a list that still held it.
+    //
+    // dropGeneratedTask rather than deleteGeneratedTaskQuietly: that routes
+    // through deleteTask, which writes the source's opt-out — here it would
+    // stamp shopTask: false on a meal the user never turned down, and so
+    // suppress the offer for ever on the strength of the app's own tidying up.
+    const stale = staleMealShortfallTasks(
+      tasks, entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays
+    );
+    stale.forEach(task => dropGeneratedTask('mealShortfall', mealShortfallEntryId(task)));
+
+    const wanted = wantedMealShortfalls(
+      entries, recipesById, items, itemSubs, swaps, todayKey, now, leadDays
+    );
+    if (wanted.length === 0) return;
+
+    ensureGeneratedTaskCategory('mealShortfall');
+    const category = useSettingsStore.getState().mealShortfallTaskCategory;
+    // Noon today, the landing every other unattended writer picks: an offer
+    // dated forward is an offer you can't see, and this one is already only
+    // raised once the meal is inside the lead window — so "today" *is* the day
+    // the shop wants doing. Deferring it afterwards is the user's own call.
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    wanted.forEach(want => {
+      reconcileGeneratedTask({
+        kind: 'mealShortfall',
+        sourceId: want.entryId,
+        // Never false: the not-wanted half is decided over the whole window at
+        // once and was handled by the drop pass above. A `false` here would
+        // delete through deleteTask and stamp the meal as declined.
+        wanted: true,
+        // A finished one blocks a new one, alone among the generators still
+        // firing. A meal is one event — having shopped for Tuesday's ragù, a
+        // second row asking again would be an invention. This is the reading
+        // cook tasks had, inherited for the same reason and not by copying.
+        blocksOnFinished: true,
+        // The title is the only thing a live row chases, and only when the
+        // recipe has been renamed under it. Deliberately not the due date: by
+        // the time a second sweep runs the user may have deferred this row, and
+        // rewriting it back to today would take that back. A meal that moves
+        // *day* isn't drift at all — it leaves the window or re-enters it, and
+        // the stale pass above owns that.
+        drift: existing => (existing.title === want.title ? null : { title: want.title }),
+        draft: () => ({
+          title: want.title,
+          dueDate: dueDate.toISOString(),
+          // Opens the Meal Plan screen on the meal's own day, where the day
+          // header's cart button holds the sheet this row is asking for. See
+          // mealShortfallLinkUrl.
+          linkUrl: mealShortfallLinkUrl(want.dayKey),
+          category,
+          ...generatedBy('mealShortfall', want.entryId),
         }),
       });
     });

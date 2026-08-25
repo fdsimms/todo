@@ -22,6 +22,7 @@ import { generatedBy } from './generatedTasks';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
+import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
@@ -2165,7 +2166,9 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   plan(0, 'snack', { title: 'Hummus snack plate', recipeId: recipes.snacks, cookTask: false });
 
   plan(1, 'breakfast', { title: 'Overnight oats', recipeId: recipes.oats });
-  plan(1, 'dinner', { title: 'Lemon garlic salmon', recipeId: recipes.salmon });
+  // Captured for the shopping task seeded at the end of this function — it's
+  // the night the kitchen can't currently make.
+  const salmonNight = plan(1, 'dinner', { title: 'Lemon garlic salmon', recipeId: recipes.salmon });
 
   // Freeform — planning doesn't require a recipe, and a night that just says
   // "eating out" holds its place and counts like any other.
@@ -2222,6 +2225,37 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // This week's ingredients have been through "Add week to list" already —
   // a stamp on the week header, never a lock on adding again.
   stampAddedToList(dayKeyOf(buildWeekDays(today, weekStartsOn)[0]));
+
+  // --- A meal the kitchen can't currently make ------------------------------
+  // The generator that says so before the night arrives, which is the whole
+  // point of it: planning a week has never required owning any of it, and until
+  // this existed the only way to find out was to open the meal plan and tap the
+  // cart yourself, on a day you had no reason to be thinking about tomorrow.
+  //
+  // Tomorrow's salmon is the honest instance rather than an invented one. It
+  // genuinely qualifies against the catalog seeded above — no row at all for
+  // salmon fillets or asparagus, and butter is explicitly marked out of
+  // (OUT_OF_IT_UNTIL) — while lemons, garlic and the mash's potatoes are all
+  // there, so the row means "you're short two things", not "this recipe is
+  // unknown to me". That matters because the shortfall check runs on every
+  // foreground: a seeded task the real pass disagreed with would delete itself
+  // the moment the demo was opened.
+  //
+  // Written out here rather than via checkMealShortfallTasks, unlike the meal
+  // tasks above, because that pass reads the *real* install's setting and this
+  // generator ships off — so a demo relying on it would show the feature only
+  // to the people who had already found it. Same reason the pantry check is
+  // written by hand, and the category is named for the same reason too.
+  if (salmonNight) {
+    useSettingsStore.getState().setMealShortfallTaskCategory('Meal Plan');
+    useTaskStore.getState().addTask({
+      title: mealShortfallTitle(salmonNight.date, 'Lemon garlic salmon'),
+      dueDate: today.toISOString(),
+      linkUrl: mealShortfallLinkUrl(salmonNight.date),
+      category: 'Meal Plan',
+      ...generatedBy('mealShortfall', salmonNight.id),
+    });
+  }
 
   // The nights above went through setCooked, which raises the "out of anything
   // after X?" offer — so the last of them would leave demo mode opening on a

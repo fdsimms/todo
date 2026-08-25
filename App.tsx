@@ -123,6 +123,7 @@ function AppRoot() {
   const checkProjectReviewTasks = useTaskStore(s => s.checkProjectReviewTasks);
   const checkMealSlotTasks = useTaskStore(s => s.checkMealSlotTasks);
   const checkPantryCheckTasks = useTaskStore(s => s.checkPantryCheckTasks);
+  const checkMealShortfallTasks = useTaskStore(s => s.checkMealShortfallTasks);
   const checkCalendarReviewTasks = useTaskStore(s => s.checkCalendarReviewTasks);
   const checkBirthdayTasks = useTaskStore(s => s.checkBirthdayTasks);
   const checkScheduledTemplates = useTemplateStore(s => s.checkScheduledTemplates);
@@ -188,6 +189,13 @@ function AppRoot() {
       // trigger — time passing rather than a source mutation — and it reads the
       // grocery catalog initTasks' fan-out has already loaded.
       ['check pantry checks', checkPantryCheckTasks],
+      // And anything planned for the next couple of days that the kitchen
+      // can't currently make (off by default). Straight after the pass above
+      // for the same reason that one sits after checkMealSlotTasks: it reads
+      // both the meal plan and the grocery catalog initTasks' fan-out has
+      // already loaded, and it fires on a meal coming into range, which is time
+      // passing rather than a source mutation.
+      ['check meal shortfall tasks', checkMealShortfallTasks],
       // Once a day, a task to review tomorrow's calendar — grouped with the two
       // passes above for the same reason: time passing rather than a source
       // mutation. In practice this rarely finds anything to do at cold-launch
@@ -238,7 +246,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkBirthdayTasks, checkCalendarReviewTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkMealShortfallTasks, checkBirthdayTasks, checkCalendarReviewTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
