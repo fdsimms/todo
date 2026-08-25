@@ -94,6 +94,17 @@ export function PeopleScreen() {
             : `${visiblePeople.length} ${visiblePeople.length === 1 ? 'person' : 'people'}`
           : undefined}
         actions={[
+          // A list-level way in, beside the FAB rather than inside it: filling
+          // somebody in from Contacts replaces typing their name rather than
+          // acting on what has been typed, so it doesn't belong in a card whose
+          // whole job is the name field. Hidden on the archived lens for the
+          // same reason the FAB is. See docs/arch/people.md, "Where the two
+          // lines actually fall".
+          ...(showArchived ? [] : [{
+            icon: 'person-add-outline' as const,
+            onPress: () => { haptics.tap(); setContactPickerVisible(true); },
+            accessibilityLabel: 'Add someone from Contacts',
+          }]),
           {
             icon: 'archive-outline',
             onPress: () => { haptics.tap(); animateLayout(); setShowArchived(v => !v); },
@@ -195,14 +206,6 @@ export function PeopleScreen() {
         placeholder="Name"
         autoCapitalize="words"
         moreLabel="More details"
-        // Beside typing a name rather than instead of it: the contact book has
-        // the birthday already, which is the tedious half of adding somebody.
-        // See docs/arch/people.md, "Where the two lines actually fall".
-        altAction={{
-          icon: 'person-add-outline',
-          label: 'From Contacts',
-          onPress: () => { setQuickAddVisible(false); setContactPickerVisible(true); },
-        }}
         onSubmit={(name) => { add(name); setQuickAddVisible(false); }}
         // Straight into the sheet with the row already created, so the birthday
         // (the reason most people are added at all) is one tap away rather than
