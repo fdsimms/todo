@@ -97,6 +97,7 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   'projectReview',
   'supplyReorder',
   'calendarReview',
+  'birthday',
 ];
 
 /**
@@ -173,6 +174,19 @@ export interface GeneratedKindSpec {
 }
 
 export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
+  // The only generator whose trigger is known years ahead rather than derived
+  // from something that just changed, which is why it is the one that can fire
+  // a task *before* the thing it is about — see src/utils/birthdayTasks.ts.
+  birthday: {
+    kind: 'birthday',
+    label: 'Birthday reminders',
+    onHint: 'A person with a birthday on file gets a task a few days before it',
+    offHint: 'Birthdays add no tasks',
+    icon: 'gift-outline',
+    sourced: true,
+    categorized: true,
+    defaultCategory: 'People',
+  },
   mealSlot: {
     kind: 'mealSlot',
     label: 'Meal tasks',

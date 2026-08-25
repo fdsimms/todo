@@ -71,6 +71,11 @@ jest.mock('../db/database', () => ({
   dbUpdateProject: jest.fn(),
   dbDeleteProject: jest.fn(),
   dbBatchUpdateProjectSortOrders: jest.fn(),
+  dbGetAllPeople: jest.fn().mockReturnValue([]),
+  dbInsertPerson: jest.fn(),
+  dbUpdatePerson: jest.fn(),
+  dbDeletePerson: jest.fn(),
+  dbBatchUpdatePersonSortOrders: jest.fn(),
   dbGetAllProjectCategories: jest.fn().mockReturnValue([]),
   dbInsertProjectCategory: jest.fn(),
   dbGetAllTemplateCategories: jest.fn().mockReturnValue([]),
@@ -321,6 +326,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
   ...overrides,
 });
 

@@ -290,6 +290,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
     // ensureGeneratedTaskCategory returns before this null is ever used.
     case 'calendarReview':
       return null;
+    case 'birthday':
+      return { key: 'birthdayTaskCategory', current: s.birthdayTaskCategory, assign: s.setBirthdayTaskCategory };
   }
 }
 
@@ -306,6 +308,7 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'pantryCheck': return s.pantryCheckTasks;
     case 'supplyReorder': return s.supplyReorderTasks;
     case 'calendarReview': return s.calendarReviewTasks;
+    case 'birthday': return s.birthdayTasks;
   }
 }
 

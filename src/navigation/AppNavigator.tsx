@@ -8,6 +8,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from '../components/SafeBlurView';
 import { TodayScreen } from '../screens/TodayScreen';
 import { TagsScreen } from '../screens/TagsScreen';
+import { PeopleScreen } from '../screens/PeopleScreen';
 import { CategoriesScreen } from '../screens/CategoriesScreen';
 import { GroceryScreen } from '../screens/GroceryScreen';
 import { StacksScreen } from '../screens/StacksScreen';
@@ -46,6 +47,7 @@ import { hasRunningRecipeTimer } from '../utils/recipeTimer';
 import { screenShown } from '../utils/simpleMode';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { usePersonStore } from '../store/usePersonStore';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
@@ -192,6 +194,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Calendar" component={CalendarScreen} options={HIDDEN} />
       <Tab.Screen name="Categories" component={CategoriesScreen} options={HIDDEN} />
       <Tab.Screen name="Tags" component={TagsScreen} options={HIDDEN} />
+      <Tab.Screen name="People" component={PeopleScreen} options={HIDDEN} />
       <Tab.Screen name="Stacks" component={StacksScreen} options={HIDDEN} />
       <Tab.Screen name="Templates" component={TemplatesScreen} options={HIDDEN} />
       <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
@@ -223,6 +226,7 @@ function initialScreenFromSettings(): string {
   if (!screenShown(lastVisitedScreen, simpleMode, {
     stacks: useTaskGroupStore.getState().groups.length,
     templates: useTemplateStore.getState().templates.length,
+    people: usePersonStore.getState().people.length,
   })) return 'Today';
   // And Pantry, whose only route in is the hub pill row simplified mode
   // removes (see GroceriesHubPills). It isn't a `screenShown` case because it

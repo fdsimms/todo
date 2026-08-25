@@ -149,6 +149,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
   ...overrides,
 });
 

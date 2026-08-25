@@ -60,6 +60,7 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'tasks', key: ['id'] },
   { name: 'task_groups', key: ['id'] },
   { name: 'projects', key: ['id'] },
+  { name: 'people', key: ['id'] },
   { name: 'categories', key: ['id'] },
   { name: 'project_categories', key: ['id'] },
   { name: 'template_categories', key: ['id'] },

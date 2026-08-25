@@ -59,6 +59,7 @@ export type SimpleFeatureId =
   | 'blocking'
   | 'extraTasks'
   | 'deliverables'
+  | 'people'
   | 'stacks'
   | 'streakOptions'
   | 'vacationPause'
@@ -147,6 +148,9 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'effortRating', label: 'Effort', area: 'tasks' },
 
   { id: 'templates', label: 'Templates', area: 'screens', screen: 'Templates', contentScreen: true },
+  // A content screen like Stacks and Templates: it holds Person rows that live
+  // nowhere else, so hiding it while it holds any would strand them.
+  { id: 'people', label: 'People', area: 'screens', screen: 'People', contentScreen: true },
   { id: 'calendarScreen', label: 'Calendar', area: 'screens', screen: 'Calendar' },
   { id: 'statsScreen', label: 'Stats', area: 'screens', screen: 'Stats' },
   { id: 'backfillScreen', label: 'Backfill', area: 'screens', screen: 'Backfill' },
@@ -213,7 +217,7 @@ export const SIMPLE_HIDDEN_SCREENS: ReadonlySet<string> = new Set(
   SIMPLE_FEATURES.filter(f => f.screen && !f.contentScreen).map(f => f.screen!)
 );
 
-/** The two screens that hold objects reachable from nowhere else. */
+/** The screens that hold objects reachable from nowhere else. */
 export const SIMPLE_CONTENT_SCREENS: ReadonlySet<string> = new Set(
   SIMPLE_FEATURES.filter(f => f.contentScreen).map(f => f.screen!)
 );
@@ -221,20 +225,21 @@ export const SIMPLE_CONTENT_SCREENS: ReadonlySet<string> = new Set(
 /**
  * Does this menu row survive?
  *
- * `contentCounts` answers how many stacks and templates exist; a content
- * screen holding something keeps its row however simple the mode is, because
- * the alternative is a stack nobody can edit or delete again. Everything not
- * named in either set is always shown.
+ * `contentCounts` answers how many stacks, templates and people exist; a
+ * content screen holding something keeps its row however simple the mode is,
+ * because the alternative is a stack nobody can edit or delete again.
+ * Everything not named in either set is always shown.
  */
 export function screenShown(
   routeName: string,
   simpleMode: boolean,
-  contentCounts: { stacks: number; templates: number } = { stacks: 0, templates: 0 },
+  contentCounts: { stacks: number; templates: number; people?: number } = { stacks: 0, templates: 0 },
 ): boolean {
   if (!simpleMode) return true;
   if (SIMPLE_HIDDEN_SCREENS.has(routeName)) return false;
   if (routeName === 'Stacks') return contentCounts.stacks > 0;
   if (routeName === 'Templates') return contentCounts.templates > 0;
+  if (routeName === 'People') return (contentCounts.people ?? 0) > 0;
   return true;
 }
 
@@ -253,6 +258,7 @@ export function screenShown(
  */
 export const SIMPLE_EDITOR_ROW_FEATURES: Readonly<Record<string, SimpleFeatureId>> = {
   kind: 'chains',
+  people: 'people',
   duration: 'timedTasks',
   dailyTarget: 'dailyTargets',
   supply: 'supplies',

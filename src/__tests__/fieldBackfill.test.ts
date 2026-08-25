@@ -113,6 +113,7 @@ const baseTask: Task = {
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
+  personIds: [],
 };
 
 describe('isFieldMissing', () => {

@@ -370,6 +370,13 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // already indexed above under Calendar.
   { id: 'calendarReviewTasks', groupId: 'tasksProjects', label: 'Review tomorrow\'s calendar', section: 'Tasks the app adds',
     keywords: ['events', 'agenda', 'schedule', 'generated', 'automatic'] },
+  { id: 'birthdayTasks', groupId: 'tasksProjects', label: 'Birthday reminders', section: 'Tasks the app adds',
+    keywords: ['people', 'person', 'friend', 'family', 'age', 'gift', 'present', 'card',
+      'generated', 'automatic'] },
+  { id: 'birthdayLeadDays', groupId: 'tasksProjects', label: 'Show the task', section: 'Tasks the app adds',
+    keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'birthdayTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
+    keywords: ['category', 'birthday', 'people'] },
   // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
   // with the area gone there is nothing left for it to convert.
   { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',

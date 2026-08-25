@@ -11,6 +11,7 @@ import {
   resetToRecipes,
   resetToMealPlan,
   resetToKitchen,
+  resetToPeople,
   resetToProjectPull,
   resetToFocusSession,
   openQuickAddFromShortcut,
