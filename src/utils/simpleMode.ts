@@ -50,6 +50,7 @@ export type SimpleFeatureId =
   // What a task can be, beyond a line of text with a date on it.
   | 'timedTasks'
   | 'dailyTargets'
+  | 'supplies'
   | 'chains'
   | 'taskSeries'
   | 'deadlines'
@@ -131,6 +132,7 @@ export const SIMPLE_AREAS: readonly SimpleArea[] = ['tasks', 'screens', 'today',
 export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'timedTasks', label: 'Timed tasks', area: 'tasks' },
   { id: 'dailyTargets', label: 'Daily targets', area: 'tasks' },
+  { id: 'supplies', label: 'Supplies', area: 'tasks' },
   { id: 'chains', label: 'Chains', area: 'tasks' },
   { id: 'taskSeries', label: 'Several dates for one task', area: 'tasks' },
   { id: 'deadlines', label: 'Deadlines', area: 'tasks' },
@@ -253,6 +255,7 @@ export const SIMPLE_EDITOR_ROW_FEATURES: Readonly<Record<string, SimpleFeatureId
   kind: 'chains',
   duration: 'timedTasks',
   dailyTarget: 'dailyTargets',
+  supply: 'supplies',
   chain: 'chains',
   moreDates: 'taskSeries',
   deadline: 'deadlines',

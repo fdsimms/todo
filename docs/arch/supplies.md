@@ -162,6 +162,12 @@ the stamp on a save that only changed the lead time.
 - **The count is read off the row on a task row; the date is only in the
   editor.** A second date on a line that already carries the scheduled one is two
   dates competing to be the row's answer to "when".
+- **Simplified mode hides the card** (`supplies` in `SIMPLE_FEATURES`, `supply`
+  in `SIMPLE_EDITOR_ROW_FEATURES`), on the same terms as the daily target and
+  the deliverable. Rule 2 of that switch keeps it visible on a task that already
+  has a supply, so turning simplified mode on can't strand a stock nobody can
+  then correct. The *Settings* rows for the generator are deliberately not
+  flagged, matching every other generator's rows.
 - **A dangling `supplyGroceryItemId` is resolve-or-shrug**, like every other
   cross-row pointer in this app (`blockedById`, `previousOccurrenceId`).
   `suppliesWantingList` checks the item is still live and otherwise says nothing;
