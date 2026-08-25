@@ -929,6 +929,25 @@ describe('parsePeopleInput', () => {
     expect(parsePeopleInput('lunch @sam', twoSams)).toBeNull();
   });
 
+  it('matches a unique prefix once at least 3 characters are typed', () => {
+    const people = [...PEOPLE, { id: 'p5', name: 'Brittany', nickname: '' }];
+    expect(parsePeopleInput('hug @brittan', people)?.personIds).toEqual(['p5']);
+  });
+
+  it('leaves a prefix under 3 characters unmatched', () => {
+    const people = [...PEOPLE, { id: 'p5', name: 'Brittany', nickname: '' }];
+    expect(parsePeopleInput('hug @br', people)).toBeNull();
+  });
+
+  it('refuses a prefix two people answer to rather than guessing', () => {
+    const twoBs = [
+      { id: 'a', name: 'Brittany', nickname: '' },
+      { id: 'b', name: 'Brandon', nickname: '' },
+    ];
+    expect(parsePeopleInput('hug @br', twoBs)).toBeNull();
+    expect(parsePeopleInput('hug @bri', twoBs)).toEqual(expect.objectContaining({ personIds: ['a'] }));
+  });
+
   it('still resolves an unambiguous name when somebody else is ambiguous', () => {
     const people = [...PEOPLE, { id: 'p4', name: 'Dustin Two', nickname: '' }];
     // "dustin" now names two, so it is left alone; "mom" still resolves.

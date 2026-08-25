@@ -954,6 +954,12 @@ export interface PersonToken {
 // can name several people.
 const PERSON_TOKEN_PATTERN = /(?<!\w)@([a-z][\w'-]*)/gi;
 
+// Below this many characters, a prefix is too likely to land on more than one
+// name to be worth trying — the same floor calendarHistory.ts's
+// MIN_CALENDAR_NAME_LENGTH uses, though that one guards a guess made from text
+// written for another purpose, not a deliberate "@" token.
+const MIN_PREFIX_LENGTH = 3;
+
 /**
  * Finds every "@name" token in a quick-add title and resolves it against the
  * people already added, so "beach with @dustin @ansley sat" creates a task
@@ -967,7 +973,10 @@ const PERSON_TOKEN_PATTERN = /(?<!\w)@([a-z][\w'-]*)/gi;
  * Matches a name or a nickname, exactly and case-insensitively, and also the
  * first word of a name so "@dustin" finds "Dustin Reyes" — full names are how
  * people arrive from a contact card, and nobody types a surname mid-sentence.
- * Ambiguity is left unresolved rather than guessed: "@sam" with two Sams
+ * Short of an exact match, a token of at least `MIN_PREFIX_LENGTH` characters
+ * also matches a unique prefix, so "@brit" finds "Brittany" while it's still
+ * being typed rather than only once the last letter lands. Ambiguity is left
+ * unresolved rather than guessed, at either length: "@sam" with two Sams
  * registered keeps typing rather than locking in the wrong one, the same call
  * `parseCategoryAndTagsInput` makes about a prefix matching two categories.
  *
@@ -1006,7 +1015,18 @@ export function parsePeopleInput(input: string, people: PersonToken[]): ParsedPe
   for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
     if (m.index === undefined) continue;
     const token = m[1].toLowerCase();
-    const hits = byName.get(token);
+    let hits = byName.get(token);
+    // No exact answer yet: try a unique prefix, so a name still being typed
+    // can resolve before its last letter lands. Only tried when there is no
+    // exact hit at all — an exact match that is itself ambiguous stays that
+    // way rather than widening the search and picking up more candidates.
+    if (!hits && token.length >= MIN_PREFIX_LENGTH) {
+      const prefixIds = new Set<string>();
+      for (const [key, ids] of byName) {
+        if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
+      }
+      if (prefixIds.size === 1) hits = [...prefixIds];
+    }
     // Exactly one, or nothing: two people answering to one token is left as
     // literal text rather than resolved to whichever was added first.
     if (!hits || hits.length !== 1) continue;
