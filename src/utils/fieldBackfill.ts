@@ -2,7 +2,7 @@ import type { Task, Effort, Category } from '../types';
 import { EFFORT_MINUTES } from './effort';
 
 /** A field this screen can walk the task list and fill in, one task at a time. */
-export type BackfillFieldId = 'estimate' | 'priority' | 'category' | 'streak' | 'vacation';
+export type BackfillFieldId = 'estimate' | 'priority' | 'category' | 'streak' | 'vacation' | 'reminder';
 
 export interface BackfillFieldDef {
   id: BackfillFieldId;
@@ -37,6 +37,11 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
     id: 'vacation',
     label: 'Vacation pause',
     hint: 'Whether a recurring task hides (and keeps its streak safe) while vacation mode is on.',
+  },
+  {
+    id: 'reminder',
+    label: 'Reminder',
+    hint: 'Whether a task with a due date sends a notification before it’s due.',
   },
 ];
 
@@ -94,6 +99,12 @@ export function isFieldMissing(task: Task, fieldId: BackfillFieldId, categories?
       // for a value that changes nothing.
       if (task.category && categories?.some(c => c.name === task.category && c.hideOnVacation)) return false;
       return true;
+    case 'reminder':
+      // A reminder is an absolute instant, and the only instant this wizard
+      // has to offer one against is the task's own due date — a task with no
+      // dueDate has nothing to schedule the notification relative to (the
+      // same reason WhenPicker's "before due date" mode is gated on one).
+      return task.dueDate != null && task.reminderTime == null;
   }
 }
 
@@ -128,7 +139,7 @@ export function backfillCandidates(
 
 /** How many live tasks are missing each field, for the field-picker step's counts. */
 export function backfillFieldCounts(tasks: Task[], categories: Category[] = []): Record<BackfillFieldId, number> {
-  const counts = { estimate: 0, priority: 0, category: 0, streak: 0, vacation: 0 } as Record<BackfillFieldId, number>;
+  const counts = { estimate: 0, priority: 0, category: 0, streak: 0, vacation: 0, reminder: 0 } as Record<BackfillFieldId, number>;
   for (const t of tasks) {
     if (t.parentId || t.completed || t.archived) continue;
     for (const field of BACKFILL_FIELDS) {
