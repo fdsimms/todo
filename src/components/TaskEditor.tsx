@@ -1240,7 +1240,23 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPickerMode('none');
   };
 
+  const commitWindowValue = (which: 'start' | 'end', date: Date) => {
+    const hhmm = dateToHHMM(date);
+    if (which === 'start') {
+      setWindowStart(hhmm);
+      applyDefaultReminderLead(hhmm);
+    } else {
+      setWindowEnd(hhmm);
+    }
+  };
+
   const openWindowPicker = (which: 'start' | 'end') => {
+    // Switching pills before hitting Set commits the pill being left instead
+    // of discarding it, so dialing in Start and tapping End keeps the Start
+    // time you'd already picked.
+    if (windowPickerMode !== 'none' && windowPickerMode !== which) {
+      commitWindowValue(windowPickerMode, windowPickerDate);
+    }
     const current = which === 'start' ? windowStart : windowEnd;
     const fallback = which === 'start' ? '08:00' : '13:00';
     setWindowPickerDate(hhmmToDate(current ?? fallback));
@@ -1262,12 +1278,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   };
 
   const confirmWindowPicker = () => {
-    const hhmm = dateToHHMM(windowPickerDate);
-    if (windowPickerMode === 'start') {
-      setWindowStart(hhmm);
-      applyDefaultReminderLead(hhmm);
-    } else if (windowPickerMode === 'end') {
-      setWindowEnd(hhmm);
+    if (windowPickerMode !== 'none') {
+      commitWindowValue(windowPickerMode, windowPickerDate);
     }
     setWindowPickerMode('none');
   };
@@ -2799,7 +2811,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               <>
                 <View style={styles.windowPillRow}>
                   <TouchableOpacity
-                    style={[styles.timePill, styles.windowPill, !!windowStart && styles.timePillActive]}
+                    style={[
+                      styles.timePill, styles.windowPill,
+                      !!windowStart && styles.timePillActive,
+                      windowPickerMode === 'start' && styles.timePillEditing,
+                    ]}
                     onPress={() => openWindowPicker('start')}
                   >
                     <Text style={[styles.timePillText, !!windowStart && styles.timePillTextActive]}>
@@ -2807,7 +2823,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    style={[styles.timePill, styles.windowPill, !!windowEnd && styles.timePillActive]}
+                    style={[
+                      styles.timePill, styles.windowPill,
+                      !!windowEnd && styles.timePillActive,
+                      windowPickerMode === 'end' && styles.timePillEditing,
+                    ]}
                     onPress={() => openWindowPicker('end')}
                   >
                     <Text style={[styles.timePillText, !!windowEnd && styles.timePillTextActive]}>
@@ -2830,7 +2850,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
                       </TouchableOpacity>
                       <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmWindowPicker}>
-                        <Text style={[styles.pickerBtnText, { color: colors.text }]}>Set</Text>
+                        <Text style={[styles.pickerBtnText, { color: colors.onAccent }]}>Set</Text>
                       </TouchableOpacity>
                     </View>
                   </>
@@ -4398,8 +4418,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   timePill: {
     flex: 1, paddingVertical: 7, borderRadius: radius.full,
     backgroundColor: colors.bgTertiary, alignItems: 'center',
+    borderWidth: 2, borderColor: 'transparent',
   },
   timePillActive: { backgroundColor: colors.accent },
+  // Which of Start/End the wheel below is currently set to — separate from
+  // timePillActive, which just means "has a value", so a pill can show both,
+  // either, or neither.
+  timePillEditing: { borderColor: colors.text },
   timePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   timePillTextActive: { color: colors.bg, fontWeight: '600' },
   windowPillRow: {
