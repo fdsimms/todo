@@ -1691,8 +1691,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // it hasn't been decided. Both states in one screen is the seed's job.
     const days = new Set(mealTasks.map(t => parseMealSlotSource(t.generatedSourceId)!.dayKey));
     expect(days.size).toBeGreaterThan(1);
-    // Segmented to its slot — the mechanism that keeps dinner off the morning.
-    expect(mealTasks.some(t => t.timeSegments.includes('evening'))).toBe(true);
+    // No slot gates its task behind a time-of-day segment any more, so a
+    // meal task is visible on Today at any time of day, dinner included.
+    expect(mealTasks.every(t => t.timeSegments.length === 0)).toBe(true);
 
     // Today's answered slots step through cooking and then eating, so the chain
     // is visible in the seed rather than only on a day nobody has planned.

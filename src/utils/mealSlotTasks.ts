@@ -66,36 +66,31 @@ import type { ChainItem } from '../types';
  * Which time-of-day segment the slot's *last* chain step — the one that
  * actually eats the meal — hides behind. See `mealSlotStepTimeSegments`,
  * which is what every caller actually wants: an earlier step (Choose,
- * Prepare, Cook X) is never gated by this, only the step that finishes the
- * chain is.
+ * Prepare, Cook X) was never gated by this, and now nothing is.
  *
- * **This is the mechanism that makes the feature quiet**, not a decoration. A
- * task segmented `evening` is invisible on Today until evening (see
- * isTaskVisible), so "Eat dinner" doesn't sit on the list competing with
- * work at nine in the morning — which is precisely the complaint the old meals
- * block drew (#1402). The visibility model already knew how to do this; nothing
- * new hides anything. It is also what makes "decide in the moment" work rather
- * than being a slogan: the row surfaces roughly when the meal does.
+ * **Every slot maps to no segment**, so no meal task hides for any part of
+ * the day, reversing the original decision below. Breakfast, lunch
+ * and dinner used to hide their last step behind `morning`/`afternoon`/
+ * `evening` on the theory that "Eat dinner" shouldn't sit on the list
+ * competing with work at nine in the morning — which was a real complaint
+ * (#1402) about the old meals block gating every step, choosing included. But
+ * gating only the last step traded that problem for a different one: a
+ * planned dinner had no visible row at all until evening, which is the
+ * opposite of being able to see the day's three meals at a glance. Seeing
+ * them is worth more than the quiet the gate bought.
  *
- * It used to gate every step of the chain, "Choose dinner" included — which
- * meant the one step you'd actually want to do ahead of time (decide, or get
- * a head start on prep) was hidden until it was already dinner time to ask
- * about it. Only the last step needs to wait for the meal; deciding what's
- * for dinner is not itself a thing that happens at mealtime.
+ * Snack still maps to no segment, but no longer for a reason unique to it —
+ * see `DEFAULT_MEAL_SLOTS_ENABLED` for why it's off by default regardless.
  *
- * Snack maps to no segment on purpose. The other three name a real part of the
- * day, and a snack doesn't — it's whenever — so segmenting it would be
- * inventing a time the user never said. It's also why snack is off by default
- * (see DEFAULT_MEAL_SLOTS_ENABLED): with no segment its row would sit there
- * from the start of the day.
- *
- * Inherited unchanged from the cook tasks this generator folded in, and the
- * one part of them that needed no rethinking.
+ * The table itself (rather than a flat "never gate") is kept because
+ * `mealSlotStepTimeSegments` and its callers are chain-position-aware and
+ * per-slot on purpose; reintroducing a segment for one meal is a one-line
+ * change here, not a rewrite of how it's applied.
  */
 export const MEAL_SLOT_SEGMENTS: Record<MealSlot, TimeOfDay[]> = {
-  breakfast: ['morning'],
-  lunch: ['afternoon'],
-  dinner: ['evening'],
+  breakfast: [],
+  lunch: [],
+  dinner: [],
   snack: [],
 };
 
