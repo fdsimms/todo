@@ -415,8 +415,6 @@ export interface Person {
   // are always written as a pair.
   birthdayMonth: number | null;
   birthdayDay: number | null;
-  // Only ever used to say how old someone is turning. Absent is normal.
-  birthYear: number | null;
   // When the user deleted this person's birthday task (see
   // src/utils/birthdayTasks.ts). The per-source opt-out every generated task
   // writes on its source row, and unlike `Project.reviewDeclinedAt` a permanent

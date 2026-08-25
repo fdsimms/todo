@@ -67,7 +67,6 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   const [notes, setNotes] = useState('');
   const [birthdayMonth, setBirthdayMonth] = useState<number | null>(null);
   const [birthdayDay, setBirthdayDay] = useState<number | null>(null);
-  const [birthYear, setBirthYear] = useState('');
   const [birthdayTaskOptOut, setBirthdayTaskOptOut] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState('');
   const [email, setEmail] = useState('');
@@ -94,7 +93,6 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
     setNotes(person.notes);
     setBirthdayMonth(person.birthdayMonth);
     setBirthdayDay(person.birthdayDay);
-    setBirthYear(person.birthYear === null ? '' : String(person.birthYear));
     setBirthdayTaskOptOut(person.birthdayTaskOptOut);
     setPhoneNumber(person.phoneNumber ?? '');
     setEmail(person.email ?? '');
@@ -110,7 +108,6 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
 
   const saveAndClose = () => {
     const trimmedName = name.trim();
-    const year = Number(birthYear.trim());
     updatePerson(person.id, {
       // An empty name would leave an unidentifiable row, so the previous one
       // stands — the same refusal the other editors make about their titles.
@@ -119,11 +116,6 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       notes: notes.trim(),
       birthdayMonth,
       birthdayDay,
-      // Only a plausible four-digit year is kept. A half-typed "19" would
-      // otherwise become an age of two thousand and something.
-      birthYear: birthYear.trim() && Number.isInteger(year) && year > 1900 && year <= new Date().getFullYear()
-        ? year
-        : null,
       birthdayTaskOptOut,
       phoneNumber: phoneNumber.trim() || null,
       email: email.trim() || null,
@@ -235,22 +227,6 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         />
         {birthdaySet && (
           <>
-            <View style={styles.sep} />
-            <View style={styles.fieldRow}>
-              <Text style={styles.fieldLabel}>Birth year</Text>
-              <TextInput
-                style={styles.fieldInput}
-                value={birthYear}
-                onChangeText={setBirthYear}
-                placeholder="e.g. 1992"
-                placeholderTextColor={colors.textTertiary}
-                keyboardType="number-pad"
-                maxLength={4}
-              />
-            </View>
-            <Text style={styles.cardFooter}>
-              Only used to say what age they are turning. Leave it blank if you don't know it.
-            </Text>
             <View style={styles.sep} />
             <TouchableOpacity
               style={styles.optionRow}

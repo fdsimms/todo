@@ -10,7 +10,7 @@ import {
 const person = (id: string, name: string): Person => ({
   id, name, nickname: '', notes: '', sortOrder: 1,
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
-  birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false,
+  birthdayMonth: null, birthdayDay: null, birthdayTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
   cadenceDays: 0, nudgeOptIn: false, reachOutDeclinedAt: null, askAbout: '',
 });

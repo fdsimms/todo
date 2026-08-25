@@ -22,7 +22,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/archiveMatch.ts` — findArchivedMatch
 - `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, projectRow, +3 more
 - `src/utils/backupFile.ts` — writeBackupFile, canShare, shareBackupFile, discardBackupFile, pickBackupFile
-- `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, parseBirthdayLeadDays, birthdaySourceId, parseBirthdaySource, hasBirthday, birthdayInYear, nextBirthday, ageTurning, +8 more
+- `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, parseBirthdayLeadDays, birthdaySourceId, parseBirthdaySource, hasBirthday, birthdayInYear, nextBirthday, birthdayTitle, +6 more
 - `src/utils/blockerRegistry.ts` — registerTaskSource, registerProjectSource, resolveBlocker, waitingCountFor, stepNumberOf, isSequentialProject, isSequenceHeld
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
 - `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerOf, isBlocked, wouldCycle, BlockerContext, blockerAffinity, sortByBlockerAffinity, waitingOn, +5 more

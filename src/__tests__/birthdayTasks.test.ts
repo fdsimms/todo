@@ -1,12 +1,10 @@
 import type { Person, Task } from '../types';
 import {
-  ageTurning,
   birthdayDrift,
   birthdayInYear,
   birthdaySourceId,
   birthdayTitle,
   clampBirthdayLeadDays,
-  describeBirthdayAge,
   hasBirthday,
   nextBirthday,
   parseBirthdayLeadDays,
@@ -29,7 +27,6 @@ const person = (overrides: Partial<Person> = {}): Person => ({
   createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: 3,
   birthdayDay: 14,
-  birthYear: null,
   birthdayTaskOptOut: false,
   phoneNumber: null,
   email: null,
@@ -166,22 +163,6 @@ describe('when it next comes round', () => {
 
   it('rolls to next year once it has passed', () => {
     expect(nextBirthday(person(), noon(2026, 6, 1))).toEqual(noon(2027, 3, 14));
-  });
-});
-
-describe('the age', () => {
-  it('is nothing at all when the year isn\'t known, which is the normal case', () => {
-    expect(ageTurning(person(), 2026)).toBeNull();
-    expect(describeBirthdayAge(null)).toBeNull();
-  });
-
-  it('says what they are turning when it is', () => {
-    expect(ageTurning(person({ birthYear: 1992 }), 2026)).toBe(34);
-    expect(describeBirthdayAge(34)).toBe('Turning 34');
-  });
-
-  it('abstains rather than reporting an impossible age', () => {
-    expect(ageTurning(person({ birthYear: 2030 }), 2026)).toBeNull();
   });
 });
 

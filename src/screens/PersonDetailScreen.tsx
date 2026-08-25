@@ -34,8 +34,6 @@ import {
 import { telUrl, smsUrl } from '../utils/phone';
 import { tasksNaming } from '../utils/peopleRegistry';
 import {
-  ageTurning,
-  describeBirthdayAge,
   hasBirthday,
   nextBirthday,
 } from '../utils/birthdayTasks';
@@ -225,7 +223,6 @@ export function PersonDetailScreen() {
 
   const name = displayNameOf(person);
   const birthday = hasBirthday(person) ? nextBirthday(person, today) : null;
-  const age = birthday ? describeBirthdayAge(ageTurning(person, birthday.getFullYear())) : null;
 
   const open = (url: string | null) => {
     if (!url) return;
@@ -357,7 +354,6 @@ export function PersonDetailScreen() {
             <Text style={styles.summaryValue}>
               {birthday.toLocaleDateString(undefined, { month: 'long', day: 'numeric' })}
             </Text>
-            {age && <Text style={styles.summaryAside}>{age}</Text>}
           </View>
         )}
 
@@ -546,8 +542,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   summaryLabel: { color: colors.textSecondary, fontSize: font.sm, flex: 1 },
   summaryValue: { color: colors.text, fontSize: font.md },
-  // The day count and the age both live here: quiet, and deliberately never in
-  // a colour that means late.
+  // The day count lives here: quiet, and deliberately never in a colour that
+  // means late.
   summaryAside: { color: colors.textTertiary, fontSize: font.xs },
   notesCard: {
     backgroundColor: colors.bgSecondary,
