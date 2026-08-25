@@ -1343,7 +1343,9 @@ function seedRecipes(): DemoRecipes {
   if (defrost) updatePrepTask(salmon.id, defrost.id, { offsetDays: -1, reminderOffsetMinutes: 120 });
   [0, 1].forEach(() => markCooked(salmon.id));
   // Cooked it twice and decided against a third — the down side of the vote,
-  // set the same way the "How was it?" prompt sets it after Mark cooked.
+  // set the same way the post-cook sheet's "How was it?" section sets it. The
+  // stir-fry below is deliberately left unrated, so cooking tonight's dinner in
+  // the demo is what shows that section being asked.
   setVote(salmon.id, 'down');
   // The shared component — the same mash inside two different dinners, which
   // is the whole point of a reference rather than a copy.
@@ -2383,17 +2385,18 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     });
   }
 
-  // The nights above went through setCooked, which raises the "out of anything
-  // after X?" offer — so the last of them would leave demo mode opening on a
-  // banner about a dinner eight days ago.
+  // The nights above went through setCooked, which raises the post-cook sheet
+  // — so the last of them would drop demo mode straight into a sheet asking
+  // about a dinner eight days ago.
   //
   // It's cleared rather than left standing, and this is the one capability
-  // here that genuinely can't be seeded: the offer isn't a row, it's the app's
+  // here that genuinely can't be seeded: the recap isn't a row, it's the app's
   // answer to a tap you just made. Seeding one would be asserting a tap that
-  // never happened, and its only lasting output is an item marked out of —
-  // which is a *negative*, so it shows up as nothing at all. The honest way to
-  // see this feature is to mark a meal cooked, which the demo is fully set up
-  // for: tonight's stir-fry and its ingredients are all here.
-  useMealPlanStore.getState().clearCookedOffer();
+  // never happened, and its lasting outputs are a rating, a fridge row and an
+  // item marked out of — the last of which is a *negative*, so it shows up as
+  // nothing at all. The honest way to see this feature is to mark a meal
+  // cooked, which the demo is fully set up for: tonight's stir-fry, its
+  // ingredients and an unrated recipe are all here.
+  useMealPlanStore.getState().clearCookRecap();
 
 }

@@ -119,52 +119,39 @@ export interface MealPlanDraft {
  * Thin on purpose — the logic lives in utils/mealPlan where jest can reach it.
  */
 /**
- * What the post-cook "out of anything?" offer needs to name its subject and
- * recompute its own lines: the dish, and the two things about *this* cooking
- * that decide which ingredients it actually used (which side was made, and how
- * much of it). Carried by value rather than as an entry id because the entry is
- * not the subject — the question is about the recipe that was cooked, and it
- * survives that night's row being edited or deleted out from under it.
+ * The meal just marked cooked, and everything the post-cook sheet needs to ask
+ * its three questions about it: how it was, what it left in the fridge, and
+ * what it used up.
+ *
+ * **One subject for all three, because they are one moment.** Cooking used to
+ * raise up to three separate asks — a native "How was it?" alert, the used-up
+ * banner, and the restock banner ranked behind it — each with its own state and
+ * its own dismissal, arriving one after another off a single tap. They are the
+ * same tap and they are now one sheet (`CookRecapSheet`), so this carries the
+ * union of what they each used to hold.
+ *
+ * Most of it is carried by value rather than resolved from the entry, because
+ * the entry is not the subject: the questions are about the cooking, and they
+ * survive that night's row being edited or deleted out from under them. The one
+ * exception is `entryId`, which becomes `Leftover.sourceEntryId` — resolve-or-
+ * shrug, so a deleted row costs the pointer and nothing else.
  */
-export interface CookedOffer {
-  recipeId: string;
-  /** For the banner's wording. The recipe's own name at the time it was cooked. */
-  recipeName: string;
+export interface CookRecap {
+  entryId: string;
+  /** The meal's name as it was cooked, which is what a leftover container gets called. */
+  title: string;
+  /**
+   * Whether the fridge question is worth putting at all — see `cookRecapFor`
+   * for the two meals it refuses. False leaves the sheet's leftovers section
+   * out entirely rather than showing a row that can't be answered.
+   */
+  canLogLeftovers: boolean;
+  /** Null for a free-text meal ("leftovers", "eating out") — see `CookRecapSheet`. */
+  recipeId: string | null;
+  /** The recipe's own name at the time it was cooked; null alongside `recipeId`. */
+  recipeName: string | null;
   choices: string[];
   scale: number;
-}
-
-/**
- * The meal a just-ticked "Cook X" task left behind, and everything the log
- * sheet needs to open on it — the subject of `LogLeftoversOffer`'s banner.
- *
- * **Set only from `setCookedPaired`, which is the task side of the tick.** The
- * meal plan already puts "Log leftovers" on the entry's own sheet, and that
- * placement is deliberate (see `MealPlanScreen.logLeftoversFor`: not every meal
- * leaves any, so nothing about marking one cooked should assume it did). The
- * task list had no such action at all — ticking "Cook Chili" off Today finished
- * the cooking and said nothing about the two tubs on the counter, and the only
- * way to record them was to go and find the meal on the plan. So this is that
- * one action, reached from the side that was missing it.
- *
- * It's an offer rather than a sheet for exactly the reason the entry action is
- * an action: a modal opening uninvited after every cooking is a second one
- * chasing the ingredients question. `OfferBanner` is the tier the app
- * already settled on for this.
- *
- * Carried by value like `CookedOffer` beside it, plus the `entryId` that
- * becomes `Leftover.sourceEntryId` — resolve-or-shrug, so the row being edited
- * or deleted out from under it costs the pointer and nothing else.
- *
- * Session-only, same as `cookedOffer`: it's about a tap you just made.
- */
-export interface LeftoverOffer {
-  entryId: string;
-  /** The meal's name as it was cooked, which is what the container gets called. */
-  title: string;
-  recipeId: string | null;
-  /** Which side of each either/or was made, so a losing component isn't offered. */
-  choices: string[];
 }
 
 interface MealPlanStore {
@@ -181,45 +168,40 @@ interface MealPlanStore {
   undoLastAction: () => void;
 
   /**
-   * The meal just marked cooked, when there is something worth asking whether
-   * it used up — the subject of CookedUseUpOffer's banner.
+   * The meal just marked cooked — the subject of the post-cook sheet
+   * (`CookRecapSheet`), and the whole of the state behind it.
    *
-   * **It lives in the store rather than on the meal plan screen**, which is the
-   * one structural difference from the restock offer next to it. Cooking is the
-   * only moment this app learns something was *consumed*, and a meal can be
-   * ticked off from Today as readily as from the plan (`setCookedPaired`); a
-   * signal that important shouldn't depend on which screen the tap happened to
-   * land on. The restock offer stays screen-local because buying is a meal-plan
-   * question with two other entry points already.
+   * **It lives in the store rather than on the meal plan screen.** A meal can
+   * be ticked off from Today as readily as from the plan (`setCookedPaired`),
+   * and cooking is the only moment this app learns anything was *consumed* or
+   * that a fridge just gained a container. A moment that important shouldn't
+   * depend on which screen the tap happened to land on, so the sheet is
+   * self-contained (`CookRecap`) and both screens mount it in one line.
+   *
+   * **Set for every cooking, not only the ones with something to say.** The old
+   * used-up offer was gated on having at least one line to name, because a
+   * banner that renders nothing is indistinguishable from one nobody dismissed.
+   * A sheet has no such problem: each of its sections is gated on its own
+   * subject, so a repeat cook of a rated dish with a full pantry opens on the
+   * leftovers question alone. `CookRecap` (the component) is what declines to
+   * open at all when every section is empty.
    *
    * Set only where a *person* said they cooked one meal — `setCooked`, and so
    * `setCookedPaired` through it. Deliberately **not** `bulkSetCooked`:
    * marking last week's five dinners cooked on a Sunday is bookkeeping, and
-   * asking what each of them used up would be asking someone to recall five
-   * kitchens. Un-cooking retracts it, since the tap it was about is undone.
+   * asking about each of them would be asking someone to recall five kitchens.
+   * Un-cooking retracts it, since the tap it was about is undone.
    *
-   * Session-only, like the restock offer: it's about a tap you just made, so
-   * there is nothing for it to mean on the next launch.
+   * Session-only: it's about a tap you just made, so there is nothing for it to
+   * mean on the next launch.
    */
-  cookedOffer: CookedOffer | null;
+  cookRecap: CookRecap | null;
   /**
-   * Dismissed by hand, or retired by the banner once every line it could name
-   * has been answered. Both are "there is no longer anything to ask", which is
-   * also what un-suppresses the restock banner behind it.
+   * Dismissed by hand (Skip, or the sheet closing), or declined by `CookRecap`
+   * when the cooking turns out to have nothing worth asking about. Both are
+   * "there is nothing left to ask about that tap".
    */
-  clearCookedOffer: () => void;
-
-  /**
-   * The meal a just-ticked cook task left behind — see `LeftoverOffer`.
-   *
-   * Ranked *behind* `cookedOffer` by the banner itself rather than by either
-   * screen, because two of these side by side is the noise the passive
-   * treatment exists to avoid, and the consumption question is the one that
-   * retires itself the moment it's answered.
-   */
-  leftoverOffer: LeftoverOffer | null;
-  /** Dismissed by hand, or once the log sheet it opened has been through. */
-  clearLeftoverOffer: () => void;
+  clearCookRecap: () => void;
 
   /**
    * Reloads whatever window is currently loaded. Rides useTaskStore.initialize's
@@ -611,15 +593,10 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   cookHistory: null,
   initialized: false,
   lastAction: null,
-  cookedOffer: null,
-  leftoverOffer: null,
+  cookRecap: null,
 
-  clearCookedOffer() {
-    set({ cookedOffer: null });
-  },
-
-  clearLeftoverOffer() {
-    set({ leftoverOffer: null });
+  clearCookRecap() {
+    set({ cookRecap: null });
   },
 
   setLastAction(action) {
@@ -947,20 +924,16 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     const next: MealPlanEntry = { ...entry, cookedAt: cooked ? new Date().toISOString() : null };
     dbUpdateMealPlanEntry(next);
     set(s => ({ entries: s.entries.map(e => e.id === id ? next : e) }));
-    // One walk of the recipe answers both halves of a cooking: what to ask
-    // about (the offer) and what it opened (stamped here and now, since nothing
-    // has to be asked for that — see markConsumedOpened). The offer is set
-    // first because the opening doesn't change the set: `probablyHaveReason`
-    // reads assertions, the freezer and purchase history, and `openedAt` is
-    // none of the three, so the banner recomputing live still finds these rows.
-    const consumption = cooked ? cookedConsumption(next) : null;
-    set({ cookedOffer: consumption?.offer ?? null });
-    if (consumption) markConsumedOpened(next, consumption.rows);
-    // Cleared in both directions, and set nowhere here: the leftovers offer
-    // belongs to the task side of the tick (see setCookedPaired). Clearing it
-    // on a plan-side tick is what stops a stale offer for last night's dinner
-    // outliving the meal it was about.
-    set({ leftoverOffer: null });
+    // Set in both directions: a cooking raises the recap, and un-ticking
+    // retracts whatever the last one raised, so a stale sheet for last night's
+    // dinner can't outlive the meal it was about.
+    //
+    // Written before `markConsumedOpened` below because the opening doesn't
+    // change what the sheet will find: `probablyHaveReason` reads assertions,
+    // the freezer and purchase history, and `openedAt` is none of the three, so
+    // the sheet recomputing its rows live still lands on the same set.
+    set({ cookRecap: cooked ? cookRecapFor(next) : null });
+    if (cooked) markConsumedOpened(next, cookedConsumption(next));
     // Ticking the meal ticks its task, and un-ticking un-ticks it. The
     // ping-pong this would otherwise cause is broken by the guard above plus
     // the one in completeTask: whichever side moves first has already written
@@ -1011,12 +984,8 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       : undefined;
     const before = recipe ? useRecipeStore.getState().markCooked(recipe.id) : null;
 
-    // After setCooked, which clears whatever was there — this is the one
-    // caller that puts something back. Read off the entry as it was resolved
-    // above rather than re-reading: the only field the write touched is
-    // cookedAt, and nothing here reads it.
-    if (cooked) set({ leftoverOffer: leftoverOfferFor(entry) });
-
+    // Nothing to raise here: `setCooked` above already put the recap up, and
+    // it carries the leftovers question that used to be this path's alone.
     return () => {
       get().setCooked(id, !cooked);
       if (recipe && before) useRecipeStore.getState().restoreCookStats(recipe.id, before);
@@ -1263,89 +1232,82 @@ function resolveEntry(get: () => MealPlanStore, id: string): MealPlanEntry | nul
 }
 
 /**
- * What a just-cooked meal could leave in the fridge, or null because there is
- * nothing to offer.
+ * Everything the post-cook sheet needs, snapshotted at the tick.
  *
- * Two meals are refused. One already *is* leftovers (`leftoverId`): eating a
- * tub of chilli is what closes that container out, not what fills a new one,
- * which is why the entry sheet swaps its "Log leftovers" row for "Finished the
- * leftovers" on exactly this test. And one with no name at all has nothing to
- * call the container — the store refuses a blank title anyway, so offering it
- * would be a banner leading to a button that can't be pressed.
+ * **Only the facts about *this* cooking are captured; every list is read live
+ * by the sheet.** The recipe's ingredients, its leftover parts and its keep-for
+ * window all come from the recipe as it now stands, the same call
+ * `cookedConsumption`'s rows make — a recipe edited between the tick and the
+ * tap should be read as it is, not as it was. What can't be re-derived is what
+ * this particular cooking was: which side of each either/or got made, how much
+ * of it, and what the meal was called at the time.
  *
- * The parts and the keep-for window are deliberately *not* resolved here. They
- * come from the recipe, which the banner reads live for the same reason
- * `cookedConsumption`'s rows are recomputed rather than snapshotted: a recipe
- * edited between the tick and the tap should be read as it now stands.
+ * `canLogLeftovers` carries the two refusals the leftovers offer used to make
+ * on its own. One meal already *is* leftovers (`leftoverId`): eating a tub of
+ * chilli is what closes that container out, not what fills a new one, which is
+ * why the entry sheet swaps its "Log leftovers" row for "Finished the
+ * leftovers" on exactly this test. And a meal with no name at all has nothing
+ * to call a container — the store refuses a blank title anyway, so the row
+ * would be a question leading to a button that can't be pressed.
  */
-function leftoverOfferFor(entry: MealPlanEntry): LeftoverOffer | null {
-  if (entry.leftoverId) return null;
-  const title = titleForEntry(entry, recipeIndex(useRecipeStore.getState().recipes));
-  if (!title.trim()) return null;
+function cookRecapFor(entry: MealPlanEntry): CookRecap {
+  const recipes = useRecipeStore.getState().recipes;
+  const recipe = entry.recipeId ? recipes.find(r => r.id === entry.recipeId) : undefined;
+  const title = titleForEntry(entry, recipeIndex(recipes));
   return {
     entryId: entry.id,
     title,
-    recipeId: entry.recipeId,
-    choices: entry.recipeChoices,
+    canLogLeftovers: !entry.leftoverId && !!title.trim(),
+    // Null rather than the id when the recipe has since been deleted:
+    // resolve-or-shrug at the point the pointer is captured, so the sheet's own
+    // sections don't each have to repeat the lookup that failed.
+    recipeId: recipe ? recipe.id : null,
+    recipeName: recipe ? recipe.name : null,
+    choices: [...entry.recipeChoices],
+    scale: normalizeScale(entry.recipeScale),
   };
 }
 
 /**
- * What a just-cooked meal was made of, and the offer to raise about it — or
- * null when there's nothing to ask and nothing to open.
+ * What a just-cooked meal was made of, as far as the app can honestly claim —
+ * empty when there's nothing it can say.
  *
- * One walk of the recipe answers both, because both are the same set of lines:
- * `consumedRows` is what the offer can defend (the lines the app is already
- * claiming you have) and it's the same restraint that decides what a cooking
- * may mark opened. See `markConsumedOpened` for where the two part ways.
+ * `consumedRows` is what a cooking can defend (the lines the app is already
+ * claiming you have), and it's the same restraint that decides what a cooking
+ * may mark opened. See `markConsumedOpened` for where the two part ways, and
+ * the sheet's own section for the question put to the user.
  *
- * **Gated on there being at least one line to name**, exactly as the restock
- * banner is gated on `restockRows` — an offer that exists but shows nothing
- * would be indistinguishable from one that hasn't been dismissed, and the
- * screen suppresses the restock banner while this is set.
- *
- * The count isn't stored. It's recomputed live by the banner off the same
- * three utils, so answering the questions empties the set and retires the
- * offer — the same "hidden rather than hedged" call the restock banner makes,
- * and what makes the two hand over to each other with no plumbing between them.
+ * The rows aren't stored on the recap. They're recomputed live by the sheet off
+ * these same three utils, so ticking a line takes it out of the set — the same
+ * "read it as it now stands" call `cookRecapFor` makes about the recipe.
  *
  * Reads two other stores at write time, like `setCookedPaired` reaching into
  * `useRecipeStore` just below. A free-text meal has no recipe and so no
  * ingredients, which is not an error — just a meal with nothing to ask about.
  */
-function cookedConsumption(
-  entry: MealPlanEntry
-): { offer: CookedOffer; rows: ClassifiedIngredient[] } | null {
-  if (!entry.recipeId) return null;
+function cookedConsumption(entry: MealPlanEntry): ClassifiedIngredient[] {
+  if (!entry.recipeId) return [];
   const recipes = useRecipeStore.getState().recipes;
   const recipe = recipes.find(r => r.id === entry.recipeId);
-  if (!recipe) return null;
+  if (!recipe) return [];
 
   const recipesById = new Map(recipes.map(r => [r.id, r]));
-  const scale = normalizeScale(entry.recipeScale);
   // Swapped: what a cook used up is what they actually cooked with, so a
   // standing "oat milk for milk" asks after the oat milk.
   const { items, itemSubs } = useGroceryStore.getState();
-  const rows = consumedRows(
+  return consumedRows(
     classifyPlanned(
       plannedIngredientsForRecipe(
-        recipe, recipesById, { chosen: entry.recipeChoices }, scale, standingSwapMap(itemSubs, items)
+        recipe,
+        recipesById,
+        { chosen: entry.recipeChoices },
+        normalizeScale(entry.recipeScale),
+        standingSwapMap(itemSubs, items)
       ),
       items,
       new Date()
     )
   );
-  if (rows.length === 0) return null;
-
-  return {
-    offer: {
-      recipeId: recipe.id,
-      recipeName: recipe.name,
-      choices: [...entry.recipeChoices],
-      scale,
-    },
-    rows,
-  };
 }
 
 /**
@@ -1371,7 +1333,7 @@ function openedAtForCook(entry: MealPlanEntry): Date {
  * Records that a cooking opened the things it was made of.
  *
  * **This is the one claim a cooking is allowed to make on its own**, and the
- * line it stops at is the one `CookedUseUpSheet` guards: how much of anything
+ * line it stops at is the one `CookRecapSheet` guards: how much of anything
  * is left is a question about real-world amounts that only the person can
  * answer, so consumption is still asked and never inferred. That a packet got
  * *opened*, though, follows from the cooking itself — you cannot cook with a
@@ -1392,7 +1354,7 @@ function openedAtForCook(entry: MealPlanEntry): Date {
 function markConsumedOpened(entry: MealPlanEntry, rows: readonly ClassifiedIngredient[]): void {
   const { items, markOpenedMany } = useGroceryStore.getState();
   // Resolved back to catalog ids here rather than carried on the row, the same
-  // way CookedUseUpSheet does it: a ClassifiedIngredient is keyed by name, and
+  // way CookRecapSheet does it: a ClassifiedIngredient is keyed by name, and
   // the pantry assertion lives on the row. A key with no live row is dropped
   // rather than minting one.
   const byKey = new Map(items.map(i => [i.nameKey, i.id]));

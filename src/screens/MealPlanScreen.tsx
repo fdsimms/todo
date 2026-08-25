@@ -34,8 +34,6 @@ import { RecipePickerSheet, type MealPick } from '../components/RecipePickerShee
 import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { AddMealsToListSheet } from '../components/AddMealsToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
-import { OfferBanner } from '../components/OfferBanner';
-import { CookedUseUpOffer } from '../components/CookedUseUpOffer';
 import { PrepTasksReviewSheet } from '../components/PrepTasksReviewSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
 import { CalendarPicker } from '../components/CalendarPicker';
@@ -114,10 +112,7 @@ import { liveGeneratedTask } from '../utils/generatedTasks';
 import { buildWeekPlanShareText } from '../utils/shareText';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import {
-  classifyPlanned,
   hasShoppableMeals,
-  plannedIngredientsForRecipe,
-  restockRows,
 } from '../utils/mealPlanGroceries';
 import { decidableNights, weekNights } from '../utils/weekPlan';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -308,7 +303,6 @@ export function MealPlanScreen() {
   // #1063's gate. Without a key the suggestion sheet is exactly the offline
   // one it has always been — the ranking below is deliberately ungated.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
-  const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
   // ==== local state (the week anchor, sheets, bulk selection, the fridge) ====
@@ -360,7 +354,6 @@ export function MealPlanScreen() {
   const markRecipeCooked = useRecipeStore(s => s.markCooked);
   const startCookTimer = useRecipeStore(s => s.startCookTimer);
   const restoreCookStats = useRecipeStore(s => s.restoreCookStats);
-  const setRecipeVote = useRecipeStore(s => s.setVote);
 
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
   const logLeftover = useLeftoverStore(s => s.logLeftover);
@@ -424,9 +417,9 @@ export function MealPlanScreen() {
    * shopped (only a whole-week add does — see AddMealsToListSheet).
    *
    * Kept alongside its own visibility flag rather than nulled on close, the
-   * same pair `restockOffer`/`restockSheetVisible` below use: the sheet is a
-   * real Modal that slides out, and clearing the scope on close would blank
-   * its title and rows mid-animation.
+   * same pair `mealShop`/`mealShopVisible` below use: the sheet is a real
+   * Modal that slides out, and clearing the scope on close would blank its
+   * title and rows mid-animation.
    */
   const [addToListScope, setAddToListScope] =
     useState<{ range: { startKey: string; endKey: string }; title: string; stampWeekKey: string | null } | null>(null);
@@ -516,50 +509,6 @@ export function MealPlanScreen() {
       return next;
     });
   };
-
-  // The recipe whose ingredients we're offering to re-add after mark-cooked.
-  // Carries the entry's picks alongside the recipe: you cooked the roast
-  // potatoes, so the re-shop offers the roast potatoes' lines.
-  //
-  // This is the *banner's* subject, not the sheet's — marking something cooked
-  // used to open RecipeToListSheet outright, which is what made a tick about
-  // eating read as a question about shopping (see OfferBanner).
-  // Session-only, and deliberately not persisted: it's an offer about a tap
-  // you just made, so there is nothing for it to mean on the next launch.
-  //
-  // Screen state, where the used-up offer next to it is store state, and the
-  // asymmetry is the point: buying is a meal-plan question with two other entry
-  // points already, while what a cook consumed is the app's only signal of its
-  // kind and has to be raised wherever the meal was ticked off — see
-  // useMealPlanStore.cookedOffer.
-  const [restockOffer, setRestockOffer] =
-    useState<{ recipe: Recipe; choices: string[]; scale: number } | null>(null);
-  const [restockSheetVisible, setRestockSheetVisible] = useState(false);
-  const cookedOffer = useMealPlanStore(s => s.cookedOffer);
-
-  // One count, used twice: whether to make the offer at all, and what the
-  // banner says. Computed against the live catalog rather than snapshotted at
-  // cook time, which is what retires the banner without needing a dismissal
-  // stamp — adding the items takes the set to 0 and it renders nothing, the
-  // same "hidden rather than hedged" call StartTripPrompt makes.
-  const restockCountFor = useCallback(
-    (recipe: Recipe, choices: readonly string[], scale: number) =>
-      restockRows(
-        classifyPlanned(
-          plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices }, scale, standingSwaps),
-          groceryItems,
-          new Date()
-        )
-      ).length,
-    [recipesById, groceryItems, standingSwaps]
-  );
-
-  const restockCount = useMemo(
-    () => (restockOffer
-      ? restockCountFor(restockOffer.recipe, restockOffer.choices, restockOffer.scale)
-      : 0),
-    [restockOffer, restockCountFor]
-  );
 
   // The leftover sheet's two modes, held apart so opening one can't leave the
   // other's state behind: an id for editing a row, a seed for logging a new
@@ -930,45 +879,16 @@ export function MealPlanScreen() {
       },
     });
 
-    if (!cooked) return;
-
-    // Asked once, the first time this recipe is ever marked cooked — before
-    // is the pre-bump snapshot, so cookCount === 0 there is exactly "never
-    // cooked until this tap". Skipped if a vote is already set (from the
-    // edit page, or a previous prompt on a recipe with older cook history
-    // than this app's own tracking, e.g. a restored backup).
-    if (recipe && before && before.cookCount === 0 && recipe.vote === null) {
-      Alert.alert(
-        'How was it?',
-        `Rate "${recipe.name}" so it's easy to find, or skip, next time.`,
-        [
-          { text: 'Skip', style: 'cancel' },
-          { text: 'Not for me', onPress: () => setRecipeVote(recipe.id, 'down') },
-          { text: 'Loved it', onPress: () => setRecipeVote(recipe.id, 'up') },
-        ]
-      );
-    }
-
-    // The "was that the last of it?" ask used to be raised here, but it's
-    // asked from useTaskStore.completeTask now — setEntryCooked above ticks
-    // the paired task the same way setCookedPaired does, so a leftover-backed
-    // entry ticked from this row already gets the ask via
-    // FinishLeftoverPrompt without doing it a second time.
-
-    // Stored for any cooked recipe, and *not* gated on the count being above
-    // zero right now — the banner renders nothing at 0 either way (see
-    // `restockCount`), and a cook whose ingredients are all in the pantry is
-    // exactly the one whose restock set is about to be created: saying you're
-    // out of the soy sauce in the used-up sheet moves it into `restockRows`,
-    // and with the offer already standing by, the buy follows from the
-    // consumption answer instead of having to be asked for.
+    // Nothing else to raise here, and that's the point of `CookRecap`: the
+    // rating, the fridge and the ingredients are three questions about one tap,
+    // so they're one sheet raised off `useMealPlanStore.cookRecap` rather than
+    // an alert here and two banners over the list. `setEntryCooked` above set
+    // it, from whichever screen the tick happened on.
     //
-    // What the offer must still never be is "every line of the recipe" —
-    // restockRows is what it can defend, since on a dish cooked for the first
-    // time every line looks unbought, which is how this arrived asking to buy
-    // the salt and pepper. See its note, and OfferBanner's.
-    if (!recipe || !restockOfferEnabled) return;
-    setRestockOffer({ recipe, choices: entry.recipeChoices, scale: entry.recipeScale });
+    // The "was that the last of it?" ask isn't here either: it comes from
+    // useTaskStore.completeTask, since ticking this row ticks the paired task
+    // the same way setCookedPaired does, so a leftover-backed entry already
+    // gets it via FinishLeftoverPrompt without asking twice.
   };
 
   // ——— Bulk selection actions (#1110) ——————————————————————————————————
@@ -1586,36 +1506,6 @@ export function MealPlanScreen() {
         />
       )}
 
-      {/* Both post-cook offers are siblings of the list rather than part of its
-          header, like ActiveTripBanner and unlike the cards inside
-          ListHeaderComponent: the tap they answer can happen on any day of the
-          week, so an offer that scrolls with the week is one you can miss
-          entirely. Hidden while selecting, for the reason the list header gives
-          — nothing that opens a sheet belongs over an in-progress selection. */}
-      {!selectionMode && <CookedUseUpOffer />}
-
-      {/* Ranked behind the used-up offer, never stacked with it: what a cook
-          used up is the question only this moment can answer, while the shop is
-          reachable from the recipe whenever you want it. Answering or
-          dismissing that one clears `cookedOffer`, and this appears — by then
-          counting whatever was just marked out, since restockCount reads the
-          live catalog. */}
-      {restockOffer && restockCount > 0 && !cookedOffer && !selectionMode && (
-        <OfferBanner
-          lead={`${restockCount} ingredient${restockCount === 1 ? '' : 's'}`}
-          rest={`from ${restockOffer.recipe.name} aren't on your list`}
-          actionLabel="Review"
-          onAction={() => setRestockSheetVisible(true)}
-          onDismiss={() => setRestockOffer(null)}
-          accessibilityLabel={
-            `${restockCount} ingredient${restockCount === 1 ? '' : 's'} from ` +
-            `${restockOffer.recipe.name} are not on your shopping list`
-          }
-          actionAccessibilityLabel={`Review ingredients from ${restockOffer.recipe.name} to add to your shopping list`}
-          dismissAccessibilityLabel="Dismiss restock notice"
-        />
-      )}
-
       <FabDropZoneProvider
         ref={dropZonesRef}
         onIntentChange={fabIntentChannel.publish}
@@ -2028,17 +1918,6 @@ export function MealPlanScreen() {
         initialChoices={mealShop?.choices}
         initialScale={mealShop?.scale}
         onClose={() => setMealShopVisible(false)}
-      />
-
-      {/* Ticks stay scoped to what the banner claimed — see initialSelection. */}
-      <RecipeToListSheet
-        visible={restockSheetVisible}
-        recipe={restockOffer?.recipe ?? null}
-        recipesById={recipesById}
-        initialChoices={restockOffer?.choices}
-        initialScale={restockOffer?.scale}
-        initialSelection="restock"
-        onClose={() => setRestockSheetVisible(false)}
       />
 
       <PrepTasksReviewSheet

@@ -521,7 +521,7 @@ export function GroceryItemSheet({
   // Through markOutOfMany rather than the bare setter, so this pill and the
   // pantry list's ✕ are one action: both leave the same undo entry, and both
   // raise the same "how did it go?" question. A signal this rare shouldn't
-  // depend on where the tap landed, which is the call CookedUseUpOffer makes
+  // depend on where the tap landed, which is the call CookRecap makes
   // about its own two entry points.
   const markOutOfIt = () => {
     haptics.tap();

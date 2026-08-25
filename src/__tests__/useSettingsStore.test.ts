@@ -1306,6 +1306,30 @@ describe('tripLiveActivity', () => {
   });
 });
 
+describe('cookRecapEnabled', () => {
+  // Defaults on, same reading as restockOfferEnabled below: the sheet is
+  // already gated section by section on having something to ask, so this is
+  // the switch for someone who wants a tick to be only a tick.
+  it('defaults to on, including when nothing is stored', () => {
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().cookRecapEnabled).toBe(true);
+  });
+
+  it('only turns off for an explicit "false"', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'cookRecapEnabled' ? 'false' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().cookRecapEnabled).toBe(false);
+  });
+
+  it('round-trips through setCookRecapEnabled', () => {
+    useSettingsStore.getState().setCookRecapEnabled(false);
+    expect(dbSetSetting).toHaveBeenCalledWith('cookRecapEnabled', 'false');
+    expect(useSettingsStore.getState().cookRecapEnabled).toBe(false);
+  });
+});
+
 describe('restockOfferEnabled', () => {
   // Same reasoning as timerLiveActivity: defaults on, since the offer itself
   // is already gated on having something to offer (#1481) — this is a toggle

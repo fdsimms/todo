@@ -517,12 +517,17 @@ interface SettingsStore {
    * resetToDefaults for the same reason as patchNotesQaStatus.
    */
   mealSlotStepEstimates: Record<string, number>;
-  // Whether marking a meal cooked can offer to restock the ingredients it used
-  // that aren't on the list — see OfferBanner and MealPlanScreen's
-  // restockOffer. Defaults on: the offer is already gated on the app being
-  // able to name known items missing from the list (see #1481), so this is a
-  // toggle for someone who never shops from a recipe, not a fix for a bad
-  // default.
+  // Whether marking a meal cooked opens the post-cook sheet at all — see
+  // CookRecap. Defaults on, and the sheet is already gated section by section
+  // on having something to ask (a rating it hasn't got, a fridge that could
+  // gain a container, pantry lines it can name), so this is the switch for
+  // someone who wants a tick to be only a tick.
+  cookRecapEnabled: boolean;
+  // Whether that sheet's restock half appears: the ingredients this meal used
+  // that aren't on the list, and the button that adds them — see CookRecap and
+  // restockRows. Defaults on: it is already gated on the app being able to name
+  // known items missing from the list (see #1481), so this is a toggle for
+  // someone who never shops from a recipe, not a fix for a bad default.
   restockOfferEnabled: boolean;
   // Whether a scanned barcode may be looked up against Open Food Facts to find
   // out what it is — see src/services/productLookup.ts.
@@ -907,6 +912,7 @@ interface SettingsStore {
   setMealSlotsEnabled: (slots: MealSlot[]) => void;
   setMealSlotTasksWrittenThroughDayKey: (dayKey: string | null) => void;
   setMealSlotStepEstimate: (stepId: string, minutes: number) => void;
+  setCookRecapEnabled: (on: boolean) => void;
   setRestockOfferEnabled: (on: boolean) => void;
   setProductLookupEnabled: (on: boolean) => void;
   setSortOption: (sort: SortOption) => void;
@@ -1066,6 +1072,7 @@ const DEFAULT_SETTINGS = {
   mealCookTaskCategory: null,
   mealSlotsEnabled: [...DEFAULT_MEAL_SLOTS_ENABLED],
   mealSlotTasksWrittenThroughDayKey: null,
+  cookRecapEnabled: true,
   restockOfferEnabled: true,
   productLookupEnabled: true,
   groceryUseUpTasks: false,
@@ -1412,6 +1419,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealSlotsEnabled: [...DEFAULT_MEAL_SLOTS_ENABLED],
   mealSlotTasksWrittenThroughDayKey: null,
   mealSlotStepEstimates: {},
+  cookRecapEnabled: true,
   restockOfferEnabled: true,
   productLookupEnabled: true,
   groceryUseUpTasks: false,
@@ -1593,7 +1601,8 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
         mealSlotStepEstimates = {};
       }
     }
-    // Defaults on, same reading as mealCookTasks above.
+    // Both default on, same reading as mealCookTasks above.
+    const cookRecapEnabled = dbGetSetting('cookRecapEnabled') !== 'false';
     const restockOfferEnabled = dbGetSetting('restockOfferEnabled') !== 'false';
     // Reads `!== 'false'` like the booleans above it, so an install that
     // predates this setting gets the default without a migration.
@@ -1790,7 +1799,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2369,9 +2378,18 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     });
   },
 
-  // Leaves an offer already standing when this is switched off mid-flight
-  // exactly where it is — see the note by setMealCookTasks. The flag is only
-  // consulted when a meal is marked cooked, not retroactively.
+  // Unlike the two below it, this one *is* consulted retroactively: CookRecap
+  // reads it on every render and clears a recap already standing when it goes
+  // off, because what this governs is a sheet that is on screen rather than a
+  // row already written. Switching it off with one open closes it.
+  setCookRecapEnabled(on: boolean) {
+    dbSetSetting('cookRecapEnabled', on ? 'true' : 'false');
+    set({ cookRecapEnabled: on });
+  },
+
+  // Read live by CookRecap, like the switch above it: what it governs is one
+  // section of a sheet that may be on screen, so switching it off takes that
+  // section away rather than waiting for the next cooking.
   setRestockOfferEnabled(on: boolean) {
     dbSetSetting('restockOfferEnabled', on ? 'true' : 'false');
     set({ restockOfferEnabled: on });
