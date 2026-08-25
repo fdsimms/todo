@@ -512,7 +512,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
@@ -542,7 +542,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   presetChip: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
     alignItems: 'center',

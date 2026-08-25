@@ -2709,7 +2709,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     alignItems: 'center',
     gap: 4,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: spacing.sm,
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
