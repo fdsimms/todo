@@ -478,7 +478,7 @@ export function GeneratedTasksSection() {
   return (
     <SettingsSection
       // No label: this is the whole of its group, so the screen's own header is
-      // already saying "Tasks the app adds" directly above it.
+      // already saying "Automatic tasks" directly above it.
       footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again: the grocery item or the leftover it came from remembers your answer, and a meal task stays gone for the rest of the day."
     >
       {listed.map((spec, i) => {

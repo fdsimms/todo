@@ -80,7 +80,7 @@ export function KitchenSettings() {
     <>
       <SettingsSection
         label="Meals on Today"
-        footer="A meal with no task behind it shows as a row in the list, filed under the same category as meal tasks, and so does anything in the pantry about to go off, above them. Neither can be checked off; tapping opens the meal plan or the pantry. Meal tasks themselves are under Tasks the app adds, below."
+        footer="A meal with no task behind it shows as a row in the list, filed under the same category as meal tasks, and so does anything in the pantry about to go off, above them. Neither can be checked off; tapping opens the meal plan or the pantry. Meal tasks themselves are under Automatic tasks, below."
       >
         {/* A toggle rather than a track of two: one bounded choice with two
             answers is what a switch is for, and the two shapes this used to
@@ -98,7 +98,7 @@ export function KitchenSettings() {
           onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
           accessibilityLabel="Show the day's meals"
         />
-        {/* Filed in this section rather than under Tasks the app adds, because
+        {/* Filed in this section rather than under Automatic tasks, because
             it is not a task the app adds: nothing is written, and the row
             leaves when the food does. What it shares with the meals is where
             it lands — the same category, at the top of the same section. */}

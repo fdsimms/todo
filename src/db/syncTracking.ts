@@ -181,7 +181,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'unitSystem',
   'currencySymbol',
 
-  // Tasks the app adds. Per-generator, matching the settings keys themselves
+  // Automatic tasks. Per-generator, matching the settings keys themselves
   // (see the note on GeneratedTasksSection — these were never merged).
   'mealCookTasks',
   'mealCookTaskCategory',

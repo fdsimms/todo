@@ -96,13 +96,13 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   // scroll. Not `kitchenOnly`: six of the twelve generators have nothing to do
   // with the kitchen and keep running without it, which is exactly the bug that
   // hiding them behind the area's gate used to cause.
-  { id: 'generated', title: 'Tasks the app adds', icon: 'sparkles-outline', tint: 'accent' },
+  { id: 'generated', title: 'Automatic tasks', icon: 'sparkles-outline', tint: 'accent' },
   { id: 'kitchen', title: 'Groceries & meals', icon: 'cart-outline', tint: 'orange', kitchenOnly: true },
   // Neutral from here down: the tinted groups are things you configure, the grey
   // ones are housekeeping. There are only five tints and seven tinted groups, so
   // two repeat — the rule is that a repeat never lands *next to* its own other
   // instance, since adjacency is what reads as an accident rather than as a
-  // category. Appearance/Tasks the app adds are five rows apart, Day & time and
+  // category. Appearance/Automatic tasks are five rows apart, Day & time and
   // Groceries & meals four.
   { id: 'privacyAi', title: 'Privacy & AI', icon: 'lock-closed-outline', tint: 'neutral' },
   { id: 'dataReset', title: 'Data & reset', icon: 'archive-outline', tint: 'neutral' },
@@ -250,7 +250,7 @@ const GENERATED_ENTRIES: SettingsEntry[] = GENERATED_KIND_LIST.flatMap(spec => {
       ...shared,
       id: `gen:${spec.kind}`,
       label: spec.label,
-      section: 'Tasks the app adds',
+      section: 'Automatic tasks',
       keywords: GENERATED_KEYWORDS[spec.kind],
     },
     ...(spec.categorized ? [{
@@ -325,7 +325,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // The meal-plan nudge used to sit here, on the grounds that it fires on a
   // schedule. It writes a *task*, though, not a notification, which is the
   // thing it has in common with the other three generators — so it moved to
-  // "Tasks the app adds" in Tasks & projects (#1524).
+  // "Automatic tasks" in Tasks & projects (#1524).
 
   // Capture from Reminders (iOS)
   { id: 'remindersImport', groupId: 'capture', label: 'Import from Reminders', section: 'Apple Reminders',
@@ -461,7 +461,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'focus', 'pomodoro', 'stacks', 'templates', 'stats', 'drift', 'backfill', 'waiting',
       'deadline', 'blocked', 'barcode', 'receipt', 'pantry', 'substitutes', 'cook mode',
       'recipe steps'] },
-  // ── Tasks the app adds ────────────────────────────────────────────────────
+  // ── Automatic tasks ───────────────────────────────────────────────────────
   // Derived from GENERATED_KIND_LIST — see GENERATED_ENTRIES above for why, and
   // for why these rows' `section` names the generator rather than the header.
   ...GENERATED_ENTRIES,
@@ -484,7 +484,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['meal plan', 'weekday', 'day', 'time', 'when'], kitchen: true },
   // Spans both use-up generators, so it sits below the loop rather than inside
   // either one's extras — and so its section can't be one generator's name.
-  { id: 'useUpTaskCap', groupId: 'generated', label: 'Limit use-up tasks', section: 'Tasks the app adds',
+  { id: 'useUpTaskCap', groupId: 'generated', label: 'Limit use-up tasks', section: 'Automatic tasks',
     keywords: ['cap', 'how many', 'most', 'too many', 'flood', 'expiry', 'leftovers'], kitchen: true },
 
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up scanned barcodes', section: 'Barcode lookups',

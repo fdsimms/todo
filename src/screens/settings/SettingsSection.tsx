@@ -10,7 +10,7 @@ interface Props {
    * Uppercase header above the card.
    *
    * Optional for the one case where it would only restate the screen's own
-   * title: a group holding a single section (Tasks the app adds). Every group
+   * title: a group holding a single section (Automatic tasks). Every group
    * with two or more sections needs them all labelled, so leave it off only
    * when the `DetailHeader` directly above is already saying it.
    */
