@@ -373,7 +373,11 @@ export function ProjectDetailScreen() {
             // the row has to be lifted over its neighbours — see
             // ReorderableList's own note on why this can't live on the card.
             rowElevated={t => t.id === expandedTaskId}
-            contentContainerStyle={[{ flexGrow: 1, paddingTop: spacing.sm }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
+            // paddingTop only applies once there's a first row to clear — with
+            // none, it's top-only padding inside the flexGrow:1 box the empty
+            // state centers in, which pushes that centering down off true
+            // middle. Same reasoning as ListFooterComponent below.
+            contentContainerStyle={[{ flexGrow: 1 }, incompleteProjectTasks.length > 0 && { paddingTop: spacing.sm }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             onHoverChange={haptics.dragTick}
             onReorder={reordered => reorderProjectTasks(projectId, reordered.map(t => t.id))}
             // Inside the scroll content, not pinned above the list: it's
