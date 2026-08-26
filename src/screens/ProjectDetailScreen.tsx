@@ -32,6 +32,8 @@ import { EmptyState } from '../components/EmptyState';
 import { ProjectDecisions } from '../components/ProjectDecisions';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { FabMenu, FAB_SIZE, type FabMenuItem } from '../components/Fab';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { addMenuItemShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -49,6 +51,13 @@ type RootStackParamList = {
 // render is exactly the identity churn the grouping below exists to avoid.
 const NO_SUBTASKS: Task[] = [];
 
+// Bottom-up: "New task" ends up closest to the button.
+const ADD_MENU_ITEMS: FabMenuItem[] = [
+  { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
+  { key: 'template', label: 'Template', icon: 'copy' },
+  { key: 'new', label: 'New task', icon: 'checkbox' },
+];
+
 export function ProjectDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -56,6 +65,8 @@ export function ProjectDetailScreen() {
   const { projectId } = route.params;
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const simpleMode = useSettingsStore(s => s.simpleMode);
 
   const projects = useProjectStore(useShallow(s => s.projects));
   const allTasks = useTaskStore(s => s.tasks);
@@ -235,12 +246,11 @@ export function ProjectDetailScreen() {
     if (moved < interaction.tapMoveThreshold) setExpandedTaskId(null);
   };
 
-  // Bottom-up: "New task" ends up closest to the button.
-  const addMenuItems: FabMenuItem[] = [
-    { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
-    { key: 'template', label: 'Template', icon: 'copy' },
-    { key: 'new', label: 'New task', icon: 'checkbox' },
-  ];
+  // Template goes in simplified mode, same as it does from Today's add button.
+  const addMenuItems = useMemo(
+    () => ADD_MENU_ITEMS.filter(item => addMenuItemShown(item.key, simpleMode)),
+    [simpleMode],
+  );
 
   const handleAddMenuSelect = (key: string) => {
     if (key === 'new') {
