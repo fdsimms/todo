@@ -627,6 +627,7 @@ export function LeftoverSheet({
               <SheetActionRow
                 icon="close-circle-outline"
                 color={colors.red}
+                destructive
                 label="Delete"
                 onPress={handleDeleteLeftover}
                 accessibilityLabel="Delete this leftover"
@@ -766,7 +767,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chipOn: { backgroundColor: colors.accent },
   chipText: {
-    color: colors.textSecondary,
+    color: colors.text,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },

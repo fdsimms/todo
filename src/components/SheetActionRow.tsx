@@ -2,13 +2,24 @@ import React from 'react';
 import { Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { spacing, font, fontWeight, iconSize, interaction } from '../theme';
+import { useColors } from '../theme/ThemeContext';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
 
 interface Props {
   icon: IoniconName;
   label: string;
+  /** The icon's colour, and the label's too when `destructive`. */
   color: string;
+  /**
+   * A row that deletes or discards something, which keeps iOS's red *label*
+   * rather than only a red icon — the colour is the warning, and a warning
+   * that only the glyph carries is one a thumb moving down a list misses.
+   * Every other row states its colour on the icon and leaves the label at
+   * `text`: five accent-coloured labels in a column read as a stack of links,
+   * and accent on a card measures 4.66:1 against `text`'s 17:1.
+   */
+  destructive?: boolean;
   onPress: () => void;
   accessibilityLabel?: string;
   accessibilityRole?: 'button' | 'switch';
@@ -25,9 +36,10 @@ interface Props {
  * slightly between sheets depending on what's above it.
  */
 export function SheetActionRow({
-  icon, label, color, onPress,
+  icon, label, color, destructive, onPress,
   accessibilityLabel, accessibilityRole = 'button', accessibilityState, accessibilityHint,
 }: Props) {
+  const colors = useColors();
   return (
     <TouchableOpacity
       style={styles.row}
@@ -41,7 +53,7 @@ export function SheetActionRow({
       <View style={styles.icon}>
         <Ionicons name={icon} size={iconSize.sm} color={color} />
       </View>
-      <Text style={[styles.label, { color }]}>{label}</Text>
+      <Text style={[styles.label, { color: destructive ? color : colors.text }]}>{label}</Text>
     </TouchableOpacity>
   );
 }

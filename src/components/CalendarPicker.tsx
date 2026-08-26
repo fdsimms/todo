@@ -416,7 +416,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 4,
   },
   dayHeaderText: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
   },

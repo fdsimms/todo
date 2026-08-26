@@ -4427,7 +4427,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
   kindBlock: { paddingHorizontal: spacing.md, paddingVertical: spacing.md },
   kindHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: spacing.sm, lineHeight: 16 },
-  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
   pillHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
   customEffortRow: {

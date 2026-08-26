@@ -274,6 +274,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
   chipActive: { backgroundColor: colors.accent },
-  chipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  chipText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
 });

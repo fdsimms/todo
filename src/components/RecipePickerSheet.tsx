@@ -617,7 +617,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent,
   },
   chipText: {
-    color: colors.textSecondary,
+    color: colors.text,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },

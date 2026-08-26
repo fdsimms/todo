@@ -472,7 +472,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: spacing.xs,
   },
-  chipText: { color: colors.textSecondary, fontSize: font.sm },
+  chipText: { color: colors.text, fontSize: font.sm },
   hint: { color: colors.textTertiary, fontSize: font.sm, marginTop: spacing.xs },
   error: { color: colors.red, fontSize: font.sm, marginTop: spacing.sm },
   actions: { marginTop: spacing.lg, gap: spacing.xs },

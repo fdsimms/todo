@@ -757,7 +757,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgQuaternary,
   },
   segmentLabel: {
-    color: colors.textSecondary,
+    color: colors.text,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
@@ -851,7 +851,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 4,
   },
   dayHeaderText: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
   },
