@@ -20,6 +20,7 @@ import { isSameMonth } from 'date-fns/isSameMonth';
 import { isSameDay } from 'date-fns/isSameDay';
 import { isToday } from 'date-fns/isToday';
 import { format } from 'date-fns/format';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -29,6 +30,7 @@ import { getLogicalNow, getReminderOffsetDate, describeReminderOffset } from '..
 import { isAlarmKitAvailable } from 'todo-alarmkit-bridge';
 import { SegmentedControl } from './SegmentedControl';
 import { CountStepper } from './CountStepper';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import type { ReminderKind } from '../types';
 
@@ -67,6 +69,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
   // one it's actually rendering on.
   const { height: windowHeight } = useWindowDimensions();
   const styles = useMemo(() => makeStyles(colors, windowHeight), [colors, windowHeight]);
+  const fade = useScrollEdgeFade();
 
   const [displayMonth, setDisplayMonth] = useState(() => value ?? new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(value);
@@ -162,6 +165,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
             showsVerticalScrollIndicator={false}
             bounces={false}
             keyboardShouldPersistTaps="handled"
+            {...fade.scrollProps}
           >
             {/* Header */}
             <View style={styles.header}>
@@ -434,6 +438,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
 
             <View style={styles.sectionGap} />
           </ScrollView>
+          <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />
         </View>
       </View>
     </Modal>

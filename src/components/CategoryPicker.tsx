@@ -24,7 +24,9 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -93,6 +95,7 @@ export function CategoryPickerList({
 }: ListProps) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const fade = useScrollEdgeFade();
 
   const names = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
@@ -227,13 +230,20 @@ export function CategoryPickerList({
       {maxHeight === undefined ? (
         rows
       ) : (
+        <View>
         <ScrollView
           style={{ maxHeight }}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          {...fade.scrollProps}
         >
           {rows}
         </ScrollView>
+        {/* Every host this list is dropped into sits on `bgSecondary` — the
+            editor's card, the picker sheet, Backfill's card — so the band
+            fades to that rather than taking a colour from each caller. */}
+        <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />
+        </View>
       )}
     </View>
   );

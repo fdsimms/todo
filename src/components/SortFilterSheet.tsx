@@ -15,7 +15,9 @@ import { PRIORITY_LABELS, PRIORITY_COLORS, EFFORT_LABELS, EFFORT_HINTS } from '.
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 
 interface Props {
@@ -58,6 +60,7 @@ export function SortFilterSheet({
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const fade = useScrollEdgeFade();
 
   const hiddenY = useSheetHiddenOffset();
 
@@ -165,7 +168,11 @@ export function SortFilterSheet({
             </View>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.content}
+            {...fade.scrollProps}
+          >
             {!remindersOnly && (
               <>
                 {/* Sort */}
@@ -268,6 +275,12 @@ export function SortFilterSheet({
               </TouchableOpacity>
             </View>
           </ScrollView>
+          <ScrollEdgeFade
+            edge="bottom"
+            opacity={fade.bottomOpacity}
+            color={colors.bgSecondary}
+            style={styles.scrollFade}
+          />
         </Animated.View>
       </View>
     </Modal>
@@ -304,6 +317,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   resetText: { color: colors.accent, fontSize: font.sm },
   content: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.md },
+  // Sits on the sheet's bottom *padding* edge, not its border box: Yoga
+  // positions an absolute child from the border box when an inset is
+  // given, so `bottom: 0` would park the band in the 40pt of bare sheet
+  // below the list rather than over the last of its rows.
+  scrollFade: { bottom: 40 },
   groupLabel: {
     color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.semibold,
     textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: spacing.sm,
