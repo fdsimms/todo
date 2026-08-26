@@ -21,7 +21,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { rankRecipes, describeRecipe, cleanRecipeName } from '../utils/recipeUtils';
+import { rankRecipes, describeRecipe, cleanRecipeName, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { RECIPE_NAME_MAX_LENGTH } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
@@ -67,7 +67,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
   const matches = useMemo(() => {
     const ranked = query.trim()
       ? rankRecipes(query, recipes)
-      : [...recipes].sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder);
+      : sortRecipesForDisplay(recipes);
     return ranked.slice(0, MAX_ROWS);
   }, [query, recipes]);
 
@@ -230,7 +230,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
                       <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
                       <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe)}</Text>
                     </View>
-                    {recipe.favorite && <Ionicons name="star" size={13} color={colors.orange} />}
+                    {recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orange} />}
                   </TouchableOpacity>
                 </React.Fragment>
               ))

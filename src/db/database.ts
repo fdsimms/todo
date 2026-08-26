@@ -958,7 +958,9 @@ export function initDatabase(): void {
     // backfilled — see GtinLookup.category.
     'ALTER TABLE gtin_lookups ADD COLUMN category TEXT',
     // NULL for every existing recipe — no opinion is exactly what a recipe
-    // written before this shipped has. See Recipe.vote.
+    // written before this shipped has. See Recipe.vote. Originally 'up'/
+    // 'down'; the one-time backfill below rewrites those (and the old
+    // favorite column) into the three-rung 'loved'/'liked'/'never' domain.
     'ALTER TABLE recipes ADD COLUMN vote TEXT',
     // NULL on every existing row — nobody has turned down a pantry check for a
     // generator that didn't exist, and NULL is what "never asked" means for
@@ -1286,6 +1288,22 @@ export function initDatabase(): void {
       `);
     } catch (_) {}
     dbSetSetting('stack_category_ownership_backfill_done', '1');
+  }
+
+  // One-time migration: the recipe box's separate favorite star was folded
+  // into the vote/rating scale, which grew from two rungs to three (see
+  // Recipe.vote, RecipeVote). An explicit vote wins outright — 'up' becomes
+  // 'loved' and 'down' becomes 'never', regardless of favorite — and a
+  // favorite with no vote at all becomes 'liked', the closest reading of a
+  // plain star. The old favorite column is left in place, unused, rather
+  // than dropped, same as the focused→pinned migration above.
+  if (dbGetSetting('recipe_rating_expansion_backfill_done') !== '1') {
+    try {
+      db.runSync("UPDATE recipes SET vote = 'loved' WHERE vote = 'up'");
+      db.runSync("UPDATE recipes SET vote = 'never' WHERE vote = 'down'");
+      db.runSync("UPDATE recipes SET vote = 'liked' WHERE vote IS NULL AND favorite = 1");
+    } catch (_) {}
+    dbSetSetting('recipe_rating_expansion_backfill_done', '1');
   }
 }
 
@@ -3449,12 +3467,11 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     components: parseRecipeComponents(row.components),
     prepTasks: parsePrepTasks(row.prep_tasks),
     steps: parseSteps(row.steps),
-    favorite: Boolean(row.favorite),
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
     cookCount: (row.cook_count as number) ?? 0,
     lastCookedAt: (row.last_cooked_at as string) ?? null,
-    vote: row.vote === 'up' || row.vote === 'down' ? (row.vote as RecipeVote) : null,
+    vote: row.vote === 'loved' || row.vote === 'liked' || row.vote === 'never' ? (row.vote as RecipeVote) : null,
     estimatedMinutes: (row.estimated_minutes as number) ?? null,
     timerStartedAt: (row.timer_started_at as string) ?? null,
     timerElapsedSeconds: (row.timer_elapsed_seconds as number) ?? 0,
@@ -3480,10 +3497,10 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, servings, servings_max, recipe_yield, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, favorite, sort_order, created_at, cook_count, last_cooked_at, vote,
+      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, servings, servings_max, recipe_yield, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, sort_order, created_at, cook_count, last_cooked_at, vote,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
        prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
@@ -3495,7 +3512,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
-      recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
+      recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
       recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
@@ -3509,7 +3526,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
        name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, servings=?, servings_max=?, recipe_yield=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
-       favorite=?, sort_order=?, cook_count=?, last_cooked_at=?, vote=?,
+       sort_order=?, cook_count=?, last_cooked_at=?, vote=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
        prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?
      WHERE id=?`,
@@ -3524,7 +3541,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
-      recipe.favorite ? 1 : 0, recipe.sortOrder,
+      recipe.sortOrder,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
       recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
