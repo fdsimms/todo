@@ -4476,6 +4476,23 @@ describe('checkMealSlotTasks', () => {
     expect(setWrittenThrough).toHaveBeenCalledWith('2026-08-28');
   });
 
+  it('writes nothing while the grocery area is switched off', () => {
+    // The gate checkPantryCheckTasks has taken all along, and this pass didn't.
+    // Both settings below ship on, so hiding the area left three meal tasks a
+    // day arriving from a feature with no Settings row left to turn them off:
+    // GeneratedTasksSection's rows went with the area, its passes didn't.
+    useSettingsStore.getState.mockReturnValue(
+      settings({ kitchenEnabled: false, mealSlotsEnabled: ['breakfast', 'lunch', 'dinner'] }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealSlotTasks();
+
+    expect(slotRows()).toEqual([]);
+    // And the high-water mark stays put, so the days it skipped are still
+    // ahead of the pass when the area comes back rather than written off.
+    expect(setWrittenThrough).not.toHaveBeenCalled();
+  });
+
   it('lays a day down breakfast first, whatever order the meals were named in', () => {
     useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['dinner', 'breakfast'] }));
     useTaskStore.setState({ tasks: [] });
@@ -4956,6 +4973,9 @@ describe('backfillMealSlotTasks', () => {
     dayResetTime: '00:00',
     mealCookTasks: true,
     mealCookTaskCategory: 'Meal Plan',
+    // Ships on, and checkMealSlotTasks refuses to run without it — these tests
+    // seed their starting rows through that pass.
+    kitchenEnabled: true,
     mealSlotsEnabled: ['lunch'] as MealSlot[],
     get mealSlotTasksWrittenThroughDayKey() { return writtenThrough; },
     setMealSlotTasksWrittenThroughDayKey: jest.fn((k: string | null) => { writtenThrough = k; }),

@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: with Groceries & meals switched off, the app kept adding breakfast, lunch and dinner tasks each day, and the settings for birthday, keep-in-touch, supply and project-review tasks disappeared even though those kept running. The meal tasks stop now, and those settings stay where you can reach them.",
+  "date": "2026-08-26"
+}

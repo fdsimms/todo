@@ -77,6 +77,7 @@ export function DayTimeSettings() {
     <React.Fragment key={key}>
       {!opts.first && <View style={styles.sep} />}
       <SettingsRow
+        entryId={key}
         icon={icon}
         iconColor={colors.accent}
         label={label}
@@ -121,6 +122,7 @@ export function DayTimeSettings() {
         footer={'Week start decides which day the month grids begin on, and what "this week" counts in Stats.'}
       >
         <SettingsRow
+          entryId="use24HourTime"
           icon="time-outline"
           iconColor={use24HourTime ? colors.accent : undefined}
           label="24-hour time"
@@ -129,6 +131,7 @@ export function DayTimeSettings() {
         />
         <View style={styles.sep} />
         <SettingsRow
+          entryId="weekStartsOn"
           icon="calendar-outline"
           iconColor={colors.accent}
           label="Week starts on"

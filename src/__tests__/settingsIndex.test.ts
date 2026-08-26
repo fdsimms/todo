@@ -6,6 +6,11 @@ import {
   visibleSettingsEntries,
 } from '../utils/settingsIndex';
 import { AI_FEATURES } from '../utils/aiFeatures';
+import {
+  GENERATED_KIND_LIST,
+  generatedTaskCounts,
+  type GeneratedEnabledKey,
+} from '../utils/generatedTasks';
 
 describe('settings index', () => {
   it('gives every group at least one entry', () => {
@@ -82,6 +87,69 @@ describe('settings index', () => {
     });
   });
 
+  describe('generated tasks', () => {
+    // GeneratedTasksSection renders its rows by mapping over
+    // listedGeneratedKinds(), so its rows *are* the registry — the same
+    // arrangement the AI features are in, and so the same failure is available:
+    // a generator added to GENERATED_KINDS grows a row on its own and only the
+    // index has to be remembered separately. Comparing the two lists is what
+    // makes that unrepresentable.
+    const toggleEntries = SETTINGS_ENTRIES.filter(e => e.id.startsWith('gen:') && !e.id.endsWith(':category'));
+
+    it('indexes every generator that gets a row, in order, and nothing else', () => {
+      expect(toggleEntries.map(e => e.label)).toEqual(GENERATED_KIND_LIST.map(s => s.label));
+    });
+
+    it('files every generated row under the group of its own', () => {
+      const all = SETTINGS_ENTRIES.filter(e => e.id.startsWith('gen:'));
+      for (const entry of all) expect(entry.groupId).toBe('generated');
+    });
+
+    it('marks an entry kitchen exactly when its generator is', () => {
+      // The bug this replaces: the section sat inside Tasks & projects'
+      // kitchenEnabled block, so switching the area off hid all twelve rows
+      // while six of the generators behind them carried on writing tasks.
+      for (const spec of GENERATED_KIND_LIST) {
+        const entry = toggleEntries.find(e => e.label === spec.label);
+        expect(entry?.kitchen ?? false).toBe(spec.kitchen);
+      }
+    });
+
+    it('keeps the non-kitchen generators findable with the area off', () => {
+      const off = visibleSettingsEntries('ios', false);
+      const survivors = GENERATED_KIND_LIST.filter(s => !s.kitchen);
+      // Not a vacuous check — there really are some, and they are the ones
+      // whose passes never gated on the kitchen in the first place.
+      expect(survivors.length).toBeGreaterThan(0);
+      for (const spec of survivors) {
+        expect(off.some(e => e.id === `gen:${spec.kind}`)).toBe(true);
+      }
+    });
+
+    it('gives a "File them under" row only to a generator that has one', () => {
+      // Nine rows share that label, so the entry is worthless without its
+      // section naming which generator it belongs to.
+      for (const spec of GENERATED_KIND_LIST) {
+        const entry = SETTINGS_ENTRIES.find(e => e.id === `gen:${spec.kind}:category`);
+        expect(entry !== undefined).toBe(spec.categorized);
+        if (entry) expect(entry.section).toBe(spec.label);
+      }
+    });
+
+    it('counts only the generators it would list', () => {
+      const allOn = Object.fromEntries(
+        GENERATED_KIND_LIST.map(s => [s.enabledKey, true])
+      ) as Record<GeneratedEnabledKey, boolean>;
+      expect(generatedTaskCounts(allOn, true).total).toBe(GENERATED_KIND_LIST.length);
+      expect(generatedTaskCounts(allOn, true).on).toBe(GENERATED_KIND_LIST.length);
+      // With the area off the total shrinks to match the rows on screen, so the
+      // summary can't read "4 of 12" over a list of six.
+      const withoutKitchen = GENERATED_KIND_LIST.filter(s => !s.kitchen).length;
+      expect(generatedTaskCounts(allOn, false).total).toBe(withoutKitchen);
+      expect(generatedTaskCounts(allOn, false).on).toBe(withoutKitchen);
+    });
+  });
+
   describe('platform gating', () => {
     it('drops the iOS-only group off iOS', () => {
       const android = visibleSettingsGroups('android');
@@ -108,7 +176,13 @@ describe('settings index', () => {
       // a gate wired into only one of them would still pass a spot check.
       const dropped = SETTINGS_ENTRIES.filter(e => e.kitchen);
       expect(new Set(dropped.map(e => e.groupId)).size).toBeGreaterThan(1);
-      expect(off).toHaveLength(SETTINGS_ENTRIES.length - dropped.length);
+      // The kitchenOnly group takes its own rows too, and those carry no
+      // `kitchen` flag of their own — the group gate is their only gate, which
+      // is the arrangement the flag's doc comment describes.
+      const inKitchenGroup = SETTINGS_ENTRIES.filter(e => e.groupId === 'kitchen' && !e.kitchen);
+      expect(inKitchenGroup.length).toBeGreaterThan(0);
+      expect(off).toHaveLength(
+        SETTINGS_ENTRIES.length - dropped.length - inKitchenGroup.length);
     });
 
     it('keeps them all when it is on, and by default', () => {
@@ -126,7 +200,9 @@ describe('settings index', () => {
       // nothing — the same failure the whole-index check above guards against,
       // but reachable here by turning the area off rather than by editing.
       const off = visibleSettingsEntries('ios', false);
-      for (const group of visibleSettingsGroups('ios')) {
+      // Against the groups actually on offer with the area off — a group the
+      // switch removes outright is not a group left empty, it's gone.
+      for (const group of visibleSettingsGroups('ios', false)) {
         expect(off.filter(e => e.groupId === group.id).length).toBeGreaterThan(0);
       }
     });
@@ -165,7 +241,7 @@ describe('settings index', () => {
 
     it('leaves no group emptied by either switch', () => {
       const on = visibleSettingsEntries('ios', false, true);
-      for (const group of visibleSettingsGroups('ios')) {
+      for (const group of visibleSettingsGroups('ios', false)) {
         expect(on.filter(e => e.groupId === group.id).length).toBeGreaterThan(0);
       }
     });

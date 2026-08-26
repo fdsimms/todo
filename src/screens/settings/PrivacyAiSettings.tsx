@@ -149,6 +149,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
         footer={`Everything the app knows sits on this device, so an unlocked phone is the only thing between someone and your whole task list. This puts ${lockLabel} in front of it, with your device passcode as the fallback, the same as anywhere else. The grace period is there so switching to Messages and back doesn't ask again.`}
       >
         <SettingsRow
+          entryId="appLock"
           icon={appLockEnabled ? 'lock-closed-outline' : 'lock-open-outline'}
           iconColor={appLockEnabled ? colors.accent : undefined}
           label={`Require ${lockLabel} to open`}
@@ -169,6 +170,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           <>
             <View style={styles.sep} />
             <SettingsRow
+              entryId="appLockGrace"
               icon="time-outline"
               label="Lock again after"
               hint={appLockGraceSeconds === 0
@@ -193,6 +195,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
         footer="Get a key at console.anthropic.com. The key is kept in this device's keychain and never leaves it; using a suggestion sends that task's (or template's) title, notes, and your tag/category names to Anthropic."
       >
         <SettingsRow
+          entryId="apiKey"
           icon="sparkles-outline"
           iconColor={anthropicApiKey ? colors.purple : undefined}
           label="Anthropic API key"
@@ -227,6 +230,10 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
             <React.Fragment key={feature.id}>
               {i > 0 && <View style={styles.sep} />}
               <SettingsRow
+                // Same shape settingsIndex derives its entry ids in — both
+                // sides map over AI_FEATURES, so neither can name a row the
+                // other doesn't have.
+                entryId={`ai:${feature.id}`}
                 icon="sparkles-outline"
                 iconColor={config.enabled ? colors.purple : undefined}
                 label={feature.label}
@@ -260,6 +267,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           footer="Open Food Facts is a free product database run by volunteers, and needs no key. Scanning sends one barcode at a time and nothing else, with no account and no identifier attached. Answers are saved on this device, so a barcode is only looked up once. Turning this off still uses the barcodes already saved here. The two keys below are optional and add more places to look."
         >
           <SettingsRow
+            entryId="productLookupEnabled"
             icon="barcode-outline"
             iconColor={productLookupEnabled ? colors.accent : undefined}
             label="Look up scanned barcodes"
@@ -274,6 +282,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
             <>
               <View style={styles.sep} />
               <SettingsRow
+                entryId="fdcApiKey"
                 icon="key-outline"
                 iconColor={fdcApiKey ? colors.accent : undefined}
                 label="FoodData Central key"
@@ -295,6 +304,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
               </SettingsRow>
               <View style={styles.sep} />
               <SettingsRow
+                entryId="goUpcApiKey"
                 icon="key-outline"
                 iconColor={goUpcApiKey ? colors.accent : undefined}
                 label="Go-UPC key"
@@ -323,6 +333,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
             <>
               <View style={styles.sep} />
               <SettingsRow
+                entryId="clearGtinLookups"
                 icon="refresh-outline"
                 label="Forget saved barcodes"
                 hint={`${cachedBarcodes.toLocaleString()} saved on this device. Clear them to look everything up fresh.`}

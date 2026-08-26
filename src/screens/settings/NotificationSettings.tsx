@@ -170,6 +170,7 @@ export function NotificationSettings() {
       {/* Nothing surfaced the permission before, so a declined prompt
           just looked like reminders were broken. */}
       <SettingsRow
+        entryId="notifPermission"
         icon={notifPermission === 'granted' ? 'notifications' : 'notifications-off-outline'}
         iconColor={
           notifPermission === 'granted' ? colors.accent
@@ -218,6 +219,7 @@ export function NotificationSettings() {
 
       <View style={styles.sep} />
       <SettingsRow
+        entryId="dailyAgenda"
         icon="newspaper-outline"
         iconColor={dailyAgendaEnabled ? colors.accent : undefined}
         label="Daily agenda"
@@ -232,6 +234,7 @@ export function NotificationSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="dailyAgendaTime"
             icon="alarm-outline"
             iconColor={colors.accent}
             label="Send it at"
@@ -255,6 +258,7 @@ export function NotificationSettings() {
 
       <View style={styles.sep} />
       <SettingsRow
+        entryId="tripReminder"
         icon="storefront-outline"
         iconColor={tripReminderEnabled ? colors.accent : undefined}
         label="Trip reminder"
@@ -267,6 +271,7 @@ export function NotificationSettings() {
 
       <View style={styles.sep} />
       <SettingsRow
+        entryId="quietHours"
         icon="moon-outline"
         iconColor={quietHoursEnabled ? colors.accent : undefined}
         label="Quiet hours"
@@ -281,6 +286,7 @@ export function NotificationSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="quietHoursStart"
             icon="moon-outline"
             iconColor={colors.accent}
             label="From"
@@ -297,6 +303,7 @@ export function NotificationSettings() {
           )}
           <View style={styles.sep} />
           <SettingsRow
+            entryId="quietHoursEnd"
             icon="sunny-outline"
             iconColor={colors.accent}
             label="Until"
@@ -313,6 +320,7 @@ export function NotificationSettings() {
           )}
           <View style={styles.sep} />
           <SettingsRow
+            entryId="quietHoursFromAwake"
             icon="speedometer-outline"
             label="Set from awake hours"
             hint="Makes quiet hours run from Awake until to Awake from, as set in Day & time."
@@ -328,6 +336,7 @@ export function NotificationSettings() {
         footer="Only kicks in when a task is given an actual start time (its time window), not just a due date or a morning/afternoon/evening slot. A reminder before the day even resets isn't useful. Never overrides a reminder you set or cleared yourself."
       >
         <SettingsRow
+          entryId="defaultReminderLead"
           icon="alarm-outline"
           iconColor={defaultReminderLeadMinutes === null ? undefined : colors.accent}
           label="Remind me before"
