@@ -61,17 +61,25 @@ an audience that isn't there. Anything worth remembering once the PR merges has 
 as a thing, not as a sentence: either fixed now, or filed as a real GitHub issue (apply the four
 labels from the scheme below same as any other issue).
 
+**Never file an issue without asking first.** Filing is a decision, same as fixing is, and it's
+the user's to make — issues pile up unread otherwise, and "I filed it so it's handled" is exactly
+the false comfort this rule exists to prevent. This holds even when filing feels like the obviously
+right call, and even for a follow-up you noticed yourself rather than one the user raised.
+
 When finishing a task turns up adjacent work you've decided not to do — a related surface, a
-follow-up feature, a design question you scoped out — don't narrate that decision in the PR body
-and move on. Before you call the task done: fold it into the current PR if it's small enough, or
-file it as its own issue if it isn't. A PR body can reference the issue number for context, but
-the issue is what persists; the paragraph explaining your reasoning isn't. Do this for every
-scope decision the task surfaced, not just the one you'd think to mention — if a "What's left"
-list would otherwise have three items, that's three issues, not three bullet points.
+follow-up feature, a design question you scoped out, a sharp edge you noticed along the way —
+don't narrate that decision in the PR body and move on, and don't silently open an issue for it
+either. Before you call the task done: stop and ask — `AskUserQuestion` if the harness has it, a
+plain question in chat otherwise — with fix it now / file an issue / leave it as the options, the
+same "stop and ask, don't just mention" duty as "Bugs found in passing" above. A PR body can
+reference the issue number for context once one exists, but the issue is what persists; the
+paragraph explaining your reasoning isn't. Do this for every scope decision the task surfaced, not
+just the one you'd think to mention — if a "What's left" list would otherwise have three items,
+that's three questions, not three bullet points or three issues filed on your own judgment.
 
 This is "Bugs found in passing" above, generalized past bugs specifically: the thing that must not
-happen is a decision (fix it / file it / leave it) sitting only in prose that nobody is going to
-reread.
+happen is a decision (fix it / file it / leave it) made unilaterally, or left sitting only in prose
+that nobody is going to reread.
 
 ## User-facing copy
 
