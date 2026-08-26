@@ -217,6 +217,7 @@ export function CalendarSettings() {
       footer="Reads the calendars you pick, so the app knows what else is on a day. Nothing is added, changed or deleted. This is read-only. A Google calendar shows up here once the account is added in the Settings app under Calendar › Accounts; it's read the same way as any other calendar. An event marked Free, and anything lasting all day, doesn't count as time taken."
     >
       <SettingsRow
+        entryId="calendarRead"
         icon="calendar-outline"
         iconColor={calendarReadEnabled ? colors.accent : undefined}
         label="Read my calendar"
@@ -234,6 +235,7 @@ export function CalendarSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="calendarPermission"
             icon={permission === 'granted' ? 'lock-open-outline' : 'lock-closed-outline'}
             iconColor={
               permission === 'granted' ? colors.accent
@@ -275,6 +277,7 @@ export function CalendarSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="calendarList"
             icon="list-outline"
             iconColor={colors.accent}
             label="Calendars"
@@ -343,6 +346,7 @@ export function CalendarSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="calendarToday"
             icon="today-outline"
             iconColor={colors.accent}
             label="Today"
@@ -356,6 +360,7 @@ export function CalendarSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="calendarEventCategory"
             icon="pricetag-outline"
             label="Show events under"
             hint={calendarEventCategory
@@ -389,6 +394,7 @@ export function CalendarSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="reminderMeetingNudge"
             icon="notifications-outline"
             iconColor={reminderMeetingNudgeEnabled ? colors.accent : undefined}
             label="Move reminders out of meetings"
@@ -406,6 +412,7 @@ export function CalendarSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="calendarPeopleHistory"
             icon="people-outline"
             iconColor={calendarPeopleHistory ? colors.accent : undefined}
             label="Match events to people"

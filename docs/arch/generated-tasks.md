@@ -117,8 +117,10 @@ See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where 
   survives only by pruning to what the Reminders list still holds on every drain. A generic record
   has no equivalent pruning pass unless each generator supplies one, at which point it isn't
   generic. On the source row it's bounded for free — whatever deletes the source deletes the "no".
-- **The settings keys stayed per-generator; only the UI merged.** One "Tasks the app adds" section
+- **The settings keys stayed per-generator; only the UI merged.** One "Automatic tasks" section
   (`GeneratedTasksSection`) lists all four, replacing three sections here and one in Notifications.
+  (It shipped as "Tasks the app adds" and was renamed in #2155; the patch-notes entries naming the
+  old title are a record of what it was called then and stay as they are.)
   Renaming `mealCookTasks`/`groceryUseUpTasks`/… to a generic pair would be a migration over
   preferences people have already set, for nothing a person can see. The section's *list* comes
   from the registry; its **controls are still hand-written JSX**, the same line `settingsIndex.ts`

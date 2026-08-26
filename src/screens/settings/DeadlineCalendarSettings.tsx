@@ -119,6 +119,7 @@ export function DeadlineCalendarSettings() {
       footer="Adds an all-day event for a task's deadline to the calendar you pick here, only for tasks with “Add to calendar” turned on in their own editor, never every deadline in the app. The task's own deadline is always the one that's right; moving or deleting the event on the device doesn't change it."
     >
       <SettingsRow
+        entryId="deadlineCalendar"
         icon="calendar-outline"
         iconColor={deadlineCalendarId ? colors.accent : undefined}
         label="Write deadlines to"
@@ -136,6 +137,7 @@ export function DeadlineCalendarSettings() {
           <View style={styles.sep} />
           {permission === 'denied' ? (
             <SettingsRow
+              entryId="calendarPermission"
               icon="lock-closed-outline"
               iconColor={colors.warning}
               label="Calendar access"

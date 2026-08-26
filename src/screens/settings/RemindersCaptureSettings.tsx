@@ -336,6 +336,7 @@ export function RemindersCaptureSettings() {
       footer="Say “Hey Siri, remind me to…” and it lands here. Siri adds to whichever list is set as Default in Settings › Apps › Reminders, so point that at the list above. The title and notes come across as the task; a due date, repeat or alarm is read too, but it waits on the task in your Inbox until you accept it, so nothing schedules itself before you’ve seen it. Each reminder is deleted from the list once its task exists. Turn that off and they stay put, and anything whose name you already have is skipped instead. Completed reminders are left alone either way."
     >
       <SettingsRow
+        entryId="remindersImport"
         icon="arrow-down-circle-outline"
         iconColor={remindersImportEnabled ? colors.accent : undefined}
         label="Import from Reminders"
@@ -357,6 +358,7 @@ export function RemindersCaptureSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="remindersPermission"
             icon={remindersPermission === 'granted' ? 'lock-open-outline' : 'lock-closed-outline'}
             iconColor={
               remindersPermission === 'granted' ? colors.accent
@@ -398,6 +400,7 @@ export function RemindersCaptureSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="remindersList"
             icon="list-outline"
             iconColor={colors.accent}
             label="List"
@@ -453,6 +456,7 @@ export function RemindersCaptureSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="remindersImportReview"
             icon="checkmark-circle-outline"
             iconColor={remindersImportReview ? colors.accent : undefined}
             label="Review before applying"
@@ -465,6 +469,7 @@ export function RemindersCaptureSettings() {
           />
           <View style={styles.sep} />
           <SettingsRow
+            entryId="remindersImportDelete"
             icon={remindersImportDelete ? 'trash-outline' : 'archive-outline'}
             iconColor={remindersImportDelete ? colors.accent : undefined}
             label="Delete after importing"
@@ -486,6 +491,7 @@ export function RemindersCaptureSettings() {
       <>
       <View style={styles.sep} />
       <SettingsRow
+        entryId="groceryImport"
         icon="cart-outline"
         iconColor={groceryImportEnabled ? colors.accent : undefined}
         label="Send a list to Groceries"
@@ -504,6 +510,7 @@ export function RemindersCaptureSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="groceryImportList"
             icon="list-outline"
             iconColor={colors.accent}
             label="Grocery list"
@@ -532,6 +539,7 @@ export function RemindersCaptureSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="groceryImportTwoWay"
             icon="swap-horizontal-outline"
             iconColor={groceryImportTwoWay ? colors.accent : undefined}
             label="Two-way sync"
@@ -554,6 +562,7 @@ export function RemindersCaptureSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="groceryImportDelete"
             icon={groceryImportDelete ? 'trash-outline' : 'archive-outline'}
             iconColor={groceryImportDelete ? colors.accent : undefined}
             label="Delete after adding to Groceries"
@@ -590,6 +599,7 @@ export function RemindersCaptureSettings() {
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="importNow"
             icon="refresh-outline"
             iconColor={colors.accent}
             label="Import now"

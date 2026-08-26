@@ -16,12 +16,14 @@ export function AboutSettings() {
     <>
       <SettingsSection label="About">
         <SettingsRow
+          entryId="version"
           icon="information-circle-outline"
           label="Version"
           value={`${Constants.expoConfig?.version || '1.0.0'}${Constants.nativeBuildVersion ? ` (${Constants.nativeBuildVersion})` : ''}`}
         />
         <View style={styles.sep} />
         <SettingsRow
+          entryId="patchNotes"
           icon="gift-outline"
           iconColor={colors.accent}
           label="What's New"

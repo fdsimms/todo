@@ -42,6 +42,18 @@ export interface SettingsSummaryInput {
    */
   calendarIds: string[];
   simpleMode: boolean;
+  /**
+   * How many generators are switched on, and how many are on offer — from
+   * `generatedTaskCounts`, so this line and the rows behind it count the same
+   * list. Resolved by the caller for the reason `retentionLabel` is: it keeps
+   * this module clear of anything that reaches the settings store.
+   */
+  generatedOn: number;
+  generatedTotal: number;
+  /** Whether the day's meals show as rows on Today. */
+  mealsOnToday: boolean;
+  /** Already-rendered, like `fontLabel` — null when amounts show as written. */
+  unitSystemLabel: string | null;
   vacationMode: boolean;
   autoRemoveExpiredTasks: ExpiredTaskGraceDays;
   autoArchiveProjectsOnComplete: boolean;
@@ -115,6 +127,19 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
       ),
       s.autoArchiveProjectsOnComplete && 'Projects auto-archive',
     ) || 'Vacation, expiry, auto-archive',
+
+    // A count rather than a list of names: twelve generators won't fit on a
+    // line, and "how much of this is the app writing for me" is the question
+    // the group exists to answer. Both halves come from `generatedTaskCounts`,
+    // so the total shrinks with the kitchen exactly as the rows behind it do.
+    generated: s.generatedOn === 0
+      ? `Nothing. ${s.generatedTotal} available`
+      : `${s.generatedOn} of ${s.generatedTotal} on`,
+
+    kitchen: line(
+      s.mealsOnToday && 'Meals on Today',
+      s.unitSystemLabel,
+    ) || 'Meals on Today, amounts, swaps',
 
     privacyAi: line(
       s.appLockEnabled && 'App lock on',

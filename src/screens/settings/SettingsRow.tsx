@@ -1,10 +1,15 @@
 import React, { useMemo } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, type AccessibilityRole } from 'react-native';
+import {
+  View, Text, TouchableOpacity, ActivityIndicator, Animated, type AccessibilityRole,
+} from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../../theme/ThemeContext';
 import { interaction } from '../../theme';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { makeSettingsStyles } from './settingsStyles';
+import { useSettingsFocusFlash } from './SettingsFocus';
+
+const AnimatedTouchable = Animated.createAnimatedComponent(TouchableOpacity);
 
 interface Props {
   icon: string;
@@ -47,6 +52,17 @@ interface Props {
   disabled?: boolean;
   /** For a row that sits directly above its own pill row. */
   tight?: boolean;
+  /**
+   * The row's id in `SETTINGS_ENTRIES`, for the one row a search opened this
+   * group to find — it scrolls itself into view and lights up briefly.
+   *
+   * Optional, and only worth giving to rows that have an index entry. A row
+   * with none behaves exactly as before and costs nothing extra; a row whose id
+   * doesn't match anything in the index simply never gets focused, so a typo
+   * here is a search result that lands at the top of the group rather than a
+   * crash.
+   */
+  entryId?: string;
   accessibilityLabel?: string;
   accessibilityHint?: string;
 }
@@ -62,7 +78,7 @@ interface Props {
  */
 export function SettingsRow({
   icon, iconColor, label, labelColor, hint, alwaysShowHint, value, toggle, chevron, expanded, busy,
-  trailing, children, onPress, disabled, tight,
+  trailing, children, onPress, disabled, tight, entryId,
   accessibilityLabel, accessibilityHint,
 }: Props) {
   const colors = useColors();
@@ -72,6 +88,9 @@ export function SettingsRow({
 
   const role: AccessibilityRole | undefined =
     toggle !== undefined ? 'switch' : onPress && !disabled ? 'button' : undefined;
+
+  // Only the focused row takes a ref or animates at all — see SettingsFocus.
+  const { focused, setFocusRef, highlight } = useSettingsFocusFlash(entryId);
 
   const body = (
     <>
@@ -113,14 +132,19 @@ export function SettingsRow({
     !!tight && styles.rowTight,
     !!tight && showHint && styles.rowTightHinted,
     !!children && styles.rowStacked,
+    // Last, so it paints over the row's own transparent background rather than
+    // under it. Static `transparent` for every row that isn't the focused one,
+    // so this costs an unfocused row nothing but a style entry.
+    focused && { backgroundColor: highlight },
   ];
 
   // A row with nothing to press is a status line, not a control — it must not
   // announce itself as a button.
-  if (!onPress) return <View style={style}>{body}</View>;
+  if (!onPress) return <Animated.View ref={setFocusRef} style={style}>{body}</Animated.View>;
 
   return (
-    <TouchableOpacity
+    <AnimatedTouchable
+      ref={setFocusRef}
       style={style}
       onPress={onPress}
       disabled={disabled}
@@ -135,6 +159,6 @@ export function SettingsRow({
       accessibilityHint={accessibilityHint}
     >
       {body}
-    </TouchableOpacity>
+    </AnimatedTouchable>
   );
 }
