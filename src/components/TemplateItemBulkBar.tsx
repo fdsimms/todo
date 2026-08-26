@@ -65,10 +65,10 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
       {panel === 'group' && (
         <View style={styles.subPanel}>
           <View style={styles.subHeader}>
-            <TouchableOpacity onPress={() => setPanel('actions')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
+            <TouchableOpacity onPress={() => setPanel('actions')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
               <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
-            <Text style={styles.subTitle}>Stack Items</Text>
+            <Text style={styles.subTitle}>Stack items</Text>
             <TouchableOpacity
               style={[styles.applyBtn, !groupTitle.trim() && styles.applyBtnDisabled]}
               onPress={handleApplyGroup}
@@ -80,7 +80,7 @@ export function TemplateItemBulkBar({ selectedCount, onDelete, onGroup, onCancel
             style={styles.groupInput}
             value={groupTitle}
             onChangeText={setGroupTitle}
-            placeholder="Stack name"
+            placeholder="e.g. Take supplements"
             placeholderTextColor={colors.textTertiary}
             autoFocus
             returnKeyType="done"

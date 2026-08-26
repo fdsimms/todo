@@ -262,7 +262,7 @@ export function CategoryDetailScreen() {
             }
             ListFooterComponentStyle={categoryTasks.length === 0 ? undefined : styles.listFooterCell}
             ListEmptyComponent={
-              <EmptyState icon="folder-outline" title="No active tasks" subtitle="No active tasks in this category" />
+              <EmptyState icon="folder-outline" title="No active tasks" subtitle="Tasks filed under this category show up here. Completed ones are in the Logbook." />
             }
           />
         </PaintSelectionProvider>

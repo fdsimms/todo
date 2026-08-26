@@ -59,6 +59,14 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
+import { CountStepper } from './CountStepper';
+
+// Ceilings for the two steppers whose hand-rolled versions had none. Both sit
+// well past any real value; CountStepper needs a bound to disable its + key
+// at, and an unbounded stepper is one a long press can run to nonsense.
+const MAX_REMINDER_OFFSET_MINUTES = 10080;   // a week, in 15-minute steps
+const MAX_CUSTOM_ESTIMATE_MINUTES = 600;     // ten hours
+
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable';
@@ -384,7 +392,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <>
           <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
           <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerTitle}>{item ? 'Edit Item' : 'New Item'}</Text>
+            <Text style={styles.headerTitle}>{item ? 'Edit item' : 'New item'}</Text>
             {!!templateName && (
               <Text style={styles.headerSubtitle} numberOfLines={1}>{templateName}</Text>
             )}
@@ -461,7 +469,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 onChangeText={setNewBlank}
                 onSubmitEditing={addBlankFromInput}
                 onBlur={addBlankFromInput}
-                placeholder="name"
+                placeholder="e.g. destination"
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="none"
@@ -482,10 +490,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       {choiceQuestions.length > 0 && (
         <View style={styles.sectionCard}>
           <CollapsibleField
-            label="Only when"
+            label="Checked by default for"
             summary={conditionSummary ?? undefined}
             emptySummary="Every run"
-            hint="Checked by default only for the answers you pick here. Everything stays on the list either way, so you can still check or uncheck it when you apply the template."
+            hint="Arrives pre-checked when the run's answer is one of these. Everything stays on the list either way, so you can still check or uncheck it when you apply the template."
             expanded={fieldOpen('conditions', conditionSummary !== null)}
             onToggle={() => toggleField('conditions', conditionSummary !== null)}
           >
@@ -540,7 +548,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <OffsetRow
           icon="calendar"
           label="Due date"
-          hint="When the task is due"
+          hint="When the task is due."
           offset={dueOffsetDays}
           anchor={anchor}
           onChange={setDueOffsetDays}
@@ -551,7 +559,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <OffsetRow
           icon="eye-off-outline"
           label="Hide until"
-          hint="Keeps the task off Today until this day"
+          hint="Keeps the task off Today until this day."
           offset={deferOffsetDays}
           anchor={anchor}
           onChange={setDeferOffsetDays}
@@ -562,7 +570,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <OffsetRow
           icon="flag-outline"
           label="Deadline"
-          hint="A hard cut-off, shown separately from the due date"
+          hint="A hard cut-off, shown separately from the due date."
           offset={deadlineOffsetDays}
           anchor={anchor}
           onChange={setDeadlineOffsetDays}
@@ -573,7 +581,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <EditorRow
           icon="time-outline"
           label="Time of day"
-          hint="Hold it back until a part of the day"
+          hint="Hold it back until a part of the day."
           value={timeOfDaySummary}
           expanded={showTimeOfDay}
           onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
@@ -604,7 +612,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <EditorRow
           icon="timer-outline"
           label="Time window"
-          hint="Only active for part of the day, then expires"
+          hint="Only active for part of the day, then expires."
           value={timeWindowSummary}
           expanded={showTimeWindow}
           onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
@@ -703,23 +711,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         </View>
         {dueOffsetDays !== null && reminderOffsetMinutes !== null && (
           <View style={styles.intervalRow}>
-            <TouchableOpacity
-              style={styles.intervalBtn}
-              onPress={() => setReminderOffsetMinutes(m => Math.max(5, (m ?? 60) - 15))}
-              accessibilityRole="button"
-              accessibilityLabel="Remind closer to the due time"
-            >
-              <Ionicons name="remove" size={16} color={colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.intervalValue}>{formatMinutesOffset(reminderOffsetMinutes)}</Text>
-            <TouchableOpacity
-              style={styles.intervalBtn}
-              onPress={() => setReminderOffsetMinutes(m => (m ?? 60) + 15)}
-              accessibilityRole="button"
-              accessibilityLabel="Remind further ahead of the due time"
-            >
-              <Ionicons name="add" size={16} color={colors.text} />
-            </TouchableOpacity>
+            <CountStepper
+              value={reminderOffsetMinutes}
+              onChange={m => setReminderOffsetMinutes(m ?? 60)}
+              min={5}
+              max={MAX_REMINDER_OFFSET_MINUTES}
+              step={15}
+              format={formatMinutesOffset}
+              label="Reminder lead time"
+            />
           </View>
         )}
         <View style={styles.sep} />
@@ -781,6 +781,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setOptional(!optional); }}
           activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: optional }}
         >
           <Ionicons name="help-circle-outline" size={18} color={optional ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
@@ -796,6 +798,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setVacationPause(!vacationPause); }}
           activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: vacationPause }}
         >
           <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
@@ -1147,7 +1151,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 onChangeText={setNewTag}
                 onSubmitEditing={addTagFromInput}
                 onBlur={addTagFromInput}
-                placeholder="tag name"
+                placeholder="Tag name"
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="none"
@@ -1220,23 +1224,16 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <View style={styles.intervalRow}>
             {estimatedMinutes !== null ? (
               <>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setEstimatedMinutes(m => Math.max(5, (m ?? 30) - 5))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Shorter estimate"
-                >
-                  <Ionicons name="remove" size={16} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.intervalValueSm}>{estimatedMinutes} min (custom)</Text>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setEstimatedMinutes(m => (m ?? 30) + 5)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Longer estimate"
-                >
-                  <Ionicons name="add" size={16} color={colors.text} />
-                </TouchableOpacity>
+                <CountStepper
+                  value={estimatedMinutes}
+                  onChange={m => setEstimatedMinutes(m ?? 30)}
+                  min={5}
+                  max={MAX_CUSTOM_ESTIMATE_MINUTES}
+                  step={5}
+                  format={n => `${n} min`}
+                  label="Estimate"
+                />
+                <Text style={styles.intervalValueSm}>(custom)</Text>
                 <TouchableOpacity
                   onPress={() => setEstimatedMinutes(null)}
                   hitSlop={8}
@@ -1475,7 +1472,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
-  intervalValueSm: { color: colors.text, fontSize: font.sm, fontWeight: '600', minWidth: 60, textAlign: 'center' },
+  // The quiet caption after the estimate stepper, matching how a unit sits
+  // beside a stepper elsewhere. CountStepper renders the number itself.
+  intervalValueSm: { color: colors.textSecondary, fontSize: font.sm },
   chainItemRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,

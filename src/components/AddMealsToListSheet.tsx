@@ -272,7 +272,7 @@ export function AddMealsToListSheet({
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
+      'The choices you made about what goes on the list will be lost.',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: onClose },
@@ -464,7 +464,7 @@ export function AddMealsToListSheet({
                   )}
                   {category === 'alreadyOnList' && (
                     <Text style={styles.sectionHint}>
-                      Already on the list. Tick one to top up its quantity.
+                      Already on the list. Check one to top up its quantity.
                     </Text>
                   )}
                 </View>

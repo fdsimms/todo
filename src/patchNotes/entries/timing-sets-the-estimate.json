@@ -1,4 +1,4 @@
 {
-  "message": "Timing a task now updates its estimate, even if you had already estimated it — before, a task you estimated once kept that guess however many times you timed it. Stats drops the \"over estimate on average\" line, which compared two numbers that are now the same one",
+  "message": "Timing a task now updates its estimate, even if you had already estimated it. Before, a task you estimated once kept that guess however many times you timed it. Stats drops the \"over estimate on average\" line, which compared two numbers that are now the same one",
   "date": "2026-08-12"
 }

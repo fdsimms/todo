@@ -49,7 +49,7 @@ export function useTaskSelection(allTasks: Task[]) {
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Mark Missed',
+          text: 'Mark missed',
           onPress: () => {
             missableIds.forEach(id => markMissed(id));
             bulkDeleteTasks(restIds);
@@ -57,7 +57,7 @@ export function useTaskSelection(allTasks: Task[]) {
           },
         },
         {
-          text: 'Delete Everything',
+          text: 'Delete everything',
           style: 'destructive',
           onPress: () => {
             bulkDeleteTasks(ids);

@@ -26,6 +26,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { WhenPicker } from './WhenPicker';
+import { SheetScrim } from './SheetScrim';
 import type { Task } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
@@ -278,7 +279,7 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <SheetScrim onPress={dismiss} />
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>

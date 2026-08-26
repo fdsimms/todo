@@ -201,7 +201,7 @@ export interface KitchenEntry {
   daysLeft: number | null;
   /**
    * Why it's in the kitchen at all — `probablyHaveReason`'s own words for a
-   * catalog row ("bought 6× · last on 12 Jul"), the container's age for a
+   * catalog row ("bought 6× · last on Jul 12"), the container's age for a
    * leftover ("2 days in the fridge"). Those functions own the wording; a
    * second phrasing here would be a second thing to keep true.
    */
@@ -348,7 +348,7 @@ export function kitchenInventory(
     const productName = product ? describeProduct(product) : null;
     // Opening joins the reason half rather than the clock half — it's evidence
     // about the jar, not a state of the countdown — so it reads
-    // "bought 4× · last on 19 Aug · opened 12 Aug · Use by tomorrow". Dropped
+    // "bought 4× · last on Aug 19 · opened Aug 12 · Use by tomorrow". Dropped
     // for a frozen row, which has already replaced the reason with the freezer.
     const fullReason = openedAt && !frozenAt
       ? `${reason} · ${describeOpenedOn(openedAt, now)}`

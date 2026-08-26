@@ -430,8 +430,8 @@ describe('the freezer', () => {
     const spinach = makeItem({ name: 'Spinach', expiresAt: '2026-08-14', frozenAt: FROZEN_ON });
     const [entry] = kitchenInventory([spinach], [], NOW);
     expect(entry.reason).toBe('in the freezer');
-    expect(entry.useByCaption).toBe('Frozen 12 Jul');
-    expect(entry.caption).toBe('in the freezer · Frozen 12 Jul');
+    expect(entry.useByCaption).toBe('Frozen Jul 12');
+    expect(entry.caption).toBe('in the freezer · Frozen Jul 12');
   });
 
   // The reason the freezer had to reach probablyHaveReason: the purchase window
@@ -507,7 +507,7 @@ describe('the two other pantry states', () => {
     });
     const [entry] = kitchenInventory([salsa], [], NOW);
 
-    expect(entry.reason).toContain('opened 12 Aug');
+    expect(entry.reason).toContain('opened Aug 12');
     // The clock half is untouched: opening is evidence about the jar, not a
     // state of the countdown.
     expect(entry.useByCaption).toBe('Use by tomorrow');
@@ -626,7 +626,7 @@ describe('a box of its own', () => {
       openedAt: daysAgo(2), expiresAt: '2026-08-14',
     });
     const entry = kitchenInventory([item], [], NOW, [box]).find(e => e.kind === 'product')!;
-    expect(entry.caption).toBe('Herdez · marked as on hand · opened 11 Aug · Use by tomorrow');
+    expect(entry.caption).toBe('Herdez · marked as on hand · opened Aug 11 · Use by tomorrow');
   });
 
   it('counts down a box off its own use-by day, ahead of the item\'s', () => {

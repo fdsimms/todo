@@ -14,6 +14,8 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { SafeBlurView } from './SafeBlurView';
+import { SheetScrim } from './SheetScrim';
+import { EmptyState } from './EmptyState';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
@@ -272,7 +274,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
         style={[
@@ -307,11 +309,11 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
 
           {candidates.length === 0 ? (
             <View style={styles.emptyWrap}>
-              <Ionicons name="hourglass-outline" size={28} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>{query.trim() ? 'No matches' : copy.emptyTitle}</Text>
-              <Text style={styles.emptySub}>
-                {query.trim() ? 'No open task matches that.' : copy.emptySub}
-              </Text>
+              <EmptyState
+                icon="hourglass-outline"
+                title={query.trim() ? 'No matches' : copy.emptyTitle}
+                subtitle={query.trim() ? 'No open task matches that.' : copy.emptySub}
+              />
             </View>
           ) : (
             <ScrollView style={styles.list} bounces={false} keyboardShouldPersistTaps="handled">
@@ -349,6 +351,12 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  // EmptyState brings its own centring, icon circle and type — this only has
+  // to keep it off the sheet's edges.
+  emptyWrap: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
   backdropDim: {
     backgroundColor: colors.backdrop,
   },
@@ -433,23 +441,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: border.hairline,
     backgroundColor: colors.separator,
     marginLeft: spacing.md + 32 + spacing.md,
-  },
-  emptyWrap: {
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
-  emptySub: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    textAlign: 'center',
   },
   cancelCard: {
     backgroundColor: colors.bgSecondary,

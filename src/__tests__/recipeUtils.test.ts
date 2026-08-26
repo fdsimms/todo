@@ -1054,12 +1054,12 @@ describe('describeCookHistory', () => {
 
   it('says "once" for a single cooking', () => {
     const r = recipe('Ragù', { cookCount: 1, lastCookedAt: '2026-07-12T00:00:00.000Z' });
-    expect(describeCookHistory(r)).toBe('Cooked once · last on 12 Jul');
+    expect(describeCookHistory(r)).toBe('Cooked once · last on Jul 12');
   });
 
   it('counts multiple cookings with a ×', () => {
     const r = recipe('Ragù', { cookCount: 4, lastCookedAt: '2026-07-12T00:00:00.000Z' });
-    expect(describeCookHistory(r)).toBe('Cooked 4× · last on 12 Jul');
+    expect(describeCookHistory(r)).toBe('Cooked 4× · last on Jul 12');
   });
 
   it('drops the date clause when there is a count but no stamp', () => {
@@ -1257,7 +1257,7 @@ describe('distinctRecipeValues / filterRecipeSuggestions', () => {
 });
 
 describe('rankRecipeSuggestions', () => {
-  const now = new Date(2026, 7, 12); // 12 Aug 2026
+  const now = new Date(2026, 7, 12); // Aug 12, 2026
 
   it('excludes a recipe that has never been cooked', () => {
     const r = recipe('Ragù', { cookCount: 0, lastCookedAt: null });
@@ -1320,7 +1320,7 @@ function sub(itemId: string, subItemId: string): ItemSubLink {
 }
 
 describe('scoreRecipeAgainstCatalog', () => {
-  const now = new Date(2026, 7, 12); // 12 Aug 2026
+  const now = new Date(2026, 7, 12); // Aug 12, 2026
 
   it('is zero for a recipe with no ingredients', () => {
     expect(scoreRecipeAgainstCatalog(recipe('Toast', { ingredients: [] }), [], now)).toBe(0);

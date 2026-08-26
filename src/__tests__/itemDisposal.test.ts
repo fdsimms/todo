@@ -38,13 +38,13 @@ describe('describeDisposalHistory', () => {
         record({ usedUpCount: 1, spoiledCount: 2, lastSpoiledAt: '2026-08-12T09:00:00.000Z' }),
         NOW
       )
-    ).toBe('Went bad 2 of 3 times, last on 12 Aug.');
+    ).toBe('Went bad 2 of 3 times, last on Aug 12.');
   });
 
   it('singularises a lone answer', () => {
     expect(
       describeDisposalHistory(record({ spoiledCount: 1, lastSpoiledAt: '2026-08-12T09:00:00.000Z' }), NOW)
-    ).toBe('Went bad 1 of 1 time, last on 12 Aug.');
+    ).toBe('Went bad 1 of 1 time, last on Aug 12.');
   });
 
   it('drops the date and keeps the count when the stamp is unusable', () => {

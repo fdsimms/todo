@@ -99,7 +99,7 @@ export function StandingSwapsSheet({ visible, onClose }: Props) {
               ))}
             </View>
             <Text style={styles.footnote}>
-              Turning one off keeps it as a substitute — the recipes it was rewriting go back to
+              Turning one off keeps it as a substitute: the recipes it was rewriting go back to
               their own words. A single line can opt out on its own from the recipe, under
               “Keep as written”.
             </Text>

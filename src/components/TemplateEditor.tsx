@@ -120,7 +120,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
         ? `${base} It's used inside "${referencing[0].name}", which will show a warning until you remove or replace the reference.`
         : `${base} It's used inside ${referencing.length} other templates (${referencing.map(t => t.name).join(', ')}), which will show a warning until you remove or replace the reference.`;
     confirmDelete({
-      title: 'Delete Template',
+      title: 'Delete template',
       message,
       onConfirm: () => {
         animateLayout();
@@ -148,7 +148,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
       header={
         <>
           <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />
-          <Text style={styles.headerTitle}>Edit Template</Text>
+          <Text style={styles.headerTitle}>Edit template</Text>
           <TouchableOpacity
             onPress={handleDelete}
             hitSlop={8}
@@ -210,7 +210,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
                   if (c) { addCategory(c); setCategory(c); closeCategory(); }
                   setNewCategory(''); setAddingCategory(false);
                 }}
-                placeholder="category name"
+                placeholder="Category name"
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="words"
@@ -246,13 +246,13 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
           <Text style={styles.containerNote}>{CONTAINER_NOTES[container]}</Text>
           {container === 'stack' && template.itemGroups.length > 0 && (
             <Text style={styles.containerNote}>
-              This template has item groups, which already become stacks — a named run of it
+              This template has item groups, which already become stacks. A named run of it
               will use a project instead, so the groups have somewhere to sit.
             </Text>
           )}
           {container === 'task' && template.itemGroups.length > 0 && (
             <Text style={styles.containerNote}>
-              This template has item groups, but every item becomes a subtask here — the
+              This template has item groups, but every item becomes a subtask here, so the
               groups won't form stacks of their own.
             </Text>
           )}
@@ -375,7 +375,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
 
               <Text style={styles.containerNote}>
                 Questions are answered with their own defaults, and optional items stay
-                unchecked — the same as opening this template and applying it without
+                unchecked, the same as opening this template and applying it without
                 changing anything.
               </Text>
             </>
@@ -477,7 +477,7 @@ const CONTAINER_LABELS: Record<TemplateContainer, string> = {
 const CONTAINER_NOTES: Record<TemplateContainer, string> = {
   none: 'Tasks are added loose, and the run name only fills in {blanks}.',
   stack: 'Tasks are headed by a stack named after the run. Best for most templates.',
-  project: 'Tasks go in a project named after the run, dated by the two anchors. Best for long, multi-week ones.',
+  project: 'Tasks go in a project named after the run, dated from the start and end dates you give it. Best for long, multi-week ones.',
   task: 'Tasks become subtasks of one task named after the run. Best for a routine you want a single checkbox for.',
 };
 

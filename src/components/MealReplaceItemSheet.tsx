@@ -13,6 +13,8 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { SafeBlurView } from './SafeBlurView';
+import { SheetScrim } from './SheetScrim';
+import { EmptyState } from './EmptyState';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -126,7 +128,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
@@ -136,7 +138,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
         <View style={styles.card}>
           <Text style={styles.sheetTitle}>Replace {countLabel}</Text>
           <Text style={styles.sheetHint}>
-            Pick a recipe, or type a new name — replaces the item on every selected meal.
+            Pick a recipe, or type a new name. It replaces the item on every selected meal.
           </Text>
 
           <View style={styles.searchWrap}>
@@ -177,15 +179,13 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
 
             {matches.length === 0 && !showFreeText ? (
               <View style={styles.emptyWrap}>
-                <Ionicons name="restaurant-outline" size={28} color={colors.textTertiary} />
-                <Text style={styles.emptyTitle}>
-                  {query.trim() ? 'No matches' : 'No recipes yet'}
-                </Text>
-                <Text style={styles.emptySub}>
-                  {query.trim()
+                <EmptyState
+                  icon="restaurant-outline"
+                  title={query.trim() ? 'No matches' : 'No recipes yet'}
+                  subtitle={query.trim()
                     ? 'Nothing in your recipe box is called that.'
                     : 'Type what to replace it with. You don’t need a recipe.'}
-                </Text>
+                />
               </View>
             ) : (
               matches.map((recipe, idx) => (
@@ -222,6 +222,12 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  // EmptyState brings its own centring, icon circle and type — this only has
+  // to keep it off the sheet's edges.
+  emptyWrap: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
   backdropDim: { backgroundColor: colors.backdrop },
   sheetOuter: {
     position: 'absolute',
@@ -304,23 +310,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: border.hairline,
     backgroundColor: colors.separator,
     marginLeft: spacing.md + 32 + spacing.md,
-  },
-  emptyWrap: {
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
-  emptySub: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    textAlign: 'center',
   },
   cancelCard: {
     backgroundColor: colors.bgSecondary,

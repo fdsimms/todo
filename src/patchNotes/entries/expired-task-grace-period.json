@@ -1,4 +1,4 @@
 {
-  "message": "\"Auto-remove expired tasks\" is now a choice of Never, 1 day, 7 days, 30 days, or Immediately, instead of just on/off — pick a grace period to notice an expired task before it's deleted",
+  "message": "\"Auto-remove expired tasks\" is now a choice of Never, 1 day, 7 days, 30 days, or Immediately, instead of just on/off. Pick a grace period to notice an expired task before it's deleted",
   "date": "2026-08-11"
 }

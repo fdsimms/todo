@@ -86,8 +86,8 @@ interface Props<T> {
  * accessibility mode as well as a border does, and it leaves the accent to mean
  * "you can change this" the way it does everywhere else.
  *
- * Five things the #1497 sweep and #1786 looked at and deliberately left as
- * pills. They're here so the next one doesn't have to re-derive them:
+ * Six things the #1497 sweep, #1786 and #2135 looked at and deliberately left
+ * as pills. They're here so the next one doesn't have to re-derive them:
  *
  * - **Effort.** Eight options, each a name over a duration ("M" / "~1-2hr"),
  *   plus a Custom that opens a number pad. A segment is one line of text by
@@ -116,6 +116,17 @@ interface Props<T> {
  *   accent-filled, selection would look identical at 1× and at 3×, breaking
  *   that echo for the one control in the app where "not the recipe's own
  *   number" is the entire point of the row. Stays pills.
+ * - **`EmojiPickerSheet`'s group tabs** (People · Nature · Food · Activity ·
+ *   Places · Objects · Symbols). Seven options, and they are *icon-only on
+ *   purpose*: labelled tabs ran off the right edge and buried Objects and
+ *   Symbols, the two groups a category is most often named from. This control
+ *   always renders its label `Text`, so converting re-creates that exact bug —
+ *   and `columns={4}` trades it for a two-row block with a ragged gap where a
+ *   one-line row of glyphs is the denser, better read. Its selected state is
+ *   also a *border*, not a raised surface, and the comment on `tabActive` says
+ *   why: with no text or weight to fall back on, the border is the only cue
+ *   that survives grayscale accessibility mode flattening `accentSubtle`
+ *   against `bgTertiary`. Both would have to change here first. Stays pills.
  *
  * It assumed a card or sheet surface until #1669: `bgTertiary` against a light
  * theme's `bg` is nearly invisible, which is what kept it out of the one place

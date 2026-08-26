@@ -621,10 +621,10 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           }
         >
           <Text style={styles.altSuggestionText}>
-            Add as either/or — {alternatives.join(' or ')}?
+            Add as either/or: {alternatives.join(' or ')}?
           </Text>
           <Text style={styles.altSuggestionHint}>
-            Tick one at the store and the rest come off.
+            Check one off at the store and the rest come off.
           </Text>
         </TouchableOpacity>
       )}

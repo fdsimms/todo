@@ -35,6 +35,7 @@ import { buildDayLoads, describeDayWeight, weightFor, type DayLoad } from '../ut
 import { shouldNudgePostpone } from '../utils/postpone';
 import { PostponeCheckBanner, type PostponeCheckAction } from './PostponeCheckBanner';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetScrim } from './SheetScrim';
 
 // Placeholder fields the snooze engine doesn't consider — only the ones it
 // actually reads (title/notes/tags/category/priority/effort) get overridden
@@ -405,7 +406,7 @@ export function WhenPicker({
           style={[StyleSheet.absoluteFill, styles.dim, { opacity: enterAnim }]}
           pointerEvents="none"
         />
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
+        <SheetScrim onPress={onCancel} />
         <Animated.View style={[styles.card, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           {/* Header */}
           <View style={styles.header}>

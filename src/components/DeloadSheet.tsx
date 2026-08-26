@@ -22,6 +22,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { WhenPicker } from './WhenPicker';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
+import { SheetScrim } from './SheetScrim';
 import type { Task } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
@@ -263,7 +264,7 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <SheetScrim onPress={dismiss} />
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
@@ -284,7 +285,7 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
             <Text style={styles.emptyHint}>Nothing on today to move.</Text>
           ) : plan.proposals.every(p => p.suggested === null && p.tomorrow === null) ? (
             <Text style={styles.emptyHint}>
-              Nothing on today can move — everything here is pinned, urgent, or already underway.
+              Nothing on today can move: everything here is pinned, urgent, or already underway.
             </Text>
           ) : (
             <>

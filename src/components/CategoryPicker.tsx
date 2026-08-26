@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
+import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -350,7 +351,7 @@ export function CategoryPickerSheet({ visible, onClose, title = 'Category', onSe
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
         style={[

@@ -1,4 +1,4 @@
 {
-  "message": "Planning a meal from a recipe now adds a task to cook it, on the day it's planned for and hidden until that part of the day — breakfast in the morning, dinner in the evening. Checking it off marks the meal cooked, and marking the meal cooked checks it off. Every meal has its own \"Add cook task\" toggle, and deleting one means that meal won't get another",
+  "message": "Planning a meal from a recipe now adds a task to cook it, on the day it's planned for and hidden until that part of the day: breakfast in the morning, dinner in the evening. Checking it off marks the meal cooked, and marking the meal cooked checks it off. Every meal has its own \"Add cook task\" toggle, and deleting one means that meal won't get another",
   "date": "2026-08-11"
 }

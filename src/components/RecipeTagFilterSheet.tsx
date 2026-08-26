@@ -16,6 +16,7 @@ import { haptics } from '../utils/haptics';
 import { tagColor } from '../utils/tagColor';
 import { toggleRecipeTag } from '../utils/recipeTags';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { SheetScrim } from './SheetScrim';
 
 interface Props {
   visible: boolean;
@@ -93,7 +94,7 @@ export function RecipeTagFilterSheet({ visible, onClose, tags, counts, selected,
     <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <View style={styles.modalRoot}>
         <Animated.View style={[styles.overlay, { opacity: backdropOpacity }]}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+          <SheetScrim onPress={dismiss} />
         </Animated.View>
         <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
           <View style={styles.handleArea} {...panResponder.panHandlers}>

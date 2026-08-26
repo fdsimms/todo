@@ -33,6 +33,7 @@ import {
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
+import { SheetScrim } from './SheetScrim';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 type IoniconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -205,7 +206,7 @@ export function DeliverablePromptSheet({ visible, task, mode = 'complete', onCon
       </Animated.View>
       {/* Tapping out is a cancel, never a skip: it's the gesture people make by
           reflex, so it has to be the one that changes nothing. */}
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss(onCancel)} />
+      <SheetScrim onPress={() => dismiss(onCancel)} />
 
       <Animated.View
         style={[

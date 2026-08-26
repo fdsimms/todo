@@ -205,10 +205,10 @@ export function BulkActionBar({
         {panel === 'more' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
+              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
-              <Text style={styles.subTitle}>More Actions</Text>
+              <Text style={styles.subTitle}>More actions</Text>
               <View style={{ width: 28 }} />
             </View>
             {onGroup && (
@@ -242,10 +242,10 @@ export function BulkActionBar({
         {panel === 'priority' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
+              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
-              <Text style={styles.subTitle}>Set Priority</Text>
+              <Text style={styles.subTitle}>Set priority</Text>
               <View style={{ width: 28 }} />
             </View>
             <View style={styles.priorityRow}>
@@ -276,10 +276,10 @@ export function BulkActionBar({
         {panel === 'tags' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
+              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
-              <Text style={styles.subTitle}>Add Tags</Text>
+              <Text style={styles.subTitle}>Add tags</Text>
               <TouchableOpacity
                 style={[styles.applyBtn, (selectedTags.size === 0 && !newTagText.trim()) && styles.applyBtnDisabled]}
                 onPress={handleApplyTags}
@@ -337,10 +337,10 @@ export function BulkActionBar({
         {panel === 'group' && (
           <View style={styles.subPanel}>
             <View style={styles.subHeader}>
-              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
+              <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
                 <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
-              <Text style={styles.subTitle}>Stack Tasks</Text>
+              <Text style={styles.subTitle}>Stack tasks</Text>
               <TouchableOpacity
                 style={[styles.applyBtn, !groupTitle.trim() && styles.applyBtnDisabled]}
                 onPress={handleApplyGroup}
@@ -353,7 +353,7 @@ export function BulkActionBar({
             <View style={styles.tagInputRow}>
               <TextInput
                 style={styles.tagInput}
-                placeholder="Stack name, e.g. 'Take supplements'…"
+                placeholder="e.g. Take supplements"
                 placeholderTextColor={colors.textTertiary}
                 value={groupTitle}
                 onChangeText={setGroupTitle}
@@ -377,7 +377,7 @@ export function BulkActionBar({
           tick — every row here is a destination. */}
       <CategoryPickerSheet
         visible={categoryVisible}
-        title="Move to Category"
+        title="Move to category"
         onSelect={onSetCategory}
         onClose={() => setCategoryVisible(false)}
       />

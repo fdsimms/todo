@@ -1,4 +1,4 @@
 {
-  "message": "Tasks in a stack now always share the stack's category — adding a task to a stack files it there, and changing a stack's category moves everything in it",
+  "message": "Tasks in a stack now always share the stack's category: adding a task to a stack files it there, and changing a stack's category moves everything in it",
   "date": "2026-08-05"
 }

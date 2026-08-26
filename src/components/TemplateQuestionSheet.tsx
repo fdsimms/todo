@@ -142,7 +142,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
     if (!question) return;
     haptics.warning();
     confirmDelete({
-      title: 'Delete Question',
+      title: 'Delete question',
       message: 'Delete this question? Items that were only included for some of its answers go back to being included every time.',
       onConfirm: () => {
         animateLayout();

@@ -154,7 +154,7 @@ export function normalizeDeliverableValue(kind: DeliverableKind, raw: string | n
 /**
  * The answer as it's shown — on the Logbook row, in the prompt, in the editor.
  *
- * A date reads absolutely ("Sat 12 Sep"), never through `formatScheduledDate`:
+ * A date reads absolutely ("Sat Sep 12"), never through `formatScheduledDate`:
  * that one says "Today", which is a recorded decision's *worst* rendering,
  * true only on the day it was written and quietly wrong every day after.
  */
@@ -168,7 +168,7 @@ export function formatDeliverableValue(kind: DeliverableKind, value: string | nu
     case 'date': {
       const d = new Date(value);
       if (Number.isNaN(d.getTime())) return null;
-      return format(d, d.getFullYear() === new Date().getFullYear() ? 'EEE d MMM' : 'EEE d MMM yyyy');
+      return format(d, d.getFullYear() === new Date().getFullYear() ? 'EEE, MMM d' : 'EEE, MMM d, yyyy');
     }
   }
 }

@@ -1827,7 +1827,7 @@ export interface GroceryItem {
    *
    * **Recorded even when it changes nothing.** A name the open lexicon has
    * never heard of still stamps this and still says so on the row: opening a
-   * bag of spinach doesn't restart anything, but "opened 12 Aug" is a true and
+   * bag of spinach doesn't restart anything, but "opened Aug 12" is a true and
    * useful thing for the pantry row to say either way. Only the date is
    * conditional.
    *

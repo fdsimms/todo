@@ -133,7 +133,7 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
           <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>Suggested Tasks</Text>
+            <Text style={styles.headerTitle}>Suggested tasks</Text>
           </View>
           <SheetHeaderButton
             label={acceptedCount > 0 ? `Add ${acceptedCount}` : 'Add'}

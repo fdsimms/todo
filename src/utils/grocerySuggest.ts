@@ -393,7 +393,7 @@ export function pantryGuessLapsedDays(item: GroceryItem, now: Date): number | nu
 }
 
 /**
- * "bought 6× · last on 12 Jul" — why an item off the list is treated as
+ * "bought 6× · last on Jul 12" — why an item off the list is treated as
  * probably still in the kitchen, or null when there's no such reason.
  *
  * `item.onHandUntil` is an explicit assertion and is checked first, because
@@ -486,7 +486,7 @@ export function probablyHaveReason(
   // "once" rather than "1×", mirroring describeCookHistory — the two lines sit
   // in the same kind of caption and already share their halving.
   const times = item.purchaseCount === 1 ? 'once' : `${item.purchaseCount}×`;
-  return `bought ${times} · last on ${format(new Date(item.lastPurchasedAt), 'd MMM')}`;
+  return `bought ${times} · last on ${format(new Date(item.lastPurchasedAt), 'MMM d')}`;
 }
 
 /**

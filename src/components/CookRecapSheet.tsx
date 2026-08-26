@@ -26,6 +26,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { EditorRow } from './EditorRow';
 import { InlineAction } from './InlineAction';
+import { SheetScrim } from './SheetScrim';
 import { haptics } from '../utils/haptics';
 
 const CHECKBOX_SIZE = 22;
@@ -254,7 +255,7 @@ export function CookRecapSheet({
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <SheetScrim onPress={dismiss} />
 
       <View style={styles.centeredContainer} pointerEvents="box-none">
         <Animated.View
@@ -312,7 +313,7 @@ export function CookRecapSheet({
                 {!hideHelpText && (
                   <Text style={styles.hint}>
                     {showPantry
-                      ? 'Things you probably had before cooking this. Tick whatever it used up and they’ll stop counting as on hand.'
+                      ? 'Things you probably had before cooking this. Check whatever it used up and they’ll stop counting as on hand.'
                       : 'Ingredients from this meal that aren’t on your shopping list.'}
                   </Text>
                 )}

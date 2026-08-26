@@ -1,4 +1,4 @@
 {
-  "message": "A daily target can now say what it's counting. Type a unit next to the number — \"8oz glasses\", \"reps\", \"pages\" — and the row reads \"5/12 8oz glasses\" instead of a bare \"5/12\", so the title can just be \"Drink water\". Optional: leave it empty and nothing changes.",
+  "message": "A daily target can now say what it's counting. Type a unit next to the number (\"8oz glasses\", \"reps\", \"pages\") and the row reads \"5/12 8oz glasses\" instead of a bare \"5/12\", so the title can just be \"Drink water\". Optional: leave it empty and nothing changes.",
   "date": "2026-08-07"
 }

@@ -4,12 +4,12 @@ import {
   Modal,
   StyleSheet,
   Text,
-  TouchableOpacity,
   View,
 } from 'react-native';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { GroceryAddField, type GroceryAddFieldHandle } from './GroceryAddField';
+import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, animation, type Colors } from '../theme';
 import type { GroceryItem } from '../types';
@@ -115,7 +115,7 @@ export function GroceryAddSheet({ visible, onClose, seedAisle, onAdded }: Props)
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <SheetScrim onPress={dismiss} />
       <View style={styles.topContainer} pointerEvents="box-none">
         <Animated.View
           style={[

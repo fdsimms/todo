@@ -39,7 +39,7 @@ import {
 interface Props {
   visible: boolean;
   project: Project | null;
-  /** Titles the sheet "New Project" — set when arriving from quick add's "More details". */
+  /** Titles the sheet "New project" — set when arriving from quick add's "More details". */
   isNew?: boolean;
   onClose: () => void;
 }
@@ -138,13 +138,13 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const handleDelete = () => {
     if (!project) return;
     Alert.alert(
-      'Delete Project',
       `Delete "${project.title}"?`,
+      'Its tasks can stay in your list without a project, or be deleted with it.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete This Project', onPress: () => { deleteProject(project.id, { cascade: false }); onClose(); } },
+        { text: 'Delete project only', onPress: () => { deleteProject(project.id, { cascade: false }); onClose(); } },
         {
-          text: 'Delete Project and All Its Tasks',
+          text: 'Delete project and tasks',
           style: 'destructive',
           onPress: () => { deleteProject(project.id, { cascade: true }); onClose(); },
         },
@@ -167,12 +167,12 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       return;
     }
     Alert.alert(
-      'Mark Complete',
-      `"${project.title}" still has ${remaining.length} open ${remaining.length === 1 ? 'task' : 'tasks'}.`,
+      `Complete "${project.title}"?`,
+      `It still has ${remaining.length} open ${remaining.length === 1 ? 'task' : 'tasks'}.`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Leave Remaining Tasks', onPress: () => finish(false) },
-        { text: 'Archive Remaining Tasks', onPress: () => finish(true) },
+        { text: 'Leave remaining tasks', onPress: () => finish(false) },
+        { text: 'Archive remaining tasks', onPress: () => finish(true) },
       ],
     );
   };
@@ -192,7 +192,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       header={
         <>
           <SheetHeaderButton label="Done" onPress={saveAndClose} />
-          <Text style={styles.headerTitle}>{isNew ? 'New Project' : 'Edit Project'}</Text>
+          <Text style={styles.headerTitle}>{isNew ? 'New project' : 'Edit project'}</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete project">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>
@@ -281,7 +281,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                   if (c) { addCategory(c); setCategory(c); closeCategory(); }
                   setNewCategory(''); setAddingCategory(false);
                 }}
-                placeholder="category name"
+                placeholder="Category name"
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="words"
@@ -315,7 +315,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           — reasonably read as gating something. Neither date does; both are
           purely informational (see Project.targetStartDate/targetEndDate). */}
       <Text style={styles.sectionFooter}>
-        Optional, just for reference — shown on the project's card, doesn't affect scheduling or when tasks appear. If the target date passes before the project's done, nothing happens automatically; it's just flagged so you can decide what to do.
+        Optional, just for reference: shown on the project's card, with no effect on scheduling or when tasks appear. If the target date passes before the project's done, nothing happens automatically; it's just flagged so you can decide what to do.
       </Text>
 
       <View style={[styles.card, { marginTop: spacing.lg }]}>
@@ -332,8 +332,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             <Text style={styles.optionLabel}>Include in nudges</Text>
             <Text style={styles.optionHint}>
               {nudgeOptIn
-                ? 'Can appear in the gone-quiet nudge and "Pull from projects"'
-                : 'Never appears in the gone-quiet nudge or "Pull from projects", off by default for a list you\'re not scheduling from'}
+                ? 'Can get a review task when it goes quiet, and appear in "Pull from projects"'
+                : 'Never gets a review task or appears in "Pull from projects"; off by default for a list you\'re not scheduling from'}
             </Text>
           </View>
           <View style={[styles.toggle, nudgeOptIn && styles.toggleOn]}>
@@ -351,9 +351,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         <>
           <View style={[styles.sectionCard, { marginTop: spacing.lg }]}>
             <CollapsibleField
-              label="Nudge me"
+              label="Review cadence"
               summary={describeCadence(nudgeCadenceDays)}
-              hint="How long a project can sit with nothing scheduled before the gone-quiet nudge picks it up. Take it to zero for Never."
+              hint="How long this project can sit with nothing scheduled before it gets a review task. Step below 1 for Never."
               expanded={cadenceOpen}
               onToggle={() => setCadenceOpen(v => !v)}
             >
@@ -365,7 +365,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                   max={CADENCE_UNIT_MAX[cadence.unit]}
                   allowNull
                   emptyLabel="Never"
-                  label="Nudge cadence"
+                  label="Review cadence"
                   describeValue={n => describeCadence(fromCadenceParts({ ...cadence, count: n }))}
                 />
                 <View style={styles.pillRow}>

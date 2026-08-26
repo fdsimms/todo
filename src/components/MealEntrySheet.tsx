@@ -27,6 +27,7 @@ import { slotLabel } from '../utils/mealPlan';
 import type { ChoiceGroup } from '../utils/recipeComponents';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { PillGroup } from './PillGroup';
+import { SheetScrim } from './SheetScrim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { guestFoodNotes } from '../utils/personNotes';
@@ -252,7 +253,7 @@ export function MealEntrySheet({
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
         style={[
@@ -416,7 +417,7 @@ export function MealEntrySheet({
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
-                  accessibilityLabel={`Move to ${format(day, 'EEEE d MMMM')}`}
+                  accessibilityLabel={`Move to ${format(day, 'EEEE, MMMM d')}`}
                 >
                   <Text style={[styles.dayChipTop, on && styles.chipTextOn]}>
                     {format(day, 'EEEEE')}

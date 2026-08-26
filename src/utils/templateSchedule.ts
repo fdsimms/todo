@@ -130,7 +130,7 @@ export function triggerDayFor(
  */
 export function scheduledRunName(templateName: string, day: Date): string {
   const name = templateName.trim();
-  return name ? `${name} · ${format(day, 'd MMM')}` : format(day, 'd MMM');
+  return name ? `${name} · ${format(day, 'MMM d')}` : format(day, 'MMM d');
 }
 
 /**

@@ -664,7 +664,7 @@ export function SuggestMealsSheet({
         accessibilityState={{ disabled, selected: isSelected }}
         accessibilityLabel={landedDay
           ? `${idea.title}, planned for ${format(landedDay, 'EEEE')}`
-          : `${isSelected ? 'Deselect' : 'Select'} ${idea.title} — saves it to your recipe box on Save`}
+          : `${isSelected ? 'Deselect' : 'Select'} ${idea.title}. Saves it to your recipe box on Save`}
       >
         <View style={styles.body}>
           <View style={styles.ideaTitleRow}>
@@ -738,7 +738,7 @@ export function SuggestMealsSheet({
             style={styles.hintInput}
             value={hints}
             onChangeText={setHints}
-            placeholder="Anything in mind? e.g. quick, vegetarian"
+            placeholder="e.g. quick, vegetarian"
             placeholderTextColor={colors.textTertiary}
             returnKeyType="done"
             onSubmitEditing={() => { if (!generating) generate(); }}
@@ -892,7 +892,7 @@ export function SuggestMealsSheet({
               </Text>
             ) : filteredRecipes.length > 0 && (
               <Text style={styles.intro}>
-                Made from what's already in your grocery catalog — tap to pick, then Save to plan them.
+                Made from what's already in your grocery catalog. Tap to pick, then Save to plan them.
               </Text>
             )}
             {suggestions.map((item: MealSuggestion) => (

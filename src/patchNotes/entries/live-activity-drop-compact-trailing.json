@@ -1,4 +1,4 @@
 {
-  "message": "Removed the elapsed-time counter from the Dynamic Island's compact pill for a task's Live Activity — it wasn't actionable, and the streak count is already visible when you expand it.",
+  "message": "Removed the elapsed-time counter from the Dynamic Island's compact pill for a task's Live Activity. It wasn't actionable, and the streak count is already visible when you expand it.",
   "date": "2026-08-05"
 }

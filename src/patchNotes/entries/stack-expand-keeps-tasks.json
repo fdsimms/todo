@@ -1,4 +1,4 @@
 {
-  "message": "Fixed a stack that could get stuck showing no tasks under it — collapsing and expanding it again now always brings its tasks back",
+  "message": "Fixed a stack that could get stuck showing no tasks under it. Collapsing and expanding it again now always brings its tasks back",
   "date": "2026-08-05"
 }

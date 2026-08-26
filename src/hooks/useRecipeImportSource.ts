@@ -37,7 +37,7 @@ export function alertPhotoAccessDenied(
       ? [{ text: 'OK' }]
       : [
           { text: 'Not now', style: 'cancel' },
-          { text: 'Open Settings', onPress: () => Linking.openSettings() },
+          { text: 'Open settings', onPress: () => Linking.openSettings() },
         ],
   );
 }

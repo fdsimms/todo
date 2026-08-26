@@ -46,6 +46,20 @@ interface Props {
  * the ones you'd have offered as chips is a second of holding rather than
  * thirty taps. Stepping happens on press-*in* — a stepper that waits for the
  * release feels broken next to iOS's own.
+ *
+ * **What this is not: a stepper whose value is a sentence.** #2132 swept the
+ * hand-rolled copies onto this component and left two behind, both template
+ * offset rows (`TemplateItemEditor`'s `OffsetRow`, `TemplateItemQuickAdd`'s due
+ * offset). Their value isn't a number with a unit beside it — it's
+ * `formatOffsetWithAnchor`, which renders the sign as words and the zero as a
+ * different sentence again ("On start date" / "3 days before end date" /
+ * "2 days after start date"). Two things follow, and both are structural: the
+ * value slot here is `minWidth: 40` and can't flex, where those rows give the
+ * prose `flex: 1` so it can shrink; and the offsets are deliberately unbounded
+ * in *both* directions, where this needs a `min` and a `max`. Splitting the
+ * number out as a sibling `Text` doesn't rescue it either, because the sentence
+ * is what carries the before/after meaning. If those rows ever want this
+ * component, the sentence has to stop being the value first.
  */
 export function CountStepper({
   value,

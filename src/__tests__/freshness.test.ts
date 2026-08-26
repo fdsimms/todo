@@ -95,7 +95,7 @@ describe('liveUseBy', () => {
 
 describe('describeFrozenSince', () => {
   it('names the day it went in, not how long it has been there', () => {
-    expect(describeFrozenSince('2026-07-12T09:00:00.000Z', NOW)).toBe('Frozen 12 Jul');
+    expect(describeFrozenSince('2026-07-12T09:00:00.000Z', NOW)).toBe('Frozen Jul 12');
   });
 
   it('drops the date rather than the whole clause when the stamp is unusable', () => {

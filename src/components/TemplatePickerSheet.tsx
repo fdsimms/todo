@@ -10,6 +10,8 @@ import {
   StyleSheet,
 } from 'react-native';
 import { SafeBlurView } from './SafeBlurView';
+import { SheetScrim } from './SheetScrim';
+import { EmptyState } from './EmptyState';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
@@ -127,7 +129,7 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
@@ -135,15 +137,15 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sheetTitle}>Add from a Template</Text>
+          <Text style={styles.sheetTitle}>Add from a template</Text>
 
           {templates.length === 0 ? (
             <View style={styles.emptyWrap}>
-              <Ionicons name="copy-outline" size={28} color={colors.textTertiary} />
-              <Text style={styles.emptyTitle}>No templates yet</Text>
-              <Text style={styles.emptySub}>
-                Build a reusable checklist under More › Templates, then add it all here in one tap
-              </Text>
+              <EmptyState
+                icon="copy-outline"
+                title="No templates yet"
+                subtitle="Build a reusable checklist under More › Templates, then add it all here in one tap"
+              />
             </View>
           ) : (
             <ScrollView style={styles.list} bounces={false}>
@@ -197,6 +199,12 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  // EmptyState brings its own centring, icon circle and type — this only has
+  // to keep it off the sheet's edges.
+  emptyWrap: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+  },
   backdropDim: {
     backgroundColor: colors.backdrop,
   },
@@ -268,23 +276,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: border.hairline,
     backgroundColor: colors.separator,
     marginLeft: spacing.md + 32 + spacing.md,
-  },
-  emptyWrap: {
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.lg,
-  },
-  emptyTitle: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-  },
-  emptySub: {
-    color: colors.textTertiary,
-    fontSize: font.sm,
-    textAlign: 'center',
   },
   cancelCard: {
     backgroundColor: colors.bgSecondary,

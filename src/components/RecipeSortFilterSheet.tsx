@@ -15,6 +15,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { SheetScrim } from './SheetScrim';
 
 interface Props {
   visible: boolean;
@@ -131,7 +132,7 @@ export function RecipeSortFilterSheet({
     >
       <View style={styles.modalRoot}>
         <Animated.View style={[styles.overlay, { opacity: backdropOpacity }]}>
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+          <SheetScrim onPress={dismiss} />
         </Animated.View>
         <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
           <View style={styles.handleArea} {...panResponder.panHandlers}>
@@ -139,7 +140,7 @@ export function RecipeSortFilterSheet({
           </View>
 
           <View style={styles.sheetHeader}>
-            <Text style={styles.sheetTitle}>Sort & Filter</Text>
+            <Text style={styles.sheetTitle}>Sort & filter</Text>
             <View style={styles.headerRight}>
               {activeCount > 0 && (
                 <TouchableOpacity onPress={reset} style={styles.resetBtn}>

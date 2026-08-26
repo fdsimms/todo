@@ -1,4 +1,4 @@
 {
-  "message": "Fixed new project tasks incorrectly showing up in the Inbox and on the Today screen — they now only appear on Today once they've been given a due date of today",
+  "message": "Fixed new project tasks incorrectly showing up in the Inbox and on the Today screen. They now only appear on Today once they've been given a due date of today",
   "date": "2026-08-04"
 }

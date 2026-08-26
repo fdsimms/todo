@@ -13,6 +13,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetScrim } from './SheetScrim';
 
 /**
  * The birthday picker — month, day and an optional year, as three native
@@ -118,7 +119,7 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
           style={[StyleSheet.absoluteFill, styles.dim, { opacity: enterAnim }]}
           pointerEvents="none"
         />
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
+        <SheetScrim onPress={onCancel} />
         <Animated.View style={[styles.card, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           <View style={styles.header}>
             <SheetHeaderButton label="Cancel" role="cancel" onPress={onCancel} minWidth={28} />

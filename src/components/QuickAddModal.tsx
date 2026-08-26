@@ -83,6 +83,7 @@ import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
+import { SheetScrim } from './SheetScrim';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
 import { ordinal } from '../utils/ordinal';
@@ -180,6 +181,9 @@ const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<type
   { key: 'evening', label: 'Evening', icon: 'moon-outline' },
   { key: 'night', label: 'Night', icon: 'moon' },
 ];
+
+// Same ceiling RecurrencePicker's identical "Every N" stepper uses.
+const MAX_RECURRENCE_INTERVAL = 99;
 
 // Singular/plural units for the interval stepper ("Every 2 weeks").
 const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]> = {
@@ -998,7 +1002,7 @@ export function QuickAddModal({
         'Resume archived task?',
         `You archived "${archivedMatch.title}" a while back. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
         [
-          { text: 'Create New', onPress: () => createTask(finalTitle) },
+          { text: 'Create new', onPress: () => createTask(finalTitle) },
           {
             text: 'Resume',
             style: 'default',
@@ -1287,7 +1291,7 @@ export function QuickAddModal({
         />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <SheetScrim onPress={() => dismiss()} />
       {keyboardHeight > 0 && (
         <View
           pointerEvents="none"
@@ -1563,7 +1567,7 @@ export function QuickAddModal({
                   value={customTimedText}
                   onChangeText={applyCustomTimed}
                   keyboardType="number-pad"
-                  placeholder="custom"
+                  placeholder="Custom"
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   accessibilityLabel="Custom duration in minutes"
@@ -1592,7 +1596,7 @@ export function QuickAddModal({
                   style={styles.targetUnitInput}
                   value={targetUnit}
                   onChangeText={setTargetUnit}
-                  placeholder="units"
+                  placeholder="Units"
                   placeholderTextColor={colors.textTertiary}
                   maxLength={MAX_TARGET_UNIT_LENGTH}
                   autoCapitalize="none"
@@ -1784,29 +1788,13 @@ export function QuickAddModal({
               {recurrenceType !== 'none' && (
                 <View style={styles.intervalRow}>
                   <Text style={styles.intervalLabel}>Every</Text>
-                  <TouchableOpacity
-                    style={styles.intervalBtn}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceInterval(Math.max(1, recurrenceInterval - 1));
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Repeat less often"
-                  >
-                    <Ionicons name="remove" size={16} color={colors.text} />
-                  </TouchableOpacity>
-                  <Text style={styles.intervalValue}>{recurrenceInterval}</Text>
-                  <TouchableOpacity
-                    style={styles.intervalBtn}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceInterval(recurrenceInterval + 1);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Repeat more often"
-                  >
-                    <Ionicons name="add" size={16} color={colors.text} />
-                  </TouchableOpacity>
+                  <CountStepper
+                    value={recurrenceInterval}
+                    onChange={n => setRecurrenceInterval(n ?? 1)}
+                    min={1}
+                    max={MAX_RECURRENCE_INTERVAL}
+                    label="Repeat interval"
+                  />
                   <Text style={styles.intervalLabel}>
                     {RECURRENCE_UNITS[recurrenceType][recurrenceInterval === 1 ? 0 : 1]}
                   </Text>
@@ -1839,29 +1827,14 @@ export function QuickAddModal({
               {recurrenceType === 'monthly' && recurrenceMonthDay !== null && recurrenceMonthDay > 0 && (
                 <View style={styles.intervalRow}>
                   <Text style={styles.intervalLabel}>On the</Text>
-                  <TouchableOpacity
-                    style={styles.intervalBtn}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceMonthDay(Math.max(1, recurrenceMonthDay - 1));
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Earlier day of the month"
-                  >
-                    <Ionicons name="remove" size={16} color={colors.text} />
-                  </TouchableOpacity>
-                  <Text style={styles.intervalValue}>{ordinal(recurrenceMonthDay)}</Text>
-                  <TouchableOpacity
-                    style={styles.intervalBtn}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceMonthDay(Math.min(31, recurrenceMonthDay + 1));
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Later day of the month"
-                  >
-                    <Ionicons name="add" size={16} color={colors.text} />
-                  </TouchableOpacity>
+                  <CountStepper
+                    value={recurrenceMonthDay}
+                    onChange={n => setRecurrenceMonthDay(n ?? 1)}
+                    min={1}
+                    max={31}
+                    format={ordinal}
+                    label="Day of month"
+                  />
                 </View>
               )}
               {recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null && (
@@ -1966,9 +1939,10 @@ export function QuickAddModal({
                   value={customEffortText}
                   onChangeText={applyCustomEffort}
                   keyboardType="number-pad"
-                  placeholder="custom min"
+                  placeholder="Custom min"
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                  accessibilityLabel="Custom effort in minutes"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
               </View>
@@ -2077,7 +2051,7 @@ export function QuickAddModal({
                   onChangeText={setCustomLinkText}
                   onSubmitEditing={commitCustomLink}
                   onBlur={commitCustomLink}
-                  placeholder="https://... or app://"
+                  placeholder="e.g. https://... or app://"
                   placeholderTextColor={colors.textTertiary}
                   keyboardType="url"
                   autoCapitalize="none"
@@ -2605,21 +2579,6 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   intervalLabel: {
     color: colors.textSecondary,
     fontSize: font.sm,
-  },
-  intervalBtn: {
-    width: interaction.pillHeight,
-    height: interaction.pillHeight,
-    borderRadius: interaction.pillHeight / 2,
-    backgroundColor: colors.bgTertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  intervalValue: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-    minWidth: 24,
-    textAlign: 'center',
   },
   weekdayRow: {
     marginTop: spacing.sm,

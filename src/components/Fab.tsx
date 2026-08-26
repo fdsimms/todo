@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
-import { Animated, Modal, PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Modal, PanResponder, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PressableScale } from './PressableScale';
+import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, border, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -393,9 +394,9 @@ export function FabMenuOverlay({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onDismiss}>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onDismiss}>
+      <SheetScrim onPress={onDismiss}>
         <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, { opacity: anim }]} />
-      </TouchableOpacity>
+      </SheetScrim>
       <View
         style={[
           styles.menuContainer,

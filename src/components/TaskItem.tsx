@@ -839,7 +839,7 @@ export const TaskItem = React.memo(function TaskItem({
 
   const handleDiscardTimer = () => {
     Alert.alert(
-      'Discard Timer',
+      'Discard timer',
       `Discard the running timer for "${task.title}"? The elapsed time won't be saved.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -2651,7 +2651,7 @@ export const TaskItem = React.memo(function TaskItem({
                       duplicateTask(task.id);
                     }}
                     hitSlop={8}
-                    accessibilityLabel="Duplicate task"
+                    accessibilityLabel={`Duplicate ${task.title}`}
                   >
                     <Ionicons name="duplicate-outline" size={iconSize.sm} color={colors.textSecondary} />
                   </PressableScale>
@@ -2659,7 +2659,7 @@ export const TaskItem = React.memo(function TaskItem({
                     style={[styles.iconActionBtn, styles.iconActionBtnAccent]}
                     onPress={() => onEdit(task.id)}
                     hitSlop={8}
-                    accessibilityLabel="Edit task"
+                    accessibilityLabel={`Edit ${task.title}`}
                   >
                     <Ionicons name="pencil-outline" size={iconSize.sm} color={colors.accent} />
                   </PressableScale>
@@ -2768,7 +2768,15 @@ export const TaskItem = React.memo(function TaskItem({
                 {spotlightDisabled && (
                   // While another task is spotlighted this row must not react
                   // to touches itself — any tap on it just dismisses the spotlight.
-                  <Pressable style={StyleSheet.absoluteFill} onPress={() => onPress(rowId)} />
+                  // Hidden from accessibility for the same reason SpotlightOverlay's
+                  // own scrim is: it covers a row that is still there and still
+                  // labelled underneath it.
+                  <Pressable
+                    style={StyleSheet.absoluteFill}
+                    onPress={() => onPress(rowId)}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                  />
                 )}
               </View>
             </SwipeableRow>
@@ -3415,7 +3423,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   timedEditAction: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
   timedEditActionDisabled: { color: colors.textTertiary },
-  timedEditCancel: { color: colors.textSecondary, fontSize: font.xs },
+  // Accent, like its Save — a bare-text confirm/cancel pair is ranked by
+  // weight, not by greying one side out. Same rule SheetHeaderButton states
+  // for the sheet headers; this pair sits inline in a row and keeps font.xs,
+  // which is the one thing that component can't express.
+  timedEditCancel: { color: colors.accent, fontSize: font.xs },
   streakBadge: {
     flexDirection: 'row',
     alignItems: 'center',

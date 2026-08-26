@@ -27,7 +27,6 @@ import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { EditorSheet } from './EditorSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
@@ -111,6 +110,7 @@ import { displayTitleFor, isMissableMealPlanTask } from '../utils/visibilityUtil
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
+import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
@@ -212,6 +212,13 @@ const TITLE_TOKEN_ACCESSORY_ID = 'taskEditorTitleTokenAccessory';
 // Matches the inline subtask checkbox in TaskItem, so a subtask looks the same
 // whether it's read in the expanded row or in this editor.
 const SUBTASK_CHECKBOX_SIZE = 16;
+
+// Ceilings for the two steppers whose hand-rolled versions had none. Both are
+// well past any real value; they exist because CountStepper needs a bound to
+// disable its + key at, and an unbounded stepper is one a long press can run
+// to nonsense.
+const MAX_DEADLINE_OFFSET_DAYS = 365;
+const MAX_STREAK_COUNT = 9999;
 
 
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
@@ -884,7 +891,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           'Resume archived task?',
           `You archived "${archivedMatch.title}" a while back. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
           [
-            { text: 'Create New', onPress: () => proceedWithSave(effectiveChainItems, effectiveDraftSubtasks) },
+            { text: 'Create new', onPress: () => proceedWithSave(effectiveChainItems, effectiveDraftSubtasks) },
             {
               text: 'Resume',
               style: 'default',
@@ -1092,8 +1099,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             : 'This task repeats. Apply this change to just this task, or to this and all future occurrences?',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: isSeries ? 'This Date' : 'This Task', onPress: () => commitSave('occurrence') },
-            { text: isSeries ? 'This and Later Dates' : 'This and Future Tasks', onPress: () => commitSave('series') },
+            { text: isSeries ? 'This date' : 'This task', onPress: () => commitSave('occurrence') },
+            { text: isSeries ? 'This and later dates' : 'This and future tasks', onPress: () => commitSave('series') },
           ],
         );
         return;
@@ -1433,7 +1440,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (current !== initialStateRef.current) {
       Alert.alert(
         'Discard changes?',
-        'You have unsaved changes. Are you sure you want to discard them?',
+        'Your edits to this task will be lost.',
         [
           { text: 'Keep editing', style: 'cancel' },
           { text: 'Discard', style: 'destructive', onPress: onClose },
@@ -1453,7 +1460,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Mark Missed',
+            text: 'Mark missed',
             onPress: () => {
               markMissed(task.id);
               onClose();
@@ -1482,7 +1489,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Mark Missed',
+            text: 'Mark missed',
             onPress: () => {
               markMissed(task.id);
               onClose();
@@ -1515,7 +1522,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Just This Date',
+            text: 'Just this date',
             onPress: () => {
               haptics.success();
               deleteTask(task.id);
@@ -1523,7 +1530,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             },
           },
           {
-            text: 'All Dates',
+            text: 'All dates',
             style: 'destructive',
             onPress: () => {
               haptics.success();
@@ -1775,7 +1782,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       header={
         <>
           <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />
-          <Text style={styles.headerTitle}>{task ? 'Edit Task' : 'New Task'}</Text>
+          <Text style={styles.headerTitle}>{task ? 'Edit task' : 'New task'}</Text>
           <View style={styles.headerRight}>
             <TouchableOpacity
               onPress={toggleSearch}
@@ -2185,7 +2192,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               <EditorRow
                 icon="speedometer-outline"
                 label="Daily target"
-                hint="Log it several times a day; only shows up when you fall behind"
+                hint="Log it several times a day. The task hides while you're on pace and comes back when you fall behind."
                 value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
                 expanded={showTargetCount}
                 onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
@@ -2221,7 +2228,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         style={[styles.fieldBox, styles.targetUnitInput]}
                         value={targetUnit}
                         onChangeText={setTargetUnit}
-                        placeholder="units"
+                        placeholder="Units"
                         placeholderTextColor={colors.textTertiary}
                         maxLength={MAX_TARGET_UNIT_LENGTH}
                         autoCapitalize="none"
@@ -2251,7 +2258,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
                       <View style={styles.optionContent}>
                         <Text style={styles.optionLabel}>Allow going past target</Text>
-                        <Text style={styles.optionHint}>Keep logging past {targetCount}× — it stays on Today and completes at day's end with whatever count you reached</Text>
+                        <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at day's end with whatever count you reached</Text>
                       </View>
                       <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
                         <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
@@ -2436,7 +2443,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     )}
                     {chainItems.length === 1 && (
                       <Text style={styles.chainCurrentHint}>
-                        Add a second step — a chain needs at least 2 steps to save.
+                        Add a second step: a chain needs at least 2 steps to save.
                       </Text>
                     )}
                     {chainItems.length > 0 && (
@@ -2542,7 +2549,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="calendar"
               label="Date"
-              hint="The day it shows up on Today"
+              hint="The day it shows up on Today."
               value={dueDate ? formatScheduledDate(dueDate.toISOString()) : undefined}
               onPress={() => setShowWhenPicker(true)}
               onClear={dueDate ? () => { setDueDate(null); setExtraDates([]); setTimeSegments([]); } : undefined}
@@ -2558,7 +2565,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="calendar-number-outline"
               label="More dates"
-              hint="The same task on several days. Each date can be checked off separately"
+              hint="The same task on several days. Each date can be checked off separately."
               value={
                 extraDates.length > 0
                   ? `${extraDates.length + (dueDate ? 1 : 0)} dates · ${extraDates.map(d => format(d, 'MMM d')).join(', ')}`
@@ -2718,29 +2725,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       </TouchableOpacity>
                     </View>
                     <View style={styles.intervalRow}>
-                      <TouchableOpacity
-                        style={styles.intervalBtn}
-                        onPress={() => setDeadlineOffsetDays(d => {
-                          const next = Math.max(1, Math.abs(d ?? 1) - 1);
-                          return (d ?? 1) < 0 ? -next : next;
-                        })}
-                        accessibilityRole="button"
-                        accessibilityLabel="Decrease deadline offset"
-                      >
-                        <Ionicons name="remove" size={16} color={colors.text} />
-                      </TouchableOpacity>
-                      <Text style={styles.intervalValue}>{Math.abs(deadlineOffsetDays)}</Text>
-                      <TouchableOpacity
-                        style={styles.intervalBtn}
-                        onPress={() => setDeadlineOffsetDays(d => {
-                          const next = Math.abs(d ?? 0) + 1;
-                          return (d ?? 1) < 0 ? -next : next;
-                        })}
-                        accessibilityRole="button"
-                        accessibilityLabel="Increase deadline offset"
-                      >
-                        <Ionicons name="add" size={16} color={colors.text} />
-                      </TouchableOpacity>
+                      {/* The stepper carries the magnitude only; the pills
+                          above own the sign, so it's stripped on the way in
+                          and re-applied on the way out. */}
+                      <CountStepper
+                        value={Math.abs(deadlineOffsetDays)}
+                        onChange={n => setDeadlineOffsetDays(d =>
+                          ((d ?? 1) < 0 ? -1 : 1) * Math.max(1, n ?? 1))}
+                        min={1}
+                        max={MAX_DEADLINE_OFFSET_DAYS}
+                        label="Deadline offset"
+                      />
                       <Text style={styles.intervalLabel}>
                         {`${Math.abs(deadlineOffsetDays) === 1 ? 'day' : 'days'} ${deadlineOffsetDays < 0 ? 'after' : 'before'} due, every occurrence`}
                       </Text>
@@ -2770,23 +2765,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     {deadlineMonthDay > 0 && (
                       <View style={styles.intervalRow}>
                         <Text style={styles.intervalLabel}>On the</Text>
-                        <TouchableOpacity
-                          style={styles.intervalBtn}
-                          onPress={() => setDeadlineMonthDay(Math.max(1, deadlineMonthDay - 1))}
-                          accessibilityRole="button"
-                          accessibilityLabel="Decrease day of month"
-                        >
-                          <Ionicons name="remove" size={16} color={colors.text} />
-                        </TouchableOpacity>
-                        <Text style={styles.intervalValue}>{ordinal(deadlineMonthDay)}</Text>
-                        <TouchableOpacity
-                          style={styles.intervalBtn}
-                          onPress={() => setDeadlineMonthDay(Math.min(31, deadlineMonthDay + 1))}
-                          accessibilityRole="button"
-                          accessibilityLabel="Increase day of month"
-                        >
-                          <Ionicons name="add" size={16} color={colors.text} />
-                        </TouchableOpacity>
+                        <CountStepper
+                          value={deadlineMonthDay}
+                          onChange={n => setDeadlineMonthDay(n ?? 1)}
+                          min={1}
+                          max={31}
+                          format={ordinal}
+                          label="Day of month"
+                        />
                       </View>
                     )}
                   </>
@@ -2804,7 +2790,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="time-outline"
               label="Time of day"
-              hint="Hold it back until a part of the day"
+              hint="Hold it back until a part of the day."
               value={timeOfDaySummary}
               expanded={showTimeOfDay}
               onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
@@ -2844,7 +2830,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="timer-outline"
               label="Time window"
-              hint="Only active for part of the day, then expires"
+              hint="Only active for part of the day, then expires."
               value={timeWindowSummary}
               expanded={showTimeWindow}
               onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
@@ -2881,24 +2867,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   </TouchableOpacity>
                 </View>
                 {windowPickerMode !== 'none' && (
-                  <>
-                    <DateTimePicker
-                      value={windowPickerDate}
-                      mode="time"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(_e, d) => d && setWindowPickerDate(d)}
-                      themeVariant={isDark ? 'dark' : 'light'}
-                      style={styles.windowPickerWidget}
-                    />
-                    <View style={styles.pickerButtons}>
-                      <TouchableOpacity style={styles.pickerBtn} onPress={() => setWindowPickerMode('none')}>
-                        <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmWindowPicker}>
-                        <Text style={[styles.pickerBtnText, { color: colors.onAccent }]}>Set</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
+                  <InlineTimePicker
+                    value={windowPickerDate}
+                    onChange={setWindowPickerDate}
+                    onCancel={() => setWindowPickerMode('none')}
+                    onConfirm={confirmWindowPicker}
+                  />
                 )}
               </>
             )}
@@ -2973,7 +2947,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   : undefined
               }
               caption={reminderNudge
-                ? `Actually sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)} — moved past ${reminderNudge.meetingTitle ? `"${reminderNudge.meetingTitle}"` : 'a calendar event'}`
+                ? `Actually sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)}, moved past ${reminderNudge.meetingTitle ? `"${reminderNudge.meetingTitle}"` : 'a calendar event'}`
                 : undefined}
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTouched(true); } : undefined}
@@ -2989,7 +2963,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="repeat"
               label="Repeat"
-              hint="Come back on a schedule after each completion"
+              hint="Come back on a schedule after each completion."
               // The picker has no read-back line of its own — this row, sitting
               // directly above it, is where the whole rule reads as a sentence.
               value={recurrenceType !== 'none' ? describeRecurrence({
@@ -3047,7 +3021,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <EditorRow
                   icon="cube-outline"
                   label="Supply"
-                  hint="Count down a stock of something each time this is done, and get a task to order more"
+                  hint="Count down a stock of something each time this is done, and get a task to order more."
                   value={supplyCount !== null ? describeSupply({
                     supplyCount, supplyUnit, supplyRefillCount, supplyReorderAt,
                     supplyLeadDays, supplyDeclinedAtCount: null, supplyGroceryItemId,
@@ -3128,7 +3102,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           />
                         </View>
                         <Text style={styles.supplyFieldHint}>
-                          How many arrive when you restock. Fills in the answer when you tick the order task off.
+                          How many arrive when you restock. Fills in the answer when you check the order task off.
                         </Text>
 
                         <View style={styles.supplyFieldRow}>
@@ -3161,14 +3135,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         </View>
                         <Text style={styles.supplyFieldHint}>
                           {supplyPreview?.orderBy
-                            ? `How long it takes to arrive, so the order goes in by ${format(supplyPreview.orderBy, 'd MMM')}.`
+                            ? `How long it takes to arrive, so the order goes in by ${format(supplyPreview.orderBy, 'MMM d')}.`
                             : 'How long it takes to arrive, so the order goes in early enough to get here in time.'}
                         </Text>
 
                         {kitchenEnabled && (
                           <CollapsibleField
                             label="Stocked from"
-                            hint="Put this on the shopping list instead of adding a task to order it"
+                            hint="Put this on the shopping list instead of adding a task to order it."
                             summary={groceryItems.find(i => i.id === supplyGroceryItemId)?.name}
                             emptySummary="Not from groceries"
                             expanded={showSupplySource}
@@ -3241,7 +3215,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="hourglass-outline"
               label="Waiting on"
-              hint="Stay hidden until another task is done"
+              hint="Stay hidden until another task is done."
               value={
                 blockerTask
                   ? displayTitleFor(blockerTask)
@@ -3312,7 +3286,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="hand-left-outline"
               label="Blocks"
-              hint="Keep other tasks hidden until this one is done"
+              hint="Keep other tasks hidden until this one is done."
               value={describeBlocks(blocksTitles)}
               // Unfolds in place rather than opening the picker: the row can
               // hold several tasks, and the list is both what it says and
@@ -3362,7 +3336,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="add-circle-outline"
               label="Extra task"
-              hint="Add a one-off task every few times you complete this one"
+              hint="Add a one-off task every few times you complete this one."
               // The count alone, not the count and the title: the pair
               // truncates at this width, and the title is right underneath
               // once the row is open. Same call Daily target makes.
@@ -3455,7 +3429,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     <EditorRow
                       icon="options-outline"
                       label="Details"
-                      hint="Notes, category, priority and a checklist for the task this adds"
+                      hint="Notes, category, priority and a checklist for the task this adds."
                       value={describeExtraTaskDraft(
                         extraTaskDraft,
                         extraTaskDraft?.category ? categoryLabel(extraTaskDraft.category, categories) : null,
@@ -3619,7 +3593,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onChangeText={setNewTag}
                   onSubmitEditing={addTagFromInput}
                   onBlur={addTagFromInput}
-                  placeholder="tag name"
+                  placeholder="Tag name"
                   placeholderTextColor={colors.textTertiary}
                   returnKeyType="done"
                   autoCapitalize="none"
@@ -3655,7 +3629,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 summary={personIds.length > 0
                   ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
                   : undefined}
-                hint="Who this is with. Ticking it off adds it to their history."
+                hint="Who this is with. Checking it off adds it to their history."
                 expanded={fieldOpen('people')}
                 onToggle={() => toggleField('people')}
               >
@@ -3962,7 +3936,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="link-outline"
               label="Link"
-              hint="Open an app or link from the task"
+              hint="Open an app or link from the task."
               value={
                 KNOWN_LINK_APPS.find(app => app.scheme === linkUrl)?.name
                   ?? (linkUrl ?? undefined)
@@ -4004,7 +3978,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     onChangeText={setCustomLinkText}
                     onSubmitEditing={commitCustomLink}
                     onBlur={commitCustomLink}
-                    placeholder="https://... or app://"
+                    placeholder="e.g. https://... or app://"
                     placeholderTextColor={colors.textTertiary}
                     keyboardType="url"
                     autoCapitalize="none"
@@ -4025,7 +3999,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="call-outline"
               label="Phone"
-              hint="Call or text this number straight from the task row"
+              hint="Call or text this number straight from the task row."
               value={phoneNumber ?? undefined}
               expanded={showPhoneField}
               onPress={() => {
@@ -4075,7 +4049,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="mail-outline"
               label="Email"
-              hint="Compose an email to this address straight from the task row"
+              hint="Compose an email to this address straight from the task row."
               value={emailAddress ?? undefined}
               expanded={showEmailField}
               onPress={() => {
@@ -4168,23 +4142,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 </TouchableOpacity>
                 {streakEditorOpen && (
                   <View style={styles.intervalRow}>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setStreakDraft(d => Math.max(0, d - 1))}
-                      accessibilityRole="button"
-                      accessibilityLabel="Decrease streak count"
-                    >
-                      <Ionicons name="remove" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.intervalValue}>{streakDraft}</Text>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setStreakDraft(d => d + 1)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Increase streak count"
-                    >
-                      <Ionicons name="add" size={16} color={colors.text} />
-                    </TouchableOpacity>
+                    <CountStepper
+                      value={streakDraft}
+                      onChange={n => setStreakDraft(n ?? 0)}
+                      min={0}
+                      max={MAX_STREAK_COUNT}
+                      label="Streak count"
+                    />
                     <Text style={styles.intervalLabel}>day{streakDraft === 1 ? '' : 's'}</Text>
                     <TouchableOpacity
                       style={[styles.streakApplyBtn, streakDraft === task.streakCount && styles.streakApplyBtnDisabled]}
@@ -4581,17 +4545,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.accent,
     paddingVertical: 4,
   },
-  windowPickerWidget: { height: 180 },
-  pickerButtons: {
-    flexDirection: 'row', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
-  },
-  pickerBtn: {
-    flex: 1, paddingVertical: 11, borderRadius: radius.md,
-    alignItems: 'center', backgroundColor: colors.bgTertiary,
-  },
-  pickerBtnPrimary: { backgroundColor: colors.accent },
-  pickerBtnText: { fontSize: font.md, fontWeight: '600' },
   optionsCard: {
     marginHorizontal: spacing.md, marginBottom: spacing.lg,
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
@@ -4623,14 +4576,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   seriesRepeatHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
-  },
-  intervalBtn: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center',
-  },
-  intervalValue: {
-    color: colors.text, fontSize: font.md, fontWeight: '600',
-    minWidth: 24, textAlign: 'center',
   },
   streakApplyBtn: {
     marginLeft: 'auto', paddingHorizontal: 14, paddingVertical: 7,

@@ -181,7 +181,7 @@ export function ListBulkBar({
       {panel === 'category' && category && (
         <View style={styles.subPanel}>
           <View style={styles.subHeader}>
-            <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back">
+            <TouchableOpacity onPress={goBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back to bulk actions">
               <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
             <Text style={styles.subTitle}>{category.title}</Text>

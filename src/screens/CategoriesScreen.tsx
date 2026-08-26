@@ -171,6 +171,7 @@ export function CategoriesScreen() {
       <QuickAddNameSheet
         visible={quickAddVisible}
         placeholder="New category…"
+        noun="category"
         withEmoji
         moreLabel="More details"
         onSubmit={createCategory}

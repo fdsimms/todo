@@ -314,9 +314,8 @@ export function NotificationSettings() {
           <View style={styles.sep} />
           <SettingsRow
             icon="speedometer-outline"
-            label="Match my awake hours"
-            hint="Sets this to the mirror of Awake from/until, in Day & time"
-            value="Use"
+            label="Set from awake hours"
+            hint="Makes quiet hours run from Awake until to Awake from, as set in Day & time."
             onPress={matchAwakeHours}
           />
         </>

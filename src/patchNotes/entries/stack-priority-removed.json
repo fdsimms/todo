@@ -1,4 +1,4 @@
 {
-  "message": "Removed the Priority field from stacks — it never affected ordering, so it was misleading to set",
+  "message": "Removed the Priority field from stacks. It never affected ordering, so it was misleading to set",
   "date": "2026-08-05"
 }

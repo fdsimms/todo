@@ -246,7 +246,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
       <Text style={styles.finishedTitle}>Session done</Text>
       <Text style={styles.finishedSub}>
         {session.completedTaskIds.length === 0
-          ? `You worked through ${formatDuration(totals.workMinutes)} of plan. Nothing was ticked off.`
+          ? `You worked through ${formatDuration(totals.workMinutes)} of the plan. Nothing was checked off.`
           : `${session.completedTaskIds.length} task${session.completedTaskIds.length === 1 ? '' : 's'} done, out of ${totals.taskCount} planned.`}
       </Text>
       {session.completedTaskIds.length > 0 && (

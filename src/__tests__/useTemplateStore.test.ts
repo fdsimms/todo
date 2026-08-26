@@ -1023,7 +1023,7 @@ describe('checkScheduledTemplates', () => {
   it('names the run with its own date, so two firings are told apart', () => {
     seedDue();
     useTemplateStore.getState().checkScheduledTemplates();
-    expect(mockCreateGroup).toHaveBeenCalledWith('Sunday reset · 23 Aug', null);
+    expect(mockCreateGroup).toHaveBeenCalledWith('Sunday reset · Aug 23', null);
   });
 
   it('records the period so a second launch the same week does nothing', () => {

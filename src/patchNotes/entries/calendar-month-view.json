@@ -1,4 +1,4 @@
 {
-  "message": "A Calendar screen in the side menu shows a month at a time. Each day carries a dot for what's due, what has a deadline, and what comes back from being deferred that day; tap a day to see its tasks. Repeating tasks are drawn on the days they'll land on even though those occurrences don't exist yet — hollow dots, listed under \"Expected\", since they're created when the current occurrence is completed",
+  "message": "A Calendar screen in the side menu shows a month at a time. Each day carries a dot for what's due, what has a deadline, and what comes back from being deferred that day; tap a day to see its tasks. Repeating tasks are drawn on the days they'll land on even though those occurrences don't exist yet: hollow dots, listed under \"Expected\", since they're created when the current occurrence is completed",
   "date": "2026-08-13"
 }

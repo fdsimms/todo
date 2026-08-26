@@ -129,7 +129,7 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
           <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
-            <Text style={styles.headerTitle}>Break It Up</Text>
+            <Text style={styles.headerTitle}>Break it up</Text>
           </View>
           <SheetHeaderButton
             label={acceptedCount > 0 ? `Add ${acceptedCount}` : 'Add'}

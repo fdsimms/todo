@@ -26,6 +26,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { Priority, TemplateAnchor, TemplateItem } from '../types';
 import { PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { SegmentedControl } from './SegmentedControl';
+import { SheetScrim } from './SheetScrim';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 
 /** Same short labels the main quick add uses, so the two priority rows read alike. */
@@ -200,7 +201,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <SheetScrim onPress={() => dismiss()} label="Close without adding" />
       <View style={styles.centeredContainer} pointerEvents="box-none">
         <Animated.View
           style={[
@@ -333,7 +334,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
           {activePanel === 'when' && (
             <View style={styles.panel}>
               <Text style={styles.panelHint}>
-                Template items have no fixed date — they're offset from a date you pick when applying the template.
+                Template items have no fixed date. They're offset from a date you pick when applying the template.
               </Text>
               {/* One question — what the offset counts from — even though it
                   reads off two pieces of state, so it's one track. "No date"

@@ -31,6 +31,7 @@ import { mergeRanges } from '../utils/ranges';
 import { formatTaskDate } from '../utils/dateUtils';
 import { format } from 'date-fns/format';
 import { TaskCheckbox } from './TaskCheckbox';
+import { SheetScrim } from './SheetScrim';
 import { haptics } from '../utils/haptics';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import type { Task } from '../types';
@@ -297,13 +298,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity
-        style={StyleSheet.absoluteFill}
-        activeOpacity={1}
-        onPress={() => dismiss()}
-        accessibilityRole="button"
-        accessibilityLabel="Close quick search"
-      />
+      <SheetScrim onPress={() => dismiss()} label="Close quick search" />
 
       <View style={[styles.topContainer, { paddingTop: insets.top + spacing.md }]} pointerEvents="box-none">
         <Animated.View
@@ -316,7 +311,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
           <SearchField
             ref={inputRef}
             surface="sunken"
-            placeholder="Search todos…"
+            placeholder="Search tasks"
             value={query}
             onChangeText={setQuery}
             onSubmitEditing={handleOpenFull}

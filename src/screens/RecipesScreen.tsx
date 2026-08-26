@@ -867,7 +867,8 @@ export function RecipesScreen() {
 
       <QuickAddNameSheet
         visible={addVisible}
-        placeholder="Recipe name"
+        placeholder="New recipe…"
+        noun="recipe"
         onSubmit={createRecipe}
         onClose={() => { setAddVisible(false); pendingMealTypeRef.current = null; }}
       />

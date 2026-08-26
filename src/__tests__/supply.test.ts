@@ -383,8 +383,8 @@ describe('the wording', () => {
   it('dates the run-out absolutely, never as "Today"', () => {
     const thisYear = new Date();
     thisYear.setMonth(10, 12);
-    expect(describeSupplyRunOut(thisYear)).toBe('Runs out 12 Nov');
-    expect(describeSupplyRunOut(new Date('2099-11-12T12:00:00'))).toBe('Runs out 12 Nov 2099');
+    expect(describeSupplyRunOut(thisYear)).toBe('Runs out Nov 12');
+    expect(describeSupplyRunOut(new Date('2099-11-12T12:00:00'))).toBe('Runs out Nov 12, 2099');
   });
 
   it('names the unit in the reorder task, and falls back to naming the task', () => {

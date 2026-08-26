@@ -700,7 +700,7 @@ export function GroceryItemSheet({
       selected: item.productStrict,
       accessibilityLabel: item.productStrict
         ? `Only ${wantedProduct}, on. Stores carrying a different one don’t count as having this. Tap to turn off.`
-        : `Only ${wantedProduct} — count only stores recorded as carrying it`,
+        : `Only ${wantedProduct}, off. Counts only stores recorded as carrying it. Tap to turn on.`,
       onPress: () => {
         haptics.tap();
         setProductStrict(item.id, !item.productStrict);
@@ -808,7 +808,7 @@ export function GroceryItemSheet({
       label: 'Opened',
       selected: opened,
       accessibilityLabel: opened
-        ? `Opened${item.openedAt ? ` ${format(new Date(item.openedAt), 'd MMM')}` : ''}. Tap to clear.`
+        ? `Opened${item.openedAt ? ` ${format(new Date(item.openedAt), 'MMM d')}` : ''}. Tap to clear.`
         : 'Opened, record that this has been opened',
       onPress: toggleOpened,
     },
@@ -1046,7 +1046,7 @@ export function GroceryItemSheet({
                     someone is about to rely on it. */}
                 <Text style={styles.hint}>
                   Only what you’ve marked here is left out. A store you haven’t
-                  marked still counts — shops carry several versions, so getting
+                  marked still counts: stores carry several versions, so getting
                   a different one somewhere isn’t knowing they haven’t got yours.
                 </Text>
               </View>
@@ -1081,7 +1081,7 @@ export function GroceryItemSheet({
                     : item.isStaple
                       ? 'Always have it'
                       : onHandFuture
-                        ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
+                        ? `Got it until ${format(new Date(item.onHandUntil!), 'MMM d')}`
                         : undefined
             }
             emptySummary="Automatic"
@@ -1118,14 +1118,14 @@ export function GroceryItemSheet({
             summary={
               // A frozen row never shows its stored expiresAt, which is the one
               // place a suspended date could still read as a live countdown —
-              // "17 Aug · 4 days past" on something in the freezer is the app
+              // "Aug 17 · 4 days past" on something in the freezer is the app
               // reporting a deadline it has itself stopped honouring.
               frozen
                 ? item.shelfLifeDays !== null
                   ? `Paused · keeps ${item.shelfLifeDays} ${item.shelfLifeDays === 1 ? 'day' : 'days'} once out`
                   : 'Paused'
                 : item.expiresAt
-                  ? `${format(dayKeyToDate(item.expiresAt), 'd MMM')} · ${describeExpiry(item.expiresAt)}`
+                  ? `${format(dayKeyToDate(item.expiresAt), 'MMM d')} · ${describeExpiry(item.expiresAt)}`
                   : item.shelfLifeDays !== null
                     ? `Keeps ${item.shelfLifeDays} ${item.shelfLifeDays === 1 ? 'day' : 'days'}`
                     : undefined
@@ -1427,8 +1427,8 @@ export function GroceryItemSheet({
           {!!alternativeNames && !featureHidden('itemChoices', simpleMode) && (
             <View style={styles.choiceBlock}>
               <Text style={styles.hint}>
-                Either/or with {alternativeNames}. Tick one at the store and the
-                rest come off the list.
+                Either/or with {alternativeNames}. Check one off at the store and
+                the rest come off the list.
               </Text>
               <InlineAction
                 label="Not an either/or"
@@ -1487,7 +1487,7 @@ export function GroceryItemSheet({
               }
               onBlur={() => commitPrice(priceKey)}
               onSubmitEditing={() => commitPrice(priceKey)}
-              placeholder={priceHint === null ? '0.00' : priceToInput(priceHint)}
+              placeholder={priceHint === null ? '0.00' : `e.g. ${priceToInput(priceHint)}`}
               placeholderTextColor={colors.textTertiary}
               keyboardType="number-pad"
               maxLength={PRICE_INPUT_MAX_LENGTH}
@@ -1650,7 +1650,7 @@ export function GroceryItemSheet({
               <View style={styles.actionBody}>
                 <Text style={styles.actionLabel}>Merge with another item</Text>
                 <Text style={styles.actionHint}>
-                  For a duplicate under a different name — combines the two into one.
+                  For a duplicate under a different name. Combines the two into one.
                 </Text>
               </View>
             </TouchableOpacity>

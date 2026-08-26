@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeBlurView } from './SafeBlurView';
+import { SheetScrim } from './SheetScrim';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { parseISO } from 'date-fns/parseISO';
@@ -184,7 +185,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
           />
           <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
         </Animated.View>
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+        <SheetScrim onPress={dismiss} />
 
         <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
           <View style={styles.handleArea} {...panResponder.panHandlers}>

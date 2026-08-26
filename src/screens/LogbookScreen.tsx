@@ -467,7 +467,7 @@ export function LogbookScreen() {
       {activeLens === 'cooking' && allKitchenEvents.length > 0 && (
         <SearchField
           style={styles.searchBar}
-          placeholder="Search cooking…"
+          placeholder="Search cooking"
           value={query}
           onChangeText={setQuery}
         />
@@ -477,7 +477,7 @@ export function LogbookScreen() {
         <>
           <SearchField
             style={styles.searchBar}
-            placeholder="Search logbook…"
+            placeholder="Search the Logbook"
             value={query}
             onChangeText={setQuery}
           />

@@ -1,4 +1,4 @@
 {
-  "message": "The app starts faster, especially with a long task history — reminders are now resynced in one batch instead of one slow call per task",
+  "message": "The app starts faster, especially with a long task history. Reminders are now resynced in one batch instead of one slow call per task",
   "date": "2026-08-05"
 }

@@ -292,7 +292,7 @@ export function FinishShoppingSheet({
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
+      'What you entered about this trip will be lost.',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: onClose },
@@ -457,7 +457,7 @@ export function FinishShoppingSheet({
             <View style={styles.emptyNote}>
               <Ionicons name="storefront-outline" size={iconSize.md} color={colors.textTertiary} />
               <Text style={styles.emptyText}>
-                No stores yet. Add one and this trip gets filed against it — after a trip or two,
+                No stores yet. Add one and this trip gets filed against it. After a trip or two,
                 the catalog can show you what each store carries.
               </Text>
             </View>
@@ -471,7 +471,7 @@ export function FinishShoppingSheet({
               <Text style={styles.label}>ANYTHING THEY DIDN’T HAVE?</Text>
               <Text style={styles.hint}>
                 Optional. Check off what {selectedShop.name} didn’t stock. Everything here stays on your
-                list either way — this only records why.
+                list either way; this only records why.
               </Text>
 
               <View style={styles.card}>
@@ -584,7 +584,7 @@ export function FinishShoppingSheet({
               <Text style={styles.hint}>
                 Optional. Fill in what you remember and it shows next time this is on your list
                 {selectedShop ? `, along with what ${selectedShop.name} charges` : ''}. Skip any
-                you don’t know — the last price stays.
+                you don’t know and the last price stays.
               </Text>
 
               <View style={styles.card}>
@@ -617,7 +617,7 @@ export function FinishShoppingSheet({
                           // typed by hand.
                           keyboardType="number-pad"
                           returnKeyType="done"
-                          placeholder={known !== null ? priceToInput(known) : '0.00'}
+                          placeholder={known !== null ? `e.g. ${priceToInput(known)}` : '0.00'}
                           placeholderTextColor={colors.textTertiary}
                           maxLength={PRICE_INPUT_MAX_LENGTH}
                           accessibilityLabel={`Price for ${row.name}`}

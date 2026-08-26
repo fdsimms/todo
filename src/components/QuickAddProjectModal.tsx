@@ -15,6 +15,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { WhenPicker } from './WhenPicker';
 import { InlineAction } from './InlineAction';
+import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -201,7 +202,7 @@ export function QuickAddProjectModal({
         'Restore archived project?',
         `You archived "${archivedMatch.title}" a while back. Restore it instead of starting a new one? Its tasks and progress come back with it.`,
         [
-          { text: 'Create New', onPress: () => create(finalTitle) },
+          { text: 'Create new', onPress: () => create(finalTitle) },
           {
             text: 'Restore',
             style: 'default',
@@ -257,7 +258,7 @@ export function QuickAddProjectModal({
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <SheetScrim onPress={dismiss} label="Close without adding" />
       <View style={styles.centeredContainer} pointerEvents="box-none">
         <Animated.View
           style={[
@@ -391,7 +392,7 @@ export function QuickAddProjectModal({
                     onChangeText={setNewCategory}
                     onSubmitEditing={commitNewCategory}
                     onBlur={commitNewCategory}
-                    placeholder="category name"
+                    placeholder="Category name"
                     placeholderTextColor={colors.textTertiary}
                     returnKeyType="done"
                     autoCapitalize="words"

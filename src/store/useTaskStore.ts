@@ -3328,7 +3328,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: missed
         ? 'Task marked missed'
         : finishedRecurrence
-          ? 'Last one — this won\'t repeat again'
+          ? 'Last one, this won\'t repeat again'
           : 'Task completed',
       undo: () => {
         if (autoArchivedProjectId) {
@@ -5442,7 +5442,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useTaskGroupStore.getState().removeGroupRow(groupId);
     if (!group) return;
     get().setLastAction({
-      label: opts.cascade ? 'Group and its tasks deleted' : 'Group deleted',
+      label: opts.cascade ? 'Stack and its tasks deleted' : 'Stack deleted',
       destructive: true,
       undo: () => {
         useTaskGroupStore.getState().restoreGroup(group);

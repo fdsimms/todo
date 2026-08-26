@@ -2753,7 +2753,7 @@ export function TodayScreen() {
       icon="rocket-outline"
       title="Welcome to your list"
       subtitle="Add your first task to get started"
-      actionLabel="Add a task"
+      actionLabel="New task"
       onAction={() => setQuickAddVisible(true)}
       bottomOffset={tabBarHeight}
     />
@@ -2972,7 +2972,7 @@ export function TodayScreen() {
           onPress: () => setSuggestedPinsVisible(true),
           active: pinnedTasks.length === 0,
           tint: 'orange' as const,
-          accessibilityLabel: 'Suggest pin tasks',
+          accessibilityLabel: 'Suggest tasks to pin',
         }]
       : []),
     // A focus session outlives the switch being flipped, so the way back into a
@@ -3204,18 +3204,18 @@ export function TodayScreen() {
                   icon="rocket-outline"
                   title="Welcome to your list"
                   subtitle="Add your first task to get started"
-                  actionLabel="Add a task"
+                  actionLabel="New task"
                   onAction={() => setQuickAddVisible(true)}
                   bottomOffset={tabBarHeight}
                 />
               ) : (
                 <EmptyState
                   icon="moon"
-                  title="Nothing deferred"
+                  title="Nothing for later"
                   subtitle={
                     filterHasReminder && deferredTasks.length > 0
                       ? 'No tasks match this filter'
-                      : 'Swipe a task right to defer it'
+                      : 'Swipe a task right and pick a later day to move it here.'
                   }
                   bottomOffset={tabBarHeight}
                 />
@@ -3422,8 +3422,8 @@ export function TodayScreen() {
                   'This task repeats. Apply this category change to just this task, or to this and all future occurrences?',
                   [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'This Task', onPress: () => commitDrop('occurrence') },
-                    { text: 'This and Future Tasks', onPress: () => commitDrop('series') },
+                    { text: 'This task', onPress: () => commitDrop('occurrence') },
+                    { text: 'This and future tasks', onPress: () => commitDrop('series') },
                   ],
                 );
                 return;
@@ -3507,7 +3507,7 @@ export function TodayScreen() {
                   icon="rocket-outline"
                   title="Welcome to your list"
                   subtitle="Add your first task to get started"
-                  actionLabel="Add a task"
+                  actionLabel="New task"
                   onAction={() => setQuickAddVisible(true)}
                   bottomOffset={tabBarHeight}
                 />
@@ -3518,7 +3518,7 @@ export function TodayScreen() {
                   subtitle={
                     filterHasReminder && unscheduledTasks.length > 0
                       ? 'No tasks match this filter'
-                      : "Tasks with no due date land here once they're organized"
+                      : 'Tasks with no date land here once they have a category, tag, or priority.'
                   }
                   bottomOffset={tabBarHeight}
                 />
@@ -3584,14 +3584,14 @@ export function TodayScreen() {
                   icon="rocket-outline"
                   title="Welcome to your list"
                   subtitle="Add your first task to get started"
-                  actionLabel="Add a task"
+                  actionLabel="New task"
                   onAction={() => setQuickAddVisible(true)}
                   bottomOffset={tabBarHeight}
                 />
               ) : (
                 <EmptyState
                   icon="file-tray-outline"
-                  title="Inbox zero"
+                  title="Nothing in the Inbox"
                   subtitle={
                     filterHasReminder && inboxTasks.length > 0
                       ? 'No tasks match this filter'

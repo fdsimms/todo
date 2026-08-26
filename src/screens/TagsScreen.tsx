@@ -190,7 +190,7 @@ export function TagsScreen() {
   const handleDeleteTag = (tag: string) => {
     haptics.warning();
     confirmDelete({
-      title: 'Delete Tag',
+      title: 'Delete tag',
       message: `Remove "${tag}" from all tasks?`,
       onConfirm: () => {
         animateLayout();
@@ -271,6 +271,7 @@ export function TagsScreen() {
         <QuickAddNameSheet
           visible={quickAddVisible}
           placeholder="New tag…"
+          noun="tag"
           autoCapitalize="none"
           onSubmit={handleAddTag}
           onClose={() => setQuickAddVisible(false)}
@@ -346,7 +347,7 @@ export function TagsScreen() {
                 }
                 ListFooterComponentStyle={tagTasks.length === 0 ? undefined : styles.listFooterCell}
                 ListEmptyComponent={
-                  <EmptyState icon="pricetag-outline" title="No active tasks" subtitle="No active tasks with this tag" />
+                  <EmptyState icon="pricetag-outline" title="No active tasks" subtitle="Tasks carrying this tag show up here. Completed ones are in the Logbook." />
                 }
               />
             </PaintSelectionProvider>

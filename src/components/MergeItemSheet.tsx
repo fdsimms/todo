@@ -133,7 +133,7 @@ export function MergeItemSheet({ visible, itemId, onClose, onMerged }: Props) {
         {picked ? (
           <View style={styles.body}>
             <Text style={styles.caption}>
-              These are the same thing. Pick which one to keep — the other’s history folds into
+              These are the same thing. Pick which one to keep: the other’s history folds into
               it, and it’s deleted.
             </Text>
 

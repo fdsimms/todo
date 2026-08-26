@@ -286,8 +286,8 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   pantryCheck: {
     kind: 'pantryCheck',
     label: 'Pantry checks',
-    onHint: 'Adds a task when the app stops being sure you still have something',
-    offHint: 'No task when the app stops being sure you still have something',
+    onHint: 'Adds a task to check whether you still have something once its usual shelf life has passed',
+    offHint: 'No task to check whether you still have something',
     icon: 'help-circle-outline',
     sourced: true,
     categorized: true,

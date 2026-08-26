@@ -25,6 +25,7 @@ import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
 import { dayKeyOf, getLogicalNow } from '../utils/dateUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetScrim } from './SheetScrim';
 
 interface Props {
   visible: boolean;
@@ -172,7 +173,7 @@ export function CalendarPicker({
           style={[StyleSheet.absoluteFill, styles.dim, { opacity: enterAnim }]}
           pointerEvents="none"
         />
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
+        <SheetScrim onPress={onCancel} />
         <Animated.View style={[styles.card, { opacity: enterAnim, transform: [{ scale: cardScale }] }]}>
           {/* Header */}
           <View style={styles.header}>
@@ -189,7 +190,7 @@ export function CalendarPicker({
                 value={nlText}
                 onChangeText={onNlChange}
                 onSubmitEditing={confirm}
-                placeholder='Type a date, like "next monday" or "in 3 days"'
+                placeholder='e.g. "next monday", "in 3 days"'
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="none"

@@ -334,7 +334,7 @@ export function CalendarScreen() {
           <EmptyState
             icon="calendar-clear-outline"
             title="Nothing on this day"
-            subtitle="Tasks land here from a due date, a deadline, or the day they come back from being deferred."
+            subtitle="Tasks land here from a due date, a deadline, or the day a task moved to Later comes back."
             bottomOffset={tabBarHeight}
           />
         ) : (

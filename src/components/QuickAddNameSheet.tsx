@@ -13,6 +13,7 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
 import { EmojiPickerSheet } from './EmojiPickerSheet';
+import { SheetScrim } from './SheetScrim';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -20,6 +21,13 @@ import { haptics } from '../utils/haptics';
 interface Props {
   visible: boolean;
   placeholder: string;
+  /**
+   * What's being created, for the confirm button's spoken label: "Create tag".
+   * The placeholder is the visible answer to the same question, but it can't be
+   * read as the button's name, and a bare "Create" tells a screen reader
+   * nothing about which of these five sheets it landed in.
+   */
+  noun: string;
   /** Adds a small emoji button ahead of the name — for things that carry one. */
   withEmoji?: boolean;
   /** Label for the secondary "open the full editor" button; omit to hide it. */
@@ -39,7 +47,7 @@ interface Props {
  * that's just "a name, maybe an emoji" shares this one.
  */
 export function QuickAddNameSheet({
-  visible, placeholder, withEmoji, moreLabel, autoCapitalize = 'words',
+  visible, placeholder, noun, withEmoji, moreLabel, autoCapitalize = 'words',
   onSubmit, onOpenFull, onClose,
 }: Props) {
   const colors = useColors();
@@ -134,7 +142,7 @@ export function QuickAddNameSheet({
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <SheetScrim onPress={() => dismiss()} label="Close without adding" />
       <View style={styles.centeredContainer} pointerEvents="box-none">
         <Animated.View
           style={[
@@ -180,7 +188,7 @@ export function QuickAddNameSheet({
               onPress={handleAdd}
               disabled={!trimmedName}
               accessibilityRole="button"
-              accessibilityLabel="Create"
+              accessibilityLabel={`Create ${noun}`}
             >
               <Ionicons name="arrow-up" size={18} color={colors.onAccent} />
             </TouchableOpacity>

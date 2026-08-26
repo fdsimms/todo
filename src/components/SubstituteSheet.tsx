@@ -436,7 +436,7 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
               accessibilityLabel="Note about this substitute"
             />
             <Text style={styles.hint}>
-              Where a swap that only works sometimes says so — fine for frying, wrong for
+              Where a swap that only works sometimes says so: fine for frying, wrong for
               baking.
             </Text>
 
@@ -705,8 +705,8 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
                 "buttermilk → milk + lemon juice" is two items both required,
                 which is a recipe rather than a swap. */}
             <Text style={styles.footnote}>
-              Swaps needing a second ingredient aren&apos;t offered — those are a recipe, not a
-              substitute.
+              Swaps needing a second ingredient aren&apos;t offered, because those are a recipe,
+              not a substitute.
             </Text>
           </>
         )}

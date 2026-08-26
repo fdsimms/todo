@@ -1,4 +1,4 @@
 {
-  "message": "A recipe's cooking amount no longer sticks to a grocery item forever — it's cleared once that shop is done, so a hand-set quantity like \"2 bags\" is never silently overwritten",
+  "message": "A recipe's cooking amount no longer sticks to a grocery item forever. It's cleared once that shop is done, so a hand-set quantity like \"2 bags\" is never silently overwritten",
   "date": "2026-08-14"
 }

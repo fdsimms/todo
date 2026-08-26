@@ -1043,12 +1043,12 @@ export function resolveRecipeMealTypeDrop(
   return { mealTypeUpdates, settled: flattenRecipeMealTypeSections(groupRecipesByMealType(updatedRecipes)) };
 }
 
-/** "Cooked once" / "Cooked 4× · last on 12 Jul" — empty when never cooked. */
+/** "Cooked once" / "Cooked 4× · last on Jul 12" — empty when never cooked. */
 export function describeCookHistory(recipe: Recipe): string {
   if (recipe.cookCount === 0) return '';
   const times = recipe.cookCount === 1 ? 'once' : `${recipe.cookCount}×`;
   if (!recipe.lastCookedAt) return `Cooked ${times}`;
-  return `Cooked ${times} · last on ${format(new Date(recipe.lastCookedAt), 'd MMM')}`;
+  return `Cooked ${times} · last on ${format(new Date(recipe.lastCookedAt), 'MMM d')}`;
 }
 
 const DAY_MS = 86_400_000;

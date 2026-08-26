@@ -309,8 +309,8 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
             </View>
 
             <Text style={styles.footerNote}>
-              This records that the store has them, not that you’ve bought them there — so it
-              counts towards what a trip covers without pretending to be history. To take one back
+              This records that the store has them, not that you’ve bought them there, so it
+              counts toward what a trip covers without pretending to be history. To take one back
               off, open the item and use its store list.
             </Text>
           </ScrollView>
@@ -339,7 +339,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
               : `${total} ${total === 1 ? 'item' : 'items'} on your list.`}
             {' '}
             {selected.length > 1
-              ? `You'll get one task per store — ${selectedNames}.`
+              ? `You'll get one task per store: ${selectedNames}.`
               : startNow
                 ? 'Sets the store you’re at.'
                 : 'You’ll get a task on Today that opens straight back here.'}
@@ -355,7 +355,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
                   <>
                     <Text style={styles.suggestionTitle}>
                       You’ve got {next[0].itemIds.length} of these {total} at {next[0].shop.name}{' '}
-                      before — more than anywhere else.
+                      before, more than anywhere else.
                     </Text>
                     {next.length > 1 && (
                       <Text style={styles.suggestionSub}>
@@ -564,7 +564,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
                 />
               )}
               <Text style={styles.footerNote}>
-                These counts are only what you’ve bought or noted — a store may well carry more.
+                These counts are only what you’ve bought or noted. A store may well carry more.
               </Text>
             </View>
           )}

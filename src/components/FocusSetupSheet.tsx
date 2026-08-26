@@ -35,6 +35,7 @@ import {
   FOCUS_WINDOW_STEP,
 } from '../utils/focusSettings';
 import { CountStepper } from './CountStepper';
+import { SheetScrim } from './SheetScrim';
 import { calendarWindow } from '../utils/focusWindow';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -455,7 +456,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <SheetScrim onPress={dismiss} />
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
