@@ -1059,16 +1059,15 @@ export function BackfillScreen() {
                 <PressableScale
                   style={[styles.toggleButton, { backgroundColor: colors.accent }, !cadenceReady && styles.toggleButtonIdle]}
                   onPress={applyPersonCadence}
+                  disabled={!cadenceReady}
                   accessibilityRole="button"
                   accessibilityState={{ disabled: !cadenceReady }}
                   accessibilityLabel={cadenceReady
                     ? `Set a reminder for every ${describeCadence(cadenceDays).toLowerCase()}`
-                    : 'Pick how long first'}
+                    : 'Pick how long before a reminder first'}
                 >
                   <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>
-                    {cadenceReady ? 'Set reminder' : 'Pick how long first'}
-                  </Text>
+                  <Text style={styles.toggleButtonText}>Set reminder</Text>
                 </PressableScale>
               </View>
             )}
@@ -1088,6 +1087,7 @@ export function BackfillScreen() {
                 <PressableScale
                   style={[styles.toggleButton, { backgroundColor: colors.accent }, !askAboutReady && styles.toggleButtonIdle]}
                   onPress={applyAskAbout}
+                  disabled={!askAboutReady}
                   accessibilityRole="button"
                   accessibilityState={{ disabled: !askAboutReady }}
                   accessibilityLabel={`Save something to ask ${displayNameOf(currentPerson)} about`}
