@@ -28,6 +28,7 @@ import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
+import { ProjectTaskSuggestionsSheet } from '../components/ProjectTaskSuggestionsSheet';
 import { EmptyState } from '../components/EmptyState';
 import { ProjectDecisions } from '../components/ProjectDecisions';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
@@ -67,6 +68,7 @@ export function ProjectDetailScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
 
   const projects = useProjectStore(useShallow(s => s.projects));
   const allTasks = useTaskStore(s => s.tasks);
@@ -91,6 +93,7 @@ export function ProjectDetailScreen() {
   const [draggingSubtask, setDraggingSubtask] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
+  const [suggestionsVisible, setSuggestionsVisible] = useState(false);
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
@@ -306,13 +309,25 @@ export function ProjectDetailScreen() {
           title={project?.title ?? ''}
           onBack={onClose}
           actions={
-            <TouchableOpacity
-              onPress={() => project && setEditingProject(project)}
-              accessibilityRole="button"
-              accessibilityLabel="Edit project"
-            >
-              <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
+            <View style={styles.detailHeaderActions}>
+              {!!anthropicApiKey && (
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); setSuggestionsVisible(true); }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Suggest tasks with AI"
+                >
+                  <Ionicons name="sparkles-outline" size={20} color={colors.purple} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => project && setEditingProject(project)}
+                accessibilityRole="button"
+                accessibilityLabel="Edit project"
+              >
+                <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
           }
         />
 
@@ -626,6 +641,15 @@ export function ProjectDetailScreen() {
           onClose={() => setEditingProject(null)}
         />
 
+        <ProjectTaskSuggestionsSheet
+          visible={suggestionsVisible}
+          projectId={project?.id ?? null}
+          projectTitle={project?.title ?? ''}
+          projectNotes={project?.notes ?? ''}
+          existingTitles={projectTasks.map(t => t.title)}
+          onClose={() => setSuggestionsVisible(false)}
+        />
+
         <DeliverablePromptQueue {...queueProps} />
 
         <TaskEditor
@@ -662,6 +686,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomColor: colors.separator,
   },
   headerSpacer: { width: 48 },
+  detailHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
   detailTitleText: {
     flex: 1,
     textAlign: 'center',

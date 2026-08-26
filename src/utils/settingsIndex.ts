@@ -157,6 +157,7 @@ export interface SettingsEntry {
 const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   taskBreakdown: ['claude', 'model', 'subtasks', 'steps', 'split', 'suggestions', 'postpone'],
   templateSuggestions: ['claude', 'model', 'checklist'],
+  projectTaskSuggestions: ['claude', 'model', 'checklist', 'fill', 'generate', 'description'],
   groceryAisles: ['claude', 'model', 'shopping'],
   recipeExtraction: ['claude', 'model', 'ingredients', 'paste', 'photo', 'link'],
   mealIdeas: ['claude', 'model', 'dinner', 'suggest', 'meal plan'],

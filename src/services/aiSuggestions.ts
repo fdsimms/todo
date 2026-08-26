@@ -192,6 +192,102 @@ export async function suggestTemplateItems(
   return result.slice(0, MAX_TEMPLATE_SUGGESTIONS);
 }
 
+export interface ProjectTaskSuggestion {
+  title: string;
+  notes: string;
+}
+
+const MIN_PROJECT_TASK_SUGGESTIONS = 4;
+const MAX_PROJECT_TASK_SUGGESTIONS = 8;
+/** Existing task titles sent for de-duplication context — a big project's whole history is more than the prompt needs. */
+const MAX_PROJECT_EXISTING_TITLES = 30;
+
+/**
+ * Ask the AI to draft the tasks a project needs, given its title and notes
+ * (the project's description) and what's already in it. Same shape as
+ * suggestTemplateItems — concrete, de-duplicated task titles (with an
+ * optional one-line note) that the user can accept or reject before they're
+ * added to the project.
+ */
+export async function suggestProjectTasks(
+  projectTitle: string,
+  projectNotes: string,
+  existingTitles: string[],
+): Promise<ProjectTaskSuggestion[]> {
+  const { apiKey, model } = requireFeature('projectTaskSuggestions');
+
+  const notes = projectNotes.trim();
+  const existing = existingTitles.slice(0, MAX_PROJECT_EXISTING_TITLES);
+  const existingPart = existing.length > 0
+    ? `The project already has these tasks — do NOT repeat or rephrase them:\n${existing.map(t => `- ${t}`).join('\n')}`
+    : 'The project has no tasks yet.';
+
+  const data = await callAnthropic({
+    max_tokens: 800,
+    tools: [{
+      name: 'suggest_tasks',
+      description: 'Return a list of suggested tasks for a project',
+      input_schema: {
+        type: 'object',
+        properties: {
+          tasks: {
+            type: 'array',
+            description: `Between ${MIN_PROJECT_TASK_SUGGESTIONS} and ${MAX_PROJECT_TASK_SUGGESTIONS} concrete tasks that would move this project forward.`,
+            items: {
+              type: 'object',
+              properties: {
+                title: {
+                  type: 'string',
+                  description: `A short, concrete, actionable task title (under ${TITLE_MAX_LENGTH} characters).`,
+                },
+                notes: {
+                  type: 'string',
+                  description: 'An optional one-line clarifying detail, or an empty string if none is needed.',
+                },
+              },
+              required: ['title', 'notes'],
+            },
+          },
+        },
+        required: ['tasks'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'suggest_tasks' },
+    messages: [{
+      role: 'user',
+      content: [
+        `Suggest the concrete tasks needed to complete a project titled "${projectTitle}".`,
+        notes ? `Description of the project:\n${notes}` : '',
+        `Each task should be a specific, actionable step someone would genuinely do to move this project forward — not a vague phase or milestone. Keep titles short and skip filler. Aim for ${MIN_PROJECT_TASK_SUGGESTIONS}–${MAX_PROJECT_TASK_SUGGESTIONS} tasks.`,
+        existingPart,
+      ].filter(Boolean).join('\n\n'),
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { tasks?: Array<{ title?: string; notes?: string }> } | undefined;
+  if (!input?.tasks) throw new Error('No suggestions returned');
+
+  // Same de-duplication as suggestTemplateItems: drop blanks, and anything
+  // colliding case-insensitively with an existing task or an earlier
+  // suggestion.
+  const existingLower = new Set(existing.map(t => t.trim().toLowerCase()));
+  const seen = new Set<string>();
+  const result: ProjectTaskSuggestion[] = [];
+  for (const t of input.tasks) {
+    const title = (t.title ?? '').trim().slice(0, TITLE_MAX_LENGTH);
+    if (!title) continue;
+    const key = title.toLowerCase();
+    if (existingLower.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    result.push({
+      title,
+      notes: (t.notes ?? '').trim(),
+    });
+  }
+  return result.slice(0, MAX_PROJECT_TASK_SUGGESTIONS);
+}
+
 export interface SubtaskSuggestion {
   title: string;
 }
