@@ -7619,6 +7619,59 @@ describe('bulkDefer', () => {
     useTaskStore.getState().bulkDefer(['a'], until);
     expect(dbBulkSetDefer).toHaveBeenCalledWith(['a'], until.toISOString());
   });
+
+  it('unpins a pinned task pushed to a different day', () => {
+    const until = new Date(2025, 5, 20);
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', pinned: true, dueDate: new Date(2025, 5, 10).toISOString() })],
+    });
+    useTaskStore.getState().bulkDefer(['a'], until);
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a'], false);
+  });
+
+  it('leaves an unpinned task alone', () => {
+    const until = new Date(2025, 5, 20);
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: false })] });
+    useTaskStore.getState().bulkDefer(['a'], until);
+    expect(dbBulkSetPinned).not.toHaveBeenCalled();
+  });
+});
+
+describe('bulkSetWhen', () => {
+  it('unpins a pinned task moved to a different day', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', pinned: true, dueDate: new Date(2025, 5, 10).toISOString() })],
+    });
+    useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 20), []);
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a'], false);
+  });
+
+  it('unpins a pinned task whose date is cleared', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', pinned: true, dueDate: new Date(2025, 5, 10).toISOString() })],
+    });
+    useTaskStore.getState().bulkSetWhen(['a'], null, []);
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a'], false);
+  });
+
+  it('leaves a pinned task alone when the day is unchanged', () => {
+    const sameDay = new Date(2025, 5, 10);
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', pinned: true, dueDate: sameDay.toISOString() })],
+    });
+    useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 10, 18), []);
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
+    expect(dbBulkSetPinned).not.toHaveBeenCalled();
+  });
+
+  it('leaves an unpinned task alone', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: false })] });
+    useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 20), []);
+    expect(dbBulkSetPinned).not.toHaveBeenCalled();
+  });
 });
 
 describe('bulkAddTags', () => {

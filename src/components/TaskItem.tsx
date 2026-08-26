@@ -2861,8 +2861,7 @@ export const TaskItem = React.memo(function TaskItem({
             const stored = task.dueDate ? getTaskDayStart(new Date(task.dueDate)) : null;
             const anchoredPush = anchored && picked !== null && stored !== null && picked > stored;
             const anchoredPull = anchored && picked !== null && stored !== null && picked < stored;
-            updateTask(
-              task.id,
+            const baseUpdates =
               anchoredPush && date
                 ? { deferUntil: date.toISOString(), timeSegments: segs }
                 : anchoredPull && date
@@ -2883,8 +2882,19 @@ export const TaskItem = React.memo(function TaskItem({
                 // sitting behind a date the user has just replaced. Writing
                 // dueDate with no anchor beside it is a deliberate schedule
                 // edit, and updateTask clears the grid's anchor on exactly that.
-                : { dueDate: date ? date.toISOString() : null, deferUntil: null, timeSegments: segs },
-            );
+                : { dueDate: date ? date.toISOString() : null, deferUntil: null, timeSegments: segs };
+            // Pinning is for today's block specifically — moving the task off
+            // the day it was sitting on means it no longer belongs there, so a
+            // real reschedule (not just a time-of-day tweak on the same day)
+            // drops the pin. Compared against the effective date, not the
+            // stored one, so a pinned recurring task's anchor doesn't read as
+            // "unchanged" when the visible day actually moved.
+            const previousDay = (() => {
+              const prev = getEffectiveTaskDate(task);
+              return prev ? getTaskDayStart(new Date(prev)).getTime() : null;
+            })();
+            const moved = task.pinned && (picked?.getTime() ?? null) !== previousDay;
+            updateTask(task.id, moved ? { ...baseUpdates, pinned: false } : baseUpdates);
             setLastAction({
               label: 'Task rescheduled',
               undo: () => updateTask(snapshot.id, snapshot),
@@ -2893,7 +2903,11 @@ export const TaskItem = React.memo(function TaskItem({
           }}
           onClear={() => {
             const snapshot = { ...task };
-            updateTask(task.id, { dueDate: null, timeSegments: [] });
+            updateTask(task.id, {
+              dueDate: null,
+              timeSegments: [],
+              ...(task.pinned ? { pinned: false } : {}),
+            });
             setLastAction({
               label: 'Task rescheduled',
               undo: () => updateTask(snapshot.id, snapshot),
