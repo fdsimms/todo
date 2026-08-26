@@ -122,7 +122,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskDraft: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
-  vacationPause: false,
+  vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
   timerElapsedSeconds: 0,
@@ -233,6 +233,14 @@ describe('eligibility', () => {
     ];
     const ctx = ctxFor(pool, { excludedCategories: new Set(['Routine']) });
     expect(suggestFocusTasks(pool, ctx)).toEqual(['deck']);
+  });
+
+  it('never offers a task flagged excludeFromSuggestions, even outside an opted-out category', () => {
+    const pool = [
+      makeTask({ id: 'quiet-read', category: 'Work', priority: 4, excludeFromSuggestions: true }),
+      makeTask({ id: 'deck', category: 'Work' }),
+    ];
+    expect(suggestFocusTasks(pool, ctxFor(pool))).toEqual(['deck']);
   });
 });
 

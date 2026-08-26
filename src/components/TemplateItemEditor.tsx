@@ -129,6 +129,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [vacationPause, setVacationPause] = useState(false);
+  const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
@@ -182,6 +183,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setEffort(item?.effort ?? draft?.effort ?? 0);
     setEstimatedMinutes(item?.estimatedMinutes ?? draft?.estimatedMinutes ?? null);
     setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
+    setExcludeFromSuggestions(item?.excludeFromSuggestions ?? draft?.excludeFromSuggestions ?? false);
     setRecurrenceType(item?.recurrenceType ?? draft?.recurrenceType ?? 'none');
     setRecurrenceInterval(item?.recurrenceInterval ?? draft?.recurrenceInterval ?? 1);
     setRecurrenceDays(item?.recurrenceDays ?? draft?.recurrenceDays ?? []);
@@ -300,6 +302,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       effort,
       estimatedMinutes,
       vacationPause,
+      excludeFromSuggestions,
       recurrenceType,
       recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
@@ -782,6 +785,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           onPress={() => { haptics.tap(); setOptional(!optional); }}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="switch"
+          accessibilityLabel="Optional"
           accessibilityState={{ checked: optional }}
         >
           <Ionicons name="help-circle-outline" size={18} color={optional ? colors.accent : colors.textSecondary} />
@@ -799,6 +803,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           onPress={() => { haptics.tap(); setVacationPause(!vacationPause); }}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="switch"
+          accessibilityLabel="Pause on vacation"
           accessibilityState={{ checked: vacationPause }}
         >
           <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
@@ -808,6 +813,24 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </View>
           <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
             <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+        <View style={styles.sep} />
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setExcludeFromSuggestions(!excludeFromSuggestions); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Skip in suggestions"
+          accessibilityState={{ checked: excludeFromSuggestions }}
+        >
+          <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Skip in suggestions</Text>
+            <Text style={styles.optionHint}>Keeps tasks created from this item out of suggested pins and focus sessions</Text>
+          </View>
+          <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
       </View>

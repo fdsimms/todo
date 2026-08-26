@@ -1178,6 +1178,17 @@ export interface Task {
 
   vacationPause: boolean;    // hide and protect streak while vacation mode is on
 
+  // Keep this task out of suggested pins (see suggestPinTasks) and suggested
+  // focus queues (see suggestFocusTasks). Only the suggesters honour it — the
+  // task stays visible everywhere and can still be pinned or queued by hand.
+  // Same naming convention and same mechanism as Category.excludeFromSuggestions,
+  // one level down: a task in an otherwise ordinary category that's still bad
+  // shortlist company (an open-ended "read more later", a standing chore that
+  // outranks nothing). The two aren't mutually exclusive — a task's own category
+  // being flagged already excludes it, and this flag reaches the tasks a whole
+  // category isn't the right unit for.
+  excludeFromSuggestions: boolean;
+
   // Hides the task from every list (Today, Later, etc.) indefinitely, unlike
   // vacationPause which only hides while vacation mode is on. Completion
   // history stays in SQLite untouched; unarchiving resets streakCount to 0
@@ -1416,6 +1427,11 @@ export interface TemplateItem {
   recurrenceCount: number | null;
 
   vacationPause: boolean;
+  // Seeds Task.excludeFromSuggestions on the task this item creates. Same
+  // parity as vacationPause above — a template item for a routine chore can
+  // start its instances out of the suggesters without a follow-up trip to
+  // the task's own editor.
+  excludeFromSuggestions: boolean;
   estimatedMinutes: number | null;
 
   // What the task created from this item asks for when it's completed, or null

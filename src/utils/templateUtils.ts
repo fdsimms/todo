@@ -55,6 +55,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     recurrenceFromCompletion: raw.recurrenceFromCompletion ?? false,
     recurrenceCount: raw.recurrenceCount ?? null,
     vacationPause: raw.vacationPause ?? false,
+    excludeFromSuggestions: raw.excludeFromSuggestions ?? false,
     estimatedMinutes: raw.estimatedMinutes ?? null,
     deliverableKind: raw.deliverableKind ?? null,
     chainEnabled: raw.chainEnabled ?? false,
@@ -171,6 +172,7 @@ export function buildDraftsFromTemplate(
       recurrenceFromCompletion: item.recurrenceFromCompletion,
       recurrenceCount: item.recurrenceCount,
       vacationPause: item.vacationPause,
+      excludeFromSuggestions: item.excludeFromSuggestions,
       estimatedMinutes: item.estimatedMinutes,
       // The question only — createTask never reads a draft's deliverableValue,
       // so an applied item always starts with the decision still to make.

@@ -1065,6 +1065,11 @@ export function initDatabase(): void {
     // as exactly the behaviour they already had — a reminder that tracks the
     // due date's own day.
     'ALTER TABLE tasks ADD COLUMN reminder_offset_days INTEGER',
+    // Per-task counterpart to categories.exclude_from_pin_suggestions — see
+    // Task.excludeFromSuggestions. Default 0 on every existing row, which
+    // reads as "not opted out", the state every task was in before this
+    // column existed.
+    'ALTER TABLE tasks ADD COLUMN exclude_from_suggestions INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1811,6 +1816,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     extraTaskTally: (row.extra_task_tally as number) ?? 0,
     previousExtraTaskTally: (row.previous_extra_task_tally as number) ?? 0,
     vacationPause: Boolean(row.vacation_pause),
+    excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
     timedMinutes: (row.timed_minutes as number | null) ?? null,
@@ -1869,8 +1875,8 @@ export function dbInsertTask(task: Task): void {
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
-      person_ids, waiting_on_person_id, reminder_offset_days
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1931,6 +1937,7 @@ export function dbInsertTask(task: Task): void {
       task.supplyGroceryItemId ?? null,
       JSON.stringify(task.personIds), task.waitingOnPersonId ?? null,
       task.reminderOffsetDays ?? null,
+      task.excludeFromSuggestions ? 1 : 0,
     ]
   );
 }
@@ -1955,7 +1962,7 @@ export function dbUpdateTask(task: Task): void {
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
-      person_ids=?, waiting_on_person_id=?, reminder_offset_days=?
+      person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2017,6 +2024,7 @@ export function dbUpdateTask(task: Task): void {
       task.supplyGroceryItemId ?? null,
       JSON.stringify(task.personIds), task.waitingOnPersonId ?? null,
       task.reminderOffsetDays ?? null,
+      task.excludeFromSuggestions ? 1 : 0,
       task.id,
     ]
   );

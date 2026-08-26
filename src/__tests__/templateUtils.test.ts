@@ -56,7 +56,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   recurrenceMonthDay: null,
   recurrenceFromCompletion: false,
   recurrenceCount: null,
-  vacationPause: false,
+  vacationPause: false, excludeFromSuggestions: false,
   estimatedMinutes: null,
   deliverableKind: null,
   chainEnabled: false,

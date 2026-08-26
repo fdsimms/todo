@@ -398,6 +398,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [durationUnit, setDurationUnit] = useState<'min' | 'hr'>('min');
   const [pinned, setPinned] = useState(false);
   const [vacationPause, setVacationPause] = useState(false);
+  const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [blockedById, setBlockedById] = useState<string | null>(null);
   const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
@@ -609,6 +610,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setChainIndex(task.chainIndex);
       setChainStepOnSchedule(task.chainStepOnSchedule ?? false);
       setVacationPause(task.vacationPause ?? false);
+      setExcludeFromSuggestions(task.excludeFromSuggestions ?? false);
       setShowStreak(task.showStreak ?? false);
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setLinkUrl(task.linkUrl ?? null);
@@ -637,6 +639,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTimedMinutes(initialDraft?.timedMinutes ?? null);
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems(initialDraft?.chainItems ?? []); setChainIndex(0);
       setVacationPause(false);
+      setExcludeFromSuggestions(false);
       setShowStreak(false);
       setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
@@ -717,6 +720,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainIndex: task?.chainIndex ?? 0,
       chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
+      excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
       showStreak: task?.showStreak ?? false,
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
@@ -971,6 +975,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainStepOnSchedule:
         chainEnabled && effectiveChainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
       vacationPause,
+      excludeFromSuggestions,
       // Only a recurring task has a streak to show, and the toggle is only
       // offered there — don't strand a stale `true` on a task that stopped
       // recurring, or the chip would be waiting if it ever recurs again.
@@ -1425,6 +1430,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, pinned, chainEnabled, chainItems, chainIndex, chainStepOnSchedule, vacationPause,
+      excludeFromSuggestions,
       showStreak,
       streakRequiresWindow,
       linkUrl,
@@ -3913,6 +3919,31 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </View>
               <View style={[styles.toggle, pinned && styles.toggleOn]}>
                 <View style={[styles.toggleKnob, pinned && styles.toggleKnobOn]} />
+              </View>
+            </TouchableOpacity>
+              </>
+            ),
+          },
+          {
+            key: 'excludeFromSuggestions', label: 'Skip in suggestions',
+            keywords: ['pin', 'focus', 'suggest', 'exclude', 'hide', 'shortlist'],
+            node: (
+              <>
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => { haptics.tap(); setExcludeFromSuggestions(v => !v); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityLabel="Skip in suggestions"
+              accessibilityState={{ checked: excludeFromSuggestions }}
+            >
+              <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Skip in suggestions</Text>
+                <Text style={styles.optionHint}>Keep this out of suggested pins and focus sessions</Text>
+              </View>
+              <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
+                <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
               </View>
             </TouchableOpacity>
               </>

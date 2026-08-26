@@ -2,7 +2,7 @@ import type { Task, Effort, Category } from '../types';
 import { EFFORT_MINUTES } from './effort';
 
 /** A field this screen can walk the task list and fill in, one task at a time. */
-export type BackfillFieldId = 'estimate' | 'priority' | 'category' | 'streak' | 'vacation' | 'reminder';
+export type BackfillFieldId = 'estimate' | 'priority' | 'category' | 'streak' | 'vacation' | 'reminder' | 'suggestions';
 
 export interface BackfillFieldDef {
   id: BackfillFieldId;
@@ -42,6 +42,11 @@ export const BACKFILL_FIELDS: BackfillFieldDef[] = [
     id: 'reminder',
     label: 'Reminder',
     hint: 'Whether a task with a due date sends a notification before it’s due.',
+  },
+  {
+    id: 'suggestions',
+    label: 'Skip in suggestions',
+    hint: 'Keeps this task out of suggested pins and focus sessions.',
   },
 ];
 
@@ -105,6 +110,14 @@ export function isFieldMissing(task: Task, fieldId: BackfillFieldId, categories?
       // dueDate has nothing to schedule the notification relative to (the
       // same reason WhenPicker's "before due date" mode is gated on one).
       return task.dueDate != null && task.reminderTime == null;
+    case 'suggestions':
+      if (task.excludeFromSuggestions) return false;
+      // Same gate the 'vacation' case above uses: a task in a category
+      // already flagged excludeFromSuggestions is already out of the
+      // suggesters (pinSuggest/focusSuggest check both flags), so asking to
+      // set this one too would be asking for a value that changes nothing.
+      if (task.category && categories?.some(c => c.name === task.category && c.excludeFromSuggestions)) return false;
+      return true;
   }
 }
 
@@ -139,7 +152,7 @@ export function backfillCandidates(
 
 /** How many live tasks are missing each field, for the field-picker step's counts. */
 export function backfillFieldCounts(tasks: Task[], categories: Category[] = []): Record<BackfillFieldId, number> {
-  const counts = { estimate: 0, priority: 0, category: 0, streak: 0, vacation: 0, reminder: 0 } as Record<BackfillFieldId, number>;
+  const counts = { estimate: 0, priority: 0, category: 0, streak: 0, vacation: 0, reminder: 0, suggestions: 0 } as Record<BackfillFieldId, number>;
   for (const t of tasks) {
     if (t.parentId || t.completed || t.archived) continue;
     for (const field of BACKFILL_FIELDS) {

@@ -245,9 +245,10 @@ export function scoreFocusTask(task: Task, listed: readonly Task[], ctx: FocusCo
  *
  * Opted-out categories (Routines, Errands, …) are real work but poor company
  * in a session — dropping them here rather than penalising them keeps the
- * setting meaning what it says, same as `pinSuggest.ts`'s `eligible`. Manually
- * queuing a task via `focusQueueFromPinned` is untouched, same reasoning as
- * manual pinning.
+ * setting meaning what it says, same as `pinSuggest.ts`'s `eligible`. A task
+ * can carry the same opt-out on its own (Task.excludeFromSuggestions), same
+ * reasoning as pinSuggest's. Manually queuing a task via
+ * `focusQueueFromPinned` is untouched, same reasoning as manual pinning.
  */
 function eligible(tasks: readonly Task[], ctx: FocusContext, exclude: Set<string>): Task[] {
   return tasks
@@ -256,6 +257,7 @@ function eligible(tasks: readonly Task[], ctx: FocusContext, exclude: Set<string
       !t.archived &&
       t.parentId === null &&
       !exclude.has(t.id) &&
+      !t.excludeFromSuggestions &&
       !(t.category !== null && ctx.excludedCategories.has(t.category)) &&
       !isBlocked(t, ctx.resolve)
     )

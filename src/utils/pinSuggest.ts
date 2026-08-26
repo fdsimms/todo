@@ -255,13 +255,16 @@ export function scoreTask(task: Task, listed: Task[], ctx: PinContext): number {
  *
  * Opted-out categories (Routines, Errands, …) are real work but poor company
  * on a shortlist — dropping them here rather than penalising them keeps the
- * setting meaning what it says. Manual pinning is untouched.
+ * setting meaning what it says. A task can carry the same opt-out on its own
+ * (Task.excludeFromSuggestions), for the one that's bad shortlist company
+ * despite an otherwise ordinary category. Manual pinning is untouched.
  */
 function eligible(tasks: Task[], ctx: PinContext, exclude: Set<string>): Task[] {
   return tasks
     .filter(t =>
       !t.pinned &&
       !exclude.has(t.id) &&
+      !t.excludeFromSuggestions &&
       !(t.category !== null && ctx.excludedCategories.has(t.category))
     )
     // Ties resolve by the user's own ordering, so the same board always

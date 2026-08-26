@@ -100,7 +100,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskDraft: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
-  vacationPause: false,
+  vacationPause: false, excludeFromSuggestions: false,
   archived: false,
   archivedAt: null,
   timerStartedAt: null,
