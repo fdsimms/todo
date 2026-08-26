@@ -130,7 +130,7 @@ describe('isFieldMissing', () => {
   });
 
   it('treats the active chain step\'s own estimate as not missing, even with no task-level estimate', () => {
-    // A recipe-backed "Cook X" step (or a meal-slot step with a remembered
+    // A recipe-backed "Make X" step (or a meal-slot step with a remembered
     // default) already has a real duration on chainItems — the backfill
     // wizard shouldn't ask for one it can already read.
     const task = {

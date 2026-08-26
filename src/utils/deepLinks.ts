@@ -153,7 +153,7 @@ export function isRecipesUrl(url: string): boolean {
 }
 
 // `dundundun://recipe?id=…` — a meal-slot task's own link once the slot holds
-// a recipe (see mealSlotTasks.recipeLinkUrl), so "Cook X" opens that recipe
+// a recipe (see mealSlotTasks.recipeLinkUrl), so "Make X" opens that recipe
 // directly rather than the meal plan day it's cooked from.
 const RECIPE_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?recipe\\/?(?:\\?(.*))?$`, 'i');
 

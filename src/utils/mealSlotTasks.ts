@@ -12,7 +12,7 @@ import type { ChainItem } from '../types';
  *
  * This is the generator `mealCook` grew into, and the fold is the point. A cook
  * task only ever existed for a meal that had already been chosen — plan a
- * recipe on Thursday, get "Cook X" on Thursday — so the day the plan was blank
+ * recipe on Thursday, get "Make X" on Thursday — so the day the plan was blank
  * was the day the task list said nothing at all. Which is the day you actually
  * need it: at noon with no answer, the app knew it had a meal planner, a recipe
  * box, a fridge and a ranked list of things to cook, and offered none of it
@@ -24,13 +24,13 @@ import type { ChainItem } from '../types';
  * | The slot holds | The chain |
  * |---|---|
  * | nothing | Choose → Prepare → Eat |
- * | a recipe | Cook X → Eat X |
+ * | a recipe | Make X → Eat X |
  * | a leftover, takeout, a typed answer | Eat X (no chain — one step) |
  *
  * **"Already chosen" is the same task with its first step gone**, not a
  * different task. That's why the table above is read on every reconcile and not
  * just at creation: planning dinner at four o'clock rewrites the row you're
- * looking at from "Choose dinner" to "Cook Chili", rather than deleting one
+ * looking at from "Choose dinner" to "Make Chili", rather than deleting one
  * task and writing another underneath it.
  *
  * **A chain is only rewritten while it hasn't been started** (`chainIndex ===
@@ -38,7 +38,7 @@ import type { ChainItem } from '../types';
  * are yours — a plan change mid-cook updates the title and the link and leaves
  * the steps alone. Rewriting them would have to remap the index onto a
  * different-length list, and there is no honest answer for what step 1 of
- * [Choose, Prepare, Eat] becomes in [Cook X, Eat X].
+ * [Choose, Prepare, Eat] becomes in [Make X, Eat X].
  *
  * Pure, like the four generator rule modules beside it: which slots qualify,
  * what the task says, and which fields the slot owns. The firing lives in
@@ -66,7 +66,7 @@ import type { ChainItem } from '../types';
  * Which time-of-day segment the slot's *last* chain step — the one that
  * actually eats the meal — hides behind. See `mealSlotStepTimeSegments`,
  * which is what every caller actually wants: an earlier step (Choose,
- * Prepare, Cook X) was never gated by this, and now nothing is.
+ * Prepare, Make X) was never gated by this, and now nothing is.
  *
  * **Every slot maps to no segment**, so no meal task hides for any part of
  * the day, reversing the original decision below. Breakfast, lunch
@@ -98,7 +98,7 @@ export const MEAL_SLOT_SEGMENTS: Record<MealSlot, TimeOfDay[]> = {
  * The time segment (if any) a specific step of a meal-slot chain should hide
  * behind. Only the step that finishes the chain — Eat, Eat X, or the
  * single-step Eat X for a slot with no chain at all — hides behind
- * `MEAL_SLOT_SEGMENTS`. Every earlier step (Choose, Prepare, Cook X) is
+ * `MEAL_SLOT_SEGMENTS`. Every earlier step (Choose, Prepare, Make X) is
  * visible from the start of the day: deciding or prepping a meal isn't a
  * thing that happens at mealtime, so hiding it there only cost the morning
  * you'd have wanted to decide in.
@@ -168,7 +168,7 @@ export function parseMealSlotSource(sourceId: string | null): { dayKey: string; 
  *
  * What reads it is the meal chip on a task row. An unanswered slot names its
  * meal in every step it has ("Choose lunch", "Prepare lunch", "Eat lunch"), but
- * the moment something is planned the title becomes the food — "Cook Peanut
+ * the moment something is planned the title becomes the food — "Make Peanut
  * Butter Tofu with Sriracha" — and a day's three of these sit together under
  * one category with nothing saying which is which.
  */
@@ -178,7 +178,7 @@ export function mealSlotOf(task: Pick<Task, 'generatedKind' | 'generatedSourceId
 
 /**
  * `dundundun://recipe?id=…` — a meal-slot task's own link once the slot holds
- * a recipe, so "Cook X" opens the recipe itself (ingredients, steps, Cook
+ * a recipe, so "Make X" opens the recipe itself (ingredients, steps, Cook
  * Mode) rather than the meal plan day it's cooked from. Parsed back out in
  * `deepLinks.ts` (`isRecipeUrl`/`recipeUrlId`), which is what routes it to
  * `resetToRecipeDetail`.
@@ -196,7 +196,7 @@ export function recipeLinkUrl(recipeId: string): string {
  * Three destinations, and which one applies is a fact about the slot rather
  * than about the step: an unanswered slot opens its day on the meal plan with
  * the picker already up on the right slot; an answered slot with a recipe to
- * cook opens the recipe itself, exactly what "Cook X" is asking you to look
+ * cook opens the recipe itself, exactly what "Make X" is asking you to look
  * at (until #1625 this went to the meal plan day instead, which named the
  * meal but not what was in it); a leftover, takeout, or typed answer has no
  * recipe to show, so it still opens the day.
@@ -239,7 +239,7 @@ function isAnswered(entry: MealPlanEntry | null): entry is MealPlanEntry {
  * `recipeMinutes` — the recipe's own `totalMinutes()` (prep + cook) — lands on
  * the Cook step alone. There is no separate Prepare step once a recipe is
  * chosen (that only exists in the unanswered [Choose, Prepare, Eat] chain, and
- * a generic "Prepare lunch" has no recipe to read a time from), so Cook X is
+ * a generic "Prepare lunch" has no recipe to read a time from), so Make X is
  * the one step standing in for the whole act of making the dish and gets the
  * whole number.
  *
@@ -274,7 +274,7 @@ export function mealSlotChain(
   // kept here to decide whether there is a step for making it. A leftover
   // points at the fridge, which is the opposite of a thing to cook.
   if (entry.recipeId && !entry.leftoverId) {
-    return [step('cook', `Cook ${entry.title}`, recipeMinutes), step('eat', eatStepTitle(entry.title))];
+    return [step('cook', `Make ${entry.title}`, recipeMinutes), step('eat', eatStepTitle(entry.title))];
   }
   return [step('eat', eatStepTitle(entry.title))];
 }

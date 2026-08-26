@@ -71,7 +71,7 @@ export const spawnSeed = {
   /** A subtask carried onto a fresh occurrence, keyed by the one it copies. */
   subtask: (newParentId: string, sourceSubtaskId: string) => `sub:${newParentId}:${sourceSubtaskId}`,
   /**
-   * A task the app generates unattended from a source row — "Cook X", "Use up
+   * A task the app generates unattended from a source row — "Make X", "Use up
    * X", a day of the weekly meal-plan nudge. Two devices that each reconcile
    * the same source before ever syncing compute the same id instead of two
    * rows for one source (#1751), the same failure `occurrence` above exists

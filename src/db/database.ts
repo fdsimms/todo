@@ -3583,7 +3583,7 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
  * One entry by id, straight from SQLite.
  *
  * The by-id read the range-scoped store otherwise has no way to do. Completing
- * a "Cook X" task has to stamp its meal cooked whatever week the meal plan
+ * a "Make X" task has to stamp its meal cooked whatever week the meal plan
  * screen happens to be showing — including never having been opened this
  * launch, which is the common case for a task ticked off on Today — and
  * `entries` holds only the loaded window. See cookTaskFor in useMealPlanStore.

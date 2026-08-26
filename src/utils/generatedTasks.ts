@@ -247,7 +247,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   mealSlot: {
     kind: 'mealSlot',
     label: 'Meal tasks',
-    onHint: 'Each meal you eat gets a task: what to cook, or what to decide',
+    onHint: 'Each meal you eat gets a task: what to make, or what to decide',
     offHint: 'Meals add no tasks',
     icon: 'restaurant-outline',
     // Its source id is a day and a slot, which names a square on the calendar

@@ -1543,7 +1543,7 @@ export function TodayScreen() {
 
   // The day's events and its uncooked-and-untasked meals, as rows in the list
   // (#1571). Each files under a category — the calendar's own, and the cook
-  // tasks' for meals, so a leftover sits with the "Cook X" it isn't one of —
+  // tasks' for meals, so a leftover sits with the "Make X" it isn't one of —
   // and inherits that section's place in the order, its collapse and its
   // focus. `minuteTick` is in the deps because both reads are against the
   // clock: an event drops when it ends and takes on the "Now" emphasis when it

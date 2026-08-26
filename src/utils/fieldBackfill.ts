@@ -79,7 +79,7 @@ export function isFieldMissing(task: Task, fieldId: BackfillFieldId, categories?
       // for, so these are excluded outright rather than asked at all.
       if (task.generatedKind === 'groceryUseUp' || task.generatedKind === 'leftoverUseUp') return false;
       // The step currently showing may already carry its own duration —
-      // a recipe-backed "Cook X" step gets one from the recipe (see
+      // a recipe-backed "Make X" step gets one from the recipe (see
       // mealSlotChain), and a meal-slot "Choose"/"Eat" step gets one from
       // mealSlotStepEstimates once the user has sized that step-type once.
       // Reading task.estimatedMinutes alone would flag both as missing

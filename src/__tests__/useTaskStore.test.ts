@@ -4493,7 +4493,7 @@ describe('checkMealSlotTasks', () => {
     useTaskStore.getState().checkMealSlotTasks();
 
     const friday = slotRows().find(t => t.generatedSourceId === '2026-08-25#dinner')!;
-    expect(friday.chainItems.map(c => c.title)).toEqual(['Cook Chili', 'Eat Chili']);
+    expect(friday.chainItems.map(c => c.title)).toEqual(['Make Chili', 'Eat Chili']);
     expect(friday.title).toBe('Chili');
     // And the nights around it are still the choosing question.
     expect(slotRows().find(t => t.generatedSourceId === '2026-08-24#dinner')!.title).toBe('Dinner');

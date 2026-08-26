@@ -133,7 +133,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         return;
       case 'pick-meal':
         // Same contract as 'ask': the tap opens a sheet instead of ticking
-        // anything. Picking a meal rewrites this row into "Cook X"/"Eat X" in
+        // anything. Picking a meal rewrites this row into "Make X"/"Eat X" in
         // place (see mealSlotDrift) rather than completing it.
         await haptics.tap();
         setShowMealPicker(true);

@@ -1743,7 +1743,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
       expect(source!.dayKey >= todayKey).toBe(true);
     });
     // A week's worth, not just today's: the days ahead are what show a planned
-    // meal saying "Cook X" before its day, and an unplanned one honestly saying
+    // meal saying "Make X" before its day, and an unplanned one honestly saying
     // it hasn't been decided. Both states in one screen is the seed's job.
     const days = new Set(mealTasks.map(t => parseMealSlotSource(t.generatedSourceId)!.dayKey));
     expect(days.size).toBeGreaterThan(1);
@@ -1758,8 +1758,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     )!;
     expect(dinner.chainEnabled).toBe(true);
     expect(dinner.chainItems.map(c => c.title))
-      .toEqual(['Cook Weeknight chicken stir-fry', 'Eat Weeknight chicken stir-fry']);
-    // Cook X's estimate is the recipe's own prep + cook time (stirFry: 15 + 20).
+      .toEqual(['Make Weeknight chicken stir-fry', 'Eat Weeknight chicken stir-fry']);
+    // Make X's estimate is the recipe's own prep + cook time (stirFry: 15 + 20).
     expect(dinner.chainItems.map(c => c.estimatedMinutes)).toEqual([35, null]);
     // Answered with a recipe, so its link opens that rather than the day.
     const stirFry = useRecipeStore.getState().recipes.find(r => r.name === 'Weeknight chicken stir-fry')!;

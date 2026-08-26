@@ -354,7 +354,7 @@ export function BackfillScreen() {
     // Choosing and eating a given meal take about the same time every day,
     // so a size given to "Choose breakfast" here is remembered under its
     // step id and carried onto every future "Choose breakfast" at creation
-    // — see mealSlotStepEstimates. A recipe-backed "Cook X" step already has
+    // — see mealSlotStepEstimates. A recipe-backed "Make X" step already has
     // its own evidence and never reaches isFieldMissing in the first place.
     if (active.id === 'estimate' && patch.estimatedMinutes != null) {
       const stepId = activeMealSlotStepId(currentTask);

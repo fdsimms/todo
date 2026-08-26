@@ -12,7 +12,7 @@ import { isDemoModeActive } from './demoState';
  * delete one, exactly as `deadlineCalendarSync.ts` does for a deadline.
  *
  * This is a *third* replica of a master that already has two: the entry is
- * the plan, `mealTasks.ts` projects it into a "Cook X" task, and this
+ * the plan, `mealTasks.ts` projects it into a "Make X" task, and this
  * projects it into an event. It invents no new rules — the entry owns the
  * title, the day and the slot, and nothing flows back.
  *
