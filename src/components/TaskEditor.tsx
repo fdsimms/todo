@@ -27,7 +27,6 @@ import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { EditorSheet } from './EditorSheet';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from './PinIcon';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { RemindMePicker } from './RemindMePicker';
 import { WhenPicker } from './WhenPicker';
 import { CalendarPicker } from './CalendarPicker';
@@ -111,6 +110,7 @@ import { displayTitleFor, isMissableMealPlanTask } from '../utils/visibilityUtil
 import { nextChainStepTitle } from '../utils/chain';
 import { RecurrencePicker } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
+import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { describeRecurrence } from '../utils/recurrenceLabels';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
@@ -2881,24 +2881,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   </TouchableOpacity>
                 </View>
                 {windowPickerMode !== 'none' && (
-                  <>
-                    <DateTimePicker
-                      value={windowPickerDate}
-                      mode="time"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(_e, d) => d && setWindowPickerDate(d)}
-                      themeVariant={isDark ? 'dark' : 'light'}
-                      style={styles.windowPickerWidget}
-                    />
-                    <View style={styles.pickerButtons}>
-                      <TouchableOpacity style={styles.pickerBtn} onPress={() => setWindowPickerMode('none')}>
-                        <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmWindowPicker}>
-                        <Text style={[styles.pickerBtnText, { color: colors.onAccent }]}>Set</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
+                  <InlineTimePicker
+                    value={windowPickerDate}
+                    onChange={setWindowPickerDate}
+                    onCancel={() => setWindowPickerMode('none')}
+                    onConfirm={confirmWindowPicker}
+                  />
                 )}
               </>
             )}
@@ -4581,17 +4569,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.accent,
     paddingVertical: 4,
   },
-  windowPickerWidget: { height: 180 },
-  pickerButtons: {
-    flexDirection: 'row', gap: spacing.sm,
-    paddingHorizontal: spacing.md, paddingBottom: spacing.md,
-  },
-  pickerBtn: {
-    flex: 1, paddingVertical: 11, borderRadius: radius.md,
-    alignItems: 'center', backgroundColor: colors.bgTertiary,
-  },
-  pickerBtnPrimary: { backgroundColor: colors.accent },
-  pickerBtnText: { fontSize: font.md, fontWeight: '600' },
   optionsCard: {
     marginHorizontal: spacing.md, marginBottom: spacing.lg,
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',

@@ -26,6 +26,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { EditorRow } from './EditorRow';
 import { InlineAction } from './InlineAction';
+import { SheetScrim } from './SheetScrim';
 import { haptics } from '../utils/haptics';
 
 const CHECKBOX_SIZE = 22;
@@ -254,7 +255,7 @@ export function CookRecapSheet({
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <SheetScrim onPress={dismiss} />
 
       <View style={styles.centeredContainer} pointerEvents="box-none">
         <Animated.View

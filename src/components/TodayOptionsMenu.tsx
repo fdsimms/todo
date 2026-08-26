@@ -12,6 +12,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, animation, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { SheetScrim } from './SheetScrim';
 
 interface Props {
   visible: boolean;
@@ -106,7 +107,7 @@ export function TodayOptionsMenu({
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
       <Animated.View style={[StyleSheet.absoluteFill, styles.backdropDim, { opacity: backdropOpacity }]} pointerEvents="none" />
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <SheetScrim onPress={dismiss} />
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.optionsCard}>

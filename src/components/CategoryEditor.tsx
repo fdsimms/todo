@@ -12,7 +12,6 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -35,6 +34,7 @@ import { dateToHHMM, hhmmToDate } from '../utils/clockTime';
 import { firstEmoji } from '../utils/emojiInput';
 import { sameTimeSegments } from '../utils/visibilityUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { InlineTimePicker } from '../screens/settings/InlineTimePicker';
 import type { TimeOfDay } from '../types';
 
 const DEFAULT_DAYS = [1, 2, 3, 4, 5];
@@ -355,23 +355,12 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
                   </TouchableOpacity>
                 </View>
                 {picker !== null && (
-                  <>
-                    <DateTimePicker
-                      value={pickerDate}
-                      mode="time"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      onChange={(_e, d) => d && setPickerDate(d)}
-                      themeVariant={isDark ? 'dark' : 'light'}
-                    />
-                    <View style={styles.pickerButtons}>
-                      <TouchableOpacity style={styles.pickerBtn} onPress={() => { animateLayout(); setPicker(null); }}>
-                        <Text style={[styles.pickerBtnText, { color: colors.textSecondary }]}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[styles.pickerBtn, styles.pickerBtnPrimary]} onPress={confirmPicker}>
-                        <Text style={[styles.pickerBtnText, { color: colors.onAccent }]}>Set</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
+                  <InlineTimePicker
+                    value={pickerDate}
+                    onChange={setPickerDate}
+                    onCancel={() => { animateLayout(); setPicker(null); }}
+                    onConfirm={confirmPicker}
+                  />
                 )}
                 {days.length === 0 && (
                   <Text style={styles.warningText}>Pick at least one day, or the schedule is dropped.</Text>
@@ -575,10 +564,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   timePillActive: { backgroundColor: colors.accentSubtle, borderColor: colors.accent },
   timePillLabel: { color: colors.textTertiary, fontSize: font.xs },
   timePillValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
-  pickerButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
-  pickerBtn: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.sm },
-  pickerBtnPrimary: { backgroundColor: colors.accent },
-  pickerBtnText: { fontSize: font.md, fontWeight: fontWeight.medium },
   warningText: { color: colors.orange, fontSize: font.xs },
   optionRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,

@@ -21,6 +21,7 @@ import { spacing, radius, font, fontWeight, border, animation, interaction, icon
 import { haptics } from '../utils/haptics';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetScrim } from './SheetScrim';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel, upcomingDays } from '../utils/mealPlan';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
@@ -186,7 +187,7 @@ export function PlanMealSheet({ visible, title, onPlan, onPlanned, onClose }: Pr
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={close} />
+      <SheetScrim onPress={close} />
 
       <Animated.View
         style={[

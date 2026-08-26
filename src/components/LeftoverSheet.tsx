@@ -31,6 +31,7 @@ import { CountStepper } from './CountStepper';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetActionRow } from './SheetActionRow';
 import { SegmentedControl } from './SegmentedControl';
+import { SheetScrim } from './SheetScrim';
 import {
   cleanLeftoverTitle,
   describeLeftover,
@@ -367,7 +368,7 @@ export function LeftoverSheet({
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
         style={[

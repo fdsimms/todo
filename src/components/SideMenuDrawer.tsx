@@ -4,7 +4,6 @@ import {
   Dimensions,
   Modal,
   PanResponder,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
+import { SheetScrim } from './SheetScrim';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -258,7 +258,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           />
           <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.backdrop }]} />
         </Animated.View>
-        <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
+        <SheetScrim onPress={onClose} label="Close the menu" />
 
         <Animated.View
           style={[

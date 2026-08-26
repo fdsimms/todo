@@ -50,6 +50,7 @@ import {
 import { WhenPicker } from './WhenPicker';
 import { EditorRow } from './EditorRow';
 import { PillGroup } from './PillGroup';
+import { SheetScrim } from './SheetScrim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import type { Task, TaskTemplate, TemplateContainer, TemplateItem, TemplateQuestion, Person } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
@@ -453,7 +454,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
         />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>

@@ -19,6 +19,7 @@ import { haptics } from '../utils/haptics';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
+import { SheetScrim } from './SheetScrim';
 import {
   describeFinishedWhen,
   describeFridgeHistory,
@@ -123,7 +124,7 @@ export function FridgeHistorySheet({ visible, leftovers, weekStartsOn, onOpen, o
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss()} />
+      <SheetScrim onPress={() => dismiss()} />
 
       <Animated.View
         style={[

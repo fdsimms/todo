@@ -43,6 +43,7 @@ import {
 } from '../utils/receiptMatch';
 import { formatPrice, typicalPriceFor } from '../utils/groceryPrice';
 import { ReceiptPricePairing } from './ReceiptPricePairing';
+import { EmptyState } from './EmptyState';
 import { autoPairing, pricesByItemId, type Pairing } from '../utils/pricePairing';
 import { formatScheduledDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
@@ -704,21 +705,13 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     if (receipt.lines.length === 0) {
       return (
         <View style={styles.empty}>
-          <Ionicons name="receipt-outline" size={iconSize.lg} color={colors.textTertiary} />
-          <Text style={styles.emptyTitle}>Nothing readable on that one</Text>
-          <Text style={styles.emptyText}>
-            Try again with the whole receipt in frame and more light on it. Nothing has been
-            changed {pantry ? 'in your pantry' : 'on your list'}.
-          </Text>
-          <TouchableOpacity
-            style={styles.retry}
-            activeOpacity={interaction.activeOpacity}
-            onPress={reset}
-            accessibilityRole="button"
-            accessibilityLabel="Try another photo"
-          >
-            <Text style={styles.retryText}>Try another photo</Text>
-          </TouchableOpacity>
+          <EmptyState
+            icon="receipt-outline"
+            title="Nothing readable on that one"
+            subtitle={`Try again with the whole receipt in frame and more light on it. Nothing has been changed ${pantry ? 'in your pantry' : 'on your list'}.`}
+            actionLabel="Try another photo"
+            onAction={reset}
+          />
         </View>
       );
     }
@@ -1028,21 +1021,8 @@ function makeStyles(colors: Colors) {
     loading: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
     loadingText: { color: colors.textSecondary, fontSize: font.sm },
     error: { color: colors.red, fontSize: font.sm },
-    empty: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
-    emptyTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
-    emptyText: {
-      color: colors.textTertiary,
-      fontSize: font.sm,
-      lineHeight: font.sm * 1.4,
-      textAlign: 'center',
-    },
-    retry: {
-      marginTop: spacing.sm,
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
-      borderRadius: radius.md,
-      backgroundColor: colors.accentSubtle,
-    },
-    retryText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.semibold },
+    // EmptyState brings its own centring, icon circle and type — this only
+    // has to keep it off the sheet's edges.
+    empty: { paddingHorizontal: spacing.md, paddingVertical: spacing.xl },
   });
 }

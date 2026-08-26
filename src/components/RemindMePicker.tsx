@@ -29,6 +29,7 @@ import { getLogicalNow, getReminderOffsetDate, describeReminderOffset } from '..
 import { isAlarmKitAvailable } from 'todo-alarmkit-bridge';
 import { SegmentedControl } from './SegmentedControl';
 import { CountStepper } from './CountStepper';
+import { SheetScrim } from './SheetScrim';
 import type { ReminderKind } from '../types';
 
 type Mode = 'date' | 'before';
@@ -155,7 +156,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
       onShow={() => setPickerReady(true)}
     >
       <View style={styles.backdrop}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
+        <SheetScrim onPress={onCancel} />
         <View style={styles.card}>
           <ScrollView
             showsVerticalScrollIndicator={false}

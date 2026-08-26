@@ -25,7 +25,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { ReorderableList } from './ReorderableList';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
-import { SegmentedControl } from './SegmentedControl';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { EmptyState } from './EmptyState';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { itemCountsByShop } from '../utils/groceryShops';
@@ -39,6 +39,12 @@ interface Props {
 }
 
 type Tab = 'aisles' | 'stores' | 'groupBy';
+
+const TAB_OPTIONS: SegmentOption<Tab>[] = [
+  { value: 'aisles', label: 'Aisles' },
+  { value: 'stores', label: 'Stores' },
+  { value: 'groupBy', label: 'Group by' },
+];
 
 /**
  * Where things are, and how the list itself is organized: the order you walk
@@ -210,33 +216,22 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
           <SheetHeaderButton label="Done" onPress={handleDone} minWidth={64} />
         </View>
 
+        {/* `surface="page"` because this sheet's root is `colors.bg`, the same
+            reason the Group by control below is wrapped in a card. */}
         <View style={styles.segments}>
-          {(['aisles', 'stores', 'groupBy'] as const).map(t => {
-            const active = t === tab;
-            const label = t === 'aisles' ? 'Aisles' : t === 'stores' ? 'Stores' : 'Group by';
-            return (
-              <TouchableOpacity
-                key={t}
-                style={[styles.segment, active && styles.segmentActive]}
-                activeOpacity={interaction.activeOpacity}
-                onPress={() => {
-                  haptics.tap();
-                  // Every tab shares the draft text, and the field that owns it
-                  // unmounts with the tab — so its onBlur never fires.
-                  setEditingAisle(null);
-                  setEditingShopId(null);
-                  setTab(t);
-                }}
-                accessibilityRole="button"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={label}
-              >
-                <Text style={[styles.segmentText, active && styles.segmentTextActive]}>
-                  {label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+          <SegmentedControl
+            label="List settings section"
+            value={tab}
+            onChange={t => {
+              // Every tab shares the draft text, and the field that owns it
+              // unmounts with the tab — so its onBlur never fires.
+              setEditingAisle(null);
+              setEditingShopId(null);
+              setTab(t);
+            }}
+            options={TAB_OPTIONS}
+            surface="page"
+          />
         </View>
 
         {tab === 'stores' ? (
@@ -633,24 +628,11 @@ function makeStyles(colors: Colors) {
       // style with no baseline compensation and the glyphs sit low.
       height: 22,
     },
+    // SegmentedControl brings its own track — this only positions it.
     segments: {
-      flexDirection: 'row',
-      gap: spacing.xs,
-      backgroundColor: colors.bgSecondary,
-      borderRadius: radius.md,
-      padding: 3,
       marginHorizontal: spacing.md,
       marginTop: spacing.md,
     },
-    segment: {
-      flex: 1,
-      alignItems: 'center',
-      paddingVertical: spacing.sm,
-      borderRadius: radius.sm,
-    },
-    segmentActive: { backgroundColor: colors.accent },
-    segmentText: { fontSize: font.sm, color: colors.textSecondary },
-    segmentTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
     rowCount: { fontSize: font.sm, color: colors.textTertiary },
     rowPinnedNote: { fontSize: font.xs, color: colors.textTertiary },
     footer: { marginTop: spacing.md },

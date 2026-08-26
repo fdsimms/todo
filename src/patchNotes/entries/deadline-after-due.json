@@ -1,4 +1,4 @@
 {
-  "message": "A repeating task's deadline can now fall after its date, not just before — e.g. due the 1st, has to clear by the 10th, every month",
+  "message": "A repeating task's deadline can now fall after its date, not just before: e.g. due the 1st, has to clear by the 10th, every month",
   "date": "2026-08-11"
 }

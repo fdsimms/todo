@@ -21,6 +21,7 @@ import {
   type Colors,
 } from '../theme';
 import { InlineAction } from './InlineAction';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { haptics } from '../utils/haptics';
 import { looksLikeBareUrl } from '../utils/recipeUtils';
 import { normalizeRecipeUrl } from '../utils/recipeUrl';
@@ -119,31 +120,15 @@ export function RecipeSourcePicker({
     onChangeMode('link');
   };
 
-  const renderTab = (value: RecipeInputMode, label: string, icon: React.ComponentProps<typeof Ionicons>['name']) => {
-    const active = mode === value;
-    return (
-      <TouchableOpacity
-        key={value}
-        style={[styles.tab, active && styles.tabActive]}
-        activeOpacity={interaction.activeOpacity}
-        onPress={() => {
-          if (active) return;
-          haptics.tap();
-          onChangeMode(value);
-        }}
-        accessibilityRole="tab"
-        accessibilityState={{ selected: active }}
-        accessibilityLabel={label}
-      >
-        <Ionicons
-          name={icon}
-          size={iconSize.sm}
-          color={active ? colors.onAccent : colors.textSecondary}
-        />
-        <Text style={[styles.tabText, active && styles.tabTextActive]}>{label}</Text>
-      </TouchableOpacity>
-    );
-  };
+  // Three fixed ways in, exactly one of them live — a SegmentedControl by the
+  // rule in that component's own doc comment. `surface="page"` because every
+  // caller renders this straight onto `colors.bg`, which is what the old
+  // hand-rolled pills were using a `bgSecondary` fill to work around.
+  const MODE_OPTIONS: SegmentOption<RecipeInputMode>[] = [
+    { value: 'paste', label: 'Paste', icon: 'clipboard-outline' },
+    { value: 'link', label: 'Link', icon: 'link-outline' },
+    { value: 'photo', label: 'Photo', icon: 'camera-outline' },
+  ];
 
   const renderPhotoButton = (
     source: RecipePhotoSource,
@@ -168,11 +153,13 @@ export function RecipeSourcePicker({
       <Text style={styles.intro}>{intro}</Text>
 
       {!photoOnly && (
-        <View style={styles.tabs}>
-          {renderTab('paste', 'Paste', 'clipboard-outline')}
-          {renderTab('link', 'Link', 'link-outline')}
-          {renderTab('photo', 'Photo', 'camera-outline')}
-        </View>
+        <SegmentedControl
+          label="How to add the recipe"
+          value={mode}
+          onChange={onChangeMode}
+          options={MODE_OPTIONS}
+          surface="page"
+        />
       )}
 
       {paste ? (
@@ -308,20 +295,6 @@ function makeStyles(colors: Colors) {
       lineHeight: font.xs * 1.4,
     },
     warningAction: { marginTop: spacing.xs },
-    tabs: { flexDirection: 'row', gap: spacing.xs },
-    tab: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: spacing.xs,
-      flex: 1,
-      paddingVertical: 8,
-      borderRadius: radius.full,
-      backgroundColor: colors.bgSecondary,
-    },
-    tabActive: { backgroundColor: colors.accent },
-    tabText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-    tabTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
     pasteInput: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.md,

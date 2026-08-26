@@ -32,6 +32,7 @@ import { describeLeftover, liveFreshnessOf, liveLeftovers, mealTitleForLeftover 
 // utils/leftovers, which is deliberately store- and theme-free so jest's node
 // env can reach it without loading a renderer.
 import { freshnessColor } from './LeftoversCard';
+import { SheetScrim } from './SheetScrim';
 import { MEAL_SLOTS, RECIPE_NAME_MAX_LENGTH, type Leftover, type MealPlanEntry, type MealSlot } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
@@ -350,7 +351,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
+      <SheetScrim onPress={dismiss} />
 
       <Animated.View
         style={[

@@ -1,4 +1,4 @@
 {
-  "message": "Your Anthropic API key now lives in the device keychain instead of the app's database. It moves across on its own — nothing to re-enter",
+  "message": "Your Anthropic API key now lives in the device keychain instead of the app's database. It moves across on its own, with nothing to re-enter",
   "date": "2026-08-07"
 }

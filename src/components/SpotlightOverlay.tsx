@@ -86,7 +86,18 @@ export function SpotlightOverlay({ visible, onPress }: { visible: boolean; onPre
   return (
     <View style={styles.overlay} pointerEvents={visible ? 'auto' : 'none'}>
       <SpotlightScrim />
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onPress} />
+      {/* Hidden from accessibility rather than named: the expanded row is
+          itself still reachable and labelled, and collapsing it is what a tap
+          here does — so a screen reader gains nothing from a second, unnamed
+          full-screen control sitting in front of the row. Same call SheetScrim
+          makes for the sheets. */}
+      <TouchableOpacity
+        style={StyleSheet.absoluteFill}
+        activeOpacity={1}
+        onPress={onPress}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+      />
     </View>
   );
 }

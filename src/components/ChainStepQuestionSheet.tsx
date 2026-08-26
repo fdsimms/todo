@@ -10,6 +10,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { DeliverableKindPicker } from './DeliverableKindPicker';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { SheetScrim } from './SheetScrim';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
@@ -98,7 +99,7 @@ export function ChainStepQuestionSheet({ visible, step, nextStepTitle, onSave, o
         <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
         <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
       </Animated.View>
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => dismiss(onClose)} />
+      <SheetScrim onPress={() => dismiss(onClose)} />
 
       <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
         <View style={styles.card}>
