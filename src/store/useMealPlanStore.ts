@@ -417,7 +417,7 @@ interface MealPlanStore {
   setCooked: (id: string, cooked: boolean) => void;
 
   /**
-   * Says whether this meal gets a "Cook X" task, or hands the decision back to
+   * Says whether this meal gets a "Make X" task, or hands the decision back to
    * the `mealCookTasks` setting with `null` (#1402).
    *
    * Writes the flag and then reconciles, so the task appears or disappears on
@@ -455,7 +455,7 @@ interface MealPlanStore {
    * the label — see `setLastAction`.
    *
    * Two callers, neither of them the meal plan: `useTaskStore.completeTask`,
-   * for the "Cook X" task ticked off on Today (#1402), and Today's own meal row
+   * for the "Make X" task ticked off on Today (#1402), and Today's own meal row
    * for a meal that never got one (a leftover, a takeaway, a dinner typed by
    * hand — see `mealContextRows`). It was `setCookedFromTask` while the task was
    * the only way in; the pairing was never about tasks.
@@ -787,7 +787,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
         dbDeleteMealPlanEntry(entry.id);
         set(s => ({ entries: s.entries.filter(e => e.id !== entry.id) }));
         // After the delete, never before: the slot's task reads the slot as it
-        // now stands, and an emptied slot is what turns "Cook Chili" back into
+        // now stands, and an emptied slot is what turns "Make Chili" back into
         // "Choose dinner". Same ordering everywhere a meal is removed below.
         reconcileMealSlot(get, entry);
       },
@@ -817,7 +817,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     reconcileMealSlot(get, moved);
     // And the slot it vacated — a move is two slots changing, and only one of
     // them is the one being moved to. Without this, dragging dinner to Friday
-    // leaves Thursday's row still saying "Cook Chili" for a meal that isn't
+    // leaves Thursday's row still saying "Make Chili" for a meal that isn't
     // there any more. A no-op when the move stayed inside one slot.
     reconcileMealSlot(get, entry);
     reconcileMealEvent(moved);
@@ -1315,7 +1315,7 @@ function cookedConsumption(entry: MealPlanEntry): ClassifiedIngredient[] {
  * day has passed.
  *
  * A Tuesday dinner is routinely ticked off on Thursday — from the plan, or from
- * a "Cook X" task that sat on Today for two days — and `openedAt` re-dates a
+ * a "Make X" task that sat on Today for two days — and `openedAt` re-dates a
  * use-by day, so stamping the tap would hand the jar two days of shelf life it
  * hasn't got. Every other pantry assertion stamps now because every other one
  * is a statement about the present ("I'm out of it", "I have it"); this one is
@@ -1374,7 +1374,7 @@ function markConsumedOpened(entry: MealPlanEntry, rows: readonly ClassifiedIngre
 // **Creation is not here.** A meal task belongs to a day and a slot rather than
 // to a meal, so the row exists before the meal does and is written once a day
 // by useTaskStore.checkMealSlotTasks. What crosses the line here is the update:
-// planning dinner rewrites the row from "Choose dinner" to "Cook Chili", and
+// planning dinner rewrites the row from "Choose dinner" to "Make Chili", and
 // clearing the slot rewrites it back. The one exception is setCookTask(true),
 // which is the user asking for the row in as many words.
 
@@ -1453,7 +1453,7 @@ function createMealSlotTask(get: () => MealPlanStore, entry: MealPlanEntry): voi
  * planned lunch from the meal plan screen instead.
  *
  * So this is the update half only: planning dinner rewrites the row you're
- * looking at from "Choose dinner" into "Cook Chili", and clearing the slot
+ * looking at from "Choose dinner" into "Make Chili", and clearing the slot
  * again rewrites it back.
  *
  * **A cooked meal is left alone**, the same gate the cook task had: the night

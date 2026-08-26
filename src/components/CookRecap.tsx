@@ -23,7 +23,7 @@ import { RecipeToListSheet } from './RecipeToListSheet';
  *
  * **Self-contained so it can be rendered from more than one screen with one
  * line**, which is the point of it: a meal is marked cooked from the plan and
- * from the "Cook X" task on Today, and none of what the sheet asks about should
+ * from the "Make X" task on Today, and none of what the sheet asks about should
  * depend on which. That's also what let the leftovers question stop being the
  * task list's alone — it used to be a banner raised only by `setCookedPaired`,
  * because the plan already had the row on a meal's own sheet and the task list

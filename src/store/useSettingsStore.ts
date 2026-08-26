@@ -86,7 +86,7 @@ export type FabHand = 'right' | 'left';
  * the cook tasks use, so the day's food sits together and the top of the screen
  * is a task. Only meals with nowhere else to appear are drawn — a leftover, a
  * takeaway, a dinner typed by hand — because a recipe-backed meal is already a
- * "Cook X" row further down.
+ * "Make X" row further down.
  *
  * Both retired values read forward to `inline`. That's a shape someone may have
  * picked on purpose in `block`'s case, and taking it away is deliberate: the
@@ -508,7 +508,7 @@ interface SettingsStore {
    * eating a given meal take about the same time every day, so once the
    * backfill wizard has been told how long "Choose breakfast" takes, every
    * later "Choose breakfast" is created already carrying that value instead
-   * of asking again; only a recipe-backed "Cook X" step has its own evidence
+   * of asking again; only a recipe-backed "Make X" step has its own evidence
    * (the recipe's time) and never reads this map.
    *
    * Learned data, not a preference — kept out of DEFAULT_SETTINGS/

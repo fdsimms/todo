@@ -103,14 +103,14 @@ describe('the chain, given what the slot holds', () => {
     // "Already chosen" is the same task with its first step gone.
     const planned = entry({ recipeId: 'r1', title: 'Chili' });
     expect(mealSlotChain('dinner', planned).map(c => c.title))
-      .toEqual(['Cook Chili', 'Eat Chili']);
+      .toEqual(['Make Chili', 'Eat Chili']);
     expect(mealSlotTaskTitle('dinner', planned)).toBe('Chili');
   });
 
   it('carries the recipe\'s time onto the Cook step alone', () => {
     // recipeMinutes is the caller's already-summed prep+cook total (see
     // recipeMinutesFor); there's no separate Prepare step once a recipe is
-    // chosen, so Cook X is the one step that gets it.
+    // chosen, so Make X is the one step that gets it.
     const planned = entry({ recipeId: 'r1', title: 'Chili' });
     const chain = mealSlotChain('dinner', planned, 35);
     expect(chain.map(c => c.estimatedMinutes)).toEqual([35, null]);
@@ -221,7 +221,7 @@ describe('the fields a slot owns', () => {
   });
 
   it('does not hide a planned meal\'s Cook step either', () => {
-    // [Cook Chili, Eat Chili]: still step 0, still not the meal's own moment.
+    // [Make Chili, Eat Chili]: still step 0, still not the meal's own moment.
     const planned = entry({ recipeId: 'r1', title: 'Chili' });
     expect(mealSlotTaskFields('2026-08-22', 'dinner', planned).timeSegments).toEqual([]);
   });
@@ -299,7 +299,7 @@ describe('drift', () => {
     const planned = entry({ recipeId: 'r1', title: 'Chili' });
     const updates = mealSlotDrift(task, '2026-08-22', 'dinner', planned)!;
     expect(updates.title).toBe('Chili');
-    expect(updates.chainItems!.map(c => c.title)).toEqual(['Cook Chili', 'Eat Chili']);
+    expect(updates.chainItems!.map(c => c.title)).toEqual(['Make Chili', 'Eat Chili']);
     expect(updates.linkUrl).toBe('dundundun://recipe?id=r1');
     // Still step 0 of its (now two-step) chain either way — nothing to write.
     expect(updates.timeSegments).toBeUndefined();
@@ -308,7 +308,7 @@ describe('drift', () => {
   it('holds the steps — and the time gate — once the chain has been started', () => {
     // chainIndex > 0 means a step has been ticked and the next row spawned, and
     // the index only means anything against the list it came from: step 1 of
-    // [Choose, Prepare, Eat] has no honest answer in [Cook X, Eat X]. Which
+    // [Choose, Prepare, Eat] has no honest answer in [Make X, Eat X]. Which
     // step is time-gated is exactly as chain-position-dependent, so it's
     // withheld the same way.
     const task = taskFor('2026-08-22', 'dinner', null, { chainIndex: 1 });

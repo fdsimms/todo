@@ -3573,7 +3573,7 @@ export const MEAL_PLAN_RETENTION_DAYS = 180;
  * **A meal can be ticked off from here; an event can't.** That asymmetry is the
  * whole of what a context row can *do*, and it follows from who owns the row: a
  * meal's `cookedAt` is this app's to write, and a leftover or a takeaway planned
- * for tonight is a real thing to finish that has no "Cook X" task to finish it
+ * for tonight is a real thing to finish that has no "Make X" task to finish it
  * with. See `DayContextRow`, which draws the tickable one's glyph as a button.
  *
  * **A kitchen row is a reading, so it can't be ticked either** (#1689) — and

@@ -2800,7 +2800,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // on *where in the chain* the spawned row lands, not on what the step
         // being completed happened to be gated by. Only the step that finishes
         // the chain (Eat, Eat X) hides behind the meal's time-of-day segment;
-        // every earlier one (Choose, Prepare, Cook X) is visible all day.
+        // every earlier one (Choose, Prepare, Make X) is visible all day.
         // `!atChainEnd` because a real meal-slot task never carries a
         // recurrence rule (see NO_RECURRENCE) — the wrap branch below is only
         // ever reached by a user-made chain that happens to repeat, and this
@@ -3140,7 +3140,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
-    // Ticking a "Cook X" task off marks its meal cooked, and bumps the recipe's
+    // Ticking a "Make X" task off marks its meal cooked, and bumps the recipe's
     // counters exactly as ticking the meal itself would (#1402) — the cook task
     // is a second control on one thing, so it can't be a lesser version of the
     // control on the meal plan screen. Like the auto-archive above it, this

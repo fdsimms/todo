@@ -2309,7 +2309,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // --- The week ahead ------------------------------------------------------
   // Cook tasks (#1402) are shown as a mixture on purpose, because both halves
   // of the feature are invisible until something uses them. Today's oats and
-  // dinner each put a "Cook …" task on the day — segmented to their slot, so
+  // dinner each put a "Make …" task on the day — segmented to their slot, so
   // the dinner one stays hidden until evening — while the sandwich and the
   // snack plate opt out, which is what the entry sheet's per-meal toggle
   // writes. A day where every recipe became a chore is exactly the pile-up the
@@ -2373,13 +2373,13 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
   // the same call the app makes on every launch, so the demo can't show a shape
   // the real pass wouldn't produce. It reads today's slots as they now stand,
   // which is why it runs after the week above is planted: breakfast and dinner
-  // are answered and get "Cook X → Eat X", and the two nights that opted out
+  // are answered and get "Make X → Eat X", and the two nights that opted out
   // (`cookTask: false` on lunch and the snack) get no task and appear as
   // context rows instead — both sides of the same section, which is what the
   // arrangement is for.
   //
   // It writes a week rather than a day, which is what puts both states on one
-  // screen: the nights already planned read "Cook X" on their own day, and the
+  // screen: the nights already planned read "Make X" on their own day, and the
   // slots nobody has filled in (the open dinner on offset 6 above, every lunch
   // past the ones seeded) read "Choose dinner" — undecided, and saying so.
   useTaskStore.getState().checkMealSlotTasks();

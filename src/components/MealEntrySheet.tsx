@@ -105,7 +105,7 @@ interface Props {
   /** Present only while the entry's recipe still resolves and has prep tasks. */
   onAddPrepTasks?: () => void;
   /**
-   * Says whether this meal gets a "Cook X" task on Today, overriding the
+   * Says whether this meal gets a "Make X" task on Today, overriding the
    * `mealCookTasks` setting for this one meal (#1402). Absent on a meal that's
    * already been cooked — the night has happened, and offering to schedule it
    * then is offering to schedule the past.

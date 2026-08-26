@@ -1174,7 +1174,7 @@ export const TaskItem = React.memo(function TaskItem({
     }
     // "Choose lunch" isn't answered by ticking it — it's answered by putting
     // something in the slot. Picking a meal here rewrites this same row into
-    // "Cook X"/"Eat X" (see mealSlotDrift), so nothing is completed at all;
+    // "Make X"/"Eat X" (see mealSlotDrift), so nothing is completed at all;
     // the tap opens the picker instead of running the ordinary completion.
     if (mealSlotChooseSource) {
       await haptics.tap();

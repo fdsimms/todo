@@ -1221,7 +1221,7 @@ describe('bulkDeleteEntries', () => {
 
   // Regression: reconcileMealSlot used to run before the `entries` array had
   // the removed rows filtered out of it, so it read the slot as still planned
-  // and left the live task saying "Cook X" forever — the same bug removeEntry
+  // and left the live task saying "Make X" forever — the same bug removeEntry
   // and copyWeek's undo already avoided by reconciling after the state write.
   it('puts the choosing back on the slot the removed meal vacated', () => {
     loadWeek();
@@ -1472,7 +1472,7 @@ describe('cookRecap', () => {
     expect(useMealPlanStore.getState().cookRecap).toBeNull();
   });
 
-  // Ticking the "Cook X" task off on Today is a cooking too, and the whole
+  // Ticking the "Make X" task off on Today is a cooking too, and the whole
   // reason this lives in the store rather than on the meal plan screen. It is
   // also the path that used to raise the leftovers question all by itself.
   it('is raised by a cook logged from the task, leftovers question and all', () => {
@@ -1754,7 +1754,7 @@ describe('meal tasks', () => {
     const task = slotTaskFor('2026-08-05', 'dinner')!;
     // "Already chosen" is the same task with its first step gone.
     expect(task.chainItems.map(c => c.title))
-      .toEqual(['Cook Frijoles de la olla', 'Eat Frijoles de la olla']);
+      .toEqual(['Make Frijoles de la olla', 'Eat Frijoles de la olla']);
     expect(task.title).toBe('Frijoles de la olla');
     // Answered with a recipe, so the link opens that instead of the day.
     expect(task.linkUrl).toBe('dundundun://recipe?id=r1');
@@ -1833,7 +1833,7 @@ describe('meal tasks', () => {
   it('leaves the steps alone once the chain has been started', () => {
     // chainIndex > 0 means a step has been ticked and the next row spawned, and
     // the index is only meaningful against the list it came from. Step 1 of
-    // [Choose, Prepare, Eat] has no honest answer in [Cook X, Eat X].
+    // [Choose, Prepare, Eat] has no honest answer in [Make X, Eat X].
     loadWeek();
     const planted = plantSlotTask('2026-08-05', 'dinner');
     mockTaskState.updateTask(planted.id, { chainIndex: 1 } as Partial<Task>);
@@ -1943,7 +1943,7 @@ describe('meal tasks', () => {
     useMealPlanStore.getState().setCookTask(meal.id, true);
 
     const task = slotTaskFor('2026-08-05', 'lunch')!;
-    expect(task.chainItems.map(c => c.title)).toEqual(['Cook Ragu', 'Eat Ragu']);
+    expect(task.chainItems.map(c => c.title)).toEqual(['Make Ragu', 'Eat Ragu']);
   });
 
   it('a slot with no task is left alone entirely', () => {

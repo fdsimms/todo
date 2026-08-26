@@ -607,7 +607,7 @@ describe('openInAppUrl', () => {
   });
 
   // A meal-slot cook task's own link once the slot holds a recipe (see
-  // mealSlotTasks.recipeLinkUrl) — "Cook X" opens the recipe rather than the
+  // mealSlotTasks.recipeLinkUrl) — "Make X" opens the recipe rather than the
   // meal plan day it's cooked from.
   it('opens the named recipe directly', () => {
     expect(isRecipeUrl('dundundun://recipe?id=r1')).toBe(true);
