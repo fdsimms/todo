@@ -365,7 +365,7 @@ export interface ClassifiedIngredient {
    * told by the row's own category:
    *
    * - `probablyHave` — `grocerySuggest.probablyHaveReason`'s "bought 6× ·
-   *   last on 12 Jul", the pantry opinion that put the row in that category.
+   *   last on Jul 12", the pantry opinion that put the row in that category.
    * - `needToBuy` — `itemSubs.describeSubstitutesOnHand`'s "you have
    *   margarine": a substitute the user linked to this item is one the app
    *   thinks is in the cupboard.

@@ -224,7 +224,7 @@ export function PlanMealSheet({ visible, title, onPlan, onPlanned, onClose }: Pr
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
-                  accessibilityLabel={format(day, 'EEEE d MMMM')}
+                  accessibilityLabel={format(day, 'EEEE, MMMM d')}
                 >
                   <Text style={[styles.dayChipTop, on && styles.chipTextOn]}>
                     {format(day, 'EEEEE')}

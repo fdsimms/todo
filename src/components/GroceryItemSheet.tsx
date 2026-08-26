@@ -808,7 +808,7 @@ export function GroceryItemSheet({
       label: 'Opened',
       selected: opened,
       accessibilityLabel: opened
-        ? `Opened${item.openedAt ? ` ${format(new Date(item.openedAt), 'd MMM')}` : ''}. Tap to clear.`
+        ? `Opened${item.openedAt ? ` ${format(new Date(item.openedAt), 'MMM d')}` : ''}. Tap to clear.`
         : 'Opened, record that this has been opened',
       onPress: toggleOpened,
     },
@@ -1081,7 +1081,7 @@ export function GroceryItemSheet({
                     : item.isStaple
                       ? 'Always have it'
                       : onHandFuture
-                        ? `Got it until ${format(new Date(item.onHandUntil!), 'd MMM')}`
+                        ? `Got it until ${format(new Date(item.onHandUntil!), 'MMM d')}`
                         : undefined
             }
             emptySummary="Automatic"
@@ -1118,14 +1118,14 @@ export function GroceryItemSheet({
             summary={
               // A frozen row never shows its stored expiresAt, which is the one
               // place a suspended date could still read as a live countdown —
-              // "17 Aug · 4 days past" on something in the freezer is the app
+              // "Aug 17 · 4 days past" on something in the freezer is the app
               // reporting a deadline it has itself stopped honouring.
               frozen
                 ? item.shelfLifeDays !== null
                   ? `Paused · keeps ${item.shelfLifeDays} ${item.shelfLifeDays === 1 ? 'day' : 'days'} once out`
                   : 'Paused'
                 : item.expiresAt
-                  ? `${format(dayKeyToDate(item.expiresAt), 'd MMM')} · ${describeExpiry(item.expiresAt)}`
+                  ? `${format(dayKeyToDate(item.expiresAt), 'MMM d')} · ${describeExpiry(item.expiresAt)}`
                   : item.shelfLifeDays !== null
                     ? `Keeps ${item.shelfLifeDays} ${item.shelfLifeDays === 1 ? 'day' : 'days'}`
                     : undefined

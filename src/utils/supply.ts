@@ -267,7 +267,7 @@ export function describeSupply(task: SupplySource): string | null {
 }
 
 /**
- * "Runs out 12 Nov" — the derived half of the chip, shown beside the count.
+ * "Runs out Nov 12" — the derived half of the chip, shown beside the count.
  *
  * Absolute, never through `formatScheduledDate`, for the same reason a recorded
  * deliverable date is: "Runs out Today" is true for one day and quietly wrong
@@ -276,7 +276,7 @@ export function describeSupply(task: SupplySource): string | null {
  */
 export function describeSupplyRunOut(runOut: Date): string {
   const sameYear = runOut.getFullYear() === new Date().getFullYear();
-  return `Runs out ${format(runOut, sameYear ? 'd MMM' : 'd MMM yyyy')}`;
+  return `Runs out ${format(runOut, sameYear ? 'MMM d' : 'MMM d, yyyy')}`;
 }
 
 /**

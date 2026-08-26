@@ -484,20 +484,20 @@ describe('describeFinishedWhen', () => {
   });
 
   it('falls to a date once the week is behind it', () => {
-    expect(describeFinishedWhen(at(new Date(2026, 7, 3, 9, 0)), NOW)).toBe('on 3 Aug');
+    expect(describeFinishedWhen(at(new Date(2026, 7, 3, 9, 0)), NOW)).toBe('on Aug 3');
   });
 
   // The 60-day window can straddle a new year, and "on 20 Dec" would then be
   // ambiguous by exactly the amount that matters.
   it('adds the year only when it is not this one', () => {
-    expect(describeFinishedWhen(at(new Date(2025, 11, 20, 9, 0)), NOW)).toBe('on 20 Dec 2025');
+    expect(describeFinishedWhen(at(new Date(2025, 11, 20, 9, 0)), NOW)).toBe('on Dec 20, 2025');
   });
 
   it('respects a Monday week start', () => {
     // The Sunday before NOW: same week counting from Sunday, last week from Monday.
     const sunday = new Date(2026, 7, 9, 9, 0);
     expect(describeFinishedWhen(at(sunday), NOW, 0)).toBe('on Sunday');
-    expect(describeFinishedWhen(at(sunday), NOW, 1)).toBe('on 9 Aug');
+    expect(describeFinishedWhen(at(sunday), NOW, 1)).toBe('on Aug 9');
   });
 });
 
@@ -688,7 +688,7 @@ describe('a frozen container', () => {
   });
 
   it('names the freezer instead of counting days in the fridge', () => {
-    expect(describeLeftover(frozen, NOW)).toBe('Frozen 12 Jul');
+    expect(describeLeftover(frozen, NOW)).toBe('Frozen Jul 12');
   });
 
   it('can be planned for any day, because it is not past anything', () => {

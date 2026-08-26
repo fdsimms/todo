@@ -6,7 +6,7 @@ import { spacing, font, fontWeight, iconSize, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 
 interface Props {
-  /** The period currently on screen — "August 2026", "23 – 29 Aug". */
+  /** The period currently on screen — "August 2026", "Aug 23 – 29". */
   label: string;
   onPrev: () => void;
   onNext: () => void;

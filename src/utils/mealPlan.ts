@@ -343,12 +343,18 @@ export function uncookedEntries(entries: readonly MealPlanEntry[]): MealPlanEntr
 }
 
 /**
- * The header's overline — "3 – 9 Aug", or "28 Jul – 3 Aug" across a month
- * boundary, or "29 Dec – 4 Jan 2027" across a year one.
+ * The header's overline — "Aug 3 – 9", or "Jul 28 – Aug 3" across a month
+ * boundary, or "Dec 29 – Jan 4, 2027" across a year one.
  *
  * The year appears only when the week straddles one, because that's the only
  * time it tells the reader something they can't already see from the rest of
  * the screen.
+ *
+ * **Which end drops the repeated month is decided by the date order, not by
+ * taste.** Day-first ("3 – 9 Aug") had to elide on the *first* date, because
+ * the month trails; month-first has to elide on the *second*, because the
+ * month leads. Flipping the format without moving the elision produces
+ * "Aug 3 – Aug 9", which is the repetition this exists to remove.
  */
 export function describeWeekRange(days: readonly Date[]): string {
   if (days.length === 0) return '';
@@ -356,8 +362,11 @@ export function describeWeekRange(days: readonly Date[]): string {
   const first = sorted[0];
   const last = sorted[sorted.length - 1];
   const sameYear = first.getFullYear() === last.getFullYear();
-  const start = format(first, first.getMonth() === last.getMonth() && sameYear ? 'd' : 'd MMM');
-  const end = format(last, sameYear ? 'd MMM' : 'd MMM yyyy');
+  const start = format(first, 'MMM d');
+  const end = format(
+    last,
+    !sameYear ? 'MMM d, yyyy' : first.getMonth() === last.getMonth() ? 'd' : 'MMM d'
+  );
   return `${start} – ${end}`;
 }
 

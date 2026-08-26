@@ -162,7 +162,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
       {
         key: 'opened',
         label: editing.openedAt
-          ? `Opened ${format(new Date(editing.openedAt), 'd MMM')}`
+          ? `Opened ${format(new Date(editing.openedAt), 'MMM d')}`
           : 'Opened',
         selected: !!editing.openedAt,
         accessibilityLabel: editing.openedAt

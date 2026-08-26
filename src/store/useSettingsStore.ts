@@ -831,7 +831,7 @@ interface SettingsStore {
   mealPlanNudgeLastFiredWeekKey: string | null;
   // The stack the weekly nudge lays its seven day-tasks into — state, not a
   // preference, like the week key above it. One stack row is reused week after
-  // week and retitled ("Plan meals for 17 – 23 Aug"), rather than a new one per
+  // week and retitled ("Plan meals for 17 – Aug 23"), rather than a new one per
   // firing: a stack is a label, and a fresh one every Sunday would leave a
   // year's worth of empty stacks behind it, each of them a row in the Stacks
   // screen that nothing prunes. Resolve-or-shrug at the reader — a stack the

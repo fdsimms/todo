@@ -171,7 +171,7 @@ export function recentlyCookedTitles(
  * around an ingredient just to use it up.
  *
  * Reads only `title`/`useByCaption` — `Pick` rather than the full
- * `KitchenEntry`, since `reason` ("bought 6× · last on 12 Jul") is why the
+ * `KitchenEntry`, since `reason` ("bought 6× · last on Jul 12") is why the
  * pantry thinks the row exists at all, not something a meal idea needs to
  * know, and the narrower type is what lets a test build a fixture with two
  * fields instead of the whole shape.

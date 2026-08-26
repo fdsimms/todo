@@ -620,7 +620,7 @@ describe('classifyPlanned', () => {
     const planned = [{ name: 'Milk', nameKey: 'milk', quantity: '', aisle: null, source: 'Thu Cereal' }];
     const row = classifyPlanned(planned, items, now)[0];
     expect(row.category).toBe('probablyHave');
-    expect(row.reason).toBe('bought 3× · last on 2 Aug');
+    expect(row.reason).toBe('bought 3× · last on Aug 2');
   });
 
   // #1566 — the substitute caption. The category deliberately does not move:

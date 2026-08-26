@@ -4229,7 +4229,7 @@ describe('checkMealPlanNudge', () => {
       // laid down, so a second one must not be.
       tasks: [makeTask({
         id: 'nudge-1',
-        title: 'Wednesday 13 Aug',
+        title: 'Wednesday Aug 13',
         linkUrl: 'dundundun://mealplan?date=2025-08-13',
         generatedKind: 'mealPlanNudge',
         generatedSourceId: '2025-08-13',
@@ -4254,7 +4254,7 @@ describe('checkMealPlanNudge', () => {
       tasks: [
         makeTask({
           id: 'stale-1',
-          title: 'Saturday 9 Aug',
+          title: 'Saturday Aug 9',
           generatedKind: 'mealPlanNudge',
           generatedSourceId: '2025-08-09',
         }),

@@ -3149,7 +3149,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         </View>
                         <Text style={styles.supplyFieldHint}>
                           {supplyPreview?.orderBy
-                            ? `How long it takes to arrive, so the order goes in by ${format(supplyPreview.orderBy, 'd MMM')}.`
+                            ? `How long it takes to arrive, so the order goes in by ${format(supplyPreview.orderBy, 'MMM d')}.`
                             : 'How long it takes to arrive, so the order goes in early enough to get here in time.'}
                         </Text>
 

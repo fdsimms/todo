@@ -433,10 +433,10 @@ export function describeKeepUntil(leftover: Leftover, now: Date = new Date()): s
 
 /**
  * The full caption under a leftover's title — "2 days in the fridge · Use by
- * today", or "Frozen 12 Jul" for a frozen one.
+ * today", or "Frozen Jul 12" for a frozen one.
  *
  * A frozen container drops the age half rather than reading "9 days in the
- * fridge · Frozen 12 Jul", which names two places for one container and counts
+ * fridge · Frozen Jul 12", which names two places for one container and counts
  * the days in the wrong one: `describeAge` measures from `storedAt`, and a
  * portion frozen on day two spent one of those nine days in the fridge. The
  * freeze date is the fact worth the line.
@@ -509,7 +509,7 @@ export function describeFridgeHistory(leftovers: readonly Leftover[]): string {
 
 /**
  * When a container was closed out — "today", "yesterday", "on Tuesday",
- * "on 3 Aug".
+ * "on Aug 3".
  *
  * Same ladder describeAddedToList uses, and forked from dateUtils for the same
  * reason it is: `finishedAt` is a stamp about something that already happened,
@@ -528,7 +528,7 @@ export function describeFinishedWhen(
   if (isSameDay(at, now)) return 'today';
   if (isSameDay(at, subDays(now, 1))) return 'yesterday';
   if (isSameWeek(at, now, { weekStartsOn })) return `on ${format(at, 'EEEE')}`;
-  return `on ${format(at, at.getFullYear() === now.getFullYear() ? 'd MMM' : 'd MMM yyyy')}`;
+  return `on ${format(at, at.getFullYear() === now.getFullYear() ? 'MMM d' : 'MMM d, yyyy')}`;
 }
 
 /**

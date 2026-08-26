@@ -417,7 +417,7 @@ export function MealEntrySheet({
                   activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityState={{ selected: on }}
-                  accessibilityLabel={`Move to ${format(day, 'EEEE d MMMM')}`}
+                  accessibilityLabel={`Move to ${format(day, 'EEEE, MMMM d')}`}
                 >
                   <Text style={[styles.dayChipTop, on && styles.chipTextOn]}>
                     {format(day, 'EEEEE')}

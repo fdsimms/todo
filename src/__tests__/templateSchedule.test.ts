@@ -156,11 +156,11 @@ describe('dueTemplateRun', () => {
 
 describe('scheduledRunName', () => {
   it('dates the run so two firings are told apart', () => {
-    expect(scheduledRunName('Sunday reset', new Date(2026, 7, 23))).toBe('Sunday reset · 23 Aug');
+    expect(scheduledRunName('Sunday reset', new Date(2026, 7, 23))).toBe('Sunday reset · Aug 23');
   });
 
   it('falls back to the date alone for an unnamed template', () => {
-    expect(scheduledRunName('  ', new Date(2026, 7, 23))).toBe('23 Aug');
+    expect(scheduledRunName('  ', new Date(2026, 7, 23))).toBe('Aug 23');
   });
 });
 

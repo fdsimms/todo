@@ -145,12 +145,12 @@ export function liveUseBy(useBy: string | null, frozenAt: string | null): string
 }
 
 /**
- * "Frozen 12 Jul" — what a frozen row says in the slot a countdown would
+ * "Frozen Jul 12" — what a frozen row says in the slot a countdown would
  * otherwise fill.
  *
  * The clock half only. The *reason* half ("in the freezer") is
  * `types.FROZEN_REASON`, and the two are paired by whatever draws the row, the
- * same way "bought 6× · last on 12 Jul" is paired with "Use by today". Split
+ * same way "bought 6× · last on Jul 12" is paired with "Use by today". Split
  * because a kitchen row renders them in different colours: the reason is grey
  * and the clock clause carries the freshness tint.
  *
@@ -162,10 +162,10 @@ export function liveUseBy(useBy: string | null, frozenAt: string | null): string
  * rather than an age.
  */
 /**
- * "opened 12 Aug" — the clause a pantry row adds once a jar has been opened.
+ * "opened Aug 12" — the clause a pantry row adds once a jar has been opened.
  *
  * Lower case and dateful, because it lands beside `probablyHaveReason`'s own
- * lower-case clauses ("bought 4× · last on 19 Aug · opened 12 Aug") rather than
+ * lower-case clauses ("bought 4× · last on Aug 19 · opened Aug 12") rather than
  * in the tinted clock slot `describeFrozenSince` fills. Opening doesn't stop
  * the clock, so it doesn't take that slot; it's one more piece of evidence
  * about the thing in the fridge.
@@ -175,7 +175,7 @@ export function describeOpenedOn(openedAt: string, now: Date = new Date()): stri
   // Same two unusable-stamp cases `describeFrozenSince` guards, same answer:
   // drop the date, keep the true half.
   if (Number.isNaN(then.getTime()) || then.getTime() > now.getTime()) return 'opened';
-  return `opened ${format(then, 'd MMM')}`;
+  return `opened ${format(then, 'MMM d')}`;
 }
 
 export function describeFrozenSince(frozenAt: string, now: Date = new Date()): string {
@@ -184,5 +184,5 @@ export function describeFrozenSince(frozenAt: string, now: Date = new Date()): s
   // stamp from a restored backup, and one in the future because the device's
   // clock has been moved back. Both still say the true half.
   if (Number.isNaN(then.getTime()) || then.getTime() > now.getTime()) return 'Frozen';
-  return `Frozen ${format(then, 'd MMM')}`;
+  return `Frozen ${format(then, 'MMM d')}`;
 }

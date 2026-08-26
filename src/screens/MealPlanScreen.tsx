@@ -683,7 +683,7 @@ export function MealPlanScreen() {
   }, [range?.startKey, range?.endKey, loadRange]);
 
   // A `dundundun://mealplan?date=…` link asking for one particular day — what
-  // the weekly nudge's seven day-tasks carry, so tapping "Wednesday 19 Aug" on
+  // the weekly nudge's seven day-tasks carry, so tapping "Wednesday Aug 19" on
   // Today lands on that day rather than on whichever week this screen was last
   // left showing.
   //
@@ -1019,7 +1019,7 @@ export function MealPlanScreen() {
     const today = isToday(day);
     const collapsed = collapsedDays.has(key);
     const weekdayName = format(day, 'EEEE');
-    const dayLabel = format(day, 'EEEE d MMMM');
+    const dayLabel = format(day, 'EEEE, MMMM d');
     // Whole-band target: any drop inside this day's zone means "plan a meal
     // here", so there's no anchor/before split to carry, unlike a task row.
     const zone: DropZone = { kind: 'day', key, dayKey: key, dayLabel: weekdayName };
@@ -1110,7 +1110,7 @@ export function MealPlanScreen() {
                         unrelated things with a gap between them, and the date
                         sat directly against the add button — the one part of
                         the row that is a target. */}
-                    <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'd MMM')}</Text>
+                    <Text style={styles.dayDate}>{today ? 'Today' : format(day, 'MMM d')}</Text>
                     {collapsed && dayEntries.length > 0 && (
                       <Text style={styles.dayCount}>({dayEntries.length})</Text>
                     )}

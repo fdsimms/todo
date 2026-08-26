@@ -49,7 +49,7 @@ import { isKeyInRange } from './mealPlan';
  * what lets next week's appear.
  *
  * **It fires as a stack of seven, one task per day of the week it's asking
- * about** (#1585), rather than the single "Plan meals for 17 – 23 Aug" task it
+ * about** (#1585), rather than the single "Plan meals for Aug 17 – 23" task it
  * used to be. A week is planned a day at a time — that's what the Meal Plan
  * screen is, a column of days — so one task for the lot could only ever be
  * ticked when the whole week was done, and told the user nothing about how far
@@ -193,8 +193,8 @@ export interface MealPlanNudgeDay {
    * column of prefixes to read past. The weekday leads because that's what a
    * person picks a day by; the date follows for the week that straddles a
    * month, where three of the rows would otherwise be ambiguous. Numeric
-   * rather than "17 Aug" (#1727) — next to a plain task title on Today or the
-   * widget, a bare "Monday 17 Aug" reads like a date someone typed as a
+   * rather than "Aug 17" (#1727) — next to a plain task title on Today or the
+   * widget, a bare "Monday Aug 17" reads like a date someone typed as a
    * title, not a link to a day.
    */
   title: string;
@@ -299,7 +299,7 @@ export function mealPlanNudgeSuppressed(
  * honoured, and only the week actually in question can suppress a re-fire.
  *
  * That does mean an unread nudge no longer survives the week it was written
- * for. It shouldn't: "Plan Saturday 15 Aug" on the 17th is not a task anyone
+ * for. It shouldn't: "Plan Saturday Aug 15" on the 17th is not a task anyone
  * can do. Anything the user *did* act on is untouched either way — see below.
  *
  * A completed task is in neither list (the user did the thing, and the row

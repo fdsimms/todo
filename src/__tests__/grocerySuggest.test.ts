@@ -372,7 +372,7 @@ describe('probablyHaveReason', () => {
     const item = makeItem({
       name: 'Truffle salt', purchaseCount: 2, createdAt: daysAgo(60), lastPurchasedAt: daysAgo(1),
     });
-    expect(probablyHaveReason(item, NOW)).toBe('bought 2× · last on 6 Aug');
+    expect(probablyHaveReason(item, NOW)).toBe('bought 2× · last on Aug 6');
   });
 
   it('is null once the flat window has run out, below the cadence floor', () => {
@@ -385,7 +385,7 @@ describe('probablyHaveReason', () => {
   // "once" rather than "1×", mirroring describeCookHistory.
   it('names a single purchase as "once"', () => {
     const item = makeItem({ name: 'Tahini', purchaseCount: 1, createdAt: daysAgo(3), lastPurchasedAt: daysAgo(3) });
-    expect(probablyHaveReason(item, NOW)).toBe('bought once · last on 4 Aug');
+    expect(probablyHaveReason(item, NOW)).toBe('bought once · last on Aug 4');
   });
 
   it('gives a reason when the last purchase is still inside the item\'s own cadence', () => {
@@ -393,7 +393,7 @@ describe('probablyHaveReason', () => {
     const item = makeItem({
       name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
     });
-    expect(probablyHaveReason(item, NOW)).toBe('bought 3× · last on 28 Jul');
+    expect(probablyHaveReason(item, NOW)).toBe('bought 3× · last on Jul 28');
   });
 
   it('is null once the item is overdue by its own cadence — that is a guess it is gone', () => {
@@ -416,7 +416,7 @@ describe('probablyHaveReason', () => {
     const item = makeItem({
       name: 'Milk', purchaseCount: 4, createdAt: daysAgo(120), lastPurchasedAt: daysAgo(5), onHandUntil: null,
     });
-    expect(probablyHaveReason(item, NOW)).toBe('bought 4× · last on 2 Aug');
+    expect(probablyHaveReason(item, NOW)).toBe('bought 4× · last on Aug 2');
   });
 
   it('a future onHandUntil wins regardless of purchase history', () => {
@@ -441,7 +441,7 @@ describe('probablyHaveReason', () => {
       name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
       onHandUntil: daysAgo(1),
     });
-    expect(probablyHaveReason(item, NOW)).toBe('bought 3× · last on 28 Jul');
+    expect(probablyHaveReason(item, NOW)).toBe('bought 3× · last on Jul 28');
   });
 
   it('a lapsed "Got it" still reads as nothing when the purchase is stale too', () => {
@@ -472,7 +472,7 @@ describe('correctableHaveReason', () => {
     const item = makeItem({
       name: 'Milk', purchaseCount: 3, createdAt: daysAgo(90), lastPurchasedAt: daysAgo(10),
     });
-    expect(correctableHaveReason(item, NOW)).toBe('bought 3× · last on 28 Jul');
+    expect(correctableHaveReason(item, NOW)).toBe('bought 3× · last on Jul 28');
   });
 
   it('offers a live "Got it" in the same breath as the purchase reading', () => {
@@ -610,7 +610,7 @@ describe('pantryEntries', () => {
 
     const entries = pantryEntries([guessed, marked, overdue, out], NOW);
     expect(entries.map(e => e.item.name)).toEqual(['Milk', 'Rice']);
-    expect(entries.map(e => e.reason)).toEqual(['bought 3× · last on 28 Jul', 'marked as on hand']);
+    expect(entries.map(e => e.reason)).toEqual(['bought 3× · last on Jul 28', 'marked as on hand']);
   });
 
   it('separates the user\'s own assertion from the cadence guess', () => {
@@ -672,7 +672,7 @@ describe('pantryEntries with boxes', () => {
 
     const entries = pantryEntries([item], NOW, [beyond, impossible]);
     expect(entries.map(e => [e.product?.brand ?? null, e.reason])).toEqual([
-      [null, 'bought 3× · last on 3 Aug'],
+      [null, 'bought 3× · last on Aug 3'],
       ['Beyond', FROZEN_REASON],
       ['Impossible', 'marked as on hand'],
     ]);

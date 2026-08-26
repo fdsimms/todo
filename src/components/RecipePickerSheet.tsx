@@ -57,7 +57,7 @@ interface Props {
   visible: boolean;
   /** The day being planned, as a `YYYY-MM-DD` key — handed back on every MealPick. */
   dayKey: string;
-  /** "Tue 5 Aug" — names the day being planned, so the sheet doesn't need the calendar. */
+  /** "Tue Aug 5" — names the day being planned, so the sheet doesn't need the calendar. */
   dayLabel: string;
   defaultSlot: MealSlot;
   /**

@@ -52,7 +52,7 @@ export function disposalAnswerCount(item: Pick<GroceryItem, 'usedUpCount' | 'spo
 }
 
 /**
- * "Went bad 2 of 3 times, last on 12 Aug" — what the record says, or empty
+ * "Went bad 2 of 3 times, last on Aug 12" — what the record says, or empty
  * when it has nothing to say.
  *
  * **Only the spoiled side is ever named.** "Used it up 5 of 5 times" is not
@@ -78,7 +78,7 @@ export function describeDisposalHistory(
   // The two unusable-stamp cases describeFrozenSince guards, same answer: drop
   // the date and keep the true half.
   if (Number.isNaN(then.getTime()) || then.getTime() > now.getTime()) return `Went bad ${times}.`;
-  return `Went bad ${times}, last on ${format(then, 'd MMM')}.`;
+  return `Went bad ${times}, last on ${format(then, 'MMM d')}.`;
 }
 
 /**
