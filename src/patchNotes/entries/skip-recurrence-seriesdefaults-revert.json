@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where a note, title, or other field edited with \"This Task\" on a recurring task could keep showing up on later occurrences instead of just the one it was saved for, if that occurrence expired or was marked missed before it was completed.",
+  "date": "2026-08-25"
+}
