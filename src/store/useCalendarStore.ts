@@ -4,7 +4,7 @@ import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { BusyEvent } from '../utils/calendarBusy';
-import { fetchEvents, type CalendarReadStatus } from '../utils/calendarSync';
+import { fetchEvents, type CalendarInfo, type CalendarReadStatus } from '../utils/calendarSync';
 import { isDemoModeActive } from '../utils/demoState';
 import {
   shouldReadPastCalendar,
@@ -67,6 +67,12 @@ interface CalendarState {
    * device — `loaded`/the missing-calendar check in Settings cover that).
    */
   perCalendar: Record<string, CalendarReadStatus>;
+  /**
+   * Title and color for every calendar the last read actually touched, keyed
+   * by id — what an event row needs to name and color its source.
+   * Same lifetime as `perCalendar`: filled by `refresh`, dropped by `clear`.
+   */
+  calendarsById: Record<string, CalendarInfo>;
   /** Start of the window the events were read for; null before the first read. */
   windowStart: string | null;
   windowEnd: string | null;
@@ -113,6 +119,7 @@ interface CalendarState {
 export const useCalendarStore = create<CalendarState>((set, get) => ({
   events: [],
   perCalendar: {},
+  calendarsById: {},
   windowStart: null,
   windowEnd: null,
   loaded: false,
@@ -125,7 +132,10 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   async refresh() {
     const { calendarReadEnabled, calendarIds, dayResetTime } = useSettingsStore.getState();
     if (!calendarReadEnabled || calendarIds.length === 0 || Platform.OS !== 'ios') {
-      set({ events: [], perCalendar: {}, windowStart: null, windowEnd: null, loaded: false });
+      set({
+        events: [], perCalendar: {}, calendarsById: {},
+        windowStart: null, windowEnd: null, loaded: false,
+      });
       return;
     }
     // Anchored on the logical day rather than midnight, so a 2 AM day reset
@@ -143,6 +153,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     set({
       events: result.events,
       perCalendar: result.perCalendar,
+      calendarsById: result.calendarsById,
       windowStart: start.toISOString(),
       windowEnd: end.toISOString(),
       loaded: true,
@@ -207,7 +218,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   // turned down; the answers are theirs, where the events are the calendar's.
   clear() {
     set({
-      events: [], perCalendar: {}, windowStart: null, windowEnd: null, loaded: false,
+      events: [], perCalendar: {}, calendarsById: {}, windowStart: null, windowEnd: null, loaded: false,
       pastEvents: [], pastLoaded: false, pastReadAt: null,
     });
   },

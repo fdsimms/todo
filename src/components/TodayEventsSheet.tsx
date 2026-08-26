@@ -12,6 +12,13 @@ interface Props {
   onClose: () => void;
   /** Today's live events, in start order — see eventsIn. */
   events: BusyEvent[];
+  /**
+   * Title/color per calendar id, keyed the same way `BusyEvent.calendarId`
+   * is. Omit (or pass an empty map) to leave every row untagged — the caller
+   * only fills this in once more than one calendar is being read, same gate
+   * `eventContextRows` uses for the Today list.
+   */
+  calendarsById?: Readonly<Record<string, { title: string; color: string }>>;
 }
 
 /**
@@ -26,7 +33,7 @@ interface Props {
  * one; nothing here is editable, since this whole feature is read-only (see
  * `calendarSync.ts`).
  */
-export function TodayEventsSheet({ visible, onClose, events }: Props) {
+export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -40,24 +47,36 @@ export function TodayEventsSheet({ visible, onClose, events }: Props) {
         </View>
 
         <ScrollView contentContainerStyle={styles.list}>
-          {events.map(event => (
-            <View key={event.id} style={styles.row}>
-              <View style={styles.rowIcon}>
-                <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
+          {events.map(event => {
+            const calendar = calendarsById?.[event.calendarId];
+            return (
+              <View key={event.id} style={styles.row}>
+                <View style={styles.rowIcon}>
+                  <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
+                </View>
+                <View style={styles.rowInfo}>
+                  <Text style={styles.rowTitle} numberOfLines={2}>{event.title || 'Event'}</Text>
+                  <View style={styles.rowMetaRow}>
+                    <Text style={styles.rowTime}>
+                      {event.allDay
+                        ? 'All day'
+                        : `${formatTimeOfDay(new Date(event.start))} – ${formatTimeOfDay(new Date(event.end))}`}
+                    </Text>
+                    {/* Which calendar, when it's worth saying — see Props.calendarsById. */}
+                    {calendar && (
+                      <View style={styles.rowCalendarTag}>
+                        <View style={[styles.calendarDot, { backgroundColor: calendar.color }]} />
+                        <Text style={styles.rowTime} numberOfLines={1}>{calendar.title}</Text>
+                      </View>
+                    )}
+                  </View>
+                  {!!event.location && (
+                    <Text style={styles.rowLocation} numberOfLines={1}>{event.location}</Text>
+                  )}
+                </View>
               </View>
-              <View style={styles.rowInfo}>
-                <Text style={styles.rowTitle} numberOfLines={2}>{event.title || 'Event'}</Text>
-                <Text style={styles.rowTime}>
-                  {event.allDay
-                    ? 'All day'
-                    : `${formatTimeOfDay(new Date(event.start))} – ${formatTimeOfDay(new Date(event.end))}`}
-                </Text>
-                {!!event.location && (
-                  <Text style={styles.rowLocation} numberOfLines={1}>{event.location}</Text>
-                )}
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </ScrollView>
       </View>
     </Modal>
@@ -100,6 +119,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   rowInfo: { flex: 1, gap: 2 },
   rowTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.medium },
+  rowMetaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   rowTime: { color: colors.textSecondary, fontSize: font.sm },
+  rowCalendarTag: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
+  calendarDot: { width: 6, height: 6, borderRadius: radius.full },
   rowLocation: { color: colors.textTertiary, fontSize: font.xs },
 });

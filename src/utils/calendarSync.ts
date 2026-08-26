@@ -145,6 +145,12 @@ export interface CalendarReadStatus {
   ok: boolean;
 }
 
+/** A calendar's own name and color — what an event row needs to say where it came from. */
+export interface CalendarInfo {
+  title: string;
+  color: string;
+}
+
 export interface FetchEventsResult {
   /** Every event across every calendar that could be read, unfiltered. */
   events: BusyEvent[];
@@ -155,6 +161,13 @@ export interface FetchEventsResult {
    * `validCalendarIds`), which is a different, already-surfaced problem.
    */
   perCalendar: Record<string, CalendarReadStatus>;
+  /**
+   * Title and color for every chosen-and-still-live calendar, keyed by id.
+   * Built from the same `getCalendarsAsync` call `validCalendarIds` already
+   * needed, so an event row can name and color its source without a second
+   * EventKit round trip.
+   */
+  calendarsById: Record<string, CalendarInfo>;
 }
 
 /**
@@ -191,7 +204,7 @@ export async function fetchEvents(
   end: Date
 ): Promise<FetchEventsResult | null> {
   if (Platform.OS !== 'ios') return null;
-  if (calendarIds.length === 0) return { events: [], perCalendar: {} };
+  if (calendarIds.length === 0) return { events: [], perCalendar: {}, calendarsById: {} };
   let calendars: DeviceCalendar[];
   try {
     calendars = await calendar().getCalendarsAsync(calendar().EntityTypes.EVENT);
@@ -202,7 +215,13 @@ export async function fetchEvents(
   // Every chosen calendar has gone. Not a failure — there is genuinely
   // nothing to read — but it is emphatically not "every calendar", which is
   // what an empty array would risk asking for.
-  if (ids.length === 0) return { events: [], perCalendar: {} };
+  if (ids.length === 0) return { events: [], perCalendar: {}, calendarsById: {} };
+
+  const calendarsById: Record<string, CalendarInfo> = {};
+  for (const id of ids) {
+    const match = calendars.find(c => c.id === id);
+    if (match) calendarsById[id] = { title: match.title ?? '', color: match.color ?? '' };
+  }
 
   const events: BusyEvent[] = [];
   const perCalendar: Record<string, CalendarReadStatus> = {};
@@ -216,7 +235,7 @@ export async function fetchEvents(
       perCalendar[id] = { eventCount: 0, ok: false };
     }
   }
-  return { events, perCalendar };
+  return { events, perCalendar, calendarsById };
 }
 
 /**
