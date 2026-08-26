@@ -12,7 +12,9 @@ import {
   KEYWORD_MAX_LENGTH, MIN_KEYWORD_LENGTH,
   emptyTitleRule, normalizeKeywords, resolveTitleRules, titleRuleIsUseless,
 } from '../utils/titleRules';
+import { KNOWN_LINK_APPS, linkAppLabel, linkAppsFor } from '../constants/linkApps';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -23,7 +25,7 @@ import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
 
-type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort';
+type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'link';
 
 const MATCH_OPTIONS: SegmentOption<TitleRuleMatch>[] = [
   { value: 'startsWith', label: 'Starts with' },
@@ -66,12 +68,14 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
   const projects = useProjectStore(useShallow(s => s.projects.filter(p => !p.archived)));
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
 
   const [draft, setDraft] = useState<TitleRule>(emptyTitleRule);
   const [keywordInput, setKeywordInput] = useState('');
   const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
   const [addingTag, setAddingTag] = useState(false);
   const [newTag, setNewTag] = useState('');
+  const [customLinkText, setCustomLinkText] = useState('');
 
   // Seeded when the sheet opens rather than on `rule` changing: the save hands
   // a fresh object back up, and re-seeding from it mid-edit would fight
@@ -83,6 +87,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
     setOpenFields({});
     setAddingTag(false);
     setNewTag('');
+    setCustomLinkText('');
     // `rule` is deliberately not a dependency — see above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
@@ -107,12 +112,22 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
     setAddingTag(false);
   };
 
+  // Same live-read-over-committed-state deal as the keyword input below —
+  // typing a custom URL and tapping Done never goes through the field's own
+  // onBlur, so what's on screen is `customLinkText`, not yet `draft.linkUrl`.
+  const commitCustomLink = () => {
+    const t = customLinkText.trim();
+    patch({ linkUrl: t || null });
+    closeField('link');
+  };
+  const effectiveLinkUrl = fieldOpen('link') && customLinkText.trim() ? customLinkText.trim() : draft.linkUrl;
+
   // Includes whatever is still sitting in the input. Pressing Done blurs the
   // field, and the commit that blur triggers is a state update this render
   // hasn't seen — so reading only `draft.keywords` here would both grey Done
   // out under a perfectly good keyword and then drop it on save.
   const keywords = normalizeKeywords([...draft.keywords, keywordInput]);
-  const blocked = titleRuleIsUseless({ ...draft, keywords })
+  const blocked = titleRuleIsUseless({ ...draft, keywords, linkUrl: effectiveLinkUrl })
     ? keywords.length === 0
       ? 'Add a word for this rule to look for.'
       : 'Pick at least one thing for this rule to set.'
@@ -138,7 +153,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
     const tags = pendingTag && !draft.tags.includes(pendingTag)
       ? [...draft.tags, pendingTag]
       : draft.tags;
-    onSave({ ...draft, keywords, tags });
+    onSave({ ...draft, keywords, tags, linkUrl: effectiveLinkUrl });
     onClose();
   };
 
@@ -365,6 +380,64 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             options={EFFORT_OPTIONS}
           />
         </CollapsibleField>
+
+        <View style={styles.cardSep} />
+
+        <CollapsibleField
+          label="Link"
+          summary={draft.linkUrl ? linkAppLabel(draft.linkUrl) : undefined}
+          emptySummary="Says nothing"
+          hint="Opens an app or link from a matching task's row, the same as the task editor's own Link field."
+          expanded={fieldOpen('link')}
+          onToggle={() => {
+            if (!fieldOpen('link') && draft.linkUrl && !KNOWN_LINK_APPS.some(app => app.scheme === draft.linkUrl)) {
+              setCustomLinkText(draft.linkUrl);
+            }
+            toggleField('link');
+          }}
+        >
+          <View style={styles.pillRow}>
+            <TouchableOpacity
+              style={[styles.pill, !draft.linkUrl && styles.pillActive]}
+              onPress={() => { haptics.tap(); patch({ linkUrl: null }); setCustomLinkText(''); closeField('link'); }}
+            >
+              <Text style={[styles.pillText, !draft.linkUrl && styles.pillTextActive]}>Says nothing</Text>
+            </TouchableOpacity>
+            {linkAppsFor(kitchenEnabled).map(app => (
+              <TouchableOpacity
+                key={app.scheme}
+                style={[styles.linkAppChip, draft.linkUrl === app.scheme && styles.linkAppChipActive]}
+                onPress={() => { haptics.tap(); patch({ linkUrl: app.scheme }); setCustomLinkText(''); closeField('link'); }}
+              >
+                <Ionicons
+                  name={app.icon as never}
+                  size={13}
+                  color={draft.linkUrl === app.scheme ? colors.bg : colors.textSecondary}
+                />
+                <Text style={[styles.linkAppChipText, draft.linkUrl === app.scheme && styles.linkAppChipTextActive]}>
+                  {app.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.linkCustomRow}>
+            <Ionicons name="globe-outline" size={16} color={colors.textSecondary} />
+            <TextInput
+              style={styles.linkCustomInput}
+              value={customLinkText}
+              onChangeText={setCustomLinkText}
+              onSubmitEditing={commitCustomLink}
+              onBlur={commitCustomLink}
+              placeholder="e.g. https://... or app://"
+              placeholderTextColor={colors.textTertiary}
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+              accessibilityLabel="Custom link URL this rule sets"
+            />
+          </View>
+        </CollapsibleField>
       </View>
 
       <View style={styles.sectionCard}>
@@ -481,6 +554,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillActive: { backgroundColor: colors.bgQuaternary },
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
+  linkAppChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: 10, paddingVertical: 7,
+    borderRadius: radius.full, backgroundColor: colors.bgTertiary,
+  },
+  linkAppChipActive: { backgroundColor: colors.accent },
+  linkAppChipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  linkAppChipTextActive: { color: colors.bg, fontWeight: '600' },
+  linkCustomRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
+    paddingTop: spacing.sm,
+  },
+  linkCustomInput: {
+    flex: 1, color: colors.text, fontSize: font.sm,
+    borderBottomWidth: 1, borderBottomColor: colors.accent,
+    paddingVertical: 4,
+  },
   tagRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, alignItems: 'center' },
   tagChip: {
     flexDirection: 'row', alignItems: 'center', gap: 4,

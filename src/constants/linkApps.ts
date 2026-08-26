@@ -22,6 +22,7 @@ export const KNOWN_LINK_APPS: LinkApp[] = [
   { name: 'Gmail', scheme: 'googlegmail://', icon: 'mail-outline', sfSymbol: 'envelope.fill' },
   { name: 'Instagram', scheme: 'instagram://app', icon: 'logo-instagram', sfSymbol: 'camera.fill' },
   { name: 'Notion', scheme: 'notion://', icon: 'document-text-outline', sfSymbol: 'doc.text.fill' },
+  { name: 'YNAB', scheme: 'ynab://', icon: 'wallet-outline', sfSymbol: 'wallet.pass.fill' },
 ];
 
 /**
@@ -35,4 +36,9 @@ export const KNOWN_LINK_APPS: LinkApp[] = [
  */
 export function linkAppsFor(kitchenEnabled: boolean): LinkApp[] {
   return kitchenEnabled ? KNOWN_LINK_APPS : KNOWN_LINK_APPS.filter(a => !a.kitchen);
+}
+
+/** Known app name for a link scheme, else the raw URL — what a settings row or a caption names it. */
+export function linkAppLabel(url: string): string {
+  return KNOWN_LINK_APPS.find(app => app.scheme === url)?.name ?? url;
 }

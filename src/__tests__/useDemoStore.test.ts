@@ -745,6 +745,23 @@ describe('demo mode', () => {
     expect(filed!.effort).toBe(rule.effort);
   });
 
+  // Same proof as the rule above, for the field a rule fills that isn't
+  // category/tags/effort — a link is invisible on a row until something
+  // opens it, so what this pins is that the seeded task's linkUrl came from
+  // the rule rather than from its own draft.
+  it('seeds a title rule that fills a link, and a task it filed', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const rules = useSettingsStore.getState().titleRules;
+    const rule = rules.find(r => r.linkUrl !== null);
+    expect(rule).toBeDefined();
+    expect(rule!.keywords).toContain('ynab');
+
+    const filed = useTaskStore.getState().tasks.find(t => t.title.toLowerCase().includes('ynab'));
+    expect(filed).toBeDefined();
+    expect(filed!.linkUrl).toBe(rule!.linkUrl);
+  });
+
   it('leaves a backlog for a rule written in demo mode to offer to file', () => {
     useDemoStore.getState().enterDemoMode();
 

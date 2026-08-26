@@ -274,7 +274,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // filing itself.
   { id: 'titleRules', groupId: 'tasksProjects', label: 'Title rules', section: 'New tasks',
     keywords: ['keyword', 'expense', 'automatic', 'auto file', 'category', 'project', 'tag',
-      'starts with', 'parse', 'shortcut', 'prefix', 'why did this'] },
+      'starts with', 'parse', 'shortcut', 'prefix', 'why did this', 'link', 'url', 'app'] },
   { id: 'simpleTaskForm', groupId: 'tasksProjects', label: 'Show fewer fields', section: 'Task form',
     keywords: ['simple', 'quick add', 'chips', 'declutter', 'basic', 'minimal'] },
   { id: 'autoArchiveProjects', groupId: 'tasksProjects', label: 'Auto-archive projects', section: 'Projects',

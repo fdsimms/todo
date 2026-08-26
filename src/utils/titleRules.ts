@@ -60,6 +60,7 @@ export interface TitleRuleFill {
   tags: string[];
   priority: Priority;
   effort: Effort;
+  linkUrl: string | null;
   /** The title with any stripped keywords taken out — identical to the input when nothing strips. */
   cleanTitle: string;
   /** Every rule that fired, most specific first (see resolveTitleRules). */
@@ -77,6 +78,7 @@ export function emptyTitleRule(): TitleRule {
     tags: [],
     priority: 0,
     effort: 0,
+    linkUrl: null,
     stripKeyword: false,
     enabled: true,
   };
@@ -88,7 +90,8 @@ export function titleRuleSaysNothing(rule: TitleRule): boolean {
     && rule.projectId === null
     && rule.tags.length === 0
     && rule.priority === 0
-    && rule.effort === 0;
+    && rule.effort === 0
+    && rule.linkUrl === null;
 }
 
 /**
@@ -195,6 +198,7 @@ export function resolveTitleRules(title: string, rules: TitleRule[]): TitleRuleF
     tags: [],
     priority: 0,
     effort: 0,
+    linkUrl: null,
     cleanTitle: title,
     matched: ranked,
   };
@@ -203,6 +207,7 @@ export function resolveTitleRules(title: string, rules: TitleRule[]): TitleRuleF
     if (fill.projectId === null) fill.projectId = rule.projectId;
     if (fill.priority === 0) fill.priority = rule.priority;
     if (fill.effort === 0) fill.effort = rule.effort;
+    if (fill.linkUrl === null) fill.linkUrl = rule.linkUrl;
     for (const tag of rule.tags) if (!fill.tags.includes(tag)) fill.tags.push(tag);
   }
   fill.cleanTitle = stripMatchedKeywords(title, ranked);
@@ -250,21 +255,23 @@ function stripMatchedKeywords(
  *
  * Names up to three things and then falls back to a count, the call
  * `describeExtraTaskDraft` makes and for the same reason: these render
- * `numberOfLines={1}` and a fourth truncates mid-word at 390pt. Category and
- * project arrive already resolved to display names — this module holds no
- * store, and a category's emoji lives on the category row rather than on the
- * name a rule stores.
+ * `numberOfLines={1}` and a fourth truncates mid-word at 390pt. Category,
+ * project and link arrive already resolved to display names — this module
+ * holds no store, and a category's emoji (or a link's known-app name) lives
+ * on the row that owns that lookup rather than on what a rule stores.
  */
 export function describeTitleRuleTargets(
-  target: Pick<TitleRule, 'category' | 'projectId' | 'tags' | 'priority' | 'effort'>,
+  target: Pick<TitleRule, 'category' | 'projectId' | 'tags' | 'priority' | 'effort' | 'linkUrl'>,
   categoryName: string | null,
   projectName: string | null,
+  linkLabel: string | null,
 ): string {
   const parts: string[] = [];
   if (target.category && categoryName) parts.push(categoryName);
   if (target.projectId && projectName) parts.push(projectName);
   if (target.priority > 0) parts.push(PRIORITY_LABELS[target.priority]);
   if (target.effort > 0) parts.push(EFFORT_LABELS[target.effort]);
+  if (target.linkUrl && linkLabel) parts.push(linkLabel);
   if (target.tags.length > 0) {
     parts.push(target.tags.length === 1 ? `#${target.tags[0]}` : `${target.tags.length} tags`);
   }
@@ -313,6 +320,7 @@ export function parseTitleRules(raw: string | null | undefined): TitleRule[] {
       tags: Array.isArray(r.tags) ? r.tags.filter((t): t is string => typeof t === 'string') : [],
       priority: isPriority(r.priority) ? r.priority : 0,
       effort: isEffort(r.effort) ? r.effort : 0,
+      linkUrl: typeof r.linkUrl === 'string' && r.linkUrl.trim() !== '' ? r.linkUrl : null,
       stripKeyword: r.stripKeyword === true,
       enabled: r.enabled !== false,
     };
@@ -337,7 +345,7 @@ function isEffort(v: unknown): v is Effort {
 export interface TitleRuleBacklogEntry {
   task: Task;
   /** Only the fields the rule fills — never a whole-task replacement. */
-  updates: Partial<Pick<Task, 'category' | 'projectId' | 'priority' | 'effort' | 'tags'>>;
+  updates: Partial<Pick<Task, 'category' | 'projectId' | 'priority' | 'effort' | 'tags' | 'linkUrl'>>;
 }
 
 /**
@@ -378,6 +386,7 @@ export function titleRuleBacklog(tasks: Task[], rule: TitleRule): TitleRuleBackl
     if (rule.projectId !== null && task.projectId === null) updates.projectId = rule.projectId;
     if (rule.priority !== 0 && !task.priority) updates.priority = rule.priority;
     if (rule.effort !== 0 && !task.effort) updates.effort = rule.effort;
+    if (rule.linkUrl !== null && task.linkUrl === null) updates.linkUrl = rule.linkUrl;
     const newTags = rule.tags.filter(t => !task.tags.includes(t));
     if (newTags.length > 0) updates.tags = [...task.tags, ...newTags];
     if (Object.keys(updates).length === 0) continue;

@@ -101,6 +101,26 @@ export function seedDemoData(): void {
       tags: ['admin'],
       priority: 0,
       effort: 1,
+      linkUrl: null,
+      stripKeyword: false,
+      enabled: true,
+    },
+    // A rule can fill a link the same way it fills a category — "anything
+    // mentioning YNAB opens the app" — and the field it fills is otherwise
+    // invisible until something uses it (see the demoSeed note on
+    // capabilities with no store action). "Nudge the ynab budget" below
+    // names no linkUrl of its own, so what puts the wallet icon on its row
+    // is this rule, not the task.
+    {
+      id: 'demo-rule-ynab',
+      keywords: ['ynab'],
+      match: 'contains',
+      category: null,
+      projectId: null,
+      tags: [],
+      priority: 0,
+      effort: 0,
+      linkUrl: 'ynab://',
       stripKeyword: false,
       enabled: true,
     },
@@ -128,6 +148,15 @@ export function seedDemoData(): void {
   addTask({
     title: 'Expense the client lunch',
     notes: 'Receipt photo is in the shared album.',
+    dueDate: today.toISOString(),
+  });
+
+  // Nothing here says linkUrl either — the demo-rule-ynab rule above does,
+  // the same way it would if this were typed into quick add.
+  addTask({
+    title: 'Nudge the ynab budget before the trip',
+    category: 'Home',
+    tags: ['bills'],
     dueDate: today.toISOString(),
   });
 

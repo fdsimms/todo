@@ -189,6 +189,12 @@ export interface TitleRule {
   tags: string[];
   priority: Priority;
   effort: Effort;
+  // Same field and meaning as `Task.linkUrl` — a known app's scheme (see
+  // `KNOWN_LINK_APPS`) or a custom URL, opened by the row's link button. "Add
+  // a link to the YNAB app when I mention YNAB" is this field: the rule is a
+  // filing decision like category or a tag, not a schedule one, so it fits
+  // the same null-means-nothing contract as the rest of the row.
+  linkUrl: string | null;
   // Take the matched word back out of the title ("expense lunch" → "lunch").
   // Off by default: the word is usually part of what the task is called, and
   // a rule that silently rewrites what someone typed is a worse first

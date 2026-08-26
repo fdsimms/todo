@@ -753,7 +753,7 @@ describe('addTask', () => {
     const expenseRule = {
       id: 'r1', keywords: ['expense'], match: 'startsWith',
       category: 'Work', projectId: null, tags: ['receipts'],
-      priority: 0, effort: 0, stripKeyword: false, enabled: true,
+      priority: 0, effort: 0, linkUrl: null, stripKeyword: false, enabled: true,
     };
 
     it('files a matching task by the rule', () => {
@@ -843,6 +843,17 @@ describe('addTask', () => {
       withRules([{ ...expenseRule, projectId: 'p1' }]);
       const task = useTaskStore.getState().addTask({ title: 'expense lunch', projectId: 'p2' });
       expect(task.projectId).toBe('p2');
+    });
+
+    it('fills a link, same as any other field a rule names', () => {
+      withRules([{ ...expenseRule, linkUrl: 'ynab://' }]);
+      expect(useTaskStore.getState().addTask({ title: 'expense lunch' }).linkUrl).toBe('ynab://');
+    });
+
+    it('never overrides a link the caller named', () => {
+      withRules([{ ...expenseRule, linkUrl: 'ynab://' }]);
+      const task = useTaskStore.getState().addTask({ title: 'expense lunch', linkUrl: 'https://example.com' });
+      expect(task.linkUrl).toBe('https://example.com');
     });
   });
 
@@ -2678,6 +2689,7 @@ describe('applyTitleRuleToExisting', () => {
     tags: ['admin'],
     priority: 0,
     effort: 1,
+    linkUrl: null,
     stripKeyword: false,
     enabled: true,
   };
@@ -2733,6 +2745,19 @@ describe('applyTitleRuleToExisting', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', title: 'Water the plants' })], lastAction: null });
     expect(useTaskStore.getState().applyTitleRuleToExisting(expenseRule)).toBe(0);
     expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('fills a link, and undoes it along with everything else', () => {
+    const ynabRule: TitleRule = { ...expenseRule, category: null, tags: [], effort: 0, linkUrl: 'ynab://' };
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', title: 'Expense the ynab check-in' })],
+    });
+
+    useTaskStore.getState().applyTitleRuleToExisting(ynabRule);
+    expect(useTaskStore.getState().tasks[0].linkUrl).toBe('ynab://');
+
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks[0].linkUrl).toBeNull();
   });
 });
 
@@ -3995,7 +4020,7 @@ describe('checkMealPlanNudge', () => {
       titleRules: [{
         id: 'r1', keywords: ['monday'], match: 'startsWith',
         category: 'Work', projectId: null, tags: ['admin'],
-        priority: 0, effort: 0, stripKeyword: false, enabled: true,
+        priority: 0, effort: 0, linkUrl: null, stripKeyword: false, enabled: true,
       }],
     }));
     useTaskStore.setState({ tasks: [] });
