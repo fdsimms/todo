@@ -10240,10 +10240,11 @@ describe('pending Apple Reminders imports', () => {
 
 // ─── placing a newly added task at a chosen seam ─────────────────────────────
 //
-// The in-card add button (MiniFab) can be dropped between two rows rather than
-// tapped. Both store adds append, so the editors place by adding and then
-// handing the whole intended order back — these cover that two-step, which is
-// the part that can silently put a row somewhere nobody asked for.
+// TaskEditor's subtask field can still target a specific seam
+// (pendingSubtaskIndex) even though nothing in its own UI sets one anymore.
+// Both store adds append, so placing at a seam is add-then-hand-the-whole-
+// intended-order-back — these cover that two-step, which is the part that can
+// silently put a row somewhere nobody asked for.
 
 describe('placing a new subtask at an index', () => {
   const seed = () => useTaskStore.setState({
@@ -10310,7 +10311,10 @@ describe('placing a new stack member at an index', () => {
     });
   };
 
-  // What TaskGroupEditor's commitChild does.
+  // reorderGroupChildren's own fold, exercised directly: a caller (like a
+  // roster drag reorder) hands back the roster order with a new id spliced
+  // in, and the tombstone the roster hides has to keep its slot among the
+  // full child list rather than being renumbered over.
   const addAt = (index: number) => {
     const ids = useTaskStore.getState().groupRosterOf('g1').map(m => m.id);
     const created = useTaskStore.getState().addNewGroupedTask('g1', 'new');

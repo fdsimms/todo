@@ -2223,6 +2223,8 @@ export const TaskItem = React.memo(function TaskItem({
                         <TouchableOpacity
                           style={styles.subtaskTitleWrapper}
                           onPress={() => handleSubtaskTitleTap(sub)}
+                          onLongPress={drag}
+                          delayLongPress={interaction.delayLongPress}
                           activeOpacity={interaction.activeOpacity}
                           hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
                         >
@@ -2255,15 +2257,6 @@ export const TaskItem = React.memo(function TaskItem({
                             : formatDuration(segment.minutes)}
                         </Text>
                       )}
-                      <TouchableOpacity
-                        onLongPress={drag}
-                        delayLongPress={interaction.delayLongPress}
-                        hitSlop={8}
-                        style={styles.subtaskDragHandle}
-                        accessibilityLabel={`Reorder ${sub.title}`}
-                      >
-                        <Ionicons name="reorder-three" size={16} color={colors.textTertiary} />
-                      </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => {
                           haptics.tap();
@@ -3385,7 +3378,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     includeFontPadding: false,
   },
   // The subtask's stretch of a timed task's countdown. Right-aligned against
-  // the drag handle so the column of times lines up however long the titles
+  // the delete button so the column of times lines up however long the titles
   // are, and quiet by default — most subtasks of most tasks carry no stretch,
   // and the ones that do are only worth reading while the timer is going.
   subtaskSegment: {
@@ -3404,9 +3397,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   subtaskSegmentDone: {
     color: colors.textTertiary,
     opacity: 0.5,
-  },
-  subtaskDragHandle: {
-    padding: 2,
   },
   subtaskDeleteBtn: {
     padding: 2,
