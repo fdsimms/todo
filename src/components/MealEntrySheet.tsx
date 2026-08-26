@@ -306,7 +306,7 @@ export function MealEntrySheet({
               accessibilityHint="Opens a text field to edit this meal's title"
             >
               <Text style={[styles.sheetTitle, styles.sheetTitleEditable]} numberOfLines={2}>{title}</Text>
-              <Ionicons name="pencil-outline" size={iconSize.sm} color={colors.textTertiary} />
+              <Ionicons name="create-outline" size={iconSize.sm} color={colors.textSecondary} />
             </TouchableOpacity>
           ) : (
             <Text style={styles.sheetTitle} numberOfLines={2}>{title}</Text>
