@@ -58,6 +58,33 @@ export function entriesForDay(
   return sortMealEntries(entries.filter(e => e.date === dayKey));
 }
 
+/**
+ * The planned meal a just-finished cooking should be ticked off against, or
+ * null when the day's plan holds nothing matching.
+ *
+ * Which day counts is the caller's to decide and is deliberately not read here
+ * — a cook timer stopped at 1 a.m. belongs to the evening it was started in,
+ * so the key handed in is `dayKeyOf(getLogicalToday())` rather than a calendar
+ * date the clock has already turned over.
+ *
+ * Between the rows of that day it takes the same recipe, not already cooked,
+ * earliest slot first: a dish planned for both lunch and dinner ticks lunch
+ * off first rather than whichever row happened to be written first. An entry
+ * that names the dish only by `title` is never matched — the identity being
+ * claimed is the recipe's, and a free-text meal that reads the same is a
+ * coincidence of spelling.
+ */
+export function cookEntryForRecipe(
+  entries: readonly MealPlanEntry[],
+  recipeId: string,
+  dayKey: string
+): MealPlanEntry | null {
+  const candidates = entries.filter(
+    e => e.date === dayKey && e.recipeId === recipeId && !e.cookedAt
+  );
+  return sortMealEntries(candidates)[0] ?? null;
+}
+
 /** One (day, slot)'s entries, in reading order. Several is normal — see MealPlanEntry.sortOrder. */
 export function entriesForSlot(
   entries: readonly MealPlanEntry[],

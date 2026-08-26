@@ -39,6 +39,7 @@ import { mealsTogetherInRange } from '../utils/peopleStats';
 import { totalMinutes } from '../utils/recipeUtils';
 import {
   cleanMealTitle,
+  cookEntryForRecipe,
   entriesForSlot,
   isKeyInRange,
   mealPlanPurgeCutoffKey,
@@ -454,11 +455,12 @@ interface MealPlanStore {
    * registering one because the caller knows what the user actually did and owns
    * the label — see `setLastAction`.
    *
-   * Two callers, neither of them the meal plan: `useTaskStore.completeTask`,
-   * for the "Make X" task ticked off on Today (#1402), and Today's own meal row
+   * Three callers, none of them the meal plan: `useTaskStore.completeTask`,
+   * for the "Make X" task ticked off on Today (#1402), Today's own meal row
    * for a meal that never got one (a leftover, a takeaway, a dinner typed by
-   * hand — see `mealContextRows`). It was `setCookedFromTask` while the task was
-   * the only way in; the pairing was never about tasks.
+   * hand — see `mealContextRows`), and `finishCookForRecipe` just below. It was
+   * `setCookedFromTask` while the task was the only way in; the pairing was
+   * never about tasks.
    *
    * Resolves the entry through SQLite when it isn't in the loaded window,
    * which is the normal case: ticking a meal off on Today says nothing about
@@ -468,6 +470,36 @@ interface MealPlanStore {
    * says what's being asked — so the caller stores no undo for a no-op.
    */
   setCookedPaired: (id: string, cooked: boolean) => (() => void) | null;
+
+  /**
+   * Records that a dish was cooked, knowing only the recipe — what Done on a
+   * cook timer's Live Activity means (see `openInAppUrl` in utils/deepLinks.ts).
+   *
+   * The timer's own ✓ banks the elapsed minutes and stops there, which is right
+   * for a stopwatch and was wrong for a button labelled Done: a cook that has
+   * finished is a cooking, and this app records one in two places at once (the
+   * planned meal's `cookedAt`, the recipe's `cookCount`/`lastCookedAt`). So this
+   * is the recipe-shaped door onto the same pairing `setCookedPaired` is the
+   * entry-shaped door onto.
+   *
+   * **Today's plan is preferred, and the recipe's own counters are the
+   * fallback.** A dish that was on the plan should tick its row off and raise
+   * the post-cook sheet — the rating, the fridge and the used-up ingredients
+   * are questions about the cooking, not about the tap's origin. A dish cooked
+   * off-plan has no row and so no sheet (`CookRecap` is built around an entry
+   * id), but the cooking still happened, so the counters still move.
+   *
+   * Which day it looks at is the *logical* today, not the calendar one: a cook
+   * stopped at 1 a.m. under a 02:00 `dayResetTime` belongs to the evening it
+   * was started in, and dating it forward would leave last night's dinner
+   * untouched and match nothing.
+   *
+   * Registers its own undo rather than returning one, unlike `setCookedPaired`:
+   * there is no screen behind this to know better, and a Done pressed by
+   * accident on a Lock Screen is exactly the tap worth being able to take back
+   * — `lastCookedAt` steers the suggestion ranking for weeks afterwards.
+   */
+  finishCookForRecipe: (recipeId: string) => void;
 
   /**
    * The bulk-selection actions (#1110) — mirrors of planMeal/moveEntry/
@@ -990,6 +1022,41 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       get().setCooked(id, !cooked);
       if (recipe && before) useRecipeStore.getState().restoreCookStats(recipe.id, before);
     };
+  },
+
+  finishCookForRecipe(recipeId) {
+    const dayKey = dayKeyOf(getLogicalToday());
+    // Read straight from SQLite rather than from `entries`, which holds only
+    // whatever window the plan screen last asked for and is empty until someone
+    // opens it. A cook timer started from the recipe library must not miss the
+    // meal it was planned as just because that screen was never visited.
+    const entry = cookEntryForRecipe(dbGetMealPlanEntries(dayKey, dayKey), recipeId, dayKey);
+    const recipes = useRecipeStore.getState().recipes;
+
+    if (entry) {
+      const undo = get().setCookedPaired(entry.id, true);
+      // Non-null by construction — cookEntryForRecipe only returns rows that
+      // aren't cooked yet — but the pairing owns that rule, not this.
+      if (undo) {
+        get().setLastAction({
+          label: `Cooked "${titleForEntry(entry, recipeIndex(recipes))}"`,
+          undo,
+        });
+      }
+      return;
+    }
+
+    // Nothing on today's plan, so there is no row to tick and no post-cook
+    // sheet to raise (see CookRecap, which is built around an entry id). The
+    // cooking still happened, so the recipe's own counters still move.
+    const recipe = recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const before = useRecipeStore.getState().markCooked(recipeId);
+    if (!before) return;
+    get().setLastAction({
+      label: `Cooked "${recipe.name}"`,
+      undo: () => useRecipeStore.getState().restoreCookStats(recipeId, before),
+    });
   },
 
   bulkDeleteEntries(ids) {
