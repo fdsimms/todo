@@ -3116,6 +3116,26 @@ describe('checkProjectReviewTasks', () => {
     expect(reviewTasks()).toHaveLength(1);
   });
 
+  it('a bulk-deleted row is also taken as "not today", same as a single delete', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().bulkDeleteTasks([reviewTasks()[0].id]);
+    expect(useProjectStore.getState().projects[0].reviewDeclinedAt).not.toBeNull();
+  });
+
+  // sweepExpiredTasks is the one bulkDeleteTasks caller that isn't the user
+  // saying anything — see its call site's comment.
+  it('a bulk delete with skipGeneratedOptOut leaves the source untouched', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().bulkDeleteTasks([reviewTasks()[0].id], { skipGeneratedOptOut: true });
+    expect(useProjectStore.getState().projects[0].reviewDeclinedAt).toBeNull();
+  });
+
   // Ticking it off without pulling anything in is a refusal, and the row going
   // away is what makes it one. Nothing here is live afterwards, so without the
   // day scope the very next foreground would write an identical task.
@@ -3971,6 +3991,32 @@ describe('checkReachOutTasks', () => {
     const taskId = reachOutTasks()[0].id;
 
     useTaskStore.getState().deleteTask(taskId);
+    useTaskStore.getState().lastAction!.undo();
+
+    expect(usePersonStore.getState().people[0].reachOutDeclinedAt).toBeNull();
+    expect(useTaskStore.getState().tasks.find(t => t.id === taskId)).toBeDefined();
+  });
+
+  // The bug the user actually hit: the row's own swipe-to-delete goes through
+  // the selection bar's bulkDeleteTasks, not deleteTask, and that path wrote
+  // no opt-out at all — so a nudge deleted this way came right back on the
+  // next sweep even after the single-row path was fixed.
+  it('also takes a bulk-deleted row as a decline', () => {
+    useTaskStore.getState().checkReachOutTasks();
+    const taskId = reachOutTasks()[0].id;
+
+    useTaskStore.getState().bulkDeleteTasks([taskId]);
+    expect(usePersonStore.getState().people[0].reachOutDeclinedAt).not.toBeNull();
+
+    useTaskStore.getState().checkReachOutTasks();
+    expect(reachOutTasks()).toHaveLength(0);
+  });
+
+  it('undoing a bulk delete clears the decline again', () => {
+    useTaskStore.getState().checkReachOutTasks();
+    const taskId = reachOutTasks()[0].id;
+
+    useTaskStore.getState().bulkDeleteTasks([taskId]);
     useTaskStore.getState().lastAction!.undo();
 
     expect(usePersonStore.getState().people[0].reachOutDeclinedAt).toBeNull();
