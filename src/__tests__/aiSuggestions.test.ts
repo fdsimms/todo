@@ -7,6 +7,7 @@
 
 import {
   suggestTemplateItems,
+  suggestProjectTasks,
   suggestGroceryAisles,
   suggestRecipeGroceries,
   extractRecipe,
@@ -24,6 +25,7 @@ import type { Task } from '../types';
 
 const TEST_AI_FEATURE_CONFIG = {
   templateSuggestions: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+  projectTaskSuggestions: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   groceryAisles: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   recipeExtraction: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   mealIdeas: { enabled: true, model: 'claude-haiku-4-5-20251001' },
@@ -250,6 +252,88 @@ describe('suggestTemplateItems', () => {
     const content = body.messages[0].content as string;
     expect(content).toContain('Camping trip');
     expect(content).toContain('Pitch the tent');
+    expect(body.tool_choice).toEqual({ type: 'tool', name: 'suggest_tasks' });
+  });
+});
+
+// ============================================================================
+// suggestProjectTasks
+// ============================================================================
+
+describe('suggestProjectTasks', () => {
+  it('throws when no API key is configured', async () => {
+    jest.spyOn(
+      require('../store/useSettingsStore').useSettingsStore,
+      'getState',
+    ).mockReturnValueOnce({ anthropicApiKey: '' });
+
+    await expect(suggestProjectTasks('Repaint the hallway', '', [])).rejects.toThrow('No API key');
+  });
+
+  it('throws on a non-OK HTTP response', async () => {
+    mockFetchOnce({}, 500);
+    await expect(suggestProjectTasks('Repaint the hallway', '', [])).rejects.toThrow('API error 500');
+  });
+
+  it('throws when the response contains no tool_use block', async () => {
+    mockFetchOnce({ content: [{ type: 'text', text: 'hi' }] });
+    await expect(suggestProjectTasks('Repaint the hallway', '', [])).rejects.toThrow('No suggestions returned');
+  });
+
+  it('returns normalized suggestions from the tool payload', async () => {
+    mockFetchOnce(toolUseResponse('suggest_tasks', {
+      tasks: [
+        { title: '  Buy paint  ', notes: 'Match the trim color' },
+        { title: 'Move the furniture', notes: '' },
+      ],
+    }));
+
+    const result = await suggestProjectTasks('Repaint the hallway', '', []);
+    expect(result).toEqual([
+      { title: 'Buy paint', notes: 'Match the trim color' },
+      { title: 'Move the furniture', notes: '' },
+    ]);
+  });
+
+  it('drops blank titles', async () => {
+    mockFetchOnce(toolUseResponse('suggest_tasks', {
+      tasks: [
+        { title: '   ', notes: 'nothing' },
+        { title: 'Sand the walls', notes: '' },
+      ],
+    }));
+
+    const result = await suggestProjectTasks('Repaint the hallway', '', []);
+    expect(result).toEqual([{ title: 'Sand the walls', notes: '' }]);
+  });
+
+  it('filters out duplicates of existing tasks and repeated suggestions (case-insensitively)', async () => {
+    mockFetchOnce(toolUseResponse('suggest_tasks', {
+      tasks: [
+        { title: 'Buy Paint', notes: '' }, // dup of existing
+        { title: 'Tape the edges', notes: '' },
+        { title: 'tape the edges', notes: '' }, // dup of prior suggestion
+      ],
+    }));
+
+    const result = await suggestProjectTasks('Repaint the hallway', '', ['buy paint']);
+    expect(result).toEqual([{ title: 'Tape the edges', notes: '' }]);
+  });
+
+  it('passes the project title, notes, and existing titles to the model', async () => {
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: () => Promise.resolve(toolUseResponse('suggest_tasks', { tasks: [] })),
+    } as Response);
+
+    await suggestProjectTasks('Repaint the hallway', 'Two coats, satin finish', ['Buy paint']);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const content = body.messages[0].content as string;
+    expect(content).toContain('Repaint the hallway');
+    expect(content).toContain('Two coats, satin finish');
+    expect(content).toContain('Buy paint');
     expect(body.tool_choice).toEqual({ type: 'tool', name: 'suggest_tasks' });
   });
 });
