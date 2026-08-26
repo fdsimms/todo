@@ -19,6 +19,7 @@ import { haptics } from '../utils/haptics';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import {
   describeFinishedWhen,
@@ -27,6 +28,7 @@ import {
   finishedLeftovers,
 } from '../utils/leftovers';
 import type { WeekStart } from '../store/useSettingsStore';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 /** Kept clear above the sheet so its title never slides under the status bar. */
@@ -73,6 +75,7 @@ export function FridgeHistorySheet({ visible, leftovers, weekStartsOn, onOpen, o
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const fade = useScrollEdgeFade();
   const { height: windowHeight } = useWindowDimensions();
 
   const hiddenY = useSheetHiddenOffset();
@@ -155,7 +158,13 @@ export function FridgeHistorySheet({ visible, leftovers, weekStartsOn, onOpen, o
               />
             </View>
           ) : (
-            <ScrollView style={styles.list} bounces={false} showsVerticalScrollIndicator={false}>
+            <>
+            <ScrollView
+              style={styles.list}
+              bounces={false}
+              showsVerticalScrollIndicator={false}
+              {...fade.scrollProps}
+            >
               {history.map((leftover, idx) => {
                 const tossed = leftover.outcome === 'tossed';
                 return (
@@ -202,6 +211,13 @@ export function FridgeHistorySheet({ visible, leftovers, weekStartsOn, onOpen, o
                 {`Kept for ${LEFTOVER_RETENTION_DAYS} days.`}
               </Text>
             </ScrollView>
+            <ScrollEdgeFade
+              edge="bottom"
+              opacity={fade.bottomOpacity}
+              color={colors.bgSecondary}
+              style={styles.scrollFade}
+            />
+            </>
           )}
         </View>
       </Animated.View>
@@ -257,6 +273,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.sm,
   },
   list: { flexShrink: 1 },
+  // Clears the card's own bottom padding: an absolute child is positioned
+  // from the border box, so `bottom: 0` would sit below the list's last row.
+  scrollFade: { bottom: spacing.sm },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

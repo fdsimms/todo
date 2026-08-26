@@ -24,6 +24,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, iconSize, type Colors } from '../theme';
@@ -83,6 +84,7 @@ import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
@@ -286,6 +288,7 @@ export function QuickAddModal({
   // title in view no matter how tall the open panel is.
   const sheetMaxHeight = windowHeight - keyboardHeight - insets.top - insets.bottom - spacing.xl * 2;
   const styles = useMemo(() => makeStyles(colors, sheetMaxHeight), [colors, sheetMaxHeight]);
+  const fade = useScrollEdgeFade();
 
   // `onDone` runs after `onClose`, once the sheet has actually faded out —
   // callers that also need to change what's on screen behind the sheet (e.g.
@@ -1312,7 +1315,11 @@ export function QuickAddModal({
               up past the top of the screen once the keyboard's offset was
               added on top. Scrolling the content keeps the title pinned at
               the top of a sheet that can no longer grow past the screen. */}
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            {...fade.scrollProps}
+          >
           {/* Where the button was dropped. Removable: the drop chose a place,
               it didn't commit you to one. */}
           {seedActive && seedLabel ? (
@@ -2204,6 +2211,12 @@ export function QuickAddModal({
             </TouchableOpacity>
           )}
           </ScrollView>
+          <ScrollEdgeFade
+            edge="bottom"
+            opacity={fade.bottomOpacity}
+            color={colors.bgSecondary}
+            style={styles.scrollFade}
+          />
         </Animated.View>
       </View>
       <WhenPicker
@@ -2266,6 +2279,11 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xl,
   },
+  // Clears the sheet's own bottom padding — an absolute child is positioned
+  // from the border box, so `bottom: 0` would sit under the last row rather
+  // than over it. Spans the full width, padding included, which is what the
+  // content dissolving into the sheet wants.
+  scrollFade: { bottom: spacing.md },
   sheet: {
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,

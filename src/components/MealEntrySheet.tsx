@@ -27,11 +27,13 @@ import { slotLabel } from '../utils/mealPlan';
 import type { ChoiceGroup } from '../utils/recipeComponents';
 import { RecipeScaleChips } from './RecipeScaleChips';
 import { PillGroup } from './PillGroup';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { guestFoodNotes } from '../utils/personNotes';
 import { getCurrentDayStart } from '../utils/dateUtils';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 interface Props {
@@ -160,6 +162,7 @@ export function MealEntrySheet({
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const fade = useScrollEdgeFade();
   const { height: windowHeight } = useWindowDimensions();
   const cooked = !!entry?.cookedAt;
 
@@ -270,11 +273,13 @@ export function MealEntrySheet({
             growing off the top of the screen. The handle above and the Done
             card below stay put — the drag-to-dismiss responder lives on the
             handle, so scrolling in here never fights it. */}
+        <View style={styles.cardWrap}>
         <ScrollView
           style={styles.card}
           contentContainerStyle={styles.cardContent}
           bounces={false}
           showsVerticalScrollIndicator={false}
+          {...fade.scrollProps}
           // The title can be mid-edit; a tap on a chip should move the meal
           // rather than being spent dismissing the keyboard.
           keyboardShouldPersistTaps="handled"
@@ -615,6 +620,8 @@ export function MealEntrySheet({
             accessibilityLabel="Take this off the plan"
           />
         </ScrollView>
+        <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />
+        </View>
 
         <TouchableOpacity
           style={styles.cancelCard}
@@ -654,11 +661,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: 2,
     backgroundColor: colors.bgQuaternary,
   },
+  // Wraps the scrolling card so the fade can be anchored to its bottom
+  // edge. It carries the card's outer layout — the shrink that lets the
+  // card give way to the sheet's maxHeight, the gap below it, and the
+  // rounded clip the band has to sit inside — because an absolute child
+  // is positioned from its parent's border box: left on the card, the
+  // band would overhang the corners and the margin below it.
+  cardWrap: {
+    flexShrink: 1,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    marginBottom: spacing.sm,
+  },
   card: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    marginBottom: spacing.sm,
     // Lets the card give way to the sheet's maxHeight instead of overflowing
     // it — without this the ScrollView takes its content's full height and
     // there is nothing to scroll.

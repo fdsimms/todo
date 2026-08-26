@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView, Animated } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { PressableScale } from './PressableScale';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useBulkBarEntrance } from '../hooks/useBulkBarEntrance';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 
 export interface ListBulkAction {
   key: string;
@@ -72,6 +74,7 @@ export function ListBulkBar({
 }: Props) {
   const { colors, shadows } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const fade = useScrollEdgeFade();
   const entranceStyle = useBulkBarEntrance();
   const [panel, setPanel] = useState<'actions' | 'category'>('actions');
   const [categoryText, setCategoryText] = useState('');
@@ -203,6 +206,7 @@ export function ListBulkBar({
             contentContainerStyle={styles.categoryListContent}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
+            {...fade.scrollProps}
           >
             {!query && category.allowNone !== false && (
               <TouchableOpacity style={styles.categoryChip} onPress={() => handleSetCategory(null)}>
@@ -227,6 +231,7 @@ export function ListBulkBar({
               </TouchableOpacity>
             )}
           </ScrollView>
+          <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />
         </View>
       )}
     </Animated.View>

@@ -31,6 +31,7 @@ import { CountStepper } from './CountStepper';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetActionRow } from './SheetActionRow';
 import { SegmentedControl } from './SegmentedControl';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import {
   cleanLeftoverTitle,
@@ -43,6 +44,7 @@ import {
   type LeftoverPart,
   type LeftoverPick,
 } from '../utils/leftovers';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 /** Kept clear above the sheet so its first row never slides under the status bar. */
@@ -181,6 +183,7 @@ export function LeftoverSheet({
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const fade = useScrollEdgeFade();
   const { height: windowHeight } = useWindowDimensions();
 
   const hiddenY = useSheetHiddenOffset();
@@ -385,11 +388,13 @@ export function LeftoverSheet({
             the parts list grows with the meal's components and the actions
             below it are conditional, so a composed dish logged from a live row
             is taller than the sheet can be. */}
+        <View style={styles.cardWrap}>
         <ScrollView
           style={styles.card}
           contentContainerStyle={styles.cardContent}
           bounces={false}
           showsVerticalScrollIndicator={false}
+          {...fade.scrollProps}
           keyboardShouldPersistTaps="handled"
         >
           <View style={styles.headerRow}>
@@ -629,6 +634,8 @@ export function LeftoverSheet({
             </>
           )}
         </ScrollView>
+        <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />
+        </View>
 
         <TouchableOpacity
           style={styles.cancelCard}
@@ -686,11 +693,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: 2,
     backgroundColor: colors.bgQuaternary,
   },
+  // Wraps the scrolling card so the fade can be anchored to its bottom
+  // edge. It carries the card's outer layout — the shrink that lets the
+  // card give way to the sheet's maxHeight, the gap below it, and the
+  // rounded clip the band has to sit inside — because an absolute child
+  // is positioned from its parent's border box: left on the card, the
+  // band would overhang the corners and the margin below it.
+  cardWrap: {
+    flexShrink: 1,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    marginBottom: spacing.sm,
+  },
   card: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
     overflow: 'hidden',
-    marginBottom: spacing.sm,
     // See MealEntrySheet's: lets the card give way to the sheet's maxHeight
     // rather than taking its content's full height and overflowing it.
     flexShrink: 1,
