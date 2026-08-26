@@ -67,6 +67,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
   const planMeal = useMealPlanStore(s => s.planMeal);
+  const removeMealPlanEntry = useMealPlanStore(s => s.removeEntry);
   const { offerPrepTasksForEach } = usePlanMeal();
 
   const [showPrompt, setShowPrompt] = useState(false);
@@ -254,6 +255,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
             forceSlot={source.slot}
             onPlan={planMeal}
             onPlanned={offerPrepTasksForEach}
+            onUnplan={removeMealPlanEntry}
             onClose={() => setShowMealPicker(false)}
           />
         );
