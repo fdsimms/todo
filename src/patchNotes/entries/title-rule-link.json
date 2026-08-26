@@ -1,0 +1,4 @@
+{
+  "message": "Title rules can now set a link too, so \"anything mentioning YNAB opens the app\" fills that in automatically, the same way a rule already fills a category or a tag. YNAB is also a new option in the link picker's list of known apps.",
+  "date": "2026-08-26"
+}

@@ -487,6 +487,7 @@ export function QuickAddModal({
     priority: Priority;
     effort: Effort;
     tags: string[];
+    linkUrl: string | null;
   } | null>(null);
 
   useEffect(() => {
@@ -494,22 +495,26 @@ export function QuickAddModal({
     // The baseline is what the sheet would hold with no rules at all — the
     // drop's category or Settings' default. A rule is one step more specific
     // than those, so it wins them, and losing the match hands the field back.
+    // linkUrl has no such baseline (the sheet always opens with none), so its
+    // base is simply null, same as projectId.
     const baseCategory = seedRef.current?.category ?? newTaskDefaults.category;
     const basePriority: Priority = newTaskDefaults.priority ?? 0;
     const baseEffort: Effort = newTaskDefaults.effort ?? 0;
     const prev = appliedRuleRef.current
-      ?? { category: baseCategory, projectId: null, priority: basePriority, effort: baseEffort, tags: [] };
+      ?? { category: baseCategory, projectId: null, priority: basePriority, effort: baseEffort, tags: [], linkUrl: null };
     const next = {
       category: ruleFill?.category ?? baseCategory,
       projectId: ruleFill?.projectId ?? null,
       priority: ruleFill && ruleFill.priority !== 0 ? ruleFill.priority : basePriority,
       effort: ruleFill && ruleFill.effort !== 0 ? ruleFill.effort : baseEffort,
       tags: ruleFill?.tags ?? [],
+      linkUrl: ruleFill?.linkUrl ?? null,
     };
     setCategory(cur => (cur === prev.category ? next.category : cur));
     setProjectId(cur => (cur === prev.projectId ? next.projectId : cur));
     setPriority(cur => (cur === prev.priority ? next.priority : cur));
     setEffort(cur => (cur === prev.effort ? next.effort : cur));
+    setLinkUrl(cur => (cur === prev.linkUrl ? next.linkUrl : cur));
     // Tags accumulate rather than claim a slot (see resolveTitleRules), so the
     // reconcile is per tag: drop the ones this put there and the rule no
     // longer names, keep everything else exactly where it was.
@@ -530,6 +535,7 @@ export function QuickAddModal({
       ruleFill,
       ruleFill.category ? categoryLabel(ruleFill.category, categories) : null,
       projects.find(p => p.id === ruleFill.projectId)?.title ?? null,
+      ruleFill.linkUrl ? linkLabel(ruleFill.linkUrl) : null,
     );
     const word = ruleFill.matched[0].match.keyword;
     return targets ? `“${word}” · ${targets}` : `“${word}”`;
