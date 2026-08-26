@@ -52,6 +52,7 @@ import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRe
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { isStaleNote } from '../utils/personNotes';
+import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { mealYearRange, taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
 import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -937,6 +938,19 @@ describe('demo seed — people', () => {
   it('an opted-in person has a real cadence behind the opt-in', () => {
     const optedIn = usePersonStore.getState().people.find(p => p.nudgeOptIn)!;
     expect(optedIn.cadenceDays).toBeGreaterThan(0);
+  });
+
+  // The Backfill screen's People pool has nothing to walk unless somebody in
+  // the seed is short of one of its three fields, and a screen showing "set for
+  // everyone" three times reads as a screen that does nothing. The gaps are
+  // already there for their own reasons — most people carry no cadence (the
+  // test above), and a birthday is optional — so this pins them rather than
+  // asking the seed for anything new.
+  it('leaves each backfillable person field with somebody to fill it in for', () => {
+    const counts = personBackfillFieldCounts(usePersonStore.getState().people);
+    for (const field of PERSON_BACKFILL_FIELDS) {
+      expect(counts[field.id]).toBeGreaterThan(0);
+    }
   });
 
   // Rule 7 in one row: the clock decides when to speak, the note decides what

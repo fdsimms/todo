@@ -3739,6 +3739,7 @@ describe('checkReachOutTasks', () => {
     phoneNumber: null, email: null, linkUrl: null,
     cadenceDays: 30, nudgeOptIn: true, cadenceSetAt: daysAgo(45),
     reachOutDeclinedAt: null, askAbout: '',
+    backfillDismissedFields: [],
     ...overrides,
   });
 
