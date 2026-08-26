@@ -1,15 +1,18 @@
 # Generated tasks: the thirteen things that write a task unattended
 
 The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
-project reviews, pantry checks, supply reorders and the daily calendar review.
+project reviews, pantry checks and the pantry review, supply reorders, the
+daily calendar review, birthdays and the reach-out nudge.
 Read this before adding a fourteenth generator: the whole point of the refactor
 it describes is that a new one costs a rules module and a registry entry, not a
 column.
 
-The prose below walks the generators in the order they were added and stops
-naming them individually after `birthdayGift`; `reachOut` and `pantryReview`
-came later. `GENERATED_KINDS` in `src/utils/generatedTasks.ts` is the list that
-is actually authoritative about which exist.
+The prose below walks the generators in the order they were added. It had
+fallen a generator behind once already (`reachOut` shipped without an entry,
+leaving this file claiming eleven while twelve were listed), so when adding one:
+`GENERATED_KINDS` in `src/utils/generatedTasks.ts` is the authoritative list,
+and the count in the two headings above is derived from it rather than from the
+number of sections here.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
 task. The rules here are settled decisions with the reasoning attached: don't
@@ -207,6 +210,37 @@ See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where 
     isn't deleted for being a fortnight old.
   - **It ships off**, unlike `projectReview` beside it, which replaced a surface that was already
     on screen. This adds one.
+
+- **`reachOut` is the twelfth, and it is `projectReview` one shelf over.** A person somebody asked
+  to be reminded about, who it has been a while since they saw, becomes "Catch up with Ansley".
+  **The reasoning lives in `docs/arch/people.md`'s "The reach-out nudge"** and is not repeated here:
+  that file holds the rules about what this feature may never do, and they are what shaped every
+  choice below. What belongs here is only how it sits in the mechanism.
+  - **Sourced on the person**, so its opt-out is an ordinary stamp on the source row
+    (`Person.reachOutDeclinedAt`), the bounded-for-free placement this doc asks for — whatever
+    deletes the person deletes the "no".
+  - **The stamp holds for a week rather than a day**, which is the one place it departs from
+    `projectReview`'s self-expiring decline. A project put off is still sitting in your work; a nudge
+    about a friend returning tomorrow morning reads as the app disagreeing with you about a
+    friendship. `declineHoldDays` takes the shorter of a week and the person's own cadence, so
+    somebody on a four-day cadence is not silenced for seven by one swipe.
+  - **The cap is two, and the tie deliberately does not break on longest-since.** Sorting the due set
+    by who you have neglected most is the obvious answer and is exactly what `people.md` rules out,
+    even done invisibly. It breaks on `sortOrder` — the hand drag on the People screen — because that
+    is the only ranking of people the feature is allowed to contain, being the one somebody made on
+    purpose.
+  - **Its stale pass judges against the uncapped due set**, not against the two `wantedReachOuts`
+    returns. The cap decides who gets a *new* row when several people are due; losing that contest is
+    no reason to delete a row the user already deferred. Same split `staleProjectReviewTasks` and
+    `stalePantryCheckTasks` both draw, and the same `dropGeneratedTask` so the app's own tidying up
+    never writes the source's decline.
+  - **The task carries no `personIds`**, for the reason `projectReview` carries no `projectId`:
+    filing it under the person it names would let ticking it off reset the very clock that wrote it,
+    without anybody having actually reached out. It points at its person through
+    `generatedSourceId` like every other generator points at its source.
+  - **It ships on**, like `projectReview` and for its argument: the real gate is per-person
+    (`nudgeOptIn` + `cadenceDays`, both off on everybody), so an install where nobody has been opted
+    in sees nothing new. The setting only decides whether the pass runs at all.
 
 - **`pantryReview` is the thirteenth, and it is `calendarReview` one shelf over, not `pantryCheck`.**
   It asks the drip's question in bulk: one row, "Review what's in the pantry", opening a swipe deck
