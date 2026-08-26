@@ -22,20 +22,12 @@ import { spacing, radius, font, fontWeight, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { CollapsibleField } from './CollapsibleField';
-import { MiniFabList } from './MiniFabList';
+import { SortableList } from './SortableList';
 import { EditorSheet } from './EditorSheet';
 import { InlineAction } from './InlineAction';
 import { PinIcon } from './PinIcon';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { TaskEditor } from './TaskEditor';
-import type { FabMenuItem } from './Fab';
-
-// Rendered bottom-up, so "New task" lands nearest the button — the same
-// most-used-closest ordering AddTaskFab uses for the screen menu.
-const ADD_TO_STACK_ITEMS: FabMenuItem[] = [
-  { key: 'existing', label: 'Add existing', icon: 'albums-outline' },
-  { key: 'new', label: 'New task', icon: 'add' },
-];
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'tags';
@@ -96,10 +88,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const [newChildTitle, setNewChildTitle] = useState('');
   const [showExistingPicker, setShowExistingPicker] = useState(false);
   const [existingSearch, setExistingSearch] = useState('');
-  // Where the add button was dropped, if it was dragged rather than tapped.
-  // Null means the end, which is where both a tap and the store's own append
-  // put it. Cleared whenever the thing it seeded closes.
-  const [pendingChildIndex, setPendingChildIndex] = useState<number | null>(null);
   // Pickers collapse to their current value, matching the task editor.
   const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
   // A member row opens the task's own editor on top of this one, same as
@@ -114,7 +102,6 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
     setCategory(group.category);
     setShowExistingPicker(false);
     setExistingSearch('');
-    setPendingChildIndex(null);
     setOpenFields({});
   }, [group]);
 
@@ -146,36 +133,12 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
     pinGroup(group.id);
   };
 
-  /**
-   * Moves a just-added task to the seam the add button was dropped on.
-   *
-   * Both store adds append, so placement is a renumber afterwards. What matters
-   * is *which* order gets handed back: the **roster** order, never a
-   * hand-rolled full one. reorderGroupChildren reads groupChildrenOf — every
-   * row including the completed occurrences the roster hides — and folds the
-   * subset into it with reorderSubset, which lays the ids given back into the
-   * slots they already occupy and leaves the tombstones where they are.
-   *
-   *   roster [A, B] + tombstone T between them, dropped at seam 1:
-   *   all     = [A, T, B, new]      ordered = [A, new, B]
-   *   result  = [A, T, new, B]  →   roster reads A, new, B
-   *
-   * Renumbering `members` 1..n directly would instead give the tombstones the
-   * live members' numbers.
-   */
-  const placeInStack = (createdId: string, index: number | null) => {
-    if (!group || index === null || index >= members.length) return;
-    const ids = members.map(m => m.id);
-    ids.splice(Math.max(0, index), 0, createdId);
-    reorderGroupChildren(group.id, ids);
-  };
-
+  // New members always land at the end of the roster — drag the row afterward
+  // to move it, same as TaskEditor's own subtask/chain-step lists.
   const commitChild = (title: string) => {
     const trimmed = title.trim();
     if (!group || !trimmed) return;
-    const index = pendingChildIndex;
-    const created = addNewGroupedTask(group.id, trimmed);
-    placeInStack(created.id, index);
+    addNewGroupedTask(group.id, trimmed);
     // The field closes on submit here (returnKeyType="done", no
     // blurOnSubmit={false}), so there's no burst to keep together.
   };
@@ -183,9 +146,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const commitExisting = (taskId: string) => {
     if (!group) return;
     addExistingToGroup(taskId, group.id);
-    placeInStack(taskId, pendingChildIndex);
-    // The picker stays open for a run of adds, so walk the seam along.
-    setPendingChildIndex(i => (i === null ? null : i + 1));
+    // The picker stays open for a run of adds.
   };
 
   // Capped so a large task list doesn't render hundreds of rows into an
@@ -432,39 +393,19 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
               {dueToday.length > 0 ? ` · ${doneToday}/${dueToday.length} today` : ''}
             </Text>
           </View>
-          <MiniFabList
+          <SortableList
             data={members}
             onReorder={newData => reorderGroupChildren(group.id, newData.map(c => c.id))}
             onDragStateChange={setDraggingChild}
-            accessibilityLabel="Add task to this stack"
-            fabHidden={addingChild}
-            menuItems={ADD_TO_STACK_ITEMS}
-            onAdd={index => {
-              setPendingChildIndex(index);
-              setAddingChild(true);
-            }}
-            onMenuSelect={(key, index) => {
-              setPendingChildIndex(index);
-              if (key === 'new') setAddingChild(true);
-              else setShowExistingPicker(true);
-            }}
             renderItem={(child, _i, drag) => {
               const subtitle = memberSchedule(child);
               return (
                 <View style={styles.childRow}>
                   <TouchableOpacity
-                    onLongPress={drag}
-                    delayLongPress={150}
-                    hitSlop={8}
-                    style={styles.dragHandle}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Reorder ${child.title}`}
-                  >
-                    <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                  </TouchableOpacity>
-                  <TouchableOpacity
                     style={styles.childText}
                     onPress={() => setEditingTask(child)}
+                    onLongPress={drag}
+                    delayLongPress={interaction.delayLongPress}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
                     accessibilityLabel={`Open ${child.title}`}
@@ -489,63 +430,73 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                 </View>
               );
             }}
-            footer={<>
-              {addingChild && (
-                <View style={styles.subtaskInputRow}>
-                  <TextInput
-                    autoFocus
-                    style={styles.subtaskInput}
-                    value={newChildTitle}
-                    onChangeText={setNewChildTitle}
-                    placeholder="New task title"
-                    placeholderTextColor={colors.textTertiary}
-                    maxLength={TITLE_MAX_LENGTH}
-                    returnKeyType="done"
-                    onSubmitEditing={() => {
-                      commitChild(newChildTitle);
-                      setNewChildTitle('');
-                      haptics.tap();
-                    }}
-                    onBlur={() => {
-                      commitChild(newChildTitle);
-                      setNewChildTitle('');
-                      setAddingChild(false);
-                      setPendingChildIndex(null);
-                    }}
-                  />
-                </View>
-              )}
-              {showExistingPicker && (
-                <View style={styles.existingPicker}>
-                  <TextInput
-                    style={styles.existingSearch}
-                    value={existingSearch}
-                    onChangeText={setExistingSearch}
-                    placeholder="Search tasks"
-                    placeholderTextColor={colors.textTertiary}
-                  />
-                  {eligibleForAdd.map(t => (
-                    <TouchableOpacity
-                      key={t.id}
-                      style={styles.existingRow}
-                      onPress={() => { commitExisting(t.id); haptics.tap(); }}
-                    >
-                      <Text style={styles.existingRowText} numberOfLines={1}>{t.title}</Text>
-                      <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-                    </TouchableOpacity>
-                  ))}
-                  {eligibleForAdd.length === 0 && (
-                    <Text style={styles.existingEmpty}>No matching unstacked tasks</Text>
-                )}
-                  {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (
-                    <Text style={styles.existingEmpty}>
-                      Showing {EXISTING_TASK_PICKER_LIMIT} of {eligibleMatches.length} matches. Refine your search to see the rest.
-                    </Text>
-                )}
-                </View>
-              )}
-            </>}
           />
+          {addingChild && (
+            <View style={styles.subtaskInputRow}>
+              <TextInput
+                autoFocus
+                style={styles.subtaskInput}
+                value={newChildTitle}
+                onChangeText={setNewChildTitle}
+                placeholder="New task title"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={TITLE_MAX_LENGTH}
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  commitChild(newChildTitle);
+                  setNewChildTitle('');
+                  haptics.tap();
+                }}
+                onBlur={() => {
+                  commitChild(newChildTitle);
+                  setNewChildTitle('');
+                  setAddingChild(false);
+                }}
+              />
+            </View>
+          )}
+          {showExistingPicker && (
+            <View style={styles.existingPicker}>
+              <TextInput
+                style={styles.existingSearch}
+                value={existingSearch}
+                onChangeText={setExistingSearch}
+                placeholder="Search tasks"
+                placeholderTextColor={colors.textTertiary}
+              />
+              {eligibleForAdd.map(t => (
+                <TouchableOpacity
+                  key={t.id}
+                  style={styles.existingRow}
+                  onPress={() => { commitExisting(t.id); haptics.tap(); }}
+                >
+                  <Text style={styles.existingRowText} numberOfLines={1}>{t.title}</Text>
+                  <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                </TouchableOpacity>
+              ))}
+              {eligibleForAdd.length === 0 && (
+                <Text style={styles.existingEmpty}>No matching unstacked tasks</Text>
+            )}
+              {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (
+                <Text style={styles.existingEmpty}>
+                  Showing {EXISTING_TASK_PICKER_LIMIT} of {eligibleMatches.length} matches. Refine your search to see the rest.
+                </Text>
+            )}
+            </View>
+          )}
+          <View style={styles.addRow}>
+            {!addingChild && (
+              <InlineAction icon="add" label="New task" onPress={() => setAddingChild(true)} />
+            )}
+            {!showExistingPicker && (
+              <InlineAction
+                icon="albums-outline"
+                label="Add existing"
+                variant="neutral"
+                onPress={() => setShowExistingPicker(true)}
+              />
+            )}
+          </View>
 
         </View>
       </View>
@@ -613,8 +564,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   childTitle: { color: colors.text, fontSize: font.md },
   childSubtitle: { color: colors.textTertiary, fontSize: font.xs },
   childTitleDone: { color: colors.textTertiary, textDecorationLine: 'line-through' },
-  dragHandle: { padding: 4 },
   childRemove: { padding: 4 },
+  addRow: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
   subtaskInputRow: { paddingVertical: spacing.xs },
   subtaskInput: {
     color: colors.text, fontSize: font.md,

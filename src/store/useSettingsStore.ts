@@ -65,9 +65,7 @@ export type WeekStart = 0 | 1;
  * left-anchored decisions (the drawer's edge swipe, a row's leading checkbox,
  * swipe directions) are deliberate and stay put, so this is not an RTL flag.
  *
- * Read by Fab.tsx (the screen button and its menu), MiniFabList.tsx — which
- * puts the in-card add button in the matching corner of the subtasks and stack
- * cards, so both buttons fall under the same thumb — and DemoBanner.tsx, which
+ * Read by Fab.tsx (the screen button and its menu) and DemoBanner.tsx, which
  * parks itself in whichever corner the button isn't using.
  */
 export type FabHand = 'right' | 'left';

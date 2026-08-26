@@ -35,9 +35,8 @@ export interface FabDragHandlers {
 export const WELL_PADDING = 8;
 
 /**
- * The circle itself — fill, glow and geometry — as one definition, because
- * MiniFab draws the same button inside an editor card and these are exactly the
- * declarations that drift when they're copied (the accent `shadowColor` most of
+ * The circle itself — fill, glow and geometry — as one definition, so it can't
+ * drift from `FabButton`'s two call sites (the accent `shadowColor` most of
  * all: it's what makes the button glow its own colour rather than cast a grey
  * drop shadow, and it's the easiest one to leave out).
  */
@@ -370,19 +369,11 @@ interface FabMenuOverlayProps {
  * The opened menu — backdrop, staggered pills, and the close button the resting
  * FAB turns into.
  *
- * Split out so `MiniFab` can open the same menu from inside an editor card
- * without a second copy of the stagger, the spring or the dismiss-then-select
- * ordering (that ordering matters: `onSelect` runs in the close animation's
- * completion callback, so a sheet the selection opens isn't racing this Modal's
- * dismissal). Only the anchor differs — the screen version hangs off a corner,
- * the in-card one off wherever the button measured itself to be.
- *
- * The pills and the close button are one size everywhere, deliberately: an open
- * menu is a full-screen Modal over a backdrop wherever it was opened from, so
- * the card the in-card button sits in is no longer constraining anything. The
- * in-card menu used to draw itself scaled to its own 36pt button (40pt pills,
- * `font.sm`), which made the same two choices read a third smaller than the
- * identical menu on Today for no reason a person could see.
+ * Split out of `FabMenu` so the overlay's own anchoring, stagger and
+ * dismiss-then-select ordering can be reasoned about apart from the button
+ * that opens it (that ordering matters: `onSelect` runs in the close
+ * animation's completion callback, so a sheet the selection opens isn't
+ * racing this Modal's dismissal).
  */
 export function FabMenuOverlay({
   items, visible, anim, onSelect, onDismiss, anchor, size,

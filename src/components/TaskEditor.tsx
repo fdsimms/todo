@@ -2342,6 +2342,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                               <TouchableOpacity
                                 style={styles.chainItemTitleWrapper}
                                 onPress={() => handleChainItemTitleTap(item)}
+                                onLongPress={drag}
+                                delayLongPress={interaction.delayLongPress}
                                 activeOpacity={interaction.activeOpacity}
                                 hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
                               >
@@ -2362,16 +2364,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                               datesNextStep={item.deliverableDatesNextStep === true}
                               onPress={() => setQuestionStepId(item.id)}
                             />
-                            <TouchableOpacity
-                              onLongPress={drag}
-                              delayLongPress={150}
-                              hitSlop={8}
-                              style={styles.dragHandle}
-                              accessibilityRole="button"
-                              accessibilityLabel={`Reorder chain step ${item.title}`}
-                            >
-                              <Ionicons name="reorder-three" size={18} color={colors.textSecondary} />
-                            </TouchableOpacity>
                             <TouchableOpacity
                               onPress={() => {
                                 // Track the active step by id (like onReorder above) rather
@@ -3716,6 +3708,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     <TouchableOpacity
                       style={styles.subtaskTitleWrapper}
                       onPress={() => handleSubtaskTitleTap(sub)}
+                      onLongPress={drag}
+                      delayLongPress={interaction.delayLongPress}
                       activeOpacity={interaction.activeOpacity}
                       hitSlop={{ top: 8, bottom: 8, left: 0, right: 8 }}
                     >
@@ -3735,16 +3729,6 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       onChange={mins => setSubtaskMinutes(sub.id, mins)}
                     />
                   )}
-                  <TouchableOpacity
-                    onLongPress={drag}
-                    delayLongPress={150}
-                    hitSlop={8}
-                    style={styles.dragHandle}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Reorder subtask ${sub.title}`}
-                  >
-                    <Ionicons name="reorder-three" size={18} color={colors.textSecondary} />
-                  </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => deleteDraftSubtask(sub.id)}
                     hitSlop={8}
@@ -4663,7 +4647,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.accent,
   },
   subtaskDelete: { padding: 4 },
-  dragHandle: { padding: 4 },
   subtaskInputRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,

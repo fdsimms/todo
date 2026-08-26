@@ -878,9 +878,18 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                           </Text>
                         </View>
                       </TouchableOpacity>
-                      <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
-                        {chainItem.title}
-                      </Text>
+                      <TouchableOpacity
+                        style={styles.chainItemTitle}
+                        onLongPress={drag}
+                        delayLongPress={interaction.delayLongPress}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Reorder chain step ${chainItem.title}`}
+                      >
+                        <Text style={[styles.chainItemTitleText, isCurrentStep && styles.chainItemTitleActive]}>
+                          {chainItem.title}
+                        </Text>
+                      </TouchableOpacity>
                       <StepMinutes
                         value={chainItem.estimatedMinutes}
                         label={chainItem.title}
@@ -893,16 +902,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                         datesNextStep={chainItem.deliverableDatesNextStep === true}
                         onPress={() => setQuestionStepId(chainItem.id)}
                       />
-                      <TouchableOpacity
-                        onLongPress={drag}
-                        delayLongPress={150}
-                        hitSlop={8}
-                        style={styles.dragHandle}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Reorder chain step ${chainItem.title}`}
-                      >
-                        <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                      </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => {
                           // Same by-id tracking as the SortableList's own
@@ -1028,16 +1027,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onReorder={setSubtasks}
             renderItem={(sub, _displayIndex, drag) => (
               <View style={styles.chainItemRow}>
-                <Text style={styles.chainItemTitle}>{sub.title}</Text>
                 <TouchableOpacity
+                  style={styles.chainItemTitle}
                   onLongPress={drag}
-                  delayLongPress={150}
-                  hitSlop={8}
-                  style={styles.dragHandle}
+                  delayLongPress={interaction.delayLongPress}
+                  activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityLabel={`Reorder subtask ${sub.title}`}
                 >
-                  <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                  <Text style={styles.chainItemTitleText}>{sub.title}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setSubtasks(prev => prev.filter(s => s.id !== sub.id))}
@@ -1489,9 +1487,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chainItemDotActive: { backgroundColor: colors.accent },
   chainItemDotText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700' },
   chainItemDotTextActive: { color: colors.onAccent },
-  chainItemTitle: { flex: 1, color: colors.text, fontSize: font.md },
+  chainItemTitle: { flex: 1 },
+  chainItemTitleText: { color: colors.text, fontSize: font.md },
   chainItemTitleActive: { color: colors.accent, fontWeight: '600' },
-  dragHandle: { padding: 4 },
   chainItemDelete: { padding: 4 },
   chainInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 7 },
   chainInput: {

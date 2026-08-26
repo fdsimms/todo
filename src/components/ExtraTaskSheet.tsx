@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Effort, ExtraTaskDraft, Priority, TimeOfDay } from '../types';
 import { EFFORT_LABELS, EFFORT_HINTS, PRIORITY_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, type Colors } from '../theme';
+import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
@@ -437,16 +437,15 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
             onReorder={setSubtasks}
             renderItem={(sub, _displayIndex, drag) => (
               <View style={styles.subtaskRow}>
-                <Text style={styles.subtaskTitle}>{sub.title}</Text>
                 <TouchableOpacity
+                  style={styles.subtaskTitleWrapper}
                   onLongPress={drag}
-                  delayLongPress={150}
-                  hitSlop={8}
-                  style={styles.dragHandle}
+                  delayLongPress={interaction.delayLongPress}
+                  activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityLabel={`Reorder subtask ${sub.title}`}
                 >
-                  <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                  <Text style={styles.subtaskTitle}>{sub.title}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setSubtasks(prev => prev.filter(s => s.id !== sub.id))}
@@ -588,8 +587,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: 7,
     borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.separator,
   },
-  subtaskTitle: { flex: 1, color: colors.text, fontSize: font.md },
-  dragHandle: { padding: 4 },
+  subtaskTitleWrapper: { flex: 1 },
+  subtaskTitle: { color: colors.text, fontSize: font.md },
   subtaskDelete: { padding: 4 },
   subtaskInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 7 },
   subtaskInput: {
