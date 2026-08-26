@@ -213,7 +213,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
         <CollapsibleField
           label="Category"
           summary={draft.category ? categoryLabel(draft.category, categories) : undefined}
-          emptySummary="Says nothing"
+          emptySummary="Not set"
           hint="Where a matching task is filed, unless you pick a category yourself when adding it."
           expanded={fieldOpen('category')}
           onToggle={() => toggleField('category')}
@@ -223,7 +223,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               style={[styles.pill, !draft.category && styles.pillActive]}
               onPress={() => { haptics.tap(); patch({ category: null }); closeField('category'); }}
             >
-              <Text style={[styles.pillText, !draft.category && styles.pillTextActive]}>Says nothing</Text>
+              <Text style={[styles.pillText, !draft.category && styles.pillTextActive]}>Not set</Text>
             </TouchableOpacity>
             {allCategories.map(cat => (
               <TouchableOpacity
@@ -245,7 +245,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
             <CollapsibleField
               label="Project"
               summary={projects.find(p => p.id === draft.projectId)?.title}
-              emptySummary="Says nothing"
+              emptySummary="Not set"
               hint="Which project a matching task counts toward, when you add it from quick add. Quick add has no project field of its own, so a rule is the way to get one on a task as you type it. A task captured somewhere with nothing on screen to show it, like a dictated reminder, is left out of the project so it still lands in your Inbox."
               expanded={fieldOpen('project')}
               onToggle={() => toggleField('project')}
@@ -255,7 +255,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
                   style={[styles.pill, !draft.projectId && styles.pillActive]}
                   onPress={() => { haptics.tap(); patch({ projectId: null }); closeField('project'); }}
                 >
-                  <Text style={[styles.pillText, !draft.projectId && styles.pillTextActive]}>Says nothing</Text>
+                  <Text style={[styles.pillText, !draft.projectId && styles.pillTextActive]}>Not set</Text>
                 </TouchableOpacity>
                 {projects.map(p => (
                   <TouchableOpacity
@@ -276,7 +276,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
         <CollapsibleField
           label="Tags"
           summary={draft.tags.length > 0 ? draft.tags.join(', ') : undefined}
-          emptySummary="Says nothing"
+          emptySummary="Not set"
           hint="Added to whatever tags the task already has, rather than replacing them."
           expanded={fieldOpen('tags')}
           onToggle={() => toggleField('tags')}
@@ -332,7 +332,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
         <CollapsibleField
           label="Priority"
           summary={draft.priority > 0 ? PRIORITY_LABELS[draft.priority] : undefined}
-          emptySummary="Says nothing"
+          emptySummary="Not set"
           hint="Ranks a matching task against everything else on its day."
           expanded={fieldOpen('priority')}
           onToggle={() => toggleField('priority')}
@@ -351,7 +351,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
         <CollapsibleField
           label="Effort"
           summary={draft.effort > 0 ? EFFORT_LABELS[draft.effort] : undefined}
-          emptySummary="Says nothing"
+          emptySummary="Not set"
           hint="Roughly how big a matching task is, so the day it lands on can be sized realistically."
           expanded={fieldOpen('effort')}
           onToggle={() => toggleField('effort')}
