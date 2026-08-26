@@ -87,6 +87,7 @@ import {
   completeTaskUrlId,
   isStopTimerUrl,
   stopTimerUrlKey,
+  linkIconFor,
 } from '../utils/deepLinks';
 
 describe('parseAddTaskUrl', () => {
@@ -460,6 +461,29 @@ describe('focusUrlAction', () => {
     expect(focusUrlAction('dundundun://focus?do=end')).toBeNull();
     expect(focusUrlAction('dundundun://focus?do=')).toBeNull();
     expect(focusUrlAction('dundundun://groceries?do=next')).toBeNull();
+  });
+});
+
+describe('linkIconFor', () => {
+  it('uses a known app\'s own icon for its scheme', () => {
+    expect(linkIconFor('dundundun://groceries')).toBe('cart-outline');
+    expect(linkIconFor('spotify://')).toBe('musical-notes-outline');
+  });
+
+  it('picks the destination\'s icon for an in-app link the static app list can\'t match', () => {
+    expect(linkIconFor('dundundun://recipe?id=r1')).toBe('restaurant-outline');
+    expect(linkIconFor('dundundun://recipes')).toBe('restaurant-outline');
+    expect(linkIconFor('dundundun://mealplan?date=2026-08-22')).toBe('restaurant-outline');
+    expect(linkIconFor('dundundun://kitchen?item=grocery-abc')).toBe('nutrition-outline');
+    expect(linkIconFor('dundundun://groceries?finish=1')).toBe('cart-outline');
+    expect(linkIconFor('dundundun://people?person=p1')).toBe('people-outline');
+    expect(linkIconFor('dundundun://projects?pull=proj-1')).toBe('briefcase-outline');
+  });
+
+  it('falls back to the plain chain link for a real external URL', () => {
+    expect(linkIconFor('https://example.com/filters')).toBe('link');
+    expect(linkIconFor(null)).toBe('link');
+    expect(linkIconFor(undefined)).toBe('link');
   });
 });
 
