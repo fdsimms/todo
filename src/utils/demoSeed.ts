@@ -1157,7 +1157,6 @@ function seedRecipes(): DemoRecipes {
     setEstimatedMinutes,
     setPrepMinutes,
     setLeftoverKeepDays,
-    toggleFavorite,
     markCooked,
     startCookTimer,
     addStep,
@@ -1237,7 +1236,7 @@ function seedRecipes(): DemoRecipes {
   setNotes(oats.id, 'Assembles in about five minutes the night before. Keeps three days in a jar.');
   setServings(oats.id, 2);
   setPrepMinutes(oats.id, 10);
-  toggleFavorite(oats.id);
+  setVote(oats.id, 'liked');
 
   const sandwich = newRecipe('Turkey and avocado sandwich');
   addIngredientsFromText(
@@ -1408,11 +1407,11 @@ function seedRecipes(): DemoRecipes {
   const defrost = addPrepTask(salmon.id, 'Move the salmon to the fridge to defrost');
   if (defrost) updatePrepTask(salmon.id, defrost.id, { offsetDays: -1, reminderOffsetMinutes: 120 });
   [0, 1].forEach(() => markCooked(salmon.id));
-  // Cooked it twice and decided against a third — the down side of the vote,
-  // set the same way the post-cook sheet's "How was it?" section sets it. The
-  // stir-fry below is deliberately left unrated, so cooking tonight's dinner in
-  // the demo is what shows that section being asked.
-  setVote(salmon.id, 'down');
+  // Cooked it twice and decided against a third — the never-again side of the
+  // vote, set the same way the post-cook sheet's "How was it?" section sets
+  // it. The stir-fry below is deliberately left unrated, so cooking tonight's
+  // dinner in the demo is what shows that section being asked.
+  setVote(salmon.id, 'never');
   // The shared component — the same mash inside two different dinners, which
   // is the whole point of a reference rather than a copy.
   addComponent(salmon.id, mash.id);
@@ -1447,8 +1446,7 @@ function seedRecipes(): DemoRecipes {
   const rest = addPrepTask(steak.id, 'Take the steak out of the fridge');
   if (rest) updatePrepTask(steak.id, rest.id, { offsetDays: 0, reminderOffsetMinutes: 45 });
   markCooked(steak.id);
-  toggleFavorite(steak.id);
-  setVote(steak.id, 'up');
+  setVote(steak.id, 'loved');
 
   // A recipe page saved from another app's share sheet, still waiting to be
   // imported — the banner at the top of Recipes. Seeded because the share

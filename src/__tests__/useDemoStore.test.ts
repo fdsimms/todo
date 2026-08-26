@@ -1662,7 +1662,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   it('seeds recipe duration, cook history, attribution and a live timer', () => {
     const { recipes } = useRecipeStore.getState();
 
-    expect(recipes.some(r => r.favorite)).toBe(true);
     expect(recipes.some(r => r.tags.length > 1)).toBe(true);
     // A real dietary tag, not just a cooking-style one — the excluded-tags
     // picker (#1693) needs something a household would actually exclude on.
@@ -1677,10 +1676,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.leftoverKeepDays === null)).toBe(true);
     expect(recipes.some(r => r.prepTasks.some(p => p.reminderOffsetMinutes !== null))).toBe(true);
     expect(recipes.some(r => r.cookCount > 1 && r.lastCookedAt)).toBe(true);
-    // Both sides of the vote — a loved, favorited dish and a cooked-twice one
-    // decided against, so the box's "Loved first" sort has something to show.
-    expect(recipes.some(r => r.vote === 'up')).toBe(true);
-    expect(recipes.some(r => r.vote === 'down')).toBe(true);
+    // Two sides of the vote — a loved dish and a cooked-twice one decided
+    // against — so the box's "Loved first" sort has something to show.
+    expect(recipes.some(r => r.vote === 'loved')).toBe(true);
+    expect(recipes.some(r => r.vote === 'never')).toBe(true);
     expect(recipes.some(r => r.timerStartedAt)).toBe(true);
     // All three attribution shapes — a URL, a byline, and a cookbook page.
     expect(recipes.some(r => r.sourceUrl)).toBe(true);

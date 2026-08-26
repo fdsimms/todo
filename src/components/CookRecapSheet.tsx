@@ -36,10 +36,11 @@ const CHECKBOX_SIZE = 22;
 // Typed against `RecipeVote | null` so the track can render with *nothing*
 // selected, which is exactly the state the section exists to fill in — a
 // never-rated recipe. Null is not an option anyone can pick: there is no
-// segment for it, and `onChange` can only ever hand back one of these two.
+// segment for it, and `onChange` can only ever hand back one of these three.
 const VOTE_OPTIONS: SegmentOption<RecipeVote | null>[] = [
-  { value: 'up', label: RECIPE_VOTE_LABELS.up },
-  { value: 'down', label: RECIPE_VOTE_LABELS.down },
+  { value: 'loved', label: RECIPE_VOTE_LABELS.loved },
+  { value: 'liked', label: RECIPE_VOTE_LABELS.liked },
+  { value: 'never', label: RECIPE_VOTE_LABELS.never },
 ];
 
 interface Props {

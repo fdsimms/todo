@@ -434,9 +434,10 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         >
           <SegmentedControl<RecipeVote | null>
             options={[
-              { value: 'up', label: 'Loved it', icon: 'thumbs-up-outline' },
+              { value: 'loved', label: 'Loved it', icon: 'thumbs-up' },
+              { value: 'liked', label: 'Liked it', icon: 'thumbs-up-outline' },
               { value: null, label: 'No opinion' },
-              { value: 'down', label: 'Not for me', icon: 'thumbs-down-outline' },
+              { value: 'never', label: 'Never again', icon: 'thumbs-down-outline' },
             ]}
             value={vote}
             onChange={next => { setVoteDraft(next); setVoteOpen(false); }}

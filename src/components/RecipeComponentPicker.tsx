@@ -15,7 +15,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { describeRecipe, rankRecipes } from '../utils/recipeUtils';
+import { describeRecipe, rankRecipes, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { recipeMap, wouldCreateRecipeCycle } from '../utils/recipeComponents';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -55,7 +55,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
     const byId = recipeMap(recipes);
     const ranked = query.trim()
       ? rankRecipes(query, recipes)
-      : [...recipes].sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder);
+      : sortRecipesForDisplay(recipes);
     return ranked
       .filter(r => r.id !== recipe.id)
       .map(candidate => ({
