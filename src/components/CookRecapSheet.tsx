@@ -17,6 +17,7 @@ import {
   animation,
   type Colors,
 } from '../theme';
+import { disclosureValue } from '../theme/textStyles';
 import { SafeBlurView } from './SafeBlurView';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -185,11 +186,22 @@ export function CookRecapSheet({
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
+  // Explicit "no" answers to the two single-action asks (Leftovers, Restock),
+  // distinct from Skip: Skip abandons the whole sheet unanswered, this records
+  // that a specific question was answered "no". Tapping the collapsed answer
+  // reopens the choice, same as EditorRow's value being the way back into a
+  // field you've already set.
+  const [leftoversDeclined, setLeftoversDeclined] = useState(false);
+  const [restockDeclined, setRestockDeclined] = useState(false);
 
   // Cleared on every opening. A sheet that hands back last cook's answers
   // pre-ticked would be asserting them about this one.
   useEffect(() => {
-    if (visible) setTicked(new Set());
+    if (visible) {
+      setTicked(new Set());
+      setLeftoversDeclined(false);
+      setRestockDeclined(false);
+    }
   }, [visible]);
 
   const itemsByKey = useMemo(() => {
@@ -302,85 +314,123 @@ export function CookRecapSheet({
               <>
                 <Text style={styles.groupLabel}>Leftovers</Text>
                 <View style={styles.card}>
-                  <EditorRow
-                    icon="cube-outline"
-                    label="Anything left over?"
-                    value="Log"
-                    onPress={onLogLeftovers}
-                  />
+                  {leftoversDeclined ? (
+                    <EditorRow
+                      icon="cube-outline"
+                      label="Anything left over?"
+                      value="No"
+                      onPress={() => setLeftoversDeclined(false)}
+                    />
+                  ) : (
+                    <View style={styles.choiceRow}>
+                      <Ionicons name="cube-outline" size={18} color={colors.textSecondary} />
+                      <Text style={styles.choiceLabel}>Anything left over?</Text>
+                      <View style={styles.choiceButtons}>
+                        <InlineAction
+                          label="No"
+                          variant="neutral"
+                          onPress={() => { haptics.tap(); setLeftoversDeclined(true); }}
+                          accessibilityLabel="No leftovers"
+                        />
+                        <InlineAction label="Log" onPress={onLogLeftovers} accessibilityLabel="Log leftovers" />
+                      </View>
+                    </View>
+                  )}
                 </View>
               </>
             )}
 
-            {(showPantry || showBuy) && (
+            {showPantry && (
               <>
-                <Text style={styles.groupLabel}>{showPantry ? 'Out of anything?' : 'Restock?'}</Text>
+                <Text style={styles.groupLabel}>Out of anything?</Text>
                 {/* Says the mechanism, since this is the only place it's
                     explained: what ticking does, and what happens next
                     because of it. */}
                 {!hideHelpText && (
                   <Text style={styles.hint}>
-                    {showPantry
-                      ? 'Things you probably had before cooking this. Check whatever it used up and they’ll stop counting as on hand.'
-                      : 'Ingredients from this meal that aren’t on your shopping list.'}
+                    Things you probably had before cooking this. Check whatever it used up and they’ll stop
+                    counting as on hand.
                   </Text>
                 )}
 
-                {showPantry && (
-                  <View style={styles.card}>
-                    {rows.map((row, i) => {
-                      const on = ticked.has(row.nameKey);
-                      const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
-                      return (
-                        <React.Fragment key={row.nameKey}>
-                          {i > 0 && <View style={styles.sep} />}
-                          <TouchableOpacity
-                            style={styles.row}
-                            activeOpacity={interaction.activeOpacity}
-                            onPress={() => toggle(row)}
-                            accessibilityRole="checkbox"
-                            accessibilityState={{ checked: on }}
-                            accessibilityLabel={[row.name, shownQuantity, row.reason].filter(Boolean).join(', ')}
-                            accessibilityHint="Marks it as used up"
-                          >
-                            <View style={[styles.checkbox, on && styles.checkboxOn]}>
-                              {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-                            </View>
-                            <View style={styles.rowBody}>
-                              <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
-                              {/* probablyHaveReason's own words — the same line
-                                  the pantry and the item sheet show, so why the
-                                  app thought you had it is answered where you're
-                                  being asked. */}
-                              {!!row.reason && (
-                                <Text style={styles.reason} numberOfLines={1}>{row.reason}</Text>
-                              )}
-                            </View>
-                            {!!shownQuantity && (
-                              <View style={styles.qtyPill}>
-                                <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
-                              </View>
+                <View style={styles.card}>
+                  {rows.map((row, i) => {
+                    const on = ticked.has(row.nameKey);
+                    const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
+                    return (
+                      <React.Fragment key={row.nameKey}>
+                        {i > 0 && <View style={styles.sep} />}
+                        <TouchableOpacity
+                          style={styles.row}
+                          activeOpacity={interaction.activeOpacity}
+                          onPress={() => toggle(row)}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: on }}
+                          accessibilityLabel={[row.name, shownQuantity, row.reason].filter(Boolean).join(', ')}
+                          accessibilityHint="Marks it as used up"
+                        >
+                          <View style={[styles.checkbox, on && styles.checkboxOn]}>
+                            {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+                          </View>
+                          <View style={styles.rowBody}>
+                            <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
+                            {/* probablyHaveReason's own words — the same line
+                                the pantry and the item sheet show, so why the
+                                app thought you had it is answered where you're
+                                being asked. */}
+                            {!!row.reason && (
+                              <Text style={styles.reason} numberOfLines={1}>{row.reason}</Text>
                             )}
-                          </TouchableOpacity>
-                        </React.Fragment>
-                      );
-                    })}
-                  </View>
-                )}
+                          </View>
+                          {!!shownQuantity && (
+                            <View style={styles.qtyPill}>
+                              <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
+                            </View>
+                          )}
+                        </TouchableOpacity>
+                      </React.Fragment>
+                    );
+                  })}
+                </View>
+              </>
+            )}
 
-                {/* Neutral, and not because it's the second half of a pair:
-                    buying is the quieter want here. The section's own question is
-                    what you're out of, and this is the follow-on offered under it
-                    rather than the thing being asked. */}
-                {showBuy && (
-                  <InlineAction
-                    label={`Add ${buyCount} to list`}
-                    icon="basket-outline"
-                    variant="neutral"
-                    onPress={handleAddToList}
-                    accessibilityLabel={`Add ${buyCount} ingredient${buyCount === 1 ? '' : 's'} to the shopping list`}
-                    style={styles.buy}
-                  />
+            {showBuy && (
+              <>
+                {/* Its own label and hint, deliberately not folded under "Out of
+                    anything?" above — this count comes from the recipe's own
+                    ingredient list against what's on the shopping list, not from
+                    anything ticked in the pantry section, and sitting right below
+                    that checklist made the two easy to read as one tally. */}
+                <Text style={styles.groupLabel}>{showPantry ? 'Restock' : 'Restock?'}</Text>
+                {!hideHelpText && (
+                  <Text style={styles.hint}>Ingredients from this recipe that aren’t on your shopping list.</Text>
+                )}
+                {restockDeclined ? (
+                  <TouchableOpacity
+                    onPress={() => setRestockDeclined(false)}
+                    hitSlop={8}
+                    style={styles.buyDeclined}
+                    accessibilityRole="button"
+                    accessibilityLabel="Not adding to list"
+                  >
+                    <Text style={styles.buyDeclinedText}>Not adding to list</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.buyRow}>
+                    <InlineAction
+                      label="No thanks"
+                      variant="neutral"
+                      onPress={() => { haptics.tap(); setRestockDeclined(true); }}
+                      accessibilityLabel="Don't add these ingredients to the shopping list"
+                    />
+                    <InlineAction
+                      label={`Add ${buyCount} to list`}
+                      icon="basket-outline"
+                      onPress={handleAddToList}
+                      accessibilityLabel={`Add ${buyCount} ingredient${buyCount === 1 ? '' : 's'} to the shopping list`}
+                    />
+                  </View>
                 )}
               </>
             )}
@@ -505,7 +555,26 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     maxWidth: 90,
   },
   qtyText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
+  // Mirrors EditorRow's own row layout so the unanswered and answered states
+  // of the Leftovers question line up exactly.
+  choiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 13,
+  },
+  choiceLabel: { flexGrow: 1, flexShrink: 0, color: colors.text, fontSize: font.md },
+  choiceButtons: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   // Both margins, not just the one above: nothing below this has a top margin
   // of its own, and the section that follows would otherwise sit against it.
-  buy: { alignSelf: 'flex-start', marginHorizontal: spacing.md, marginTop: spacing.sm },
+  buyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+  },
+  buyDeclined: { alignSelf: 'flex-start', marginHorizontal: spacing.md, marginTop: spacing.sm, paddingVertical: 7 },
+  buyDeclinedText: { ...disclosureValue(colors), color: colors.textSecondary },
 });
