@@ -472,7 +472,7 @@ export function SearchScreen() {
       <SearchField
         ref={inputRef}
         style={styles.searchBar}
-        placeholder="Search todos…"
+        placeholder="Search tasks"
         value={query}
         onChangeText={setQuery}
       />
@@ -495,12 +495,12 @@ export function SearchScreen() {
             icon="search-outline"
             title="No results"
             subtitle={`Nothing matches "${query}"`}
-            actionLabel="Create task"
+            actionLabel="New task"
             onAction={() => setQuickAddVisible(true)}
             bottomOffset={tabBarHeight}
           />
         ) : query.trim().length === 0 ? (
-          <EmptyState key="prompt" icon="search-outline" title="Find any todo" subtitle="Search active tasks, completed tasks, and stacks" bottomOffset={tabBarHeight} />
+          <EmptyState key="prompt" icon="search-outline" title="Find any task" subtitle="Search active tasks, completed tasks, and stacks" bottomOffset={tabBarHeight} />
         ) : (
           <FlatList
             data={listData}

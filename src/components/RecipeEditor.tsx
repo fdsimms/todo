@@ -235,7 +235,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         ? `${base} It's used as a component of “${usedBy[0].name}”, which will show it as missing until you remove it there.`
         : `${base} It's used as a component of ${usedBy.length} other recipes (${usedBy.map(r => r.name).join(', ')}), which will show it as missing until you remove it there.`;
     confirmDelete({
-      title: 'Delete Recipe',
+      title: 'Delete recipe',
       message,
       onConfirm: () => {
         animateLayout();
@@ -689,7 +689,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             value={url}
             onChangeText={setUrl}
             onSubmitEditing={() => Keyboard.dismiss()}
-            placeholder="Where it came from"
+            placeholder="e.g. example.com/chili-recipe"
             placeholderTextColor={colors.textTertiary}
             autoCapitalize="none"
             autoCorrect={false}
@@ -706,7 +706,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
           style={styles.notesInput}
           value={notes}
           onChangeText={setNotesDraft}
-          placeholder="Method, timings, what you'd change next time"
+          placeholder="e.g. method, timings, what you'd change next time"
           placeholderTextColor={colors.textTertiary}
           multiline
           textAlignVertical="top"

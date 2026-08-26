@@ -461,7 +461,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 onChangeText={setNewBlank}
                 onSubmitEditing={addBlankFromInput}
                 onBlur={addBlankFromInput}
-                placeholder="name"
+                placeholder="e.g. destination"
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="none"
@@ -482,10 +482,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       {choiceQuestions.length > 0 && (
         <View style={styles.sectionCard}>
           <CollapsibleField
-            label="Only when"
+            label="Checked by default for"
             summary={conditionSummary ?? undefined}
             emptySummary="Every run"
-            hint="Checked by default only for the answers you pick here. Everything stays on the list either way, so you can still check or uncheck it when you apply the template."
+            hint="Arrives pre-checked when the run's answer is one of these. Everything stays on the list either way, so you can still check or uncheck it when you apply the template."
             expanded={fieldOpen('conditions', conditionSummary !== null)}
             onToggle={() => toggleField('conditions', conditionSummary !== null)}
           >
@@ -781,6 +781,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setOptional(!optional); }}
           activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: optional }}
         >
           <Ionicons name="help-circle-outline" size={18} color={optional ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
@@ -796,6 +798,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setVacationPause(!vacationPause); }}
           activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: vacationPause }}
         >
           <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
@@ -1147,7 +1151,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                 onChangeText={setNewTag}
                 onSubmitEditing={addTagFromInput}
                 onBlur={addTagFromInput}
-                placeholder="tag name"
+                placeholder="Tag name"
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="none"

@@ -94,7 +94,7 @@ export function useShakeToUndo(enabled: boolean): void {
         confirmOpenRef.current = true;
         haptics.warning();
         Alert.alert(
-          'Undo Last Action',
+          'Undo last action',
           `Undo "${lastAction.label}"?`,
           [
             { text: 'Cancel', style: 'cancel', onPress: () => { confirmOpenRef.current = false; } },

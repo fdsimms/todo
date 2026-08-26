@@ -998,7 +998,7 @@ export function QuickAddModal({
         'Resume archived task?',
         `You archived "${archivedMatch.title}" a while back. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
         [
-          { text: 'Create New', onPress: () => createTask(finalTitle) },
+          { text: 'Create new', onPress: () => createTask(finalTitle) },
           {
             text: 'Resume',
             style: 'default',
@@ -1563,7 +1563,7 @@ export function QuickAddModal({
                   value={customTimedText}
                   onChangeText={applyCustomTimed}
                   keyboardType="number-pad"
-                  placeholder="custom"
+                  placeholder="Custom"
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   accessibilityLabel="Custom duration in minutes"
@@ -1592,7 +1592,7 @@ export function QuickAddModal({
                   style={styles.targetUnitInput}
                   value={targetUnit}
                   onChangeText={setTargetUnit}
-                  placeholder="units"
+                  placeholder="Units"
                   placeholderTextColor={colors.textTertiary}
                   maxLength={MAX_TARGET_UNIT_LENGTH}
                   autoCapitalize="none"
@@ -1966,9 +1966,10 @@ export function QuickAddModal({
                   value={customEffortText}
                   onChangeText={applyCustomEffort}
                   keyboardType="number-pad"
-                  placeholder="custom min"
+                  placeholder="Custom min"
                   placeholderTextColor={colors.textTertiary}
                   inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
+                  accessibilityLabel="Custom effort in minutes"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
               </View>
@@ -2077,7 +2078,7 @@ export function QuickAddModal({
                   onChangeText={setCustomLinkText}
                   onSubmitEditing={commitCustomLink}
                   onBlur={commitCustomLink}
-                  placeholder="https://... or app://"
+                  placeholder="e.g. https://... or app://"
                   placeholderTextColor={colors.textTertiary}
                   keyboardType="url"
                   autoCapitalize="none"

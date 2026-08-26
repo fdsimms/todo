@@ -256,7 +256,7 @@ export function StacksScreen() {
           selected stacks' rosters too (see bulkSetGroupCategory). */}
       <CategoryPickerSheet
         visible={categoryPickerVisible}
-        title="Move to Category"
+        title="Move to category"
         onSelect={handleBulkSetCategory}
         onClose={() => setCategoryPickerVisible(false)}
       />

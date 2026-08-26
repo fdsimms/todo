@@ -303,7 +303,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
                 onChangeText={setNewTag}
                 onSubmitEditing={addTagFromInput}
                 onBlur={addTagFromInput}
-                placeholder="tag name"
+                placeholder="Tag name"
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="none"

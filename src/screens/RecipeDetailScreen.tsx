@@ -488,7 +488,7 @@ export function RecipeDetailScreen() {
               ],
         );
       } else if (result.status === 'failed') {
-        Alert.alert('Could not attach photo', result.message);
+        Alert.alert('Couldn’t attach photo', result.message);
       }
       // 'canceled' is a deliberate no-op — they changed their mind.
     } finally {
@@ -500,14 +500,14 @@ export function RecipeDetailScreen() {
     if (pickingImage) return;
     haptics.tap();
     const options: Array<{ text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }> = [
-      { text: 'Take Photo', onPress: () => pickImage('camera') },
-      { text: 'Choose from Library', onPress: () => pickImage('library') },
+      { text: 'Take photo', onPress: () => pickImage('camera') },
+      { text: 'Choose from library', onPress: () => pickImage('library') },
     ];
     if (recipe.imagePath) {
-      options.push({ text: 'Remove Photo', style: 'destructive', onPress: () => setImage(recipe.id, null) });
+      options.push({ text: 'Remove photo', style: 'destructive', onPress: () => setImage(recipe.id, null) });
     }
     options.push({ text: 'Cancel', style: 'cancel' });
-    Alert.alert('Recipe Photo', undefined, options);
+    Alert.alert('Recipe photo', undefined, options);
   };
   // The ingredients list, plus one marker per heading it has — populated ones
   // where a row's section first differs from the row before it, and every
@@ -1133,7 +1133,7 @@ export function RecipeDetailScreen() {
                 onPress={() => { haptics.tap(); setEditorVisible(true); }}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel="Recipe Details"
+                accessibilityLabel="Edit recipe"
               >
                 <Ionicons name="ellipsis-horizontal" size={iconSize.md} color={colors.textSecondary} />
               </TouchableOpacity>
@@ -1319,7 +1319,7 @@ export function RecipeDetailScreen() {
 
         {mergedIngredientRows.length === 0 && components.length === 0 ? (
           <Text style={styles.hint}>
-            Type one ingredient at a time, or paste a whole list — “2 lb chicken thighs”
+            Type one ingredient at a time, or paste a whole list. “2 lb chicken thighs”
             keeps the quantity out of the name so the list stays tidy.
           </Text>
         ) : (
@@ -1379,7 +1379,7 @@ export function RecipeDetailScreen() {
               onPress={() => { haptics.tap(); animateLayout(); setPasteResult(null); }}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Dismiss"
+              accessibilityLabel="Dismiss the pasted ingredients"
             >
               <Ionicons name="close" size={iconSize.sm} color={colors.textTertiary} />
             </TouchableOpacity>
@@ -1462,7 +1462,7 @@ export function RecipeDetailScreen() {
           />
         </View>
         <Text style={styles.inputHint}>
-          Quantity and unit go first, e.g. “2 cups flour” — add a comma for prep, e.g.
+          Quantity and unit go first, e.g. “2 cups flour”. Add a comma for prep, e.g.
           “garlic, minced”
         </Text>
 
@@ -1556,7 +1556,7 @@ export function RecipeDetailScreen() {
 
         {components.length === 0 ? (
           <Text style={styles.hint}>
-            Use another recipe as part of this one — the mashed potatoes that go with both
+            Use another recipe as part of this one, like the mashed potatoes that go with both
             the steak and the salmon. Its ingredients and prep tasks come along, and editing
             it once updates every meal that uses it. Long press a component to make it an
             either/or alternative, like mashed potatoes or roast potatoes.
@@ -1581,8 +1581,8 @@ export function RecipeDetailScreen() {
 
         {recipe.prepTasks.length === 0 ? (
           <Text style={styles.hint}>
-            Add a reminder for anything that needs doing ahead of the meal — “Marinate the
-            chicken” a day before, say — and it'll turn into a Task once this recipe is
+            Add a reminder for anything that needs doing ahead of the meal (“Marinate the
+            chicken” a day before, say) and it'll turn into a Task once this recipe is
             planned for a date.
           </Text>
         ) : (

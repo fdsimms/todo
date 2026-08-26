@@ -165,7 +165,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
             {/* Header */}
             <View style={styles.header}>
               <View style={styles.headerSpacer} />
-              <Text style={styles.headerTitle}>Remind Me</Text>
+              <Text style={styles.headerTitle}>Remind me</Text>
               <TouchableOpacity onPress={onCancel} hitSlop={10} style={styles.closeBtn} accessibilityRole="button" accessibilityLabel="Close">
                 <Ionicons name="close" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
@@ -299,7 +299,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                     </Text>
                   </View>
                   <Text style={styles.beforeHint}>
-                    Fires {format(getReminderOffsetDate(dueDate, beforeDays), 'MMM d')}, at the time below —
+                    Fires {format(getReminderOffsetDate(dueDate, beforeDays), 'MMM d')}, at the time below,
                     and keeps counting back this many days on every future occurrence.
                   </Text>
                 </View>

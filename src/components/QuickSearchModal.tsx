@@ -316,7 +316,7 @@ export function QuickSearchModal({ visible, onClose, onSelectTask, onOpenFullSea
           <SearchField
             ref={inputRef}
             surface="sunken"
-            placeholder="Search todos…"
+            placeholder="Search tasks"
             value={query}
             onChangeText={setQuery}
             onSubmitEditing={handleOpenFull}

@@ -292,7 +292,7 @@ export function BackfillScreen() {
     const label = BACKFILL_FIELDS.find(f => f.id === active.id)!.label.toLowerCase();
     Alert.alert(
       `Redo ${label} from scratch?`,
-      `Walks through every task again, one at a time, including ones that already have a ${label} set. Each task keeps its current value until you set a new one for it — nothing is cleared upfront.`,
+      `Walks through every task again, one at a time, including ones that already have a ${label} set. Each task keeps its current value until you set a new one for it, so nothing is cleared upfront.`,
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Start over', onPress: startOver },

@@ -360,7 +360,7 @@ export function seedDemoData(): void {
   });
   addTask({
     title: 'Return the router',
-    notes: 'Held back until the plan is cancelled. Set from either task.',
+    notes: 'Held back until the plan is canceled. Set from either task.',
     category: 'Errands',
     effort: 1,
     blockedById: cancelPlan.id,

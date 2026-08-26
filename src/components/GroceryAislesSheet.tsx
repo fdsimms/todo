@@ -430,7 +430,7 @@ function StoresTab({
     <>
       <Text style={styles.intro}>
         The places you shop. Naming one when you finish a trip is what records which store has
-        which items — you can then filter the catalog by store.
+        which items, so you can filter the catalog by store.
       </Text>
 
       <ReorderableList
@@ -511,7 +511,7 @@ function StoresTab({
           <EmptyState
             icon="storefront-outline"
             title="No stores yet"
-            subtitle="Add the shops you go to. When you finish a trip you can say which one you were at."
+            subtitle="Add the stores you go to. When you finish a trip you can say which one you were at."
           />
         }
         ListFooterComponent={

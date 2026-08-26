@@ -284,7 +284,7 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
             <Text style={styles.emptyHint}>Nothing on today to move.</Text>
           ) : plan.proposals.every(p => p.suggested === null && p.tomorrow === null) ? (
             <Text style={styles.emptyHint}>
-              Nothing on today can move — everything here is pinned, urgent, or already underway.
+              Nothing on today can move: everything here is pinned, urgent, or already underway.
             </Text>
           ) : (
             <>

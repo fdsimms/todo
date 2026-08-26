@@ -325,7 +325,7 @@ export function DataResetSettings() {
           iconColor={colors.red}
           label="Reset to defaults"
           labelColor={colors.red}
-          hint="Restores appearance, day and time, and the toggles above"
+          hint="Puts every setting in the app back to its default"
           onPress={confirmResetToDefaults}
           accessibilityLabel="Reset settings to defaults"
         />

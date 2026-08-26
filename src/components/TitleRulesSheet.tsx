@@ -163,7 +163,7 @@ export function TitleRulesSheet({ visible, onClose }: Props) {
             <EmptyState
               icon="funnel-outline"
               title="No title rules"
-              subtitle="Pick a word, and anything you add starting with it files itself. A rule for “expense” can set the category, tags and priority every time, so you don't have to."
+              subtitle="Pick a word, and anything you add starting with it files itself. A rule for “expense” can set the category, tags and priority every time, so you don’t have to."
               actionLabel="New rule"
               onAction={() => setEditingId(null)}
             />

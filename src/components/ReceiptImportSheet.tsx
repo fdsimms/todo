@@ -851,7 +851,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
                       <Text style={styles.rowSkipped} numberOfLines={1}>{match.line.label}</Text>
                       {match.duplicateOf !== null && (
                         <Text style={styles.rowLabel} numberOfLines={1}>
-                          A second {nameFor(match.duplicateOf)} — the first one is above.
+                          A second {nameFor(match.duplicateOf)}. The first one is above.
                         </Text>
                       )}
                       {/* In the pantry every catalog row was already a

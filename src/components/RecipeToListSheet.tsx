@@ -370,7 +370,7 @@ export function RecipeToListSheet({
     if (!dirty) { onClose(); return; }
     Alert.alert(
       'Discard changes?',
-      'You have unsaved changes. Are you sure you want to discard them?',
+      'The choices you made about what goes on the list will be lost.',
       [
         { text: 'Keep editing', style: 'cancel' },
         { text: 'Discard', style: 'destructive', onPress: onClose },
@@ -495,7 +495,7 @@ export function RecipeToListSheet({
                   </View>
                   {open && (
                     <Text style={styles.choiceHint}>
-                      All {group.options.length} go on the list. Tick the one you get and the rest come off.
+                      All {group.options.length} go on the list. Check off the one you get and the rest come off.
                     </Text>
                   )}
                 </View>
@@ -658,7 +658,7 @@ export function RecipeToListSheet({
                   )}
                   {category === 'alreadyOnList' && (
                     <Text style={styles.sectionHint}>
-                      Already on the list — tick one to top up its quantity for this recipe.
+                      Already on the list. Check one to top up its quantity for this recipe.
                     </Text>
                   )}
                 </View>

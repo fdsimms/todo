@@ -1,4 +1,4 @@
 {
-  "message": "Price fields now fill in the decimal point for you — type 499 and it reads $4.99, the same cents-first entry YNAB uses. No more typing a decimal point by hand.",
+  "message": "Price fields now fill in the decimal point for you: type 499 and it reads $4.99, the same cents-first entry YNAB uses. No more typing a decimal point by hand.",
   "date": "2026-08-16"
 }

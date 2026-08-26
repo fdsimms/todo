@@ -159,12 +159,12 @@ export function ComponentChoiceSheet({ visible, recipe, component, onClose }: Pr
             />
             {!clean ? (
               <Text style={styles.hint}>
-                Name the group these alternatives share — “Side”, “Sauce”. Every component
+                Name the group these alternatives share, like “Side” or “Sauce”. Every component
                 under it is one way of filling the same slot.
               </Text>
             ) : (
               <Text style={styles.hint}>
-                Components sharing “{clean}” are alternatives — a meal cooks one of them, and
+                Components sharing “{clean}” are alternatives: a meal cooks one of them, and
                 only that one gets shopped for.
               </Text>
             )}

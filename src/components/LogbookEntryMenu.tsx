@@ -119,7 +119,7 @@ export function LogbookEntryMenu({
           <View style={styles.inlineSep} />
           <TouchableOpacity style={styles.optionRow} onPress={openCalendar} activeOpacity={interaction.activeOpacity}>
             <Ionicons name="calendar-outline" size={18} color={colors.accent} />
-            <Text style={styles.optionLabel}>Change Completion Date</Text>
+            <Text style={styles.optionLabel}>Change completion date</Text>
           </TouchableOpacity>
           {onEditAnswer && (
             <>
@@ -158,7 +158,7 @@ export function LogbookEntryMenu({
         visible={showCalendar}
         value={value}
         mode="datetime"
-        title="Completion Date"
+        title="Completion date"
         onConfirm={date => {
           // Close the pageSheet first and let its dismiss animation finish
           // before hiding the outer sheet Modal — closing both native Modals

@@ -57,7 +57,7 @@ export function NestedTemplatePicker({ visible, currentTemplateId, onClose, onSe
       <View style={styles.root}>
         <View style={styles.header}>
           <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={50} />
-          <Text style={styles.headerTitle}>Nest a Template</Text>
+          <Text style={styles.headerTitle}>Nest a template</Text>
           {/* Balances Cancel so the title stays optically centered. */}
           <View style={styles.headerSpacer} />
         </View>

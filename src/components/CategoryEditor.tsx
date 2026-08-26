@@ -239,7 +239,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     const trimmedName = name.trim();
     if (trimmedName && trimmedName !== category) {
       if (!renameCategory(category, trimmedName)) {
-        Alert.alert('Rename Failed', `A category named "${trimmedName}" already exists.`);
+        Alert.alert('That name is taken', `A category named "${trimmedName}" already exists.`);
         return;
       }
     }
@@ -250,7 +250,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
     if (!category) return;
     haptics.warning();
     confirmDelete({
-      title: 'Delete Category',
+      title: 'Delete category',
       message: taskCount > 0
         ? `Remove "${category}" from ${taskCount} ${taskCount === 1 ? 'task' : 'tasks'}? They'll become uncategorized. This can be undone with shake-to-undo.`
         : `Delete "${category}"? This can be undone with shake-to-undo.`,

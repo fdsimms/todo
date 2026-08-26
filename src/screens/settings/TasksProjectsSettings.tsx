@@ -680,7 +680,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Recipe & grocery amounts"
-        footer="Only what's shown changes. Recipes and the grocery list keep the amounts that were typed, and editing one shows it as written. Converted amounts are rounded, and marked with ≈. Counts, container sizes like &quot;14 oz can&quot;, and amounts with no number are left alone."
+        footer="Only what's shown changes. Recipes and the grocery list keep the amounts that were typed, and editing one shows it as written. Converted amounts are rounded, and marked with ≈. Counts, container sizes like “14 oz can”, and amounts with no number are left alone."
       >
         <SettingsRow
           icon="swap-horizontal-outline"
@@ -750,7 +750,7 @@ export function TasksProjectsSettings() {
       {!simpleMode && (
       <SettingsSection
         label="Substitutes"
-        footer="A substitute normally just says what you could use instead. One marked &quot;always use this instead&quot; is applied for you: recipes calling for the original show and shop for the substitute, marked with what the recipe said. Nothing is written to the recipe, and a single line can opt out under &quot;Keep as written&quot;."
+        footer="A substitute normally just says what you could use instead. One marked “always use this instead” is applied for you: recipes calling for the original show and shop for the substitute, marked with what the recipe said. Nothing is written to the recipe, and a single line can opt out under “Keep as written”."
       >
         <SettingsRow
           icon="swap-horizontal-outline"
@@ -770,7 +770,7 @@ export function TasksProjectsSettings() {
 
       <SettingsSection
         label="Task form"
-        footer="Nothing is removed. The other fields sit behind &quot;more&quot; in quick add and in the editor's sections, and the editor's field search still finds all of them. A task created either way is the same task."
+        footer="Nothing is removed. The other fields sit behind “more” in quick add and in the editor's sections, and the editor's field search still finds all of them. A task created either way is the same task."
       >
         <SettingsRow
           icon="remove-outline"
@@ -880,7 +880,7 @@ export function TasksProjectsSettings() {
         <SettingsRow
           icon="notifications-outline"
           iconColor={defaultProjectNudgeCadenceDays > 0 ? colors.accent : undefined}
-          label="Default nudge cadence"
+          label="Default review cadence"
           hint="What a new project starts with. Never by default. This doesn't touch projects you've already created, and each one can still override it."
           value={describeCadence(defaultProjectNudgeCadenceDays)}
           tight
@@ -893,7 +893,7 @@ export function TasksProjectsSettings() {
             max={CADENCE_UNIT_MAX[defaultCadence.unit]}
             allowNull
             emptyLabel="Never"
-            label="Default nudge cadence"
+            label="Default review cadence"
             describeValue={n => describeCadence(fromCadenceParts({ ...defaultCadence, count: n }))}
           />
           <View style={styles.cadenceUnitRow}>

@@ -216,7 +216,7 @@ export function PersonDetailScreen() {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <DetailHeader title="" onBack={() => navigation.goBack()} />
-        <EmptyState icon="person-outline" title="Not here any more" subtitle="This person has been deleted" />
+        <EmptyState icon="person-outline" title="This person is gone" subtitle="They were deleted from another screen" />
       </View>
     );
   }
@@ -391,7 +391,7 @@ export function PersonDetailScreen() {
             {/* "Nothing yet" and "0" are different claims — see the note on
                 daysSinceTogether. This says the first one. */}
             <Text style={styles.emptyHistory}>
-              Nothing here yet. Anything you tick off with {name} on it shows up here, and you can put
+              Nothing here yet. Anything you check off with {name} on it shows up here, and you can put
               them on a task by typing @{name.split(' ')[0].toLowerCase()} in quick add.
             </Text>
           </View>

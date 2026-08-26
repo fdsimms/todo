@@ -62,7 +62,7 @@ export function UseUpResolveSheet() {
     }
     Alert.alert(
       item.name,
-      'How did it go?',
+      'Used it up or went bad? Either stops it counting as on hand; went bad is recorded as waste.',
       [
         { text: 'Not now', style: 'cancel', onPress: () => setPendingUseUpItem(null) },
         {

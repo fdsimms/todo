@@ -95,7 +95,7 @@ function runNameHint(container: TemplateContainer, upgraded: boolean, hasPlaceho
   if (container === 'project') {
     return upgraded
       ? `Names the project these tasks land in. This template's groups become stacks inside it${fills}`
-      : `Names the project these tasks land in, dated by the anchors above${fills}`;
+      : `Names the project these tasks land in, dated by the start and end dates above${fills}`;
   }
   if (container === 'stack') return `Names the stack these tasks land in${fills}`;
   if (container === 'task') return `Names the task these become subtasks of${fills}`;
@@ -358,7 +358,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
           <Ionicons name="alert-circle" size={20} color={colors.warning} />
           <View style={styles.itemContent}>
             <Text style={[styles.itemTitle, { color: colors.warning }]} numberOfLines={1}>
-              {node.item.refTemplateName || 'Nested template'} was deleted — skipped
+              {node.item.refTemplateName || 'Nested template'} was deleted, so it was skipped
             </Text>
           </View>
         </View>
@@ -520,8 +520,6 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
                     style={styles.blankInput}
                     value={placeholderValues[name] ?? ''}
                     onChangeText={text => setPlaceholderValues(prev => ({ ...prev, [name]: text }))}
-                    placeholder={`{${name}}`}
-                    placeholderTextColor={colors.textTertiary}
                     maxLength={TITLE_MAX_LENGTH}
                     returnKeyType="done"
                     accessibilityLabel={`Value for ${name}`}
@@ -537,7 +535,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
           <AnchorRow
             icon="play-outline"
             label="Start date"
-            hint="Items anchored to the start are relative to this day"
+            hint="Items that count days from the start are dated from this day"
             value={startAnchor}
             onPress={() => openCalendar('start')}
             onClear={() => setStartAnchor(null)}
@@ -546,7 +544,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
           <AnchorRow
             icon="flag-outline"
             label="End date"
-            hint="Items anchored to the end are relative to this day"
+            hint="Items that count days from the end are dated from this day"
             value={endAnchor}
             onPress={() => openCalendar('end')}
             onClear={() => setEndAnchor(null)}
@@ -561,7 +559,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
 
           {anchorless && (
             <Text style={styles.anchorlessHint}>
-              Some scheduled items are missing their anchor date and will be added without dates
+              Some items count days from a date you haven't set, so they'll be added without dates
             </Text>
           )}
 
@@ -679,7 +677,7 @@ function QuestionRow({
           style={styles.blankInput}
           value={value}
           onChangeText={onChange}
-          placeholder={question.name ? `{${question.name}}` : 'Answer'}
+          placeholder="Answer"
           placeholderTextColor={colors.textTertiary}
           keyboardType={question.kind === 'number' ? 'number-pad' : 'default'}
           maxLength={TITLE_MAX_LENGTH}

@@ -173,7 +173,7 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
       header={
         <>
           <SheetHeaderButton label="Done" onPress={onClose} />
-          <Text style={styles.headerTitle}>From Contacts</Text>
+          <Text style={styles.headerTitle}>From contacts</Text>
           <View style={styles.headerSpacer} />
         </>
       }
@@ -192,7 +192,7 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
               style={styles.field}
               value={query}
               onChangeText={setQuery}
-              placeholder={scope === 'limited' ? 'Search or browse below' : 'Search your contacts'}
+              placeholder={scope === 'limited' ? 'Search shared contacts' : 'Search your contacts'}
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="words"
               autoCorrect={false}

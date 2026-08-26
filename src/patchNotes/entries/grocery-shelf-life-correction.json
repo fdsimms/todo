@@ -1,4 +1,4 @@
 {
-  "message": "Correcting an item's \"Use by\" while it isn't on hand now saves it as a shelf life instead of starting a countdown early — it kicks in the next time a shopping trip actually buys the item.",
+  "message": "Correcting an item's \"Use by\" while it isn't on hand now saves it as a shelf life instead of starting a countdown early. It kicks in the next time a shopping trip actually buys the item.",
   "date": "2026-08-15"
 }

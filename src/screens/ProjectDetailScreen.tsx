@@ -519,7 +519,7 @@ export function ProjectDetailScreen() {
                 onPress={() => setShowExistingPicker(false)}
                 accessibilityLabel="Close"
               />
-              <Text style={styles.detailTitleText}>Add Existing Task</Text>
+              <Text style={styles.detailTitleText}>Add existing task</Text>
               {/* Balances Cancel so the title stays optically centered. */}
               <View style={styles.headerSpacer} />
             </View>

@@ -201,7 +201,7 @@ export function QuickAddProjectModal({
         'Restore archived project?',
         `You archived "${archivedMatch.title}" a while back. Restore it instead of starting a new one? Its tasks and progress come back with it.`,
         [
-          { text: 'Create New', onPress: () => create(finalTitle) },
+          { text: 'Create new', onPress: () => create(finalTitle) },
           {
             text: 'Restore',
             style: 'default',
@@ -391,7 +391,7 @@ export function QuickAddProjectModal({
                     onChangeText={setNewCategory}
                     onSubmitEditing={commitNewCategory}
                     onBlur={commitNewCategory}
-                    placeholder="category name"
+                    placeholder="Category name"
                     placeholderTextColor={colors.textTertiary}
                     returnKeyType="done"
                     autoCapitalize="words"

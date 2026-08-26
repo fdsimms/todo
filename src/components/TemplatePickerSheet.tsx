@@ -135,7 +135,7 @@ export function TemplatePickerSheet({ visible, onClose, onSelect }: Props) {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sheetTitle}>Add from a Template</Text>
+          <Text style={styles.sheetTitle}>Add from a template</Text>
 
           {templates.length === 0 ? (
             <View style={styles.emptyWrap}>

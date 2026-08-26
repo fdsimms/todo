@@ -276,7 +276,7 @@ export function SuggestedPinsSheet({ visible, tasks, pinnedTasks, onClose, onCon
 
           {slots.length === 0 ? (
             <Text style={styles.emptyHint}>
-              Nothing to suggest — everything on today is pinned already or sits in a category
+              Nothing to suggest: everything on today is pinned already or sits in a category
               you've excluded.
             </Text>
           ) : (

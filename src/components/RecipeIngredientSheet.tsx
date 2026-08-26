@@ -483,7 +483,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           accessibilityLabel="Purpose"
         />
         <Text style={styles.hint}>
-          Why it's on the list, when the same ingredient does two jobs — “flour, for dusting”.
+          Why it's on the list, when the same ingredient does two jobs: “flour, for dusting”.
         </Text>
       </View>
 
@@ -546,7 +546,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
                 <Text style={styles.toggleLabel}>Keep as written</Text>
                 <Text style={styles.hint}>
                   {standingSwap
-                    ? `You use ${standingSwap.to.name.toLowerCase()} instead of ${standingSwap.from.name.toLowerCase()}. Tick this to leave this one line alone.`
+                    ? `You use ${standingSwap.to.name.toLowerCase()} instead of ${standingSwap.from.name.toLowerCase()}. Check this to leave this one line alone.`
                     : 'This line is left alone by any standing swap for it.'}
                 </Text>
               </View>
@@ -677,10 +677,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           {siblingNames.length > 0 ? (
             <>
               You'll buy this <Text style={styles.hintStrong}>or</Text>{' '}
-              {siblingNames.join(' or ')} — never both.
+              {siblingNames.join(' or ')}, never both.
             </>
           ) : (
-            'You haven’t listed any alternatives for this ingredient.'
+            'You haven’t listed any alternatives. Pick another ingredient to make this an either/or, decided at the store.'
           )}
         </Text>
         {siblingNames.length > 0 && (
@@ -744,7 +744,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           ]}
         />
         <Text style={styles.hint}>
-          Puts this under a heading on the recipe — “For the cake”, “For the frosting”. It
+          Puts this under a heading on the recipe, like “For the cake” or “For the frosting”. It
           changes nothing about your shopping list.
         </Text>
       </View>

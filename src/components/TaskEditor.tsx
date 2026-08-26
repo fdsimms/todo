@@ -884,7 +884,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           'Resume archived task?',
           `You archived "${archivedMatch.title}" a while back. Resume it instead of creating a new one? History and stats carry over, but the streak restarts.`,
           [
-            { text: 'Create New', onPress: () => proceedWithSave(effectiveChainItems, effectiveDraftSubtasks) },
+            { text: 'Create new', onPress: () => proceedWithSave(effectiveChainItems, effectiveDraftSubtasks) },
             {
               text: 'Resume',
               style: 'default',
@@ -1092,8 +1092,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             : 'This task repeats. Apply this change to just this task, or to this and all future occurrences?',
           [
             { text: 'Cancel', style: 'cancel' },
-            { text: isSeries ? 'This Date' : 'This Task', onPress: () => commitSave('occurrence') },
-            { text: isSeries ? 'This and Later Dates' : 'This and Future Tasks', onPress: () => commitSave('series') },
+            { text: isSeries ? 'This date' : 'This task', onPress: () => commitSave('occurrence') },
+            { text: isSeries ? 'This and later dates' : 'This and future tasks', onPress: () => commitSave('series') },
           ],
         );
         return;
@@ -1433,7 +1433,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     if (current !== initialStateRef.current) {
       Alert.alert(
         'Discard changes?',
-        'You have unsaved changes. Are you sure you want to discard them?',
+        'Your edits to this task will be lost.',
         [
           { text: 'Keep editing', style: 'cancel' },
           { text: 'Discard', style: 'destructive', onPress: onClose },
@@ -1453,7 +1453,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Mark Missed',
+            text: 'Mark missed',
             onPress: () => {
               markMissed(task.id);
               onClose();
@@ -1482,7 +1482,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Mark Missed',
+            text: 'Mark missed',
             onPress: () => {
               markMissed(task.id);
               onClose();
@@ -1515,7 +1515,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         [
           { text: 'Cancel', style: 'cancel' },
           {
-            text: 'Just This Date',
+            text: 'Just this date',
             onPress: () => {
               haptics.success();
               deleteTask(task.id);
@@ -2185,7 +2185,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               <EditorRow
                 icon="speedometer-outline"
                 label="Daily target"
-                hint="Log it several times a day; only shows up when you fall behind"
+                hint="Log it several times a day. The task hides while you're on pace and comes back when you fall behind"
                 value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
                 expanded={showTargetCount}
                 onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
@@ -2221,7 +2221,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         style={[styles.fieldBox, styles.targetUnitInput]}
                         value={targetUnit}
                         onChangeText={setTargetUnit}
-                        placeholder="units"
+                        placeholder="Units"
                         placeholderTextColor={colors.textTertiary}
                         maxLength={MAX_TARGET_UNIT_LENGTH}
                         autoCapitalize="none"
@@ -2251,7 +2251,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       <Ionicons name="trending-up-outline" size={18} color={allowOvershoot ? colors.accent : colors.textSecondary} />
                       <View style={styles.optionContent}>
                         <Text style={styles.optionLabel}>Allow going past target</Text>
-                        <Text style={styles.optionHint}>Keep logging past {targetCount}× — it stays on Today and completes at day's end with whatever count you reached</Text>
+                        <Text style={styles.optionHint}>Keep logging past {targetCount}×. It stays on Today and completes at day's end with whatever count you reached</Text>
                       </View>
                       <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
                         <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
@@ -2436,7 +2436,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     )}
                     {chainItems.length === 1 && (
                       <Text style={styles.chainCurrentHint}>
-                        Add a second step — a chain needs at least 2 steps to save.
+                        Add a second step: a chain needs at least 2 steps to save.
                       </Text>
                     )}
                     {chainItems.length > 0 && (
@@ -2973,7 +2973,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   : undefined
               }
               caption={reminderNudge
-                ? `Actually sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)} — moved past ${reminderNudge.meetingTitle ? `"${reminderNudge.meetingTitle}"` : 'a calendar event'}`
+                ? `Actually sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)}, moved past ${reminderNudge.meetingTitle ? `"${reminderNudge.meetingTitle}"` : 'a calendar event'}`
                 : undefined}
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTouched(true); } : undefined}
@@ -3128,7 +3128,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                           />
                         </View>
                         <Text style={styles.supplyFieldHint}>
-                          How many arrive when you restock. Fills in the answer when you tick the order task off.
+                          How many arrive when you restock. Fills in the answer when you check the order task off.
                         </Text>
 
                         <View style={styles.supplyFieldRow}>
@@ -3619,7 +3619,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onChangeText={setNewTag}
                   onSubmitEditing={addTagFromInput}
                   onBlur={addTagFromInput}
-                  placeholder="tag name"
+                  placeholder="Tag name"
                   placeholderTextColor={colors.textTertiary}
                   returnKeyType="done"
                   autoCapitalize="none"
@@ -3655,7 +3655,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 summary={personIds.length > 0
                   ? people.filter(p => personIds.includes(p.id)).map(displayNameOf).join(', ')
                   : undefined}
-                hint="Who this is with. Ticking it off adds it to their history."
+                hint="Who this is with. Checking it off adds it to their history."
                 expanded={fieldOpen('people')}
                 onToggle={() => toggleField('people')}
               >
@@ -4004,7 +4004,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     onChangeText={setCustomLinkText}
                     onSubmitEditing={commitCustomLink}
                     onBlur={commitCustomLink}
-                    placeholder="https://... or app://"
+                    placeholder="e.g. https://... or app://"
                     placeholderTextColor={colors.textTertiary}
                     keyboardType="url"
                     autoCapitalize="none"

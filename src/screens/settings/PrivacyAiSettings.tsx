@@ -125,7 +125,10 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
     }
 
     if ((await authenticateForAppLock('Turn on the app lock')) !== 'success') {
-      Alert.alert('Not turned on', 'The app lock is still off.');
+      Alert.alert(
+        'App lock still off',
+        `${support.label} didn't confirm it was you, so nothing changed. Try again to turn the lock on.`
+      );
       return;
     }
 
@@ -192,7 +195,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
         <SettingsRow
           icon="sparkles-outline"
           iconColor={anthropicApiKey ? colors.purple : undefined}
-          label="Anthropic API Key"
+          label="Anthropic API key"
           hint="Required for any of the features below to work"
         >
           <TextInput
@@ -203,7 +206,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
               setTimeout(() => scrollRef?.current?.scrollToEnd({ animated: true }), 100);
             }}
             onBlur={() => setAnthropicApiKey(apiKeyDraft.trim())}
-            placeholder="sk-ant-..."
+            placeholder="e.g. sk-ant-..."
             placeholderTextColor={colors.textTertiary}
             secureTextEntry
             autoCapitalize="none"

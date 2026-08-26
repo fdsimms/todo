@@ -1,4 +1,4 @@
 {
-  "message": "A grocery item added for a recipe now says \"For ‘Recipe name’\" instead of \"From ‘Recipe name’\" — you have the item for the recipe, not because it came from one.",
+  "message": "A grocery item added for a recipe now says \"For ‘Recipe name’\" instead of \"From ‘Recipe name’\", because you have the item for the recipe, not because it came from one.",
   "date": "2026-08-21"
 }

@@ -136,7 +136,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
         <View style={styles.card}>
           <Text style={styles.sheetTitle}>Replace {countLabel}</Text>
           <Text style={styles.sheetHint}>
-            Pick a recipe, or type a new name — replaces the item on every selected meal.
+            Pick a recipe, or type a new name. It replaces the item on every selected meal.
           </Text>
 
           <View style={styles.searchWrap}>

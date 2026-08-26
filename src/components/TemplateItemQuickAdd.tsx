@@ -333,7 +333,7 @@ export function TemplateItemQuickAdd({ visible, templateId, templateName, onClos
           {activePanel === 'when' && (
             <View style={styles.panel}>
               <Text style={styles.panelHint}>
-                Template items have no fixed date — they're offset from a date you pick when applying the template.
+                Template items have no fixed date. They're offset from a date you pick when applying the template.
               </Text>
               {/* One question — what the offset counts from — even though it
                   reads off two pieces of state, so it's one track. "No date"

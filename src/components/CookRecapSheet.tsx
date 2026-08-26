@@ -312,7 +312,7 @@ export function CookRecapSheet({
                 {!hideHelpText && (
                   <Text style={styles.hint}>
                     {showPantry
-                      ? 'Things you probably had before cooking this. Tick whatever it used up and they’ll stop counting as on hand.'
+                      ? 'Things you probably had before cooking this. Check whatever it used up and they’ll stop counting as on hand.'
                       : 'Ingredients from this meal that aren’t on your shopping list.'}
                   </Text>
                 )}

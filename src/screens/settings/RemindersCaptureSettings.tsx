@@ -297,7 +297,7 @@ export function RemindersCaptureSettings() {
       `Anything on one list is added to the other. Checking an item off completes its reminder, and removing an item from the list deletes its reminder. Doing either of those in the Reminders app does the same here.${deleteNote}`,
       [
         { text: 'Cancel', style: 'cancel' },
-        { text: 'Turn On', style: 'destructive', onPress: () => setGroceryImportTwoWay(true) },
+        { text: 'Turn on', style: 'destructive', onPress: () => setGroceryImportTwoWay(true) },
       ]
     );
   };
@@ -322,7 +322,7 @@ export function RemindersCaptureSettings() {
           : outcome.mirrored > 0
             ? `Sent ${outcome.mirrored} to Reminders`
           : outcome.skipped > 0
-            ? `Nothing new — ${outcome.skipped} already here`
+            ? `Nothing new: ${outcome.skipped} already here`
             : 'Nothing new'
       );
     } finally {

@@ -388,7 +388,7 @@ export const TIPS: Tip[] = [
     area: 'organize',
     icon: 'speedometer-outline',
     title: 'A task you do a set number of times a day',
-    body: 'Give a task a daily target and it tracks units instead of a single tick: eight glasses of water, three sets. It hides itself once you are on pace for the time of day and comes back when you fall behind.',
+    body: 'Give a task a daily target and it tracks units instead of a single check-off: eight glasses of water, three sets. It hides itself once you are on pace for the time of day and comes back when you fall behind.',
     when: s => s.taskCount >= 10,
     keywords: ['quota', 'habit', 'count', 'target', 'pace', 'reps'],
   },

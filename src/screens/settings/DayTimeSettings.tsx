@@ -110,7 +110,7 @@ export function DayTimeSettings() {
 
       <SettingsSection
         label="Awake hours"
-        footer="Daily targets pace themselves across these hours, so a quota doesn't read as hopelessly behind at 8am."
+        footer="A daily target's progress is measured against these hours, so one you haven't started by 8am isn't counted as behind for the whole day."
       >
         {segment('activeStart', 'Awake from', 'speedometer-outline', formatHHMM(activeHoursStart), { first: true })}
         {segment('activeEnd', 'Awake until', 'speedometer-outline', formatHHMM(activeHoursEnd))}

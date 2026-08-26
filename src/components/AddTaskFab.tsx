@@ -34,6 +34,7 @@ export function AddTaskFab({ bottom, onSelect, disabled, opacity, drag, dragLabe
     <FabMenu
       items={ITEMS}
       onSelect={key => onSelect(key as AddTaskType)}
+      accessibilityLabel="Add task"
       bottom={bottom}
       disabled={disabled}
       opacity={opacity}

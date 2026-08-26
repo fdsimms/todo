@@ -273,8 +273,10 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
       onClose();
     };
     Alert.alert(
-      'Delete Stack',
       `Delete "${group.title}"?`,
+      members.length === 0
+        ? undefined
+        : 'Its tasks can stay in your list unstacked, or be deleted with it.',
       members.length === 0
         ? [
             { text: 'Cancel', style: 'cancel' },
@@ -282,9 +284,9 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
           ]
         : [
             { text: 'Cancel', style: 'cancel' },
-            { text: 'Delete This Stack', onPress: deleteThenClose(false) },
+            { text: 'Delete stack only', onPress: deleteThenClose(false) },
             {
-              text: 'Delete Stack and All Its Tasks',
+              text: 'Delete stack and tasks',
               style: 'destructive',
               onPress: deleteThenClose(true),
             },
@@ -409,7 +411,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                 onChangeText={setNewTag}
                 onSubmitEditing={addTagFromInput}
                 onBlur={addTagFromInput}
-                placeholder="tag name"
+                placeholder="Tag name"
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="none"
@@ -519,7 +521,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                     style={styles.existingSearch}
                     value={existingSearch}
                     onChangeText={setExistingSearch}
-                    placeholder="Search tasks…"
+                    placeholder="Search tasks"
                     placeholderTextColor={colors.textTertiary}
                   />
                   {eligibleForAdd.map(t => (
@@ -537,7 +539,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                 )}
                   {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (
                     <Text style={styles.existingEmpty}>
-                      Showing {EXISTING_TASK_PICKER_LIMIT} of {eligibleMatches.length} matches — refine your search
+                      Showing {EXISTING_TASK_PICKER_LIMIT} of {eligibleMatches.length} matches. Refine your search to see the rest.
                     </Text>
                 )}
                 </View>

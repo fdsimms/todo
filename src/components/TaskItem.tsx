@@ -839,7 +839,7 @@ export const TaskItem = React.memo(function TaskItem({
 
   const handleDiscardTimer = () => {
     Alert.alert(
-      'Discard Timer',
+      'Discard timer',
       `Discard the running timer for "${task.title}"? The elapsed time won't be saved.`,
       [
         { text: 'Cancel', style: 'cancel' },
@@ -2651,7 +2651,7 @@ export const TaskItem = React.memo(function TaskItem({
                       duplicateTask(task.id);
                     }}
                     hitSlop={8}
-                    accessibilityLabel="Duplicate task"
+                    accessibilityLabel={`Duplicate ${task.title}`}
                   >
                     <Ionicons name="duplicate-outline" size={iconSize.sm} color={colors.textSecondary} />
                   </PressableScale>
@@ -2659,7 +2659,7 @@ export const TaskItem = React.memo(function TaskItem({
                     style={[styles.iconActionBtn, styles.iconActionBtnAccent]}
                     onPress={() => onEdit(task.id)}
                     hitSlop={8}
-                    accessibilityLabel="Edit task"
+                    accessibilityLabel={`Edit ${task.title}`}
                   >
                     <Ionicons name="pencil-outline" size={iconSize.sm} color={colors.accent} />
                   </PressableScale>

@@ -287,7 +287,7 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
                 onChangeText={setNewTag}
                 onSubmitEditing={addTagFromInput}
                 onBlur={addTagFromInput}
-                placeholder="tag name"
+                placeholder="Tag name"
                 placeholderTextColor={colors.textTertiary}
                 returnKeyType="done"
                 autoCapitalize="none"

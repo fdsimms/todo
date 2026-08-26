@@ -302,7 +302,7 @@ export function PeopleScreen() {
 
       <QuickAddNameSheet
         visible={quickAddVisible}
-        placeholder="Name"
+        placeholder="New person…"
         autoCapitalize="words"
         moreLabel="More details"
         onSubmit={(name) => { add(name); setQuickAddVisible(false); }}
