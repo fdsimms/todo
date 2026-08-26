@@ -1583,7 +1583,8 @@ interface TaskStore {
   bulkCompleteTasks: (ids: string[]) => void;
   bulkUncompleteTasks: (ids: string[]) => void;
   bulkMarkMissed: (ids: string[]) => void;
-  bulkDeleteTasks: (ids: string[]) => void;
+  /** `skipGeneratedOptOut` has the same meaning as `deleteTask`'s — see its doc comment. */
+  bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean }) => void;
   clearLogbook: () => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkTogglePin: (ids: string[]) => void;
@@ -1730,7 +1731,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const doomed = expired.filter(t => !isLiveRecurring(t));
 
     rolled.forEach(t => get().skipNextRecurrence(t.id));
-    if (doomed.length > 0) get().bulkDeleteTasks(doomed.map(t => t.id));
+    // skipGeneratedOptOut: this runs unattended at startup — a window closing
+    // on its own is the app tidying up, not the user declining the source.
+    if (doomed.length > 0) get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true });
   },
 
   // Enforces the "keep completed tasks for" window — the only thing that has
@@ -2508,9 +2511,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // back — weekly, for a staple. The one deliberate exception to "the source
     // is the master": a delete here is an instruction to it, not drift from it.
     //
-    // Only this path, not bulkDeleteTasks: the sweeps and purges that route
-    // through the bulk form aren't the user saying anything, and a generated
-    // task they reach has been completed for months anyway.
+    // bulkDeleteTasks writes the same opt-out for the same reason — a
+    // selection-bar delete of a live "Catch up with Sarah" is exactly as much
+    // an instruction to the source as this single-row path is. It defaults to
+    // skipping only for the sweeps that route through it on the app's own
+    // behalf (see sweepExpiredTasks), which is the case this comment used to
+    // describe as "not user-initiated" for the whole function.
     //
     // And not when the app is the one deleting: a reconcile clearing a task
     // whose reason has gone is tidying up, not the source changing its mind
@@ -5937,10 +5943,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  bulkDeleteTasks(ids) {
+  bulkDeleteTasks(ids, opts = {}) {
     if (ids.length === 0) return;
     const idSet = new Set(ids);
     const deleted = get().tasks.filter(t => idSet.has(t.id) || (t.parentId !== null && idSet.has(t.parentId)));
+    // Subtasks never carry a generatedKind of their own, but filtering to the
+    // requested ids rather than to `deleted` keeps that explicit instead of
+    // relying on it.
+    const deletedTopLevel = deleted.filter(t => idSet.has(t.id));
 
     dbBulkDeleteTasks(ids);
     // Only ids that actually had a reminder are worth a native cancel call —
@@ -5953,6 +5963,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tasks: s.tasks.filter(t => !idSet.has(t.id) && (t.parentId === null || !idSet.has(t.parentId))),
     }));
 
+    // See deleteTask's matching call for why this exists at all.
+    if (!opts.skipGeneratedOptOut) deletedTopLevel.forEach(t => writeGeneratedOptOut(t, false));
+
     get().setLastAction({
       label: `${ids.length} task${ids.length === 1 ? '' : 's'} deleted`,
       destructive: true,
@@ -5962,6 +5975,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           scheduleTaskReminder(t);
         });
         set(s => ({ tasks: [...s.tasks, ...deleted] }));
+        if (!opts.skipGeneratedOptOut) deletedTopLevel.forEach(t => writeGeneratedOptOut(t, null));
       },
     });
   },
