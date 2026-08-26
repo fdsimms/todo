@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Person, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -249,6 +249,16 @@ export function initDatabase(): void {
       nudge_opt_in INTEGER NOT NULL DEFAULT 0,
       reach_out_declined_at TEXT,
       ask_about TEXT NOT NULL DEFAULT ''
+    );
+
+    -- A couple or household, hand-named and hand-ordered — see PersonGroup in
+    -- types/index.ts. No archived flag: a group with no members left in it is
+    -- simply an empty label, same as a stack with no live children.
+    CREATE TABLE IF NOT EXISTS person_groups (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      sort_order REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS person_notes (
@@ -1076,6 +1086,11 @@ export function initDatabase(): void {
     // as "nothing has been declined yet" and is what every person was already
     // in before the screen could walk them.
     "ALTER TABLE people ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
+    // Which PersonGroup this person belongs to — see Person.groupId. Null on
+    // every existing row, which is exactly right: nobody was in a group
+    // before this column existed, and a null reads the same as "ungrouped"
+    // does anywhere else in the app.
+    'ALTER TABLE people ADD COLUMN group_id TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1316,6 +1331,10 @@ export const BACKUP_TABLES = [
   'project_categories',
   'template_categories',
   'projects',
+  // Before people: a person's group_id points at one of these, so restoring
+  // groups first means a restored person never names a group that isn't
+  // there yet.
+  'person_groups',
   // Before tasks: a task's personIds point at these, so restoring the people
   // first means a restored task never names somebody who isn't there yet.
   'people',
@@ -4010,6 +4029,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     reachOutDeclinedAt: (row.reach_out_declined_at as string) ?? null,
     askAbout: (row.ask_about as string) ?? '',
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
+    groupId: (row.group_id as string) ?? null,
   };
 }
 
@@ -4024,8 +4044,8 @@ export function dbInsertPerson(person: Person): void {
       id, name, nickname, notes, sort_order, archived, archived_at, created_at,
       birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
       phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at, ask_about,
-      backfill_dismissed_fields
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      backfill_dismissed_fields, group_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
@@ -4035,6 +4055,7 @@ export function dbInsertPerson(person: Person): void {
       person.phoneNumber, person.email, person.linkUrl,
       person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
       JSON.stringify(person.backfillDismissedFields),
+      person.groupId,
     ]
   );
 }
@@ -4045,7 +4066,7 @@ export function dbUpdatePerson(person: Person): void {
       name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
       phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?, ask_about=?,
-      backfill_dismissed_fields=?
+      backfill_dismissed_fields=?, group_id=?
     WHERE id=?`,
     [
       person.name, person.nickname, person.notes, person.sortOrder,
@@ -4056,6 +4077,7 @@ export function dbUpdatePerson(person: Person): void {
       person.phoneNumber, person.email, person.linkUrl,
       person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
       JSON.stringify(person.backfillDismissedFields),
+      person.groupId,
       person.id,
     ]
   );
@@ -4069,6 +4091,48 @@ export function dbBatchUpdatePersonSortOrders(updates: { id: string; sortOrder: 
   db.withTransactionSync(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE people SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+    }
+  });
+}
+
+// ─── Person groups ───────────────────────────────────────────────────────────
+
+function rowToPersonGroup(row: Record<string, unknown>): PersonGroup {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    sortOrder: row.sort_order as number,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllPersonGroups(): PersonGroup[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM person_groups ORDER BY sort_order ASC');
+  return rows.map(rowToPersonGroup);
+}
+
+export function dbInsertPersonGroup(group: PersonGroup): void {
+  db.runSync(
+    'INSERT INTO person_groups (id, name, sort_order, created_at) VALUES (?,?,?,?)',
+    [group.id, group.name, group.sortOrder, group.createdAt]
+  );
+}
+
+export function dbUpdatePersonGroup(group: PersonGroup): void {
+  db.runSync(
+    'UPDATE person_groups SET name=?, sort_order=? WHERE id=?',
+    [group.name, group.sortOrder, group.id]
+  );
+}
+
+export function dbDeletePersonGroup(id: string): void {
+  db.runSync('DELETE FROM person_groups WHERE id = ?', [id]);
+}
+
+export function dbBatchUpdatePersonGroupSortOrders(updates: { id: string; sortOrder: number }[]): void {
+  db.withTransactionSync(() => {
+    for (const { id, sortOrder } of updates) {
+      db.runSync('UPDATE person_groups SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
   });
 }

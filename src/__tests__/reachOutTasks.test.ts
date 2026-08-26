@@ -9,9 +9,11 @@ import {
   reachOutsHandledRecently,
   staleReachOutTasks,
   wantedReachOuts,
+  collapseGroupedReachOuts,
   MAX_REACH_OUT_TASKS,
   MIN_CADENCE_SAMPLES,
   REACH_OUT_DECLINE_DAYS,
+  type ReachOutWant,
 } from '../utils/reachOutTasks';
 
 const TODAY = new Date(2026, 2, 20, 12);
@@ -23,7 +25,7 @@ const person = (o: Partial<Person> = {}): Person => ({
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
   cadenceDays: 30, nudgeOptIn: true, cadenceSetAt: daysAgo(45).toISOString(), reachOutDeclinedAt: null, askAbout: '',
-  backfillDismissedFields: [],
+  backfillDismissedFields: [], groupId: null,
   ...o,
 });
 
@@ -252,5 +254,70 @@ describe('the cadence the app can offer', () => {
       expect(said).toMatch(/^You two usually/);
       expect(said).not.toMatch(/should|ought|overdue|behind|neglect/i);
     }
+  });
+});
+
+describe('folding a couple\'s wants into one', () => {
+  const want = (o: Partial<ReachOutWant> = {}): ReachOutWant => ({
+    personId: 'p1', title: 'Catch up with Sarah', phoneNumber: null, ...o,
+  });
+  const noGroups = () => null;
+
+  it('leaves a solo want untouched', () => {
+    const collapsed = collapseGroupedReachOuts([want()], noGroups, noGroups);
+    expect(collapsed).toEqual([{ ...want(), sourceId: 'p1' }]);
+  });
+
+  it('merges two people sharing a group into one row named for the group', () => {
+    const sam = want({ personId: 'sam', title: 'Catch up with Sam' });
+    const jamie = want({ personId: 'jamie', title: 'Catch up with Jamie', phoneNumber: '555 0100' });
+    const groupIdOf = (id: string) => (id === 'sam' || id === 'jamie' ? 'g1' : null);
+    const groupNameOf = () => 'the Ortegas';
+
+    const collapsed = collapseGroupedReachOuts([sam, jamie], groupIdOf, groupNameOf);
+
+    expect(collapsed).toHaveLength(1);
+    expect(collapsed[0].sourceId).toBe('g1');
+    expect(collapsed[0].title).toBe('Catch up with the Ortegas');
+  });
+
+  it('leaves a group\'s one still-due member as a solo want', () => {
+    const groupIdOf = () => 'g1';
+    const collapsed = collapseGroupedReachOuts([want()], groupIdOf, () => 'the Ortegas');
+    expect(collapsed).toEqual([{ ...want(), sourceId: 'p1' }]);
+  });
+
+  it('carries whichever member has a phone number', () => {
+    const noNumber = want({ personId: 'sam', phoneNumber: null });
+    const withNumber = want({ personId: 'jamie', phoneNumber: '555 0100' });
+    const groupIdOf = () => 'g1';
+    const collapsed = collapseGroupedReachOuts([noNumber, withNumber], groupIdOf, () => 'the Ortegas');
+    expect(collapsed[0].phoneNumber).toBe('555 0100');
+  });
+
+  // personId feeds the row's link button and phoneNumber its call/text
+  // buttons — they have to name the same person, or the row points two
+  // different places at once.
+  it('never pairs one member\'s phoneNumber with a different member\'s personId', () => {
+    const noNumber = want({ personId: 'sam', phoneNumber: null });
+    const withNumber = want({ personId: 'jamie', phoneNumber: '555 0100' });
+    const groupIdOf = () => 'g1';
+    const collapsed = collapseGroupedReachOuts([noNumber, withNumber], groupIdOf, () => 'the Ortegas');
+    expect(collapsed[0].personId).toBe('jamie');
+    expect(collapsed[0].phoneNumber).toBe('555 0100');
+  });
+
+  // The cap this feeds into breaks its tie on sortOrder — see wantedReachOuts
+  // — so a collapsed row has to land where its earliest-ranked member did,
+  // not be pushed to the back of the list just for being merged.
+  it('preserves the position of the earliest want in a merged pair', () => {
+    const mom = want({ personId: 'mom', title: 'Catch up with Mom' });
+    const sam = want({ personId: 'sam', title: 'Catch up with Sam' });
+    const jamie = want({ personId: 'jamie', title: 'Catch up with Jamie' });
+    const groupIdOf = (id: string) => (id === 'sam' || id === 'jamie' ? 'g1' : null);
+
+    const collapsed = collapseGroupedReachOuts([sam, mom, jamie], groupIdOf, () => 'the Ortegas');
+
+    expect(collapsed.map(w => w.sourceId)).toEqual(['g1', 'mom']);
   });
 });

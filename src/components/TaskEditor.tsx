@@ -75,6 +75,7 @@ import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, h
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, detectContactIntent, matchPersonMentions } from '../utils/parseTaskInput';
+import { groupMentionTokens } from '../utils/peopleRegistry';
 import { mergeRanges } from '../utils/ranges';
 import { HighlightedText } from './HighlightedText';
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration, estimatedMinutesFor } from '../utils/effort';
@@ -763,8 +764,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // roster. Typing a fresh "@someone" here does nothing until they're added
   // through that field.
   const titleMentionRanges = useMemo(
-    () => mergeRanges(matchPersonMentions(title, people.filter(p => personIds.includes(p.id)))
-      .map((m): [number, number] => [m.start, m.end])),
+    () => mergeRanges(matchPersonMentions(
+      title,
+      people.filter(p => personIds.includes(p.id)),
+      groupMentionTokens(personIds)
+    ).map((m): [number, number] => [m.start, m.end])),
     [title, people, personIds]
   );
   const titleHighlightRanges = useMemo(() => {

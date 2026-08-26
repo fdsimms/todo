@@ -14,6 +14,7 @@ import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
@@ -940,6 +941,22 @@ describe('demo seed — people', () => {
   it('an opted-in person has a real cadence behind the opt-in', () => {
     const optedIn = usePersonStore.getState().people.find(p => p.nudgeOptIn)!;
     expect(optedIn.cadenceDays).toBeGreaterThan(0);
+  });
+
+  // A PersonGroup with no seeded row reads as a feature the app doesn't
+  // have, the same reasoning every other row in this file exists for.
+  it('seeds a group with a couple of people in it, sharing one name', () => {
+    const groups = usePersonGroupStore.getState().groups;
+    expect(groups.length).toBeGreaterThan(0);
+    const people = usePersonStore.getState().people;
+    const members = people.filter(p => p.groupId === groups[0].id);
+    expect(members.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('seeds a task tagging the group by name instead of naming each member', () => {
+    const groups = usePersonGroupStore.getState().groups;
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.some(t => t.title.includes(`@${groups[0].name}`))).toBe(true);
   });
 
   // The Backfill screen's People pool has nothing to walk unless somebody in

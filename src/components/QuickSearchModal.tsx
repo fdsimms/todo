@@ -25,7 +25,7 @@ import { quickSearch, QUICK_SEARCH_LIMIT } from '../utils/quickSearch';
 import type { SearchResult } from '../utils/fuzzySearch';
 import { formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
 import { displayTitleFor } from '../utils/visibilityUtils';
-import { peopleOn } from '../utils/peopleRegistry';
+import { peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { formatTaskDate } from '../utils/dateUtils';
@@ -91,7 +91,7 @@ function QuickSearchRow({ result, onSelect, onTicked, styles, colors }: {
   // one range set since the two can overlap, and HighlightedText needs
   // disjoint ranges.
   const titleRanges = useMemo(
-    () => mergeRanges([...titleMatches, ...matchPersonMentions(displayTitle, peopleOn(task)).map((m): [number, number] => [m.start, m.end])]),
+    () => mergeRanges([...titleMatches, ...matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds)).map((m): [number, number] => [m.start, m.end])]),
     [titleMatches, displayTitle, task.personIds]
   );
   const category = categoryLabel(task.category, categories);
