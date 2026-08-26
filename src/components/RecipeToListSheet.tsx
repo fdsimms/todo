@@ -110,18 +110,22 @@ const defaultExpandedSections = (): Set<PlanCategory> => new Set<PlanCategory>([
  * Two row actions, shared with AddMealsToListSheet and documented here because
  * this is where they were written:
  *
- * - **"In pantry"** on every needToBuy row. It says the app's own word for
- *   where the line ends up rather than the longer "Already have it" it
- *   shipped as: the button is on every row now, and the label was costing a
- *   long ingredient name the width it needed to be read at all. Unticking a row only skips
- *   it for this add — the pantry guess forgets nothing was said. Stamping the
- *   on-hand window (the same write GroceryItemSheet's "Got it" makes) is what
- *   actually keeps that ingredient from being offered again next time, which
- *   is the whole point of an "already have it" option on an import. It goes
- *   through `addToPantry`, so an ingredient with no catalog row yet mints one
- *   rather than being the one line you can't say it about — a recipe naming
- *   something the app has never seen is exactly where the app's guess is
- *   worst, so that was the wrong line to leave out.
+ * - **The pantry icon** on every needToBuy row (`InlineAction` with no
+ *   `label`, an "In pantry" button in text before this went icon-only — see
+ *   its own patch notes). A text label costing a long ingredient name the
+ *   width it needed to be read at all was the reason the label first
+ *   shrank to "In pantry" rather than "Already have it", and it still read
+ *   as a status rather than a button once it had — so the section hint
+ *   above the needToBuy card now carries the explanation once, and the
+ *   button itself only has to be found and tapped. Unticking a row only
+ *   skips it for this add — the pantry guess forgets nothing was said.
+ *   Stamping the on-hand window (the same write GroceryItemSheet's "Got it"
+ *   makes) is what actually keeps that ingredient from being offered again
+ *   next time, which is the whole point of an "already have it" option on
+ *   an import. It goes through `addToPantry`, so an ingredient with no
+ *   catalog row yet mints one rather than being the one line you can't say
+ *   it about — a recipe naming something the app has never seen is exactly
+ *   where the app's guess is worst, so that was the wrong line to leave out.
  * - **The substitutes marker** on a row whose item has stand-ins recorded,
  *   which opens SubstituteSheet on it. `reason` says "you have margarine" only
  *   for a substitute the pantry vouches for; the marker is the wider "there's
@@ -666,7 +670,7 @@ export function RecipeToListSheet({
                                     )}
                                     {canMarkHave && (
                                       <InlineAction
-                                        label="In pantry"
+                                        icon="archive-outline"
                                         onPress={() => markAlreadyHave(row)}
                                         accessibilityLabel={`${row.name} is in the pantry, skip it and remember it for next time`}
                                       />
@@ -682,7 +686,7 @@ export function RecipeToListSheet({
                   )}
                   {category === 'needToBuy' && (
                     <Text style={styles.sectionHint}>
-                      Tap "In pantry" on anything you already have to skip buying it and remember that for next time.
+                      Tap the pantry icon on anything you already have to skip buying it and remember that for next time.
                     </Text>
                   )}
                   {category === 'alreadyOnList' && (

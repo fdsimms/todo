@@ -107,12 +107,12 @@ const defaultExpandedSections = (): Set<PlanCategory> => new Set<PlanCategory>([
  * this trip.
  *
  * The row actions are RecipeToListSheet's, and they mean the same thing here:
- * "In pantry" stamps the on-hand window through `addToPantry` (minting the
- * catalog row when the planned meals name something the app has never seen),
- * and the substitutes marker opens SubstituteSheet on the lines you've
- * recorded a stand-in for. A multi-meal shop is where both matter most: it's
- * the longest list either sheet shows, and the one where a line worth
- * skipping is easiest to lose.
+ * the pantry icon stamps the on-hand window through `addToPantry` (minting
+ * the catalog row when the planned meals name something the app has never
+ * seen), and the substitutes marker opens SubstituteSheet on the lines
+ * you've recorded a stand-in for. A multi-meal shop is where both matter
+ * most: it's the longest list either sheet shows, and the one where a line
+ * worth skipping is easiest to lose.
  */
 export function AddMealsToListSheet({
   visible, entries, recipesById, range, title, stampWeekKey, onClose,
@@ -469,7 +469,7 @@ export function AddMealsToListSheet({
                                     )}
                                     {canMarkHave && (
                                       <InlineAction
-                                        label="In pantry"
+                                        icon="archive-outline"
                                         onPress={() => markAlreadyHave(row)}
                                         accessibilityLabel={`${row.name} is in the pantry, skip it and remember it for next time`}
                                       />
@@ -485,7 +485,7 @@ export function AddMealsToListSheet({
                   )}
                   {category === 'needToBuy' && (
                     <Text style={styles.sectionHint}>
-                      Tap "In pantry" on anything you already have to skip buying it and remember that for next time.
+                      Tap the pantry icon on anything you already have to skip buying it and remember that for next time.
                     </Text>
                   )}
                   {category === 'alreadyOnList' && (
