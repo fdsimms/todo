@@ -78,6 +78,8 @@ import { describeDisposalHistory, wantsShelfLifePrompt } from '../utils/itemDisp
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
 import { wantedPantryChecks } from '../utils/pantryCheckTasks';
+import { buildPantryReviewDeck } from '../utils/pantryReview';
+import { MIN_PANTRY_REVIEW_CARDS, stalePantryReviewTasks } from '../utils/pantryReviewTasks';
 import { mealShortfallRows, staleMealShortfallTasks } from '../utils/mealShortfallTasks';
 import {
   canHoldSupply,
@@ -1874,6 +1876,31 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // And the real rule agrees, so the first foreground sweep doesn't clear the
     // seeded row as describing an item that wants nothing.
     expect(wantedPantryChecks(items, tasks, new Date()).map(w => w.itemId)).toContain(oats.id);
+  });
+
+  it('seeds the bulk form of the same question, and a deck with something in it', () => {
+    const { tasks } = useTaskStore.getState();
+    const { items, itemProducts } = useGroceryStore.getState();
+
+    const review = tasks.find(t => t.generatedKind === 'pantryReview');
+    expect(review).toBeDefined();
+    expect(review!.title).toBe("Review what's in the pantry");
+    // Tapping it lands on the Pantry screen with the deck already up.
+    expect(review!.linkUrl).toBe('dundundun://kitchen?review=1');
+    expect(review!.category).toBe('Groceries');
+
+    // The row would be a promise the deck couldn't keep if the demo catalog had
+    // nothing in doubt — and a deck under the threshold is one the generator
+    // itself would never have offered.
+    const deck = buildPantryReviewDeck(items, new Date(), itemProducts);
+    expect(deck.cards.length).toBeGreaterThanOrEqual(MIN_PANTRY_REVIEW_CARDS);
+    // Answering is what the deck is for, so at least one card has to be a row
+    // whose answer would actually change something the app believes.
+    expect(deck.cards.some(c => c.doubt !== 'asserted')).toBe(true);
+
+    // And the stale pass agrees, so the first foreground sweep doesn't clear
+    // the seeded row as describing a cupboard nobody needs to look at.
+    expect(stalePantryReviewTasks(tasks, deck)).toEqual([]);
   });
 
   it('seeds a meal the kitchen cannot make, and the task that says so', () => {

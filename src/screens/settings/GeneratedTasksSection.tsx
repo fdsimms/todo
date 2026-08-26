@@ -130,6 +130,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
       case 'projectReview': return s.projectReviewTasks;
       case 'pantryCheck': return s.pantryCheckTasks;
+      case 'pantryReview': return s.pantryReviewTasks;
       case 'mealShortfall': return s.mealShortfallTasks;
       case 'supplyReorder': return s.supplyReorderTasks;
       case 'calendarReview': return s.calendarReviewTasks;
@@ -149,6 +150,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': s.setMealPlanNudgeEnabled(next); break;
       case 'projectReview': s.setProjectReviewTasks(next); break;
       case 'pantryCheck': s.setPantryCheckTasks(next); break;
+      case 'pantryReview': s.setPantryReviewTasks(next); break;
       case 'mealShortfall': s.setMealShortfallTasks(next); break;
       case 'supplyReorder': s.setSupplyReorderTasks(next); break;
       case 'calendarReview': s.setCalendarReviewTasks(next); break;
@@ -179,6 +181,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': return s.mealPlanNudgeTaskCategory;
       case 'projectReview': return s.projectReviewTaskCategory;
       case 'pantryCheck': return s.pantryCheckTaskCategory;
+      case 'pantryReview': return s.pantryReviewTaskCategory;
       case 'mealShortfall': return s.mealShortfallTaskCategory;
       case 'calendarReview': return s.calendarEventCategory;
       case 'birthday': return s.birthdayTaskCategory;
@@ -199,6 +202,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       case 'mealPlanNudge': s.setMealPlanNudgeTaskCategory(category); break;
       case 'projectReview': s.setProjectReviewTaskCategory(category); break;
       case 'pantryCheck': s.setPantryCheckTaskCategory(category); break;
+      case 'pantryReview': s.setPantryReviewTaskCategory(category); break;
       case 'mealShortfall': s.setMealShortfallTaskCategory(category); break;
       case 'birthday': s.setBirthdayTaskCategory(category); break;
       case 'birthdayGift': s.setBirthdayGiftTaskCategory(category); break;

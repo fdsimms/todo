@@ -580,6 +580,12 @@ export type GeneratedKind =
   | 'mealPlanNudge'
   | 'projectReview'
   | 'pantryCheck'
+  // The offer to go through the whole cupboard at once, rather than one item
+  // at a time the way pantryCheck asks — see src/utils/pantryReviewTasks.ts.
+  // Its source id is the day key the offer was raised on, the same "square on
+  // the calendar, not a row" position calendarReview and mealPlanNudge are in,
+  // and for the same reason writeGeneratedOptOut has nothing to write for it.
+  | 'pantryReview'
   // Once a day, a task to look at tomorrow's calendar — see
   // src/utils/calendarReviewTasks.ts. Its source id is tomorrow's day key, the
   // same "square on the calendar, not a row" position mealPlanNudge is in, and

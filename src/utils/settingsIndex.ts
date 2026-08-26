@@ -363,6 +363,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'restock', 'generated', 'automatic'], kitchen: true },
   { id: 'pantryCheckTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
     keywords: ['category', 'pantry', 'grocery', 'kitchen'], kitchen: true },
+  // `swipe` and `deck` earn their place here: this is the only way to find the
+  // review pass by the thing a person actually remembers about it, and the
+  // label can't carry either word without becoming a description of a gesture
+  // rather than of what the setting does.
+  { id: 'pantryReviewTasks', groupId: 'tasksProjects', label: 'Pantry reviews', section: 'Tasks the app adds',
+    keywords: ['cupboard', 'stock', 'take stock', 'swipe', 'deck', 'still have',
+      'grocery', 'kitchen', 'generated', 'automatic'], kitchen: true },
+  { id: 'pantryReviewTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
+    keywords: ['category', 'pantry', 'review', 'grocery', 'kitchen'], kitchen: true },
   // `kitchen: true` like the pantry rows above and unlike the supply ones
   // below: this generator reads the grocery catalog to decide what's missing
   // and its own pass refuses to run with the kitchen off, so a findable row
