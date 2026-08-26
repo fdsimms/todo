@@ -11,19 +11,19 @@ import {
   AppState,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRoute, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTaskStore } from '../store/useTaskStore';
-import { useProjectStore } from '../store/useProjectStore';
+import { useProjectStore, projectProgress } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import type { Category, Task, TaskGroup } from '../types';
-import type { SearchResult, GroupSearchResult } from '../utils/fuzzySearch';
-import { fuzzySearch, searchGroups } from '../utils/fuzzySearch';
+import type { SearchResult, GroupSearchResult, ProjectSearchResult } from '../utils/fuzzySearch';
+import { fuzzySearch, searchGroups, searchProjects } from '../utils/fuzzySearch';
 import { collapseOccurrences, formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
 import { displayTitleFor, groupRoster, isQuotaPartial } from '../utils/visibilityUtils';
 import { peopleOn } from '../utils/peopleRegistry';
@@ -260,8 +260,67 @@ function StackResultItem({ result, onPress, styles, colors }: {
   );
 }
 
+function ProjectResultItem({ result, onPress, styles, colors }: {
+  result: ProjectSearchResult;
+  onPress: () => void;
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+}) {
+  const { project, titleMatches, progress } = result;
+  // Same sentence the Projects page's own row says, so a project found here
+  // and the same project found there read alike.
+  const progressLabel = progress.total === 0
+    ? 'No tasks yet'
+    : `${progress.done}/${progress.total} done`;
+  const state = project.archived ? 'Archived' : project.completed ? 'Completed' : null;
+
+  const a11yLabel = [project.title, progressLabel, state].filter(Boolean).join(', ');
+
+  return (
+    <TouchableOpacity
+      style={styles.resultRow}
+      onPress={onPress}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={a11yLabel}
+      accessibilityHint="Double tap to open project"
+    >
+      <View style={styles.statusIcon}>
+        <View style={[styles.stackIcon, { backgroundColor: colors.accentSubtle }]}>
+          <Ionicons name="briefcase-outline" size={iconSize.sm} color={colors.accent} />
+        </View>
+      </View>
+
+      <View style={styles.resultContent}>
+        <HighlightedText
+          text={project.title}
+          ranges={titleMatches}
+          style={styles.resultTitle}
+          highlightStyle={styles.highlight}
+          numberOfLines={2}
+        />
+
+        <View style={styles.resultMeta}>
+          <Text style={styles.metaText}>{progressLabel}</Text>
+          {project.category !== null && (
+            <Text style={styles.metaText} numberOfLines={1}>{project.category}</Text>
+          )}
+          {/* Why an archived or completed project is down here rather than at
+              the top, said on the row instead of left to be inferred from the
+              order. */}
+          {state !== null && <Text style={styles.metaText}>{state}</Text>}
+          {project.notes.length > 0 && (
+            <Text style={styles.notesPreview} numberOfLines={1}>{project.notes}</Text>
+          )}
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
 export function SearchScreen() {
   const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const route = useRoute<any>();
   const tabBarHeight = useBottomTabBarHeight();
   const tasks = useTaskStore(s => s.tasks);
@@ -385,6 +444,16 @@ export function SearchScreen() {
     [groups, debouncedQuery, rosterByGroupId]
   );
 
+  // Only computed for the projects that actually matched, rather than for the
+  // whole board on every keystroke: projectProgress filters the entire task
+  // list and walks a previousOccurrenceId chain per member, and a search runs
+  // on every debounced change.
+  const projectResults: ProjectSearchResult[] = useMemo(() => {
+    const matched = searchProjects(projects, debouncedQuery, new Map());
+    const progress = new Map(matched.map(r => [r.project.id, projectProgress(r.project.id, tasks)]));
+    return matched.map(r => ({ ...r, progress: progress.get(r.project.id)! }));
+  }, [projects, debouncedQuery, tasks]);
+
   const isActive = (r: SearchResult) => !r.task.completed || heldIds.has(r.task.id);
   const activeResults = results.filter(isActive);
   const completedResults = results.filter(r => !isActive(r));
@@ -392,10 +461,11 @@ export function SearchScreen() {
   type ListItem =
     | { type: 'sectionHeader'; label: string }
     | { type: 'result'; result: CollapsedOccurrence<SearchResult> }
-    | { type: 'groupResult'; result: GroupSearchResult };
+    | { type: 'groupResult'; result: GroupSearchResult }
+    | { type: 'projectResult'; result: ProjectSearchResult };
 
   const listData: ListItem[] = useMemo(() => {
-    if (results.length === 0 && groupResults.length === 0) return [];
+    if (results.length === 0 && groupResults.length === 0 && projectResults.length === 0) return [];
     const items: ListItem[] = [];
     // Stacks lead: a title match on a stack is almost always a navigational
     // lookup ("where's my packing list"), so it surfaces before the task
@@ -403,6 +473,13 @@ export function SearchScreen() {
     if (groupResults.length > 0) {
       items.push({ type: 'sectionHeader', label: 'Stacks' });
       groupResults.forEach(r => items.push({ type: 'groupResult', result: r }));
+    }
+    // Same argument as the stacks above, one container out: a title match on a
+    // project is a navigational lookup ("where did I put the kitchen stuff"),
+    // and its own tasks are almost certainly in the Active section below.
+    if (projectResults.length > 0) {
+      items.push({ type: 'sectionHeader', label: 'Projects' });
+      projectResults.forEach(r => items.push({ type: 'projectResult', result: r }));
     }
     if (activeResults.length > 0) {
       items.push({ type: 'sectionHeader', label: 'Active' });
@@ -414,7 +491,7 @@ export function SearchScreen() {
     }
     return items;
     // heldIds too: it's what decides which section a completed row sits in.
-  }, [results, groupResults, heldIds]);
+  }, [results, groupResults, projectResults, heldIds]);
 
   const openTask = (task: Task) => {
     setEditingTask(task);
@@ -451,6 +528,16 @@ export function SearchScreen() {
         />
       );
     }
+    if (item.type === 'projectResult') {
+      return (
+        <ProjectResultItem
+          result={item.result}
+          onPress={() => (navigation as any).navigate('ProjectDetail', { projectId: item.result.project.id })}
+          styles={styles}
+          colors={colors}
+        />
+      );
+    }
     return (
       <SearchResultItem
         result={item.result}
@@ -463,7 +550,8 @@ export function SearchScreen() {
     );
   };
 
-  const showEmpty = query.trim().length > 0 && results.length === 0 && groupResults.length === 0;
+  const showEmpty = query.trim().length > 0 && results.length === 0
+    && groupResults.length === 0 && projectResults.length === 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -500,13 +588,14 @@ export function SearchScreen() {
             bottomOffset={tabBarHeight}
           />
         ) : query.trim().length === 0 ? (
-          <EmptyState key="prompt" icon="search-outline" title="Find any task" subtitle="Search active tasks, completed tasks, and stacks" bottomOffset={tabBarHeight} />
+          <EmptyState key="prompt" icon="search-outline" title="Find any task" subtitle="Search active tasks, completed tasks, stacks and projects" bottomOffset={tabBarHeight} />
         ) : (
           <FlatList
             data={listData}
             keyExtractor={(item, i) => {
               if (item.type === 'sectionHeader') return `h-${item.label}`;
               if (item.type === 'groupResult') return `g-${item.result.group.id}`;
+              if (item.type === 'projectResult') return `p-${item.result.project.id}`;
               return item.result.task.id;
             }}
             renderItem={renderItem}
