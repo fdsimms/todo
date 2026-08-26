@@ -94,9 +94,14 @@ import { ProgressBar } from './ProgressBar';
 const CHECKBOX_SIZE = 20;
 const SUBTASK_CHECKBOX_SIZE = 16;
 // Peak scale of the completion circle's pop bounce (see circleScale below).
-// The checkmark glyph nested inside that circle needs to counter-scale by the
-// inverse of this so it never gets rendered past its native rasterized size.
 const CIRCLE_POP_SCALE = 1.35;
+// Where the checkmark's own entrance starts. Deliberately not 0: the glyph is a
+// rasterized font bitmap, so every fractional scale resamples it, and the
+// frames down near 0 undersample a 12pt stroke badly enough to read as jagged.
+// The entrance is carried by opacity instead, with the scale only travelling
+// the last fifth — enough to feel like a pop, shallow enough that no frame is
+// resampled far from 1:1.
+const CHECK_GLYPH_START_SCALE = 0.8;
 // How long the meter takes to run up to the brim on the unit that meets the
 // target. Slower than a logged unit (duration.fast) — this rise is the payoff,
 // and the pop that follows it waits this out.
@@ -457,12 +462,17 @@ export const TaskItem = React.memo(function TaskItem({
   // scale at rest rather than 0 is what keeps the checkmark from mounting
   // invisible on those rows.
   const checkScale = useRef(new Animated.Value(task.completed ? 1 : 0)).current;
-  // Counter-scales the checkmark glyph against circleScale's pop, so the
-  // glyph's rendered size never exceeds its native rasterized size even
-  // while the circle around it balloons to CIRCLE_POP_SCALE.
-  const checkGlyphCounterScale = circleScale.interpolate({
-    inputRange: [1, CIRCLE_POP_SCALE],
-    outputRange: [1, 1 / CIRCLE_POP_SCALE],
+  // The spring below overshoots past 1 for the pop feel; both of these clamp it,
+  // because the glyph is a rasterized bitmap and anything past 1 is that bitmap
+  // being blown up rather than redrawn. See the glyph layer in the render.
+  const checkGlyphOpacity = checkScale.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+  const checkGlyphScale = checkScale.interpolate({
+    inputRange: [0, 1],
+    outputRange: [CHECK_GLYPH_START_SCALE, 1],
     extrapolate: 'clamp',
   });
   const rowOpacity = useRef(new Animated.Value(1)).current;
@@ -1549,46 +1559,54 @@ export const TaskItem = React.memo(function TaskItem({
               pointerEvents="none"
             />
           )}
-          {/* Absolutely positioned over the circle (which centers its children)
-              so the glyph sits on top of the quota fill rather than being laid
-              out beside it. */}
-          <View pointerEvents="none" style={styles.circleContentLayer}>
-            {completing && !quotaPartial && (
-              // The spring (animation.spring.bouncy) overshoots past 1 for the pop
-              // feel, but animating a native-driven `scale` transform on an Ionicons
-              // glyph scales the already-rasterized bitmap up rather than
-              // re-rendering it, so an uncapped overshoot is visibly pixelated.
-              // Clamping the *visual* scale at 1 keeps the glyph rendered at its
-              // native 12pt size — crisp at rest — while the transform only ever
-              // shrinks it on the way in, never enlarges it. This view sits inside
-              // the circle's own pop (circleScale, up to CIRCLE_POP_SCALE), which
-              // would otherwise stretch the same rasterized glyph further still —
-              // checkGlyphCounterScale cancels exactly that.
-              <Animated.View style={{
-                transform: [
-                  { scale: checkScale.interpolate({ inputRange: [0, 1], outputRange: [0, 1], extrapolate: 'clamp' }) },
-                  { scale: checkGlyphCounterScale },
-                ],
-              }}>
-                <Ionicons name="checkmark" size={12} color={colors.onAccent} />
-              </Animated.View>
-            )}
-            {!completing && recurrenceNotYetDue && (
-              <Ionicons name="repeat" size={iconSize.sm} color={colors.textTertiary} />
-            )}
-            {!completing && !recurrenceNotYetDue && locked && (
-              <Ionicons name="lock-closed" size={iconSize.xs} color={colors.textTertiary} />
-            )}
-            {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource) && (
-              // xs like the lock, not sm like the repeat: a "?" is tall where
-              // the repeat glyph is wide and short, so the same nominal size
-              // fills far more of a 20pt box and reads as crowded. Shared with
-              // asksOnComplete: both mean "this tap asks something before it
-              // completes anything," which is exactly what happens here too.
-              <Ionicons name="help" size={iconSize.xs} color={colors.textTertiary} />
-            )}
-          </View>
         </Animated.View>
+
+        {/* The circle's glyphs, deliberately a *sibling* of the circle rather
+            than a child of it. Every one of them is a rasterized font bitmap,
+            and a native-driven `scale` transform on an ancestor blows that
+            bitmap up instead of redrawing the glyph — so anything living inside
+            the circle is resampled by the pop (circleScale, up to
+            CIRCLE_POP_SCALE, and 1.25 again on a logged quota unit). A
+            counter-scale cancelling the pop on the glyph's own node was the
+            first attempt and wasn't enough: on a meter row the circle also
+            carries `overflow: hidden` (styles.circleQuota), which makes it a
+            clipped compositing group, so its whole subtree is rendered into a
+            20pt buffer *first* and the pop then scales that buffer — the glyph
+            comes out the right size but rasterized at 20/1.35 pt. Out here
+            nothing scales the glyph but its own transform, which never exceeds
+            1. It's still painted over the quota fill: it's the later sibling,
+            and it's absolutely positioned so it centres on the circle rather
+            than being laid out beside it. */}
+        <View pointerEvents="none" style={styles.circleGlyphLayer}>
+          {completing && !quotaPartial && (
+            // The entrance spring (animation.spring.bouncy) overshoots past 1,
+            // so both of these clamp — see checkGlyphOpacity/checkGlyphScale.
+            // Opacity does the appearing and the scale only travels the last
+            // fifth, because a deep scale-up from 0 spends its first frames
+            // resampling the 12pt bitmap far from 1:1, which is the jagged look
+            // this is fixing.
+            <Animated.View style={{
+              opacity: checkGlyphOpacity,
+              transform: [{ scale: checkGlyphScale }],
+            }}>
+              <Ionicons name="checkmark" size={12} color={colors.onAccent} />
+            </Animated.View>
+          )}
+          {!completing && recurrenceNotYetDue && (
+            <Ionicons name="repeat" size={iconSize.sm} color={colors.textTertiary} />
+          )}
+          {!completing && !recurrenceNotYetDue && locked && (
+            <Ionicons name="lock-closed" size={iconSize.xs} color={colors.textTertiary} />
+          )}
+          {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource) && (
+            // xs like the lock, not sm like the repeat: a "?" is tall where
+            // the repeat glyph is wide and short, so the same nominal size
+            // fills far more of a 20pt box and reads as crowded. Shared with
+            // asksOnComplete: both mean "this tap asks something before it
+            // completes anything," which is exactly what happens here too.
+            <Ionicons name="help" size={iconSize.xs} color={colors.textTertiary} />
+          )}
+        </View>
       </TouchableOpacity>
 
       <TouchableOpacity
@@ -3042,10 +3060,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.green,
     borderColor: colors.green,
   },
-  // The circle's glyph, lifted out of its own flow so it draws over the quota
-  // fill rather than being laid out alongside it.
-  circleContentLayer: {
+  // The circle's glyph, lifted out of the circle entirely so nothing scales it
+  // (see the note at the call site) and so it draws over the quota fill rather
+  // than being laid out alongside it. Fills the wrapper rather than the circle,
+  // which comes to the same centre: the circle is CHECKBOX_SIZE in a box padded
+  // by 2 on every side.
+  circleGlyphLayer: {
     position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
