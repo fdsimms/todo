@@ -8,6 +8,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { MAX_PROJECT_REVIEW_TASKS } from '../utils/projectReviewTasks';
 import { MAX_PANTRY_CHECK_TASKS } from '../utils/pantryCheckTasks';
 import { MAX_MEAL_SHORTFALL_TASKS } from '../utils/mealShortfallTasks';
@@ -85,6 +86,10 @@ jest.mock('../db/database', () => ({
   dbBatchUpdatePersonSortOrders: jest.fn(),
   dbGetAllProjectCategories: jest.fn().mockReturnValue([]),
   dbInsertProjectCategory: jest.fn(),
+  dbInsertProjectCategoryRow: jest.fn(),
+  dbDeleteProjectCategory: jest.fn(),
+  dbRenameProjectCategory: jest.fn(),
+  dbBatchUpdateProjectCategorySortOrders: jest.fn(),
   dbGetAllTemplateCategories: jest.fn().mockReturnValue([]),
   dbInsertTemplateCategory: jest.fn(),
   dbInsertTask: jest.fn(),
@@ -11615,5 +11620,69 @@ describe('updateTask: the extra task draft', () => {
 
     useTaskStore.getState().updateTask('practice', { extraTaskDraft: null });
     expect(useTaskStore.getState().tasks[0].extraTaskDraft).toBeNull();
+  });
+});
+
+// ─── deleteProjectCategory ──────────────────────────────────────────────────
+
+describe('deleteProjectCategory', () => {
+  beforeEach(() => {
+    useProjectCategoryStore.setState({
+      categories: [{ id: 'pc1', name: 'Travel', sortOrder: 1 }],
+      initialized: true,
+    });
+  });
+
+  it('unfiles the projects in it and leaves everything else alone', () => {
+    useProjectStore.setState({
+      projects: [
+        makeProject({ id: 'p1', category: 'Travel' }),
+        makeProject({ id: 'p2', category: 'Home' }),
+        makeProject({ id: 'p3', category: null }),
+      ],
+    });
+    useTaskStore.getState().deleteProjectCategory('Travel');
+
+    expect(useProjectCategoryStore.getState().categories).toHaveLength(0);
+    const byId = (id: string) => useProjectStore.getState().projects.find(p => p.id === id);
+    expect(byId('p1')?.category).toBeNull();
+    expect(byId('p2')?.category).toBe('Home');
+    expect(byId('p3')?.category).toBeNull();
+  });
+
+  // A project category never reaches the tasks inside its projects — it groups
+  // the Projects page and nothing else (see Project.category). Deleting one
+  // must not touch a task's own category, which is a different vocabulary.
+  it('does not touch the task categories of the projects it unfiles', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', category: 'Travel' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1', category: 'Travel' })] });
+    useTaskStore.getState().deleteProjectCategory('Travel');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.category).toBe('Travel');
+  });
+
+  it('restores the category and re-files its projects on undo', () => {
+    useProjectStore.setState({
+      projects: [
+        makeProject({ id: 'p1', category: 'Travel' }),
+        makeProject({ id: 'p2', category: 'Travel' }),
+        makeProject({ id: 'p3', category: 'Home' }),
+      ],
+    });
+    useTaskStore.getState().deleteProjectCategory('Travel');
+    useTaskStore.getState().undoLastAction();
+
+    expect(useProjectCategoryStore.getState().categories.map(c => c.name)).toEqual(['Travel']);
+    const byId = (id: string) => useProjectStore.getState().projects.find(p => p.id === id);
+    expect(byId('p1')?.category).toBe('Travel');
+    expect(byId('p2')?.category).toBe('Travel');
+    // Never in it, so never re-filed into it.
+    expect(byId('p3')?.category).toBe('Home');
+  });
+
+  it('is a no-op on a category that is not there', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', category: 'Home' })] });
+    useTaskStore.getState().deleteProjectCategory('Missing');
+    expect(useProjectStore.getState().projects[0].category).toBe('Home');
+    expect(useProjectCategoryStore.getState().categories).toHaveLength(1);
   });
 });

@@ -38,6 +38,7 @@ import {
 import { ReorderableList } from '../components/ReorderableList';
 import { ProgressBar } from '../components/ProgressBar';
 import { ProjectsOptionsMenu, type ProjectFilter } from '../components/ProjectsOptionsMenu';
+import { ProjectCategoriesSheet } from '../components/ProjectCategoriesSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { SelectionDot } from '../components/SelectionDot';
 import { useRowSelection } from '../hooks/useRowSelection';
@@ -98,6 +99,7 @@ export function ProjectsScreen() {
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [optionsMenuVisible, setOptionsMenuVisible] = useState(false);
+  const [categoriesSheetVisible, setCategoriesSheetVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // Entered from the header, like Templates and for the same reason: both of a
@@ -620,6 +622,13 @@ export function ProjectsScreen() {
         onFilterChange={setProjectFilter}
         completedCount={completedCount}
         archivedCount={archivedCount}
+        categoryCount={projectCategories.length}
+        onManageCategories={() => setCategoriesSheetVisible(true)}
+      />
+
+      <ProjectCategoriesSheet
+        visible={categoriesSheetVisible}
+        onClose={() => setCategoriesSheetVisible(false)}
       />
 
       <QuickAddProjectModal

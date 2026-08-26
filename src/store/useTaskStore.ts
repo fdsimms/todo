@@ -1534,6 +1534,10 @@ interface TaskStore {
   bulkSetGroupCategory: (groupIds: string[], category: string | null) => void;
 
   addExistingToProject: (taskId: string, projectId: string) => void;
+  // Deleting a project category unfiles the projects in it; the undo entry is
+  // registered here with every other undoable action, same split as
+  // deleteCategory above.
+  deleteProjectCategory: (name: string) => void;
   removeFromProject: (taskId: string) => void;
   deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
   // Archive/restore a project through here rather than through useProjectStore
@@ -5526,6 +5530,36 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       undo: () => {
         groupUndos.forEach(g => groupStore.updateGroup(g.id, { category: g.category }));
         taskUndos.forEach(t => get().updateTask(t.id, { category: t.category }));
+      },
+    });
+  },
+
+  /**
+   * Delete a project category and unfile the projects in it, undoably.
+   *
+   * Far smaller than its task-category counterpart above, and that asymmetry is
+   * the model rather than an omission: a project category groups projects on
+   * the Projects page and never reaches the tasks inside them (see
+   * Project.category), so there are no tasks to re-seen, no stacks to unfile,
+   * and no generated-task setting that files *into* it by name. The projects
+   * are the whole blast radius.
+   */
+  deleteProjectCategory(name) {
+    const category = useProjectCategoryStore.getState().getCategoryByName(name);
+    if (!category) return;
+    const filedIds = useProjectStore.getState().projects.filter(p => p.category === name).map(p => p.id);
+    useProjectCategoryStore.getState().removeCategoryRow(name);
+    useProjectStore.setState(s => ({
+      projects: s.projects.map(p => (p.category === name ? { ...p, category: null } : p)),
+    }));
+    get().setLastAction({
+      label: `Category "${name}" deleted`,
+      destructive: true,
+      undo: () => {
+        // The row first, so the projects are re-filed into a category that
+        // exists — the picker reads the pool, not the names on the rows.
+        useProjectCategoryStore.getState().restoreCategory(category);
+        useProjectStore.getState().bulkSetProjectCategory(filedIds, name);
       },
     });
   },

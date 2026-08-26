@@ -2379,6 +2379,42 @@ export function dbInsertProjectCategory(name: string): ProjectCategory {
   return { id, name, sortOrder };
 }
 
+/**
+ * Deleting a project category unfiles the projects in it, exactly as
+ * dbDeleteCategory does for tasks and stacks. It touches no task: a project's
+ * category is purely for grouping the Projects page and never reaches the
+ * tasks inside it (see Project.category).
+ */
+export function dbDeleteProjectCategory(name: string): void {
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM project_categories WHERE name = ?', [name]);
+    db.runSync('UPDATE projects SET category = NULL WHERE category = ?', [name]);
+  });
+}
+
+/** Full-row insert, used only to restore a snapshot on undo — see dbInsertCategoryRow. */
+export function dbInsertProjectCategoryRow(category: ProjectCategory): void {
+  db.runSync(
+    'INSERT INTO project_categories (id, name, sort_order) VALUES (?, ?, ?)',
+    [category.id, category.name, category.sortOrder]
+  );
+}
+
+export function dbRenameProjectCategory(id: string, oldName: string, newName: string): void {
+  db.withTransactionSync(() => {
+    db.runSync('UPDATE project_categories SET name = ? WHERE id = ?', [newName, id]);
+    db.runSync('UPDATE projects SET category = ? WHERE category = ?', [newName, oldName]);
+  });
+}
+
+export function dbBatchUpdateProjectCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
+  db.withTransactionSync(() => {
+    for (const { id, sortOrder } of updates) {
+      db.runSync('UPDATE project_categories SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+    }
+  });
+}
+
 // ─── Task Groups ────────────────────────────────────────────────────────────
 
 function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
