@@ -3122,22 +3122,31 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaHoldIds: s.quotaHoldIds.filter(x => x !== id),
     }));
 
-    // Opt-in convenience only (autoArchiveProjectsOnComplete, default off) —
+    // Opt-in convenience only (autoCompleteProjectsOnDone, default off) —
     // finishing a project never happens automatically otherwise; the user
-    // decides when a 100%-complete project actually gets archived. It rides on
+    // decides when a 100%-complete project is actually called done. It rides on
     // the completion's own undo instead of setting its own entry: it wasn't a
     // separate action the user took, so undoing the tick has to take it back.
-    // Never on a miss: the setting archives a project whose work is *finished*,
+    // Never on a miss: the setting finishes a project whose work is *finished*,
     // and projectProgress agrees (a group of nothing but missed rows isn't
-    // done). Filing a project away because its last task went undone would be
+    // done). Calling a project done because its last task went undone would be
     // the opposite of what the toggle promises.
-    let autoArchivedProjectId: string | null = null;
-    if (!missed && task.projectId && useSettingsStore.getState().autoArchiveProjectsOnComplete) {
+    //
+    // **Completes the project, never archives it.** The setting used to archive,
+    // which put it at odds with every affordance a person taps for the same
+    // moment: the detail screen's offer banner, the green check on the Projects
+    // row and the editor's Mark complete row all set `completed`. With the
+    // setting on, a project that finished never reached the Completed list that
+    // exists for exactly this, because the automatic path filed it somewhere
+    // else. Archiving is still available afterwards, and is still a separate
+    // decision (see Project.completed).
+    let autoCompletedProjectId: string | null = null;
+    if (!missed && task.projectId && useSettingsStore.getState().autoCompleteProjectsOnDone) {
       const progress = projectProgress(task.projectId, get().tasks);
       const project = useProjectStore.getState().getProjectById(task.projectId);
-      if (progress.total > 0 && progress.done === progress.total && project && !project.archived) {
-        useProjectStore.getState().applyProjectArchived(task.projectId, true);
-        autoArchivedProjectId = task.projectId;
+      if (progress.total > 0 && progress.done === progress.total && project && !project.completed && !project.archived) {
+        useProjectStore.getState().applyProjectCompleted(task.projectId, true);
+        autoCompletedProjectId = task.projectId;
       }
     }
 
@@ -3332,8 +3341,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           ? 'Last one, this won\'t repeat again'
           : 'Task completed',
       undo: () => {
-        if (autoArchivedProjectId) {
-          useProjectStore.getState().applyProjectArchived(autoArchivedProjectId, false);
+        if (autoCompletedProjectId) {
+          useProjectStore.getState().applyProjectCompleted(autoCompletedProjectId, false);
         }
         // Before uncompleteTask, which would otherwise un-cook the meal on its
         // own and leave the recipe's counters bumped — this closure puts both

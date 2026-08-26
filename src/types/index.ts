@@ -303,10 +303,15 @@ export interface FocusSession {
 // TaskGroup (same-day cohorts), Category, and Tags, so a task can belong to
 // all four at once. Unlike TaskGroup, a Project has its own optional
 // targetStartDate/targetEndDate and can be browsed on its own even when
-// nothing inside it is due today. It has no persisted "completed" state —
-// completion is always derived from its tasks (see projectProgress in
-// useProjectStore) — only an explicit archived flag the user (or, if the
-// autoArchiveProjectsOnComplete setting is on, completeTask) sets.
+// nothing inside it is due today.
+//
+// It carries *two* end states, and they are independent: `completed` (finished,
+// listed under Completed) and `archived` (filed away, out of the active list).
+// Both are explicit flags the user sets, or that completeTask sets on their
+// behalf when the autoCompleteProjectsOnDone setting is on. Neither is derived
+// from the tasks — `projectProgress` answers "how far along", which is a
+// different question, and deliberately never reaches 100% for a project holding
+// a recurring member.
 export interface Project {
   id: string;
   title: string;

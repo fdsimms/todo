@@ -361,7 +361,7 @@ describe('resetToDefaults', () => {
     useSettingsStore.getState().setDayResetTime('06:00');
     useSettingsStore.getState().setAfternoonStart('13:00');
     useSettingsStore.getState().setAutoRemoveExpiredTasks(7);
-    useSettingsStore.getState().setAutoArchiveProjectsOnComplete(true);
+    useSettingsStore.getState().setAutoCompleteProjectsOnDone(true);
     useSettingsStore.getState().setHideCategories(true);
     useSettingsStore.getState().setHideHelpText(true);
     useSettingsStore.getState().setTimerLiveActivity(false);
@@ -381,7 +381,7 @@ describe('resetToDefaults', () => {
     // Deletes tasks unattended, like completedRetentionDays — a reset must not
     // silently change how aggressively it does that.
     expect(state.autoRemoveExpiredTasks).toBe(7);
-    expect(state.autoArchiveProjectsOnComplete).toBe(false);
+    expect(state.autoCompleteProjectsOnDone).toBe(false);
     expect(state.hideCategories).toBe(false);
     expect(state.hideHelpText).toBe(false);
     expect(state.timerLiveActivity).toBe(true);

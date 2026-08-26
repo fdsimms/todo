@@ -165,6 +165,10 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'newTaskDefaults',
   'defaultReminderLeadMinutes',
   'defaultProjectNudgeCadenceDays',
+  // Legacy key name for what is now autoCompleteProjectsOnDone: the setting
+  // changed from archiving a finished project to completing one, but it is
+  // still persisted (and therefore synced) under the key it shipped with, so
+  // devices on either side of the change agree about what it holds.
   'autoArchiveProjectsOnComplete',
   'autoRemoveExpiredTasks',
   'completedRetentionDays',
