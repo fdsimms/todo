@@ -19,6 +19,7 @@ import {
   openQuickAddFromShortcut,
 } from '../navigation/navigationRef';
 import { MEAL_SLOTS, type MealSlot } from '../types';
+import { KNOWN_LINK_APPS } from '../constants/linkApps';
 
 export interface AddTaskLink {
   title: string;
@@ -375,6 +376,29 @@ export function kitchenUrlItemId(url: string): string | null {
   if (!match) return null;
   const id = (parseQuery(match[1] ?? '').item ?? '').trim();
   return id || null;
+}
+
+/**
+ * Which glyph a task row's link button should show — the destination's own
+ * icon (the Groceries cart, a picked app's icon, the fork-and-knife a recipe
+ * or meal plan link already uses on Today's context rows) rather than one
+ * generic chain-link for every `linkUrl`. The chain read as "this leaves the
+ * app" even for the links this app owns and navigates to in place — which is
+ * most of them, since every auto-generated nudge (a meal, a "Use up X", a
+ * birthday, a quiet project) carries one of these rather than a real URL.
+ * Pure and side-effect free, unlike `openInAppUrl`, so a row can pick an icon
+ * without navigating.
+ */
+export function linkIconFor(url: string | null | undefined): string {
+  if (!url) return 'link';
+  const knownApp = KNOWN_LINK_APPS.find(app => app.scheme === url);
+  if (knownApp) return knownApp.icon;
+  if (isRecipeUrl(url) || isRecipesUrl(url) || isMealPlanUrl(url)) return 'restaurant-outline';
+  if (isKitchenUrl(url)) return 'nutrition-outline';
+  if (isGroceriesUrl(url)) return 'cart-outline';
+  if (isPeopleUrl(url)) return 'people-outline';
+  if (isProjectsUrl(url)) return 'briefcase-outline';
+  return 'link';
 }
 
 /**

@@ -51,7 +51,7 @@ import { chainPreview, isChainFinish } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { haptics } from '../utils/haptics';
-import { openInAppUrl } from '../utils/deepLinks';
+import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
 import { mailtoUrl } from '../utils/email';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -2069,7 +2069,7 @@ export const TaskItem = React.memo(function TaskItem({
           accessibilityRole="button"
           accessibilityLabel={`Open link for ${task.title}`}
         >
-          <Ionicons name="link" size={iconSize.sm} color={colors.accent} />
+          <Ionicons name={linkIconFor(task.linkUrl) as never} size={iconSize.sm} color={colors.accent} />
         </TouchableOpacity>
       )}
 

@@ -8,7 +8,7 @@ import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, intera
 import { haptics } from '../utils/haptics';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
-import { openInAppUrl } from '../utils/deepLinks';
+import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
 import { mailtoUrl } from '../utils/email';
 import { displayTitleFor, isQuotaTask, quotaUnitsToPace } from '../utils/visibilityUtils';
@@ -300,7 +300,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
                   accessibilityRole="button"
                   accessibilityLabel={`Open link for ${titleOf(step.taskId)}`}
                 >
-                  <Ionicons name="link" size={iconSize.sm} color={colors.accent} />
+                  <Ionicons name={linkIconFor(currentTask.linkUrl) as never} size={iconSize.sm} color={colors.accent} />
                   <Text style={styles.contactLabel}>Link</Text>
                 </TouchableOpacity>
               )}
