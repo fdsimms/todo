@@ -78,7 +78,7 @@ export function AppearanceSettings() {
           icon="add-circle-outline"
           iconColor={colors.accent}
           label="Add button"
-          hint="Which corner the + button rests in, on every list"
+          hint="Which corner the + button rests in, on every list."
           tight
         />
         <SettingsSegments

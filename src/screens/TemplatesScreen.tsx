@@ -369,6 +369,7 @@ export function TemplatesScreen() {
       <QuickAddNameSheet
         visible={quickAddVisible}
         placeholder="New template…"
+        noun="template"
         onSubmit={handleAddTemplate}
         onClose={() => {
           pendingDropRef.current = null;

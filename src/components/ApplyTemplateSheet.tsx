@@ -536,7 +536,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
           <AnchorRow
             icon="play-outline"
             label="Start date"
-            hint="Items that count days from the start are dated from this day"
+            hint="Items that count days from the start are dated from this day."
             value={startAnchor}
             onPress={() => openCalendar('start')}
             onClear={() => setStartAnchor(null)}
@@ -545,7 +545,7 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
           <AnchorRow
             icon="flag-outline"
             label="End date"
-            hint="Items that count days from the end are dated from this day"
+            hint="Items that count days from the end are dated from this day."
             value={endAnchor}
             onPress={() => openCalendar('end')}
             onClear={() => setEndAnchor(null)}

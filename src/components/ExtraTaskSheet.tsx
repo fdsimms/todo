@@ -394,7 +394,7 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
         <EditorRow
           icon="time-outline"
           label="Time of day"
-          hint="Hold the added task back until a part of its day"
+          hint="Hold the added task back until a part of its day."
           value={timeOfDaySummary}
           expanded={showTimeOfDay}
           onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}

@@ -208,7 +208,7 @@ export function TasksProjectsSettings() {
           icon="airplane-outline"
           iconColor={vacationMode ? colors.accent : undefined}
           label="Vacation mode"
-          hint="Hides tasks marked for vacation pause"
+          hint="Hides tasks marked for vacation pause."
           toggle={vacationMode}
           onPress={() => {
             if (vacationMode) {
@@ -315,7 +315,7 @@ export function TasksProjectsSettings() {
             <SettingsRow
               icon="hand-left-outline"
               label="Reschedule threshold"
-              hint="Number of times a task can be moved before the suggestion appears"
+              hint="Number of times a task can be moved before the suggestion appears."
               tight
             />
             <View style={styles.cadenceRow}>
@@ -705,7 +705,7 @@ export function TasksProjectsSettings() {
         <SettingsRow
           icon="pricetag-outline"
           label="Currency"
-          hint="The symbol grocery prices are shown with"
+          hint="The symbol grocery prices are shown with."
           tight
         />
         <View style={styles.pillGroupRow}>
@@ -788,7 +788,7 @@ export function TasksProjectsSettings() {
         label="New tasks"
         footer="What a fresh task starts with, and where quick-add files it before you type anything. None of these override a value you actually pick. Typing a date in quick-add still wins over the destination below."
       >
-        <SettingsRow icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own" value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
+        <SettingsRow icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own." value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
         <View style={styles.pillGroupRow}>
           <PillGroup
             noun="category"
@@ -829,7 +829,7 @@ export function TasksProjectsSettings() {
           accessibilityLabelFor={o => `Default time of day: ${o.label}`}
         />
         <View style={styles.sep} />
-        <SettingsRow icon="albums-outline" label="Where quick-add lands" hint="Which list a quick-added task files into before you set a date" tight />
+        <SettingsRow icon="albums-outline" label="Where quick-add lands" hint="Which list a quick-added task files into before you set a date." tight />
         <SettingsSegments
           attached
           options={NEW_TASK_DESTINATION_OPTIONS}
@@ -857,7 +857,7 @@ export function TasksProjectsSettings() {
           icon="funnel-outline"
           iconColor={activeTitleRuleCount > 0 ? colors.accent : undefined}
           label="Title rules"
-          hint="File a task by a word in its name, so anything starting with “expense” goes to Work"
+          hint="File a task by a word in its name, so anything starting with “expense” goes to Work."
           value={activeTitleRuleCount === 0
             ? 'None'
             : activeTitleRuleCount === 1 ? '1 rule' : `${activeTitleRuleCount} rules`}

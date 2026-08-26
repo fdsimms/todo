@@ -265,7 +265,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
       <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={styles.header}>
           <SheetHeaderButton label="Done" onPress={saveAndClose} />
-          <Text style={styles.headerTitle}>Edit Category</Text>
+          <Text style={styles.headerTitle}>Edit category</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Delete category ${category}`}>
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>
@@ -306,7 +306,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
             <EditorRow
               icon="time-outline"
               label="Visibility schedule"
-              hint="Only surface these tasks on certain days and hours"
+              hint="Only surface these tasks on certain days and hours."
               value={scheduleSummary}
               expanded={scheduleOpen}
               onPress={toggleSchedule}
@@ -433,7 +433,7 @@ export function CategoryEditor({ visible, category, onClose }: Props) {
             <EditorRow
               icon="partly-sunny-outline"
               label="Time of day"
-              hint="New tasks here start held back until this part of the day"
+              hint="New tasks here start held back until this part of the day."
               value={segmentsSummary}
               expanded={segmentsOpen}
               onPress={toggleSegments}

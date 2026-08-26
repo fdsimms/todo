@@ -258,7 +258,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
       header={
         <>
           <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />
-          <Text style={styles.headerTitle}>Recipe Details</Text>
+          <Text style={styles.headerTitle}>Recipe details</Text>
           <TouchableOpacity
             onPress={handleDelete}
             hitSlop={8}

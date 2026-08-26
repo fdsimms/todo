@@ -196,7 +196,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           icon="sparkles-outline"
           iconColor={anthropicApiKey ? colors.purple : undefined}
           label="Anthropic API key"
-          hint="Required for any of the features below to work"
+          hint="Required for any of the features below to work."
         >
           <TextInput
             style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}

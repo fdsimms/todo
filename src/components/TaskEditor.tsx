@@ -1530,7 +1530,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             },
           },
           {
-            text: 'All Dates',
+            text: 'All dates',
             style: 'destructive',
             onPress: () => {
               haptics.success();
@@ -1782,7 +1782,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       header={
         <>
           <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />
-          <Text style={styles.headerTitle}>{task ? 'Edit Task' : 'New Task'}</Text>
+          <Text style={styles.headerTitle}>{task ? 'Edit task' : 'New task'}</Text>
           <View style={styles.headerRight}>
             <TouchableOpacity
               onPress={toggleSearch}
@@ -2192,7 +2192,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               <EditorRow
                 icon="speedometer-outline"
                 label="Daily target"
-                hint="Log it several times a day. The task hides while you're on pace and comes back when you fall behind"
+                hint="Log it several times a day. The task hides while you're on pace and comes back when you fall behind."
                 value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
                 expanded={showTargetCount}
                 onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
@@ -2549,7 +2549,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="calendar"
               label="Date"
-              hint="The day it shows up on Today"
+              hint="The day it shows up on Today."
               value={dueDate ? formatScheduledDate(dueDate.toISOString()) : undefined}
               onPress={() => setShowWhenPicker(true)}
               onClear={dueDate ? () => { setDueDate(null); setExtraDates([]); setTimeSegments([]); } : undefined}
@@ -2565,7 +2565,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="calendar-number-outline"
               label="More dates"
-              hint="The same task on several days. Each date can be checked off separately"
+              hint="The same task on several days. Each date can be checked off separately."
               value={
                 extraDates.length > 0
                   ? `${extraDates.length + (dueDate ? 1 : 0)} dates · ${extraDates.map(d => format(d, 'MMM d')).join(', ')}`
@@ -2790,7 +2790,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="time-outline"
               label="Time of day"
-              hint="Hold it back until a part of the day"
+              hint="Hold it back until a part of the day."
               value={timeOfDaySummary}
               expanded={showTimeOfDay}
               onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
@@ -2830,7 +2830,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="timer-outline"
               label="Time window"
-              hint="Only active for part of the day, then expires"
+              hint="Only active for part of the day, then expires."
               value={timeWindowSummary}
               expanded={showTimeWindow}
               onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
@@ -2963,7 +2963,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="repeat"
               label="Repeat"
-              hint="Come back on a schedule after each completion"
+              hint="Come back on a schedule after each completion."
               // The picker has no read-back line of its own — this row, sitting
               // directly above it, is where the whole rule reads as a sentence.
               value={recurrenceType !== 'none' ? describeRecurrence({
@@ -3021,7 +3021,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <EditorRow
                   icon="cube-outline"
                   label="Supply"
-                  hint="Count down a stock of something each time this is done, and get a task to order more"
+                  hint="Count down a stock of something each time this is done, and get a task to order more."
                   value={supplyCount !== null ? describeSupply({
                     supplyCount, supplyUnit, supplyRefillCount, supplyReorderAt,
                     supplyLeadDays, supplyDeclinedAtCount: null, supplyGroceryItemId,
@@ -3142,7 +3142,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         {kitchenEnabled && (
                           <CollapsibleField
                             label="Stocked from"
-                            hint="Put this on the shopping list instead of adding a task to order it"
+                            hint="Put this on the shopping list instead of adding a task to order it."
                             summary={groceryItems.find(i => i.id === supplyGroceryItemId)?.name}
                             emptySummary="Not from groceries"
                             expanded={showSupplySource}
@@ -3215,7 +3215,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="hourglass-outline"
               label="Waiting on"
-              hint="Stay hidden until another task is done"
+              hint="Stay hidden until another task is done."
               value={
                 blockerTask
                   ? displayTitleFor(blockerTask)
@@ -3286,7 +3286,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="hand-left-outline"
               label="Blocks"
-              hint="Keep other tasks hidden until this one is done"
+              hint="Keep other tasks hidden until this one is done."
               value={describeBlocks(blocksTitles)}
               // Unfolds in place rather than opening the picker: the row can
               // hold several tasks, and the list is both what it says and
@@ -3336,7 +3336,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="add-circle-outline"
               label="Extra task"
-              hint="Add a one-off task every few times you complete this one"
+              hint="Add a one-off task every few times you complete this one."
               // The count alone, not the count and the title: the pair
               // truncates at this width, and the title is right underneath
               // once the row is open. Same call Daily target makes.
@@ -3429,7 +3429,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     <EditorRow
                       icon="options-outline"
                       label="Details"
-                      hint="Notes, category, priority and a checklist for the task this adds"
+                      hint="Notes, category, priority and a checklist for the task this adds."
                       value={describeExtraTaskDraft(
                         extraTaskDraft,
                         extraTaskDraft?.category ? categoryLabel(extraTaskDraft.category, categories) : null,
@@ -3936,7 +3936,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="link-outline"
               label="Link"
-              hint="Open an app or link from the task"
+              hint="Open an app or link from the task."
               value={
                 KNOWN_LINK_APPS.find(app => app.scheme === linkUrl)?.name
                   ?? (linkUrl ?? undefined)
@@ -3999,7 +3999,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="call-outline"
               label="Phone"
-              hint="Call or text this number straight from the task row"
+              hint="Call or text this number straight from the task row."
               value={phoneNumber ?? undefined}
               expanded={showPhoneField}
               onPress={() => {
@@ -4049,7 +4049,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             <EditorRow
               icon="mail-outline"
               label="Email"
-              hint="Compose an email to this address straight from the task row"
+              hint="Compose an email to this address straight from the task row."
               value={emailAddress ?? undefined}
               expanded={showEmailField}
               onPress={() => {

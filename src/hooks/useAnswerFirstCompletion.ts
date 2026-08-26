@@ -66,7 +66,7 @@ export function useAnswerFirstCompletion() {
           setQueueIds(prev => [...prev, ...askingIds.filter(id => !prev.includes(id))]);
         },
       },
-      { text: 'Complete Without Answering', onPress: () => complete([]) },
+      { text: 'Complete without answering', onPress: () => complete([]) },
       { text: 'Cancel', style: 'cancel' },
     ]);
   }, []);

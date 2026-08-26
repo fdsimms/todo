@@ -57,7 +57,7 @@ export function useTaskSelection(allTasks: Task[]) {
           },
         },
         {
-          text: 'Delete Everything',
+          text: 'Delete everything',
           style: 'destructive',
           onPress: () => {
             bulkDeleteTasks(ids);

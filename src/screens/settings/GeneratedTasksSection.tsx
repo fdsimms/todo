@@ -235,7 +235,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
           <SettingsRow
             icon="calendar-outline"
             label="Show the task"
-            hint="How many days before the use-by date the task falls due"
+            hint="How many days before the use-by date the task falls due."
             value={
               s.groceryUseUpLeadDays === 0
                 ? 'On the day'
@@ -267,7 +267,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
           <SettingsRow
             icon="calendar-outline"
             label="Show the task"
-            hint="How many days before the meal the shopping task falls due"
+            hint="How many days before the meal the shopping task falls due."
             value={
               s.mealShortfallLeadDays === 0
                 ? 'On the day'
@@ -299,7 +299,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
           <SettingsRow
             icon="calendar-outline"
             label="Show the task"
-            hint="How many days before the birthday the task falls due"
+            hint="How many days before the birthday the task falls due."
             value={
               s.birthdayLeadDays === 0
                 ? 'On the day'
@@ -335,7 +335,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
           <SettingsRow
             icon="calendar-outline"
             label="Show the task"
-            hint="How many days before the birthday the gift task falls due"
+            hint="How many days before the birthday the gift task falls due."
             value={
               s.birthdayGiftLeadDays === 0
                 ? 'On the day'
@@ -483,7 +483,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
                 <SettingsRow
                   icon="pricetag-outline"
                   label="File them under"
-                  hint="With none, they sit loose at the top of Today above your categories"
+                  hint="With none, they sit loose at the top of Today above your categories."
                   value={categoryOptions.find(o => o.value === categoryOf(spec.kind))?.label ?? 'None'}
                   tight
                 />

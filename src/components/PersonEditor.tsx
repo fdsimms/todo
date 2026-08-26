@@ -187,7 +187,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       header={
         <>
           <SheetHeaderButton label="Done" onPress={saveAndClose} />
-          <Text style={styles.headerTitle}>{isNew ? 'New Person' : 'Edit Person'}</Text>
+          <Text style={styles.headerTitle}>{isNew ? 'New person' : 'Edit person'}</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete person">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>

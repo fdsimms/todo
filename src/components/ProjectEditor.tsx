@@ -39,7 +39,7 @@ import {
 interface Props {
   visible: boolean;
   project: Project | null;
-  /** Titles the sheet "New Project" — set when arriving from quick add's "More details". */
+  /** Titles the sheet "New project" — set when arriving from quick add's "More details". */
   isNew?: boolean;
   onClose: () => void;
 }
@@ -192,7 +192,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       header={
         <>
           <SheetHeaderButton label="Done" onPress={saveAndClose} />
-          <Text style={styles.headerTitle}>{isNew ? 'New Project' : 'Edit Project'}</Text>
+          <Text style={styles.headerTitle}>{isNew ? 'New project' : 'Edit project'}</Text>
           <TouchableOpacity onPress={handleDelete} hitSlop={8} accessibilityRole="button" accessibilityLabel="Delete project">
             <Ionicons name="trash-outline" size={20} color={colors.red} />
           </TouchableOpacity>

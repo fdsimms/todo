@@ -315,7 +315,7 @@ export function NotificationSettings() {
           <SettingsRow
             icon="speedometer-outline"
             label="Set from awake hours"
-            hint="Makes quiet hours run from Awake until to Awake from, as set in Day & time"
+            hint="Makes quiet hours run from Awake until to Awake from, as set in Day & time."
             onPress={matchAwakeHours}
           />
         </>

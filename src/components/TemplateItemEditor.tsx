@@ -392,7 +392,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <>
           <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
           <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerTitle}>{item ? 'Edit Item' : 'New Item'}</Text>
+            <Text style={styles.headerTitle}>{item ? 'Edit item' : 'New item'}</Text>
             {!!templateName && (
               <Text style={styles.headerSubtitle} numberOfLines={1}>{templateName}</Text>
             )}
@@ -548,7 +548,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <OffsetRow
           icon="calendar"
           label="Due date"
-          hint="When the task is due"
+          hint="When the task is due."
           offset={dueOffsetDays}
           anchor={anchor}
           onChange={setDueOffsetDays}
@@ -559,7 +559,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <OffsetRow
           icon="eye-off-outline"
           label="Hide until"
-          hint="Keeps the task off Today until this day"
+          hint="Keeps the task off Today until this day."
           offset={deferOffsetDays}
           anchor={anchor}
           onChange={setDeferOffsetDays}
@@ -570,7 +570,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <OffsetRow
           icon="flag-outline"
           label="Deadline"
-          hint="A hard cut-off, shown separately from the due date"
+          hint="A hard cut-off, shown separately from the due date."
           offset={deadlineOffsetDays}
           anchor={anchor}
           onChange={setDeadlineOffsetDays}
@@ -581,7 +581,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <EditorRow
           icon="time-outline"
           label="Time of day"
-          hint="Hold it back until a part of the day"
+          hint="Hold it back until a part of the day."
           value={timeOfDaySummary}
           expanded={showTimeOfDay}
           onPress={() => { animateLayout(); setShowTimeOfDay(v => !v); }}
@@ -612,7 +612,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         <EditorRow
           icon="timer-outline"
           label="Time window"
-          hint="Only active for part of the day, then expires"
+          hint="Only active for part of the day, then expires."
           value={timeWindowSummary}
           expanded={showTimeWindow}
           onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}

@@ -148,7 +148,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
       header={
         <>
           <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={40} />
-          <Text style={styles.headerTitle}>Edit Template</Text>
+          <Text style={styles.headerTitle}>Edit template</Text>
           <TouchableOpacity
             onPress={handleDelete}
             hitSlop={8}

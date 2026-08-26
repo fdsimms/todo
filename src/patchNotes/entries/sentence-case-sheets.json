@@ -1,0 +1,4 @@
+{
+  "message": "Sheet titles and alert buttons now read in sentence case throughout, so \"Edit task\" and \"New stack\" match the sheets that already did. Field hints all end with a period now too.",
+  "date": "2026-08-26"
+}

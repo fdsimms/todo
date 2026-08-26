@@ -271,6 +271,7 @@ export function TagsScreen() {
         <QuickAddNameSheet
           visible={quickAddVisible}
           placeholder="New tag…"
+          noun="tag"
           autoCapitalize="none"
           onSubmit={handleAddTag}
           onClose={() => setQuickAddVisible(false)}

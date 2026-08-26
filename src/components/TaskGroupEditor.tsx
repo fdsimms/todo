@@ -322,7 +322,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
       header={
         <>
           <SheetHeaderButton label="Done" onPress={saveAndClose} />
-          <Text style={styles.headerTitle}>{isNew ? 'New Stack' : 'Edit Stack'}</Text>
+          <Text style={styles.headerTitle}>{isNew ? 'New stack' : 'Edit stack'}</Text>
           <View style={styles.headerRight}>
             <TouchableOpacity
               onPress={handlePin}
