@@ -6,6 +6,7 @@ import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { resetToToday } from '../navigation/navigationRef';
 import { displayTitleFor } from './visibilityUtils';
 import { widgetBridge } from './widgetBridge';
+import { haptics } from './haptics';
 
 const DEBOUNCE_MS = 300;
 const MAX_VISIBLE_TASKS = 50;
@@ -83,6 +84,32 @@ async function processPendingWidgetCompletions(): Promise<void> {
   }
 }
 
+// Hands off task titles queued by AddTaskIntent (the Action Button / Siri /
+// Shortcuts entry point — see modules/todo-widget-bridge/ios/AddTaskIntent.swift)
+// to the real addTask(), the same drain-on-launch/foreground shape
+// processPendingWidgetCompletions uses above and for the same reason: the
+// intent runs before the RN JS environment is guaranteed to be up, so it can
+// only stash the dictated title. Deliberately silent on arrival — no
+// navigation — mirroring handleIncomingUrl's "silent capture" for
+// `dundundun://add?title=…` in deepLinks.ts, which this is the hardware-
+// button equivalent of.
+async function processPendingAddTasks(): Promise<void> {
+  // Same demo-mode reasoning as processPendingWidgetCompletions: a drain is
+  // the half that would lose something, so a dictated title queued while demo
+  // mode is on just waits for the next real foreground instead.
+  const bridge = widgetBridge();
+  if (!bridge) return;
+  try {
+    const titles = await bridge.drainPendingAddTasks();
+    if (titles.length === 0) return;
+    const { addTask } = useTaskStore.getState();
+    for (const title of titles) addTask({ title });
+    haptics.success();
+  } catch {
+    // A build predating drainPendingAddTasks — no-op.
+  }
+}
+
 // The weekly meal-plan nudge (see mealPlanNudge.ts) fires as a stack of
 // seven — one bare "Sunday 08/17"-style task per day — which reads fine
 // under its stack header in the app but, flattened onto the widget with no
@@ -124,10 +151,11 @@ export function useWidgetSync(): void {
       if (state.tasks !== prevState.tasks) scheduleSnapshotWrite();
     });
     // Subscription is registered before this resolves, so any completions
-    // applied here also trigger the debounced write above like any other
-    // mutation would — no separate write path needed for the drain itself,
-    // just an initial one below in case there was nothing to drain.
-    processPendingWidgetCompletions().finally(() => {
+    // (or additions — see processPendingAddTasks) applied here also trigger
+    // the debounced write above like any other mutation would — no separate
+    // write path needed for the drain itself, just an initial one below in
+    // case there was nothing to drain.
+    Promise.all([processPendingWidgetCompletions(), processPendingAddTasks()]).finally(() => {
       // Deferred rather than called synchronously during mount — avoids
       // making the very first native module call while the app (and its
       // native module registry) is still mid-launch.
@@ -135,13 +163,16 @@ export function useWidgetSync(): void {
     });
 
     // Tapping a checkbox in the widget (CompleteTaskIntent, in
-    // TodoTodayWidget.swift) opens the app to apply queued completions, but
-    // if the app was already running in the background this effect doesn't
-    // remount — only a fresh 'active' AppState transition tells us to drain
-    // again. drainPendingCompletions() is safe to call with nothing queued.
+    // TodoTodayWidget.swift) or the Action Button (AddTaskIntent) opens the
+    // app to apply what it queued, but if the app was already running in the
+    // background this effect doesn't remount — only a fresh 'active'
+    // AppState transition tells us to drain again. Both drains are safe to
+    // call with nothing queued.
     const subscription = AppState.addEventListener('change', state => {
       if (state === 'active') {
-        processPendingWidgetCompletions().finally(scheduleSnapshotWrite);
+        Promise.all([processPendingWidgetCompletions(), processPendingAddTasks()]).finally(
+          scheduleSnapshotWrite
+        );
       }
     });
 

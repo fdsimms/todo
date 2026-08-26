@@ -2,7 +2,7 @@ export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
-export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'ingredients-asc' | 'ingredients-desc' | 'voted';
+export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'ingredients-asc' | 'ingredients-desc';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
 // 'persistent' is 'alarm' that re-rings on an interval until the task is
 // completed, rather than once — see src/utils/alarmChain.ts.
@@ -502,6 +502,34 @@ export interface Person {
    * writes; this one is only about what it asks.
    */
   backfillDismissedFields: string[];
+  /**
+   * The `PersonGroup` this person belongs to, or null. A couple or a
+   * household you always catch up with together, so the reach-out nudge can
+   * fold them into one task instead of asking about each of them apart —
+   * see `docs/arch/people.md`'s "Groups" section. Single-valued, like
+   * `Task.groupId` pointing at a `TaskGroup`: a person is a member of at most
+   * one group at a time.
+   */
+  groupId: string | null;
+}
+
+/**
+ * A couple, a household, anyone you'd never think to catch up with
+ * separately — a lightweight, renameable label a `Person` hangs off of via
+ * `Person.groupId`, the same "label, not a join table" shape `TaskGroup`
+ * uses for stacks. It carries no cadence, no history and no nudge settings
+ * of its own: those stay on each `Person`, and a group only changes how the
+ * reach-out nudge presents people who share one (see
+ * `collapseGroupedReachOuts` in `src/utils/reachOutTasks.ts`) and how an
+ * "@name" mention resolves (see `docs/arch/people.md`).
+ */
+export interface PersonGroup {
+  id: string;
+  name: string;
+  // Hand-ordered, the same independent number space Person.sortOrder is —
+  // never re-ranked by recency or by anything about the people in it.
+  sortOrder: number;
+  createdAt: string;
 }
 
 /**
@@ -2929,15 +2957,17 @@ export const RECIPE_SOURCE_TYPE_LABELS: Record<RecipeSourceType, string> = {
   other: 'Other',
 };
 
-// Whether you'd cook it again. Two poles and null (no opinion, the common
-// state — nothing infers one, cooking a recipe isn't liking it), the same
-// shape ProductRating uses for a grocery product and for the same reason: the
-// question is "would I make this again", not a score to keep consistent.
-export type RecipeVote = 'up' | 'down';
+// Whether you'd cook it again, and how much. Three rungs and null (no
+// opinion, the common state — nothing infers one, cooking a recipe isn't
+// liking it). This is also the recipe box's one "is this any good" signal —
+// it replaced a separate favorite star, so the top rung is what floats a
+// recipe to the top of the box and what a favorite used to mean.
+export type RecipeVote = 'loved' | 'liked' | 'never';
 
 export const RECIPE_VOTE_LABELS: Record<RecipeVote, string> = {
-  up: 'Loved it',
-  down: 'Not for me',
+  loved: 'Loved it',
+  liked: 'Liked it',
+  never: 'Never again',
 };
 
 // A dish you cook, with what it takes to shop for it.
@@ -3063,7 +3093,6 @@ export interface Recipe {
   // second list to keep in step with this one, worth adding only once
   // something actually reads them (#1695).
   steps: RecipeStep[];
-  favorite: boolean;
   sortOrder: number;
   createdAt: string;
   /**
@@ -3079,7 +3108,9 @@ export interface Recipe {
   /**
    * Set from the edit page, or offered the first time the recipe is marked
    * cooked (see useRecipeStore.setVote, MealPlanScreen.setCooked). Null is
-   * "no opinion yet", not "fine" — see RecipeVote.
+   * "no opinion yet", not "fine" — see RecipeVote. This is the recipe box's
+   * one rating: there is no separate favorite flag any more, and 'loved' is
+   * what a starred recipe used to mean.
    */
   vote: RecipeVote | null;
 

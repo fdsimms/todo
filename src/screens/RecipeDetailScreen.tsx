@@ -116,7 +116,7 @@ export function RecipeDetailScreen() {
   const bulkSetIngredientAisle = useRecipeStore(s => s.bulkSetIngredientAisle);
   const addEmptySection = useRecipeStore(s => s.addEmptySection);
   const removeEmptySection = useRecipeStore(s => s.removeEmptySection);
-  const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
+  const setVote = useRecipeStore(s => s.setVote);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
   const addStep = useRecipeStore(s => s.addStep);
@@ -637,6 +637,24 @@ export function RecipeDetailScreen() {
     [catalogMatches],
   );
 
+  // Session-only "not now" for the two signpost pills below: dismissing one
+  // doesn't touch the ingredient, so it's keyed on what the pill was
+  // offering rather than a boolean, and clears itself the moment that offer
+  // changes (a rename, a different catalog match) rather than hiding a pill
+  // that's now suggesting something new.
+  const [dismissedMatchPills, setDismissedMatchPills] = useState<Map<string, string>>(new Map());
+  const [dismissedSplitPills, setDismissedSplitPills] = useState<Map<string, string>>(new Map());
+  const dismissMatchPill = (ingredientId: string, suggestedName: string) => {
+    haptics.tap();
+    animateLayout();
+    setDismissedMatchPills(prev => new Map(prev).set(ingredientId, suggestedName));
+  };
+  const dismissSplitPill = (ingredientId: string, name: string) => {
+    haptics.tap();
+    animateLayout();
+    setDismissedSplitPills(prev => new Map(prev).set(ingredientId, name));
+  };
+
   const renderIngredient = (
     ingredient: RecipeIngredient,
     _index: number,
@@ -677,7 +695,14 @@ export function RecipeDetailScreen() {
     const choiceGroup = ingredient.choiceGroup;
     const isChoiceDefault = ingredientGroups.defaults.has(ingredient.id);
     const alternativeNote = ingredientAlternatives.get(ingredient.id);
-    const splitInto = splittableCounts.get(ingredient.id);
+    // The raw detection, used for the mutual-exclusion check below regardless
+    // of whether its own pill is currently dismissed — dismissing "split into
+    // two" shouldn't hand the row over to a catalog suggestion it was never
+    // going to show.
+    const splittableInto = splittableCounts.get(ingredient.id);
+    const splitInto = splittableInto && dismissedSplitPills.get(ingredient.id) !== ingredient.name
+      ? splittableInto
+      : undefined;
     // Only a line with something to act on gets a badge: an exact match is the
     // healthy common case and a line naming something genuinely new is the
     // other one, so marking either would put a glyph on most rows to say
@@ -689,7 +714,8 @@ export function RecipeDetailScreen() {
     // to be two" comes first, and each half gets matched on its own once it
     // is. Two competing offers on one row is a row nobody reads.
     const catalogMatch = catalogMatches.get(ingredient.id);
-    const catalogSuggestion = !splitInto && catalogMatch?.kind === 'suggested'
+    const catalogSuggestion = !splittableInto && catalogMatch?.kind === 'suggested'
+      && catalogMatch.suggestedName !== dismissedMatchPills.get(ingredient.id)
       ? catalogMatch
       : null;
     return (
@@ -770,16 +796,27 @@ export function RecipeDetailScreen() {
                 Components-section action. Hidden while selecting, like the
                 remove ×, since the row's press means something else then. */}
             {!!splitInto && !selectionMode && (
-              <PressableScale
-                style={styles.splitPill}
-                haptic
-                onPress={() => setEditingIngredient(ingredient)}
-                accessibilityLabel={`Split ${ingredient.name} into alternatives`}
-                accessibilityHint="Double tap to review the split"
-              >
-                <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.splitPillText}>Split into {splitInto}…</Text>
-              </PressableScale>
+              <View style={styles.splitPill}>
+                <PressableScale
+                  style={styles.splitPillTap}
+                  haptic
+                  onPress={() => setEditingIngredient(ingredient)}
+                  accessibilityLabel={`Split ${ingredient.name} into alternatives`}
+                  accessibilityHint="Double tap to review the split"
+                >
+                  <Ionicons name="git-branch-outline" size={iconSize.xs} color={colors.accent} />
+                  <Text style={styles.splitPillText}>Split into {splitInto}…</Text>
+                </PressableScale>
+                <TouchableOpacity
+                  onPress={() => dismissSplitPill(ingredient.id, ingredient.name)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Dismiss the split suggestion for ${ingredient.name}`}
+                  accessibilityHint="Leaves the line as it is"
+                >
+                  <Ionicons name="close" size={iconSize.xs} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
             )}
             {/* The same signpost the split pill is, for the same reason: it
                 names what it would link to, and opens the sheet where the
@@ -787,20 +824,37 @@ export function RecipeDetailScreen() {
                 Naming the target is the whole point — an abstract glyph makes
                 you tap to find out what it even found. */}
             {!!catalogSuggestion && !selectionMode && (
-              <PressableScale
-                style={styles.matchPill}
-                haptic
-                onPress={() => setEditingIngredient(ingredient)}
-                accessibilityLabel={
-                  `Did you mean ${catalogSuggestion.suggestedName}? It's in your groceries.`
-                }
-                accessibilityHint="Double tap to review the match"
-              >
-                <Ionicons name="basket-outline" size={iconSize.xs} color={colors.accent} />
-                <Text style={styles.matchPillText} numberOfLines={1}>
-                  {catalogSuggestion.suggestedName}?
-                </Text>
-              </PressableScale>
+              <View style={styles.matchPill}>
+                <PressableScale
+                  style={styles.matchPillTap}
+                  haptic
+                  onPress={() => setEditingIngredient(ingredient)}
+                  accessibilityLabel={
+                    `Did you mean ${catalogSuggestion.suggestedName}? It's in your groceries.`
+                  }
+                  accessibilityHint="Double tap to review the match"
+                >
+                  <Ionicons name="basket-outline" size={iconSize.xs} color={colors.accent} />
+                  <Text style={styles.matchPillText} numberOfLines={1}>
+                    {catalogSuggestion.suggestedName}?
+                  </Text>
+                </PressableScale>
+                <TouchableOpacity
+                  onPress={() => {
+                    if (catalogSuggestion.suggestedName) {
+                      dismissMatchPill(ingredient.id, catalogSuggestion.suggestedName);
+                    }
+                  }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    `Dismiss the suggestion to link ${ingredient.name} to ${catalogSuggestion.suggestedName}`
+                  }
+                  accessibilityHint="Leaves the line as it is"
+                >
+                  <Ionicons name="close" size={iconSize.xs} color={colors.textTertiary} />
+                </TouchableOpacity>
+              </View>
             )}
           </View>
           {!!scaledQuantity && (
@@ -834,9 +888,14 @@ export function RecipeDetailScreen() {
   // a caption, with a hover-lit state and its own remove). Neither wires up
   // `drag`: a heading doesn't move by being picked up, only ingredients do.
   // ==== row renderers ====
-  const renderHeadingRow = (row: Extract<MergedIngredientRow, { kind: 'heading' }>) => {
+  const renderHeadingRow = (row: Extract<MergedIngredientRow, { kind: 'heading' }>, isFirst: boolean) => {
     if (!row.empty) {
-      return <Text style={styles.ingredientSectionHeader}>{row.name}</Text>;
+      return (
+        <View style={styles.ingredientSectionHeaderWrap}>
+          {!isFirst && <View style={styles.ingredientSectionDivider} />}
+          <Text style={styles.ingredientSectionHeader}>{row.name}</Text>
+        </View>
+      );
     }
     const isTarget = hoveredRowId === row.id;
     return (
@@ -874,7 +933,7 @@ export function RecipeDetailScreen() {
 
   const renderMergedRow: SortableRenderItem<MergedIngredientRow> = (row, displayIndex, drag, isDragging) =>
     row.kind === 'heading'
-      ? renderHeadingRow(row)
+      ? renderHeadingRow(row, displayIndex === 0)
       : renderIngredient(row.ingredient, displayIndex, drag, isDragging);
 
   // A drag commit hands back the whole merged order; sectionsFromMergedOrder
@@ -1096,15 +1155,18 @@ export function RecipeDetailScreen() {
             )}
             {!selectionMode && (
               <TouchableOpacity
-                onPress={() => { haptics.tap(); toggleFavorite(recipe.id); }}
+                onPress={() => {
+                  haptics.tap();
+                  setVote(recipe.id, recipe.vote === 'loved' ? null : 'loved');
+                }}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel={recipe.favorite ? 'Unstar this recipe' : 'Star this recipe'}
+                accessibilityLabel={recipe.vote === 'loved' ? 'Unmark loved' : 'Mark loved'}
               >
                 <Ionicons
-                  name={recipe.favorite ? 'star' : 'star-outline'}
+                  name={recipe.vote === 'loved' ? 'thumbs-up' : 'thumbs-up-outline'}
                   size={iconSize.md}
-                  color={recipe.favorite ? colors.orange : colors.textSecondary}
+                  color={recipe.vote === 'loved' ? colors.orange : colors.textSecondary}
                 />
               </TouchableOpacity>
             )}
@@ -1180,6 +1242,7 @@ export function RecipeDetailScreen() {
             variant="neutral"
             surface="page"
             onPress={openImagePicker}
+            style={styles.addPhoto}
           />
         )}
 
@@ -1825,6 +1888,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: spacing.xs,
   },
+  // alignSelf keeps it the width of its label — stretched to the column it
+  // would read as a banner rather than a pill (same fix as splitPill below).
+  addPhoto: {
+    alignSelf: 'flex-start',
+  },
   summary: {
     color: colors.textSecondary,
     fontSize: font.sm,
@@ -1904,7 +1972,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // A component heading ("For the cake") inside the ingredients card — same
   // uppercase treatment as sectionLabel, just scoped to sit above a run of
-  // rows rather than the whole list.
+  // rows rather than the whole list. The wrapper carries the top breathing
+  // room so it applies whether or not the divider below it renders.
+  ingredientSectionHeaderWrap: {
+    paddingTop: spacing.sm,
+  },
+  // Marks the break between two sections' rows — skipped for a heading that
+  // opens the card, where there's no prior section to divide from and a
+  // hairline right under the card's top edge would just look stray.
+  ingredientSectionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.separator,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
   ingredientSectionHeader: {
     color: colors.textSecondary,
     fontSize: font.xs,
@@ -1912,8 +1993,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   // A declared-but-empty heading (Recipe.emptySections). Dashed and inset,
   // unlike an ordinary row, so it reads as a slot rather than a line of the
@@ -2085,6 +2165,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // controls in this app get a shape (see the InlineAction note in CLAUDE.md).
   // alignSelf keeps it the width of its label — stretched to the row it would
   // read as a banner across the ingredient rather than a chip hanging off it.
+  // The dismiss × sits in the same pill, past a gap, rather than as a
+  // separate control next to it — a "not now" for an offer belongs on the
+  // offer itself. The tap area (icon + label) carries its own gap and no
+  // background of its own; the pill's fill and radius live on the container
+  // so the whole shape reads as one chip even though it now has two targets.
   splitPill: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2094,8 +2179,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.sm,
     paddingVertical: 2,
     paddingLeft: spacing.xs + 2,
-    paddingRight: spacing.sm,
+    paddingRight: spacing.xs,
     marginTop: spacing.xs,
+  },
+  splitPillTap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   splitPillText: {
     color: colors.accent,
@@ -2116,8 +2206,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.sm,
     paddingVertical: 2,
     paddingLeft: spacing.xs + 2,
-    paddingRight: spacing.sm,
+    paddingRight: spacing.xs,
     marginTop: spacing.xs,
+  },
+  matchPillTap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   matchPillText: {
     color: colors.accent,

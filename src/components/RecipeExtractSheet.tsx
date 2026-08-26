@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -78,6 +79,11 @@ interface Props {
  * (#1618), rather than left un-offered. A count alone was not a review: it
  * said seven steps were coming without showing one of them. A link's own steps
  * are still preferred over the model's read of the same page when both exist.
+ * Attribution is offered whichever source it came from too, but with a twist
+ * a paste or a photo has no page to pre-fill from — the "Where it's from" row
+ * still appears with blank site/author fields, since a home recipe or a
+ * cookbook clipping is just as much a source as a web page, it's just one
+ * only the person importing it can name.
  */
 export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const colors = useColors();
@@ -86,6 +92,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
+  const addToPantry = useGroceryStore(s => s.addToPantry);
   const setServings = useRecipeStore(s => s.setServings);
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
@@ -203,14 +210,15 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setApplyDetails(result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null);
       // A method is offered whichever source it came from — the page's own
       // steps when it publishes them, otherwise the model's read of the same
-      // source. Attribution stays link-only, since nothing else names where a
-      // recipe came from. All three are offered *ticked* only when there's
-      // nothing of the user's own to land on top of.
+      // source. Attribution is offered whichever source it came from too —
+      // pre-filled from the page when there is one, blank for a paste or a
+      // photo to fill in by hand. All three are offered *ticked* only when
+      // there's nothing of the user's own to land on top of.
       const page = resolved.page;
       const methodStepsFound = (page?.steps.length ?? 0) > 0 ? page!.steps : result.steps;
       setApplyMethod(methodStepsFound.length > 0 && !recipeHasMethod(recipe));
       setApplyPrepTasks(result.prepTasks.length > 0 && !recipeHasPrepTasks(recipe));
-      setApplySource(!!page && !recipeHasAttribution(recipe));
+      setApplySource(!recipeHasAttribution(recipe));
       setSteps(methodStepsFound);
       setAcceptedSteps(new Set(methodStepsFound.map((_, i) => i)));
       setPrepTasks(result.prepTasks);
@@ -235,6 +243,17 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       else next.add(index);
       return next;
     });
+  };
+
+  // Same escape hatch RecipeToListSheet's pantry icon offers, reached from
+  // the ingredient row's link panel — see ExtractedIngredientRow's own doc
+  // comment. addToPantry mints the catalog row if this name has never been
+  // seen before, which is exactly the case the panel's search comes up empty.
+  const markAlreadyHave = (index: number) => {
+    const item = addToPantry(ingredients[index].name);
+    if (!item) { haptics.error(); return; }
+    haptics.success();
+    if (accepted.has(index)) toggle(index);
   };
 
   const editIngredient = (
@@ -340,12 +359,15 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
         }
       });
     }
+    // A link's URL comes from the page and isn't editable; site and author
+    // are, whether they arrived pre-filled from structured markup or were
+    // typed in by hand over a paste or a photo's blank fields.
     const page = input.page;
-    if (page && applySource) {
-      setSourceUrl(recipe.id, page.url);
-      setSourceType(recipe.id, 'website');
-      // The URL is the link that was pasted and isn't editable; the two the
-      // page merely claims about itself are.
+    if (applySource) {
+      if (page) {
+        setSourceUrl(recipe.id, page.url);
+        setSourceType(recipe.id, 'website');
+      }
       const site = pendingText('source:site', siteName).trim();
       const by = pendingText('source:author', sourceAuthor).trim();
       if (site) setSource(recipe.id, site);
@@ -368,7 +390,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     || (applyDetails && hasDetails)
     || (applyMethod && acceptedSteps.size > 0)
     || (applyPrepTasks && acceptedPrepTasks.size > 0)
-    || (applySource && !!input.page)
+    || (applySource && (!!input.page || !!siteName.trim() || !!sourceAuthor.trim()))
     // A run that found nothing but a "see page 45" is still worth an Add: the
     // link is the whole result.
     || acceptedKeys.size > 0
@@ -393,6 +415,25 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   // you ask. What it needs is the input back, not another attempt at it.
   const backLabel = input.usingLink ? 'Change the link' : 'Go back';
   const goBack = () => { setError(null); setExtracted(null); };
+
+  // Any progress past a blank input screen — extracted content, or unrun
+  // paste/link/photo input — is real work a swipe-down would otherwise drop
+  // with no dialog.
+  const handleCancel = () => {
+    const dirty = !!extracted
+      || !!input.text.trim()
+      || !!input.url.trim()
+      || !!input.photo;
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
 
   // Unlike the method and the prep tasks, these two overwrite rather than
   // append — there's only one servings field — so the row says so when the
@@ -621,43 +662,41 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           />
         )}
 
-        {!!input.page && (
-          <ImportApplyRow
-            checked={applySource}
-            onToggle={() => setApplySource(v => !v)}
-            title="Where it’s from"
-            meta={sourceMeta}
-            accessibilityLabel={`Where it’s from, ${sourceMeta}`}
-          >
-            <View style={styles.detailFields}>
-              <InlineEditableText
-                edits={edits}
-                editKey="source:site"
-                value={siteName}
-                onCommit={setSiteName}
-                allowEmpty
-                textStyle={styles.detailValue}
-                placeholder="e.g. Serious Eats"
-                accessibilityLabel="site name"
-                maxLength={80}
-                numberOfLines={1}
-              />
-              <Text style={styles.detailSep}>·</Text>
-              <InlineEditableText
-                edits={edits}
-                editKey="source:author"
-                value={sourceAuthor}
-                onCommit={setSourceAuthor}
-                allowEmpty
-                textStyle={styles.detailValue}
-                placeholder="e.g. Kenji"
-                accessibilityLabel="author"
-                maxLength={80}
-                numberOfLines={1}
-              />
-            </View>
-          </ImportApplyRow>
-        )}
+        <ImportApplyRow
+          checked={applySource}
+          onToggle={() => setApplySource(v => !v)}
+          title="Where it’s from"
+          meta={sourceMeta}
+          accessibilityLabel={sourceMeta ? `Where it’s from, ${sourceMeta}` : 'Where it’s from'}
+        >
+          <View style={styles.detailFields}>
+            <InlineEditableText
+              edits={edits}
+              editKey="source:site"
+              value={siteName}
+              onCommit={setSiteName}
+              allowEmpty
+              textStyle={styles.detailValue}
+              placeholder="e.g. NYT Cooking"
+              accessibilityLabel="source"
+              maxLength={80}
+              numberOfLines={1}
+            />
+            <Text style={styles.detailSep}>·</Text>
+            <InlineEditableText
+              edits={edits}
+              editKey="source:author"
+              value={sourceAuthor}
+              onCommit={setSourceAuthor}
+              allowEmpty
+              textStyle={styles.detailValue}
+              placeholder="e.g. Kenji"
+              accessibilityLabel="author"
+              maxLength={80}
+              numberOfLines={1}
+            />
+          </View>
+        </ImportApplyRow>
 
         {renderReferences()}
 
@@ -679,6 +718,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               onEditName={name => editIngredient(i, { name })}
               onEditQuantity={quantity => editIngredient(i, { quantity })}
               onEditSection={section => editIngredient(i, { section })}
+              onMarkAlreadyHave={() => markAlreadyHave(i)}
               existingSections={existingSections}
               catalogItems={groceryItems}
               sectionHeader={sectionHeader}
@@ -691,10 +731,10 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
             <Text style={styles.headerTitle}>From a recipe</Text>

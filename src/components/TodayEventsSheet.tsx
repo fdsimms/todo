@@ -1,11 +1,14 @@
 import React, { useMemo } from 'react';
-import { Modal, View, Text, ScrollView, StyleSheet } from 'react-native';
+import { Modal, View, Text, ScrollView, StyleSheet, Linking } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { formatTimeOfDay } from '../utils/dateUtils';
+import { directionsUrl } from '../utils/maps';
+import { haptics } from '../utils/haptics';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, type Colors } from '../theme';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { PressableScale } from './PressableScale';
 
 interface Props {
   visible: boolean;
@@ -31,11 +34,25 @@ interface Props {
  * that's all the question "what else is on today" needs answered. Each row
  * shows the time (or "All day"), the title, and location when EventKit has
  * one; nothing here is editable, since this whole feature is read-only (see
- * `calendarSync.ts`).
+ * `calendarSync.ts`). A location gets a directions button — opening the
+ * system Maps app isn't a write to the event, so it doesn't break that rule.
  */
 export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Same no-canOpenURL, silently-ignore-failure pattern as TaskItem's
+  // link/call/text/email buttons — see maps.ts for why https: needs no check.
+  const openDirections = async (location: string) => {
+    const url = directionsUrl(location);
+    if (!url) return;
+    haptics.tap();
+    try {
+      await Linking.openURL(url);
+    } catch {
+      // silently ignore — no toast infra for this row-level action
+    }
+  };
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -71,7 +88,16 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
                     )}
                   </View>
                   {!!event.location && (
-                    <Text style={styles.rowLocation} numberOfLines={1}>{event.location}</Text>
+                    <View style={styles.locationRow}>
+                      <Text style={styles.rowLocation} numberOfLines={1}>{event.location}</Text>
+                      <PressableScale
+                        onPress={() => openDirections(event.location!)}
+                        hitSlop={8}
+                        accessibilityLabel={`Get directions to ${event.location}`}
+                      >
+                        <Ionicons name="navigate-outline" size={iconSize.sm} color={colors.accent} />
+                      </PressableScale>
+                    </View>
                   )}
                 </View>
               </View>
@@ -123,5 +149,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowTime: { color: colors.textSecondary, fontSize: font.sm },
   rowCalendarTag: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   calendarDot: { width: 6, height: 6, borderRadius: radius.full },
-  rowLocation: { color: colors.textTertiary, fontSize: font.xs },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  rowLocation: { flexShrink: 1, color: colors.textTertiary, fontSize: font.xs },
 });

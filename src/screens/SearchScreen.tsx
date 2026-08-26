@@ -26,7 +26,7 @@ import type { SearchResult, GroupSearchResult } from '../utils/fuzzySearch';
 import { fuzzySearch, searchGroups } from '../utils/fuzzySearch';
 import { collapseOccurrences, formatOccurrenceCount, type CollapsedOccurrence } from '../utils/searchCollapse';
 import { displayTitleFor, groupRoster, isQuotaPartial } from '../utils/visibilityUtils';
-import { peopleOn } from '../utils/peopleRegistry';
+import { peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { asksOnCompletion, formatTaskDeliverable } from '../utils/deliverables';
@@ -75,7 +75,7 @@ function SearchResultItem({ result, onPress, onTicked, categories, styles, color
   // into one range set since the two can overlap (searching "brittany" with
   // "@Brittany" in the title), and HighlightedText needs disjoint ranges.
   const titleRanges = useMemo(
-    () => mergeRanges([...titleMatches, ...matchPersonMentions(displayTitle, peopleOn(task)).map((m): [number, number] => [m.start, m.end])]),
+    () => mergeRanges([...titleMatches, ...matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds)).map((m): [number, number] => [m.start, m.end])]),
     [titleMatches, displayTitle, task.personIds]
   );
   const answer = formatTaskDeliverable(task);

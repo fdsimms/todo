@@ -14,6 +14,7 @@ import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
@@ -823,6 +824,24 @@ describe('demo mode', () => {
     expect(open.some(t => t.deferUntil !== null)).toBe(true);
   });
 
+  // The project screen's "Stack" FAB item builds a stack whose members carry
+  // both a groupId and the project's id — otherwise that combination ships
+  // untested. Without a row like this, a stack member reads as an ordinary
+  // project task with no stack header anywhere else in the app.
+  it('seeds a stack whose members also belong to a project', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    expect(kitchen).toBeDefined();
+
+    const quotes = useTaskGroupStore.getState().groups.find(g => g.title === 'Contractor quotes');
+    expect(quotes).toBeDefined();
+
+    const members = useTaskStore.getState().tasks.filter(t => t.groupId === quotes!.id);
+    expect(members.length).toBeGreaterThan(0);
+    expect(members.every(t => t.projectId === kitchen!.id)).toBe(true);
+  });
+
   it('seeds a reference-list project excluded from every nudge', () => {
     // A checklist project like Gift ideas has nothing but undated tasks —
     // exactly what would otherwise read as "gone quiet" — so the seed only
@@ -941,6 +960,22 @@ describe('demo seed — people', () => {
   it('an opted-in person has a real cadence behind the opt-in', () => {
     const optedIn = usePersonStore.getState().people.find(p => p.nudgeOptIn)!;
     expect(optedIn.cadenceDays).toBeGreaterThan(0);
+  });
+
+  // A PersonGroup with no seeded row reads as a feature the app doesn't
+  // have, the same reasoning every other row in this file exists for.
+  it('seeds a group with a couple of people in it, sharing one name', () => {
+    const groups = usePersonGroupStore.getState().groups;
+    expect(groups.length).toBeGreaterThan(0);
+    const people = usePersonStore.getState().people;
+    const members = people.filter(p => p.groupId === groups[0].id);
+    expect(members.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('seeds a task tagging the group by name instead of naming each member', () => {
+    const groups = usePersonGroupStore.getState().groups;
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.some(t => t.title.includes(`@${groups[0].name}`))).toBe(true);
   });
 
   // The Backfill screen's People pool has nothing to walk unless somebody in
@@ -1689,7 +1724,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   it('seeds recipe duration, cook history, attribution and a live timer', () => {
     const { recipes } = useRecipeStore.getState();
 
-    expect(recipes.some(r => r.favorite)).toBe(true);
     expect(recipes.some(r => r.tags.length > 1)).toBe(true);
     // A real dietary tag, not just a cooking-style one — the excluded-tags
     // picker (#1693) needs something a household would actually exclude on.
@@ -1704,10 +1738,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.leftoverKeepDays === null)).toBe(true);
     expect(recipes.some(r => r.prepTasks.some(p => p.reminderOffsetMinutes !== null))).toBe(true);
     expect(recipes.some(r => r.cookCount > 1 && r.lastCookedAt)).toBe(true);
-    // Both sides of the vote — a loved, favorited dish and a cooked-twice one
-    // decided against, so the box's "Loved first" sort has something to show.
-    expect(recipes.some(r => r.vote === 'up')).toBe(true);
-    expect(recipes.some(r => r.vote === 'down')).toBe(true);
+    // Two sides of the vote — a loved dish and a cooked-twice one decided
+    // against — so the box's "Loved first" sort has something to show.
+    expect(recipes.some(r => r.vote === 'loved')).toBe(true);
+    expect(recipes.some(r => r.vote === 'never')).toBe(true);
     expect(recipes.some(r => r.timerStartedAt)).toBe(true);
     // All three attribution shapes — a URL, a byline, and a cookbook page.
     expect(recipes.some(r => r.sourceUrl)).toBe(true);

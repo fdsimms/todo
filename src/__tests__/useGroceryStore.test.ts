@@ -2612,7 +2612,6 @@ describe('renameItem keeps recipe ingredients in step', () => {
         { id: 'i1', name: 'Tomatos', nameKey: 'tomatos', quantity: '2 cans', aisle: null },
         { id: 'i2', name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null },
       ],
-      favorite: false,
       sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z',
     }]);
@@ -3144,7 +3143,7 @@ describe('mergeItems keeps recipe ingredients and remembered aisles in step', ()
       ingredients: [
         { id: 'i1', name: 'Coriander', nameKey: 'coriander', quantity: '1 bunch', aisle: null },
       ],
-      favorite: false, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
+      sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
     }]);
     useRecipeStore.getState().initialize();
 
