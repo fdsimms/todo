@@ -117,6 +117,17 @@ export function ProjectsScreen() {
   const archivedCount = useMemo(() => projects.filter(p => p.archived).length, [projects]);
   const completedCount = useMemo(() => projects.filter(p => p.completed && !p.archived).length, [projects]);
 
+  // Every visible project's progress, computed once per store change rather
+  // than once per row per render. `renderRow` called projectProgress inline,
+  // and each call filters the whole task list, builds a Map and walks a
+  // previousOccurrenceId chain per member — so the list was O(projects × tasks)
+  // on every render of the list, not just when the tasks actually moved.
+  const progressByProject = useMemo(() => {
+    const map = new Map<string, { done: number; total: number }>();
+    visibleProjects.forEach(p => map.set(p.id, projectProgress(p.id, allTasks)));
+    return map;
+  }, [visibleProjects, allTasks]);
+
   // ——— Dragging the add button into the list ———————————————————————————
   //
   // Same gesture as Today's, over the shape this list actually has: no stacks
@@ -293,7 +304,7 @@ export function ProjectsScreen() {
       );
     }
     const project = item.project;
-    const progress = projectProgress(project.id, allTasks);
+    const progress = progressByProject.get(project.id) ?? { done: 0, total: 0 };
     const pastWindow = isProjectPastWindow(project, progress);
     const rangeLabel = dateRangeLabel(project);
     // Only the active list needs this — completed projects already show their

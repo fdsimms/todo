@@ -5,6 +5,7 @@ import {
   isProjectPastWindow,
 } from '../store/useProjectStore';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
+import { formatDeadlineDate } from '../utils/dateUtils';
 import {
   dbGetAllProjects,
   dbInsertProject,
@@ -421,6 +422,45 @@ describe('isProjectPastWindow', () => {
     const past = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
     const project = makeProject({ targetEndDate: past, archived: false, completed: true });
     expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(false);
+  });
+
+  // The ±24h fixtures above straddle the noon boundary by a full day, so none
+  // of them could catch the bug these are here for: WhenPicker stores every
+  // date it confirms at noon, and the old `< Date.now()` comparison therefore
+  // went true at 12:00 on the target day itself.
+  //
+  // The clock is pinned deliberately. Built off a live `new Date()`, half of
+  // these pass against the buggy comparison too — whether they catch it depends
+  // on whether the suite happens to run before or after midday, which is not a
+  // test. 18:00 local is "the afternoon of the target day", the window where
+  // the old code was wrong and the new code has to hold.
+  describe('on the afternoon of the target day', () => {
+    // Local, not a UTC ISO literal: every gate here works in local calendar
+    // days (getDayStart), so a UTC-pinned instant would land on a different day
+    // for a runner east or west of the fixture's own offset.
+    const afternoonOfTargetDay = new Date(2026, 5, 15, 18, 0, 0);
+    const noonOn = (y: number, m: number, d: number) => new Date(y, m, d, 12, 0, 0).toISOString();
+
+    beforeEach(() => { jest.useFakeTimers().setSystemTime(afternoonOfTargetDay); });
+    afterEach(() => { jest.useRealTimers(); });
+
+    it('is false at noon on the target day, while the project is still due', () => {
+      const project = makeProject({ targetEndDate: noonOn(2026, 5, 15) });
+      expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(false);
+    });
+
+    it('is true once the target day itself has passed', () => {
+      const project = makeProject({ targetEndDate: noonOn(2026, 5, 14) });
+      expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(true);
+    });
+
+    // The flag and the label render side by side on the project card, so the
+    // one failure mode worth pinning is them disagreeing: "Past window · Today".
+    it('never flags a window the deadline formatter still calls Today', () => {
+      const iso = noonOn(2026, 5, 15);
+      expect(formatDeadlineDate(iso)).toBe('Today');
+      expect(isProjectPastWindow(makeProject({ targetEndDate: iso }), { done: 1, total: 2 })).toBe(false);
+    });
   });
 });
 

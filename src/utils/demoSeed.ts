@@ -4,6 +4,7 @@ import { setHours } from 'date-fns/setHours';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -66,9 +67,15 @@ export function seedDemoData(): void {
     archiveTask,
     pinGroup,
     completeProject,
+    archiveProject,
   } = useTaskStore.getState();
   const { addCategory, setCategoryEmoji } = useCategoryStore.getState();
   const { createProject, updateProject, removeProjectRow, restoreProject } = useProjectStore.getState();
+  // Projects have their own category pool, separate from the task categories
+  // above — the Projects screen is built entirely around the sections it
+  // produces, so with every demo project uncategorized the screen rendered as
+  // a flat list and the grouping read as a feature the app hasn't got.
+  const { addCategory: addProjectCategory } = useProjectCategoryStore.getState();
   const { createGroup } = useTaskGroupStore.getState();
 
   const today = getCurrentDayStart();
@@ -555,12 +562,24 @@ export function seedDemoData(): void {
   addTask({ title: 'Invoice the workshop day' });
   addTask({ title: 'Invoice the Ferndale rebrand' });
 
-  // --- A project -----------------------------------------------------------
+  // --- Projects ------------------------------------------------------------
+  // Two named sections and a couple of projects left in neither, so the list
+  // shows both halves of groupProjectsByCategory: the uncategorized run that
+  // renders first with no header, and the named sections under theirs.
+  addProjectCategory('Around the house');
+  addProjectCategory('Ideas');
+
   const kitchen = createProject(
     'Kitchen refresh',
     today.toISOString(),
     addDays(today, 45).toISOString(),
   );
+  // Notes are collapsed to one line at the top of the project screen and
+  // expand on tap — with no project carrying any, that row never rendered.
+  updateProject(kitchen.id, {
+    category: 'Around the house',
+    notes: 'Budget is for materials only. The installer quoted separately, and the counters need templating before anything is ordered.',
+  });
   // Two of these are decisions — they completed by recording an answer, and
   // the project's Decisions block reads those answers back above the tasks.
   // Without a project holding one, that block never appears in demo mode and
@@ -601,9 +620,23 @@ export function seedDemoData(): void {
   // shows up in "Pull from projects" the way an ordinary undated project
   // would. See Project.nudgeOptIn.
   const giftIdeas = createProject('Gift ideas', null, null);
+  updateProject(giftIdeas.id, { category: 'Ideas' });
   ['Something for Mom\'s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);
+  });
+
+  // A project whose order is mandatory: only the top step is open, the rest
+  // wear a padlock and stay off Today and Later until it's done (see
+  // Project.sequential and utils/projectOrder). Its own project rather than a
+  // flag on one of the others — sequential hides every step but the first, and
+  // turning it on for the kitchen would have taken "Book the installer" out of
+  // Later, which is where that row is seeded to be seen.
+  const passport = createProject('Renew my passport', null, null);
+  updateProject(passport.id, { sequential: true });
+  ['Fill in the application form', 'Get new photos taken', 'Post it, recorded delivery'].forEach(title => {
+    const t = addTask({ title, category: 'Errands' });
+    addExistingToProject(t.id, passport.id);
   });
 
   // A project that has gone quiet, and the task the app writes about it.
@@ -619,8 +652,14 @@ export function seedDemoData(): void {
   // the project read as quiet — quiet is measured from the last completion, so
   // a project created seconds ago with no history would render "Quiet 0 days"
   // and demonstrate nothing.
+  //
+  // `autoSchedule` is the one Project field deliberately left unseeded. A
+  // project on the drip has its next task dated by the first foreground after
+  // the seed runs, so the row a screenshot shows wouldn't be the row this file
+  // wrote — and the same foreground would delete the review task below, since
+  // the two layers coordinate by excluding each other (see wantedProjectReviews).
   const garage = createProject('Garage shelving', null, null);
-  updateProject(garage.id, { nudgeOptIn: true, nudgeCadenceDays: 14 });
+  updateProject(garage.id, { nudgeOptIn: true, nudgeCadenceDays: 14, category: 'Around the house' });
   // Quiet is measured from the project's own creation until something in it
   // is completed, so a project minted seconds ago is never quiet however long
   // its members have sat there — the seeded task would be swept away by the
@@ -629,7 +668,16 @@ export function seedDemoData(): void {
   // the row was made), so the back-date goes through the delete/undo pair,
   // which is a real store action writing a real Project.
   removeProjectRow(garage.id);
-  restoreProject({ ...garage, nudgeOptIn: true, nudgeCadenceDays: 14, createdAt: subDays(today, 28).toISOString() });
+  // The fields set by the updateProject above are restated here, not just
+  // spread: `garage` is the row createProject returned, so it predates that
+  // patch and spreading it alone would put the project back at its defaults.
+  restoreProject({
+    ...garage,
+    nudgeOptIn: true,
+    nudgeCadenceDays: 14,
+    category: 'Around the house',
+    createdAt: subDays(today, 28).toISOString(),
+  });
   const measured = addTask({ title: 'Measure the wall', category: 'Home' });
   addExistingToProject(measured.id, garage.id);
   completeTask(measured.id);
@@ -675,12 +723,26 @@ export function seedDemoData(): void {
   // which has its own Completed list (see ProjectEditor's Mark complete row)
   // instead of disappearing into Archived the way finishing a project used to.
   const hallway = createProject('Repaint the hallway', null, null);
+  updateProject(hallway.id, { category: 'Around the house' });
   ['Buy paint and tape', 'Tape the trim', 'Two coats, let dry between'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
     addExistingToProject(t.id, hallway.id);
     completeTask(t.id);
   });
   completeProject(hallway.id, { archiveRemaining: false });
+
+  // Archived rather than completed: the Projects screen's third list had
+  // nothing in it, so the Archived filter demonstrated only its empty state.
+  // Abandoned rather than finished, which is what archiving without completing
+  // says — its two members stay live and unfiled the same way they would for a
+  // real archive.
+  const basement = createProject('Basement declutter', null, null);
+  updateProject(basement.id, { category: 'Around the house' });
+  ['Hire a skip', 'Sort the boxes by the stairs'].forEach(title => {
+    const t = addTask({ title, category: 'Home' });
+    addExistingToProject(t.id, basement.id);
+  });
+  archiveProject(basement.id);
 
   // Every task done but the project itself left active — the state the
   // "Mark complete" affordance on the Projects list and the project detail

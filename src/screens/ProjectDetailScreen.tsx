@@ -158,8 +158,13 @@ export function ProjectDetailScreen() {
     .filter(t => t.completed)
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
   // Same identity-grouped count the Projects list badges its quick-complete
-  // action with — a recurring member never reads done here either.
-  const progress = project ? projectProgress(project.id, allTasks) : { done: 0, total: 0 };
+  // action with — a recurring member never reads done here either. Memoized
+  // because it filters the whole task list and walks a previousOccurrenceId
+  // chain per member, and this screen re-renders on every row tap.
+  const progress = useMemo(
+    () => (project ? projectProgress(project.id, allTasks) : { done: 0, total: 0 }),
+    [project?.id, allTasks],
+  );
   const allDone = progress.total > 0 && progress.done === progress.total && !project?.completed;
 
   const handleMarkComplete = () => {

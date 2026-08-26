@@ -1,5 +1,7 @@
 import { create } from 'zustand';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
+import { getCurrentDayStart } from '../utils/dateUtils';
 import { isRealCompletion } from '../utils/missed';
 import { useSettingsStore } from './useSettingsStore';
 import {
@@ -125,13 +127,28 @@ function answeredAt(task: Task): string {
   return task.completedAt ?? '';
 }
 
-// A project is only flagged "past its window" when it missed its target end
-// date while still incomplete and not archived — nothing automatic happens,
-// this is purely a visual cue so the user can decide what to do about it.
+/**
+ * A project is only flagged "past its window" when it missed its target end
+ * date while still incomplete and not archived — nothing automatic happens,
+ * this is purely a visual cue so the user can decide what to do about it.
+ *
+ * **Calendar days against the logical today, never a raw instant comparison.**
+ * `Date.now()` was wrong twice over. `WhenPicker` stores every date it confirms
+ * at noon (`noonOf`), so `targetEndDate < Date.now()` went true at 12:00 on the
+ * target day itself — half a day early, in orange, on the day it was still due.
+ * And it ignored `dayResetTime`, which every other placement comparison in the
+ * app respects.
+ *
+ * This is deliberately the same two lines `formatDeadlineDate` runs, because
+ * the two render side by side on the project card: with the old comparison the
+ * card read "Past window · Today" from noon onwards, one field giving two
+ * answers. Matching the formatter is what makes that impossible rather than
+ * merely unlikely.
+ */
 export function isProjectPastWindow(project: Project, progress: { done: number; total: number }): boolean {
   if (!project.targetEndDate || project.archived || project.completed) return false;
   if (progress.total > 0 && progress.done === progress.total) return false;
-  return new Date(project.targetEndDate).getTime() < Date.now();
+  return differenceInCalendarDays(new Date(project.targetEndDate), getCurrentDayStart()) < 0;
 }
 
 interface ProjectStore {

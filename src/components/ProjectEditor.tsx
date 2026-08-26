@@ -116,22 +116,33 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const saveAndClose = () => {
     if (!project) { onClose(); return; }
     const trimmed = title.trim();
-    if (trimmed) {
-      updateProject(project.id, {
-        title: trimmed,
-        notes,
-        category: resolveCategory(),
-        targetStartDate: targetStartDate ? targetStartDate.toISOString() : null,
-        targetEndDate: targetEndDate ? targetEndDate.toISOString() : null,
-        nudgeCadenceDays,
-        // A cadence of "never", or being excluded outright, leaves nothing for
-        // auto-scheduling to trigger on, so the three can't disagree about
-        // whether this project is managed.
-        autoSchedule: nudgeOptIn && nudgeCadenceDays > 0 && autoSchedule,
-        sequential,
-        nudgeOptIn,
-      });
-    }
+    updateProject(project.id, {
+      // A blank name is refused, but it must not take the rest of the sheet
+      // with it. The whole `updateProject` used to sit behind `if (trimmed)`,
+      // so clearing the title on an existing project — a stray select-all, a
+      // fumbled backspace — silently dropped the dates, category, notes and
+      // every toggle changed in the same session, with no alert and nothing on
+      // screen to say so (the stored title comes back on reopen, so the sheet
+      // looked untouched). Falling back to the stored title keeps the refusal
+      // and commits everything else.
+      //
+      // A project created from quick add's "More details" is stored with a
+      // blank title until it's named, so this writes '' back for that one —
+      // which is exactly what ProjectsScreen's handleEditorClose still reads to
+      // discard a row that never got a name.
+      title: trimmed || project.title,
+      notes,
+      category: resolveCategory(),
+      targetStartDate: targetStartDate ? targetStartDate.toISOString() : null,
+      targetEndDate: targetEndDate ? targetEndDate.toISOString() : null,
+      nudgeCadenceDays,
+      // A cadence of "never", or being excluded outright, leaves nothing for
+      // auto-scheduling to trigger on, so the three can't disagree about
+      // whether this project is managed.
+      autoSchedule: nudgeOptIn && nudgeCadenceDays > 0 && autoSchedule,
+      sequential,
+      nudgeOptIn,
+    });
     onClose();
   };
 
