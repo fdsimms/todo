@@ -832,3 +832,73 @@ answer is a set of them, not one.
   the component's own "N more…" label already assumed; "person" doesn't
   ("people", not "persons"). `pluralNoun="people"` overrides just that label;
   every other caller is unaffected since the prop defaults to `` `${noun}s` ``.
+
+## Filling in the gaps a few at a time
+
+`peopleBackfill.ts`, and the People segment on the Backfill screen — the fourth
+pool beside tasks, categories and projects, and the one that had to argue for
+itself. A wizard that walks your friends one at a time asking a question about
+each is, described that way, the "sort the people you love into castes"
+afternoon this doc opens by refusing. What makes it a different thing is where
+it lives and what it asks.
+
+- **It is a pull surface, and that is the whole permission.** It sits behind a
+  screen you navigate to, pick a pool on, and then pick a field on — three
+  deliberate acts before anybody's name appears. Nothing about it is a prompt on
+  Today, a banner or a badge, which is the same argument that lets the day count
+  live on the person's own screen and lets `calendarHistory` offer an evening at
+  all: you went to look.
+- **The queue is `sortOrder`, not alphabetical**, and this is the one line where
+  copying the three sibling modules would have broken a rule stated outright in
+  the "never" list. All three sort by name; here that is still the app replacing
+  an order somebody made on purpose with one it worked out. Alphabetical is a
+  milder re-rank than by-neglect, and it is a re-rank. `reachOutTasks` breaks its
+  cap tie the same way for the same reason.
+- **Three fields, and they are the three that unlock something**: a birthday
+  (the birthday and gift generators are gated on nothing else), a cadence (the
+  reach-out nudge, same), and `askAbout` (what makes that nudge a reason rather
+  than a prompt). Deliberately not `nickname`, `notes`, `email` or `linkUrl` —
+  being walked through your friends supplying nicknames is data entry about the
+  people you love, which is the sixth bullet at the top of this doc, and none of
+  those four turns anything on.
+- **The cadence field is only tolerable because of the offer.** Rule 5 is that
+  the app should offer a frequency out of your own history rather than ask you
+  to declare one, and this is the field where being asked cold would bite
+  hardest, three or four people in a row. So the card carries the same
+  `observedCadenceDays`/`describeObservedCadence` offer `PersonEditor` does,
+  built from the same two calls, with the same sample floor and the same silence
+  below it. Below the floor the field is an honest question with no suggestion
+  attached, which is what it already was in the editor.
+- **The person card shows a name and their `notes`, and nothing else.** Its
+  three sibling cards carry meta chips — a due date, a task count — and every
+  number available here is one this doc rules out: a task count under somebody's
+  name reads as a tally against them, and a last-together date or a day count
+  belongs on their own screen. Sparse is correct.
+- **The field-picker counts are about the field, not about anybody.** "Not set
+  for 6 people" rather than "6 people need one": the first is a fact about your
+  own data entry, the second reads as a list of ways you are behind on your
+  friends. It carries no person and never appears on a card, which is the line
+  `peopleStats.ts` draws one shelf over — aggregates about you are fine,
+  aggregates about individual people are not.
+- **No redo-from-scratch mode**, unlike the task fields. Redoing a field
+  wholesale means being walked past everybody you know to reconsider a cadence
+  for each of them, which is precisely the afternoon above. The task side's
+  header refresh button is not rendered for this pool.
+- **A dismissal is about the field, not the person.**
+  `Person.backfillDismissedFields` records "I'm not going to put a birthday on
+  this one", the same session-outliving decision its three siblings hold. It is
+  deliberately separate from `birthdayTaskOptOut`/`birthdayGiftTaskOptOut`
+  beside it: those are permanent answers about what the app *writes*, this is
+  only about what it *asks*.
+- **`personCadencePatch` exists so the anchor can't be re-stamped.**
+  `cadenceSetAt` is the clock somebody with no history is measured against, so
+  writing it for a person already opted in silently restarts their wait — and
+  the screen's Previous button can land on somebody already answered, even
+  though the queue itself never offers one. The helper holds the same off→on
+  rule `PersonEditor.saveAndClose` does, and hands back the off state whole for
+  a cadence of 0, so "opted in to nothing" is unrepresentable rather than left
+  to the caller to avoid.
+- **The pool renders nothing at all until somebody has been added.** Not three
+  rows reading "set for everyone" over an empty list. Same rule the meal guest
+  picker and the template `'people'` question follow, for the same reason: an
+  empty people surface is a prompt to start filing your friends.

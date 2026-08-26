@@ -1070,6 +1070,12 @@ export function initDatabase(): void {
     // reads as "not opted out", the state every task was in before this
     // column existed.
     'ALTER TABLE tasks ADD COLUMN exclude_from_suggestions INTEGER NOT NULL DEFAULT 0',
+    // Same mechanism as tasks/categories/projects.backfill_dismissed_fields
+    // above, for the Backfill screen's fourth pool — see
+    // Person.backfillDismissedFields. Empty on every existing row, which reads
+    // as "nothing has been declined yet" and is what every person was already
+    // in before the screen could walk them.
+    "ALTER TABLE people ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4003,6 +4009,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     cadenceSetAt: (row.cadence_set_at as string) ?? null,
     reachOutDeclinedAt: (row.reach_out_declined_at as string) ?? null,
     askAbout: (row.ask_about as string) ?? '',
+    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
 
@@ -4016,8 +4023,9 @@ export function dbInsertPerson(person: Person): void {
     `INSERT INTO people (
       id, name, nickname, notes, sort_order, archived, archived_at, created_at,
       birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
-      phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at, ask_about
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at, ask_about,
+      backfill_dismissed_fields
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
@@ -4026,6 +4034,7 @@ export function dbInsertPerson(person: Person): void {
       person.birthdayGiftTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
       person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
+      JSON.stringify(person.backfillDismissedFields),
     ]
   );
 }
@@ -4035,7 +4044,8 @@ export function dbUpdatePerson(person: Person): void {
     `UPDATE people SET
       name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
-      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?, ask_about=?
+      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?, ask_about=?,
+      backfill_dismissed_fields=?
     WHERE id=?`,
     [
       person.name, person.nickname, person.notes, person.sortOrder,
@@ -4045,6 +4055,7 @@ export function dbUpdatePerson(person: Person): void {
       person.birthdayGiftTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
       person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
+      JSON.stringify(person.backfillDismissedFields),
       person.id,
     ]
   );

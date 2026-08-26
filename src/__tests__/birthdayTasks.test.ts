@@ -46,6 +46,7 @@ const person = (overrides: Partial<Person> = {}): Person => ({
   cadenceSetAt: null,
   reachOutDeclinedAt: null,
   askAbout: '',
+  backfillDismissedFields: [],
   ...overrides,
 });
 

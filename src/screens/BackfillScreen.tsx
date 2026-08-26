@@ -9,6 +9,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -18,6 +19,7 @@ import { CategoryPickerList } from '../components/CategoryPicker';
 import { CountStepper } from '../components/CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { RemindMePicker } from '../components/RemindMePicker';
+import { BirthdayPicker } from '../components/BirthdayPicker';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, lineHeight, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -40,9 +42,15 @@ import {
   type ProjectBackfillFieldId,
 } from '../utils/projectBackfill';
 import {
+  PERSON_BACKFILL_FIELDS, personBackfillCandidates, personBackfillFieldCounts, dismissPersonBackfillField,
+  personCadencePatch, type PersonBackfillFieldId,
+} from '../utils/peopleBackfill';
+import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, toCadenceParts, fromCadenceParts, withCadenceUnit, describeCadence, cadenceUnitLabel,
   type CadenceParts,
 } from '../utils/nudgeCadence';
+import { personHistory } from '../utils/personHistory';
+import { observedCadenceDays, describeObservedCadence } from '../utils/reachOutTasks';
 import { EFFORT_LABELS, type Effort, type ReminderKind, type Task } from '../types';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
@@ -72,11 +80,21 @@ const PROJECT_FIELD_ICONS: Record<ProjectBackfillFieldId, keyof typeof Ionicons.
   sequential: 'list-outline',
 };
 
-type EntityKind = 'task' | 'category' | 'project';
+// Neither person field with a value picker has a filled/outline pair to
+// switch between, same as the project side — their "on" action is a birthday,
+// a cadence or a sentence, not a tap.
+const PERSON_FIELD_ICONS: Record<PersonBackfillFieldId, keyof typeof Ionicons.glyphMap> = {
+  birthday: 'gift-outline',
+  cadence: 'notifications-outline',
+  askAbout: 'chatbubble-ellipses-outline',
+};
+
+type EntityKind = 'task' | 'category' | 'project' | 'person';
 const ENTITY_KIND_SEGMENTS = [
   { value: 'task' as const, label: 'Tasks' },
   { value: 'category' as const, label: 'Categories' },
   { value: 'project' as const, label: 'Projects' },
+  { value: 'person' as const, label: 'People' },
 ];
 
 // Bucket 0 ("—") is left off — see estimatePatchFor's doc comment for why.
@@ -113,6 +131,16 @@ const DURATION_UNIT_SEGMENTS = [
  * projects all carry a plain `id`, so the same `skippedIds` set works for
  * any of them without knowing which kind is active.
  *
+ * **The People pool plays by `docs/arch/people.md`'s rules, not by the three
+ * above it.** Two of them bite here and both are held in `peopleBackfill.ts`
+ * rather than in this file: the queue runs in the People screen's own hand
+ * order rather than alphabetically (an alphabetical queue is still the app
+ * replacing a ranking somebody made on purpose), and nothing about the pool
+ * reads history, a last-together date or a day count. The one thing the person
+ * card shows that its siblings don't is the *cadence offer* — a number out of
+ * your own history, which is rule 5 and the reason declaring a frequency for a
+ * friend never has to be the only way in.
+ *
  * The header's redo icon (task fields only, for now) starts the same loop
  * over from scratch — every live task for the field, including ones already
  * set — for someone who wants to revisit a field wholesale rather than just
@@ -123,7 +151,8 @@ const DURATION_UNIT_SEGMENTS = [
 type ActiveField =
   | { kind: 'task'; id: BackfillFieldId }
   | { kind: 'category'; id: CategoryBackfillFieldId }
-  | { kind: 'project'; id: ProjectBackfillFieldId };
+  | { kind: 'project'; id: ProjectBackfillFieldId }
+  | { kind: 'person'; id: PersonBackfillFieldId };
 
 export function BackfillScreen() {
   const insets = useSafeAreaInsets();
@@ -143,6 +172,8 @@ export function BackfillScreen() {
   const projects = useProjectStore(useShallow(s => s.projects));
   const updateProject = useProjectStore(s => s.updateProject);
   const projectNamesById = useMemo(() => new Map(projects.map(p => [p.id, p.title])), [projects]);
+  const people = usePersonStore(useShallow(s => s.people));
+  const updatePerson = usePersonStore(s => s.updatePerson);
 
   const [entityKind, setEntityKind] = useState<EntityKind>('task');
   const [active, setActive] = useState<ActiveField | null>(null);
@@ -171,10 +202,18 @@ export function BackfillScreen() {
   const [customUnit, setCustomUnit] = useState<'min' | 'hr'>('min');
   const [nudgeDraft, setNudgeDraft] = useState<CadenceParts>({ count: null, unit: 'days' });
   const [reminderPickerOpen, setReminderPickerOpen] = useState(false);
+  // The person pool's own drafts. Separate from nudgeDraft above even though
+  // only one pool is ever active: a project's cadence and a person's are
+  // different settings that happen to share a control, and one state holding
+  // both invites a value from one entity being read as the other's.
+  const [personCadenceDraft, setPersonCadenceDraft] = useState<CadenceParts>({ count: null, unit: 'days' });
+  const [askAboutText, setAskAboutText] = useState('');
+  const [birthdayPickerOpen, setBirthdayPickerOpen] = useState(false);
 
   const taskCounts = useMemo(() => backfillFieldCounts(tasks, categories), [tasks, categories]);
   const categoryCounts = useMemo(() => categoryBackfillFieldCounts(categories), [categories]);
   const projectCounts = useMemo(() => projectBackfillFieldCounts(projects), [projects]);
+  const personCounts = useMemo(() => personBackfillFieldCounts(people), [people]);
 
   const taskQueue = useMemo(
     () => active?.kind === 'task'
@@ -196,11 +235,37 @@ export function BackfillScreen() {
   const currentCategory = active?.kind === 'category'
     ? (manualCurrentId ? categories.find(c => c.id === manualCurrentId) ?? (categoryQueue[0] ?? null) : (categoryQueue[0] ?? null))
     : null;
+  const personQueue = useMemo(
+    () => active?.kind === 'person' ? personBackfillCandidates(people, active.id).filter(p => !skippedIds.has(p.id)) : [],
+    [people, active, skippedIds]
+  );
   const currentProject = active?.kind === 'project'
     ? (manualCurrentId ? projects.find(p => p.id === manualCurrentId) ?? (projectQueue[0] ?? null) : (projectQueue[0] ?? null))
     : null;
-  const queueLength = active?.kind === 'task' ? taskQueue.length : active?.kind === 'category' ? categoryQueue.length : projectQueue.length;
-  const currentId = currentTask?.id ?? currentCategory?.id ?? currentProject?.id ?? null;
+  const currentPerson = active?.kind === 'person'
+    ? (manualCurrentId ? people.find(p => p.id === manualCurrentId) ?? (personQueue[0] ?? null) : (personQueue[0] ?? null))
+    : null;
+  const queueLength = active?.kind === 'task' ? taskQueue.length
+    : active?.kind === 'category' ? categoryQueue.length
+    : active?.kind === 'project' ? projectQueue.length
+    : personQueue.length;
+  const currentId = currentTask?.id ?? currentCategory?.id ?? currentProject?.id ?? currentPerson?.id ?? null;
+
+  /**
+   * The cadence this person's own history suggests, or null when there is not
+   * enough of it to say so honestly.
+   *
+   * Rule 5 in `docs/arch/people.md`, and the reason a wizard that asks you to
+   * declare a frequency for a friend does not have to be a cold one: the number
+   * comes from what actually happened rather than from an estimate of how much
+   * you care. `PersonEditor` builds the identical offer from the identical two
+   * calls — same discipline, same sample floor, same silence below it.
+   */
+  const observedCadence = useMemo(() => {
+    if (!currentPerson) return null;
+    const theirs = tasks.filter(t => t.personIds.includes(currentPerson.id));
+    return observedCadenceDays(personHistory(theirs));
+  }, [tasks, currentPerson?.id]);
 
   // The custom-estimate entry is per-card: once the card advances (a value
   // was applied, or the item was skipped), a half-typed number from the
@@ -210,7 +275,20 @@ export function BackfillScreen() {
     setCustomText('');
     setCustomUnit('min');
     setReminderPickerOpen(false);
+    setBirthdayPickerOpen(false);
   }, [currentId]);
+
+  // Whatever is already on file, so the field shows what's actually there
+  // rather than an empty box — the same call the project cadence draft below
+  // makes. In the normal queue both are at their default (that is what put the
+  // person in it), but the Previous button can land on somebody already
+  // answered, and handing them a blank field would read as their answer having
+  // been lost.
+  useEffect(() => {
+    if (!currentPerson) return;
+    setPersonCadenceDraft(toCadenceParts(currentPerson.cadenceDays));
+    setAskAboutText(currentPerson.askAbout);
+  }, [currentPerson?.id]);
 
   // Same default RemindMePicker's own caller (TaskEditor) opens with: 9am on
   // the date being scheduled against. Every card reaching this field has a
@@ -261,6 +339,16 @@ export function BackfillScreen() {
     setHistory([]);
     setManualCurrentId(null);
     setSessionTotal(projectBackfillCandidates(projects, id).length);
+  };
+
+  const choosePersonField = (id: PersonBackfillFieldId) => {
+    haptics.tap();
+    animateLayout();
+    setActive({ kind: 'person', id });
+    setSkippedIds(new Set());
+    setHistory([]);
+    setManualCurrentId(null);
+    setSessionTotal(personBackfillCandidates(people, id).length);
   };
 
   const backToFields = () => {
@@ -402,6 +490,54 @@ export function BackfillScreen() {
     updateProject(currentProject.id, { nudgeOptIn: true, nudgeCadenceDays: fromCadenceParts(nudgeDraft) });
   };
 
+  // The three person handlers, one per field, for the reason applyNudge above
+  // is its own: each commits a value held in a draft rather than a fixed patch.
+  // None of them calls advance() — setting the value is what drops the person
+  // out of the live queue, same as the category and project applies.
+  const applyBirthday = (month: number, day: number, year: number | null) => {
+    if (!currentPerson) return;
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    setBirthdayPickerOpen(false);
+    updatePerson(currentPerson.id, { birthdayMonth: month, birthdayDay: day, birthYear: year });
+  };
+
+  // All three together, always: a year with no month and day is not a birthday.
+  // Reachable only through the Previous button, on somebody whose birthday was
+  // just entered and is being taken back off — the queue itself never offers
+  // anybody who already has one.
+  const clearBirthday = () => {
+    if (!currentPerson) return;
+    haptics.tap();
+    setBirthdayPickerOpen(false);
+    updatePerson(currentPerson.id, { birthdayMonth: null, birthdayDay: null, birthYear: null });
+  };
+
+  // Never is a real answer to "how long before a reminder", but it is the
+  // field's own default rather than a value to commit — applying it would set
+  // nothing and leave the card exactly where it is, so the button stands down
+  // instead (see the disabled branch where it renders).
+  const applyPersonCadence = () => {
+    if (!currentPerson || personCadenceDraft.count === null) return;
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    updatePerson(currentPerson.id, personCadencePatch(currentPerson, fromCadenceParts(personCadenceDraft)));
+  };
+
+  const applyAskAbout = () => {
+    const text = askAboutText.trim();
+    if (!currentPerson || !text) return;
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    updatePerson(currentPerson.id, { askAbout: text });
+  };
+
   const skip = () => {
     if (!currentId) return;
     haptics.tap();
@@ -436,9 +572,12 @@ export function BackfillScreen() {
         currentCategory.name,
         dismissCategoryBackfillField(currentCategory, active.id).backfillDismissedFields
       );
-    } else {
+    } else if (active.kind === 'project') {
       if (!currentProject) return;
       updateProject(currentProject.id, dismissProjectBackfillField(currentProject, active.id));
+    } else {
+      if (!currentPerson) return;
+      updatePerson(currentPerson.id, dismissPersonBackfillField(currentPerson, active.id));
     }
   };
 
@@ -551,6 +690,55 @@ export function BackfillScreen() {
               );
             })}
           </ScrollView>
+        )}
+        {entityKind === 'person' && (
+          people.some(p => !p.archived) ? (
+            <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
+              {PERSON_BACKFILL_FIELDS.map(field => {
+                const count = personCounts[field.id];
+                // Phrased about the field rather than about the people: "6
+                // people need one" reads as a list of ways you're behind on
+                // your friends, which is the tone docs/arch/people.md exists to
+                // keep out. "Not set for 6 people" is the same fact about your
+                // own data entry with nobody on the hook for it.
+                const countLabel = count === 0
+                  ? 'Set for everyone'
+                  : `Not set for ${count} ${count === 1 ? 'person' : 'people'}`;
+                return (
+                  <TouchableOpacity
+                    key={field.id}
+                    style={[styles.fieldRow, shadows.card]}
+                    onPress={() => choosePersonField(field.id)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${field.label}, ${countLabel.toLowerCase()}`}
+                  >
+                    <View style={styles.fieldIcon}>
+                      <Ionicons name={PERSON_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
+                    </View>
+                    <View style={styles.fieldBody}>
+                      <Text style={styles.fieldLabel}>{field.label}</Text>
+                      <Text style={styles.fieldHint}>{field.hint}</Text>
+                      <Text style={count === 0 ? styles.fieldCountDone : styles.fieldCount}>{countLabel}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            // Nothing at all until somebody has been added on the People
+            // screen, rather than three field rows all reading "set for
+            // everyone" over an empty list. Same rule the meal guest picker and
+            // the template people question follow: an empty people surface is a
+            // prompt to start filing your friends, which is the failure mode.
+            <EmptyState
+              icon="people-outline"
+              title="Nobody added yet"
+              subtitle="People you add on the People screen show up here, so you can fill in birthdays and reminders for them a few at a time."
+              bottomOffset={tabBarHeight}
+            />
+          )
         )}
       </View>
     );
@@ -756,6 +944,193 @@ export function BackfillScreen() {
             bottomOffset={tabBarHeight}
           />
         )}
+      </View>
+    );
+  }
+
+  if (active.kind === 'person') {
+    const personField = PERSON_BACKFILL_FIELDS.find(f => f.id === active.id)!;
+    const cadenceDays = fromCadenceParts(personCadenceDraft);
+    const cadenceReady = personCadenceDraft.count !== null;
+    const askAboutReady = askAboutText.trim().length > 0;
+
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <DetailHeader
+          title={personField.shortLabel}
+          onBack={backToFields}
+          backAccessibilityLabel="Back to fields"
+          actions={history.length > 0 ? (
+            <TouchableOpacity
+              onPress={goBack}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Previous person"
+            >
+              <Ionicons name="play-skip-back-outline" size={iconSize.md} color={colors.textSecondary} />
+            </TouchableOpacity>
+          ) : undefined}
+        />
+        {sessionTotal > 0 && (
+          <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+        )}
+
+        {currentPerson ? (
+          <ScrollView
+            contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* The name and whatever you wrote about them, and deliberately
+                nothing else — no meta chips the way the task, category and
+                project cards carry. Every number available here is one
+                docs/arch/people.md rules out under somebody's name: a task
+                count reads as a tally against them, and a last-together date
+                or a day count belongs on their own screen, which is the one
+                place you go on purpose to be told. */}
+            <View style={[styles.itemCard, shadows.card]}>
+              <Text style={styles.itemTitle} numberOfLines={2}>{displayNameOf(currentPerson)}</Text>
+              {!!currentPerson.notes.trim() && (
+                <Text style={styles.itemNotes} numberOfLines={2}>{currentPerson.notes.trim()}</Text>
+              )}
+            </View>
+
+            {active.id === 'birthday' && (
+              <PressableScale
+                style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+                onPress={() => { haptics.tap(); setBirthdayPickerOpen(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Set a birthday for ${displayNameOf(currentPerson)}`}
+              >
+                <Ionicons name="gift" size={iconSize.md} color={colors.onAccent} />
+                <Text style={styles.toggleButtonText}>Set birthday</Text>
+              </PressableScale>
+            )}
+
+            {active.id === 'cadence' && (
+              <View style={styles.cadenceRow}>
+                <View style={styles.cadenceStepperRow}>
+                  <CountStepper
+                    value={personCadenceDraft.count}
+                    onChange={next => setPersonCadenceDraft(prev => ({ ...prev, count: next }))}
+                    min={1}
+                    max={CADENCE_UNIT_MAX[personCadenceDraft.unit]}
+                    allowNull
+                    emptyLabel="Never"
+                    label="Time before a reminder"
+                    describeValue={n => (n === null ? 'No reminder' : describeCadence(fromCadenceParts({ ...personCadenceDraft, count: n })))}
+                  />
+                </View>
+                <View style={styles.pillRow}>
+                  {CADENCE_UNITS.map(unit => {
+                    // Off has no unit — leaving all three unlit is what says so,
+                    // same as the editor's own row.
+                    const unitSelected = personCadenceDraft.count !== null && personCadenceDraft.unit === unit;
+                    return (
+                      <PressableScale
+                        key={unit}
+                        style={[styles.pill, unitSelected && styles.pillActive]}
+                        onPress={() => { haptics.tap(); setPersonCadenceDraft(prev => withCadenceUnit(prev, unit)); }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: unitSelected }}
+                      >
+                        <Text style={styles.pillText}>{cadenceUnitLabel(unit)}</Text>
+                      </PressableScale>
+                    );
+                  })}
+                </View>
+                {/* Rule 5, and the whole reason this field is allowed to be a
+                    wizard step at all: picking a frequency for somebody you
+                    love is the coldest interaction in the feature, and a number
+                    that came out of your own history is not that. It appears
+                    only once there is enough history to say so honestly — see
+                    observedCadenceDays. */}
+                {observedCadence !== null && cadenceDays !== observedCadence && (
+                  <TouchableOpacity
+                    style={styles.offerRow}
+                    onPress={() => { haptics.tap(); animateLayout(); setPersonCadenceDraft(toCadenceParts(observedCadence)); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Use every ${observedCadence} days`}
+                  >
+                    <Ionicons name="sparkles-outline" size={14} color={colors.accent} />
+                    <Text style={styles.offerText}>{describeObservedCadence(observedCadence)}. Use that?</Text>
+                  </TouchableOpacity>
+                )}
+                <PressableScale
+                  style={[styles.toggleButton, { backgroundColor: colors.accent }, !cadenceReady && styles.toggleButtonIdle]}
+                  onPress={applyPersonCadence}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !cadenceReady }}
+                  accessibilityLabel={cadenceReady
+                    ? `Set a reminder for every ${describeCadence(cadenceDays).toLowerCase()}`
+                    : 'Pick how long first'}
+                >
+                  <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
+                  <Text style={styles.toggleButtonText}>
+                    {cadenceReady ? 'Set reminder' : 'Pick how long first'}
+                  </Text>
+                </PressableScale>
+              </View>
+            )}
+
+            {active.id === 'askAbout' && (
+              <View style={styles.askAboutRow}>
+                <TextInput
+                  style={styles.askAboutInput}
+                  value={askAboutText}
+                  onChangeText={setAskAboutText}
+                  placeholder="e.g. the new job"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  onSubmitEditing={applyAskAbout}
+                  accessibilityLabel={`Something to ask ${displayNameOf(currentPerson)} about`}
+                />
+                <PressableScale
+                  style={[styles.toggleButton, { backgroundColor: colors.accent }, !askAboutReady && styles.toggleButtonIdle]}
+                  onPress={applyAskAbout}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !askAboutReady }}
+                  accessibilityLabel={`Save something to ask ${displayNameOf(currentPerson)} about`}
+                >
+                  <Ionicons name="chatbubble-ellipses" size={iconSize.md} color={colors.onAccent} />
+                  <Text style={styles.toggleButtonText}>Save</Text>
+                </PressableScale>
+              </View>
+            )}
+
+            <View style={styles.actionRow}>
+              <PressableScale style={styles.skipButton} onPress={skip} accessibilityRole="button" accessibilityLabel="Skip this person for now">
+                <Text style={styles.skipText}>Skip for now</Text>
+              </PressableScale>
+              <PressableScale
+                style={styles.skipButton}
+                onPress={dismiss}
+                accessibilityRole="button"
+                accessibilityLabel={`Leave "${personField.shortLabel}" unset for this person and don't ask again`}
+              >
+                <Text style={styles.skipText}>Don't ask again</Text>
+              </PressableScale>
+            </View>
+          </ScrollView>
+        ) : (
+          <EmptyState
+            icon="checkmark-circle-outline"
+            title="All caught up"
+            subtitle="Nothing left to fill in for this field. Pick another to keep going."
+            actionLabel="Choose another field"
+            onAction={backToFields}
+            bottomOffset={tabBarHeight}
+          />
+        )}
+        <BirthdayPicker
+          visible={birthdayPickerOpen}
+          month={currentPerson?.birthdayMonth ?? null}
+          day={currentPerson?.birthdayDay ?? null}
+          year={currentPerson?.birthYear ?? null}
+          onConfirm={applyBirthday}
+          onClear={clearBirthday}
+          onCancel={() => setBirthdayPickerOpen(false)}
+        />
       </View>
     );
   }
@@ -1233,6 +1608,40 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
   },
   toggleButtonText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
+  // The two person fields whose value is typed or stepped can sit at a state
+  // that isn't a value yet (Never, an empty box). The button stays where it is
+  // and reads back what it's waiting for rather than disappearing, so the card
+  // doesn't reflow as the field is filled in.
+  toggleButtonIdle: { opacity: 0.4 },
+
+  // The cadence offer built from this person's own history — see rule 5 in
+  // docs/arch/people.md. Same treatment PersonEditor gives the identical offer,
+  // so it reads as the same thing in both places.
+  offerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+    backgroundColor: colors.accentSubtle,
+    borderRadius: radius.md,
+  },
+  offerText: { flex: 1, color: colors.accent, fontSize: font.xs, lineHeight: lineHeight.xs },
+
+  // Stacked rather than side by side: "e.g. the new job" plus a button doesn't
+  // fit one line at 390pt, and the input is the field here rather than a
+  // modifier on a row of pills the way the custom estimate is.
+  askAboutRow: { gap: spacing.md },
+  askAboutInput: {
+    color: colors.text,
+    fontSize: font.md,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    // A height rather than a lineHeight — see the note in CLAUDE.md on what
+    // lineHeight does to a TextInput's baseline on iOS.
+    height: 48,
+  },
 
   actionRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
   skipButton: {
