@@ -292,6 +292,7 @@ exports.
 | what something costs, and which store is cheaper | `src/utils/groceryPrice.ts` |
 | what the app thinks you already have | `probablyHaveReason`/`pantryEntries` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
 | the app asking whether you still have something | `src/utils/pantryCheckTasks.ts` — see `docs/arch/groceries.md` |
+| going through the whole pantry a card at a time | `src/utils/pantryReview.ts` + `src/components/PantryReviewSheet.tsx` — see `docs/arch/groceries.md` |
 | whether a thing got used up or went bad | `src/utils/itemDisposal.ts` — see `docs/arch/groceries.md` |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
 | remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
@@ -338,15 +339,15 @@ exports.
 **Read narrowly.** 46 files are over 1,000 lines, 28 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (6.3k), `components/TaskEditor.tsx` (4.7k), `db/database.ts` (4.2k),
-`store/useGroceryStore.ts` (4.1k), `screens/TodayScreen.tsx` (4.0k), `types/index.ts` (3.7k),
+`store/useTaskStore.ts` (6.4k), `components/TaskEditor.tsx` (4.7k), `db/database.ts` (4.2k),
+`store/useGroceryStore.ts` (4.2k), `screens/TodayScreen.tsx` (4.0k), `types/index.ts` (3.7k),
 `components/TaskItem.tsx` (3.6k), `components/QuickAddModal.tsx` (2.9k),
 `store/useSettingsStore.ts` (2.7k), `utils/demoSeed.ts` (2.5k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **212 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **214 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

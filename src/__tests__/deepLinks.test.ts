@@ -620,7 +620,20 @@ describe('openInAppUrl', () => {
 
   it('passes the specific row through to resetToKitchen', () => {
     expect(openInAppUrl('dundundun://kitchen?item=grocery-abc123')).toBe(true);
-    expect(mockResetToKitchen).toHaveBeenCalledWith('grocery-abc123');
+    expect(mockResetToKitchen).toHaveBeenCalledWith('grocery-abc123', false);
+  });
+
+  // "Review what's in the pantry" (utils/pantryReviewTasks.ts) lands on the
+  // same screen as a use-up task's link and differs only in arriving with the
+  // deck up — the shape `?finish=1` already has on the groceries link.
+  it('asks for the review deck when the kitchen link carries review=1', () => {
+    expect(openInAppUrl('dundundun://kitchen?review=1')).toBe(true);
+    expect(mockResetToKitchen).toHaveBeenCalledWith(null, true);
+  });
+
+  it('leaves the bare kitchen link alone', () => {
+    expect(openInAppUrl('dundundun://kitchen')).toBe(true);
+    expect(mockResetToKitchen).toHaveBeenCalledWith(null, false);
   });
 
   it('keeps the three kitchen links apart', () => {

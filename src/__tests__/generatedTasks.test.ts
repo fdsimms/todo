@@ -307,7 +307,7 @@ describe('the registry', () => {
     // one task written entirely on the app's own schedule landed loose at the
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
-      .toEqual(['mealSlot', 'groceryUseUp', 'pantryCheck', 'leftoverUseUp', 'mealPlanNudge', 'mealShortfall', 'projectReview', 'birthday', 'birthdayGift', 'reachOut']);
+      .toEqual(['mealSlot', 'groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealPlanNudge', 'mealShortfall', 'projectReview', 'birthday', 'birthdayGift', 'reachOut']);
   });
 
   it('shares one default category between planning the week and cooking it', () => {

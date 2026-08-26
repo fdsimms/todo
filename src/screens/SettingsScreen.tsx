@@ -79,6 +79,7 @@ export function SettingsScreen() {
       mealCookTasks: settings.mealCookTasks,
       groceryUseUpTasks: settings.groceryUseUpTasks,
       pantryCheckTasks: settings.pantryCheckTasks,
+      pantryReviewTasks: settings.pantryReviewTasks,
       leftoverUseUpTasks: settings.leftoverUseUpTasks,
       mealPlanNudgeEnabled: settings.mealPlanNudgeEnabled,
       mealShortfallTasks: settings.mealShortfallTasks,

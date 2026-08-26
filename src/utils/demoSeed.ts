@@ -24,6 +24,7 @@ import { generatedBy } from './generatedTasks';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
+import { PANTRY_REVIEW_LINK_URL, PANTRY_REVIEW_TITLE } from './pantryReviewTasks';
 import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
 import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
@@ -1910,6 +1911,30 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     linkUrl: pantryCheckLinkUrl(itemNamed('Rolled oats').id),
     category: 'Groceries',
     ...generatedBy('pantryCheck', itemNamed('Rolled oats').id),
+  });
+
+  // And the bulk form of the same question (see utils/pantryReviewTasks.ts):
+  // one row that opens the swipe deck over everything the app is unsure about,
+  // rather than a row per item. Seeded by hand for the pantryCheck row's
+  // reason — the real generator fires on a cadence, and a demo database is
+  // seconds old.
+  //
+  // The deck itself needs nothing seeded: every catalog row this file has
+  // bought is inside its purchase window and so already a card, which is the
+  // common `guessed` case. What can't be seen without this row is that the app
+  // ever *offers* the pass.
+  //
+  // Both rows at once is a real state rather than a contradiction of the
+  // suppression rule: that rule only stops the drip writing *new* rows while a
+  // review is live, and a row raised before the cupboard got doubtful enough
+  // for the bulk offer is the user's to keep.
+  useSettingsStore.getState().setPantryReviewTaskCategory('Groceries');
+  addTask({
+    title: PANTRY_REVIEW_TITLE,
+    dueDate: today.toISOString(),
+    linkUrl: PANTRY_REVIEW_LINK_URL,
+    category: 'Groceries',
+    ...generatedBy('pantryReview', dayKeyOf(today)),
   });
 
   // --- A supply stocked from the shopping list -----------------------------

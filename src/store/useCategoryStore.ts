@@ -284,6 +284,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'projectReviewTaskCategory', current: s.projectReviewTaskCategory, assign: s.setProjectReviewTaskCategory };
     case 'pantryCheck':
       return { key: 'pantryCheckTaskCategory', current: s.pantryCheckTaskCategory, assign: s.setPantryCheckTaskCategory };
+    case 'pantryReview':
+      return { key: 'pantryReviewTaskCategory', current: s.pantryReviewTaskCategory, assign: s.setPantryReviewTaskCategory };
     case 'mealShortfall':
       return { key: 'mealShortfallTaskCategory', current: s.mealShortfallTaskCategory, assign: s.setMealShortfallTaskCategory };
     // Inherits the source task's own category instead — see
@@ -315,6 +317,7 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
     case 'projectReview': return s.projectReviewTasks;
     case 'pantryCheck': return s.pantryCheckTasks;
+    case 'pantryReview': return s.pantryReviewTasks;
     case 'mealShortfall': return s.mealShortfallTasks;
     case 'supplyReorder': return s.supplyReorderTasks;
     case 'calendarReview': return s.calendarReviewTasks;

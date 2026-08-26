@@ -771,6 +771,81 @@ Three things about it belong here rather than there:
   sweep. Ticking it off means "I've dealt with this" and writes nothing to the row — inferring "yes
   I still have it" from a tick is the guess a container's ✕ already refuses to make.
 
+### The review deck — the same question asked in bulk (`pantryReview.ts`)
+
+The check above is a *drip*: three rows at most, gated hard, arriving on Today unasked. It is the
+right shape for one or two doubtful items and the wrong shape for eleven, which is a screenful of
+near-identical questions about the cupboard. `src/utils/pantryReview.ts` is the other way round —
+the user opens it on purpose, standing in front of the cupboard, and is asked about everything at
+once, one card at a time. Swipe right for "still have it", left for "out of it", up for "running
+low".
+
+**It is a correction pass, not the inventory this doc rules out.** The note above on `KitchenScreen`
+still stands word for word: don't grow quantities, per-row expiry editing or a check-in gesture onto
+those rows, and a swipe action on a pantry row stays out. What makes this a different animal is that
+it is opened deliberately, it ends, and it writes nothing the two pantry pills could not already
+write. "Computed first, corrected second" is the rule; this is the second half, done in one sitting.
+
+- **The deck ends, and that is the whole design.** `MAX_PANTRY_REVIEW_CARDS` (20) bounds a session
+  and `PANTRY_CHECK_GRACE_DAYS` bounds what qualifies at all — **imported from `pantryCheckTasks.ts`
+  rather than copied**, so the drip and the deck cannot disagree about which items are in doubt, the
+  same one-owner discipline `pantryGuessLapsedDays` has. Without the second, the qualifying set on
+  the day this ships is most of the catalog, back to the first trip ever recorded. What the cap
+  leaves out is named in the finished state rather than swallowed: a pass that quietly covered a
+  fifth of the cupboard and said "all done" is lying about what it did.
+- **It is ordered by doubt, and that ordering is what the feature is.** Three tiers, worst first:
+  `lapsed` (the purchase window has run out, so the app has stopped having an opinion and nothing was
+  written when it did), `guessed` (on hand, but only because a purchase says so), `asserted` (the
+  user has already said something). A deck that opened on the things the app is surest about would
+  spend its first ten swipes confirming what it already believed, which is the treadmill in a nicer
+  coat.
+- **A right swipe is not a no-op**, which is why `guessed` rows are in the deck rather than filtered
+  out: confirming converts a guess with a shelf life into an explicit assertion, and renews the
+  window. **A `lapsed` row is not in `pantryEntries` at all** — `probablyHaveReason` has already
+  stopped answering for it — so the deck is built from the catalog directly rather than from that
+  list, and it is the one population the pantry has no other way to show.
+- **Three exclusions, each of which would otherwise be a card with no honest answer.** A staple
+  ("always have it" is a standing fact, and the left swipe contradicts it — the line
+  `correctableHaveReason` already draws); a row already marked "Out of it" (answered); and a row only
+  a *box* vouches for, because the three answers write the item's columns and an item on hand solely
+  because one packet is frozen is a claim about that packet. Saying "out of it" at item level there
+  would overwrite a box-level fact set deliberately, which is exactly the cascade the per-box actions
+  refuse to make.
+- **Each answer writes exactly what its own pill writes, and nothing more** (`answerPantryReview`).
+  No cascade between the three: a right swipe does not clear a `runningLowAt`, because running low
+  still means you have it, and an "Out of it" does not either, because the precedence already shadows
+  it and a purchase clears both. Inventing a cascade here would put a second, quieter copy of that
+  ladder in the store.
+- **`runningLowAt` is why there are three answers and not two.** It is the middle of the scale the
+  "Got it"/"Out of it" pair was missing, and it is the one answer with an outlet — it puts the row on
+  the shopping list. That is what gives a review pass something to show for itself rather than being
+  pure bookkeeping.
+- **The left swipe raises no disposal question.** A single-row `markOutOfMany` normally asks "Used it
+  up" / "Went bad", and that is a good question after one deliberate ✕. Asked eleven times in a row it
+  is the "recall five kitchens" a batch already declines (see `CookRecapSheet` and `bulkSetCooked`),
+  and a modal per card would stop the pass dead. The bit is still written, so the pantry is correct
+  and only the extra record is missed — which is the trade this doc already makes when it says an
+  ignored question leaves nothing wrong.
+- **Undo is a button in the deck, not shake-to-undo**, and `answerPantryReview` registers no
+  `lastAction` at all. A session is a run of small answers; a queue holding eleven of them would let
+  a shake take back one eleventh of a pass the user has already closed. `revertPantryAnswer` takes a
+  whole row snapshot rather than an answer to invert, because the three answers are not each other's
+  opposites — undoing "Running low" means restoring the `onList`/`sortOrder`/`lastAddedAt` it may
+  have changed, which only the row as it stood can say.
+- **The sheet is `fullScreen` and that is load-bearing, not cosmetic.** The cards run on a
+  `PanResponder`, and a `presentationStyle="pageSheet"` modal's own pull-down pan cancels exactly
+  those touches — see the drag-and-drop note in `CLAUDE.md` (#1182). The symptom is a card that
+  follows the finger and then snaps back. `EditorSheet` and `CategoryOrderSheet` are `fullScreen` for
+  the identical reason.
+- **The deck is seeded once per open, never derived from the store.** Every answer writes to `items`,
+  so a deck recomputed on each render would reorder and resize itself under the finger — the card you
+  were about to swipe becoming a different card. Same call `CategoryOrderSheet` makes about its own
+  local order.
+- **Three gestures, and three buttons that do the same three things.** A swipe-only surface is
+  unreachable for anyone not swiping and invisible to anyone who hasn't been told, so the buttons are
+  the real control and the gesture is the accelerator. They are also the only place an
+  `accessibilityLabel` can live, which a bare pan gesture has nowhere to put.
+
 ### How a thing left the pantry (`itemDisposal.ts`)
 
 The fridge has recorded this since leftovers shipped: closing a container out is "Finished it" /

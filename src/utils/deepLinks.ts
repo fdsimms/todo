@@ -379,6 +379,25 @@ export function kitchenUrlItemId(url: string): string | null {
 }
 
 /**
+ * Whether a kitchen link is asking for the pantry review deck to open on
+ * arrival — what "Review what's in the pantry" carries (see
+ * `pantryReviewTasks.PANTRY_REVIEW_LINK_URL`).
+ *
+ * A query on the kitchen link rather than a scheme of its own, exactly as
+ * `groceriesUrlFinish` reads `?finish=1`: the destination is a screen this app
+ * already routes to, and all that differs is which sheet it arrives with. Any
+ * other value is a no, for that function's reason — the only thing that ever
+ * writes this link writes `1`, and the bare `dundundun://kitchen` a "Use up X"
+ * task carries must keep landing on the list exactly as it always has.
+ */
+export function kitchenUrlWantsReview(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  const match = KITCHEN_RE.exec(url.trim());
+  if (!match) return false;
+  return (parseQuery(match[1] ?? '').review ?? '').trim() === '1';
+}
+
+/**
  * Which glyph a task row's link button should show — the destination's own
  * icon (the Groceries cart, a picked app's icon, the fork-and-knife a recipe
  * or meal plan link already uses on Today's context rows) rather than one
@@ -434,7 +453,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (isKitchenUrl(url)) {
-    resetToKitchen(kitchenUrlItemId(url));
+    resetToKitchen(kitchenUrlItemId(url), kitchenUrlWantsReview(url));
     return true;
   }
   if (isPeopleUrl(url)) {

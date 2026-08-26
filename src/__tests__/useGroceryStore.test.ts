@@ -4431,6 +4431,112 @@ describe('setRunningLow', () => {
   });
 });
 
+// ─── answerPantryReview / revertPantryAnswer ────────────────────────────────
+
+describe('answerPantryReview', () => {
+  it('writes the "Got it" window for "still have it"', () => {
+    const flour = makeItem({ name: 'Flour', onHandUntil: null });
+    seed([flour]);
+
+    useGroceryStore.getState().answerPantryReview(flour.id, 'have');
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.onHandUntil).not.toBeNull();
+    expect(new Date(updated.onHandUntil!).getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('writes the "Out of it" sentinel for "out"', () => {
+    const flour = makeItem({ name: 'Flour', onHandUntil: null });
+    seed([flour]);
+
+    useGroceryStore.getState().answerPantryReview(flour.id, 'out');
+
+    expect(useGroceryStore.getState().items[0].onHandUntil).toBe(OUT_OF_IT_UNTIL);
+  });
+
+  // The middle answer is the one with an outlet: saying you're nearly out is
+  // nothing but a plan to buy it, which is what gives a review pass something
+  // to show for itself.
+  it('puts a "running low" row on the list, through setRunningLow itself', () => {
+    const flour = makeItem({ name: 'Flour', onList: false });
+    seed([flour]);
+
+    useGroceryStore.getState().answerPantryReview(flour.id, 'low');
+
+    const updated = useGroceryStore.getState().items[0];
+    expect(updated.runningLowAt).not.toBeNull();
+    expect(updated.onList).toBe(true);
+  });
+
+  // Asked eleven times in a row this is the "recall five kitchens" a batch
+  // already declines to ask. The bit still gets written, so the pantry is
+  // correct either way and only the extra record is missed.
+  it('raises no disposal question, unlike a single-row markOutOfMany', () => {
+    const flour = makeItem({ name: 'Flour' });
+    seed([flour]);
+    useGroceryStore.setState({ disposalOffer: null });
+
+    useGroceryStore.getState().answerPantryReview(flour.id, 'out');
+
+    expect(useGroceryStore.getState().disposalOffer).toBeNull();
+  });
+
+  // A queue holding eleven of these would let a shake take back one eleventh of
+  // a pass the user has already closed. The deck's own Undo is the affordance.
+  it('registers no undo', () => {
+    const flour = makeItem({ name: 'Flour' });
+    seed([flour]);
+    useGroceryStore.setState({ lastAction: null });
+
+    useGroceryStore.getState().answerPantryReview(flour.id, 'have');
+
+    expect(useGroceryStore.getState().lastAction).toBeNull();
+  });
+
+  // Running low still means you have it, so a right swipe inventing a clear
+  // would be the deck adding a cascade its own pills don't have.
+  it('invents no cascade between the three answers', () => {
+    const flour = makeItem({ name: 'Flour', runningLowAt: new Date().toISOString() });
+    seed([flour]);
+
+    useGroceryStore.getState().answerPantryReview(flour.id, 'have');
+
+    expect(useGroceryStore.getState().items[0].runningLowAt).not.toBeNull();
+  });
+
+  it('does nothing for an item that has gone', () => {
+    seed([makeItem({ name: 'Flour' })]);
+    expect(() => useGroceryStore.getState().answerPantryReview('missing', 'out')).not.toThrow();
+  });
+});
+
+describe('revertPantryAnswer', () => {
+  it('puts the row back exactly as it was, list membership included', () => {
+    const flour = makeItem({ name: 'Flour', onList: false, runningLowAt: null });
+    seed([flour]);
+    const before = useGroceryStore.getState().items[0];
+    useGroceryStore.getState().answerPantryReview(flour.id, 'low');
+
+    useGroceryStore.getState().revertPantryAnswer(before);
+
+    const restored = useGroceryStore.getState().items[0];
+    expect(restored.runningLowAt).toBeNull();
+    expect(restored.onList).toBe(false);
+  });
+
+  it('leaves a row deleted since the answer deleted', () => {
+    const flour = makeItem({ name: 'Flour' });
+    seed([flour]);
+    const before = useGroceryStore.getState().items[0];
+    useGroceryStore.setState({ items: [] });
+
+    useGroceryStore.getState().revertPantryAnswer(before);
+
+    expect(useGroceryStore.getState().items).toEqual([]);
+  });
+});
+
+
 describe('either/or items (choiceGroup)', () => {
   const pair = () => {
     const apples = useGroceryStore.getState().addByName('apples', {
