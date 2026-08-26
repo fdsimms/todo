@@ -15,7 +15,9 @@ import { spacing, radius, font, fontWeight, interaction, animation, type Colors 
 import { haptics } from '../utils/haptics';
 import { tagColor } from '../utils/tagColor';
 import { toggleRecipeTag } from '../utils/recipeTags';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 
 interface Props {
@@ -46,6 +48,7 @@ interface Props {
 export function RecipeTagFilterSheet({ visible, onClose, tags, counts, selected, onChange }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const fade = useScrollEdgeFade();
 
   const hiddenY = useSheetHiddenOffset();
 
@@ -119,7 +122,11 @@ export function RecipeTagFilterSheet({ visible, onClose, tags, counts, selected,
             </View>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.content}
+            {...fade.scrollProps}
+          >
             <View style={styles.chips}>
               {tags.map(tag => {
                 const active = selected.includes(tag);
@@ -142,6 +149,12 @@ export function RecipeTagFilterSheet({ visible, onClose, tags, counts, selected,
               })}
             </View>
           </ScrollView>
+          <ScrollEdgeFade
+            edge="bottom"
+            opacity={fade.bottomOpacity}
+            color={colors.bgSecondary}
+            style={styles.scrollFade}
+          />
         </Animated.View>
       </View>
     </Modal>
@@ -173,6 +186,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   resetText: { color: colors.accent, fontSize: font.sm },
   content: { paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.md },
+  // Sits on the sheet's bottom *padding* edge, not its border box: Yoga
+  // positions an absolute child from the border box when an inset is
+  // given, so `bottom: 0` would park the band in the 40pt of bare sheet
+  // below the list rather than over the last of its rows.
+  scrollFade: { bottom: 40 },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   chip: {
     flexDirection: 'row', alignItems: 'center', gap: 5,

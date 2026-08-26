@@ -12,11 +12,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { animation, font, fontWeight, interaction, radius, spacing } from '../theme';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -140,6 +142,14 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const dragOffsetX = useRef(new Animated.Value(0)).current;
   const [isRendered, setIsRendered] = useState(false);
   const pendingActionRef = useRef<(() => void) | null>(null);
+  // The menu is taller than any phone — sixteen rows before Settings — and it
+  // is bounded by the footer's hairline rather than by the screen, so the last
+  // row above that line looked like the last row there was. Both halves of the
+  // answer are here: the band that dissolves the content into the footer, and
+  // the scroll indicator, flashed as the drawer opens so the thumb's length
+  // says how much more there is before anyone has touched it.
+  const listRef = useRef<ScrollView>(null);
+  const fade = useScrollEdgeFade();
   // Settings navigates to a whole new screen, so the drawer's own close
   // animation is invisible to the user anyway — closing it with a quick
   // timing (instead of the spring used for a plain swipe/backdrop close)
@@ -172,6 +182,9 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
     if (visible) {
       fastCloseRef.current = false;
       setIsRendered(true);
+      // After the slide-in, not during it: the indicator is drawn against the
+      // drawer's own right edge, which is still crossing the screen.
+      const flash = setTimeout(() => listRef.current?.flashScrollIndicators(), 260);
       Animated.parallel([
         Animated.spring(translateX, {
           toValue: 0,
@@ -185,6 +198,9 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           useNativeDriver: true,
         }),
       ]).start();
+      // Cleared by this effect's own teardown, which is also what cancels a
+      // flash still pending when the drawer is closed straight back out.
+      return () => clearTimeout(flash);
     } else {
       const closeAnimations = fastCloseRef.current
         ? [
@@ -282,10 +298,12 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             <Text style={[styles.headerTitle, { color: colors.text }]}>Menu</Text>
           </View>
 
+          <View style={styles.itemsWrap}>
           <ScrollView
+            ref={listRef}
             style={styles.items}
             contentContainerStyle={styles.itemsContent}
-            showsVerticalScrollIndicator={false}
+            {...fade.scrollProps}
           >
             {menuItems.map((item, index) => {
               const isActive = activeTab === item.name || item.alsoActiveFor?.includes(activeTab) === true;
@@ -337,6 +355,16 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
               );
             })}
           </ScrollView>
+          {/* Fades into the drawer's own frosted surface rather than to an
+              opaque strip: `blurFallback` is `bgSecondary` at 85%, so the band
+              stops just short of solid and the blur still reads through it. */}
+          <ScrollEdgeFade
+            edge="bottom"
+            opacity={fade.bottomOpacity}
+            color={colors.bgSecondary}
+            maxOpacity={0.92}
+          />
+          </View>
 
           <View style={[styles.footer, { borderTopColor: colors.separator, paddingBottom: spacing.md + insets.bottom }]}>
             <DrawerItemAppear index={menuItems.length}>
@@ -416,6 +444,9 @@ const styles = StyleSheet.create({
     fontSize: font.xxl,
     fontWeight: fontWeight.bold,
     letterSpacing: -0.5,
+  },
+  itemsWrap: {
+    flex: 1,
   },
   items: {
     flex: 1,

@@ -463,6 +463,13 @@ interface FabMenuProps {
  * somewhere. Tapping is unaffected: the responder is never claimed on
  * touch-down, only once the finger has travelled far enough to rule a tap out,
  * so a press still opens the menu exactly as before.
+ *
+ * **A menu with one item is not a menu**, so a single item is performed on the
+ * tap rather than accordioned out to be chosen from — an extra tap to pick the
+ * only thing on offer. Callers whose list is conditional (simplified mode drops
+ * Chain, Stack and Template from Today's; an Anthropic key is what puts the two
+ * import entries in Recipes') therefore don't each need their own "or a plain
+ * `Fab` if it came out at one" branch.
  */
 export function FabMenu({
   items, onSelect, bottom, accessibilityLabel = 'Add', size = FAB_SIZE, disabled, opacity,
@@ -472,9 +479,16 @@ export function FabMenu({
   const hand = useFabHand();
   const [menuVisible, setMenuVisible] = useState(false);
   const anim = useRef(new Animated.Value(0)).current;
+  const only = items.length === 1 ? items[0] : null;
 
   const open = () => {
+    // One haptic for a lone item, not the open's plus the selection's: this is
+    // `Fab`'s single press, and this is the impact that button gives.
     haptics.impactLight();
+    if (only) {
+      onSelect(only.key);
+      return;
+    }
     setMenuVisible(true);
     anim.setValue(0);
     Animated.spring(anim, { toValue: 1, ...animation.spring.bouncy, useNativeDriver: true }).start();
@@ -508,20 +522,22 @@ export function FabMenu({
         dragLabel={dragLabel}
       />
 
-      <FabMenuOverlay
-        items={items}
-        visible={menuVisible}
-        anim={anim}
-        onSelect={handleSelect}
-        onDismiss={() => close()}
-        size={size}
-        anchor={{
-          bottom,
-          left: hand === 'left' ? spacing.lg : undefined,
-          right: hand === 'left' ? undefined : spacing.lg,
-          alignItems: hand === 'left' ? 'flex-start' : 'flex-end',
-        }}
-      />
+      {only ? null : (
+        <FabMenuOverlay
+          items={items}
+          visible={menuVisible}
+          anim={anim}
+          onSelect={handleSelect}
+          onDismiss={() => close()}
+          size={size}
+          anchor={{
+            bottom,
+            left: hand === 'left' ? spacing.lg : undefined,
+            right: hand === 'left' ? undefined : spacing.lg,
+            alignItems: hand === 'left' ? 'flex-start' : 'flex-end',
+          }}
+        />
+      )}
     </>
   );
 }

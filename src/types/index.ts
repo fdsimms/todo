@@ -488,6 +488,20 @@ export interface Person {
    * wrote, which is the whole point of it.
    */
   askAbout: string;
+  /**
+   * Which Backfill fields (see `src/utils/peopleBackfill.ts`) this person has
+   * been told to stop asking about — same mechanism and same reasoning as
+   * `Project.backfillDismissedFields`, holding `PersonBackfillFieldId` values
+   * as plain strings since a `Person` field can't depend on a type from
+   * `src/utils`.
+   *
+   * It records a decision about *your own list*, never one about them: "this
+   * person's birthday isn't something I want on file" rather than anything
+   * ranking or grading anybody. The two permanent fields above
+   * (`birthdayTaskOptOut`, `birthdayGiftTaskOptOut`) are about what the app
+   * writes; this one is only about what it asks.
+   */
+  backfillDismissedFields: string[];
 }
 
 /**

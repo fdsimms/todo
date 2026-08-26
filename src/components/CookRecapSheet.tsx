@@ -3,6 +3,7 @@ import { Modal, View, Text, TouchableOpacity, ScrollView, Animated, StyleSheet, 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import {
   spacing,
@@ -26,6 +27,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { EditorRow } from './EditorRow';
 import { InlineAction } from './InlineAction';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { haptics } from '../utils/haptics';
 
@@ -144,6 +146,7 @@ export function CookRecapSheet({
   const insets = useSafeAreaInsets();
   const sheetMaxHeight = windowHeight - insets.top - insets.bottom - spacing.xl * 2;
   const styles = useMemo(() => makeStyles(colors, sheetMaxHeight), [colors, sheetMaxHeight]);
+  const fade = useScrollEdgeFade();
 
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
   const translateYAnim = useRef(new Animated.Value(16)).current;
@@ -275,7 +278,12 @@ export function CookRecapSheet({
             />
           </View>
 
-          <ScrollView style={styles.scrollBody} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView
+            style={styles.scrollBody}
+            contentContainerStyle={styles.body}
+            showsVerticalScrollIndicator={false}
+            {...fade.scrollProps}
+          >
             <Text style={styles.subject} numberOfLines={2}>{title}</Text>
 
             {vote && (
@@ -377,6 +385,12 @@ export function CookRecapSheet({
               </>
             )}
           </ScrollView>
+          <ScrollEdgeFade
+            edge="bottom"
+            opacity={fade.bottomOpacity}
+            color={colors.bgSecondary}
+            style={styles.scrollFade}
+          />
         </Animated.View>
       </View>
 
@@ -404,6 +418,14 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     maxHeight: sheetMaxHeight,
   },
   scrollBody: { flexShrink: 1 },
+  // The card rounds its corners but can't clip them — `overflow: 'hidden'`
+  // there would take the sheet shadow with it — so the band carries the
+  // bottom radius itself rather than squaring off over them.
+  scrollFade: {
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    overflow: 'hidden',
+  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -104,7 +104,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/mealGuests.ts` — guestsOn, describeGuests, hasGuests, GuestMeal, upcomingMealsWithGuest
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +6 more
 - `src/utils/mealPlan.ts` — slotRank, slotLabel, sortMealEntries, entriesForDay, entriesForSlot, nextSortOrder, upcomingDays, daysWithoutMeal, shiftDayKey, MealCopyDraft, +14 more
-- `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, classifyPlanned, +2 more
+- `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, classifyPlanned, +4 more
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more
 - `src/utils/mealShortfallTasks.ts` — MAX_MEAL_SHORTFALL_TASKS, mealShortfallTitle, mealShortfallEntryId, mealShortfallLinkUrl, isWithinShopWindow, mealShortfallRows, MealShortfallWant, wantedMealShortfalls, staleMealShortfallTasks
 - `src/utils/mealSlotTasks.ts` — MEAL_SLOT_SEGMENTS, mealSlotStepTimeSegments, MEAL_SLOT_TASK_DAYS, DEFAULT_MEAL_SLOTS_ENABLED, mealSlotSourceId, parseMealSlotSource, mealSlotOf, RECIPE_LINK_URL, recipeLinkUrl, mealSlotLinkUrl, +7 more
@@ -122,6 +122,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/parseNaturalDate.ts` — WEEKDAYS, MONTHS, ClockTime, strip, extractTime, extractDayPart, DatePart, monthDay, parseDatePart, parseNaturalDate
 - `src/utils/parseTaskInput.ts` — ParsedSchedule, ParsedTaskInput, segmentForHour, dueAt, parseFromCompletionSuffix, parseTaskInput, ParsedLink, parseLinkInput, ParsedPhone, parsePhoneInput, +17 more
 - `src/utils/patchNotes.ts` — PatchNote
+- `src/utils/peopleBackfill.ts` — PersonBackfillFieldId, PersonBackfillFieldDef, PERSON_BACKFILL_FIELDS, isPersonFieldMissing, isPersonBackfillDismissed, personBackfillCandidates, personBackfillFieldCounts, dismissPersonBackfillField, personCadencePatch
 - `src/utils/peopleRegistry.ts` — registerPersonSource, registerPersonTaskSource, resolvePerson, peopleOn, tasksNaming
 - `src/utils/peopleStats.ts` — timeTogetherInRange, mealsTogetherInRange, describeTimeTogether, describeMealsTogether, taskYearRange, mealYearRange
 - `src/utils/personHistory.ts` — HistoryEntry, personHistory, UpcomingEntry, personUpcoming, lastTogether, describeLastTogether, daysSinceTogether, describeDaysSince
@@ -168,6 +169,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, sourceLabelFor, variantFor, scannedItemFor, pluScannedItem, unknownScannedItem, alreadyScanned, ScanResolver, +1 more
 - `src/utils/scrollClamp.ts` — maxRestingOffset, strandedScrollOffset, NO_INSET, NO_INSET_ALT, pulseNoInset
+- `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, hiddenBelow, hiddenAbove, edgeFadeOpacity
 - `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadSecureKey, saveSecureKey
@@ -179,7 +181,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/shareText.ts` — buildRecipeShareText, buildIngredientsText, buildGroceryListShareText, buildGroceryListText, buildWeekPlanShareText
 - `src/utils/sharedRecipeLinks.ts` — SHARED_LINK_QUEUE_CAP, mergeSharedLinks, parseSharedLinkQueue, serializeSharedLinkQueue, sharedLinkLabel
 - `src/utils/shoppingTrip.ts` — MAX_TRIP_STOPS, ShopCoverage, TripPlan, TripSummary, planTrip, summarizeTrip, describeShopCoverage, joinNames
-- `src/utils/simpleMode.ts` — SimpleArea, SimpleFeatureId, SimpleFeature, SIMPLE_AREA_LABELS, SIMPLE_AREAS, SIMPLE_FEATURES, simpleFeaturesIn, featureHidden, featureShown, SIMPLE_HIDDEN_SCREENS, +8 more
+- `src/utils/simpleMode.ts` — SimpleArea, SimpleFeatureId, SimpleFeature, SIMPLE_AREA_LABELS, SIMPLE_AREAS, SIMPLE_FEATURES, simpleFeaturesIn, featureHidden, featureShown, SIMPLE_HIDDEN_SCREENS, +10 more
 - `src/utils/simpleTaskForm.ts` — SIMPLE_QUICK_ADD_CHIPS, isSimpleChip
 - `src/utils/snoozeEngine.ts` — SnoozeSuggestion, computeSnoozeSuggestion
 - `src/utils/standingSwaps.ts` — StandingSwap, StandingSwapMap, NO_STANDING_SWAPS, standingSwaps, standingSwapMap, SwappedIngredient, applyStandingSwap, describeStandingSwap
@@ -263,6 +265,7 @@ render, so listing them adds lines without adding answers.
 - `src/hooks/useRecipeImportSource.ts` — ResolvedRecipeSource, alertPhotoAccessDenied, useRecipeImportSource
 - `src/hooks/useRecipeTimer.ts` — RecipeTimerBinding, useRecipeTimer
 - `src/hooks/useRowSelection.ts` — useRowSelection
+- `src/hooks/useScrollEdgeFade.ts` — ScrollEdgeFadeScrollProps, ScrollEdgeFadeBinding, useScrollEdgeFade
 - `src/hooks/useSharedRecipeLinks.ts` — useSharedRecipeLinks
 - `src/hooks/useSheetHiddenOffset.ts` — useSheetHiddenOffset
 - `src/hooks/useStepTimers.ts` — StepTimersBinding, useStepTimers

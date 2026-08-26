@@ -1460,17 +1460,16 @@ interface TaskStore {
   checkCalendarReviewTasks: () => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
-   * no history row, nothing in the Logbook.
+   * no history row, nothing in the Logbook, streak left exactly as it was.
    *
-   * **Not user-facing any more.** It used to back a Skip button on the task row
-   * and a "Skip This Occurrence" branch in the delete prompts; those are now
-   * markMissed, because a silent roll-forward and an explicit "I didn't do
-   * this" look identical afterwards, and only one of them can be counted.
-   * Its single remaining caller is sweepExpiredTasks, which needs exactly the
-   * silence: that's an unattended background write, and stamping a miss the
-   * user never made would put fabricated entries in their Logbook.
-   *
-   * Don't wire a button to this — reach for markMissed.
+   * Backs TaskItem's Skip button (distinct from the neighboring Mark Missed
+   * button, which is `markMissed` and does leave a record) for "I didn't need
+   * to do this one" as opposed to "I forgot" — the two are different claims
+   * about the user and only one of them should show up in their history.
+   * Also the one thing `sweepExpiredTasks` needs for its own unattended
+   * roll-forward: that's a background write with no user present, and
+   * stamping a miss they never made would put a fabricated entry in their
+   * Logbook.
    */
   skipNextRecurrence: (id: string) => void;
   togglePin: (id: string) => void;

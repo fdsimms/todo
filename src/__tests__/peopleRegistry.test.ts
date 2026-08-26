@@ -13,6 +13,7 @@ const person = (id: string, name: string): Person => ({
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
   cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, askAbout: '',
+  backfillDismissedFields: [],
 });
 
 const task = (id: string, personIds: string[]) => ({ id, personIds }) as unknown as Task;

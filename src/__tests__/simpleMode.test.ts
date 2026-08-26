@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import {
+  SIMPLE_ADD_MENU_FEATURES,
   SIMPLE_AREAS,
   SIMPLE_AREA_LABELS,
   SIMPLE_CONTENT_SCREENS,
@@ -8,6 +9,7 @@ import {
   SIMPLE_FEATURES,
   SIMPLE_GROCERY_ROW_FEATURES,
   SIMPLE_HIDDEN_SCREENS,
+  addMenuItemShown,
   editorRowShown,
   featureHidden,
   featureShown,
@@ -130,6 +132,43 @@ describe('groceryRowShown', () => {
 
   it('maps every row to a feature the catalog knows', () => {
     for (const feature of Object.values(SIMPLE_GROCERY_ROW_FEATURES)) {
+      expect(ids).toContain(feature);
+    }
+  });
+});
+
+describe('addMenuItemShown', () => {
+  it('leaves the whole menu alone while the mode is off', () => {
+    for (const key of ['chain', 'stack', 'template', 'task', 'new', 'existing']) {
+      expect(addMenuItemShown(key, false)).toBe(true);
+    }
+  });
+
+  it('never touches the items that add an ordinary task', () => {
+    for (const key of ['task', 'new', 'existing']) {
+      expect(addMenuItemShown(key, true)).toBe(true);
+    }
+  });
+
+  // Today's add button is left offering Task alone, which FabMenu performs on
+  // the tap rather than opening a menu around.
+  it('drops the three that start something simplified mode hides', () => {
+    expect(addMenuItemShown('chain', true)).toBe(false);
+    expect(addMenuItemShown('stack', true)).toBe(false);
+    expect(addMenuItemShown('template', true)).toBe(false);
+  });
+
+  // Only *starting* a new one goes: an install with stacks keeps the screen
+  // that edits them, and still loses the button that makes another.
+  it('drops the button that makes another even where the screen survives', () => {
+    expect(screenShown('Stacks', true, { stacks: 4, templates: 2 })).toBe(true);
+    expect(screenShown('Templates', true, { stacks: 4, templates: 2 })).toBe(true);
+    expect(addMenuItemShown('stack', true)).toBe(false);
+    expect(addMenuItemShown('template', true)).toBe(false);
+  });
+
+  it('maps every item to a feature the catalog knows', () => {
+    for (const feature of Object.values(SIMPLE_ADD_MENU_FEATURES)) {
       expect(ids).toContain(feature);
     }
   });

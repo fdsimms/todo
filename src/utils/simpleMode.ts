@@ -317,6 +317,35 @@ export function groceryRowShown(key: string, simpleMode: boolean, set: boolean):
 }
 
 /**
+ * `FabMenuItem.key` → the capability that item *creates*, for the add buttons on
+ * Today and a project.
+ *
+ * A third map rather than a shared one, same reason as the grocery one above:
+ * these are their own key space, and `template` here means "start from a
+ * template" where the editor has no such row at all.
+ *
+ * There is no `set` argument and there can't be one, which is the whole
+ * difference between this map and the two above. A row in an editor is looking
+ * at a task that either uses the feature or doesn't; a menu item is a blank
+ * offer to start a new one. So this is the "only *starting* a new one goes"
+ * rule the running focus session and the running shopping trip already follow:
+ * an install with stacks keeps the Stacks screen that edits them
+ * (`screenShown`), and loses the button that makes another.
+ */
+export const SIMPLE_ADD_MENU_FEATURES: Readonly<Record<string, SimpleFeatureId>> = {
+  chain: 'chains',
+  stack: 'stacks',
+  template: 'templates',
+};
+
+/** Does an add-button menu item render? */
+export function addMenuItemShown(key: string, simpleMode: boolean): boolean {
+  const feature = SIMPLE_ADD_MENU_FEATURES[key];
+  if (!feature) return true;
+  return featureShown(feature, simpleMode);
+}
+
+/**
  * The kinds the editor's picker offers.
  *
  * `current` is always included even when the mode would drop it, so opening a

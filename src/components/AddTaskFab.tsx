@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Animated } from 'react-native';
 import { FabMenu, type FabDragHandlers, type FabMenuItem } from './Fab';
+import { addMenuItemShown } from '../utils/simpleMode';
+import { useSettingsStore } from '../store/useSettingsStore';
 
 export type AddTaskType = 'chain' | 'stack' | 'template' | 'task';
 
@@ -28,11 +30,25 @@ interface Props {
   dragLabel?: string | null;
 }
 
-/** Today's add button: the shared FabMenu, typed to the four ways it adds tasks. */
+/**
+ * Today's add button: the shared FabMenu, typed to the four ways it adds tasks.
+ *
+ * Three of those four are capabilities simplified mode takes away, so what's
+ * left there is Task alone — and `FabMenu` performs a lone item on the tap
+ * rather than opening a menu to offer it, which is how the button becomes a
+ * plain "open quick add" in that mode. Read from the store here rather than
+ * taken as a prop, the same way the button reads which corner it sits in.
+ */
 export function AddTaskFab({ bottom, onSelect, disabled, opacity, drag, dragLabel }: Props) {
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  const items = useMemo(
+    () => ITEMS.filter(item => addMenuItemShown(item.key, simpleMode)),
+    [simpleMode],
+  );
+
   return (
     <FabMenu
-      items={ITEMS}
+      items={items}
       onSelect={key => onSelect(key as AddTaskType)}
       accessibilityLabel="Add task"
       bottom={bottom}

@@ -11,6 +11,8 @@ import {
   classifyPlanned,
   restockRows,
   consumedRows,
+  groupBySourceRecipe,
+  type ClassifiedIngredient,
 } from '../utils/mealPlanGroceries';
 
 // mealPlanGroceries reaches mealPlan.ts for isKeyInRange, which reaches
@@ -100,6 +102,22 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     cookTask: null,
     shopTask: null,
     calendarEventId: null,
+    ...overrides,
+  };
+}
+
+function classifiedRow(overrides: Partial<ClassifiedIngredient> & { nameKey: string; name: string }): ClassifiedIngredient {
+  return {
+    aisle: null,
+    quantity: '',
+    sources: [],
+    category: 'needToBuy',
+    known: false,
+    reason: null,
+    choiceGroup: null,
+    swappedFrom: null,
+    sourceRecipeId: null,
+    sourceRecipeTitle: null,
     ...overrides,
   };
 }
@@ -832,6 +850,40 @@ describe('classifyPlanned', () => {
       { name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Sat Soup' },
     ];
     expect(classifyPlanned(planned, [], now)[0].quantity).toBe('×3');
+  });
+});
+
+describe('groupBySourceRecipe', () => {
+  it('clusters rows under their shared recipe, in first-seen order', () => {
+    const rows = [
+      classifiedRow({ nameKey: 'onions', name: 'Onions', sourceRecipeId: 'r1', sourceRecipeTitle: 'Ragù' }),
+      classifiedRow({ nameKey: 'rice', name: 'Rice', sourceRecipeId: 'r2', sourceRecipeTitle: 'Paella' }),
+      classifiedRow({ nameKey: 'garlic', name: 'Garlic', sourceRecipeId: 'r1', sourceRecipeTitle: 'Ragù' }),
+    ];
+    const groups = groupBySourceRecipe(rows);
+    expect(groups).toEqual([
+      { recipeId: 'r1', recipeTitle: 'Ragù', rows: [rows[0], rows[2]] },
+      { recipeId: 'r2', recipeTitle: 'Paella', rows: [rows[1]] },
+    ]);
+  });
+
+  it('collects rows with no single recipe into one trailing, untitled group', () => {
+    const rows = [
+      classifiedRow({ nameKey: 'onions', name: 'Onions', sourceRecipeId: 'r1', sourceRecipeTitle: 'Ragù' }),
+      classifiedRow({ nameKey: 'salt', name: 'Salt', sourceRecipeId: null, sourceRecipeTitle: null }),
+      classifiedRow({ nameKey: 'pepper', name: 'Pepper', sourceRecipeId: null, sourceRecipeTitle: null }),
+    ];
+    const groups = groupBySourceRecipe(rows);
+    expect(groups).toEqual([
+      { recipeId: 'r1', recipeTitle: 'Ragù', rows: [rows[0]] },
+      { recipeId: null, recipeTitle: null, rows: [rows[1], rows[2]] },
+    ]);
+  });
+
+  it('is empty for an empty input, and a single untitled group when nothing is credited', () => {
+    expect(groupBySourceRecipe([])).toEqual([]);
+    const rows = [classifiedRow({ nameKey: 'salt', name: 'Salt' })];
+    expect(groupBySourceRecipe(rows)).toEqual([{ recipeId: null, recipeTitle: null, rows }]);
   });
 });
 

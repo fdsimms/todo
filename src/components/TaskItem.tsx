@@ -286,6 +286,7 @@ export const TaskItem = React.memo(function TaskItem({
     setLastAction,
     markTaskSeen,
     markMissed,
+    skipNextRecurrence,
     togglePin,
     startTimer,
     stopTimer,
@@ -2583,15 +2584,37 @@ export const TaskItem = React.memo(function TaskItem({
                       <Ionicons name="close-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                   )}
+                  {/* Distinct from the missed button above: this occurrence
+                      wasn't skipped because it got missed, it just didn't need
+                      doing this time — so it moves on with no Logbook row, no
+                      streak break, nothing recorded, same as markMissed already
+                      does silently for a not-yet-due row. Hidden in that state
+                      because the missed button above is already this action
+                      there (see its own accessibilityLabel). */}
+                  {task.recurrenceType !== 'none' && !recurrenceNotYetDue && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.tap();
+                        skipNextRecurrence(task.id);
+                        if (expanded) onPress(rowId);
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Skip this occurrence of ${task.title}, without counting it as missed`}
+                    >
+                      <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
+                  )}
                   {chainStep && (
                     <>
                       {/* Chain-position-only moves — no schedule/date math and no
-                          completion/streak bookkeeping, unlike markMissed above.
-                          Deliberately not routed through skipNextRecurrence: that
-                          action is documented as no longer user-facing (see its
-                          doc comment in useTaskStore.ts), so this reaches
-                          updateTask directly, the same way TaskEditor's own
-                          tap-a-dot control does. */}
+                          completion/streak bookkeeping, unlike markMissed or the
+                          Skip button above. Deliberately not routed through
+                          skipNextRecurrence: that action always moves forward one
+                          occurrence, where these two need to move a single step
+                          either direction regardless of the recurrence schedule —
+                          so this reaches updateTask directly, the same way
+                          TaskEditor's own tap-a-dot control does. */}
                       {chainStepIndex > 0 && (
                         <PressableScale
                           style={styles.iconActionBtn}
