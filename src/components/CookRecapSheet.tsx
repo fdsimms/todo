@@ -289,12 +289,14 @@ export function CookRecapSheet({
             {vote && (
               <>
                 <Text style={styles.groupLabel}>How was it?</Text>
-                <SegmentedControl
-                  options={VOTE_OPTIONS}
-                  value={vote.value}
-                  onChange={next => next && vote.onChange(next)}
-                  label="How was it?"
-                />
+                <View style={styles.ratingSection}>
+                  <SegmentedControl
+                    options={VOTE_OPTIONS}
+                    value={vote.value}
+                    onChange={next => next && vote.onChange(next)}
+                    label="How was it?"
+                  />
+                </View>
               </>
             )}
 
@@ -455,6 +457,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingHorizontal: spacing.md,
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
+  },
+  ratingSection: {
+    marginHorizontal: spacing.md,
   },
   hint: {
     fontSize: font.sm,
