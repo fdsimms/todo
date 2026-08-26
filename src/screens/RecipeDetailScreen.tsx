@@ -888,9 +888,14 @@ export function RecipeDetailScreen() {
   // a caption, with a hover-lit state and its own remove). Neither wires up
   // `drag`: a heading doesn't move by being picked up, only ingredients do.
   // ==== row renderers ====
-  const renderHeadingRow = (row: Extract<MergedIngredientRow, { kind: 'heading' }>) => {
+  const renderHeadingRow = (row: Extract<MergedIngredientRow, { kind: 'heading' }>, isFirst: boolean) => {
     if (!row.empty) {
-      return <Text style={styles.ingredientSectionHeader}>{row.name}</Text>;
+      return (
+        <View style={styles.ingredientSectionHeaderWrap}>
+          {!isFirst && <View style={styles.ingredientSectionDivider} />}
+          <Text style={styles.ingredientSectionHeader}>{row.name}</Text>
+        </View>
+      );
     }
     const isTarget = hoveredRowId === row.id;
     return (
@@ -928,7 +933,7 @@ export function RecipeDetailScreen() {
 
   const renderMergedRow: SortableRenderItem<MergedIngredientRow> = (row, displayIndex, drag, isDragging) =>
     row.kind === 'heading'
-      ? renderHeadingRow(row)
+      ? renderHeadingRow(row, displayIndex === 0)
       : renderIngredient(row.ingredient, displayIndex, drag, isDragging);
 
   // A drag commit hands back the whole merged order; sectionsFromMergedOrder
@@ -1964,7 +1969,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // A component heading ("For the cake") inside the ingredients card — same
   // uppercase treatment as sectionLabel, just scoped to sit above a run of
-  // rows rather than the whole list.
+  // rows rather than the whole list. The wrapper carries the top breathing
+  // room so it applies whether or not the divider below it renders.
+  ingredientSectionHeaderWrap: {
+    paddingTop: spacing.sm,
+  },
+  // Marks the break between two sections' rows — skipped for a heading that
+  // opens the card, where there's no prior section to divide from and a
+  // hairline right under the card's top edge would just look stray.
+  ingredientSectionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.separator,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+  },
   ingredientSectionHeader: {
     color: colors.textSecondary,
     fontSize: font.xs,
@@ -1972,8 +1990,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     letterSpacing: 0.8,
     textTransform: 'uppercase',
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
+    paddingBottom: spacing.sm,
   },
   // A declared-but-empty heading (Recipe.emptySections). Dashed and inset,
   // unlike an ordinary row, so it reads as a slot rather than a line of the
