@@ -233,6 +233,7 @@ export function BackfillScreen() {
 
   const chooseTaskField = (id: BackfillFieldId) => {
     haptics.tap();
+    animateLayout();
     setActive({ kind: 'task', id });
     setFromScratch(false);
     setSkippedIds(new Set());
@@ -243,6 +244,7 @@ export function BackfillScreen() {
 
   const chooseCategoryField = (id: CategoryBackfillFieldId) => {
     haptics.tap();
+    animateLayout();
     setActive({ kind: 'category', id });
     setSkippedIds(new Set());
     setHistory([]);
@@ -252,6 +254,7 @@ export function BackfillScreen() {
 
   const chooseProjectField = (id: ProjectBackfillFieldId) => {
     haptics.tap();
+    animateLayout();
     setActive({ kind: 'project', id });
     setSkippedIds(new Set());
     setHistory([]);
@@ -261,6 +264,7 @@ export function BackfillScreen() {
 
   const backToFields = () => {
     haptics.tap();
+    animateLayout();
     setActive(null);
     setFromScratch(false);
     setHistory([]);
@@ -458,7 +462,7 @@ export function BackfillScreen() {
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <ScreenHeader title="Backfill" subtitle="Choose a field to fill in, one item at a time" />
         <View style={styles.entitySwitch}>
-          <SegmentedControl label="Backfill scope" surface="page" value={entityKind} onChange={setEntityKind} options={ENTITY_KIND_SEGMENTS} />
+          <SegmentedControl label="Backfill scope" surface="page" value={entityKind} onChange={next => { animateLayout(); setEntityKind(next); }} options={ENTITY_KIND_SEGMENTS} />
         </View>
         {entityKind === 'task' && (
           <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
