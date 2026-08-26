@@ -1098,7 +1098,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds every catalog-match state a recipe line can be in', () => {
-    // The row badge and the "N of M in your groceries" count are invisible
+    // The row badge and the "N of M in your grocery catalog" count are invisible
     // until a line is in each state, so without one of each the whole matching
     // feature reads as one the app doesn't have. All three fall out of the
     // seed as written rather than being staged for this: the stir-fry asks for

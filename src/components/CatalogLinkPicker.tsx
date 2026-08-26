@@ -53,11 +53,11 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick }
           style={styles.search}
           value={query}
           onChangeText={setQuery}
-          placeholder="Find an item in your groceries…"
+          placeholder="Find an item in your grocery catalog…"
           placeholderTextColor={colors.textTertiary}
           autoCorrect={false}
           autoCapitalize="none"
-          accessibilityLabel="Find an item in your groceries"
+          accessibilityLabel="Find an item in your grocery catalog"
         />
       </View>
       {results.length > 0 ? (
@@ -76,7 +76,9 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick }
         ))
       ) : (
         <Text style={styles.empty}>
-          {query.trim() ? 'Nothing in your groceries matches.' : 'Type to search your groceries.'}
+          {query.trim()
+            ? 'Nothing in your grocery catalog matches.'
+            : 'Type to search your grocery catalog.'}
         </Text>
       )}
     </View>

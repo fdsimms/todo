@@ -792,7 +792,7 @@ export function RecipeDetailScreen() {
                 haptic
                 onPress={() => setEditingIngredient(ingredient)}
                 accessibilityLabel={
-                  `Did you mean ${catalogSuggestion.suggestedName}? It's in your groceries.`
+                  `Did you mean ${catalogSuggestion.suggestedName}? It's in your grocery catalog.`
                 }
                 accessibilityHint="Double tap to review the match"
               >
@@ -1306,13 +1306,13 @@ export function RecipeDetailScreen() {
             onPress={() => { haptics.tap(); setMatchScopeIds(null); setMatchSheetOpen(true); }}
             accessibilityRole="button"
             accessibilityLabel={
-              `${catalogSummary.linked} of ${catalogSummary.total} ingredients are in your groceries`
+              `${catalogSummary.linked} of ${catalogSummary.total} ingredients are in your grocery catalog`
             }
             accessibilityHint="Double tap to review the ones that aren't"
           >
             <Ionicons name="basket-outline" size={iconSize.sm} color={colors.textSecondary} />
             <Text style={styles.matchSummaryText}>
-              {catalogSummary.linked} of {catalogSummary.total} in your groceries
+              {catalogSummary.linked} of {catalogSummary.total} in your grocery catalog
             </Text>
             <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
           </TouchableOpacity>
@@ -1361,7 +1361,7 @@ export function RecipeDetailScreen() {
               </Text>
               <Text style={styles.pasteBannerDetail}>
                 {pasteResult.unresolved}{' '}
-                {pasteResult.unresolved === 1 ? "isn't" : "aren't"} in your groceries.
+                {pasteResult.unresolved === 1 ? "isn't" : "aren't"} in your grocery catalog.
               </Text>
             </View>
             <TouchableOpacity
@@ -1372,7 +1372,7 @@ export function RecipeDetailScreen() {
               }}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Review the ingredients that aren't in your groceries"
+              accessibilityLabel="Review the ingredients that aren't in your grocery catalog"
             >
               <Text style={styles.pasteBannerAction}>Review</Text>
             </TouchableOpacity>
