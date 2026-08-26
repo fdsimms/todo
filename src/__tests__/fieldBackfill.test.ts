@@ -90,7 +90,7 @@ const baseTask: Task = {
   extraTaskDraft: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
-  vacationPause: false,
+  vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
   timerElapsedSeconds: 0,
@@ -199,6 +199,23 @@ describe('isFieldMissing', () => {
     expect(isFieldMissing(task, 'vacation')).toBe(true);
   });
 
+  it('treats skip-in-suggestions as missing for any live task with the toggle off', () => {
+    expect(isFieldMissing(baseTask, 'suggestions')).toBe(true);
+    expect(isFieldMissing({ ...baseTask, excludeFromSuggestions: true }, 'suggestions')).toBe(false);
+  });
+
+  it('does not treat skip-in-suggestions as missing when the task\'s own category already skips suggestions', () => {
+    const task = { ...baseTask, category: 'Home' };
+    const excludingCategory = { ...baseCategory, name: 'Home', excludeFromSuggestions: true };
+    expect(isFieldMissing(task, 'suggestions', [excludingCategory])).toBe(false);
+    // A category that hasn't turned it on doesn't suppress the question.
+    expect(isFieldMissing(task, 'suggestions', [{ ...baseCategory, name: 'Home', excludeFromSuggestions: false }])).toBe(true);
+    // A different category skipping suggestions is irrelevant to this task.
+    expect(isFieldMissing(task, 'suggestions', [{ ...baseCategory, name: 'Work', excludeFromSuggestions: true }])).toBe(true);
+    // No categories passed at all: falls back to the task-only check.
+    expect(isFieldMissing(task, 'suggestions')).toBe(true);
+  });
+
   it('treats reminder as missing only for a task with a due date and no reminder set', () => {
     expect(isFieldMissing(baseTask, 'reminder')).toBe(false); // no due date to schedule against
     const withDue = { ...baseTask, dueDate: new Date(2025, 0, 5).toISOString() };
@@ -280,6 +297,17 @@ describe('backfillCandidates', () => {
       .toEqual(['no-category', 'other-category']);
   });
 
+  it('excludes a task whose category already skips suggestions', () => {
+    const tasks: Task[] = [
+      { ...baseTask, id: 'no-category' },
+      { ...baseTask, id: 'excluded-category', category: 'Home' },
+      { ...baseTask, id: 'other-category', category: 'Work' },
+    ];
+    const categories: Category[] = [{ ...baseCategory, name: 'Home', excludeFromSuggestions: true }];
+    expect(backfillCandidates(tasks, 'suggestions', { categories }).map(t => t.id))
+      .toEqual(['no-category', 'other-category']);
+  });
+
   it('only includes tasks with a due date for reminder', () => {
     const tasks: Task[] = [
       { ...baseTask, id: 'no-due' },
@@ -353,7 +381,7 @@ describe('backfillFieldCounts', () => {
       { ...baseTask, id: 'f', estimatedMinutes: 30, priority: 2, category: 'Home', recurrenceType: 'daily' },
       { ...baseTask, id: 'g', estimatedMinutes: 30, priority: 2, category: 'Home', dueDate: new Date(2025, 0, 5).toISOString() },
     ];
-    expect(backfillFieldCounts(tasks)).toEqual({ estimate: 2, priority: 2, category: 2, streak: 1, vacation: 1, reminder: 1 });
+    expect(backfillFieldCounts(tasks)).toEqual({ estimate: 2, priority: 2, category: 2, streak: 1, vacation: 1, reminder: 1, suggestions: 6 });
   });
 
   it('covers every declared backfillable field', () => {
@@ -367,7 +395,7 @@ describe('backfillFieldCounts', () => {
 
   it('does not count a task dismissed for that field', () => {
     const task = { ...baseTask, backfillDismissedFields: ['estimate'] };
-    expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, category: 1, streak: 0, vacation: 0, reminder: 0 });
+    expect(backfillFieldCounts([task])).toEqual({ estimate: 0, priority: 1, category: 1, streak: 0, vacation: 0, reminder: 0, suggestions: 1 });
   });
 
   it('does not count a recurring task whose category already hides on vacation', () => {
@@ -375,6 +403,13 @@ describe('backfillFieldCounts', () => {
     const categories: Category[] = [{ ...baseCategory, name: 'Home', hideOnVacation: true }];
     expect(backfillFieldCounts([task], categories).vacation).toBe(0);
     expect(backfillFieldCounts([task]).vacation).toBe(1);
+  });
+
+  it('does not count a task whose category already skips suggestions', () => {
+    const task = { ...baseTask, category: 'Home' };
+    const categories: Category[] = [{ ...baseCategory, name: 'Home', excludeFromSuggestions: true }];
+    expect(backfillFieldCounts([task], categories).suggestions).toBe(0);
+    expect(backfillFieldCounts([task]).suggestions).toBe(1);
   });
 });
 

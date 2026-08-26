@@ -224,7 +224,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskDraft: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
-  vacationPause: false,
+  vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
   timerElapsedSeconds: 0,
@@ -876,6 +876,21 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(dbGetAllTasks()[0].streakRequiresWindow).toBe(true);
   });
 
+  it('round-trips excludeFromSuggestions', () => {
+    dbInsertTask(makeTask({ id: 'quiet', excludeFromSuggestions: true }));
+    dbInsertTask(makeTask({ id: 'plain-suggest' }));
+    const tasks = dbGetAllTasks();
+    expect(tasks.find(t => t.id === 'quiet')!.excludeFromSuggestions).toBe(true);
+    expect(tasks.find(t => t.id === 'plain-suggest')!.excludeFromSuggestions).toBe(false);
+  });
+
+  it('persists excludeFromSuggestions through an update', () => {
+    dbInsertTask(makeTask({ id: 'quiet-upd' }));
+    const [before] = dbGetAllTasks();
+    dbUpdateTask({ ...before, excludeFromSuggestions: true });
+    expect(dbGetAllTasks()[0].excludeFromSuggestions).toBe(true);
+  });
+
   it('round-trips seenAt', () => {
     dbInsertTask(makeTask({ id: 'seen', seenAt: '2025-06-10T08:00:00.000Z' }));
     const [t] = dbGetAllTasks();
@@ -1325,7 +1340,7 @@ describe('Templates', () => {
     recurrenceMonthDay: null,
     recurrenceFromCompletion: false,
     recurrenceCount: null,
-    vacationPause: false,
+    vacationPause: false, excludeFromSuggestions: false,
     estimatedMinutes: null,
     deliverableKind: null,
     chainEnabled: false,

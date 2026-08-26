@@ -52,6 +52,7 @@ const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   streak: 'flame-outline',
   vacation: 'airplane-outline',
   reminder: 'notifications-outline',
+  suggestions: 'color-wand-outline',
 };
 
 // Filled counterparts of the row icons above, for the per-card CTA button —
@@ -627,6 +628,7 @@ export function BackfillScreen() {
               onStreak={() => apply({ showStreak: true })}
               onVacation={() => apply({ vacationPause: true })}
               onReminder={() => { haptics.tap(); setReminderPickerOpen(true); }}
+              onSuggestions={() => apply({ excludeFromSuggestions: true })}
               customOpen={customOpen}
               customText={customText}
               customUnit={customUnit}
@@ -968,6 +970,7 @@ interface FieldControlProps {
   onStreak: () => void;
   onVacation: () => void;
   onReminder: () => void;
+  onSuggestions: () => void;
   customOpen: boolean;
   customText: string;
   customUnit: 'min' | 'hr';
@@ -978,7 +981,7 @@ interface FieldControlProps {
 }
 
 function FieldControl({
-  field, colors, styles, onEstimate, onPriority, onCategory, onStreak, onVacation, onReminder,
+  field, colors, styles, onEstimate, onPriority, onCategory, onStreak, onVacation, onReminder, onSuggestions,
   customOpen, customText, customUnit, onOpenCustom, onCustomTextChange, onCustomUnitChange, onCustomSubmit,
 }: FieldControlProps) {
   if (field === 'estimate') {
@@ -1093,15 +1096,29 @@ function FieldControl({
     );
   }
 
+  if (field === 'reminder') {
+    return (
+      <PressableScale
+        style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+        onPress={onReminder}
+        accessibilityRole="button"
+        accessibilityLabel="Set a reminder"
+      >
+        <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
+        <Text style={styles.toggleButtonText}>Set a reminder</Text>
+      </PressableScale>
+    );
+  }
+
   return (
     <PressableScale
       style={[styles.toggleButton, { backgroundColor: colors.accent }]}
-      onPress={onReminder}
+      onPress={onSuggestions}
       accessibilityRole="button"
-      accessibilityLabel="Set a reminder"
+      accessibilityLabel="Skip in suggestions"
     >
-      <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
-      <Text style={styles.toggleButtonText}>Set a reminder</Text>
+      <Ionicons name="color-wand" size={iconSize.md} color={colors.onAccent} />
+      <Text style={styles.toggleButtonText}>Skip in suggestions</Text>
     </PressableScale>
   );
 }

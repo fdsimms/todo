@@ -444,6 +444,19 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // Nothing seeded carrying excludeFromSuggestions reads as a feature the app
+  // doesn't have — one open-ended, low-priority task opts out of suggested
+  // pins and focus sessions.
+  it('seeds a task that opts out of suggestions', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const reading = tasks.find(t => t.title === 'Read a chapter of the Le Guin');
+    expect(reading?.excludeFromSuggestions).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // The month grid's one distinctive mark is a dot for an occurrence that has
   // no row yet, and only a fixed-schedule recurrence with a due date produces
   // one (see canProject). Nothing else in the seed asserts that combination

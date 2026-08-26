@@ -193,10 +193,12 @@ export function seedDemoData(): void {
 
   addTask({
     title: 'Read a chapter of the Le Guin',
+    notes: 'Open-ended, so it stays out of suggested pins and focus sessions.',
     category: 'Health',
     timeSegments: ['evening'],
     tags: ['reading'],
     effort: 2,
+    excludeFromSuggestions: true,
   });
 
   // The postpone check has nothing to show until a task has actually been

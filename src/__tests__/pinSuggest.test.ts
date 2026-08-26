@@ -126,7 +126,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskDraft: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
-  vacationPause: false,
+  vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
   timerElapsedSeconds: 0,
@@ -406,6 +406,14 @@ describe('suggestPins', () => {
       makeTask({ id: 'deck', category: 'Work' }),
     ];
     expect(suggestPins(tasks, [], excluded)).toEqual(['deck']);
+  });
+
+  it('never suggests a task flagged excludeFromSuggestions, even outside an opted-out category', () => {
+    const tasks = [
+      makeTask({ id: 'quiet-read', category: 'Work', priority: 4, excludeFromSuggestions: true }),
+      makeTask({ id: 'deck', category: 'Work' }),
+    ];
+    expect(suggestPins(tasks, [], ctx)).toEqual(['deck']);
   });
 
   it('leads with the highest-scoring task', () => {
