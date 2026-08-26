@@ -23,6 +23,12 @@ import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SortableList } from './SortableList';
 import { EditorSheet } from './EditorSheet';
+import { CountStepper } from './CountStepper';
+
+// Ten hours, well past any real estimate. CountStepper needs a bound to
+// disable its + key at; the hand-rolled version it replaced had none.
+const MAX_CUSTOM_ESTIMATE_MINUTES = 600;
+
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'category' | 'project' | 'tags' | 'priority' | 'effort' | 'subtasks';
@@ -357,23 +363,16 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
           <View style={styles.intervalRow}>
             {estimatedMinutes !== null ? (
               <>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setEstimatedMinutes(m => Math.max(5, (m ?? 30) - 5))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Five minutes less"
-                >
-                  <Ionicons name="remove" size={16} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.intervalValueSm}>{estimatedMinutes} min (custom)</Text>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setEstimatedMinutes(m => (m ?? 30) + 5)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Five minutes more"
-                >
-                  <Ionicons name="add" size={16} color={colors.text} />
-                </TouchableOpacity>
+                <CountStepper
+                  value={estimatedMinutes}
+                  onChange={m => setEstimatedMinutes(m ?? 30)}
+                  min={5}
+                  max={MAX_CUSTOM_ESTIMATE_MINUTES}
+                  step={5}
+                  format={n => `${n} min`}
+                  label="Estimate"
+                />
+                <Text style={styles.intervalValueSm}>(custom)</Text>
                 <TouchableOpacity
                   onPress={() => setEstimatedMinutes(null)}
                   hitSlop={8}
@@ -570,11 +569,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingTop: spacing.sm,
   },
-  intervalBtn: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center',
-  },
-  intervalValueSm: { color: colors.text, fontSize: font.sm, fontWeight: '600', minWidth: 60, textAlign: 'center' },
+  // The quiet caption after the estimate stepper, matching how a unit sits
+  // beside a stepper elsewhere. CountStepper renders the number itself.
+  intervalValueSm: { color: colors.textSecondary, fontSize: font.sm },
   timePillRow: {
     flexDirection: 'row', gap: spacing.xs,
     paddingHorizontal: spacing.md, paddingTop: spacing.md, paddingBottom: spacing.md,

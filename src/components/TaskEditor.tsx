@@ -213,6 +213,13 @@ const TITLE_TOKEN_ACCESSORY_ID = 'taskEditorTitleTokenAccessory';
 // whether it's read in the expanded row or in this editor.
 const SUBTASK_CHECKBOX_SIZE = 16;
 
+// Ceilings for the two steppers whose hand-rolled versions had none. Both are
+// well past any real value; they exist because CountStepper needs a bound to
+// disable its + key at, and an unbounded stepper is one a long press can run
+// to nonsense.
+const MAX_DEADLINE_OFFSET_DAYS = 365;
+const MAX_STREAK_COUNT = 9999;
+
 
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // ==== store bindings ====
@@ -2718,29 +2725,17 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       </TouchableOpacity>
                     </View>
                     <View style={styles.intervalRow}>
-                      <TouchableOpacity
-                        style={styles.intervalBtn}
-                        onPress={() => setDeadlineOffsetDays(d => {
-                          const next = Math.max(1, Math.abs(d ?? 1) - 1);
-                          return (d ?? 1) < 0 ? -next : next;
-                        })}
-                        accessibilityRole="button"
-                        accessibilityLabel="Decrease deadline offset"
-                      >
-                        <Ionicons name="remove" size={16} color={colors.text} />
-                      </TouchableOpacity>
-                      <Text style={styles.intervalValue}>{Math.abs(deadlineOffsetDays)}</Text>
-                      <TouchableOpacity
-                        style={styles.intervalBtn}
-                        onPress={() => setDeadlineOffsetDays(d => {
-                          const next = Math.abs(d ?? 0) + 1;
-                          return (d ?? 1) < 0 ? -next : next;
-                        })}
-                        accessibilityRole="button"
-                        accessibilityLabel="Increase deadline offset"
-                      >
-                        <Ionicons name="add" size={16} color={colors.text} />
-                      </TouchableOpacity>
+                      {/* The stepper carries the magnitude only; the pills
+                          above own the sign, so it's stripped on the way in
+                          and re-applied on the way out. */}
+                      <CountStepper
+                        value={Math.abs(deadlineOffsetDays)}
+                        onChange={n => setDeadlineOffsetDays(d =>
+                          ((d ?? 1) < 0 ? -1 : 1) * Math.max(1, n ?? 1))}
+                        min={1}
+                        max={MAX_DEADLINE_OFFSET_DAYS}
+                        label="Deadline offset"
+                      />
                       <Text style={styles.intervalLabel}>
                         {`${Math.abs(deadlineOffsetDays) === 1 ? 'day' : 'days'} ${deadlineOffsetDays < 0 ? 'after' : 'before'} due, every occurrence`}
                       </Text>
@@ -2770,23 +2765,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     {deadlineMonthDay > 0 && (
                       <View style={styles.intervalRow}>
                         <Text style={styles.intervalLabel}>On the</Text>
-                        <TouchableOpacity
-                          style={styles.intervalBtn}
-                          onPress={() => setDeadlineMonthDay(Math.max(1, deadlineMonthDay - 1))}
-                          accessibilityRole="button"
-                          accessibilityLabel="Decrease day of month"
-                        >
-                          <Ionicons name="remove" size={16} color={colors.text} />
-                        </TouchableOpacity>
-                        <Text style={styles.intervalValue}>{ordinal(deadlineMonthDay)}</Text>
-                        <TouchableOpacity
-                          style={styles.intervalBtn}
-                          onPress={() => setDeadlineMonthDay(Math.min(31, deadlineMonthDay + 1))}
-                          accessibilityRole="button"
-                          accessibilityLabel="Increase day of month"
-                        >
-                          <Ionicons name="add" size={16} color={colors.text} />
-                        </TouchableOpacity>
+                        <CountStepper
+                          value={deadlineMonthDay}
+                          onChange={n => setDeadlineMonthDay(n ?? 1)}
+                          min={1}
+                          max={31}
+                          format={ordinal}
+                          label="Day of month"
+                        />
                       </View>
                     )}
                   </>
@@ -4156,23 +4142,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 </TouchableOpacity>
                 {streakEditorOpen && (
                   <View style={styles.intervalRow}>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setStreakDraft(d => Math.max(0, d - 1))}
-                      accessibilityRole="button"
-                      accessibilityLabel="Decrease streak count"
-                    >
-                      <Ionicons name="remove" size={16} color={colors.text} />
-                    </TouchableOpacity>
-                    <Text style={styles.intervalValue}>{streakDraft}</Text>
-                    <TouchableOpacity
-                      style={styles.intervalBtn}
-                      onPress={() => setStreakDraft(d => d + 1)}
-                      accessibilityRole="button"
-                      accessibilityLabel="Increase streak count"
-                    >
-                      <Ionicons name="add" size={16} color={colors.text} />
-                    </TouchableOpacity>
+                    <CountStepper
+                      value={streakDraft}
+                      onChange={n => setStreakDraft(n ?? 0)}
+                      min={0}
+                      max={MAX_STREAK_COUNT}
+                      label="Streak count"
+                    />
                     <Text style={styles.intervalLabel}>day{streakDraft === 1 ? '' : 's'}</Text>
                     <TouchableOpacity
                       style={[styles.streakApplyBtn, streakDraft === task.streakCount && styles.streakApplyBtnDisabled]}
@@ -4600,14 +4576,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   seriesRepeatHint: {
     color: colors.textTertiary, fontSize: font.xs, lineHeight: 16,
     paddingHorizontal: spacing.md, paddingBottom: spacing.md,
-  },
-  intervalBtn: {
-    width: 30, height: 30, borderRadius: 15,
-    backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center',
-  },
-  intervalValue: {
-    color: colors.text, fontSize: font.md, fontWeight: '600',
-    minWidth: 24, textAlign: 'center',
   },
   streakApplyBtn: {
     marginLeft: 'auto', paddingHorizontal: 14, paddingVertical: 7,

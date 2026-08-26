@@ -182,6 +182,9 @@ const SEGMENTS: { key: TimeOfDay; label: string; icon: React.ComponentProps<type
   { key: 'night', label: 'Night', icon: 'moon' },
 ];
 
+// Same ceiling RecurrencePicker's identical "Every N" stepper uses.
+const MAX_RECURRENCE_INTERVAL = 99;
+
 // Singular/plural units for the interval stepper ("Every 2 weeks").
 const RECURRENCE_UNITS: Record<Exclude<RecurrenceType, 'none'>, [string, string]> = {
   daily: ['day', 'days'],
@@ -1785,29 +1788,13 @@ export function QuickAddModal({
               {recurrenceType !== 'none' && (
                 <View style={styles.intervalRow}>
                   <Text style={styles.intervalLabel}>Every</Text>
-                  <TouchableOpacity
-                    style={styles.intervalBtn}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceInterval(Math.max(1, recurrenceInterval - 1));
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Repeat less often"
-                  >
-                    <Ionicons name="remove" size={16} color={colors.text} />
-                  </TouchableOpacity>
-                  <Text style={styles.intervalValue}>{recurrenceInterval}</Text>
-                  <TouchableOpacity
-                    style={styles.intervalBtn}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceInterval(recurrenceInterval + 1);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Repeat more often"
-                  >
-                    <Ionicons name="add" size={16} color={colors.text} />
-                  </TouchableOpacity>
+                  <CountStepper
+                    value={recurrenceInterval}
+                    onChange={n => setRecurrenceInterval(n ?? 1)}
+                    min={1}
+                    max={MAX_RECURRENCE_INTERVAL}
+                    label="Repeat interval"
+                  />
                   <Text style={styles.intervalLabel}>
                     {RECURRENCE_UNITS[recurrenceType][recurrenceInterval === 1 ? 0 : 1]}
                   </Text>
@@ -1840,29 +1827,14 @@ export function QuickAddModal({
               {recurrenceType === 'monthly' && recurrenceMonthDay !== null && recurrenceMonthDay > 0 && (
                 <View style={styles.intervalRow}>
                   <Text style={styles.intervalLabel}>On the</Text>
-                  <TouchableOpacity
-                    style={styles.intervalBtn}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceMonthDay(Math.max(1, recurrenceMonthDay - 1));
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Earlier day of the month"
-                  >
-                    <Ionicons name="remove" size={16} color={colors.text} />
-                  </TouchableOpacity>
-                  <Text style={styles.intervalValue}>{ordinal(recurrenceMonthDay)}</Text>
-                  <TouchableOpacity
-                    style={styles.intervalBtn}
-                    onPress={() => {
-                      haptics.tap();
-                      setRecurrenceMonthDay(Math.min(31, recurrenceMonthDay + 1));
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel="Later day of the month"
-                  >
-                    <Ionicons name="add" size={16} color={colors.text} />
-                  </TouchableOpacity>
+                  <CountStepper
+                    value={recurrenceMonthDay}
+                    onChange={n => setRecurrenceMonthDay(n ?? 1)}
+                    min={1}
+                    max={31}
+                    format={ordinal}
+                    label="Day of month"
+                  />
                 </View>
               )}
               {recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null && (
@@ -2607,21 +2579,6 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
   intervalLabel: {
     color: colors.textSecondary,
     fontSize: font.sm,
-  },
-  intervalBtn: {
-    width: interaction.pillHeight,
-    height: interaction.pillHeight,
-    borderRadius: interaction.pillHeight / 2,
-    backgroundColor: colors.bgTertiary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  intervalValue: {
-    color: colors.text,
-    fontSize: font.md,
-    fontWeight: fontWeight.semibold,
-    minWidth: 24,
-    textAlign: 'center',
   },
   weekdayRow: {
     marginTop: spacing.sm,

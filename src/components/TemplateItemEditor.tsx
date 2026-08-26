@@ -59,6 +59,14 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 import { NumberPadAccessory } from './NumberPadAccessory';
+import { CountStepper } from './CountStepper';
+
+// Ceilings for the two steppers whose hand-rolled versions had none. Both sit
+// well past any real value; CountStepper needs a bound to disable its + key
+// at, and an unbounded stepper is one a long press can run to nonsense.
+const MAX_REMINDER_OFFSET_MINUTES = 10080;   // a week, in 15-minute steps
+const MAX_CUSTOM_ESTIMATE_MINUTES = 600;     // ten hours
+
 
 /** Editor sections that collapse to a one-line summary of their current value. */
 type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable';
@@ -703,23 +711,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
         </View>
         {dueOffsetDays !== null && reminderOffsetMinutes !== null && (
           <View style={styles.intervalRow}>
-            <TouchableOpacity
-              style={styles.intervalBtn}
-              onPress={() => setReminderOffsetMinutes(m => Math.max(5, (m ?? 60) - 15))}
-              accessibilityRole="button"
-              accessibilityLabel="Remind closer to the due time"
-            >
-              <Ionicons name="remove" size={16} color={colors.text} />
-            </TouchableOpacity>
-            <Text style={styles.intervalValue}>{formatMinutesOffset(reminderOffsetMinutes)}</Text>
-            <TouchableOpacity
-              style={styles.intervalBtn}
-              onPress={() => setReminderOffsetMinutes(m => (m ?? 60) + 15)}
-              accessibilityRole="button"
-              accessibilityLabel="Remind further ahead of the due time"
-            >
-              <Ionicons name="add" size={16} color={colors.text} />
-            </TouchableOpacity>
+            <CountStepper
+              value={reminderOffsetMinutes}
+              onChange={m => setReminderOffsetMinutes(m ?? 60)}
+              min={5}
+              max={MAX_REMINDER_OFFSET_MINUTES}
+              step={15}
+              format={formatMinutesOffset}
+              label="Reminder lead time"
+            />
           </View>
         )}
         <View style={styles.sep} />
@@ -1224,23 +1224,16 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           <View style={styles.intervalRow}>
             {estimatedMinutes !== null ? (
               <>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setEstimatedMinutes(m => Math.max(5, (m ?? 30) - 5))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Shorter estimate"
-                >
-                  <Ionicons name="remove" size={16} color={colors.text} />
-                </TouchableOpacity>
-                <Text style={styles.intervalValueSm}>{estimatedMinutes} min (custom)</Text>
-                <TouchableOpacity
-                  style={styles.intervalBtn}
-                  onPress={() => setEstimatedMinutes(m => (m ?? 30) + 5)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Longer estimate"
-                >
-                  <Ionicons name="add" size={16} color={colors.text} />
-                </TouchableOpacity>
+                <CountStepper
+                  value={estimatedMinutes}
+                  onChange={m => setEstimatedMinutes(m ?? 30)}
+                  min={5}
+                  max={MAX_CUSTOM_ESTIMATE_MINUTES}
+                  step={5}
+                  format={n => `${n} min`}
+                  label="Estimate"
+                />
+                <Text style={styles.intervalValueSm}>(custom)</Text>
                 <TouchableOpacity
                   onPress={() => setEstimatedMinutes(null)}
                   hitSlop={8}
@@ -1479,7 +1472,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bg,
   },
   toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
-  intervalValueSm: { color: colors.text, fontSize: font.sm, fontWeight: '600', minWidth: 60, textAlign: 'center' },
+  // The quiet caption after the estimate stepper, matching how a unit sits
+  // beside a stepper elsewhere. CountStepper renders the number itself.
+  intervalValueSm: { color: colors.textSecondary, fontSize: font.sm },
   chainItemRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingVertical: 7,
