@@ -86,6 +86,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
+  const addToPantry = useGroceryStore(s => s.addToPantry);
   const setServings = useRecipeStore(s => s.setServings);
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setEstimatedMinutes = useRecipeStore(s => s.setEstimatedMinutes);
@@ -235,6 +236,17 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       else next.add(index);
       return next;
     });
+  };
+
+  // Same escape hatch RecipeToListSheet's pantry icon offers, reached from
+  // the ingredient row's link panel — see ExtractedIngredientRow's own doc
+  // comment. addToPantry mints the catalog row if this name has never been
+  // seen before, which is exactly the case the panel's search comes up empty.
+  const markAlreadyHave = (index: number) => {
+    const item = addToPantry(ingredients[index].name);
+    if (!item) { haptics.error(); return; }
+    haptics.success();
+    if (accepted.has(index)) toggle(index);
   };
 
   const editIngredient = (
@@ -679,6 +691,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               onEditName={name => editIngredient(i, { name })}
               onEditQuantity={quantity => editIngredient(i, { quantity })}
               onEditSection={section => editIngredient(i, { section })}
+              onMarkAlreadyHave={() => markAlreadyHave(i)}
               existingSections={existingSections}
               catalogItems={groceryItems}
               sectionHeader={sectionHeader}
