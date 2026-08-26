@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Modal, View, Text, TouchableOpacity, ScrollView, Animated, StyleSheet, useWindowDimensions } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import { useColors } from '../theme/ThemeContext';
+import { useColors, useTheme } from '../theme/ThemeContext';
 import {
   spacing,
   radius,
@@ -12,8 +13,10 @@ import {
   iconSize,
   interaction,
   checkboxRadius,
+  animation,
   type Colors,
 } from '../theme';
+import { SafeBlurView } from './SafeBlurView';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { convertQuantity } from '../utils/unitConvert';
@@ -110,6 +113,18 @@ interface Props {
  *   their own, while the ticks are a batch — which is why the confirm button
  *   counts them ("Mark 2") rather than saying Done, the same wording the sheet
  *   this section came from used.
+ *
+ * **A centered card, not a full-screen page sheet** — the same
+ * treatment `QuickAddModal` uses: a blurred/dimmed backdrop, a card capped to
+ * `sheetMaxHeight` that scrolls internally past that, spring in and fade out.
+ * A full-screen sheet reads as a destination; this is a quick aside off one
+ * tap, over in a couple of taps more, and the card says so by leaving the
+ * screen behind it visible. Unlike `QuickAddModal` there's no keyboard to
+ * make room for, and the header stays a fixed sibling above the `ScrollView`
+ * rather than scrolling with the rest — Done has to stay reachable without
+ * scrolling back up on a cooking with a long pantry list. A tap on the
+ * backdrop is Skip's cancel, not Done's confirm, same as the swipe-down the
+ * old page sheet answered with `onClose` rather than `handleDone`.
  */
 export function CookRecapSheet({
   visible,
@@ -123,7 +138,42 @@ export function CookRecapSheet({
   children,
 }: Props) {
   const colors = useColors();
-  const styles = useMemo(() => makeStyles(colors), [colors]);
+  const { isDark, shadows } = useTheme();
+  const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const sheetMaxHeight = windowHeight - insets.top - insets.bottom - spacing.xl * 2;
+  const styles = useMemo(() => makeStyles(colors, sheetMaxHeight), [colors, sheetMaxHeight]);
+
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const translateYAnim = useRef(new Animated.Value(16)).current;
+  const sheetOpacity = useRef(new Animated.Value(0)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+
+  // Springs in once, on mount. Unlike QuickAddModal there's no persistent
+  // instance toggling `visible` on and off — CookRecap mounts this sheet
+  // fresh (keyed to the cooking) whenever there's something to ask, so mount
+  // is the only "opening" there is.
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(scaleAnim, { toValue: 1, ...animation.spring.smooth, useNativeDriver: true }),
+      Animated.spring(translateYAnim, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
+      Animated.timing(sheetOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
+    ]).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Fades/scales out, then hands off to the caller — which is what actually
+  // unmounts this component (`CookRecap` clears its recap on `onClose`). Runs
+  // for Skip, the backdrop tap, and the hardware back button alike; `handleDone`
+  // is the one path that commits ticks first.
+  const dismiss = () => {
+    Animated.parallel([
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: 120, useNativeDriver: true }),
+      Animated.timing(sheetOpacity, { toValue: 0, duration: 120, useNativeDriver: true }),
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+    ]).start(() => onClose());
+  };
 
   const items = useGroceryStore(useShallow(s => s.items));
   const markOutOfMany = useGroceryStore(s => s.markOutOfMany);
@@ -179,7 +229,7 @@ export function CookRecapSheet({
 
   const handleDone = () => {
     commitTicks();
-    onClose();
+    dismiss();
   };
 
   /**
@@ -199,122 +249,134 @@ export function CookRecapSheet({
   const showBuy = buyCount > 0 && !!onAddToList;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={styles.root}>
-        <View style={styles.header}>
-          <SheetHeaderButton label="Skip" role="cancel" onPress={onClose} minWidth={80} />
-          <Text style={styles.headerTitle} numberOfLines={1}>Cooked it</Text>
-          <SheetHeaderButton
-            label={ticked.size > 0 ? `Mark ${ticked.size}` : 'Done'}
-            onPress={handleDone}
-            minWidth={80}
-          />
-        </View>
+    <Modal visible={visible} animationType="none" transparent onRequestClose={dismiss}>
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: backdropOpacity }]} pointerEvents="none">
+        <SafeBlurView intensity={isDark ? 20 : 15} tint="dark" style={StyleSheet.absoluteFill} />
+        <View style={[StyleSheet.absoluteFill, styles.backdropDim]} />
+      </Animated.View>
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={dismiss} />
 
-        <ScrollView contentContainerStyle={styles.body}>
-          <Text style={styles.subject} numberOfLines={2}>{title}</Text>
+      <View style={styles.centeredContainer} pointerEvents="box-none">
+        <Animated.View
+          style={[
+            styles.dialogCard,
+            shadows.sheet,
+            { opacity: sheetOpacity, transform: [{ scale: scaleAnim }, { translateY: translateYAnim }] },
+          ]}
+        >
+          <View style={styles.header}>
+            <SheetHeaderButton label="Skip" role="cancel" onPress={dismiss} minWidth={80} />
+            <Text style={styles.headerTitle} numberOfLines={1}>Cooked it</Text>
+            <SheetHeaderButton
+              label={ticked.size > 0 ? `Mark ${ticked.size}` : 'Done'}
+              onPress={handleDone}
+              minWidth={80}
+            />
+          </View>
 
-          {vote && (
-            <>
-              <Text style={styles.groupLabel}>How was it?</Text>
-              <SegmentedControl
-                options={VOTE_OPTIONS}
-                value={vote.value}
-                onChange={next => next && vote.onChange(next)}
-                label="How was it?"
-                surface="page"
-              />
-            </>
-          )}
+          <ScrollView style={styles.scrollBody} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+            <Text style={styles.subject} numberOfLines={2}>{title}</Text>
 
-          {onLogLeftovers && (
-            <>
-              <Text style={styles.groupLabel}>Leftovers</Text>
-              <View style={styles.card}>
-                <EditorRow
-                  icon="cube-outline"
-                  label="Anything left over?"
-                  value="Log"
-                  onPress={onLogLeftovers}
+            {vote && (
+              <>
+                <Text style={styles.groupLabel}>How was it?</Text>
+                <SegmentedControl
+                  options={VOTE_OPTIONS}
+                  value={vote.value}
+                  onChange={next => next && vote.onChange(next)}
+                  label="How was it?"
                 />
-              </View>
-            </>
-          )}
+              </>
+            )}
 
-          {(showPantry || showBuy) && (
-            <>
-              <Text style={styles.groupLabel}>{showPantry ? 'Out of anything?' : 'Restock?'}</Text>
-              {/* Says the mechanism, since this is the only place it's
-                  explained: what ticking does, and what happens next
-                  because of it. */}
-              {!hideHelpText && (
-                <Text style={styles.hint}>
-                  {showPantry
-                    ? 'Things you probably had before cooking this. Tick whatever it used up and they’ll stop counting as on hand.'
-                    : 'Ingredients from this meal that aren’t on your shopping list.'}
-                </Text>
-              )}
-
-              {showPantry && (
+            {onLogLeftovers && (
+              <>
+                <Text style={styles.groupLabel}>Leftovers</Text>
                 <View style={styles.card}>
-                  {rows.map((row, i) => {
-                    const on = ticked.has(row.nameKey);
-                    const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
-                    return (
-                      <React.Fragment key={row.nameKey}>
-                        {i > 0 && <View style={styles.sep} />}
-                        <TouchableOpacity
-                          style={styles.row}
-                          activeOpacity={interaction.activeOpacity}
-                          onPress={() => toggle(row)}
-                          accessibilityRole="checkbox"
-                          accessibilityState={{ checked: on }}
-                          accessibilityLabel={[row.name, shownQuantity, row.reason].filter(Boolean).join(', ')}
-                          accessibilityHint="Marks it as used up"
-                        >
-                          <View style={[styles.checkbox, on && styles.checkboxOn]}>
-                            {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-                          </View>
-                          <View style={styles.rowBody}>
-                            <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
-                            {/* probablyHaveReason's own words — the same line
-                                the pantry and the item sheet show, so why the
-                                app thought you had it is answered where you're
-                                being asked. */}
-                            {!!row.reason && (
-                              <Text style={styles.reason} numberOfLines={1}>{row.reason}</Text>
-                            )}
-                          </View>
-                          {!!shownQuantity && (
-                            <View style={styles.qtyPill}>
-                              <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
-                            </View>
-                          )}
-                        </TouchableOpacity>
-                      </React.Fragment>
-                    );
-                  })}
+                  <EditorRow
+                    icon="cube-outline"
+                    label="Anything left over?"
+                    value="Log"
+                    onPress={onLogLeftovers}
+                  />
                 </View>
-              )}
+              </>
+            )}
 
-              {/* Neutral, and not because it's the second half of a pair:
-                  buying is the quieter want here. The section's own question is
-                  what you're out of, and this is the follow-on offered under it
-                  rather than the thing being asked. */}
-              {showBuy && (
-                <InlineAction
-                  label={`Add ${buyCount} to list`}
-                  icon="basket-outline"
-                  variant="neutral"
-                  surface="page"
-                  onPress={handleAddToList}
-                  accessibilityLabel={`Add ${buyCount} ingredient${buyCount === 1 ? '' : 's'} to the shopping list`}
-                  style={styles.buy}
-                />
-              )}
-            </>
-          )}
-        </ScrollView>
+            {(showPantry || showBuy) && (
+              <>
+                <Text style={styles.groupLabel}>{showPantry ? 'Out of anything?' : 'Restock?'}</Text>
+                {/* Says the mechanism, since this is the only place it's
+                    explained: what ticking does, and what happens next
+                    because of it. */}
+                {!hideHelpText && (
+                  <Text style={styles.hint}>
+                    {showPantry
+                      ? 'Things you probably had before cooking this. Tick whatever it used up and they’ll stop counting as on hand.'
+                      : 'Ingredients from this meal that aren’t on your shopping list.'}
+                  </Text>
+                )}
+
+                {showPantry && (
+                  <View style={styles.card}>
+                    {rows.map((row, i) => {
+                      const on = ticked.has(row.nameKey);
+                      const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
+                      return (
+                        <React.Fragment key={row.nameKey}>
+                          {i > 0 && <View style={styles.sep} />}
+                          <TouchableOpacity
+                            style={styles.row}
+                            activeOpacity={interaction.activeOpacity}
+                            onPress={() => toggle(row)}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{ checked: on }}
+                            accessibilityLabel={[row.name, shownQuantity, row.reason].filter(Boolean).join(', ')}
+                            accessibilityHint="Marks it as used up"
+                          >
+                            <View style={[styles.checkbox, on && styles.checkboxOn]}>
+                              {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+                            </View>
+                            <View style={styles.rowBody}>
+                              <Text style={styles.name} numberOfLines={1}>{row.name}</Text>
+                              {/* probablyHaveReason's own words — the same line
+                                  the pantry and the item sheet show, so why the
+                                  app thought you had it is answered where you're
+                                  being asked. */}
+                              {!!row.reason && (
+                                <Text style={styles.reason} numberOfLines={1}>{row.reason}</Text>
+                              )}
+                            </View>
+                            {!!shownQuantity && (
+                              <View style={styles.qtyPill}>
+                                <Text style={styles.qtyText} numberOfLines={1}>{shownQuantity}</Text>
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        </React.Fragment>
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Neutral, and not because it's the second half of a pair:
+                    buying is the quieter want here. The section's own question is
+                    what you're out of, and this is the follow-on offered under it
+                    rather than the thing being asked. */}
+                {showBuy && (
+                  <InlineAction
+                    label={`Add ${buyCount} to list`}
+                    icon="basket-outline"
+                    variant="neutral"
+                    onPress={handleAddToList}
+                    accessibilityLabel={`Add ${buyCount} ingredient${buyCount === 1 ? '' : 's'} to the shopping list`}
+                    style={styles.buy}
+                  />
+                )}
+              </>
+            )}
+          </ScrollView>
+        </Animated.View>
       </View>
 
       {children}
@@ -322,8 +384,25 @@ export function CookRecapSheet({
   );
 }
 
-const makeStyles = (colors: Colors) => StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
+const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create({
+  backdropDim: { backgroundColor: colors.backdrop },
+  centeredContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+  },
+  // No `overflow: 'hidden'` here — on iOS that clips the shadow along with
+  // the content, and (see QuickAddModal/QuickAddNameSheet) it's not needed:
+  // the header has no background of its own to square off against the
+  // rounded corners, and the scrollable rows below are inset from the edges
+  // by their own margin.
+  dialogCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: 20,
+    maxHeight: sheetMaxHeight,
+  },
+  scrollBody: { flexShrink: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -361,8 +440,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.sm,
     lineHeight: font.sm * 1.35,
   },
+  // One surface up from `dialogCard` — the page sheet this replaced nested
+  // bgSecondary inside a bg screen, and the floating card takes bg's old
+  // slot, so what sits on it steps up the same one level too.
   card: {
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: colors.bgTertiary,
     borderRadius: radius.md,
     marginHorizontal: spacing.md,
     overflow: 'hidden',
@@ -393,7 +475,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   reason: { fontSize: font.xs, color: colors.textTertiary },
   qtyPill: {
-    backgroundColor: colors.bgTertiary,
+    backgroundColor: colors.bgQuaternary,
     borderRadius: radius.sm,
     paddingHorizontal: spacing.sm,
     paddingVertical: 3,
