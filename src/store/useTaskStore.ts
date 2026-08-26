@@ -108,7 +108,7 @@ import {
   supplyReorderSourceId,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
@@ -6006,20 +6006,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   bulkDefer(ids, until) {
     if (ids.length === 0) return;
     const deferUntil = until.toISOString();
+    const dayResetTime = useSettingsStore.getState().dayResetTime;
     const snapshots = ids
       .map(id => get().tasks.find(t => t.id === id))
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
     const counts = bulkPostponeCounts(
-      get().tasks, ids, { deferUntil }, useSettingsStore.getState().dayResetTime,
+      get().tasks, ids, { deferUntil }, dayResetTime,
     );
+    // Pinning is for today's block specifically — a task actually moving to a
+    // different day no longer belongs there (see the row's own reschedule in
+    // TaskItem, which does the same check).
+    const untilDay = getTaskDayStart(until, dayResetTime).getTime();
+    const unpinIds = snapshots
+      .filter(t => t.pinned)
+      .filter(t => {
+        const prev = getEffectiveTaskDate(t, dayResetTime);
+        const prevDay = prev ? getTaskDayStart(new Date(prev), dayResetTime).getTime() : null;
+        return prevDay !== untilDay;
+      })
+      .map(t => t.id);
     dbBulkSetDefer(ids, deferUntil);
+    if (unpinIds.length > 0) dbBulkSetPinned(unpinIds, false);
     if (counts.size > 0) {
       dbBatchUpdatePostponeCounts([...counts].map(([id, moved]) => ({ id, ...moved })));
     }
     set(s => ({
       tasks: patchTasks(s.tasks, ids, t => ({
         deferUntil,
+        ...(unpinIds.includes(t.id) ? { pinned: false } : {}),
         ...(counts.get(t.id) ?? {}),
       })),
     }));
@@ -6034,14 +6049,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   bulkSetWhen(ids, date, timeSegments) {
     if (ids.length === 0) return;
     const dueDate = date ? date.toISOString() : null;
+    const dayResetTime = useSettingsStore.getState().dayResetTime;
     const snapshots = ids
       .map(id => get().tasks.find(t => t.id === id))
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
     const counts = bulkPostponeCounts(
-      get().tasks, ids, { dueDate }, useSettingsStore.getState().dayResetTime,
+      get().tasks, ids, { dueDate }, dayResetTime,
     );
+    // Same reasoning as bulkDefer above: moving a pinned task to a different
+    // day (or clearing its date entirely) drops the pin.
+    const newDay = date ? getTaskDayStart(date, dayResetTime).getTime() : null;
+    const unpinIds = snapshots
+      .filter(t => t.pinned)
+      .filter(t => {
+        const prev = getEffectiveTaskDate(t, dayResetTime);
+        const prevDay = prev ? getTaskDayStart(new Date(prev), dayResetTime).getTime() : null;
+        return prevDay !== newDay;
+      })
+      .map(t => t.id);
     dbBulkSetWhen(ids, dueDate, timeSegments);
+    if (unpinIds.length > 0) dbBulkSetPinned(unpinIds, false);
     if (counts.size > 0) {
       dbBatchUpdatePostponeCounts([...counts].map(([id, moved]) => ({ id, ...moved })));
     }
@@ -6049,6 +6077,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tasks: patchTasks(s.tasks, ids, t => ({
         dueDate,
         timeSegments,
+        ...(unpinIds.includes(t.id) ? { pinned: false } : {}),
         ...(counts.get(t.id) ?? {}),
       })),
     }));
