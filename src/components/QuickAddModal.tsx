@@ -74,6 +74,8 @@ import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, matchPersonMentions, findAmbiguousMention, applyMentionOverrides, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { usePersonStore } from '../store/usePersonStore';
+import { usePersonGroupStore } from '../store/usePersonGroupStore';
+import { groupMentionTokens } from '../utils/peopleRegistry';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
 import { describeTitleRuleTargets, resolveTitleRules } from '../utils/titleRules';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
@@ -207,6 +209,7 @@ export function QuickAddModal({
   // Archived people are out of the picker but never stripped off a task that
   // already names them, the same call TaskEditor makes.
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
+  const groups = usePersonGroupStore(useShallow(s => s.groups));
   // Read only to name a project a title rule files into — quick add has no
   // project picker; see the projectId state below.
   const projects = useProjectStore(useShallow(s => s.projects));
@@ -684,10 +687,11 @@ export function QuickAddModal({
   // what's typed next (see ambiguousMention above), so a pick made from that
   // tooltip is layered on top here instead of changing the title text — see
   // applyMentionOverrides' doc comment for why.
+  const groupTokens = useMemo(() => groupMentionTokens(), [people, groups]);
   const personMentions = useMemo(() => {
-    const matched = matchPersonMentions(title, people);
+    const matched = matchPersonMentions(title, people, groupTokens);
     return applyMentionOverrides(title, matched, personOverrides);
-  }, [title, people, personOverrides]);
+  }, [title, people, groupTokens, personOverrides]);
   const personIds = useMemo(
     () => [...new Set(personMentions.map(m => m.personId))],
     [personMentions]

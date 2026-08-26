@@ -437,6 +437,7 @@ const makePerson = (over: Partial<Person> & Pick<Person, 'id' | 'name'>): Person
   phoneNumber: null, email: null, linkUrl: null,
   cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, askAbout: '',
   backfillDismissedFields: [],
+  groupId: null,
   ...over,
 });
 

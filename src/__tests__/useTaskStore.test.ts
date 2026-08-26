@@ -83,6 +83,10 @@ jest.mock('../db/database', () => ({
   dbUpdatePerson: jest.fn(),
   dbDeletePerson: jest.fn(),
   dbBatchUpdatePersonSortOrders: jest.fn(),
+  dbGetAllPersonGroups: jest.fn().mockReturnValue([]),
+  dbInsertPersonGroup: jest.fn(),
+  dbUpdatePersonGroup: jest.fn(),
+  dbDeletePersonGroup: jest.fn(),
   dbGetAllProjectCategories: jest.fn().mockReturnValue([]),
   dbInsertProjectCategory: jest.fn(),
   dbGetAllTemplateCategories: jest.fn().mockReturnValue([]),
@@ -3946,6 +3950,7 @@ describe('checkReachOutTasks', () => {
     cadenceDays: 30, nudgeOptIn: true, cadenceSetAt: daysAgo(45),
     reachOutDeclinedAt: null, askAbout: '',
     backfillDismissedFields: [],
+    groupId: null,
     ...overrides,
   });
 

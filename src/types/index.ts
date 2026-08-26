@@ -502,6 +502,34 @@ export interface Person {
    * writes; this one is only about what it asks.
    */
   backfillDismissedFields: string[];
+  /**
+   * The `PersonGroup` this person belongs to, or null. A couple or a
+   * household you always catch up with together, so the reach-out nudge can
+   * fold them into one task instead of asking about each of them apart —
+   * see `docs/arch/people.md`'s "Groups" section. Single-valued, like
+   * `Task.groupId` pointing at a `TaskGroup`: a person is a member of at most
+   * one group at a time.
+   */
+  groupId: string | null;
+}
+
+/**
+ * A couple, a household, anyone you'd never think to catch up with
+ * separately — a lightweight, renameable label a `Person` hangs off of via
+ * `Person.groupId`, the same "label, not a join table" shape `TaskGroup`
+ * uses for stacks. It carries no cadence, no history and no nudge settings
+ * of its own: those stay on each `Person`, and a group only changes how the
+ * reach-out nudge presents people who share one (see
+ * `collapseGroupedReachOuts` in `src/utils/reachOutTasks.ts`) and how an
+ * "@name" mention resolves (see `docs/arch/people.md`).
+ */
+export interface PersonGroup {
+  id: string;
+  name: string;
+  // Hand-ordered, the same independent number space Person.sortOrder is —
+  // never re-ranked by recency or by anything about the people in it.
+  sortOrder: number;
+  createdAt: string;
 }
 
 /**

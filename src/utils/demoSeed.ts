@@ -5,6 +5,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -863,6 +864,7 @@ export function seedDemoData(): void {
  */
 function seedPeople(today: Date): void {
   const { createPerson, updatePerson } = usePersonStore.getState();
+  const { createGroup } = usePersonGroupStore.getState();
   const { addTask, updateTask, completeTask } = useTaskStore.getState();
 
   // One birthday inside the lead window so the generated task is genuinely on
@@ -892,6 +894,17 @@ function seedPeople(today: Date): void {
     phoneNumber: '555 0172',
   });
 
+  // A group, so a fresh install of demo mode actually shows the capability
+  // rather than reading as a feature the app doesn't have. Named single-word
+  // on purpose: the "@" mention grammar only ever matches one word at a time
+  // (see matchPersonMentions), so a group meant to be taggable needs a name
+  // that's tag-friendly, the same way a person's own name already is. Dustin
+  // and Ansley already share a task below, which is exactly the kind of pair
+  // this feature exists for.
+  const household = createGroup('Household');
+  updatePerson(dustin.id, { groupId: household.id });
+  updatePerson(ansley.id, { groupId: household.id });
+
   // No birthday at all, which is the state most people are added in: a name is
   // enough and everything else is optional. She is the one person opted into a
   // reminder, because the generator is invisible until somebody is — and she
@@ -909,7 +922,11 @@ function seedPeople(today: Date): void {
   // Tasks that name people, which is what a shared history is made of (#2045).
   // One planned and one already done, so the link reads both ways rather than
   // only as something upcoming.
-  const beach = addTask({ title: 'Beach day', dueDate: addDays(today, 5).toISOString() });
+  // The title carries the "@" tag itself, same as a real quick-add would have
+  // resolved it — proof the tag renders as a tinted token in place rather than
+  // getting stripped out, and that tagging the group set personIds for both
+  // members at once instead of needing "@dustin @ansley" written out.
+  const beach = addTask({ title: 'Beach day with @Household', dueDate: addDays(today, 5).toISOString() });
   updateTask(beach.id, { personIds: [dustin.id, ansley.id] });
 
   const coffee = addTask({ title: 'Coffee with Mom' });
