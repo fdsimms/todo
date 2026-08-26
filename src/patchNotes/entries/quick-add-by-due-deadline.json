@@ -1,4 +1,4 @@
 {
-  "message": "Quick add and the task editor's title parser now set a Deadline too when you type \"by\" or \"due\" (\"finish report by friday\") — \"on\" still just sets the Date",
+  "message": "Quick add and the task editor's title parser now set a Deadline too when you type \"by\" or \"due\" (\"finish report by friday\"). \"on\" still just sets the Date",
   "date": "2026-08-11"
 }

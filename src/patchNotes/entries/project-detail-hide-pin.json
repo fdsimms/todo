@@ -1,4 +1,4 @@
 {
-  "message": "Removed the pin button from tasks on project detail pages — pinning only applies to Today",
+  "message": "Removed the pin button from tasks on project detail pages, since pinning only applies to Today",
   "date": "2026-08-05"
 }

@@ -1,4 +1,4 @@
 {
-  "message": "Fixed the keyboard covering the title field when renaming a task near the bottom of a list — the list now scrolls to keep it in view.",
+  "message": "Fixed the keyboard covering the title field when renaming a task near the bottom of a list. The list now scrolls to keep it in view.",
   "date": "2026-08-04"
 }

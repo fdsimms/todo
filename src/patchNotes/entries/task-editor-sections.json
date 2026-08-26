@@ -1,4 +1,4 @@
 {
-  "message": "The task editor's sections are re-cut: Subtasks gets its own card, Link/Phone/Email are grouped as Task actions, Vacation pause joins the streak settings, Pin to Today moves in with Priority & effort, and Archive now sits beside Delete at the bottom. \"Send to groceries\" is now \"Convert to grocery item\", and the Time spent row is gone — the stopwatch on the task row still records it",
+  "message": "The task editor's sections are re-cut: Subtasks gets its own card, Link/Phone/Email are grouped as Task actions, Vacation pause joins the streak settings, Pin to Today moves in with Priority & effort, and Archive now sits beside Delete at the bottom. \"Send to groceries\" is now \"Convert to grocery item\", and the Time spent row is gone, though the stopwatch on the task row still records it",
   "date": "2026-08-12"
 }

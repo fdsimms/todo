@@ -1,4 +1,4 @@
 {
-  "message": "Fixed dragging subtasks to reorder them from an expanded task row — the list used to scroll away underneath and put the subtask straight back down",
+  "message": "Fixed dragging subtasks to reorder them from an expanded task row. The list used to scroll away underneath and put the subtask straight back down",
   "date": "2026-08-07"
 }

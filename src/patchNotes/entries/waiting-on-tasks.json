@@ -1,4 +1,4 @@
 {
-  "message": "A task can now wait on another one. Set \"Waiting on\" in the task editor and it stays out of Today, Later, Unscheduled and Inbox until the task it's waiting for is done — then it shows up on its own, no fake due date needed. Anything currently waiting is listed under Waiting in the side menu, and a task holding others back shows a \"2 waiting\" chip on its row",
+  "message": "A task can now wait on another one. Set \"Waiting on\" in the task editor and it stays out of Today, Later, Unscheduled and Inbox until the task it's waiting for is done. Then it shows up on its own, no fake due date needed. Anything currently waiting is listed under Waiting in the side menu, and a task holding others back shows a \"2 waiting\" chip on its row",
   "date": "2026-08-06"
 }

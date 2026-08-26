@@ -1,4 +1,4 @@
 {
-  "message": "Removed the \"Pin all tasks in this stack\" button from the stack editor — nobody opens an editor to pin. Select the stack's tasks and use the pin action in the selection bar instead",
+  "message": "Removed the \"Pin all tasks in this stack\" button from the stack editor, since nobody opens an editor to pin. Select the stack's tasks and use the pin action in the selection bar instead",
   "date": "2026-08-06"
 }

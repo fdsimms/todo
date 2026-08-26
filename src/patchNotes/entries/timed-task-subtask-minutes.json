@@ -1,4 +1,4 @@
 {
-  "message": "A timed task can now split its countdown across its subtasks. Give each subtask its own minutes in the editor — 5 for scales, 10 for pieces you know, 10 for the new one — and the task's duration becomes the total. One timer still runs, and the row names the stretch you're on as the clock passes through them",
+  "message": "A timed task can now split its countdown across its subtasks. Give each subtask its own minutes in the editor (5 for scales, 10 for pieces you know, 10 for the new one) and the task's duration becomes the total. One timer still runs, and the row names the stretch you're on as the clock passes through them",
   "date": "2026-08-12"
 }

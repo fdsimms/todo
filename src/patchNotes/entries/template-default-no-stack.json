@@ -1,4 +1,4 @@
 {
-  "message": "New templates now apply their tasks loose by default, instead of automatically bundling them into a stack — pick \"A stack\" under a template's \"When applied\" setting if you want that back.",
+  "message": "New templates now apply their tasks loose by default, instead of automatically bundling them into a stack. Pick \"A stack\" under a template's \"When applied\" setting if you want that back.",
   "date": "2026-08-12"
 }
