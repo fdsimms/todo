@@ -234,8 +234,17 @@ function matchOne(
   const prefix = longestPrefixItem(key, items);
   if (prefix) return suggest(prefix, 'prefix');
 
-  const ranked = rankGrocerySuggestions(name, items, now, 1)[0];
-  if (ranked) return suggest(ranked.item, 'ranked');
+  // Two, so a tie can be *seen*. The autocomplete's sort falls through to name
+  // length and then the alphabet once the scores agree, which is a fine order
+  // for a picker showing every match and no basis at all for a correction
+  // offered as the answer: a catalog holding White onion and Red onion scores
+  // both identically for "onion" and would badge one of them, silently, with
+  // nothing saying the other exists. Same refusal `uniqueSimilarItem` makes one
+  // tier down, for the same reason — and the tiers below still get their turn,
+  // which is the point of refusing rather than returning NO_MATCH here.
+  const ranked = rankGrocerySuggestions(name, items, now, 2);
+  const decisive = ranked.length > 0 && (ranked.length === 1 || ranked[0].score > ranked[1].score);
+  if (decisive) return suggest(ranked[0].item, 'ranked');
 
   const similar = uniqueSimilarItem(key, items);
   if (similar) return suggest(similar, 'similar');

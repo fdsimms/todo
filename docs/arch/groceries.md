@@ -1189,6 +1189,21 @@ read side.
   'variety'`), so the "did you mean White onion?" badge stands down once the relation is
   recorded — renaming the recipe line to the variety is exactly the over-specifying this
   replaces. Identity only: whether anything is on hand is the shopping reads' question.
+- **The badge is also where a declaration gets made**, since that's where anyone actually
+  notices the gap. `varietyOfferFor` tests the *shape* rather than the match tier — the catalog
+  name must end with the line's whole key at a word boundary, the mirror of `longestPrefixItem`
+  — and `RecipeIngredientSheet` offers "Is White onion a kind of onion?" beside the rename.
+  Only the ranked tier can produce that shape (`shorter` and `prefix` both need the catalog key
+  to be the shorter one), so gating on the reason as well would restate the shape in a way that
+  could drift from it. Both accepts stay on offer: a near-duplicate ("Onions" for "onion") wants
+  the rename, and only a person can tell the two apart. An item that already declares something
+  is left alone.
+- **The ranked tier refuses a tie**, which is what makes the offer above trustworthy: two
+  candidates on an identical score mean the sort fell through to name length and the alphabet,
+  and a catalog holding White onion and Red onion would otherwise badge one of them for "onion"
+  with nothing saying the other exists. `GrocerySuggestion.score` is exposed for exactly this
+  one reader. It falls through rather than returning no match, so the tiers below still get
+  their turn — same refusal `uniqueSimilarItem` makes, and the same reasoning.
 - **Nothing infers a declaration.** The user says so, in the item sheet's Variety of field
   (suggestions are the item's own trailing words plus generics already in use —
   `genericNameSuggestions`). Same discipline as substitutes, and a declaration is a user fact

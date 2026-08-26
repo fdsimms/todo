@@ -6,6 +6,7 @@ import {
   familyOnHand,
   genericNameSuggestions,
   varietyIndex,
+  varietyOfferFor,
 } from '../utils/itemVarieties';
 
 const NOW = new Date('2026-08-25T12:00:00.000Z');
@@ -159,6 +160,39 @@ describe('describeFamilyOnHand', () => {
     expect(describeFamilyOnHand([white])).toBe('you have white onion');
     expect(describeFamilyOnHand([white, yellow])).toBe('you have white onion or yellow onion');
     expect(describeFamilyOnHand([white, yellow, red])).toBe('you have 3 kinds of it');
+  });
+});
+
+// ─── varietyOfferFor ─────────────────────────────────────────────────────────
+
+describe('varietyOfferFor', () => {
+  it('offers when the catalog name ends with the line’s whole key', () => {
+    const white = makeItem({ name: 'White onion' });
+    expect(varietyOfferFor('onion', white)).toBe(white);
+  });
+
+  it('refuses a boundary that falls mid-word', () => {
+    // The mirror of longestPrefixItem's rule: "eggplant" is not a kind of plant
+    // said this way, and "scallion" is not a kind of onion.
+    expect(varietyOfferFor('plant', makeItem({ name: 'Eggplant' }))).toBeNull();
+    expect(varietyOfferFor('onion', makeItem({ name: 'Scallion' }))).toBeNull();
+  });
+
+  it('refuses the reverse direction and an equal name', () => {
+    // The line is the more specific of the two, so there is no variety of it
+    // to declare — that's the rename's case, not this one.
+    expect(varietyOfferFor('white onion', makeItem({ name: 'Onion' }))).toBeNull();
+    expect(varietyOfferFor('onion', makeItem({ name: 'Onion' }))).toBeNull();
+  });
+
+  it('leaves an item that already declares something alone', () => {
+    const white = makeItem({ name: 'White onion', varietyOfKey: 'allium' });
+    expect(varietyOfferFor('onion', white)).toBeNull();
+  });
+
+  it('refuses a blank key and a missing item', () => {
+    expect(varietyOfferFor('', makeItem({ name: 'White onion' }))).toBeNull();
+    expect(varietyOfferFor('onion', null)).toBeNull();
   });
 });
 

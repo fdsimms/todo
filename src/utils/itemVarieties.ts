@@ -117,6 +117,33 @@ export function familyOnHand(
 }
 
 /**
+ * Whether a suggested catalog item looks like a *variety* of the line that
+ * turned it up — "onion" turning up White onion — in which case declaring the
+ * relation is the better answer than the rename the suggestion would otherwise
+ * apply. Null when the shape doesn't hold.
+ *
+ * The test is the shape, not which tier produced the match, and the shape is
+ * its own guarantee: the catalog name has to *end with* the line's whole key
+ * at a word boundary, so it is strictly longer and strictly more specific.
+ * That is the mirror of `longestPrefixItem`'s boundary rule, and it can only
+ * ever be the ranked tier — `shorter` and `prefix` both require the catalog
+ * key to be the shorter of the two, and nothing six edits apart survives
+ * `similar`. Gating on the reason as well would restate that in a way that
+ * could drift from it.
+ *
+ * An item that already declares something is left alone: it has an answer, and
+ * a second one offered from a recipe row would be overwriting a fact the user
+ * recorded on the item itself.
+ */
+export function varietyOfferFor(
+  lineKey: string,
+  item: GroceryItem | null
+): GroceryItem | null {
+  if (!lineKey || !item || item.varietyOfKey) return null;
+  return item.nameKey.endsWith(` ${lineKey}`) ? item : null;
+}
+
+/**
  * What the Variety of field offers before anyone types — the item's own name
  * with leading words dropped one at a time ("extra sharp white cheddar" →
  * "sharp white cheddar", "white cheddar", "cheddar"), then every generic
