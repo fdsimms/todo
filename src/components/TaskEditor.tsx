@@ -45,6 +45,7 @@ import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useTitleSelection } from '../hooks/useTitleSelection';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
@@ -323,9 +324,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   }, []);
 
   const [title, setTitle] = useState('');
-  // Tracked only so TitleTokenAccessory's # / @ buttons know where to splice
-  // in a token — the input itself doesn't need this to render.
-  const [titleSelection, setTitleSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  // The caret is tracked so TitleTokenAccessory's # / @ buttons know where to
+  // splice in a token, and deliberately not rendered — see the hook's note on
+  // why feeding it back through `selection` breaks ordinary typing.
+  const titleCaret = useTitleSelection(title);
   const [notes, setNotes] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   // Which stack the task will belong to once saved. Local like every other
@@ -560,7 +562,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     // Belongs to the task being edited, not to the sheet.
     kindMemory.current = { timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [] };
     if (task) {
-      setTitle(task.title); setTitleSelection({ start: task.title.length, end: task.title.length }); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags); setPersonIds(task.personIds);
+      setTitle(task.title); titleCaret.resetCaret(task.title); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags); setPersonIds(task.personIds);
       setGroupId(task.groupId ?? null);
       setDueDate(task.dueDate ? new Date(task.dueDate) : null);
       // The set's other live dates. Completed ones are left out: they're
@@ -624,7 +626,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setExtraTaskTitle(task.extraTaskTitle ?? '');
       setExtraTaskDraft(task.extraTaskDraft ?? null);
     } else {
-      setTitle(initialDraft?.title ?? ''); setTitleSelection({ start: (initialDraft?.title ?? '').length, end: (initialDraft?.title ?? '').length }); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
+      setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
       setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
@@ -796,11 +798,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   // keypress would, rather than always appending to the end.
   const insertTitleToken = (token: string) => {
     haptics.tap();
-    const { start, end } = titleSelection;
-    const next = title.slice(0, start) + token + title.slice(end);
-    setTitle(next);
-    const cursor = start + token.length;
-    setTitleSelection({ start: cursor, end: cursor });
+    setTitle(titleCaret.insertToken(token));
   };
 
   // Apply the suggested schedule and strip the phrase from the title.
@@ -809,7 +807,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     haptics.success();
     animateLayout();
     setTitle(parsedSchedule.cleanTitle);
-    setTitleSelection({ start: parsedSchedule.cleanTitle.length, end: parsedSchedule.cleanTitle.length });
+    titleCaret.moveCaret(parsedSchedule.cleanTitle);
     setDueDate(parsedSchedule.schedule.dueDate);
     if (parsedSchedule.schedule.deadline) {
       setDeadline(parsedSchedule.schedule.deadline);
@@ -1992,8 +1990,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // glitching. Autocorrect off suppresses that native suggestion.
           autoCorrect={false}
           multiline blurOnSubmit
-          selection={titleSelection}
-          onSelectionChange={e => setTitleSelection(e.nativeEvent.selection)}
+          selection={titleCaret.selection}
+          onSelectionChange={titleCaret.onSelectionChange}
           inputAccessoryViewID={Platform.OS === 'ios' ? TITLE_TOKEN_ACCESSORY_ID : undefined}
         />
       </View>
