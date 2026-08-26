@@ -569,11 +569,7 @@ export function seedDemoData(): void {
   addProjectCategory('Around the house');
   addProjectCategory('Ideas');
 
-  const kitchen = createProject(
-    'Kitchen refresh',
-    today.toISOString(),
-    addDays(today, 45).toISOString(),
-  );
+  const kitchen = createProject('Kitchen refresh', addDays(today, 45).toISOString());
   // Notes are collapsed to one line at the top of the project screen and
   // expand on tap — with no project carrying any, that row never rendered.
   updateProject(kitchen.id, {
@@ -619,7 +615,7 @@ export function seedDemoData(): void {
   // nudgeOptIn defaults to false, so it never trips the gone-quiet nudge or
   // shows up in "Pull from projects" the way an ordinary undated project
   // would. See Project.nudgeOptIn.
-  const giftIdeas = createProject('Gift ideas', null, null);
+  const giftIdeas = createProject('Gift ideas', null);
   updateProject(giftIdeas.id, { category: 'Ideas' });
   ['Something for Mom\'s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
     const t = addTask({ title });
@@ -632,7 +628,7 @@ export function seedDemoData(): void {
   // flag on one of the others — sequential hides every step but the first, and
   // turning it on for the kitchen would have taken "Book the installer" out of
   // Later, which is where that row is seeded to be seen.
-  const passport = createProject('Renew my passport', null, null);
+  const passport = createProject('Renew my passport', null);
   updateProject(passport.id, { sequential: true });
   ['Fill in the application form', 'Get new photos taken', 'Post it, recorded delivery'].forEach(title => {
     const t = addTask({ title, category: 'Errands' });
@@ -658,7 +654,7 @@ export function seedDemoData(): void {
   // the seed runs, so the row a screenshot shows wouldn't be the row this file
   // wrote — and the same foreground would delete the review task below, since
   // the two layers coordinate by excluding each other (see wantedProjectReviews).
-  const garage = createProject('Garage shelving', null, null);
+  const garage = createProject('Garage shelving', null);
   updateProject(garage.id, { nudgeOptIn: true, nudgeCadenceDays: 14, category: 'Around the house' });
   // Quiet is measured from the project's own creation until something in it
   // is completed, so a project minted seconds ago is never quiet however long
@@ -722,7 +718,7 @@ export function seedDemoData(): void {
   // Marked complete rather than archived — demonstrates Project.completed,
   // which has its own Completed list (see ProjectEditor's Mark complete row)
   // instead of disappearing into Archived the way finishing a project used to.
-  const hallway = createProject('Repaint the hallway', null, null);
+  const hallway = createProject('Repaint the hallway', null);
   updateProject(hallway.id, { category: 'Around the house' });
   ['Buy paint and tape', 'Tape the trim', 'Two coats, let dry between'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
@@ -736,7 +732,7 @@ export function seedDemoData(): void {
   // Abandoned rather than finished, which is what archiving without completing
   // says — its two members stay live and unfiled the same way they would for a
   // real archive.
-  const basement = createProject('Basement declutter', null, null);
+  const basement = createProject('Basement declutter', null);
   updateProject(basement.id, { category: 'Around the house' });
   ['Hire a skip', 'Sort the boxes by the stairs'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
@@ -749,7 +745,7 @@ export function seedDemoData(): void {
   // screen exists for. Left uncompleted on purpose, unlike the hallway
   // above: that one demonstrates Project.completed, this one demonstrates
   // the nudge to reach it.
-  const gate = createProject('Fix the back gate', null, null);
+  const gate = createProject('Fix the back gate', null);
   ['Buy a new hinge', 'Sand and repaint'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
     addExistingToProject(t.id, gate.id);

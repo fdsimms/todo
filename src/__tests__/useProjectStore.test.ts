@@ -135,8 +135,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   id: 'project-1',
   title: 'Summer Bucket List',
   notes: '',
-  targetStartDate: null,
-  targetEndDate: null,
+  deadline: null,
   category: null,
   sortOrder: 1,
   archived: false,
@@ -392,37 +391,37 @@ describe('projectDecisions', () => {
 
 describe('isProjectPastWindow', () => {
   it('is false when there is no target end date', () => {
-    const project = makeProject({ targetEndDate: null });
+    const project = makeProject({ deadline: null });
     expect(isProjectPastWindow(project, { done: 0, total: 2 })).toBe(false);
   });
 
   it('is false when the target end date is in the future', () => {
     const future = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
-    const project = makeProject({ targetEndDate: future });
+    const project = makeProject({ deadline: future });
     expect(isProjectPastWindow(project, { done: 0, total: 2 })).toBe(false);
   });
 
   it('is true when the target end date has passed and the project is incomplete and not archived', () => {
     const past = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
-    const project = makeProject({ targetEndDate: past, archived: false });
+    const project = makeProject({ deadline: past, archived: false });
     expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(true);
   });
 
   it('is false when the project is archived, even past its window', () => {
     const past = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
-    const project = makeProject({ targetEndDate: past, archived: true });
+    const project = makeProject({ deadline: past, archived: true });
     expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(false);
   });
 
   it('is false when the project hit 100% naturally, even if not archived', () => {
     const past = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
-    const project = makeProject({ targetEndDate: past, archived: false });
+    const project = makeProject({ deadline: past, archived: false });
     expect(isProjectPastWindow(project, { done: 2, total: 2 })).toBe(false);
   });
 
   it('is false when the project is marked complete, even past its window', () => {
     const past = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
-    const project = makeProject({ targetEndDate: past, archived: false, completed: true });
+    const project = makeProject({ deadline: past, archived: false, completed: true });
     expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(false);
   });
 
@@ -447,12 +446,12 @@ describe('isProjectPastWindow', () => {
     afterEach(() => { jest.useRealTimers(); });
 
     it('is false at noon on the target day, while the project is still due', () => {
-      const project = makeProject({ targetEndDate: noonOn(2026, 5, 15) });
+      const project = makeProject({ deadline: noonOn(2026, 5, 15) });
       expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(false);
     });
 
     it('is true once the target day itself has passed', () => {
-      const project = makeProject({ targetEndDate: noonOn(2026, 5, 14) });
+      const project = makeProject({ deadline: noonOn(2026, 5, 14) });
       expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(true);
     });
 
@@ -461,7 +460,7 @@ describe('isProjectPastWindow', () => {
     it('never flags a window the deadline formatter still calls Today', () => {
       const iso = noonOn(2026, 5, 15);
       expect(formatDeadlineDate(iso)).toBe('Today');
-      expect(isProjectPastWindow(makeProject({ targetEndDate: iso }), { done: 1, total: 2 })).toBe(false);
+      expect(isProjectPastWindow(makeProject({ deadline: iso }), { done: 1, total: 2 })).toBe(false);
     });
   });
 });
@@ -470,9 +469,9 @@ describe('isProjectPastWindow', () => {
 
 describe('createProject / updateProject / getProjectById', () => {
   it('creates a project with the given fields and persists it', () => {
-    const project = useProjectStore.getState().createProject('Summer Bucket List', null, '2026-09-01T00:00:00.000Z');
+    const project = useProjectStore.getState().createProject('Summer Bucket List', '2026-09-01T00:00:00.000Z');
     expect(project.title).toBe('Summer Bucket List');
-    expect(project.targetEndDate).toBe('2026-09-01T00:00:00.000Z');
+    expect(project.deadline).toBe('2026-09-01T00:00:00.000Z');
     expect(project.archived).toBe(false);
     expect(dbInsertProject).toHaveBeenCalledWith(project);
     expect(useProjectStore.getState().projects).toContainEqual(project);
@@ -491,7 +490,7 @@ describe('createProject / updateProject / getProjectById', () => {
   });
 
   it('gives a new project the default nudge cadence, with auto-scheduling off', () => {
-    const project = useProjectStore.getState().createProject('Kitchen remodel', null, null);
+    const project = useProjectStore.getState().createProject('Kitchen remodel', null);
     expect(project.nudgeCadenceDays).toBe(DEFAULT_NUDGE_CADENCE_DAYS);
     expect(project.autoSchedule).toBe(false);
     expect(project.nudgeOptIn).toBe(false);
@@ -508,7 +507,7 @@ describe('createProject / updateProject / getProjectById', () => {
 
     it('opts a new project in when the default names a cadence', () => {
       useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 14 });
-      const project = useProjectStore.getState().createProject('Loft conversion', null, null);
+      const project = useProjectStore.getState().createProject('Loft conversion', null);
       expect(project.nudgeCadenceDays).toBe(14);
       expect(project.nudgeOptIn).toBe(true);
       expect(nudgeModeOf(project)).toBe('scheduled');
@@ -516,7 +515,7 @@ describe('createProject / updateProject / getProjectById', () => {
 
     it('leaves a new project out of nudges entirely when the default is Never', () => {
       useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 0 });
-      const project = useProjectStore.getState().createProject('Gift ideas', null, null);
+      const project = useProjectStore.getState().createProject('Gift ideas', null);
       expect(project.nudgeOptIn).toBe(false);
       expect(nudgeModeOf(project)).toBe('never');
     });

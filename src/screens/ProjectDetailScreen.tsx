@@ -72,6 +72,7 @@ export function ProjectDetailScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
+  const bulkRemoveFromProject = useTaskStore(s => s.bulkRemoveFromProject);
   const reorderProjectTasks = useTaskStore(s => s.reorderProjectTasks);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
@@ -504,6 +505,14 @@ export function ProjectDetailScreen() {
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
             onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
+            // The other half of "Add existing task", which this screen has had
+            // its own picker for since the start while taking one back out was
+            // reachable from nowhere on it (see BulkActionBar's own note).
+            onRemoveFromProject={() => {
+              animateLayout();
+              bulkRemoveFromProject(Array.from(selectedIds));
+              exitSelection();
+            }}
             onSelectAll={() => selectAll(selectableTasks.map(t => t.id))}
             onDeselectAll={deselectAll}
             onCancel={exitSelection}

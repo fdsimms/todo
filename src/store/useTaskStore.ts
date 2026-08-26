@@ -1539,6 +1539,8 @@ interface TaskStore {
   // deleteCategory above.
   deleteProjectCategory: (name: string) => void;
   removeFromProject: (taskId: string) => void;
+  /** Unfiles a selection from whatever project each is in, as one undo entry. */
+  bulkRemoveFromProject: (taskIds: string[]) => void;
   deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
   // Archive/restore a project through here rather than through useProjectStore
   // directly — these are the ones that register an undo entry.
@@ -5570,6 +5572,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   removeFromProject(taskId) {
     get().updateTask(taskId, { projectId: null });
+  },
+
+  // One entry for the batch, same rule as every other bulk action: each call
+  // to updateTask leaves its own, and the queue holds one, so the last task
+  // unfiled would be the only one a shake brings back. Each task's *own*
+  // previous projectId is snapshotted rather than one shared value — the
+  // action is scoped to a project's screen today, but a selection spanning two
+  // of them must not all come back into whichever was read first.
+  bulkRemoveFromProject(taskIds) {
+    const idSet = new Set(taskIds);
+    const previous = get().tasks
+      .filter(t => idSet.has(t.id) && t.projectId !== null)
+      .map(t => ({ id: t.id, projectId: t.projectId }));
+    if (previous.length === 0) return;
+    dbTransaction(() => {
+      previous.forEach(p => get().updateTask(p.id, { projectId: null }));
+    });
+    get().setLastAction({
+      label: `${previous.length} task${previous.length === 1 ? '' : 's'} removed from project`,
+      undo: () => previous.forEach(p => get().updateTask(p.id, { projectId: p.projectId })),
+    });
   },
 
   // Archiving a project lives here rather than in useProjectStore for the same

@@ -46,16 +46,14 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import { formatDeadlineDate, formatStartDate } from '../utils/dateUtils';
+import { formatDeadlineDate } from '../utils/dateUtils';
 import type { Project } from '../types';
 
-function dateRangeLabel(project: Project): string | null {
-  if (project.targetStartDate && project.targetEndDate) {
-    return `${formatStartDate(project.targetStartDate)} – ${formatDeadlineDate(project.targetEndDate)}`;
-  }
-  if (project.targetEndDate) return `By ${formatDeadlineDate(project.targetEndDate)}`;
-  if (project.targetStartDate) return `From ${formatStartDate(project.targetStartDate)}`;
-  return null;
+// One date, one shape. This used to render a range and both of its halves
+// separately, because a project carried a start date as well — see
+// Project.deadline for why the start half is gone.
+function deadlineLabel(project: Project): string | null {
+  return project.deadline ? `By ${formatDeadlineDate(project.deadline)}` : null;
 }
 
 // The add button, naming what a release right now would do.
@@ -333,7 +331,7 @@ export function ProjectsScreen() {
     // The draft carries the seeded category; only the placement is let go of.
     closeQuickAdd();
     animateLayout();
-    const project = createProject(draft.title, draft.targetStartDate, draft.targetEndDate);
+    const project = createProject(draft.title, draft.deadline);
     if (draft.category) updateProject(project.id, { category: draft.category });
     newProjectIdRef.current = project.id;
     setEditingProject({ ...project, category: draft.category });
@@ -384,7 +382,7 @@ export function ProjectsScreen() {
     const project = item.project;
     const progress = progressByProject.get(project.id) ?? { done: 0, total: 0 };
     const pastWindow = isProjectPastWindow(project, progress);
-    const rangeLabel = dateRangeLabel(project);
+    const deadlineText = deadlineLabel(project);
     const selected = selectedIds.has(project.id);
     // Only the active list needs this — completed projects already show their
     // own restore affordance, and an archived one is filed away regardless.
@@ -475,9 +473,9 @@ export function ProjectsScreen() {
               <Text style={styles.progressText}>{progress.done}/{progress.total}</Text>
             </View>
           )}
-          {rangeLabel && (
+          {deadlineText && (
             <Text style={[styles.rangeText, pastWindow && { color: colors.orange }]} numberOfLines={1}>
-              {pastWindow ? `Past window · ${rangeLabel}` : rangeLabel}
+              {pastWindow ? `Overdue · ${deadlineText}` : deadlineText}
             </Text>
           )}
         </View>

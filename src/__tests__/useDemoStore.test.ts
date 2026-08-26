@@ -243,7 +243,7 @@ describe('demo mode', () => {
   it('hides real categories, tags, projects and stacks too, not just tasks', () => {
     useTaskStore.getState().addCategory('Therapy');
     useTaskStore.getState().addTag('confidential');
-    useProjectStore.getState().createProject('Divorce paperwork', null, null);
+    useProjectStore.getState().createProject('Divorce paperwork', null);
     useTaskGroupStore.getState().createGroup('Medications', null);
 
     useDemoStore.getState().enterDemoMode();
@@ -892,6 +892,13 @@ describe('demo mode', () => {
     expect(steps.length).toBeGreaterThan(1);
     expect(isHeldBack(steps[0])).toBe(false);
     expect(steps.slice(1).every(t => isHeldBack(t))).toBe(true);
+  });
+
+  it('seeds a project carrying a deadline', () => {
+    // The one date a project has, and the "By Oct 10" line on its card. With
+    // none seeded that line never renders and the field reads as absent.
+    useDemoStore.getState().enterDemoMode();
+    expect(useProjectStore.getState().projects.some(p => p.deadline !== null)).toBe(true);
   });
 
   it('seeds an archived project and a project carrying notes', () => {

@@ -1,4 +1,4 @@
 {
-  "message": "A project no longer reads \"Past window\" halfway through the day it's actually due. The flag now turns on when the target date has passed, matching the date shown next to it.",
+  "message": "A project no longer reads as overdue halfway through the day it's actually due. The flag now turns on once its deadline has passed, matching the date shown next to it.",
   "date": "2026-08-26"
 }

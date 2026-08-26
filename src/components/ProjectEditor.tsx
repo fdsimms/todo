@@ -24,7 +24,7 @@ import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
-import { formatDeadlineDate, formatStartDate } from '../utils/dateUtils';
+import { formatDeadlineDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
@@ -92,10 +92,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [category, setCategory] = useState<string | null>(null);
-  const [targetStartDate, setTargetStartDate] = useState<Date | null>(null);
-  const [targetEndDate, setTargetEndDate] = useState<Date | null>(null);
-  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
-  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [deadline, setDeadline] = useState<Date | null>(null);
+  const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   // Collapsed to the chosen category until tapped, like every other editor.
@@ -115,8 +113,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setTitle(project.title);
     setNotes(project.notes);
     setCategory(project.category);
-    setTargetStartDate(project.targetStartDate ? new Date(project.targetStartDate) : null);
-    setTargetEndDate(project.targetEndDate ? new Date(project.targetEndDate) : null);
+    setDeadline(project.deadline ? new Date(project.deadline) : null);
     setNudgeMode(nudgeModeOf(project));
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
@@ -162,8 +159,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       title: trimmed || project.title,
       notes,
       category: resolveCategory(),
-      targetStartDate: targetStartDate ? targetStartDate.toISOString() : null,
-      targetEndDate: targetEndDate ? targetEndDate.toISOString() : null,
+      deadline: deadline ? deadline.toISOString() : null,
       ...nudgeFieldsFor(nudgeMode, nudgeCadenceDays),
       // Anything but a scheduled cadence leaves nothing for auto-scheduling to
       // trigger on, so the two can't disagree about whether this project is
@@ -241,24 +237,14 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       footer={
         <>
           <WhenPicker
-            visible={showStartDatePicker}
-            value={targetStartDate}
-            title="Start date"
+            visible={showDeadlinePicker}
+            value={deadline}
+            title="Deadline"
             showTimeOfDay={false}
             showSuggest={false}
-            onConfirm={(date) => { setTargetStartDate(date); setShowStartDatePicker(false); }}
-            onClear={() => { setTargetStartDate(null); setShowStartDatePicker(false); }}
-            onCancel={() => setShowStartDatePicker(false)}
-          />
-          <WhenPicker
-            visible={showEndDatePicker}
-            value={targetEndDate}
-            title="Target date"
-            showTimeOfDay={false}
-            showSuggest={false}
-            onConfirm={(date) => { setTargetEndDate(date); setShowEndDatePicker(false); }}
-            onClear={() => { setTargetEndDate(null); setShowEndDatePicker(false); }}
-            onCancel={() => setShowEndDatePicker(false)}
+            onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
+            onClear={() => { setDeadline(null); setShowDeadlinePicker(false); }}
+            onCancel={() => setShowDeadlinePicker(false)}
           />
         </>
       }
@@ -335,27 +321,21 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
 
       <View style={[styles.card, { marginTop: spacing.lg }]}>
         <EditorRow
-          icon="play-outline"
-          label="Start date"
-          value={targetStartDate ? formatStartDate(targetStartDate.toISOString()) : undefined}
-          onPress={() => setShowStartDatePicker(true)}
-          onClear={targetStartDate ? () => setTargetStartDate(null) : undefined}
-        />
-        <View style={styles.sep} />
-        <EditorRow
           icon="flag-outline"
-          label="Target date"
-          value={targetEndDate ? formatDeadlineDate(targetEndDate.toISOString()) : undefined}
-          onPress={() => setShowEndDatePicker(true)}
-          onClear={targetEndDate ? () => setTargetEndDate(null) : undefined}
+          label="Deadline"
+          value={deadline ? formatDeadlineDate(deadline.toISOString()) : undefined}
+          onPress={() => setShowDeadlinePicker(true)}
+          onClear={deadline ? () => setDeadline(null) : undefined}
         />
       </View>
-      {/* #1740: this used to only explain the target date, leaving "Start
-          date" to sit unexplained next to a card full of scheduling toggles
-          — reasonably read as gating something. Neither date does; both are
-          purely informational (see Project.targetStartDate/targetEndDate). */}
+      {/* Same flag icon and the same word a task's own deadline uses, because
+          it is the same idea one container out. It replaced a "Start date" /
+          "Target date" pair whose first half had one reader in its life (see
+          Project.deadline) — #1740 had to add a paragraph here denying that
+          either of them scheduled anything, and half of that paragraph went
+          with the field it was denying. */}
       <Text style={styles.sectionFooter}>
-        Optional, just for reference: shown on the project's card, with no effect on scheduling or when tasks appear. If the target date passes before the project's done, nothing happens automatically; it's just flagged so you can decide what to do.
+        Optional. Shown on the project's card, with no effect on scheduling or when tasks appear. If it passes before the project's done, nothing happens automatically; it's just flagged so you can decide what to do.
       </Text>
 
       {/* One question, three answers. "Include in nudges" and "Review cadence"

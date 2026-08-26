@@ -360,8 +360,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   id: 'project-1',
   title: 'Test Project',
   notes: '',
-  targetStartDate: null,
-  targetEndDate: null,
+  deadline: null,
   category: null,
   sortOrder: 1,
   archived: false,
@@ -11684,5 +11683,67 @@ describe('deleteProjectCategory', () => {
     useTaskStore.getState().deleteProjectCategory('Missing');
     expect(useProjectStore.getState().projects[0].category).toBe('Home');
     expect(useProjectCategoryStore.getState().categories).toHaveLength(1);
+  });
+});
+
+// ─── bulkRemoveFromProject ──────────────────────────────────────────────────
+
+describe('bulkRemoveFromProject', () => {
+  it('unfiles every selected task that was in a project', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1' }),
+        makeTask({ id: 'b', projectId: 'p1' }),
+        makeTask({ id: 'c', projectId: 'p1' }),
+      ],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'b']);
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.projectId).toBeNull();
+    expect(byId('b')?.projectId).toBeNull();
+    expect(byId('c')?.projectId).toBe('p1');
+  });
+
+  it('leaves the tasks otherwise untouched', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1', category: 'Home', priority: 2, dueDate: '2026-06-01T12:00:00.000Z' })],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a']);
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a');
+    expect(task?.category).toBe('Home');
+    expect(task?.priority).toBe(2);
+    expect(task?.dueDate).toBe('2026-06-01T12:00:00.000Z');
+  });
+
+  // One entry for the batch: each updateTask leaves its own, and the queue
+  // holds one, so without this the last task unfiled would be the only one a
+  // shake brings back.
+  it('brings the whole batch back on a single undo', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p1' })],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'b']);
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.every(t => t.projectId === 'p1')).toBe(true);
+  });
+
+  // Scoped to one project's screen today, but a selection spanning two must
+  // not all come back into whichever was read first.
+  it('returns each task to its own project on undo', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p2' })],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'b']);
+    useTaskStore.getState().undoLastAction();
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.projectId).toBe('p1');
+    expect(byId('b')?.projectId).toBe('p2');
+  });
+
+  it('does nothing, and registers no undo, when nothing selected is in a project', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: null })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'missing']);
+    expect(useTaskStore.getState().lastAction).toBeNull();
   });
 });
