@@ -9,6 +9,8 @@ import {
   Animated,
   PanResponder,
   StyleSheet,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -78,12 +80,34 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
 
   const translateY = useRef(new Animated.Value(hiddenY)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const keyboardOffset = useRef(new Animated.Value(0)).current;
+
+  // Without this, the card stays pinned to the physical bottom of the
+  // screen while the keyboard is up, and a short result list (as few as
+  // the one free-text row, once the query matches nothing) is entirely
+  // covered by it — the sheet you're typing into disappears out from under
+  // you. Same fix RecipePickerSheet already carries for the same shape.
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const showSub = Keyboard.addListener(showEvent, e => {
+      const height = e.endCoordinates?.height ?? 0;
+      Animated.spring(keyboardOffset, {
+        toValue: -height, ...animation.spring.smooth, useNativeDriver: true,
+      }).start();
+    });
+    const hideSub = Keyboard.addListener(hideEvent, () => {
+      Animated.spring(keyboardOffset, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }).start();
+    });
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
 
   useEffect(() => {
     if (!visible) return;
     setQuery('');
     translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
+    keyboardOffset.setValue(0);
     Animated.parallel([
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
@@ -91,6 +115,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
   }, [visible]);
 
   const dismiss = (after?: () => void) => {
+    Keyboard.dismiss();
     Animated.parallel([
       Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.sheetDismiss, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
@@ -130,7 +155,7 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
       </Animated.View>
       <SheetScrim onPress={() => dismiss()} />
 
-      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY }] }]}>
+      <Animated.View style={[styles.sheetOuter, { transform: [{ translateY: Animated.add(translateY, keyboardOffset) }] }]}>
         <View style={styles.handleArea} {...panResponder.panHandlers}>
           <View style={styles.handle} />
         </View>
