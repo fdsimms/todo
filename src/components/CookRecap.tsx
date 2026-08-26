@@ -15,7 +15,6 @@ import { leftoverKeepDaysFor, leftoverPartsFor } from '../utils/leftovers';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { CookRecapSheet } from './CookRecapSheet';
 import { LeftoverSheet } from './LeftoverSheet';
-import { RecipeToListSheet } from './RecipeToListSheet';
 
 /**
  * The post-cook sheet and everything it needs, reading its whole subject from
@@ -56,7 +55,6 @@ export function CookRecap() {
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
 
   const [leftoverVisible, setLeftoverVisible] = useState(false);
-  const [shopVisible, setShopVisible] = useState(false);
 
   const recipesById = useMemo(() => new Map(recipes.map(r => [r.id, r])), [recipes]);
   // What the cook actually cooked with — see standingSwaps.ts.
@@ -77,8 +75,8 @@ export function CookRecap() {
   }, [recap, recipe, recipesById, items, swaps]);
 
   const rows = useMemo(() => consumedRows(classified), [classified]);
-  const restockCount = useMemo(
-    () => (restockOfferEnabled ? restockRows(classified).length : 0),
+  const restockList = useMemo(
+    () => (restockOfferEnabled ? restockRows(classified) : []),
     [classified, restockOfferEnabled]
   );
 
@@ -118,7 +116,7 @@ export function CookRecap() {
   }, [recap, recipe, recipesById]);
 
   const askLeftovers = !!recap?.canLogLeftovers;
-  const hasSomethingToAsk = askVote || askLeftovers || rows.length > 0 || restockCount > 0;
+  const hasSomethingToAsk = askVote || askLeftovers || rows.length > 0 || restockList.length > 0;
 
   /**
    * Held back while the one other thing a tick can raise is up.
@@ -133,7 +131,6 @@ export function CookRecap() {
 
   const close = () => {
     setLeftoverVisible(false);
-    setShopVisible(false);
     clearCookRecap();
   };
 
@@ -142,14 +139,15 @@ export function CookRecap() {
   // open, and one left set with an empty sheet behind it would be a tap that
   // swallowed itself. Same for the setting being off.
   //
-  // Not while a sheet this one opened is up, though — answering the pantry
-  // through "Add to list" empties the section by design, and closing on that
-  // would take the shop down with it, since both sheets are rendered inside
-  // this Modal (see CookRecapSheet's `children`).
+  // Not while the leftover sheet this one opened is up, though — the sheet
+  // it's nested inside (see CookRecapSheet's `children`) would go down with
+  // it. Adding restock items closes the section itself (the row disappears
+  // once the store reclassifies it), so if that was the only thing left open,
+  // this fires and clears the recap — same as any other section emptying out.
   useEffect(() => {
-    if (recap && !leftoverVisible && !shopVisible && (!cookRecapEnabled || !hasSomethingToAsk)) close();
+    if (recap && !leftoverVisible && (!cookRecapEnabled || !hasSomethingToAsk)) close();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recap, cookRecapEnabled, hasSomethingToAsk, leftoverVisible, shopVisible]);
+  }, [recap, cookRecapEnabled, hasSomethingToAsk, leftoverVisible]);
 
   if (!recap || !cookRecapEnabled || waiting || !hasSomethingToAsk) return null;
 
@@ -168,8 +166,7 @@ export function CookRecap() {
       }
       onLogLeftovers={askLeftovers ? () => setLeftoverVisible(true) : undefined}
       rows={rows}
-      restockCount={restockCount}
-      onAddToList={restockOfferEnabled && recipe ? () => setShopVisible(true) : undefined}
+      restockRows={restockList}
       onClose={close}
     >
       {seed && (
@@ -203,19 +200,6 @@ export function CookRecap() {
           onClose={() => setLeftoverVisible(false)}
         />
       )}
-
-      {/* Ticks stay scoped to what this cooking put into `restockRows` — the
-          same `initialSelection` the restock banner opened with, and for the
-          same reason: the user named the moment, not the lines. */}
-      <RecipeToListSheet
-        visible={shopVisible}
-        recipe={recipe}
-        recipesById={recipesById}
-        initialChoices={recap.choices}
-        initialScale={recap.scale}
-        initialSelection="restock"
-        onClose={() => setShopVisible(false)}
-      />
     </CookRecapSheet>
   );
 }
