@@ -213,6 +213,26 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
     onClose();
   };
 
+  // Nothing here is written until Save, so a swipe-down mid-edit would
+  // otherwise drop a typed brand/variant/note or a rating with no dialog.
+  // Pantry pills write immediately and are deliberately not part of this —
+  // they're already saved by the time the sheet could be dismissed.
+  const handleCancel = () => {
+    const dirty = brand.trim() !== (editing?.brand ?? '')
+      || variant.trim() !== (editing?.variant ?? '')
+      || note !== (editing?.note ?? '')
+      || rating !== (editing?.rating ?? null);
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   const handleDelete = () => {
     if (!editing || !item) return;
     // Deleting is the one action here that loses something the user can't get
@@ -242,10 +262,10 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
   const isPreferred = !!editing && item.preferredProductId === editing.id;
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
           <Text style={styles.headerTitle} numberOfLines={1}>
             {editing ? 'Edit product' : `Which ${item.name.toLowerCase()}?`}
           </Text>

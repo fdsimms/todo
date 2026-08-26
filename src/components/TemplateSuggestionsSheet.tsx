@@ -118,6 +118,21 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
     onClose();
   };
 
+  // A generated batch is expensive to get back (a fresh AI call, and any
+  // deselections are review work), so a swipe-down with a batch on screen
+  // asks first rather than throwing it away the way a bare onClose would.
+  const handleCancel = () => {
+    if (suggestions.length === 0) { onClose(); return; }
+    Alert.alert(
+      'Discard suggestions?',
+      'The suggested tasks will be lost.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   const acceptedCount = accepted.size;
   const canAdd = !loading && acceptedCount > 0;
 
@@ -126,11 +141,11 @@ export function TemplateSuggestionsSheet({ visible, templateId, templateName, ex
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={handleCancel}
     >
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
             <Text style={styles.headerTitle}>Suggested tasks</Text>

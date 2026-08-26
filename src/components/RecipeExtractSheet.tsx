@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -415,6 +416,25 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const backLabel = input.usingLink ? 'Change the link' : 'Go back';
   const goBack = () => { setError(null); setExtracted(null); };
 
+  // Any progress past a blank input screen — extracted content, or unrun
+  // paste/link/photo input — is real work a swipe-down would otherwise drop
+  // with no dialog.
+  const handleCancel = () => {
+    const dirty = !!extracted
+      || !!input.text.trim()
+      || !!input.url.trim()
+      || !!input.photo;
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   // Unlike the method and the prep tasks, these two overwrite rather than
   // append — there's only one servings field — so the row says so when the
   // recipe already has one.
@@ -711,10 +731,10 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
             <Text style={styles.headerTitle}>From a recipe</Text>

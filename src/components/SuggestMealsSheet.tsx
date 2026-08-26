@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  Modal, View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet,
+  Alert, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, StyleSheet,
 } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
 import { useNavigation } from '@react-navigation/native';
@@ -790,11 +790,26 @@ export function SuggestMealsSheet({
   const nothingForFilter = filter !== 'all'
     && filteredRecipes.length === 0 && filteredCookAgain.length === 0 && filteredIdeas.length === 0;
 
+  // Picks, a typed hint, and a generated batch of ideas are all local until
+  // Save — a swipe-down would otherwise drop any of them with no dialog.
+  const handleCancel = () => {
+    const dirty = selected.size > 0 || hints.trim() !== '' || ideas.length > 0;
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} disabled={saving} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} disabled={saving} minWidth={72} />
           <Text style={styles.headerTitle}>Suggest meals</Text>
           <SheetHeaderButton
             label={saving ? 'Saving…' : selected.size > 0 ? `Save (${selected.size})` : 'Save'}
