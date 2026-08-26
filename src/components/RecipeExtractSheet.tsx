@@ -78,6 +78,11 @@ interface Props {
  * (#1618), rather than left un-offered. A count alone was not a review: it
  * said seven steps were coming without showing one of them. A link's own steps
  * are still preferred over the model's read of the same page when both exist.
+ * Attribution is offered whichever source it came from too, but with a twist
+ * a paste or a photo has no page to pre-fill from — the "Where it's from" row
+ * still appears with blank site/author fields, since a home recipe or a
+ * cookbook clipping is just as much a source as a web page, it's just one
+ * only the person importing it can name.
  */
 export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const colors = useColors();
@@ -203,14 +208,15 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setApplyDetails(result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null);
       // A method is offered whichever source it came from — the page's own
       // steps when it publishes them, otherwise the model's read of the same
-      // source. Attribution stays link-only, since nothing else names where a
-      // recipe came from. All three are offered *ticked* only when there's
-      // nothing of the user's own to land on top of.
+      // source. Attribution is offered whichever source it came from too —
+      // pre-filled from the page when there is one, blank for a paste or a
+      // photo to fill in by hand. All three are offered *ticked* only when
+      // there's nothing of the user's own to land on top of.
       const page = resolved.page;
       const methodStepsFound = (page?.steps.length ?? 0) > 0 ? page!.steps : result.steps;
       setApplyMethod(methodStepsFound.length > 0 && !recipeHasMethod(recipe));
       setApplyPrepTasks(result.prepTasks.length > 0 && !recipeHasPrepTasks(recipe));
-      setApplySource(!!page && !recipeHasAttribution(recipe));
+      setApplySource(!recipeHasAttribution(recipe));
       setSteps(methodStepsFound);
       setAcceptedSteps(new Set(methodStepsFound.map((_, i) => i)));
       setPrepTasks(result.prepTasks);
@@ -340,12 +346,15 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
         }
       });
     }
+    // A link's URL comes from the page and isn't editable; site and author
+    // are, whether they arrived pre-filled from structured markup or were
+    // typed in by hand over a paste or a photo's blank fields.
     const page = input.page;
-    if (page && applySource) {
-      setSourceUrl(recipe.id, page.url);
-      setSourceType(recipe.id, 'website');
-      // The URL is the link that was pasted and isn't editable; the two the
-      // page merely claims about itself are.
+    if (applySource) {
+      if (page) {
+        setSourceUrl(recipe.id, page.url);
+        setSourceType(recipe.id, 'website');
+      }
       const site = pendingText('source:site', siteName).trim();
       const by = pendingText('source:author', sourceAuthor).trim();
       if (site) setSource(recipe.id, site);
@@ -368,7 +377,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     || (applyDetails && hasDetails)
     || (applyMethod && acceptedSteps.size > 0)
     || (applyPrepTasks && acceptedPrepTasks.size > 0)
-    || (applySource && !!input.page)
+    || (applySource && (!!input.page || !!siteName.trim() || !!sourceAuthor.trim()))
     // A run that found nothing but a "see page 45" is still worth an Add: the
     // link is the whole result.
     || acceptedKeys.size > 0
@@ -621,43 +630,41 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
           />
         )}
 
-        {!!input.page && (
-          <ImportApplyRow
-            checked={applySource}
-            onToggle={() => setApplySource(v => !v)}
-            title="Where it’s from"
-            meta={sourceMeta}
-            accessibilityLabel={`Where it’s from, ${sourceMeta}`}
-          >
-            <View style={styles.detailFields}>
-              <InlineEditableText
-                edits={edits}
-                editKey="source:site"
-                value={siteName}
-                onCommit={setSiteName}
-                allowEmpty
-                textStyle={styles.detailValue}
-                placeholder="e.g. Serious Eats"
-                accessibilityLabel="site name"
-                maxLength={80}
-                numberOfLines={1}
-              />
-              <Text style={styles.detailSep}>·</Text>
-              <InlineEditableText
-                edits={edits}
-                editKey="source:author"
-                value={sourceAuthor}
-                onCommit={setSourceAuthor}
-                allowEmpty
-                textStyle={styles.detailValue}
-                placeholder="e.g. Kenji"
-                accessibilityLabel="author"
-                maxLength={80}
-                numberOfLines={1}
-              />
-            </View>
-          </ImportApplyRow>
-        )}
+        <ImportApplyRow
+          checked={applySource}
+          onToggle={() => setApplySource(v => !v)}
+          title="Where it’s from"
+          meta={sourceMeta}
+          accessibilityLabel={sourceMeta ? `Where it’s from, ${sourceMeta}` : 'Where it’s from'}
+        >
+          <View style={styles.detailFields}>
+            <InlineEditableText
+              edits={edits}
+              editKey="source:site"
+              value={siteName}
+              onCommit={setSiteName}
+              allowEmpty
+              textStyle={styles.detailValue}
+              placeholder="e.g. NYT Cooking"
+              accessibilityLabel="source"
+              maxLength={80}
+              numberOfLines={1}
+            />
+            <Text style={styles.detailSep}>·</Text>
+            <InlineEditableText
+              edits={edits}
+              editKey="source:author"
+              value={sourceAuthor}
+              onCommit={setSourceAuthor}
+              allowEmpty
+              textStyle={styles.detailValue}
+              placeholder="e.g. Kenji"
+              accessibilityLabel="author"
+              maxLength={80}
+              numberOfLines={1}
+            />
+          </View>
+        </ImportApplyRow>
 
         {renderReferences()}
 

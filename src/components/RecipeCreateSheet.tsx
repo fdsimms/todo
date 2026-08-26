@@ -98,8 +98,11 @@ interface Props {
  * and any prep tasks — `extractRecipe` reads them off a paste or a photo the
  * same way it reads the ingredients, and off a link's own page text as a
  * fallback for whichever a site doesn't publish as structured data. The page's
- * own steps are preferred when both exist; only attribution stays link-only,
- * since nothing else names where a recipe came from.
+ * own steps are preferred when both exist; attribution is the one field a
+ * paste or a photo can never guess, so the "Where it's from" row is always
+ * offered with a blank, editable site/author for those two — a home recipe or
+ * a cookbook clipping has a source just as much as a web page does, it's just
+ * not one the app can read off the input.
  *
  * **The method and the prep tasks are reviewable rows, not a footnote** (#1618).
  * They used to be written to the new recipe unconditionally, announced only by
@@ -267,7 +270,10 @@ export function RecipeCreateSheet({
       setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
       setYieldText(result.recipeYield ?? '');
       const { page } = resolved;
-      setApplySource(!!page);
+      // Ticked whatever the source: there's nothing of the user's own here for
+      // it to land on top of, whether the fields below arrive pre-filled from
+      // the page or blank for a paste/photo to fill in by hand.
+      setApplySource(true);
       setSiteName(page?.siteName ?? '');
       setSourceAuthor(page?.author ?? '');
     } catch (e) {
@@ -391,14 +397,15 @@ export function RecipeCreateSheet({
       const yieldValue = pendingText('details:yield', yieldText).trim();
       if (yieldValue) setRecipeYield(recipe.id, yieldValue);
     }
-    // Everything a page told us about itself. Only ever set from structured
-    // markup, so a paste and a photo leave all of it null as they always did.
+    // A link's URL comes from the page and isn't editable; site and author
+    // are, whether they arrived pre-filled from structured markup or were
+    // typed in by hand over a paste or a photo's blank fields.
     const { page } = input;
-    if (page && applySource) {
-      setSourceUrl(recipe.id, page.url);
-      setSourceType(recipe.id, 'website');
-      // The URL is the link that was pasted and isn't editable; the two the
-      // page merely claims about itself are.
+    if (applySource) {
+      if (page) {
+        setSourceUrl(recipe.id, page.url);
+        setSourceType(recipe.id, 'website');
+      }
       const site = pendingText('source:site', siteName).trim();
       const by = pendingText('source:author', sourceAuthor).trim();
       if (site) setSource(recipe.id, site);
@@ -711,43 +718,41 @@ export function RecipeCreateSheet({
           />
         )}
 
-        {!!input.page && (
-          <ImportApplyRow
-            checked={applySource}
-            onToggle={() => setApplySource(v => !v)}
-            title="Where it’s from"
-            meta={sourceMeta}
-            accessibilityLabel={`Where it’s from, ${sourceMeta}`}
-          >
-            <View style={styles.detailFields}>
-              <InlineEditableText
-                edits={edits}
-                editKey="source:site"
-                value={siteName}
-                onCommit={setSiteName}
-                allowEmpty
-                textStyle={styles.detailValue}
-                placeholder="e.g. Serious Eats"
-                accessibilityLabel="site name"
-                maxLength={80}
-                numberOfLines={1}
-              />
-              <Text style={styles.detailSep}>·</Text>
-              <InlineEditableText
-                edits={edits}
-                editKey="source:author"
-                value={sourceAuthor}
-                onCommit={setSourceAuthor}
-                allowEmpty
-                textStyle={styles.detailValue}
-                placeholder="e.g. Kenji"
-                accessibilityLabel="author"
-                maxLength={80}
-                numberOfLines={1}
-              />
-            </View>
-          </ImportApplyRow>
-        )}
+        <ImportApplyRow
+          checked={applySource}
+          onToggle={() => setApplySource(v => !v)}
+          title="Where it’s from"
+          meta={sourceMeta}
+          accessibilityLabel={sourceMeta ? `Where it’s from, ${sourceMeta}` : 'Where it’s from'}
+        >
+          <View style={styles.detailFields}>
+            <InlineEditableText
+              edits={edits}
+              editKey="source:site"
+              value={siteName}
+              onCommit={setSiteName}
+              allowEmpty
+              textStyle={styles.detailValue}
+              placeholder="e.g. NYT Cooking"
+              accessibilityLabel="source"
+              maxLength={80}
+              numberOfLines={1}
+            />
+            <Text style={styles.detailSep}>·</Text>
+            <InlineEditableText
+              edits={edits}
+              editKey="source:author"
+              value={sourceAuthor}
+              onCommit={setSourceAuthor}
+              allowEmpty
+              textStyle={styles.detailValue}
+              placeholder="e.g. Kenji"
+              accessibilityLabel="author"
+              maxLength={80}
+              numberOfLines={1}
+            />
+          </View>
+        </ImportApplyRow>
 
         {renderReferences()}
 
