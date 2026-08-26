@@ -16,6 +16,7 @@ import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
+import { usePersonStore } from '../store/usePersonStore';
 import { normalizeTemplateItem } from '../utils/templateUtils';
 import {
   initDatabase,
@@ -49,7 +50,7 @@ import {
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
 import { setDemoModeActive } from '../utils/demoState';
-import type { GroceryItem, Project, Task, TaskGroup, TitleRule } from '../types';
+import type { GroceryItem, Person, Project, Task, TaskGroup, TitleRule } from '../types';
 
 jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
@@ -3681,6 +3682,87 @@ describe('checkPantryCheckTasks', () => {
     const [check] = checkTasks();
     expect(check.title).toBe('Check if you still have Plain flour');
     expect(check.dueDate).toBe(saturday);
+  });
+});
+
+// ─── checkReachOutTasks ─────────────────────────────────────────────────────
+
+describe('checkReachOutTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    reachOutTasks: true,
+    reachOutTaskCategory: 'People',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  // Opted in, cadence lapsed 15 days ago against cadenceSetAt (nobody has any
+  // history with them yet), same shape as reachOutTasks.test.ts's own factory.
+  const duePerson = (overrides: Partial<Person> = {}): Person => ({
+    id: 'p1', name: 'Sarah', nickname: '', notes: '', sortOrder: 1,
+    archived: false, archivedAt: null, createdAt: daysAgo(60),
+    birthdayMonth: null, birthdayDay: null, birthYear: null,
+    birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
+    phoneNumber: null, email: null, linkUrl: null,
+    cadenceDays: 30, nudgeOptIn: true, cadenceSetAt: daysAgo(45),
+    reachOutDeclinedAt: null, askAbout: '',
+    ...overrides,
+  });
+
+  const reachOutTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'reachOut' && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    usePersonStore.setState({ people: [duePerson()], initialized: true });
+  });
+
+  // The bug this guards: deleting the row used to remove only the task, with
+  // nothing written back to the person, so the very next sweep saw the same
+  // lapsed cadence and handed back an identical "Catch up with Sarah".
+  it('takes a deleted task as a decline, and does not hand it straight back', () => {
+    useTaskStore.getState().checkReachOutTasks();
+    expect(reachOutTasks()).toHaveLength(1);
+
+    useTaskStore.getState().deleteTask(reachOutTasks()[0].id);
+    expect(usePersonStore.getState().people[0].reachOutDeclinedAt).not.toBeNull();
+
+    useTaskStore.getState().checkReachOutTasks();
+    expect(reachOutTasks()).toHaveLength(0);
+  });
+
+  // The decline is a stamp with a hold, not "never again" — nudgeOptIn is the
+  // only field allowed to mean that, and a swipe must not be able to write it.
+  it('asks again once the decline has held for its window', () => {
+    useTaskStore.getState().checkReachOutTasks();
+    useTaskStore.getState().deleteTask(reachOutTasks()[0].id);
+    expect(reachOutTasks()).toHaveLength(0);
+
+    usePersonStore.getState().updatePerson('p1', { reachOutDeclinedAt: daysAgo(8) });
+    useTaskStore.getState().checkReachOutTasks();
+
+    expect(reachOutTasks()).toHaveLength(1);
+    expect(usePersonStore.getState().people[0].nudgeOptIn).toBe(true);
+  });
+
+  it('undo clears the decline again, and leaves the restored task alone', () => {
+    useTaskStore.getState().checkReachOutTasks();
+    const taskId = reachOutTasks()[0].id;
+
+    useTaskStore.getState().deleteTask(taskId);
+    useTaskStore.getState().lastAction!.undo();
+
+    expect(usePersonStore.getState().people[0].reachOutDeclinedAt).toBeNull();
+    expect(useTaskStore.getState().tasks.find(t => t.id === taskId)).toBeDefined();
   });
 });
 

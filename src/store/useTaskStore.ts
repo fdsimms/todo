@@ -651,6 +651,19 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     // any stamp already sitting there was at a count this one or lower (a
     // higher one would have suppressed the task rather than let it exist), so
     // clearing it changes nothing a reader can see.
+    // A stamp like projectReview's and pantryCheck's: swiping "Catch up with
+    // X" away means "not for now", not "never ask about this person again"
+    // (nudgeOptIn already exists for that). Spent against the person rather
+    // than the day, and read back by declinedRecently in reachOutTasks.ts.
+    //
+    // `value === null` is the undo path, and restores exactly what the delete
+    // wrote: a stamp already sitting there predated this decline (a more
+    // recent one would have suppressed the task in the first place), so
+    // clearing it changes nothing the reader can see.
+    case 'reachOut':
+      usePersonStore.getState()
+        .updatePerson(sourceId, { reachOutDeclinedAt: value === false ? new Date().toISOString() : null });
+      return;
     case 'supplyReorder': {
       const source = useTaskStore.getState().tasks.find(t => t.id === sourceId);
       if (!source || source.supplyCount === null) return;
