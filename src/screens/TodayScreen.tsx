@@ -1532,6 +1532,14 @@ export function TodayScreen() {
   const demoActive = useDemoStore(s => s.active);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
+  const calendarsById = useCalendarStore(s => s.calendarsById);
+  // Which calendar an event came from is worth a row only once "which one" is
+  // a real question — with a single calendar chosen every event already comes
+  // from it. Settings' own calendarIds (what's picked), not calendarsById's
+  // keys (what the last read actually reached), since the tag should stay off
+  // for someone reading one calendar even if that read briefly failed.
+  const calendarIds = useSettingsStore(s => s.calendarIds);
+  const eventCalendarTags = calendarIds.length > 1 ? calendarsById : undefined;
   const [eventsSheetVisible, setEventsSheetVisible] = useState(false);
   const todayCalendarDayEnd = useMemo(() => addDays(getDayStart(new Date()), 1), [todayKey]);
   const todayCalendarEvents = useMemo(
@@ -1599,6 +1607,7 @@ export function TodayScreen() {
         now: new Date(),
         category: calendarEventCategory,
         use24Hour: use24HourTime,
+        calendarsById: eventCalendarTags,
       }));
     }
     // The kitchen leads the meals it shares a section with, and that ordering
@@ -1632,7 +1641,7 @@ export function TodayScreen() {
     }
     return rows;
   }, [
-    todayCalendarEvents, calendarEventCategory, use24HourTime,
+    todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     kitchenOnToday, kitchenEntries, kitchenPlannedUses,
     minuteTick,
@@ -3736,6 +3745,7 @@ export function TodayScreen() {
           visible={eventsSheetVisible}
           onClose={() => setEventsSheetVisible(false)}
           events={todayCalendarEvents}
+          calendarsById={eventCalendarTags}
         />
 
         <DeloadSheet

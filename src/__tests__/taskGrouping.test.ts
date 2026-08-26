@@ -1158,6 +1158,7 @@ describe('sectionTasksByLabel', () => {
           caption: '9:00 AM',
           category: 'work',
           now: false,
+          calendarTag: null,
         },
       },
     ]);

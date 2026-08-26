@@ -117,6 +117,27 @@ describe('eventContextRows', () => {
     expect(row.id).toBe('event-abc');
     expect(row.sourceId).toBe('abc');
   });
+
+  it('leaves the calendar tag null with no calendarsById given', () => {
+    const [row] = eventContextRows([ev(at(16), at(17))], eventOpts);
+    expect(row.calendarTag).toBeNull();
+  });
+
+  it('tags a row with its own calendar\'s name and color', () => {
+    const [row] = eventContextRows([ev(at(16), at(17), { calendarId: 'work' })], {
+      ...eventOpts,
+      calendarsById: { work: { title: 'Work', color: '#0A84FF' } },
+    });
+    expect(row.calendarTag).toEqual({ name: 'Work', color: '#0A84FF' });
+  });
+
+  it('leaves a row untagged when its own calendar is missing from the map', () => {
+    const [row] = eventContextRows([ev(at(16), at(17), { calendarId: 'family' })], {
+      ...eventOpts,
+      calendarsById: { work: { title: 'Work', color: '#0A84FF' } },
+    });
+    expect(row.calendarTag).toBeNull();
+  });
 });
 
 describe('mealContextRows', () => {

@@ -141,6 +141,17 @@ export function DayContextRow({ row, onPress, onMarkCooked }: Props) {
             {row.caption}
           </Text>
         </View>
+        {/* Which calendar this came from — only ever set when reading more than
+            one, see ContextRow.calendarTag. Same dot-plus-label chip shape
+            LogbookFilterSheet's category filter already uses. */}
+        {row.calendarTag && (
+          <View style={styles.metaChip}>
+            <View style={[styles.calendarDot, { backgroundColor: row.calendarTag.color }]} />
+            <Text style={styles.caption} numberOfLines={1}>
+              {row.calendarTag.name}
+            </Text>
+          </View>
+        )}
       </View>
     </>
   );
@@ -277,6 +288,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: 4,
     flexShrink: 1,
+  },
+  calendarDot: {
+    width: 6,
+    height: 6,
+    borderRadius: radius.full,
   },
   caption: {
     color: colors.textTertiary,

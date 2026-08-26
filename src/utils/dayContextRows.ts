@@ -65,9 +65,21 @@ const UNCATEGORIZED = '';
  */
 export function eventContextRows(
   events: readonly BusyEvent[],
-  opts: { now: Date; category: string | null; use24Hour: boolean },
+  opts: {
+    now: Date;
+    category: string | null;
+    use24Hour: boolean;
+    /**
+     * Title/color per calendar id, tagging each row with where it came from —
+     * omit (or pass an empty map) to leave every row untagged. The caller
+     * decides whether tagging is worth it at all: with one calendar chosen,
+     * every event already comes from it, so `TodayScreen` only ever passes
+     * this once more than one calendar is being read.
+     */
+    calendarsById?: Readonly<Record<string, { title: string; color: string }>>;
+  },
 ): ContextRow[] {
-  const { now, category, use24Hour } = opts;
+  const { now, category, use24Hour, calendarsById } = opts;
   const at = now.getTime();
 
   const rows: Array<{ row: ContextRow; allDay: boolean; start: number }> = [];
@@ -79,6 +91,7 @@ export function eventContextRows(
     // Half-open, matching eventsIn: a meeting that ended exactly now is over.
     if (!event.allDay && end <= at) continue;
     const running = !event.allDay && start <= at && end > at;
+    const calendar = calendarsById?.[event.calendarId];
     rows.push({
       row: {
         id: `event-${event.id}`,
@@ -90,6 +103,7 @@ export function eventContextRows(
           : formatTimeOfDay(new Date(start), use24Hour),
         category,
         now: running,
+        calendarTag: calendar ? { name: calendar.title, color: calendar.color } : null,
       },
       allDay: event.allDay,
       start,
@@ -142,6 +156,7 @@ export function mealContextRows(
       caption: MEAL_SLOT_LABELS[entry.slot],
       category: opts.category,
       now: false,
+      calendarTag: null,
     }));
 }
 
@@ -296,6 +311,7 @@ export function kitchenContextRows(
       caption: dying[0].useByCaption,
       category: opts.category,
       now: false,
+      calendarTag: null,
     }];
   }
 
@@ -315,6 +331,7 @@ export function kitchenContextRows(
       caption: usedBy ? `${entry.useByCaption} · For ${usedBy}` : entry.useByCaption,
       category: opts.category,
       now: false,
+      calendarTag: null,
     };
   });
 }

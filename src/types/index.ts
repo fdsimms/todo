@@ -3636,6 +3636,14 @@ export interface ContextRow {
    * would make a running event louder than the work it sits among.
    */
   now: boolean;
+  /**
+   * The calendar an event row came from, when it's worth saying — null for
+   * every meal and kitchen row, and for an event when only one calendar is
+   * being read (see `eventContextRows`'s `calendarsById`). With one calendar
+   * chosen, every event already comes from it; the tag only earns its place
+   * once a second source makes "which one" a real question.
+   */
+  calendarTag: { name: string; color: string } | null;
 }
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
