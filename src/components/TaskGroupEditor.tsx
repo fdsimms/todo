@@ -10,8 +10,8 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Task, TaskGroup } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
-import { isRelevantToGroupToday, isTaskVisible } from '../utils/visibilityUtils';
-import { formatTaskDate } from '../utils/dateUtils';
+import { getVisibleAt, isRelevantToGroupToday, isTaskDeferred, isTaskVisible } from '../utils/visibilityUtils';
+import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -42,6 +42,17 @@ type FieldKey = 'category' | 'tags';
 function memberSchedule(task: Task): string {
   if (task.completed) return 'Done today';
   if (isTaskVisible(task)) return 'Due today';
+  // A deferred member due later today (an unreached time segment or window,
+  // a quota already met for now, ...) still resolves to "Today" below, which
+  // read as a bare repeat of "Due today" — say when it'll actually show up
+  // instead. Anything not deferred in that sense (blocked, vacation-paused)
+  // has no such moment to give, so it falls through unchanged.
+  if (isTaskDeferred(task)) {
+    const visibleAt = getVisibleAt(task);
+    if (getDayStart(visibleAt).getTime() === getCurrentDayStart().getTime()) {
+      return 'Later today';
+    }
+  }
   return formatTaskDate(task) ?? '';
 }
 
