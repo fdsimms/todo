@@ -22,6 +22,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import {
   collectPlannedIngredients,
   classifyPlanned,
+  groupBySourceRecipe,
   type ClassifiedIngredient,
   type PlanCategory,
 } from '../utils/mealPlanGroceries';
@@ -361,102 +362,122 @@ export function AddMealsToListSheet({
                   </TouchableOpacity>
                   {isOpen && (
                     <View style={styles.card}>
-                      {rows.map((row, i) => {
-                        const on = interactive && ticked.has(row.nameKey);
-                        // A pantry-guess reason takes priority over the source
-                        // breakdown — it's the more useful "why is this here"
-                        // for a probablyHave row, and a single-source row has
-                        // no breakdown to show anyway.
-                        const subtitle = row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null);
-                        // Shown in the reader's units; what gets written to the
-                        // list is still row.quantity, as the recipes wrote it.
-                        const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
-                        // Under the name, because it qualifies the name — the
-                        // row is the app's substitution, not the recipe's word.
-                        const swapNote = row.swappedFrom ? describeStandingSwap(row.swappedFrom) : null;
-                        // Every Need to buy line, catalog row or not — see
-                        // markAlreadyHave.
-                        const canMarkHave = category === 'needToBuy';
-                        const subs = substitutesByKey.get(row.nameKey);
+                      {groupBySourceRecipe(rows).map((group, gi) => {
+                        // The untitled ("more than one recipe") bucket needs no
+                        // label of its own when it's the only group a category
+                        // has — nothing beside it for "Multiple recipes" to
+                        // distinguish itself from.
+                        const showGroupLabel = !!group.recipeTitle || gi > 0;
                         return (
-                          <React.Fragment key={row.nameKey}>
-                            {i > 0 && <View style={styles.sep} />}
-                            <View style={styles.row}>
-                              <TouchableOpacity
-                                style={styles.rowMain}
-                                activeOpacity={interactive ? interaction.activeOpacity : 1}
-                                onPress={interactive ? () => toggle(row) : undefined}
-                                disabled={!interactive}
-                                accessibilityRole="checkbox"
-                                accessibilityState={{ checked: on, disabled: !interactive }}
-                                accessibilityLabel={
-                                  [row.name, swapNote, shownQuantity, subtitle, !interactive ? 'already in your cart' : null]
-                                    .filter(Boolean)
-                                    .join(', ')
-                                }
-                              >
-                                <View style={[
-                                  styles.checkbox,
-                                  on && styles.checkboxOn,
-                                  !interactive && styles.checkboxDisabled,
-                                ]}>
-                                  {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
-                                </View>
-                                <View style={styles.body}>
-                                  {/* Two lines, where every other line on the
-                                      row gets one: the name is the thing
-                                      being decided about, and "smooth natural
-                                      pea…" is not a decision anyone can make.
-                                      The captions under it are qualifiers, so
-                                      clipping one costs less than clipping
-                                      this. */}
-                                  <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={2}>
-                                    {row.name}
-                                  </Text>
-                                  {!!swapNote && (
-                                    <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
-                                  )}
-                                  {!!subtitle && (
-                                    <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
-                                  )}
-                                </View>
-                                {!!shownQuantity && (
-                                  <View style={styles.qtyPill}>
-                                    {/* Two lines, same call as the name
-                                        above: "1 large pie…" names no amount
-                                        anyone can shop to. The pill is capped
-                                        by width, not by lines, so the second
-                                        one costs the row no width. */}
-                                    <Text style={styles.qtyText} numberOfLines={2}>{shownQuantity}</Text>
+                          <React.Fragment key={group.recipeId ?? '__uncredited__'}>
+                            {showGroupLabel && (
+                              <Text style={styles.recipeGroupLabel}>
+                                {group.recipeTitle ?? 'Multiple recipes'}
+                              </Text>
+                            )}
+                            {group.rows.map((row, i) => {
+                              const on = interactive && ticked.has(row.nameKey);
+                              // A pantry-guess reason takes priority over the
+                              // source breakdown — it's the more useful "why is
+                              // this here" for a probablyHave row, and a
+                              // single-source row has no breakdown to show anyway.
+                              const subtitle = row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null);
+                              // Shown in the reader's units; what gets written to
+                              // the list is still row.quantity, as the recipes
+                              // wrote it.
+                              const shownQuantity = convertQuantity(row.quantity, unitSystem).text;
+                              // Under the name, because it qualifies the name —
+                              // the row is the app's substitution, not the
+                              // recipe's word.
+                              const swapNote = row.swappedFrom ? describeStandingSwap(row.swappedFrom) : null;
+                              // Every Need to buy line, catalog row or not — see
+                              // markAlreadyHave.
+                              const canMarkHave = category === 'needToBuy';
+                              const subs = substitutesByKey.get(row.nameKey);
+                              return (
+                                <React.Fragment key={row.nameKey}>
+                                  {i > 0 && <View style={styles.sep} />}
+                                  <View style={styles.row}>
+                                    <TouchableOpacity
+                                      style={styles.rowMain}
+                                      activeOpacity={interactive ? interaction.activeOpacity : 1}
+                                      onPress={interactive ? () => toggle(row) : undefined}
+                                      disabled={!interactive}
+                                      accessibilityRole="checkbox"
+                                      accessibilityState={{ checked: on, disabled: !interactive }}
+                                      accessibilityLabel={
+                                        [row.name, swapNote, shownQuantity, subtitle, !interactive ? 'already in your cart' : null]
+                                          .filter(Boolean)
+                                          .join(', ')
+                                      }
+                                    >
+                                      <View style={[
+                                        styles.checkbox,
+                                        on && styles.checkboxOn,
+                                        !interactive && styles.checkboxDisabled,
+                                      ]}>
+                                        {on && <Ionicons name="checkmark" size={iconSize.sm} color={colors.onAccent} />}
+                                      </View>
+                                      <View style={styles.body}>
+                                        {/* Two lines, where every other line on
+                                            the row gets one: the name is the
+                                            thing being decided about, and
+                                            "smooth natural pea…" is not a
+                                            decision anyone can make. The
+                                            captions under it are qualifiers, so
+                                            clipping one costs less than
+                                            clipping this. */}
+                                        <Text style={[styles.name, !interactive && styles.nameDisabled]} numberOfLines={2}>
+                                          {row.name}
+                                        </Text>
+                                        {!!swapNote && (
+                                          <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
+                                        )}
+                                        {!!subtitle && (
+                                          <Text style={styles.sources} numberOfLines={1}>{subtitle}</Text>
+                                        )}
+                                      </View>
+                                      {!!shownQuantity && (
+                                        <View style={styles.qtyPill}>
+                                          {/* Two lines, same call as the name
+                                              above: "1 large pie…" names no
+                                              amount anyone can shop to. The
+                                              pill is capped by width, not by
+                                              lines, so the second one costs
+                                              the row no width. */}
+                                          <Text style={styles.qtyText} numberOfLines={2}>{shownQuantity}</Text>
+                                        </View>
+                                      )}
+                                    </TouchableOpacity>
+                                    {!!subs && (
+                                      <TouchableOpacity
+                                        style={styles.subsButton}
+                                        activeOpacity={interaction.activeOpacity}
+                                        onPress={() => {
+                                          haptics.tap();
+                                          const item = itemsByKey.get(row.nameKey);
+                                          if (item) setSubsItemId(item.id);
+                                        }}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`Substitutes for ${row.name}: ${describeSubstitutes(subs)}`}
+                                      >
+                                        <Ionicons name="swap-horizontal" size={iconSize.sm} color={colors.accent} />
+                                        {subs.length > 1 && (
+                                          <Text style={styles.subsCount}>{subs.length}</Text>
+                                        )}
+                                      </TouchableOpacity>
+                                    )}
+                                    {canMarkHave && (
+                                      <InlineAction
+                                        label="In pantry"
+                                        onPress={() => markAlreadyHave(row)}
+                                        accessibilityLabel={`${row.name} is in the pantry, skip it and remember it for next time`}
+                                      />
+                                    )}
                                   </View>
-                                )}
-                              </TouchableOpacity>
-                              {!!subs && (
-                                <TouchableOpacity
-                                  style={styles.subsButton}
-                                  activeOpacity={interaction.activeOpacity}
-                                  onPress={() => {
-                                    haptics.tap();
-                                    const item = itemsByKey.get(row.nameKey);
-                                    if (item) setSubsItemId(item.id);
-                                  }}
-                                  accessibilityRole="button"
-                                  accessibilityLabel={`Substitutes for ${row.name}: ${describeSubstitutes(subs)}`}
-                                >
-                                  <Ionicons name="swap-horizontal" size={iconSize.sm} color={colors.accent} />
-                                  {subs.length > 1 && (
-                                    <Text style={styles.subsCount}>{subs.length}</Text>
-                                  )}
-                                </TouchableOpacity>
-                              )}
-                              {canMarkHave && (
-                                <InlineAction
-                                  label="In pantry"
-                                  onPress={() => markAlreadyHave(row)}
-                                  accessibilityLabel={`${row.name} is in the pantry, skip it and remember it for next time`}
-                                />
-                              )}
-                            </View>
+                                </React.Fragment>
+                              );
+                            })}
                           </React.Fragment>
                         );
                       })}
@@ -542,6 +563,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,
     textTransform: 'uppercase',
+  },
+  // Same uppercase treatment as sectionLabel, scoped to sit above one
+  // recipe's rows inside the category's card — see
+  // RecipeDetailScreen.ingredientSectionHeader, the same idea for a
+  // recipe's own ingredient sections.
+  recipeGroupLabel: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.semibold,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.sm,
+    paddingBottom: spacing.xs,
   },
   sectionHint: {
     color: colors.textTertiary,

@@ -506,6 +506,46 @@ export function classifyPlanned(
   return rows;
 }
 
+/** One run of `classifyPlanned` rows credited to the same single recipe, or — `recipeId: null` — every row a merge left uncredited. */
+export interface RecipeRowGroup {
+  recipeId: string | null;
+  recipeTitle: string | null;
+  rows: ClassifiedIngredient[];
+}
+
+/**
+ * Clusters a category's rows by `sourceRecipeId`, in the order each recipe was
+ * first seen, so a multi-meal shop reads as "here's what Tuesday's ragù
+ * needs" rather than one undifferentiated run of ingredients.
+ *
+ * A row merged from more than one recipe (`sourceRecipeId: null` — see
+ * `ClassifiedIngredient.sourceRecipeId`) can't honestly be credited to any one
+ * of them, so those rows collect into a single trailing group instead of
+ * being dropped or guessed into the wrong recipe's cluster. That group is
+ * still returned even when it's the *only* one — a caller with nothing but
+ * uncredited rows (a day with no shoppable recipes) gets one untitled group
+ * rather than an empty list to special-case.
+ */
+export function groupBySourceRecipe(rows: readonly ClassifiedIngredient[]): RecipeRowGroup[] {
+  const groups: RecipeRowGroup[] = [];
+  const indexById = new Map<string, number>();
+  const uncredited: ClassifiedIngredient[] = [];
+
+  for (const row of rows) {
+    if (!row.sourceRecipeId) { uncredited.push(row); continue; }
+    let index = indexById.get(row.sourceRecipeId);
+    if (index === undefined) {
+      index = groups.length;
+      indexById.set(row.sourceRecipeId, index);
+      groups.push({ recipeId: row.sourceRecipeId, recipeTitle: row.sourceRecipeTitle, rows: [] });
+    }
+    groups[index]!.rows.push(row);
+  }
+
+  if (uncredited.length > 0) groups.push({ recipeId: null, recipeTitle: null, rows: uncredited });
+  return groups;
+}
+
 /**
  * The lines a *restock* can honestly be offered for: known items the app
  * doesn't currently think you have.
