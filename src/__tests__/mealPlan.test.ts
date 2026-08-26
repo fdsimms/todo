@@ -1,6 +1,7 @@
 import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import {
   cleanMealTitle,
+  cookEntryForRecipe,
   dayKeyRange,
   daysWithoutMeal,
   describeAddedToList,
@@ -184,6 +185,55 @@ describe('entriesForDay / entriesForSlot', () => {
   it('returns every entry in a slot, not just the first', () => {
     expect(entriesForSlot(week, '2026-08-05', 'dinner')).toHaveLength(2);
     expect(entriesForSlot(week, '2026-08-05', 'lunch')).toEqual([]);
+  });
+});
+
+describe('cookEntryForRecipe', () => {
+  it('takes the day\'s uncooked entry for that recipe', () => {
+    const entries = [
+      entry('2026-08-05', 'dinner', { recipeId: 'r1' }),
+      entry('2026-08-05', 'dinner', { recipeId: 'r2' }),
+    ];
+    expect(cookEntryForRecipe(entries, 'r1', '2026-08-05')?.recipeId).toBe('r1');
+  });
+
+  it('ignores another day, however matching', () => {
+    const entries = [entry('2026-08-04', 'dinner', { recipeId: 'r1' })];
+    expect(cookEntryForRecipe(entries, 'r1', '2026-08-05')).toBeNull();
+  });
+
+  it('ignores a row already ticked off', () => {
+    const entries = [
+      entry('2026-08-05', 'dinner', { recipeId: 'r1', cookedAt: '2026-08-05T18:00:00.000Z' }),
+    ];
+    expect(cookEntryForRecipe(entries, 'r1', '2026-08-05')).toBeNull();
+  });
+
+  // Planned twice in one day: lunch goes first, so cooking it again for
+  // dinner ticks the row that hasn't happened yet.
+  it('takes the earliest uncooked slot when the dish is planned twice', () => {
+    const entries = [
+      entry('2026-08-05', 'dinner', { recipeId: 'r1' }),
+      entry('2026-08-05', 'lunch', { recipeId: 'r1' }),
+    ];
+    expect(cookEntryForRecipe(entries, 'r1', '2026-08-05')?.slot).toBe('lunch');
+
+    const lunchDone = [
+      entry('2026-08-05', 'dinner', { recipeId: 'r1' }),
+      entry('2026-08-05', 'lunch', { recipeId: 'r1', cookedAt: '2026-08-05T12:00:00.000Z' }),
+    ];
+    expect(cookEntryForRecipe(lunchDone, 'r1', '2026-08-05')?.slot).toBe('dinner');
+  });
+
+  // The identity claimed is the recipe's — a free-text meal that happens to
+  // be spelled the same is a coincidence, not a match.
+  it('never matches a meal that only carries a title', () => {
+    const entries = [entry('2026-08-05', 'dinner', { recipeId: null, title: 'Chilli' })];
+    expect(cookEntryForRecipe(entries, 'r1', '2026-08-05')).toBeNull();
+  });
+
+  it('returns null on an empty plan', () => {
+    expect(cookEntryForRecipe([], 'r1', '2026-08-05')).toBeNull();
   });
 });
 
