@@ -1794,6 +1794,7 @@ export function QuickAddModal({
                   label="Repeats"
                   value={recurrenceType}
                   onChange={setRecurrenceType}
+                  columns={3}
                   options={(['none', 'daily', 'weekly', 'monthly', 'yearly'] as RecurrenceType[])
                     .map(t => ({ value: t, label: RECURRENCE_LABELS[t] }))}
                 />
