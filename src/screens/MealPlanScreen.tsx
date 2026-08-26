@@ -1760,6 +1760,7 @@ export function MealPlanScreen() {
         forceSlot={planningSlot}
         onPlan={planFromPicker}
         onPlanned={offerPrepTasksForEach}
+        onUnplan={removeEntry}
         onClose={() => {
           setPlanningDay(null);
           setPlanningSlot(null);

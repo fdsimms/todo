@@ -771,6 +771,7 @@ export const TaskItem = React.memo(function TaskItem({
   const mealSlotChooseSource =
     activeMealSlotStepId(task)?.endsWith('-choose') ? parseMealSlotSource(task.generatedSourceId) : null;
   const planMeal = useMealPlanStore(s => s.planMeal);
+  const removeMealPlanEntry = useMealPlanStore(s => s.removeEntry);
 
   // A quiet project's review task: how long the project has actually been
   // silent, which is what the banner this replaced showed beside each name.
@@ -2910,6 +2911,7 @@ export const TaskItem = React.memo(function TaskItem({
           // this sheet is the same component, just mounted from a task row
           // instead of that screen, so it gets the same prep-task ask for free.
           onPlanned={offerPrepTasksForEach}
+          onUnplan={removeMealPlanEntry}
           onClose={() => setShowMealPicker(false)}
         />
       )}

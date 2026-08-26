@@ -84,6 +84,8 @@ interface Props {
    * picking more than once before closing — see `planned` below.
    */
   onPlanned?: (entries: MealPlanEntry[]) => void;
+  /** Undoes a pick made this session — tapping a row a second time. */
+  onUnplan: (id: string) => void;
   onClose: () => void;
 }
 
@@ -144,7 +146,7 @@ const PRESET_PLANS = ['Leftovers', 'Takeout', 'Eating out'];
  * calling back at all: planning can raise the "Add prep tasks?" alert, and
  * that can't be presented while this Modal is still up.
  */
-export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forceSlot = null, onPlan, onPlanned, onClose }: Props) {
+export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forceSlot = null, onPlan, onPlanned, onUnplan, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -167,10 +169,11 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   // meal is a real, deliberate second pick, not the accidental repeat this
   // is guarding against.
   const pickedThisSlot = useMemo(() => {
-    const keys = new Set<string>();
+    const keys = new Map<string, string>();
     for (const entry of planned) {
       if (entry.slot !== slot) continue;
-      keys.add(entry.recipeId ? `r:${entry.recipeId}` : entry.leftoverId ? `l:${entry.leftoverId}` : `t:${entry.title.toLowerCase()}`);
+      const key = entry.recipeId ? `r:${entry.recipeId}` : entry.leftoverId ? `l:${entry.leftoverId}` : `t:${entry.title.toLowerCase()}`;
+      keys.set(key, entry.id);
     }
     return keys;
   }, [planned, slot]);
@@ -295,6 +298,22 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   };
 
   /**
+   * Un-picks a row picked earlier this session — the second tap on a row
+   * already showing its checkmark. Without this, that tap fell straight
+   * through to `pick`/`pickLeftover` and silently planned the same dish a
+   * second time, since neither ever checked `pickedThisSlot` before writing;
+   * tapping a row that looks selected is a request to take it back, not to
+   * double it. `onUnplan` is `removeEntry`, which already owns dropping the
+   * entry's cook task and calendar event, so this only has to drop it out of
+   * `planned` too.
+   */
+  const unpick = (entryId: string) => {
+    haptics.tap();
+    onUnplan(entryId);
+    setPlanned(prev => prev.filter(e => e.id !== entryId));
+  };
+
+  /**
    * Plans a tracked leftover onto the night, and *only* that — the container
    * stays in the fridge with its clock running. "Was that the last of it?"
    * is asked later, when the meal is actually marked cooked — see
@@ -381,15 +400,15 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
 
           <View style={styles.presetRow}>
             {PRESET_PLANS.map(preset => {
-              const picked = pickedThisSlot.has(`t:${preset.toLowerCase()}`);
+              const pickedId = pickedThisSlot.get(`t:${preset.toLowerCase()}`);
               return (
                 <InlineAction
                   key={preset}
                   label={preset}
-                  icon={picked ? 'checkmark' : undefined}
-                  variant={picked ? 'neutral' : 'accent'}
-                  onPress={() => pick(null, preset)}
-                  accessibilityLabel={picked ? `${preset}, already added for ${slotLabel(slot)}` : `Plan ${preset}`}
+                  icon={pickedId ? 'checkmark' : undefined}
+                  variant={pickedId ? 'neutral' : 'accent'}
+                  onPress={() => (pickedId ? unpick(pickedId) : pick(null, preset))}
+                  accessibilityLabel={pickedId ? `Remove ${preset} from ${slotLabel(slot)}` : `Plan ${preset}`}
                 />
               );
             })}
@@ -443,17 +462,17 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                   // container has no live day to be urgent about.
                   const live = liveFreshnessOf(leftover);
                   const tint = live ? freshnessColor(live, colors) : colors.textTertiary;
-                  const picked = pickedThisSlot.has(`l:${leftover.id}`);
+                  const pickedId = pickedThisSlot.get(`l:${leftover.id}`);
                   return (
                     <React.Fragment key={leftover.id}>
                       {idx > 0 && <View style={styles.inlineSep} />}
                       <TouchableOpacity
-                        style={[styles.row, picked && styles.rowPicked]}
-                        onPress={() => pickLeftover(leftover)}
+                        style={[styles.row, pickedId && styles.rowPicked]}
+                        onPress={() => (pickedId ? unpick(pickedId) : pickLeftover(leftover))}
                         activeOpacity={interaction.activeOpacity}
                         accessibilityRole="button"
-                        accessibilityLabel={picked
-                          ? `${leftover.title}, already added for ${slotLabel(slot)}`
+                        accessibilityLabel={pickedId
+                          ? `Remove ${leftover.title} from ${slotLabel(slot)}`
                           : `Plan ${leftover.title}. ${describeLeftover(leftover)}`}
                       >
                         <View style={[styles.rowIcon, { backgroundColor: colors.bgTertiary }]}>
@@ -465,7 +484,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                             {describeLeftover(leftover)}
                           </Text>
                         </View>
-                        {picked
+                        {pickedId
                           ? <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
                           : <Ionicons name="add" size={16} color={colors.textTertiary} />}
                       </TouchableOpacity>
@@ -488,7 +507,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
               </View>
             ) : (
               matches.map((recipe, idx) => {
-                const picked = pickedThisSlot.has(`r:${recipe.id}`);
+                const pickedId = pickedThisSlot.get(`r:${recipe.id}`);
                 return (
                   <React.Fragment key={recipe.id}>
                     {/* The "Recipes" caption already separates this run from the
@@ -496,12 +515,12 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                         it's butting straight up against the free-text one. */}
                     {(idx > 0 || (showFreeText && fridge.length === 0)) && <View style={styles.inlineSep} />}
                     <TouchableOpacity
-                      style={[styles.row, picked && styles.rowPicked]}
-                      onPress={() => pick(recipe.id, recipe.name)}
+                      style={[styles.row, pickedId && styles.rowPicked]}
+                      onPress={() => (pickedId ? unpick(pickedId) : pick(recipe.id, recipe.name))}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="button"
-                      accessibilityLabel={picked
-                        ? `${recipe.name}, already added for ${slotLabel(slot)}`
+                      accessibilityLabel={pickedId
+                        ? `Remove ${recipe.name} from ${slotLabel(slot)}`
                         : `Plan ${recipe.name}. ${describeRecipe(recipe)}`}
                     >
                       <View style={[styles.rowIcon, { backgroundColor: colors.accentSubtle }]}>
@@ -511,7 +530,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                         <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
                         <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe)}</Text>
                       </View>
-                      {picked
+                      {pickedId
                         ? <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
                         : recipe.favorite && <Ionicons name="star" size={13} color={colors.orange} />}
                     </TouchableOpacity>
