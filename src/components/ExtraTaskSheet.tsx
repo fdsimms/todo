@@ -428,8 +428,8 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
           label="Subtasks"
           summary={subtasks.length > 0 ? `${subtasks.length} step${subtasks.length === 1 ? '' : 's'}` : undefined}
           hint="Checklist items created alongside the added task, always unchecked."
-          expanded={fieldOpen('subtasks', subtasks.length > 0)}
-          onToggle={() => toggleField('subtasks', subtasks.length > 0)}
+          expanded={fieldOpen('subtasks', true)}
+          onToggle={() => toggleField('subtasks', true)}
         >
           <SortableList
             onDragStateChange={setDraggingRow}

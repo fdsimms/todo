@@ -1019,8 +1019,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           label="Subtasks"
           summary={subtasks.length > 0 ? `${subtasks.length} step${subtasks.length === 1 ? '' : 's'}` : undefined}
           hint="Checklist items created alongside the task when the template is applied."
-          expanded={fieldOpen('subtasks', subtasks.length > 0)}
-          onToggle={() => toggleField('subtasks', subtasks.length > 0)}
+          expanded={fieldOpen('subtasks', true)}
+          onToggle={() => toggleField('subtasks', true)}
         >
           <SortableList
             onDragStateChange={setDraggingRow}

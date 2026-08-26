@@ -3676,8 +3676,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           label="Subtasks"
           summary={subtasks.length > 0 ? `${subtasks.filter(s => s.completed).length}/${subtasks.length} done` : undefined}
           emptySummary="None"
-          expanded={fieldOpen('subtasks', subtasks.length > 0)}
-          onToggle={() => toggleField('subtasks', subtasks.length > 0)}
+          expanded={fieldOpen('subtasks', true)}
+          onToggle={() => toggleField('subtasks', true)}
         >
           <SortableList
             onDragStateChange={setDraggingRow}
