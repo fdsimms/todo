@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -100,6 +101,20 @@ export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, 
     onClose();
   };
 
+  // Same guard TemplateSuggestionsSheet makes: a generated batch is expensive
+  // to get back, so a swipe-down with one on screen asks first.
+  const handleCancel = () => {
+    if (suggestions.length === 0) { onClose(); return; }
+    Alert.alert(
+      'Discard suggestions?',
+      'The suggested tasks will be lost.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   const acceptedCount = accepted.size;
   const canAdd = !loading && acceptedCount > 0;
 
@@ -108,11 +123,11 @@ export function ProjectTaskSuggestionsSheet({ visible, projectId, projectTitle, 
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={handleCancel}
     >
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
             <Text style={styles.headerTitle}>Suggested tasks</Text>
