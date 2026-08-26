@@ -56,6 +56,15 @@ import {
   stalePantryCheckTasks,
   wantedPantryChecks,
 } from '../utils/pantryCheckTasks';
+import { buildPantryReviewDeck } from '../utils/pantryReview';
+import {
+  PANTRY_REVIEW_LINK_URL,
+  PANTRY_REVIEW_TITLE,
+  pantryReviewCadenceElapsed,
+  pantryReviewDayKey,
+  stalePantryReviewTasks,
+  wantsPantryReview,
+} from '../utils/pantryReviewTasks';
 import {
   mealShortfallEntryId,
   mealShortfallLinkUrl,
@@ -568,6 +577,11 @@ function reconcileDeadlineEvent(task: Task): void {
  *   `calendarReviewLastDayKey`, set unconditionally by `checkCalendarReviewTasks`
  *   the moment a day is considered, whatever the outcome, so a swiped-away task
  *   isn't re-diagnosed on the very next sweep.
+ * - **`pantryReview` is the third of these** — its source id is the day the
+ *   offer was raised on, and there is no one item it is about to write a "no"
+ *   onto. `pantryReviewLastDayKey` does the same job, and carries the cadence
+ *   as well, so a swiped-away offer stays gone for a fortnight rather than
+ *   until tomorrow.
  */
 function writeGeneratedOptOut(task: Task, value: false | null): void {
   const sourceId = task.generatedSourceId;
@@ -577,6 +591,8 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'mealPlanNudge':
       return;
     case 'calendarReview':
+      return;
+    case 'pantryReview':
       return;
     // Nothing to write, for the nudge's reason: a day and a slot name a square
     // on the calendar, not a row. Swiping today's lunch task away is honoured
@@ -1420,6 +1436,12 @@ interface TaskStore {
    */
   checkPantryCheckTasks: () => void;
   /**
+   * Once every couple of weeks, and only when several things are in doubt at
+   * once, a single task to go through the whole cupboard on the swipe deck.
+   * See src/utils/pantryReviewTasks.ts.
+   */
+  checkPantryReviewTasks: () => void;
+  /**
    * Give every planned meal the kitchen can't currently make a "Shop for X"
    * task, and clear the ones whose meal has since been re-planned, moved,
    * cooked, deleted or shopped for. See src/utils/mealShortfallTasks.ts.
@@ -1438,17 +1460,16 @@ interface TaskStore {
   checkCalendarReviewTasks: () => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
-   * no history row, nothing in the Logbook.
+   * no history row, nothing in the Logbook, streak left exactly as it was.
    *
-   * **Not user-facing any more.** It used to back a Skip button on the task row
-   * and a "Skip This Occurrence" branch in the delete prompts; those are now
-   * markMissed, because a silent roll-forward and an explicit "I didn't do
-   * this" look identical afterwards, and only one of them can be counted.
-   * Its single remaining caller is sweepExpiredTasks, which needs exactly the
-   * silence: that's an unattended background write, and stamping a miss the
-   * user never made would put fabricated entries in their Logbook.
-   *
-   * Don't wire a button to this — reach for markMissed.
+   * Backs TaskItem's Skip button (distinct from the neighboring Mark Missed
+   * button, which is `markMissed` and does leave a record) for "I didn't need
+   * to do this one" as opposed to "I forgot" — the two are different claims
+   * about the user and only one of them should show up in their history.
+   * Also the one thing `sweepExpiredTasks` needs for its own unattended
+   * roll-forward: that's a background write with no user present, and
+   * stamping a miss they never made would put a fabricated entry in their
+   * Logbook.
    */
   skipNextRecurrence: (id: string) => void;
   togglePin: (id: string) => void;
@@ -4258,6 +4279,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    */
   checkMealSlotTasks() {
     const settings = useSettingsStore.getState();
+    // The same gate checkPantryCheckTasks takes, and for the same reason —
+    // which that one's comment claimed was unique to it, back when it was. This
+    // pass fires on time passing rather than on a purchase or an edit, so with
+    // the area hidden it went on laying down three meal tasks a day (both
+    // settings ship on) with no Settings row left rendering to stop them.
+    // Skipping without advancing mealSlotTasksWrittenThroughDayKey, the way the
+    // nudge skips without recording its week: the mark is a high-water the pass
+    // only ever writes past, so moving it here would punch a hole in the window
+    // that the area coming back could never fill in.
+    if (!settings.kitchenEnabled) return;
     if (!settings.mealCookTasks || settings.mealSlotsEnabled.length === 0) return;
 
     // The *logical* day, not the calendar one: at 1am with a 2am reset the meal
@@ -4292,6 +4323,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    */
   backfillMealSlotTasks(slots) {
     const settings = useSettingsStore.getState();
+    // The same gate the pass above takes. Unreachable today — the only caller
+    // is a Settings row that stops rendering with the area off — but that is a
+    // fact about a component two files away, and "the UI can't call it" is
+    // exactly the reasoning that left checkMealSlotTasks ungated while it wrote
+    // three tasks a day. A write path states its own preconditions.
+    if (!settings.kitchenEnabled) return;
     if (!settings.mealCookTasks || slots.length === 0) return;
     const today = dayKeyOf(getLogicalToday());
     const mark = settings.mealSlotTasksWrittenThroughDayKey;
@@ -4304,10 +4341,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   checkPantryCheckTasks() {
     const settings = useSettingsStore.getState();
     if (!settings.pantryCheckTasks) return;
-    // The whole grocery area can be switched off (kitchenEnabled), and unlike
-    // every other grocery generator this one fires on time passing rather than
-    // on a purchase or an edit — so without this gate it would be the one part
-    // of a hidden feature still writing rows onto Today.
+    // The whole grocery area can be switched off (kitchenEnabled), and this
+    // generator fires on time passing rather than on a purchase or an edit — so
+    // without this gate it would be a hidden feature still writing rows onto
+    // Today. This used to say "unlike every other grocery generator", which
+    // stopped being true the moment mealSlot arrived firing on the same trigger
+    // — and that stale claim is most of why mealSlot shipped without the gate.
+    // Which generators need one is `GeneratedKindSpec.kitchen` now, rather than
+    // a sentence here that goes out of date silently.
     if (!settings.kitchenEnabled) return;
 
     const tasks = get().tasks;
@@ -4333,6 +4374,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // app's own tidying up.
     const stale = stalePantryCheckTasks(tasks, items, now);
     stale.forEach(task => dropGeneratedTask('pantryCheck', pantryCheckItemId(task)));
+
+    // One review row already asks about the whole cupboard, so the drip stands
+    // down rather than adding three more questions about individual shelves of
+    // it (see pantryReviewTasks.ts for the split). Deliberately only the
+    // *create* half: rows raised before the review appeared are left alone,
+    // since a deferred one is the user's, and answering them from the deck
+    // clears them through the stale pass above for free — a card answered makes
+    // its item's lapse null, which is exactly what that pass tests.
+    if (liveGeneratedTasksOfKind(tasks, 'pantryReview').length > 0) return;
 
     const wanted = wantedPantryChecks(items, tasks, now);
     if (wanted.length === 0) return;
@@ -4368,6 +4418,81 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           ...generatedBy('pantryCheck', want.itemId),
         }),
       });
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  checkPantryReviewTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.pantryReviewTasks) return;
+    // The same kitchenEnabled gate checkPantryCheckTasks takes directly above,
+    // for the same reason: this fires on time passing rather than on a purchase
+    // or an edit, so without it this would be the one part of a switched-off
+    // feature still writing rows onto Today.
+    if (!settings.kitchenEnabled) return;
+
+    const tasks = get().tasks;
+    const grocery = useGroceryStore.getState();
+    // Bare `new Date()` on purpose, the call checkPantryCheckTasks makes and
+    // for its reason: a pantry window is real elapsed days from a till receipt
+    // rather than logical days (see the dayResetTime note in CLAUDE.md).
+    const deck = buildPantryReviewDeck(grocery.items, new Date(), grocery.itemProducts);
+
+    // Clear first, create second, the ordering every generator here runs on.
+    // dropGeneratedTask rather than deleteGeneratedTaskQuietly for the reason
+    // checkPantryCheckTasks gives — except that here there is nothing to stamp
+    // at all (no source row), so the two would agree; it stays the honest call
+    // for what this is, which is the app tidying up rather than the user
+    // declining.
+    stalePantryReviewTasks(tasks, deck).forEach(task =>
+      dropGeneratedTask('pantryReview', pantryReviewDayKey(task))
+    );
+
+    // The day boundary is the user's own here, unlike the deck's window above:
+    // this is "have I offered this today", which is a question about their
+    // calendar rather than about a shelf.
+    const todayStart = getCurrentDayStart();
+    const todayKey = dayKeyOf(todayStart);
+    if (!pantryReviewCadenceElapsed(settings.pantryReviewLastDayKey, todayStart)) return;
+    // Recorded before the deck is judged, and unconditionally: a day already
+    // considered — offered, or found not doubtful enough — must not be
+    // re-diagnosed on every later sweep, and with no source row this mark is
+    // the only thing standing between a swiped-away row and an identical one on
+    // the very next foreground (see writeGeneratedOptOut's pantryReview case).
+    // Same idempotency calendarReviewLastDayKey gives, carrying the cadence too.
+    settings.setPantryReviewLastDayKey(todayKey);
+
+    // One at a time. A row raised a fortnight ago and still sitting there means
+    // the offer has been ignored or deferred, and a second one is the pile-up
+    // every generator here has a rule against — the mark above has just been
+    // refreshed, so the next offer is another cadence out.
+    if (liveGeneratedTasksOfKind(tasks, 'pantryReview').length > 0) return;
+    if (!wantsPantryReview(deck)) return;
+
+    ensureGeneratedTaskCategory('pantryReview');
+    const category = useSettingsStore.getState().pantryReviewTaskCategory;
+    // Noon today, the landing every other unattended writer picks.
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    reconcileGeneratedTask({
+      kind: 'pantryReview',
+      sourceId: todayKey,
+      // Never false: the not-wanted half is the stale pass above.
+      wanted: true,
+      // The title never varies, so there is nothing to chase — and the due date
+      // deliberately isn't chased either, for checkPantryCheckTasks' reason: by
+      // the time a second sweep runs the user may have deferred this row.
+      drift: () => null,
+      draft: () => ({
+        title: PANTRY_REVIEW_TITLE,
+        dueDate: dueDate.toISOString(),
+        // Opens the Pantry screen with the deck already up. See
+        // PANTRY_REVIEW_LINK_URL.
+        linkUrl: PANTRY_REVIEW_LINK_URL,
+        category,
+        ...generatedBy('pantryReview', todayKey),
+      }),
     });
     // No setLastAction, same reasoning as checkMealPlanNudge above.
   },

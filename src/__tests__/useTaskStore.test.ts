@@ -3710,6 +3710,192 @@ describe('checkPantryCheckTasks', () => {
   });
 });
 
+// ─── checkPantryReviewTasks ─────────────────────────────────────────────────
+
+describe('checkPantryReviewTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const setPantryReviewLastDayKey = jest.fn();
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    kitchenEnabled: true,
+    pantryReviewTasks: true,
+    pantryReviewTaskCategory: 'Groceries',
+    pantryReviewLastDayKey: null,
+    setPantryReviewLastDayKey,
+    // The drip, on alongside it — the suppression cases below are the whole
+    // reason the two generators have to be tested together.
+    pantryCheckTasks: true,
+    pantryCheckTaskCategory: 'Groceries',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  /** A row still inside its purchase window: a `guessed` card, the common case. */
+  const guessedItem = (i: number, overrides: Partial<GroceryItem> = {}): GroceryItem => ({
+    id: `g-${i}`, name: `Thing ${i}`, nameKey: `thing ${i}`, preferredProductId: null, productStrict: false,
+    aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
+    onList: false, checked: false, sortOrder: i,
+    purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(10), createdAt: daysAgo(366),
+    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
+    shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null,
+    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null,
+    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
+    ...overrides,
+  });
+
+  const seedItems = (...items: GroceryItem[]) => {
+    useGroceryStore.setState({
+      items, aisleOrder: [], hiddenAisles: [], aisleOverrides: {},
+      shops: [], itemShops: [], lastShopId: null, cartHoldIds: [],
+      pendingUseUpItemId: null, initialized: true,
+    });
+  };
+
+  const doubtfulCupboard = () => seedItems(...Array.from({ length: 6 }, (_, i) => guessedItem(i)));
+
+  const reviewTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'pantryReview' && !t.completed && !t.archived);
+  const checkTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'pantryCheck' && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    setPantryReviewLastDayKey.mockClear();
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  it('offers one row when several things are in doubt at once', () => {
+    doubtfulCupboard();
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    const [review] = reviewTasks();
+    expect(review.title).toBe("Review what's in the pantry");
+    expect(review.linkUrl).toBe('dundundun://kitchen?review=1');
+    expect(review.category).toBe('Groceries');
+    expect(review.dueDate).not.toBeNull();
+  });
+
+  // Below the threshold the drip says more: the row names the thing, and one
+  // tap on the item sheet answers it.
+  it('stands down for a cupboard the app is mostly sure about', () => {
+    seedItems(guessedItem(1), guessedItem(2));
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  it('is a no-op while the setting is off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ pantryReviewTasks: false }));
+    doubtfulCupboard();
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  // Same gate the drip takes, for its reason: this fires on time passing, so
+  // without it this would be the one part of a hidden feature still writing.
+  it('is a no-op while the whole grocery area is switched off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: false }));
+    doubtfulCupboard();
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  // Recorded the moment a day is considered, whatever the outcome — with no
+  // source row this mark is the only thing between a swiped-away row and an
+  // identical one on the very next foreground sweep.
+  it('marks the day even when it decides not to offer anything', () => {
+    seedItems(guessedItem(1));
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(setPantryReviewLastDayKey).toHaveBeenCalledTimes(1);
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  it('holds off for the whole cadence once a day has been considered', () => {
+    useSettingsStore.getState.mockReturnValue(
+      settings({ pantryReviewLastDayKey: new Date().toISOString().slice(0, 10) })
+    );
+    doubtfulCupboard();
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+    expect(setPantryReviewLastDayKey).not.toHaveBeenCalled();
+  });
+
+  it('writes one row rather than a second beside a live one', () => {
+    doubtfulCupboard();
+    useTaskStore.getState().checkPantryReviewTasks();
+    // A fortnight on, with the offer still sitting there unanswered.
+    useSettingsStore.getState.mockReturnValue(settings({ pantryReviewLastDayKey: '2020-01-01' }));
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(1);
+  });
+
+  it('clears its row once the deck has nothing left in it', () => {
+    doubtfulCupboard();
+    useTaskStore.getState().checkPantryReviewTasks();
+    expect(reviewTasks()).toHaveLength(1);
+
+    // Every row answered "out of it", which is what emptying the deck looks
+    // like from the store's side.
+    seedItems(...Array.from({ length: 6 }, (_, i) => guessedItem(i, { onHandUntil: OUT_OF_IT_UNTIL })));
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  // One review row already asks about the whole cupboard; three more questions
+  // about individual shelves of it is the pile-up both caps exist to prevent.
+  it('suppresses the drip while a review row is live', () => {
+    doubtfulCupboard();
+    // Two rows lapsed as well, which is what the drip fires on.
+    useGroceryStore.setState({
+      items: [
+        ...useGroceryStore.getState().items,
+        guessedItem(90, { lastPurchasedAt: daysAgo(125) }),
+        guessedItem(91, { lastPurchasedAt: daysAgo(125) }),
+      ],
+    });
+
+    useTaskStore.getState().checkPantryReviewTasks();
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(reviewTasks()).toHaveLength(1);
+    expect(checkTasks()).toHaveLength(0);
+  });
+
+  it('lets the drip through when no review row is live', () => {
+    seedItems(guessedItem(90, { lastPurchasedAt: daysAgo(125) }));
+
+    useTaskStore.getState().checkPantryReviewTasks();
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+    expect(checkTasks()).toHaveLength(1);
+  });
+});
+
+
 // ─── checkReachOutTasks ─────────────────────────────────────────────────────
 
 describe('checkReachOutTasks', () => {
@@ -4502,6 +4688,23 @@ describe('checkMealSlotTasks', () => {
     expect(setWrittenThrough).toHaveBeenCalledWith('2026-08-28');
   });
 
+  it('writes nothing while the grocery area is switched off', () => {
+    // The gate checkPantryCheckTasks has taken all along, and this pass didn't.
+    // Both settings below ship on, so hiding the area left three meal tasks a
+    // day arriving from a feature with no Settings row left to turn them off:
+    // GeneratedTasksSection's rows went with the area, its passes didn't.
+    useSettingsStore.getState.mockReturnValue(
+      settings({ kitchenEnabled: false, mealSlotsEnabled: ['breakfast', 'lunch', 'dinner'] }));
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealSlotTasks();
+
+    expect(slotRows()).toEqual([]);
+    // And the high-water mark stays put, so the days it skipped are still
+    // ahead of the pass when the area comes back rather than written off.
+    expect(setWrittenThrough).not.toHaveBeenCalled();
+  });
+
   it('lays a day down breakfast first, whatever order the meals were named in', () => {
     useSettingsStore.getState.mockReturnValue(settings({ mealSlotsEnabled: ['dinner', 'breakfast'] }));
     useTaskStore.setState({ tasks: [] });
@@ -4982,6 +5185,9 @@ describe('backfillMealSlotTasks', () => {
     dayResetTime: '00:00',
     mealCookTasks: true,
     mealCookTaskCategory: 'Meal Plan',
+    // Ships on, and checkMealSlotTasks refuses to run without it — these tests
+    // seed their starting rows through that pass.
+    kitchenEnabled: true,
     mealSlotsEnabled: ['lunch'] as MealSlot[],
     get mealSlotTasksWrittenThroughDayKey() { return writtenThrough; },
     setMealSlotTasksWrittenThroughDayKey: jest.fn((k: string | null) => { writtenThrough = k; }),

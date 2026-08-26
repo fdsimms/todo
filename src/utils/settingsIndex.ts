@@ -1,5 +1,5 @@
 /**
- * What Settings contains, as data — the eight groups and one record per
+ * What Settings contains, as data — the ten groups and one record per
  * searchable row.
  *
  * This is a *search index*, not a description of the UI. It deliberately
@@ -25,9 +25,16 @@
  * rendering. Deriving the entries from the same list is what makes those three
  * failures unrepresentable; only the keywords, which have no counterpart in
  * `AI_FEATURES`, stay written out below.
+ *
+ * The generators are the second such block and were drifting the same way — see
+ * `GENERATED_ENTRIES`, which derives them from `GENERATED_KIND_LIST` for the
+ * same reasons and had the same three symptoms to fix. Both are the exception
+ * that proves the rule above: a block of Settings is derived here exactly when
+ * its *rows* are derived there, and hand-written otherwise.
  */
 
 import { AI_FEATURES, type AiFeatureId } from './aiFeatures';
+import { GENERATED_KIND_LIST, type GeneratedKind } from './generatedTasks';
 
 export type SettingsGroupId =
   | 'appearance'
@@ -35,6 +42,8 @@ export type SettingsGroupId =
   | 'notifications'
   | 'capture'
   | 'tasksProjects'
+  | 'generated'
+  | 'kitchen'
   | 'privacyAi'
   | 'dataReset'
   | 'about';
@@ -53,6 +62,21 @@ export interface SettingsGroup {
   tint: SettingsTint;
   /** Dropped entirely off-platform, along with all of its entries. */
   iosOnly?: boolean;
+  /**
+   * Dropped with the groceries/recipes/meal-plan area, along with all of its
+   * entries — the group-level version of `SettingsEntry.kitchen`.
+   *
+   * A whole group appearing and disappearing is a much plainer account of what
+   * the master switch does than the previous arrangement, where a third of the
+   * Tasks & projects screen silently changed length. It also means the rows
+   * inside need no `kitchen` flag of their own: the group gate drops them, so
+   * flagging them again would be a second copy of one answer.
+   *
+   * The switch itself must never live in a group carrying this, for the reason
+   * its own entry is unflagged: it would be a setting with no way back. It
+   * stays under Feature areas in Tasks & projects.
+   */
+  kitchenOnly?: boolean;
 }
 
 export const SETTINGS_GROUPS: SettingsGroup[] = [
@@ -61,13 +85,25 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   { id: 'notifications', title: 'Notifications', icon: 'notifications-outline', tint: 'red' },
   // Both EventKit integrations live here rather than in two groups: they share
   // a framework, a platform gate and the same caveat (no change notification,
-  // so both refresh on foreground), and there is no sixth tint to give a group
-  // of its own without repeating one next to it.
+  // so both refresh on foreground).
   { id: 'capture', title: 'Reminders & Calendar', icon: 'download-outline', tint: 'green', iosOnly: true },
   { id: 'tasksProjects', title: 'Tasks & projects', icon: 'checkbox-outline', tint: 'purple' },
-  // Neutral from here down: the five tinted groups are things you configure,
-  // the grey ones are housekeeping. A second orange next to Day & time's read
-  // as an accident rather than as a category.
+  // Its own group rather than one section of fourteen inside Tasks & projects,
+  // which is where half that screen's rows were. It answers the question the
+  // section's own header comment names as the one people actually have — *what
+  // writes tasks into my list* — and it is the part of Settings that grows every
+  // time a generator ships, so it wants a door of its own rather than a deeper
+  // scroll. Not `kitchenOnly`: six of the twelve generators have nothing to do
+  // with the kitchen and keep running without it, which is exactly the bug that
+  // hiding them behind the area's gate used to cause.
+  { id: 'generated', title: 'Automatic tasks', icon: 'sparkles-outline', tint: 'accent' },
+  { id: 'kitchen', title: 'Groceries & meals', icon: 'cart-outline', tint: 'orange', kitchenOnly: true },
+  // Neutral from here down: the tinted groups are things you configure, the grey
+  // ones are housekeeping. There are only five tints and seven tinted groups, so
+  // two repeat — the rule is that a repeat never lands *next to* its own other
+  // instance, since adjacency is what reads as an accident rather than as a
+  // category. Appearance/Automatic tasks are five rows apart, Day & time and
+  // Groceries & meals four.
   { id: 'privacyAi', title: 'Privacy & AI', icon: 'lock-closed-outline', tint: 'neutral' },
   { id: 'dataReset', title: 'Data & reset', icon: 'archive-outline', tint: 'neutral' },
   { id: 'about', title: 'About', icon: 'information-circle-outline', tint: 'neutral' },
@@ -142,6 +178,96 @@ const AI_FEATURE_ENTRIES: SettingsEntry[] = AI_FEATURES.map(feature => ({
   ...(feature.simple ? { simple: true } : {}),
 }));
 
+/**
+ * The words that should find a generator's row but don't appear in its label.
+ *
+ * The `AI_FEATURE_KEYWORDS` treatment, applied to the other list Settings
+ * renders by mapping over a registry. Keyed by `GeneratedKind` so a new
+ * generator is a type error here until it has been given some.
+ *
+ * `mealCook` is retired and renders no row (see `GENERATED_KINDS`), but the
+ * record is exhaustive over the union, so it keeps a key. Nothing reads it.
+ */
+const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
+  mealSlot: ['meal plan', 'recipe', 'cook', 'cook task', 'breakfast', 'lunch', 'dinner', 'eat',
+    'what to eat', 'auto', 'generated', 'automatic'],
+  mealCook: ['meal plan', 'recipe', 'cook', 'generated', 'automatic'],
+  groceryUseUp: ['expiry', 'expires', 'expiration', 'use by', 'best before', 'perishable', 'spoil',
+    'waste', 'fridge', 'grocery', 'food', 'leftovers', 'generated', 'automatic'],
+  pantryCheck: ['cupboard', 'stock', 'still have', 'run out', 'out of', 'grocery', 'kitchen',
+    'restock', 'generated', 'automatic'],
+  leftoverUseUp: ['fridge', 'expiry', 'expires', 'use by', 'spoil', 'waste', 'food', 'generated',
+    'automatic'],
+  mealPlanNudge: ['meal plan', 'weekly', 'nudge', 'remind', 'planning', 'generated', 'automatic'],
+  mealShortfall: ['ingredients', 'missing', 'meal plan', 'grocery', 'buy', 'short', 'generated',
+    'automatic'],
+  projectReview: ['stalled', 'stale', 'nudge', 'pull', 'idle', 'abandoned', 'generated', 'automatic'],
+  supplyReorder: ['supply', 'stock', 'restock', 'order more', 'refill', 'running low', 'run out',
+    'consumable', 'filter', 'cartridge', 'generated', 'automatic'],
+  calendarReview: ['events', 'agenda', 'schedule', 'generated', 'automatic'],
+  birthday: ['people', 'person', 'friend', 'family', 'age', 'gift', 'present', 'card', 'generated',
+    'automatic'],
+  birthdayGift: ['people', 'person', 'friend', 'family', 'present', 'shopping', 'buy', 'generated',
+    'automatic'],
+  reachOut: ['people', 'person', 'friend', 'family', 'catch up', 'cadence', 'nudge', 'reach out',
+    'contact', 'generated', 'automatic'],
+  // `swipe` and `deck` earn their place: they are what a person remembers about
+  // this one, and the label can't carry either without describing a gesture
+  // instead of what the setting does.
+  pantryReview: ['cupboard', 'stock', 'take stock', 'swipe', 'deck', 'still have', 'grocery',
+    'kitchen', 'generated', 'automatic'],
+};
+
+/**
+ * One entry per row `GeneratedTasksSection` actually renders, in the same order.
+ *
+ * Derived rather than written out, for the reason the AI features are: this is
+ * the other block of Settings whose rows come from a registry, so a generator
+ * added to `GENERATED_KIND_LIST` grew a row on its own and only the index had to
+ * be remembered separately. It wasn't — the three "File … under" entries below
+ * named labels (`File meal tasks under`, `File use-up tasks under`) that the row
+ * stopped rendering when the generators were gathered into one section, and
+ * every one of the nine says plain "File them under" now.
+ *
+ * **`kitchen` comes from the registry too**, which is the half that matters:
+ * whether a generator survives the area being switched off is one fact, and it
+ * was previously written down twice — once here and once as a gate (or a missing
+ * gate) in the pass itself. `GeneratedKindSpec.kitchen` is the single answer,
+ * and `settingsIndex.test.ts` holds the two lists against each other.
+ *
+ * **`section` is the generator's own name, not the section header.** Nine rows
+ * read "File them under" and four read "Show the task", so the group title is
+ * what a result needs least and the generator is what it needs most: "File them
+ * under · Birthday reminders" is answerable, nine identical rows are not. The
+ * toggle rows take the header instead, since their label already carries the
+ * generator's name.
+ */
+const GENERATED_ENTRIES: SettingsEntry[] = GENERATED_KIND_LIST.flatMap(spec => {
+  const shared = {
+    groupId: 'generated' as const,
+    // Carried across rather than restated — an entry that outlived its row
+    // would be a result pointing at nothing, and an entry that left while its
+    // row stayed would be a task nobody can find the switch for.
+    ...(spec.kitchen ? { kitchen: true } : {}),
+  };
+  return [
+    {
+      ...shared,
+      id: `gen:${spec.kind}`,
+      label: spec.label,
+      section: 'Automatic tasks',
+      keywords: GENERATED_KEYWORDS[spec.kind],
+    },
+    ...(spec.categorized ? [{
+      ...shared,
+      id: `gen:${spec.kind}:category`,
+      label: 'File them under',
+      section: spec.label,
+      keywords: ['category', 'where', 'section'],
+    }] : []),
+  ];
+});
+
 export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Appearance
   { id: 'theme', groupId: 'appearance', label: 'Theme', section: 'Theme',
@@ -156,8 +282,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['vibrate', 'vibration', 'taptic', 'buzz'] },
   { id: 'confirmBeforeDeleting', groupId: 'appearance', label: 'Confirm before deleting', section: 'Feedback',
     keywords: ['delete', 'alert', 'confirmation', 'undo', 'forget', 'clear'] },
-  { id: 'hideHelpText', groupId: 'appearance', label: 'Help text', section: 'Feedback',
+  { id: 'hideHelpText', groupId: 'appearance', label: 'Hide help text', section: 'Feedback',
     keywords: ['hint', 'description', 'explanation', 'subtitle', 'terse', 'declutter'] },
+  { id: 'shakeToUndo', groupId: 'appearance', label: 'Shake to undo', section: 'Feedback',
+    keywords: ['gesture', 'revert', 'mistake', 'accident', 'restore', 'take back'] },
   { id: 'tipsEnabled', groupId: 'appearance', label: 'Tips', section: 'Feedback',
     keywords: ['tutorial', 'onboarding', 'learn', 'discover', 'banner', 'suggestion', 'help'] },
 
@@ -183,10 +311,26 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['morning summary', 'digest', 'notification'] },
   { id: 'dailyAgendaTime', groupId: 'notifications', label: 'Send it at', section: 'Notifications',
     keywords: ['agenda time'] },
+  // The five rows below had no entry at all, which made the group's own subject
+  // unsearchable: "quiet hours" and "do not disturb" are among the most likely
+  // things anybody types into this field, and neither found anything.
+  { id: 'tripReminder', groupId: 'notifications', label: 'Trip reminder', section: 'Notifications',
+    keywords: ['shopping', 'store', 'still at', 'left', 'forgot', 'grocery'], kitchen: true },
+  { id: 'quietHours', groupId: 'notifications', label: 'Quiet hours', section: 'Notifications',
+    keywords: ['do not disturb', 'dnd', 'night', 'silence', 'mute', 'sleep', 'overnight',
+      'no notifications'] },
+  { id: 'quietHoursStart', groupId: 'notifications', label: 'From', section: 'Notifications',
+    keywords: ['quiet hours', 'start', 'silence', 'night'] },
+  { id: 'quietHoursEnd', groupId: 'notifications', label: 'Until', section: 'Notifications',
+    keywords: ['quiet hours', 'end', 'silence', 'morning'] },
+  { id: 'quietHoursFromAwake', groupId: 'notifications', label: 'Set from awake hours', section: 'Notifications',
+    keywords: ['quiet hours', 'match', 'copy', 'day & time'] },
+  { id: 'defaultReminderLead', groupId: 'notifications', label: 'Remind me before', section: 'Default reminder',
+    keywords: ['lead', 'early', 'ahead', 'start time', 'automatic', 'notification', 'alert'] },
   // The meal-plan nudge used to sit here, on the grounds that it fires on a
   // schedule. It writes a *task*, though, not a notification, which is the
   // thing it has in common with the other three generators — so it moved to
-  // "Tasks the app adds" in Tasks & projects (#1524).
+  // "Automatic tasks" in Tasks & projects (#1524).
 
   // Capture from Reminders (iOS)
   { id: 'remindersImport', groupId: 'capture', label: 'Import from Reminders', section: 'Apple Reminders',
@@ -234,15 +378,46 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['all-day', 'event', 'export', 'google', 'sync', 'meal plan', 'dinner', 'share', 'household', 'family'],
     kitchen: true },
 
-  // Tasks & projects
-  { id: 'vacationMode', groupId: 'tasksProjects', label: 'Vacation mode', section: 'Vacation',
-    keywords: ['holiday', 'pause', 'away', 'streaks'], simple: true },
-  { id: 'vacationEnd', groupId: 'tasksProjects', label: 'End date', section: 'Vacation',
-    keywords: ['vacation end', 'return'], simple: true },
-  { id: 'autoRemoveExpired', groupId: 'tasksProjects', label: 'Auto-remove expired tasks', section: 'Time-limited tasks',
-    keywords: ['window', 'delete'], simple: true },
-  { id: 'timerLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while timing', section: 'Timers',
-    keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown'] },
+  // ── Tasks & projects ──────────────────────────────────────────────────────
+  // In the order the screen renders them, which the registry's own comment
+  // promises ("equal-scoring rows come back in the order you'd scroll past
+  // them") and had stopped keeping: New tasks and Projects were written here
+  // in the middle and rendered at the bottom.
+  //
+  // The six New tasks rows are indexed. They were left out on the grounds that
+  // the section's own footer explains them, which is true for someone already
+  // reading the section and no help at all to someone looking for it — "default
+  // priority", "quick add" and "where new tasks go" are exactly what a person
+  // types, and the group holding them is no longer one scroll away.
+  { id: 'newTaskCategory', groupId: 'tasksProjects', label: 'Category', section: 'New tasks',
+    keywords: ['default', 'new task', 'quick add', 'file', 'starts with'] },
+  { id: 'newTaskPriority', groupId: 'tasksProjects', label: 'Priority', section: 'New tasks',
+    keywords: ['default', 'new task', 'flag', 'important', 'urgent'] },
+  { id: 'newTaskEffort', groupId: 'tasksProjects', label: 'Effort', section: 'New tasks',
+    keywords: ['default', 'new task', 'size', 'estimate', 'small', 'large'] },
+  { id: 'newTaskTimeOfDay', groupId: 'tasksProjects', label: 'Time of day', section: 'New tasks',
+    keywords: ['default', 'new task', 'morning', 'afternoon', 'evening', 'night', 'segment'] },
+  { id: 'newTaskDestination', groupId: 'tasksProjects', label: 'Where quick-add lands', section: 'New tasks',
+    keywords: ['default', 'new task', 'inbox', 'today', 'unscheduled', 'goes', 'files'] },
+  { id: 'openEditorAfterQuickAdd', groupId: 'tasksProjects', label: 'Open editor after quick add', section: 'New tasks',
+    keywords: ['new task', 'sheet', 'stay', 'straight to', 'full form'] },
+  // Keyworded for what someone types when a task landed somewhere they didn't
+  // put it — "why did this go to Work" is a search for the rule, not for the
+  // word "rule".
+  { id: 'titleRules', groupId: 'tasksProjects', label: 'Title rules', section: 'New tasks',
+    keywords: ['keyword', 'expense', 'automatic', 'auto file', 'category', 'project', 'tag',
+      'starts with', 'parse', 'shortcut', 'prefix', 'why did this', 'link', 'url', 'app'] },
+  { id: 'simpleTaskForm', groupId: 'tasksProjects', label: 'Show fewer fields', section: 'Task form',
+    keywords: ['simple', 'quick add', 'chips', 'declutter', 'basic', 'minimal'] },
+  { id: 'hideCategories', groupId: 'tasksProjects', label: 'Hide categories', section: 'Today',
+    keywords: ['flat', 'one list', 'headers', 'sections', 'group', 'ungrouped', 'today'] },
+  { id: 'autoArchiveProjects', groupId: 'tasksProjects', label: 'Auto-archive projects', section: 'Projects',
+    keywords: ['finished', 'complete'] },
+  // Named for the row as it reads now. It was indexed as "Default nudge
+  // cadence" long after the row had been renamed, which is a result naming a
+  // label nobody can find on the screen it opens.
+  { id: 'defaultProjectNudgeCadence', groupId: 'tasksProjects', label: 'Default review cadence', section: 'Projects',
+    keywords: ['nudge me', 'nudge', 'stalled', 'quiet', 'chase', 'reminder', 'stall', 'new project'] },
   { id: 'postponeCheck', groupId: 'tasksProjects', label: 'Suggest an action after repeated reschedules', section: 'Rescheduling',
     keywords: ['postpone', 'procrastinate', 'snooze', 'defer', 'avoid'] },
   { id: 'postponeCheckThreshold', groupId: 'tasksProjects', label: 'Reschedule threshold', section: 'Rescheduling',
@@ -267,23 +442,18 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['pomodoro', 'focus', 'rest'] },
   { id: 'focusLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while focusing', section: 'Focus sessions',
     keywords: ['pomodoro', 'session', 'lock screen', 'dynamic island', 'widget'] },
-  // Keyworded for what someone types when a task landed somewhere they didn't
-  // put it — "why did this go to Work" is a search for the rule, not for the
-  // word "rule". The other New tasks rows are unindexed; this one earns an
-  // entry because it's the only thing in Settings that can explain a task
-  // filing itself.
-  { id: 'titleRules', groupId: 'tasksProjects', label: 'Title rules', section: 'New tasks',
-    keywords: ['keyword', 'expense', 'automatic', 'auto file', 'category', 'project', 'tag',
-      'starts with', 'parse', 'shortcut', 'prefix', 'why did this', 'link', 'url', 'app'] },
-  { id: 'simpleTaskForm', groupId: 'tasksProjects', label: 'Show fewer fields', section: 'Task form',
-    keywords: ['simple', 'quick add', 'chips', 'declutter', 'basic', 'minimal'] },
-  { id: 'autoArchiveProjects', groupId: 'tasksProjects', label: 'Auto-archive projects', section: 'Projects',
-    keywords: ['finished', 'complete'] },
-  { id: 'defaultProjectNudgeCadence', groupId: 'tasksProjects', label: 'Default nudge cadence', section: 'Projects',
-    keywords: ['nudge me', 'stalled', 'quiet', 'chase', 'reminder', 'stall', 'new project'] },
+  { id: 'timerLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while timing', section: 'Timers',
+    keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown'] },
+  { id: 'autoRemoveExpired', groupId: 'tasksProjects', label: 'Auto-remove expired tasks', section: 'Time-limited tasks',
+    keywords: ['window', 'delete'], simple: true },
+  { id: 'vacationMode', groupId: 'tasksProjects', label: 'Vacation mode', section: 'Vacation',
+    keywords: ['holiday', 'pause', 'away', 'streaks'], simple: true },
+  { id: 'vacationEnd', groupId: 'tasksProjects', label: 'End date', section: 'Vacation',
+    keywords: ['vacation end', 'return'], simple: true },
   // The master switch for the groceries/recipes/meal plan area. Unflagged, and
   // has to stay that way — a row that hid itself when switched off would be a
-  // setting with no way back.
+  // setting with no way back, which is now also why it can't live in the
+  // Groceries & meals group its rows moved to.
   { id: 'kitchenEnabled', groupId: 'tasksProjects', label: 'Groceries & meals', section: 'Feature areas',
     keywords: ['grocery', 'recipes', 'meal plan', 'shopping', 'food', 'cooking',
       'hide', 'remove', 'disable', 'turn off', 'menu', 'drawer', 'tab bar'] },
@@ -296,16 +466,32 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
       'focus', 'pomodoro', 'stacks', 'templates', 'stats', 'drift', 'backfill', 'waiting',
       'deadline', 'blocked', 'barcode', 'receipt', 'pantry', 'substitutes', 'cook mode',
       'recipe steps'] },
-  { id: 'mealsOnToday', groupId: 'tasksProjects', label: 'Show the day\'s meals', section: 'Meals on Today',
-    keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway'], kitchen: true },
-  { id: 'kitchenOnToday', groupId: 'tasksProjects', label: 'Show what needs using up', section: 'Meals on Today',
-    keywords: ['fridge', 'kitchen', 'expiry', 'use by', 'spoil', 'waste', 'leftovers', 'pantry', 'today'],
-    kitchen: true, simple: true },
-  { id: 'cookRecapEnabled', groupId: 'tasksProjects', label: 'Ask after cooking', section: 'Meals on Today',
-    keywords: ['rate', 'rating', 'review', 'leftovers', 'used up', 'out of', 'sheet', 'prompt', 'cooked'],
-    kitchen: true },
-  { id: 'restockOfferEnabled', groupId: 'tasksProjects', label: 'Restock after cooking', section: 'Meals on Today',
-    keywords: ['ingredients', 'shopping list', 'offer', 'buy again', 'cooked'], kitchen: true },
+  // ── Automatic tasks ───────────────────────────────────────────────────────
+  // Derived from GENERATED_KIND_LIST — see GENERATED_ENTRIES above for why, and
+  // for why these rows' `section` names the generator rather than the header.
+  ...GENERATED_ENTRIES,
+  // The controls only one generator has, which the registry has no field for
+  // and shouldn't grow one (see GeneratedTasksSection's `extrasFor`). Their
+  // section is the generator's name for the reason the derived rows' is: four
+  // rows read "Show the task", and the group title tells them apart from
+  // nothing.
+  { id: 'mealSlotsEnabled', groupId: 'generated', label: 'Meals you eat', section: 'Meal tasks',
+    keywords: ['breakfast', 'lunch', 'dinner', 'snack', 'skip', 'which ones'], kitchen: true },
+  { id: 'groceryUseUpLeadDays', groupId: 'generated', label: 'Show the task', section: 'Use-up tasks for groceries',
+    keywords: ['expiry', 'use by', 'days before', 'lead', 'warning', 'grocery'], kitchen: true },
+  { id: 'mealShortfallLeadDays', groupId: 'generated', label: 'Show the task', section: 'Shopping tasks for planned meals',
+    keywords: ['days before', 'lead', 'ahead', 'warning', 'shop', 'meal'], kitchen: true },
+  { id: 'birthdayLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday reminders',
+    keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'birthdayGiftLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday gift reminders',
+    keywords: ['birthday', 'gift', 'present', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'mealPlanNudgeTime', groupId: 'generated', label: 'Nudge me on', section: 'Plan meals for the week',
+    keywords: ['meal plan', 'weekday', 'day', 'time', 'when'], kitchen: true },
+  // Spans both use-up generators, so it sits below the loop rather than inside
+  // either one's extras — and so its section can't be one generator's name.
+  { id: 'useUpTaskCap', groupId: 'generated', label: 'Limit use-up tasks', section: 'Automatic tasks',
+    keywords: ['cap', 'how many', 'most', 'too many', 'flood', 'expiry', 'leftovers'], kitchen: true },
+
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up scanned barcodes', section: 'Barcode lookups',
     keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy'],
     kitchen: true, simple: true },
@@ -315,120 +501,45 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['api', 'barcode', 'scan', 'paid', 'fallback'], kitchen: true, simple: true },
   { id: 'clearGtinLookups', groupId: 'privacyAi', label: 'Forget saved barcodes', section: 'Barcode lookups',
     keywords: ['cache', 'clear', 'reset', 'wrong name', 'upc', 'gtin', 'scan again'], kitchen: true, simple: true },
-  { id: 'tripLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while shopping', section: 'Shopping trip',
+
+  // ── Groceries & meals ─────────────────────────────────────────────────────
+  // No `kitchen` flags below: the group itself is `kitchenOnly`, so the group
+  // gate drops every one of these and flagging them again would be a second
+  // copy of one answer. `simple` still applies — that's a different switch.
+  { id: 'mealsOnToday', groupId: 'kitchen', label: 'Show the day\'s meals', section: 'Meals on Today',
+    keywords: ['meal plan', 'dinner', 'menu', 'today', 'hide meals', 'leftovers', 'takeaway'] },
+  { id: 'kitchenOnToday', groupId: 'kitchen', label: 'Show what needs using up', section: 'Meals on Today',
+    keywords: ['fridge', 'kitchen', 'expiry', 'use by', 'spoil', 'waste', 'leftovers', 'pantry', 'today'],
+    simple: true },
+  { id: 'cookRecapEnabled', groupId: 'kitchen', label: 'Ask after cooking', section: 'Meals on Today',
+    keywords: ['rate', 'rating', 'review', 'leftovers', 'used up', 'out of', 'sheet', 'prompt', 'cooked'] },
+  { id: 'restockOfferEnabled', groupId: 'kitchen', label: 'Restock after cooking', section: 'Meals on Today',
+    keywords: ['ingredients', 'shopping list', 'offer', 'buy again', 'cooked'] },
+  { id: 'tripLiveActivity', groupId: 'kitchen', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'],
-    kitchen: true, simple: true },
-  // The generators, all in one section now (#1524) — they used to be three
-  // sections here plus one over in Notifications. Each keeps its own entry
-  // rather than collapsing to one "Tasks the app adds" row: a search index
-  // exists to find the row you can't see, and "cook tasks" and "use-by" are
-  // what people type, not the name of the section they happen to share.
-  //
-  // Two of them are *not* flagged `kitchen`: the section is shared, but a quiet
-  // project has nothing to do with the grocery area, so hiding its rows along
-  // with the kitchen's would take away a setting that still does something.
-  { id: 'mealCookTasks', groupId: 'tasksProjects', label: 'Meal tasks', section: 'Tasks the app adds',
-    keywords: ['meal plan', 'recipe', 'cook', 'cook task', 'breakfast', 'lunch', 'dinner', 'eat',
-      'what to eat', 'auto', 'generated', 'automatic'], kitchen: true },
-  // Its own entry rather than riding the row above: "which meals" is what a
-  // person types when they want breakfast to stop asking, and the setting they
-  // need is a toggle inside another generator's card.
-  { id: 'mealSlotsEnabled', groupId: 'tasksProjects', label: 'Meals you eat', section: 'Tasks the app adds',
-    keywords: ['breakfast', 'lunch', 'dinner', 'snack', 'skip', 'which ones'], kitchen: true },
-  { id: 'mealCookTaskCategory', groupId: 'tasksProjects', label: 'File meal tasks under', section: 'Tasks the app adds',
-    keywords: ['category', 'meal plan', 'kitchen'], kitchen: true },
-  { id: 'groceryUseUpTasks', groupId: 'tasksProjects', label: 'Use-up tasks for groceries', section: 'Tasks the app adds',
-    keywords: ['expiry', 'expires', 'expiration', 'use by', 'best before', 'perishable', 'spoil',
-      'waste', 'fridge', 'grocery', 'food', 'leftovers', 'generated', 'automatic'], kitchen: true },
-  { id: 'groceryUseUpLeadDays', groupId: 'tasksProjects', label: 'Show the task', section: 'Tasks the app adds',
-    keywords: ['expiry', 'use by', 'days before', 'lead', 'warning', 'grocery'], kitchen: true },
-  { id: 'groceryUseUpTaskCategory', groupId: 'tasksProjects', label: 'File use-up tasks under', section: 'Tasks the app adds',
-    keywords: ['category', 'grocery', 'expiry', 'kitchen'], kitchen: true },
-  { id: 'leftoverUseUpTasks', groupId: 'tasksProjects', label: 'Use-up tasks for leftovers', section: 'Tasks the app adds',
-    keywords: ['fridge', 'expiry', 'expires', 'use by', 'spoil', 'waste', 'food', 'generated', 'automatic'], kitchen: true },
-  { id: 'leftoverUseUpTaskCategory', groupId: 'tasksProjects', label: 'File use-up tasks under', section: 'Tasks the app adds',
-    keywords: ['category', 'leftover', 'fridge', 'kitchen'], kitchen: true },
-  { id: 'mealPlanNudge', groupId: 'tasksProjects', label: 'Plan meals for the week', section: 'Tasks the app adds',
-    keywords: ['meal plan', 'weekly', 'nudge', 'remind', 'planning', 'generated', 'automatic'], kitchen: true },
-  { id: 'mealPlanNudgeTime', groupId: 'tasksProjects', label: 'Nudge me on', section: 'Tasks the app adds',
-    keywords: ['meal plan', 'weekday', 'day', 'time', 'when'], kitchen: true },
-  { id: 'mealPlanNudgeTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
-    keywords: ['category', 'meal plan', 'weekly', 'nudge', 'kitchen'], kitchen: true },
-  { id: 'projectReviewTasks', groupId: 'tasksProjects', label: 'Review tasks for quiet projects', section: 'Tasks the app adds',
-    keywords: ['stalled', 'stale', 'nudge', 'pull', 'idle', 'abandoned', 'generated', 'automatic'] },
-  { id: 'projectReviewTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
-    keywords: ['category', 'project', 'review', 'quiet'] },
-  { id: 'pantryCheckTasks', groupId: 'tasksProjects', label: 'Pantry checks', section: 'Tasks the app adds',
-    keywords: ['cupboard', 'stock', 'still have', 'run out', 'out of', 'grocery', 'kitchen',
-      'restock', 'generated', 'automatic'], kitchen: true },
-  { id: 'pantryCheckTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
-    keywords: ['category', 'pantry', 'grocery', 'kitchen'], kitchen: true },
-  // `kitchen: true` like the pantry rows above and unlike the supply ones
-  // below: this generator reads the grocery catalog to decide what's missing
-  // and its own pass refuses to run with the kitchen off, so a findable row
-  // would be a switch that does nothing.
-  { id: 'mealShortfallTasks', groupId: 'tasksProjects', label: 'Shopping tasks for planned meals', section: 'Tasks the app adds',
-    keywords: ['ingredients', 'missing', 'meal plan', 'grocery', 'buy', 'short',
-      'generated', 'automatic'], kitchen: true },
-  { id: 'mealShortfallLeadDays', groupId: 'tasksProjects', label: 'Show the task', section: 'Tasks the app adds',
-    keywords: ['days before', 'lead', 'ahead', 'warning', 'shop', 'meal'], kitchen: true },
-  { id: 'mealShortfallTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
-    keywords: ['category', 'shop', 'meal plan', 'grocery'], kitchen: true },
-  // Deliberately not `kitchen: true`, unlike the two pantry rows above: a
-  // supply is most often something the grocery half has never heard of (a
-  // filter, a cartridge, a lens), so the row has to stay findable with the
-  // whole kitchen switched off.
-  // No category entry of its own — each reorder task takes the category of
-  // the task its supply is on.
-  { id: 'supplyReorderTasks', groupId: 'tasksProjects', label: 'Reorder tasks for supplies', section: 'Tasks the app adds',
-    keywords: ['supply', 'stock', 'restock', 'order more', 'refill',
-      'running low', 'run out', 'consumable', 'filter', 'cartridge', 'generated', 'automatic'] },
-  // No category entry of its own — it files under calendarEventCategory,
-  // already indexed above under Calendar.
-  { id: 'calendarReviewTasks', groupId: 'tasksProjects', label: 'Review tomorrow\'s calendar', section: 'Tasks the app adds',
-    keywords: ['events', 'agenda', 'schedule', 'generated', 'automatic'] },
-  { id: 'birthdayTasks', groupId: 'tasksProjects', label: 'Birthday reminders', section: 'Tasks the app adds',
-    keywords: ['people', 'person', 'friend', 'family', 'age', 'gift', 'present', 'card',
-      'generated', 'automatic'] },
-  { id: 'birthdayLeadDays', groupId: 'tasksProjects', label: 'Show the task', section: 'Tasks the app adds',
-    keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
-  { id: 'birthdayTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
-    keywords: ['category', 'birthday', 'people'] },
-  { id: 'birthdayGiftTasks', groupId: 'tasksProjects', label: 'Birthday gift reminders', section: 'Tasks the app adds',
-    keywords: ['people', 'person', 'friend', 'family', 'present', 'shopping', 'buy',
-      'generated', 'automatic'] },
-  { id: 'birthdayGiftLeadDays', groupId: 'tasksProjects', label: 'Show the task', section: 'Tasks the app adds',
-    keywords: ['birthday', 'gift', 'present', 'days before', 'lead', 'early', 'notice', 'warning'] },
-  { id: 'birthdayGiftTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
-    keywords: ['category', 'birthday', 'gift', 'people'] },
-  { id: 'reachOutTasks', groupId: 'tasksProjects', label: 'Reminders to keep in touch', section: 'Tasks the app adds',
-    keywords: ['people', 'person', 'friend', 'family', 'catch up', 'cadence', 'nudge',
-      'reach out', 'contact', 'generated', 'automatic'] },
-  { id: 'reachOutTaskCategory', groupId: 'tasksProjects', label: 'File them under', section: 'Tasks the app adds',
-    keywords: ['category', 'people', 'catch up'] },
-  // Flagged too: it only ever restates a recipe's or a grocery row's amount, so
-  // with the area gone there is nothing left for it to convert.
-  { id: 'unitSystem', groupId: 'tasksProjects', label: 'Units', section: 'Recipe & grocery amounts',
-    keywords: ['metric', 'imperial', 'convert', 'grams', 'ounces', 'pounds', 'cups', 'millilitres', 'measurement'],
-    kitchen: true },
-  { id: 'currencySymbol', groupId: 'tasksProjects', label: 'Currency', section: 'Recipe & grocery amounts',
-    keywords: ['price', 'cost', 'money', 'symbol', 'dollar', 'pound', 'euro', 'yen', 'grocery'],
-    kitchen: true },
+    simple: true },
+  { id: 'excludedRecipeTags', groupId: 'kitchen', label: 'Tags to avoid', section: 'Recipe suggestions',
+    keywords: ['exclude', 'leave out', 'hide', 'vegetarian', 'allergy', 'dislike', 'never suggest',
+      'meal ideas', 'recipe tag'] },
+  { id: 'unitSystem', groupId: 'kitchen', label: 'Units', section: 'Recipe & grocery amounts',
+    keywords: ['metric', 'imperial', 'convert', 'grams', 'ounces', 'pounds', 'cups', 'millilitres', 'measurement'] },
+  { id: 'currencySymbol', groupId: 'kitchen', label: 'Currency', section: 'Recipe & grocery amounts',
+    keywords: ['price', 'cost', 'money', 'symbol', 'dollar', 'pound', 'euro', 'yen', 'grocery'] },
   // The row is a count and a way in; the rules themselves live on the links.
   // Keyworded for what someone would actually type when a recipe surprised
   // them — "why does this say oat milk" is a search for the swap, not for the
   // word "substitute".
-  { id: 'standingSwaps', groupId: 'tasksProjects', label: 'Standing swaps', section: 'Substitutes',
+  { id: 'standingSwaps', groupId: 'kitchen', label: 'Standing swaps', section: 'Substitutes',
     keywords: ['substitute', 'instead of', 'always use', 'replace', 'oat milk', 'dairy',
       'allergy', 'recipe', 'grocery', 'automatic'],
-    kitchen: true, simple: true },
+    simple: true },
 
   // Privacy & AI
   { id: 'appLock', groupId: 'privacyAi', label: 'Require Face ID to open', section: 'App lock',
     keywords: ['touch id', 'biometric', 'lock', 'passcode', 'privacy', 'security'] },
   { id: 'appLockGrace', groupId: 'privacyAi', label: 'Lock again after', section: 'App lock',
     keywords: ['grace', 'timeout'] },
-  { id: 'apiKey', groupId: 'privacyAi', label: 'Anthropic API Key', section: 'AI suggestions',
+  { id: 'apiKey', groupId: 'privacyAi', label: 'Anthropic API key', section: 'AI suggestions',
     keywords: ['ai', 'claude', 'suggestions'] },
   ...AI_FEATURE_ENTRIES,
 
@@ -456,9 +567,17 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['changelog', 'patch notes', 'updates', 'release'] },
 ];
 
-/** The groups to show on this platform, in order. */
-export function visibleSettingsGroups(platformOS: string): SettingsGroup[] {
-  return SETTINGS_GROUPS.filter(g => !g.iosOnly || platformOS === 'ios');
+/**
+ * The groups to show right now, in order.
+ *
+ * `kitchenEnabled` defaults to true for the reason it does in
+ * `visibleSettingsEntries`: a caller that doesn't care (a test, a platform
+ * check) gets the whole list, the way it did before the setting existed.
+ */
+export function visibleSettingsGroups(platformOS: string, kitchenEnabled = true): SettingsGroup[] {
+  return SETTINGS_GROUPS.filter(g =>
+    (!g.iosOnly || platformOS === 'ios')
+    && (!g.kitchenOnly || kitchenEnabled));
 }
 
 /**
@@ -474,7 +593,7 @@ export function visibleSettingsEntries(
   kitchenEnabled = true,
   simpleMode = false,
 ): SettingsEntry[] {
-  const shown = new Set(visibleSettingsGroups(platformOS).map(g => g.id));
+  const shown = new Set(visibleSettingsGroups(platformOS, kitchenEnabled).map(g => g.id));
   return SETTINGS_ENTRIES.filter(e =>
     shown.has(e.groupId)
     && (kitchenEnabled || !e.kitchen)

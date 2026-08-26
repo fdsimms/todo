@@ -3,13 +3,9 @@ import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useSettingsStore, type MealsOnToday } from '../../store/useSettingsStore';
-import type { UnitSystem } from '../../utils/unitConvert';
 import { useTaskStore } from '../../store/useTaskStore';
 import { useCategoryStore } from '../../store/useCategoryStore';
-import { useRecipeStore } from '../../store/useRecipeStore';
-import { useGroceryStore } from '../../store/useGroceryStore';
 import { useShallow } from 'zustand/react/shallow';
-import { allRecipeTags } from '../../utils/recipeTags';
 import { useColors } from '../../theme/ThemeContext';
 import { spacing } from '../../theme';
 import { WhenPicker } from '../../components/WhenPicker';
@@ -17,14 +13,11 @@ import { getTaskDayStart } from '../../utils/dateUtils';
 import { EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, type ExpiredTaskGraceDays } from '../../utils/expiredTaskGrace';
 import { CountStepper } from '../../components/CountStepper';
 import { SettingsSection } from './SettingsSection';
-import { GeneratedTasksSection } from './GeneratedTasksSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { PillGroup } from '../../components/PillGroup';
-import { StandingSwapsSheet } from '../../components/StandingSwapsSheet';
 import { TitleRulesSheet } from '../../components/TitleRulesSheet';
-import { standingSwaps } from '../../utils/standingSwaps';
 import { makeSettingsStyles } from './settingsStyles';
 import {
   SIMPLE_AREAS, SIMPLE_AREA_LABELS, SIMPLE_FEATURES, simpleFeaturesIn,
@@ -47,7 +40,6 @@ import {
   FOCUS_REST_MAX, FOCUS_REST_MIN, FOCUS_WORK_CAP_MAX, FOCUS_WORK_CAP_MIN,
   focusRestsDisabled,
 } from '../../utils/focusSettings';
-import { CURRENCY_SYMBOLS, CURRENCY_SYMBOL_MAX_LENGTH } from '../../types';
 
 const EXPIRED_TASK_GRACE_SEGMENTS: SegmentOption<ExpiredTaskGraceDays>[] =
   EXPIRED_TASK_GRACE_OPTIONS.map(o => ({ value: o.value, label: o.label }));
@@ -70,11 +62,6 @@ const NEW_TASK_DESTINATION_OPTIONS: SegmentOption<'today' | 'inbox' | 'unschedul
   { value: 'today', label: 'Today' },
   { value: 'inbox', label: 'Inbox' },
   { value: 'unscheduled', label: 'Unscheduled' },
-];
-const UNIT_SYSTEM_OPTIONS: SegmentOption<UnitSystem>[] = [
-  { value: 'asWritten', label: 'As written' },
-  { value: 'metric', label: 'Metric' },
-  { value: 'us', label: 'US' },
 ];
 export function TasksProjectsSettings() {
   const vacationMode = useSettingsStore(s => s.vacationMode);
@@ -113,26 +100,10 @@ export function TasksProjectsSettings() {
   const setSimpleTaskForm = useSettingsStore(s => s.setSimpleTaskForm);
   const timerLiveActivity = useSettingsStore(s => s.timerLiveActivity);
   const setTimerLiveActivity = useSettingsStore(s => s.setTimerLiveActivity);
-  const tripLiveActivity = useSettingsStore(s => s.tripLiveActivity);
-  const setTripLiveActivity = useSettingsStore(s => s.setTripLiveActivity);
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const setKitchenEnabled = useSettingsStore(s => s.setKitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const setSimpleMode = useSettingsStore(s => s.setSimpleMode);
-  const mealsOnToday = useSettingsStore(s => s.mealsOnToday);
-  const kitchenOnToday = useSettingsStore(s => s.kitchenOnToday);
-  const setKitchenOnToday = useSettingsStore(s => s.setKitchenOnToday);
-  const setMealsOnToday = useSettingsStore(s => s.setMealsOnToday);
-  const cookRecapEnabled = useSettingsStore(s => s.cookRecapEnabled);
-  const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
-  const setCookRecapEnabled = useSettingsStore(s => s.setCookRecapEnabled);
-  const setRestockOfferEnabled = useSettingsStore(s => s.setRestockOfferEnabled);
-  const unitSystem = useSettingsStore(s => s.unitSystem);
-  const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
-  const currencySymbol = useSettingsStore(s => s.currencySymbol);
-  const setCurrencySymbol = useSettingsStore(s => s.setCurrencySymbol);
-  const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
-  const setExcludedRecipeTags = useSettingsStore(s => s.setExcludedRecipeTags);
   const defaultProjectNudgeCadenceDays = useSettingsStore(s => s.defaultProjectNudgeCadenceDays);
   const setDefaultProjectNudgeCadenceDays = useSettingsStore(s => s.setDefaultProjectNudgeCadenceDays);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
@@ -141,23 +112,10 @@ export function TasksProjectsSettings() {
 
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
   const categories = useCategoryStore(s => s.categories);
-  const recipeTagVocabulary = useRecipeStore(useShallow(s => allRecipeTags(s.recipes)));
-
-  // How many substitutes the app is currently applying on its own (#1571) —
-  // the count on the Standing swaps row, and the reason it reads as active.
-  // The resolved list, not a raw `standing` count: a rule whose other half has
-  // gone isn't being applied to anything.
-  const groceryItems = useGroceryStore(useShallow(s => s.items));
-  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
-  const standingSwapCount = useMemo(
-    () => standingSwaps(itemSubs, groceryItems).length,
-    [itemSubs, groceryItems]
-  );
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
-  const [standingSwapsVisible, setStandingSwapsVisible] = useState(false);
   const [titleRulesVisible, setTitleRulesVisible] = useState(false);
 
   // What the row's value counts: rules that are actually filing things. A rule
@@ -197,598 +155,18 @@ export function TasksProjectsSettings() {
 
   return (
     <>
-      {/* Nothing to configure in simplified mode: it removes the per-task
-          "vacation pause" row, so vacation mode would have nothing to hide. */}
-      {!simpleMode && (
-      <SettingsSection
-        label="Vacation"
-        footer={`${vacationMode && vacationStart ? `On since ${format(new Date(vacationStart), 'MMM d')}. ` : ''}While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically, or set an end date to have it happen for you.`}
-      >
-        <SettingsRow
-          icon="airplane-outline"
-          iconColor={vacationMode ? colors.accent : undefined}
-          label="Vacation mode"
-          hint="Hides tasks marked for vacation pause."
-          toggle={vacationMode}
-          onPress={() => {
-            if (vacationMode) {
-              forgivVacationStreaks();
-              setVacationMode(false);
-            } else {
-              setVacationMode(true);
-            }
-          }}
-        />
-        {vacationMode && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              icon="calendar-outline"
-              label="End date"
-              hint={vacationEnd
-                ? 'Turns off automatically on this day'
-                : 'Optional. Turn off manually if not set'}
-              value={vacationEnd ? format(new Date(vacationEnd), 'MMM d, yyyy') : 'None'}
-              onPress={() => setShowVacationEndPicker(true)}
-              accessibilityLabel="Vacation end date"
-              trailing={vacationEnd ? (
-                <TouchableOpacity
-                  onPress={() => setVacationEnd(null)}
-                  hitSlop={8}
-                  style={{ marginLeft: spacing.xs }}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear vacation end date"
-                >
-                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
-                </TouchableOpacity>
-              ) : undefined}
-            />
-          </>
-        )}
-      </SettingsSection>
-      )}
-
-      {/* Expiry needs a time window, and simplified mode takes the window row
-          off the editor. */}
-      {!simpleMode && (
-      <SettingsSection
-        label="Time-limited tasks"
-        footer={'A task with a time window (like "farmers market, 8am–1pm") moves to Expired once its window closes, whether or not it repeats.'}
-      >
-        <SettingsRow
-          icon="time-outline"
-          iconColor={autoRemoveExpiredTasks === null ? undefined : colors.accent}
-          label="Auto-remove expired tasks"
-          hint={autoRemoveExpiredTasks === null
-            ? 'Kept in an Expired section until you delete them'
-            : autoRemoveExpiredTasks === 0
-              ? 'Deleted the moment their time window closes'
-              : `Deleted ${expiredTaskGraceLabel(autoRemoveExpiredTasks).toLowerCase()} after their time window closes`}
-          tight
-        />
-        <SettingsSegments
-          attached
-          columns={3}
-          options={EXPIRED_TASK_GRACE_SEGMENTS}
-          selected={autoRemoveExpiredTasks}
-          onSelect={setAutoRemoveExpiredTasks}
-          accessibilityLabelFor={o => `Auto-remove expired tasks: ${o.label}`}
-        />
-      </SettingsSection>
-      )}
-
-      {Platform.OS === 'ios' && (
-        <SettingsSection
-          label="Timers"
-          footer="Requires iOS 17. Ends the moment you pause, stop, or (for a task) complete it. Resuming starts a fresh one."
-        >
-          <SettingsRow
-            icon="phone-portrait-outline"
-            iconColor={timerLiveActivity ? colors.accent : undefined}
-            label="Live Activity while timing"
-            hint={timerLiveActivity
-              ? 'A running task timer or recipe cook/prep timer shows on the Lock Screen and Dynamic Island'
-              : 'Timers stay in the app only'}
-            toggle={timerLiveActivity}
-            onPress={() => setTimerLiveActivity(!timerLiveActivity)}
-          />
-        </SettingsSection>
-      )}
-
-      <SettingsSection
-        label="Rescheduling"
-        footer="Counted per task, and the count resets as soon as you pull one back to today. You can also silence the prompt for a single task from the reminder itself."
-      >
-        <SettingsRow
-          icon="repeat-outline"
-          iconColor={postponeCheckEnabled ? colors.accent : undefined}
-          label="Suggest an action after repeated reschedules"
-          hint={postponeCheckEnabled
-            ? `Shows a suggestion once you've moved a task ${postponeCheckThreshold} times`
-            : 'Off. Reschedule a task as many times as you like with no prompt'}
-          toggle={postponeCheckEnabled}
-          onPress={() => setPostponeCheckEnabled(!postponeCheckEnabled)}
-        />
-        {postponeCheckEnabled && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              icon="hand-left-outline"
-              label="Reschedule threshold"
-              hint="Number of times a task can be moved before the suggestion appears."
-              tight
-            />
-            <View style={styles.cadenceRow}>
-              <CountStepper
-                value={postponeCheckThreshold}
-                onChange={next => setPostponeCheckThreshold(next ?? DEFAULT_POSTPONE_THRESHOLD)}
-                min={MIN_POSTPONE_THRESHOLD}
-                max={MAX_POSTPONE_THRESHOLD}
-                label="Reschedule threshold"
-                describeValue={n => `${n} reschedules`}
-              />
-            </View>
-          </>
-        )}
-      </SettingsSection>
-
-      {!simpleMode && (
-      <SettingsSection
-        label="Focus sessions"
-        footer={`${noBreaks
-          ? 'Both break triggers are off, so a session runs straight through with no breaks in it.'
-          : 'Both triggers run at once and whichever comes first inserts the break. Start a session from Today’s … menu.'}${
-          Platform.OS === 'ios' ? ' The Lock Screen activity requires iOS 17.' : ''}`}
-      >
-        <SettingsRow
-          icon="hourglass-outline"
-          label="Work stretch length"
-          hint="The longest a single stretch runs. A task estimated for longer is split into equal parts."
-          tight
-        />
-        <View style={styles.cadenceRow}>
-          <CountStepper
-            value={focusWorkCapMinutes}
-            onChange={next => setFocusWorkCapMinutes(next ?? FOCUS_DEFAULTS.workCapMinutes)}
-            min={FOCUS_WORK_CAP_MIN}
-            max={FOCUS_WORK_CAP_MAX}
-            format={n => `${n} min`}
-            label="Work stretch length"
-            describeValue={n => `${n} minutes`}
-          />
-        </View>
-
-        <View style={styles.sep} />
-        <SettingsRow
-          icon="help-circle-outline"
-          label="Length without an estimate"
-          hint="How long a stretch runs for a task that has no time estimate."
-          tight
-        />
-        <View style={styles.cadenceRow}>
-          <CountStepper
-            value={focusDefaultWorkMinutes}
-            onChange={next => setFocusDefaultWorkMinutes(next ?? FOCUS_DEFAULTS.defaultWorkMinutes)}
-            min={FOCUS_WORK_CAP_MIN}
-            max={FOCUS_WORK_CAP_MAX}
-            format={n => `${n} min`}
-            label="Length without an estimate"
-            describeValue={n => `${n} minutes`}
-          />
-        </View>
-
-        <View style={styles.sep} />
-        <SettingsRow
-          icon="time-outline"
-          label="Break after this much work"
-          hint="Minutes of work before a break is added. Set to off to never break on elapsed time."
-          tight
-        />
-        <View style={styles.cadenceRow}>
-          <CountStepper
-            value={focusRestAfterMinutes}
-            onChange={setFocusRestAfterMinutes}
-            min={FOCUS_REST_AFTER_MINUTES_MIN}
-            max={FOCUS_REST_AFTER_MINUTES_MAX}
-            allowNull
-            emptyLabel="Off"
-            format={n => `${n} min`}
-            label="Break after this much work"
-            describeValue={n => (n === null ? 'Off' : `${n} minutes`)}
-          />
-        </View>
-
-        <View style={styles.sep} />
-        <SettingsRow
-          icon="list-outline"
-          label="Break after this many tasks"
-          hint="Tasks finished before a break is added. Set to off to never break on a task count."
-          tight
-        />
-        <View style={styles.cadenceRow}>
-          <CountStepper
-            value={focusRestAfterTasks}
-            onChange={setFocusRestAfterTasks}
-            min={1}
-            max={FOCUS_REST_AFTER_TASKS_MAX}
-            allowNull
-            emptyLabel="Off"
-            format={n => `${n} task${n === 1 ? '' : 's'}`}
-            label="Break after this many tasks"
-            describeValue={n => (n === null ? 'Off' : `${n} tasks`)}
-          />
-        </View>
-
-        {!noBreaks && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              icon="cafe-outline"
-              label="Break length"
-              tight
-            />
-            <View style={styles.cadenceRow}>
-              <CountStepper
-                value={focusRestMinutes}
-                onChange={next => setFocusRestMinutes(next ?? FOCUS_DEFAULTS.restMinutes)}
-                min={FOCUS_REST_MIN}
-                max={FOCUS_REST_MAX}
-                format={n => `${n} min`}
-                label="Break length"
-                describeValue={n => `${n} minutes`}
-              />
-            </View>
-
-            <View style={styles.sep} />
-            <SettingsRow
-              icon="bed-outline"
-              label="Long break every"
-              hint="Makes every nth break a longer one. Set to off to keep every break the same length."
-              tight
-            />
-            <View style={styles.cadenceRow}>
-              <CountStepper
-                value={focusLongRestEvery}
-                onChange={setFocusLongRestEvery}
-                min={FOCUS_LONG_REST_EVERY_MIN}
-                max={FOCUS_LONG_REST_EVERY_MAX}
-                allowNull
-                emptyLabel="Off"
-                format={n => `${n} breaks`}
-                label="Long break every"
-                describeValue={n => (n === null ? 'Off' : `every ${n} breaks`)}
-              />
-            </View>
-
-            {focusLongRestEvery !== null && (
-              <>
-                <View style={styles.sep} />
-                <SettingsRow
-                  icon="moon-outline"
-                  label="Long break length"
-                  tight
-                />
-                <View style={styles.cadenceRow}>
-                  <CountStepper
-                    value={focusLongRestMinutes}
-                    onChange={next => setFocusLongRestMinutes(next ?? FOCUS_DEFAULTS.longRestMinutes)}
-                    min={FOCUS_REST_MIN}
-                    max={FOCUS_REST_MAX}
-                    format={n => `${n} min`}
-                    label="Long break length"
-                    describeValue={n => `${n} minutes`}
-                  />
-                </View>
-              </>
-            )}
-          </>
-        )}
-
-        {Platform.OS === 'ios' && (
-          <>
-            <View style={styles.sep} />
-            <SettingsRow
-              icon="phone-portrait-outline"
-              iconColor={focusLiveActivity ? colors.accent : undefined}
-              label="Live Activity while focusing"
-              hint={focusLiveActivity
-                ? 'The step you’re on shows on the Lock Screen and Dynamic Island, with a button to pause it or move to the next one'
-                : 'Sessions stay in the app only'}
-              toggle={focusLiveActivity}
-              onPress={() => setFocusLiveActivity(!focusLiveActivity)}
-            />
-          </>
-        )}
-      </SettingsSection>
-      )}
-
-      <SettingsSection
-        label="Today"
-        footer="Also available from Today's … menu."
-      >
-        <SettingsRow
-          icon="eye-off-outline"
-          iconColor={hideCategories ? colors.accent : undefined}
-          label="Hide categories"
-          hint={hideCategories ? 'Showing one flat list of tasks' : 'Group tasks under category headers'}
-          toggle={hideCategories}
-          onPress={() => setHideCategories(!hideCategories)}
-        />
-      </SettingsSection>
-
-      <SettingsSection
-        label="Feature areas"
-        footer="Neither switch deletes anything. Your tasks, lists, recipes and planned meals are kept exactly as they are, and turning either back on returns every feature as you left it. A task or item that already uses a hidden feature keeps showing it, so nothing you have set can go missing."
-      >
-        <SettingsRow
-          icon="cart-outline"
-          iconColor={kitchenEnabled ? colors.accent : undefined}
-          label="Groceries & meals"
-          hint={kitchenEnabled ? 'Shown in the tab bar' : 'Hidden from the tab bar'}
-          toggle={kitchenEnabled}
-          onPress={() => setKitchenEnabled(!kitchenEnabled)}
-        />
-        <View style={styles.sep} />
-        <SettingsRow
-          icon="contract-outline"
-          iconColor={simpleMode ? colors.accent : undefined}
-          label="Simplified mode"
-          hint={simpleMode
-            ? `${SIMPLE_FEATURES.length} advanced features are hidden`
-            : 'Every feature is available'}
-          toggle={simpleMode}
-          onPress={() => setSimpleMode(!simpleMode)}
-        />
-        <View style={styles.sep} />
-        {/* The list is the setting's only honest description: "hides advanced
-            features" is not something anyone can act on without knowing which. */}
-        <SettingsRow icon="list-outline" label="What simplified mode hides" />
-        <View style={styles.simpleList}>
-          {SIMPLE_AREAS.map(area => (
-            <View key={area} style={styles.simpleArea}>
-              <Text style={styles.simpleAreaLabel}>{SIMPLE_AREA_LABELS[area]}</Text>
-              <Text style={styles.simpleAreaFeatures}>
-                {simpleFeaturesIn(area).map(f => f.label).join(', ')}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </SettingsSection>
-
-      {/* Everything below belongs to the groceries/meals area: what it puts on
-          Today, what it adds to the task list, and how it states amounts. None
-          of it has anything to configure once the area is hidden. */}
-      {kitchenEnabled && (
-      <>
-      <SettingsSection
-        label="Meals on Today"
-        footer="A meal with no task behind it shows as a row in the list, filed under the same category as meal tasks, and so does anything in the pantry about to go off, above them. Neither can be checked off; tapping opens the meal plan or the pantry. Meal tasks themselves are under Tasks the app adds, below."
-      >
-        {/* A toggle rather than a track of two: one bounded choice with two
-            answers is what a switch is for, and the two shapes this used to
-            pick between (a tray above the tasks, a one-line strip) are both
-            gone. */}
-        <SettingsRow
-          icon="restaurant-outline"
-          iconColor={mealsOnToday === 'inline' ? colors.accent : undefined}
-          label="Show the day's meals"
-          hint={mealsOnToday === 'inline'
-            ? 'As rows in the task list, with the meal tasks'
-            : 'Nothing. Meals stay on the Meal plan tab'}
-          toggle={mealsOnToday === 'inline'}
-          onPress={() => setMealsOnToday(mealsOnToday === 'inline' ? 'off' : 'inline')}
-          accessibilityLabel="Show the day's meals"
-        />
-        {/* Filed in this section rather than under Tasks the app adds, because
-            it is not a task the app adds: nothing is written, and the row
-            leaves when the food does. What it shares with the meals is where
-            it lands — the same category, at the top of the same section. */}
-        {!simpleMode && (
-        <SettingsRow
-          icon="nutrition-outline"
-          iconColor={kitchenOnToday ? colors.accent : undefined}
-          label="Show what needs using up"
-          hint="A row on the day something in the pantry is down to its last day, unless it already has a use-up task."
-          toggle={kitchenOnToday}
-          onPress={() => setKitchenOnToday(!kitchenOnToday)}
-          accessibilityLabel="Show what needs using up"
-        />
-        )}
-        <SettingsRow
-          icon="restaurant-outline"
-          iconColor={cookRecapEnabled ? colors.accent : undefined}
-          label="Ask after cooking"
-          hint="When you mark a meal cooked, ask how it was, whether there are leftovers, and what it used up."
-          toggle={cookRecapEnabled}
-          onPress={() => setCookRecapEnabled(!cookRecapEnabled)}
-          accessibilityLabel="Ask after cooking"
-        />
-        {/* Indented under nothing, but it only does anything while the row
-            above is on: it governs one section of that sheet. Left as its own
-            row rather than folded in because "never shop from a recipe" and
-            "don't ask me anything" are different wants. */}
-        <SettingsRow
-          icon="basket-outline"
-          iconColor={restockOfferEnabled ? colors.accent : undefined}
-          label="Restock after cooking"
-          hint="Include what the meal used that isn't on your shopping list, with a button to add it."
-          toggle={restockOfferEnabled}
-          onPress={() => setRestockOfferEnabled(!restockOfferEnabled)}
-          accessibilityLabel="Restock after cooking"
-        />
-      </SettingsSection>
-
-      {Platform.OS === 'ios' && !simpleMode && (
-        <SettingsSection
-          label="Shopping trip"
-          footer="Requires iOS 17. Ends when you clear or finish the trip, or automatically after about 6 hours."
-        >
-          <SettingsRow
-            icon="phone-portrait-outline"
-            iconColor={tripLiveActivity ? colors.accent : undefined}
-            label="Live Activity while shopping"
-            hint={tripLiveActivity
-              ? 'The store you\'re at and how long you\'ve been there shows on the Lock Screen and Dynamic Island'
-              : 'A trip stays in the app only'}
-            toggle={tripLiveActivity}
-            onPress={() => setTripLiveActivity(!tripLiveActivity)}
-          />
-        </SettingsSection>
-      )}
-
-      <SettingsSection
-        label="Recipe suggestions"
-        footer="Only your own recipe tags decide this. Nothing is guessed from ingredients. Tag a dish (however you like: “vegetarian”, “eggy”, whatever the reason is) on its own recipe screen, then pick the tags to leave out here. A dish stays fully editable and plannable by hand; this only keeps it out of what the app proposes."
-      >
-        <SettingsRow
-          icon="nutrition-outline"
-          iconColor={excludedRecipeTags.length > 0 ? colors.accent : undefined}
-          label="Tags to avoid"
-          hint={recipeTagVocabulary.length === 0 ? 'Tag a recipe first to pick from here' : undefined}
-          alwaysShowHint={recipeTagVocabulary.length === 0}
-          tight={recipeTagVocabulary.length > 0}
-        />
-        {recipeTagVocabulary.length > 0 && (
-          <View style={styles.pillGroupRow}>
-            <PillGroup
-              noun="tag"
-              options={recipeTagVocabulary.map(tag => ({
-                key: tag,
-                label: tag,
-                selected: excludedRecipeTags.includes(tag),
-                accessibilityLabel: excludedRecipeTags.includes(tag)
-                  ? `${tag}, left out of suggestions. Tap to allow it again.`
-                  : `${tag}. Tap to leave it out of suggestions.`,
-                onPress: () => {
-                  haptics.tap();
-                  setExcludedRecipeTags(
-                    excludedRecipeTags.includes(tag)
-                      ? excludedRecipeTags.filter(t => t !== tag)
-                      : [...excludedRecipeTags, tag]
-                  );
-                },
-              }))}
-            />
-          </View>
-        )}
-      </SettingsSection>
-
-      <GeneratedTasksSection
-        categoryOptions={newTaskCategoryOptions}
-        categoryPills={categoryPills}
-      />
-
-      <SettingsSection
-        label="Recipe & grocery amounts"
-        footer="Only what's shown changes. Recipes and the grocery list keep the amounts that were typed, and editing one shows it as written. Converted amounts are rounded, and marked with ≈. Counts, container sizes like “14 oz can”, and amounts with no number are left alone."
-      >
-        <SettingsRow
-          icon="swap-horizontal-outline"
-          iconColor={unitSystem === 'asWritten' ? undefined : colors.accent}
-          label="Units"
-          hint={
-            unitSystem === 'metric'
-              ? 'Ounces, pounds, cups and spoons show in grams and millilitres'
-              : unitSystem === 'us'
-                ? 'Grams, kilograms and millilitres show in ounces, pounds and cups'
-                : 'Amounts show exactly as they were typed'
-          }
-          tight
-        />
-        <SettingsSegments
-          attached
-          options={UNIT_SYSTEM_OPTIONS}
-          selected={unitSystem}
-          onSelect={setUnitSystem}
-          accessibilityLabelFor={o => `Units: ${o.label}`}
-        />
-        <SettingsRow
-          icon="pricetag-outline"
-          label="Currency"
-          hint="The symbol grocery prices are shown with."
-          tight
-        />
-        <View style={styles.pillGroupRow}>
-          <PillGroup
-            noun="symbol"
-            filterPlaceholder="Find or type a symbol…"
-            createMaxLength={CURRENCY_SYMBOL_MAX_LENGTH}
-            onCreate={raw => {
-              const trimmed = raw.trim();
-              if (!trimmed) return 'Enter a symbol.';
-              if (/\s/.test(trimmed)) return 'No spaces in a symbol.';
-              setCurrencySymbol(trimmed);
-            }}
-            options={[
-              // A custom symbol already in use has no pill of its own among
-              // the presets below, so it gets a pinned one — otherwise
-              // setting it once would make it vanish from its own picker.
-              ...(CURRENCY_SYMBOLS.includes(currencySymbol) ? [] : [{
-                key: '__current__',
-                label: currencySymbol,
-                pinned: true,
-                selected: true,
-                onPress: () => {},
-              }]),
-              ...CURRENCY_SYMBOLS.map(symbol => ({
-                key: symbol,
-                label: symbol,
-                selected: currencySymbol === symbol,
-                accessibilityLabel: `Currency: ${symbol}`,
-                onPress: () => { haptics.tap(); setCurrencySymbol(symbol); },
-              })),
-            ]}
-          />
-        </View>
-      </SettingsSection>
-
-      {/* The review surface for the one substitute setting that changes what
-          lands in the trolley (#1571). The rule itself is written where the
-          pair is, on the item's Substitutes field — this is the "what is the
-          app currently rewriting for me" read, which is the thing a link-level
-          bit on its own can't answer. */}
-      {!simpleMode && (
-      <SettingsSection
-        label="Substitutes"
-        footer="A substitute normally just says what you could use instead. One marked “always use this instead” is applied for you: recipes calling for the original show and shop for the substitute, marked with what the recipe said. Nothing is written to the recipe, and a single line can opt out under “Keep as written”."
-      >
-        <SettingsRow
-          icon="swap-horizontal-outline"
-          iconColor={standingSwapCount > 0 ? colors.accent : undefined}
-          label="Standing swaps"
-          hint={standingSwapCount > 0
-            ? 'Substitutes being applied to every recipe that calls for the original'
-            : 'Nothing is being swapped for you'}
-          value={standingSwapCount > 0 ? String(standingSwapCount) : undefined}
-          chevron
-          onPress={() => { haptics.tap(); setStandingSwapsVisible(true); }}
-        />
-      </SettingsSection>
-      )}
-      </>
-      )}
-
-      <SettingsSection
-        label="Task form"
-        footer="Nothing is removed. The other fields sit behind “more” in quick add and in the editor's sections, and the editor's field search still finds all of them. A task created either way is the same task."
-      >
-        <SettingsRow
-          icon="remove-outline"
-          iconColor={simpleTaskForm ? colors.accent : undefined}
-          label="Show fewer fields"
-          hint={simpleTaskForm
-            ? 'Quick add shows Date, Time of day and Repeat, and names its buttons'
-            : 'Quick add shows every field it has'}
-          toggle={simpleTaskForm}
-          onPress={() => setSimpleTaskForm(!simpleTaskForm)}
-        />
-      </SettingsSection>
-
+      {/* Ordered by how often a person comes here for it, which is roughly the
+          reverse of how this screen grew: what a new task starts with is the
+          thing people actually look for, and it used to sit below vacation
+          mode, focus tuning and a wall of grocery rows. The two master switches
+          stay last — they change what the rest of Settings even contains, which
+          is a reason to meet them after the rest, not before it. */}
       <SettingsSection
         label="New tasks"
         footer="What a fresh task starts with, and where quick-add files it before you type anything. None of these override a value you actually pick. Typing a date in quick-add still wins over the destination below."
       >
-        <SettingsRow icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own." value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
+        <SettingsRow
+  entryId="newTaskCategory" icon="pricetag-outline" label="Category" hint="Applied to every new task that doesn't get one of its own." value={newTaskCategoryOptions.find(o => o.value === newTaskDefaults.category)?.label ?? 'None'} tight />
         <View style={styles.pillGroupRow}>
           <PillGroup
             noun="category"
@@ -800,7 +178,8 @@ export function TasksProjectsSettings() {
           />
         </View>
         <View style={styles.sep} />
-        <SettingsRow icon="flag-outline" label="Priority" tight />
+        <SettingsRow
+  entryId="newTaskPriority" icon="flag-outline" label="Priority" tight />
         <SettingsSegments
           attached
           columns={3}
@@ -810,7 +189,8 @@ export function TasksProjectsSettings() {
           accessibilityLabelFor={o => `Default priority: ${o.label}`}
         />
         <View style={styles.sep} />
-        <SettingsRow icon="speedometer-outline" label="Effort" tight />
+        <SettingsRow
+  entryId="newTaskEffort" icon="speedometer-outline" label="Effort" tight />
         <SettingsSegments
           attached
           options={NEW_TASK_EFFORT_OPTIONS}
@@ -819,7 +199,8 @@ export function TasksProjectsSettings() {
           accessibilityLabelFor={o => `Default effort: ${o.label}`}
         />
         <View style={styles.sep} />
-        <SettingsRow icon="partly-sunny-outline" label="Time of day" tight />
+        <SettingsRow
+  entryId="newTaskTimeOfDay" icon="partly-sunny-outline" label="Time of day" tight />
         <SettingsSegments
           attached
           columns={3}
@@ -829,7 +210,8 @@ export function TasksProjectsSettings() {
           accessibilityLabelFor={o => `Default time of day: ${o.label}`}
         />
         <View style={styles.sep} />
-        <SettingsRow icon="albums-outline" label="Where quick-add lands" hint="Which list a quick-added task files into before you set a date." tight />
+        <SettingsRow
+  entryId="newTaskDestination" icon="albums-outline" label="Where quick-add lands" hint="Which list a quick-added task files into before you set a date." tight />
         <SettingsSegments
           attached
           options={NEW_TASK_DESTINATION_OPTIONS}
@@ -839,6 +221,7 @@ export function TasksProjectsSettings() {
         />
         <View style={styles.sep} />
         <SettingsRow
+          entryId="openEditorAfterQuickAdd"
           icon="create-outline"
           iconColor={newTaskDefaults.openEditorAfterQuickAdd ? colors.accent : undefined}
           label="Open editor after quick add"
@@ -854,6 +237,7 @@ export function TasksProjectsSettings() {
             reads as the exception to the footer's "applied to every new task"
             because that is exactly what it is. */}
         <SettingsRow
+          entryId="titleRules"
           icon="funnel-outline"
           iconColor={activeTitleRuleCount > 0 ? colors.accent : undefined}
           label="Title rules"
@@ -865,8 +249,41 @@ export function TasksProjectsSettings() {
         />
       </SettingsSection>
 
+      <SettingsSection
+        label="Task form"
+        footer="Nothing is removed. The other fields sit behind “more” in quick add and in the editor's sections, and the editor's field search still finds all of them. A task created either way is the same task."
+      >
+        <SettingsRow
+          entryId="simpleTaskForm"
+          icon="remove-outline"
+          iconColor={simpleTaskForm ? colors.accent : undefined}
+          label="Show fewer fields"
+          hint={simpleTaskForm
+            ? 'Quick add shows Date, Time of day and Repeat, and names its buttons'
+            : 'Quick add shows every field it has'}
+          toggle={simpleTaskForm}
+          onPress={() => setSimpleTaskForm(!simpleTaskForm)}
+        />
+      </SettingsSection>
+
+      <SettingsSection
+        label="Today"
+        footer="Also available from Today's … menu."
+      >
+        <SettingsRow
+          entryId="hideCategories"
+          icon="eye-off-outline"
+          iconColor={hideCategories ? colors.accent : undefined}
+          label="Hide categories"
+          hint={hideCategories ? 'Showing one flat list of tasks' : 'Group tasks under category headers'}
+          toggle={hideCategories}
+          onPress={() => setHideCategories(!hideCategories)}
+        />
+      </SettingsSection>
+
       <SettingsSection label="Projects">
         <SettingsRow
+          entryId="autoArchiveProjects"
           icon="briefcase-outline"
           iconColor={autoArchiveProjectsOnComplete ? colors.accent : undefined}
           label="Auto-archive projects"
@@ -878,6 +295,7 @@ export function TasksProjectsSettings() {
         />
         <View style={styles.sep} />
         <SettingsRow
+          entryId="defaultProjectNudgeCadence"
           icon="notifications-outline"
           iconColor={defaultProjectNudgeCadenceDays > 0 ? colors.accent : undefined}
           label="Default review cadence"
@@ -922,6 +340,366 @@ export function TasksProjectsSettings() {
         </View>
       </SettingsSection>
 
+      <SettingsSection
+        label="Rescheduling"
+        footer="Counted per task, and the count resets as soon as you pull one back to today. You can also silence the prompt for a single task from the reminder itself."
+      >
+        <SettingsRow
+          entryId="postponeCheck"
+          icon="repeat-outline"
+          iconColor={postponeCheckEnabled ? colors.accent : undefined}
+          label="Suggest an action after repeated reschedules"
+          hint={postponeCheckEnabled
+            ? `Shows a suggestion once you've moved a task ${postponeCheckThreshold} times`
+            : 'Off. Reschedule a task as many times as you like with no prompt'}
+          toggle={postponeCheckEnabled}
+          onPress={() => setPostponeCheckEnabled(!postponeCheckEnabled)}
+        />
+        {postponeCheckEnabled && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="postponeCheckThreshold"
+              icon="hand-left-outline"
+              label="Reschedule threshold"
+              hint="Number of times a task can be moved before the suggestion appears."
+              tight
+            />
+            <View style={styles.cadenceRow}>
+              <CountStepper
+                value={postponeCheckThreshold}
+                onChange={next => setPostponeCheckThreshold(next ?? DEFAULT_POSTPONE_THRESHOLD)}
+                min={MIN_POSTPONE_THRESHOLD}
+                max={MAX_POSTPONE_THRESHOLD}
+                label="Reschedule threshold"
+                describeValue={n => `${n} reschedules`}
+              />
+            </View>
+          </>
+        )}
+      </SettingsSection>
+
+      {!simpleMode && (
+      <SettingsSection
+        label="Focus sessions"
+        footer={`${noBreaks
+          ? 'Both break triggers are off, so a session runs straight through with no breaks in it.'
+          : 'Both triggers run at once and whichever comes first inserts the break. Start a session from Today’s … menu.'}${
+          Platform.OS === 'ios' ? ' The Lock Screen activity requires iOS 17.' : ''}`}
+      >
+        <SettingsRow
+          entryId="focusWorkCapMinutes"
+          icon="hourglass-outline"
+          label="Work stretch length"
+          hint="The longest a single stretch runs. A task estimated for longer is split into equal parts."
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={focusWorkCapMinutes}
+            onChange={next => setFocusWorkCapMinutes(next ?? FOCUS_DEFAULTS.workCapMinutes)}
+            min={FOCUS_WORK_CAP_MIN}
+            max={FOCUS_WORK_CAP_MAX}
+            format={n => `${n} min`}
+            label="Work stretch length"
+            describeValue={n => `${n} minutes`}
+          />
+        </View>
+
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="focusDefaultWorkMinutes"
+          icon="help-circle-outline"
+          label="Length without an estimate"
+          hint="How long a stretch runs for a task that has no time estimate."
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={focusDefaultWorkMinutes}
+            onChange={next => setFocusDefaultWorkMinutes(next ?? FOCUS_DEFAULTS.defaultWorkMinutes)}
+            min={FOCUS_WORK_CAP_MIN}
+            max={FOCUS_WORK_CAP_MAX}
+            format={n => `${n} min`}
+            label="Length without an estimate"
+            describeValue={n => `${n} minutes`}
+          />
+        </View>
+
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="focusRestAfterMinutes"
+          icon="time-outline"
+          label="Break after this much work"
+          hint="Minutes of work before a break is added. Set to off to never break on elapsed time."
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={focusRestAfterMinutes}
+            onChange={setFocusRestAfterMinutes}
+            min={FOCUS_REST_AFTER_MINUTES_MIN}
+            max={FOCUS_REST_AFTER_MINUTES_MAX}
+            allowNull
+            emptyLabel="Off"
+            format={n => `${n} min`}
+            label="Break after this much work"
+            describeValue={n => (n === null ? 'Off' : `${n} minutes`)}
+          />
+        </View>
+
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="focusRestAfterTasks"
+          icon="list-outline"
+          label="Break after this many tasks"
+          hint="Tasks finished before a break is added. Set to off to never break on a task count."
+          tight
+        />
+        <View style={styles.cadenceRow}>
+          <CountStepper
+            value={focusRestAfterTasks}
+            onChange={setFocusRestAfterTasks}
+            min={1}
+            max={FOCUS_REST_AFTER_TASKS_MAX}
+            allowNull
+            emptyLabel="Off"
+            format={n => `${n} task${n === 1 ? '' : 's'}`}
+            label="Break after this many tasks"
+            describeValue={n => (n === null ? 'Off' : `${n} tasks`)}
+          />
+        </View>
+
+        {!noBreaks && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="focusRestMinutes"
+              icon="cafe-outline"
+              label="Break length"
+              tight
+            />
+            <View style={styles.cadenceRow}>
+              <CountStepper
+                value={focusRestMinutes}
+                onChange={next => setFocusRestMinutes(next ?? FOCUS_DEFAULTS.restMinutes)}
+                min={FOCUS_REST_MIN}
+                max={FOCUS_REST_MAX}
+                format={n => `${n} min`}
+                label="Break length"
+                describeValue={n => `${n} minutes`}
+              />
+            </View>
+
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="focusLongRestEvery"
+              icon="bed-outline"
+              label="Long break every"
+              hint="Makes every nth break a longer one. Set to off to keep every break the same length."
+              tight
+            />
+            <View style={styles.cadenceRow}>
+              <CountStepper
+                value={focusLongRestEvery}
+                onChange={setFocusLongRestEvery}
+                min={FOCUS_LONG_REST_EVERY_MIN}
+                max={FOCUS_LONG_REST_EVERY_MAX}
+                allowNull
+                emptyLabel="Off"
+                format={n => `${n} breaks`}
+                label="Long break every"
+                describeValue={n => (n === null ? 'Off' : `every ${n} breaks`)}
+              />
+            </View>
+
+            {focusLongRestEvery !== null && (
+              <>
+                <View style={styles.sep} />
+                <SettingsRow
+                  entryId="focusLongRestMinutes"
+                  icon="moon-outline"
+                  label="Long break length"
+                  tight
+                />
+                <View style={styles.cadenceRow}>
+                  <CountStepper
+                    value={focusLongRestMinutes}
+                    onChange={next => setFocusLongRestMinutes(next ?? FOCUS_DEFAULTS.longRestMinutes)}
+                    min={FOCUS_REST_MIN}
+                    max={FOCUS_REST_MAX}
+                    format={n => `${n} min`}
+                    label="Long break length"
+                    describeValue={n => `${n} minutes`}
+                  />
+                </View>
+              </>
+            )}
+          </>
+        )}
+
+        {Platform.OS === 'ios' && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="focusLiveActivity"
+              icon="phone-portrait-outline"
+              iconColor={focusLiveActivity ? colors.accent : undefined}
+              label="Live Activity while focusing"
+              hint={focusLiveActivity
+                ? 'The step you’re on shows on the Lock Screen and Dynamic Island, with a button to pause it or move to the next one'
+                : 'Sessions stay in the app only'}
+              toggle={focusLiveActivity}
+              onPress={() => setFocusLiveActivity(!focusLiveActivity)}
+            />
+          </>
+        )}
+      </SettingsSection>
+      )}
+
+      {Platform.OS === 'ios' && (
+        <SettingsSection
+          label="Timers"
+          footer="Requires iOS 17. Ends the moment you pause, stop, or (for a task) complete it. Resuming starts a fresh one."
+        >
+          <SettingsRow
+            entryId="timerLiveActivity"
+            icon="phone-portrait-outline"
+            iconColor={timerLiveActivity ? colors.accent : undefined}
+            label="Live Activity while timing"
+            hint={timerLiveActivity
+              ? 'A running task timer or recipe cook/prep timer shows on the Lock Screen and Dynamic Island'
+              : 'Timers stay in the app only'}
+            toggle={timerLiveActivity}
+            onPress={() => setTimerLiveActivity(!timerLiveActivity)}
+          />
+        </SettingsSection>
+      )}
+
+      {/* Expiry needs a time window, and simplified mode takes the window row
+          off the editor. */}
+      {!simpleMode && (
+      <SettingsSection
+        label="Time-limited tasks"
+        footer={'A task with a time window (like "farmers market, 8am–1pm") moves to Expired once its window closes, whether or not it repeats.'}
+      >
+        <SettingsRow
+          entryId="autoRemoveExpired"
+          icon="time-outline"
+          iconColor={autoRemoveExpiredTasks === null ? undefined : colors.accent}
+          label="Auto-remove expired tasks"
+          hint={autoRemoveExpiredTasks === null
+            ? 'Kept in an Expired section until you delete them'
+            : autoRemoveExpiredTasks === 0
+              ? 'Deleted the moment their time window closes'
+              : `Deleted ${expiredTaskGraceLabel(autoRemoveExpiredTasks).toLowerCase()} after their time window closes`}
+          tight
+        />
+        <SettingsSegments
+          attached
+          columns={3}
+          options={EXPIRED_TASK_GRACE_SEGMENTS}
+          selected={autoRemoveExpiredTasks}
+          onSelect={setAutoRemoveExpiredTasks}
+          accessibilityLabelFor={o => `Auto-remove expired tasks: ${o.label}`}
+        />
+      </SettingsSection>
+      )}
+
+      {/* Nothing to configure in simplified mode: it removes the per-task
+          "vacation pause" row, so vacation mode would have nothing to hide. */}
+      {!simpleMode && (
+      <SettingsSection
+        label="Vacation"
+        footer={`${vacationMode && vacationStart ? `On since ${format(new Date(vacationStart), 'MMM d')}. ` : ''}While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically, or set an end date to have it happen for you.`}
+      >
+        <SettingsRow
+          entryId="vacationMode"
+          icon="airplane-outline"
+          iconColor={vacationMode ? colors.accent : undefined}
+          label="Vacation mode"
+          hint="Hides tasks marked for vacation pause."
+          toggle={vacationMode}
+          onPress={() => {
+            if (vacationMode) {
+              forgivVacationStreaks();
+              setVacationMode(false);
+            } else {
+              setVacationMode(true);
+            }
+          }}
+        />
+        {vacationMode && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="vacationEnd"
+              icon="calendar-outline"
+              label="End date"
+              hint={vacationEnd
+                ? 'Turns off automatically on this day'
+                : 'Optional. Turn off manually if not set'}
+              value={vacationEnd ? format(new Date(vacationEnd), 'MMM d, yyyy') : 'None'}
+              onPress={() => setShowVacationEndPicker(true)}
+              accessibilityLabel="Vacation end date"
+              trailing={vacationEnd ? (
+                <TouchableOpacity
+                  onPress={() => setVacationEnd(null)}
+                  hitSlop={8}
+                  style={{ marginLeft: spacing.xs }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear vacation end date"
+                >
+                  <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              ) : undefined}
+            />
+          </>
+        )}
+      </SettingsSection>
+      )}
+
+      <SettingsSection
+        label="Feature areas"
+        footer="Neither switch deletes anything. Your tasks, lists, recipes and planned meals are kept exactly as they are, and turning either back on returns every feature as you left it. A task or item that already uses a hidden feature keeps showing it, so nothing you have set can go missing."
+      >
+        <SettingsRow
+          entryId="kitchenEnabled"
+          icon="cart-outline"
+          iconColor={kitchenEnabled ? colors.accent : undefined}
+          label="Groceries & meals"
+          hint={kitchenEnabled ? 'Shown in the tab bar' : 'Hidden from the tab bar'}
+          toggle={kitchenEnabled}
+          onPress={() => setKitchenEnabled(!kitchenEnabled)}
+        />
+        <View style={styles.sep} />
+        <SettingsRow
+          entryId="simpleMode"
+          icon="contract-outline"
+          iconColor={simpleMode ? colors.accent : undefined}
+          label="Simplified mode"
+          hint={simpleMode
+            ? `${SIMPLE_FEATURES.length} advanced features are hidden`
+            : 'Every feature is available'}
+          toggle={simpleMode}
+          onPress={() => setSimpleMode(!simpleMode)}
+        />
+        <View style={styles.sep} />
+        {/* The list is the setting's only honest description: "hides advanced
+            features" is not something anyone can act on without knowing which. */}
+        <SettingsRow icon="list-outline" label="What simplified mode hides" />
+        <View style={styles.simpleList}>
+          {SIMPLE_AREAS.map(area => (
+            <View key={area} style={styles.simpleArea}>
+              <Text style={styles.simpleAreaLabel}>{SIMPLE_AREA_LABELS[area]}</Text>
+              <Text style={styles.simpleAreaFeatures}>
+                {simpleFeaturesIn(area).map(f => f.label).join(', ')}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </SettingsSection>
+
       {/*
         A plain day, so WhenPicker — the CalendarPicker this used to be is only
         for a completion timestamp or a set of dates. Time of day and Suggest
@@ -942,11 +720,6 @@ export function TasksProjectsSettings() {
           setShowVacationEndPicker(false);
         }}
         onCancel={() => setShowVacationEndPicker(false)}
-      />
-
-      <StandingSwapsSheet
-        visible={standingSwapsVisible}
-        onClose={() => setStandingSwapsVisible(false)}
       />
 
       <TitleRulesSheet

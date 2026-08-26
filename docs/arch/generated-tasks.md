@@ -1,10 +1,18 @@
-# Generated tasks: the eleven things that write a task unattended
+# Generated tasks: the thirteen things that write a task unattended
 
 The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
-project reviews, pantry checks, supply reorders and the daily calendar review.
-Read this before adding a ninth generator: the whole point of the refactor it
-describes is that a new one costs a rules module and a registry entry, not a
+project reviews, pantry checks and the pantry review, supply reorders, the
+daily calendar review, birthdays and the reach-out nudge.
+Read this before adding a fourteenth generator: the whole point of the refactor
+it describes is that a new one costs a rules module and a registry entry, not a
 column.
+
+The prose below walks the generators in the order they were added. It had
+fallen a generator behind once already (`reachOut` shipped without an entry,
+leaving this file claiming eleven while twelve were listed), so when adding one:
+`GENERATED_KINDS` in `src/utils/generatedTasks.ts` is the authoritative list,
+and the count in the two headings above is derived from it rather than from the
+number of sections here.
 
 Moved out of `CLAUDE.md` so it is read when it applies rather than on every
 task. The rules here are settled decisions with the reasoning attached: don't
@@ -13,7 +21,7 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the eleven things that write a task unattended
+## Generated tasks — the thirteen things that write a task unattended
 
 Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
@@ -109,8 +117,10 @@ See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where 
   survives only by pruning to what the Reminders list still holds on every drain. A generic record
   has no equivalent pruning pass unless each generator supplies one, at which point it isn't
   generic. On the source row it's bounded for free — whatever deletes the source deletes the "no".
-- **The settings keys stayed per-generator; only the UI merged.** One "Tasks the app adds" section
+- **The settings keys stayed per-generator; only the UI merged.** One "Automatic tasks" section
   (`GeneratedTasksSection`) lists all four, replacing three sections here and one in Notifications.
+  (It shipped as "Tasks the app adds" and was renamed in #2155; the patch-notes entries naming the
+  old title are a record of what it was called then and stay as they are.)
   Renaming `mealCookTasks`/`groceryUseUpTasks`/… to a generic pair would be a migration over
   preferences people have already set, for nothing a person can see. The section's *list* comes
   from the registry; its **controls are still hand-written JSX**, the same line `settingsIndex.ts`
@@ -202,6 +212,79 @@ See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where 
     isn't deleted for being a fortnight old.
   - **It ships off**, unlike `projectReview` beside it, which replaced a surface that was already
     on screen. This adds one.
+
+- **`reachOut` is the twelfth, and it is `projectReview` one shelf over.** A person somebody asked
+  to be reminded about, who it has been a while since they saw, becomes "Catch up with Ansley".
+  **The reasoning lives in `docs/arch/people.md`'s "The reach-out nudge"** and is not repeated here:
+  that file holds the rules about what this feature may never do, and they are what shaped every
+  choice below. What belongs here is only how it sits in the mechanism.
+  - **Sourced on the person**, so its opt-out is an ordinary stamp on the source row
+    (`Person.reachOutDeclinedAt`), the bounded-for-free placement this doc asks for — whatever
+    deletes the person deletes the "no".
+  - **The stamp holds for a week rather than a day**, which is the one place it departs from
+    `projectReview`'s self-expiring decline. A project put off is still sitting in your work; a nudge
+    about a friend returning tomorrow morning reads as the app disagreeing with you about a
+    friendship. `declineHoldDays` takes the shorter of a week and the person's own cadence, so
+    somebody on a four-day cadence is not silenced for seven by one swipe.
+  - **The cap is two, and the tie deliberately does not break on longest-since.** Sorting the due set
+    by who you have neglected most is the obvious answer and is exactly what `people.md` rules out,
+    even done invisibly. It breaks on `sortOrder` — the hand drag on the People screen — because that
+    is the only ranking of people the feature is allowed to contain, being the one somebody made on
+    purpose.
+  - **Its stale pass judges against the uncapped due set**, not against the two `wantedReachOuts`
+    returns. The cap decides who gets a *new* row when several people are due; losing that contest is
+    no reason to delete a row the user already deferred. Same split `staleProjectReviewTasks` and
+    `stalePantryCheckTasks` both draw, and the same `dropGeneratedTask` so the app's own tidying up
+    never writes the source's decline.
+  - **The task carries no `personIds`**, for the reason `projectReview` carries no `projectId`:
+    filing it under the person it names would let ticking it off reset the very clock that wrote it,
+    without anybody having actually reached out. It points at its person through
+    `generatedSourceId` like every other generator points at its source.
+  - **It ships on**, like `projectReview` and for its argument: the real gate is per-person
+    (`nudgeOptIn` + `cadenceDays`, both off on everybody), so an install where nobody has been opted
+    in sees nothing new. The setting only decides whether the pass runs at all.
+
+- **`pantryReview` is the thirteenth, and it is `calendarReview` one shelf over, not `pantryCheck`.**
+  It asks the drip's question in bulk: one row, "Review what's in the pantry", opening a swipe deck
+  over everything the app is currently unsure about (see `docs/arch/groceries.md` for the deck
+  itself). Its source is the day key the offer was raised on rather than a row — there is no single
+  item it is about — so there is no per-source qualifying predicate, no capped set, and nothing a
+  stamp could live on.
+  - **It divides from `pantryCheck` on the size of the doubt, and the split is the point.** Below
+    `MIN_PANTRY_REVIEW_CARDS` (5) the drip says more: the row names the thing, and one tap on the item
+    sheet answers it. Past it, three rows about individual shelves of a cupboard that is doubtful in
+    eleven places is the flooding `MAX_PANTRY_CHECK_TASKS` exists to prevent, metered out three at a
+    time instead of arriving at once. So `checkPantryCheckTasks` stands down entirely while a review
+    row is live, and every call site fires the review pass **first** so the suppression lands in the
+    same sweep rather than one behind it.
+  - **The suppression is the create half only.** Drip rows raised before the review appeared are left
+    alone — a deferred one is the user's — and they clear themselves for free as the deck is
+    answered, because a card answered makes its item's lapse null, which is exactly what
+    `stalePantryCheckTasks` tests. That is a nicer property than it looks: the two generators tidy up
+    after each other without either knowing the other's rules.
+  - **`pantryReviewLastDayKey` does two jobs**, where `calendarReviewLastDayKey` does one. It is the
+    same unconditional "this day has been considered" mark, recorded before the deck is judged so a
+    swiped-away row is not re-diagnosed on the next foreground — *and* it carries the cadence, since
+    the check reads it as "how long since the last offer" rather than testing it for existence. There
+    is no purchase to spend a decline against the way `pantryCheckDeclinedAt` does (this is about the
+    whole catalog, not one row), so a plain `PANTRY_REVIEW_CADENCE_DAYS` is what keeps a cupboard
+    question from coming back tomorrow and nagging.
+  - **One row at a time.** A live review row a fortnight old means the offer was ignored or deferred,
+    and a second is the pile-up every generator here has a rule against — so the pass returns rather
+    than raising another, with the mark freshly refreshed so the next offer is a cadence out.
+  - **Its stale rule is an empty deck, not `wantsPantryReview`.** That threshold decides whether to
+    *raise* an offer; a row already raised and deferred to Saturday must not be deleted because the
+    user answered enough cards to put the deck under five, which would be the app taking the question
+    back the moment it started being answered. Same split `stalePantryCheckTasks` draws against
+    `PANTRY_CHECK_GRACE_DAYS`, and `staleProjectReviewTasks` against its own cap.
+  - **It has its own category setting**, unlike `calendarReview` which shares one. That kind shares
+    `calendarEventCategory` because the events it describes are already filed by it, so a second
+    setting could only agree or contradict. Here there is no prior owner, and sharing
+    `pantryCheckTaskCategory` would mean turning this on while the drip is off leaves it with nowhere
+    to file — an uncategorized task renders loose at the very top of Today, which is exactly where
+    these must not go.
+  - **It ships off**, like `pantryCheck` and `mealShortfall`, for their reason: it adds a surface
+    rather than replacing one that was already on screen.
 
 - **`calendarReview` is the eighth, and it's structurally `mealPlanNudge` one shelf over, not
   `projectReview`/`pantryCheck`.** Its source is tomorrow's day key rather than a row (a square on

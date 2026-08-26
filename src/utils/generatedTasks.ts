@@ -102,6 +102,12 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // appending after `projectReview` would not: it would leave the four kitchen
   // generators split around a project one.
   'pantryCheck',
+  // Directly after the drip it supersedes, for the reason pantryCheck itself
+  // sits beside groceryUseUp: the two are one subject from the list's side.
+  // They ask the same question at two different sizes, they file under one
+  // category by default, and reading them apart would leave a person turning
+  // one on without ever meeting the other.
+  'pantryReview',
   'leftoverUseUp',
   'mealPlanNudge',
   // Beside the nudge rather than appended at the end, for the reason
@@ -145,6 +151,30 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
  * rather than a flag on a source. Read it with `generatedSourceOf`, like every
  * other kind's.
  */
+/**
+ * The settings keys holding the generators' on/off answers.
+ *
+ * Each generator kept its own key rather than being migrated to a generic pair
+ * when the registry arrived, because renaming them would be a migration over
+ * preferences people have already set, for no gain a person can see. What was
+ * missing was a way to *read* one without knowing which — which is what
+ * `GeneratedKindSpec.enabledKey` is for.
+ */
+export type GeneratedEnabledKey =
+  | 'mealCookTasks'
+  | 'groceryUseUpTasks'
+  | 'pantryCheckTasks'
+  | 'leftoverUseUpTasks'
+  | 'mealPlanNudgeEnabled'
+  | 'mealShortfallTasks'
+  | 'projectReviewTasks'
+  | 'supplyReorderTasks'
+  | 'calendarReviewTasks'
+  | 'birthdayTasks'
+  | 'birthdayGiftTasks'
+  | 'reachOutTasks'
+  | 'pantryReviewTasks';
+
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
   /** The Settings row's label — plain, literal, matching the rows around it. */
@@ -155,8 +185,36 @@ export interface GeneratedKindSpec {
   offHint: string;
   /** Ionicons glyph for the Settings row. */
   icon: string;
+  /**
+   * The settings key holding this generator's on/off answer.
+   *
+   * `mealSlot` and `mealCook` deliberately share one: the second folded into
+   * the first and kept its key rather than migrating a preference people had
+   * already set (see `GENERATED_KINDS`).
+   */
+  enabledKey: GeneratedEnabledKey;
   /** Whether tasks of this kind point back at a source row. */
   sourced: boolean;
+  /**
+   * Whether this generator belongs to the groceries/recipes/meal-plan area, and
+   * so goes away with it when `kitchenEnabled` is off.
+   *
+   * Required rather than optional, for the reason `enabledOf` is a switch with
+   * no default arm: a generator added to the registry has to answer this, and
+   * a wrong answer in either direction is a bug that has already shipped twice.
+   * `false` here means the generator keeps running with the area hidden — so
+   * its Settings row has to keep rendering, or it writes tasks nobody can turn
+   * off (that was `birthday`, `reachOut`, `supplyReorder`, `projectReview` and
+   * `calendarReview`, all five stranded behind Settings' own kitchen gate).
+   * `true` means the pass itself must refuse to run without the area, or it is
+   * the mirror failure: a hidden feature still writing rows onto Today, which
+   * `checkMealSlotTasks` did with three meal tasks a day.
+   *
+   * Settings reads this flag directly (both the group gate and the row filter),
+   * and `settingsIndex.test.ts` checks the search index against it — so the
+   * registry is the single answer rather than a third copy of it.
+   */
+  kitchen: boolean;
   /**
    * Whether the user can choose a category to file this kind under.
    *
@@ -209,21 +267,25 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // real gate — the setting below only decides whether the pass runs at all.
   reachOut: {
     kind: 'reachOut',
+    enabledKey: 'reachOutTasks',
     label: 'Reminders to keep in touch',
     onHint: 'A person you asked to be reminded about gets a task when it has been a while',
     offHint: 'People add no catch-up tasks',
     icon: 'people-outline',
     sourced: true,
+    kitchen: false,
     categorized: true,
     defaultCategory: 'People',
   },
   birthday: {
     kind: 'birthday',
+    enabledKey: 'birthdayTasks',
     label: 'Birthday reminders',
     onHint: 'A person with a birthday on file gets a task a few days before it',
     offHint: 'Birthdays add no tasks',
     icon: 'gift-outline',
     sourced: true,
+    kitchen: false,
     categorized: true,
     defaultCategory: 'People',
   },
@@ -236,16 +298,19 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // own to point to.
   birthdayGift: {
     kind: 'birthdayGift',
+    enabledKey: 'birthdayGiftTasks',
     label: 'Birthday gift reminders',
     onHint: 'A person with a birthday on file gets a task to get them a gift',
     offHint: 'Birthdays add no task to get a gift',
     icon: 'gift-outline',
     sourced: true,
+    kitchen: false,
     categorized: true,
     defaultCategory: 'People',
   },
   mealSlot: {
     kind: 'mealSlot',
+    enabledKey: 'mealCookTasks',
     label: 'Meal tasks',
     onHint: 'Each meal you eat gets a task: what to make, or what to decide',
     offHint: 'Meals add no tasks',
@@ -257,6 +322,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // is mealSlotTasksWrittenThroughDayKey, a high-water mark the pass only
     // ever writes past — so a day it has covered is never revisited.
     sourced: false,
+    kitchen: true,
     categorized: true,
     defaultCategory: 'Meal Plan',
   },
@@ -265,56 +331,99 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // lists it, since GENERATED_KIND_LIST is built from GENERATED_KINDS.
   mealCook: {
     kind: 'mealCook',
+    enabledKey: 'mealCookTasks',
     label: 'Cook tasks',
     onHint: 'Planning a recipe adds a task to cook it',
     offHint: 'Planning a recipe adds no task',
     icon: 'restaurant-outline',
     sourced: true,
+    kitchen: true,
     categorized: true,
     defaultCategory: 'Meal Plan',
   },
   groceryUseUp: {
     kind: 'groceryUseUp',
+    enabledKey: 'groceryUseUpTasks',
     label: 'Use-up tasks for groceries',
     onHint: 'Buying something with a use-by date adds a task to use it up',
     offHint: 'Buying something with a use-by date adds no task',
     icon: 'alarm-outline',
     sourced: true,
+    kitchen: true,
     categorized: true,
     defaultCategory: 'Groceries',
   },
   pantryCheck: {
     kind: 'pantryCheck',
+    enabledKey: 'pantryCheckTasks',
     label: 'Pantry checks',
     onHint: 'Adds a task to check whether you still have something once its usual shelf life has passed',
     offHint: 'No task to check whether you still have something',
     icon: 'help-circle-outline',
     sourced: true,
+    kitchen: true,
+    categorized: true,
+    defaultCategory: 'Groceries',
+  },
+  // Ships off, like pantryCheck above it and for the same reason: it adds a
+  // surface rather than replacing one that was already on screen. Its own gate
+  // is larger than the drip's, too — MIN_PANTRY_REVIEW_CARDS means a cupboard
+  // the app is mostly sure about never raises it at all.
+  pantryReview: {
+    kind: 'pantryReview',
+    enabledKey: 'pantryReviewTasks',
+    label: 'Pantry reviews',
+    onHint: 'Adds a task to go through the pantry when several things are in doubt at once',
+    offHint: 'No task to go through the pantry',
+    icon: 'albums-outline',
+    // Its source id is the day key the offer was raised on, which names a
+    // square on the calendar rather than a row anything could be written back
+    // to — the position calendarReview and mealPlanNudge are already in, and
+    // the reason writeGeneratedOptOut has nothing to write for this kind. What
+    // stops a swiped-away row coming straight back is pantryReviewLastDayKey.
+    sourced: false,
+    // The deck reads the grocery catalog and checkPantryReviewTasks refuses to
+    // run with the area off, so the row has to go with it — the `true` half of
+    // this flag's contract.
+    kitchen: true,
+    // A category of its own, unlike calendarReview, even though it defaults to
+    // the same place pantryCheck files under. calendarReview shares a key
+    // because the events it describes are already filed by that setting, so a
+    // second one could only agree or contradict; here there is no such prior
+    // owner, and sharing pantryCheck's key would mean turning this generator on
+    // while the drip is off leaves it with nowhere to file — an uncategorized
+    // task renders loose at the very top of Today, which is exactly where these
+    // must not go.
     categorized: true,
     defaultCategory: 'Groceries',
   },
   leftoverUseUp: {
     kind: 'leftoverUseUp',
+    enabledKey: 'leftoverUseUpTasks',
     label: 'Use-up tasks for leftovers',
     onHint: 'A leftover about to go bad adds a task to use it up',
     offHint: 'A leftover about to go bad adds no task',
     icon: 'file-tray-outline',
     sourced: true,
+    kitchen: true,
     categorized: true,
     defaultCategory: 'Leftovers',
   },
   projectReview: {
     kind: 'projectReview',
+    enabledKey: 'projectReviewTasks',
     label: 'Review tasks for quiet projects',
     onHint: 'A project with nothing scheduled adds a task to pick its next one',
     offHint: 'A project with nothing scheduled adds no task',
     icon: 'folder-outline',
     sourced: true,
+    kitchen: false,
     categorized: true,
     defaultCategory: 'Projects',
   },
   supplyReorder: {
     kind: 'supplyReorder',
+    enabledKey: 'supplyReorderTasks',
     label: 'Reorder tasks for supplies',
     onHint: 'A task running low on supplies adds a task to order more',
     offHint: 'A task running low on supplies adds no task',
@@ -324,6 +433,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // kind of row it names — but it is the reason writeGeneratedOptOut's case
     // here writes to useTaskStore rather than to one of the other stores.
     sourced: true,
+    kitchen: false,
     // No "File them under" of its own — see GeneratedKindSpec.categorized.
     // Each reorder task takes the category of the task its supply is on.
     categorized: false,
@@ -331,6 +441,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   mealShortfall: {
     kind: 'mealShortfall',
+    enabledKey: 'mealShortfallTasks',
     label: 'Shopping tasks for planned meals',
     onHint: 'A meal coming up that you lack ingredients for adds a task to shop',
     offHint: 'A meal coming up that you lack ingredients for adds no task',
@@ -340,6 +451,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // back — this is the one generator whose source the user re-plans freely,
     // so the tombstone does more work here than anywhere else.
     sourced: true,
+    kitchen: true,
     categorized: true,
     // With the nudge and the meal tasks, for the reason those two share one:
     // planning the week, cooking what you planned and shopping for it are one
@@ -349,11 +461,13 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   mealPlanNudge: {
     kind: 'mealPlanNudge',
+    enabledKey: 'mealPlanNudgeEnabled',
     label: 'Plan meals for the week',
     onHint: 'Adds a task once a week to plan that week\'s meals',
     offHint: 'No weekly task to plan the week\'s meals',
     icon: 'calendar-outline',
     sourced: false,
+    kitchen: true,
     // Categorized like the other three now: it was the one generator with
     // nowhere to file its task, so the weekly nudge landed loose at the top of
     // Today however the rest were set up.
@@ -362,6 +476,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   calendarReview: {
     kind: 'calendarReview',
+    enabledKey: 'calendarReviewTasks',
     label: 'Review tomorrow\'s calendar',
     onHint: 'Adds a task each day to review tomorrow\'s events',
     offHint: 'No daily task to review tomorrow\'s events',
@@ -369,6 +484,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // Its source id is tomorrow's day key, the same "square on the calendar,
     // not a row" position mealPlanNudge is in — see the type's own note.
     sourced: false,
+    kitchen: false,
     // Reuses calendarEventCategory rather than owning a category of its own —
     // see the field's doc comment above.
     categorized: false,
@@ -379,6 +495,36 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
 /** The registry in the order Settings lists it. */
 export const GENERATED_KIND_LIST: readonly GeneratedKindSpec[] =
   GENERATED_KINDS.map(k => GENERATED_KIND_SPECS[k]);
+
+/**
+ * The generators Settings would list right now — the whole registry, less the
+ * kitchen's when the area is switched off.
+ *
+ * The one place that answer is written. Settings' section renders from it and
+ * the index row's summary counts it, so the group's "4 of 12 on" can't disagree
+ * with the rows behind it.
+ */
+export function listedGeneratedKinds(kitchenEnabled: boolean): readonly GeneratedKindSpec[] {
+  return GENERATED_KIND_LIST.filter(spec => kitchenEnabled || !spec.kitchen);
+}
+
+/**
+ * How many of the generators on offer are switched on, and how many there are.
+ *
+ * Takes the flags rather than reaching for the settings store, so this module
+ * stays pure — it is imported by `settingsIndex.ts`, which Jest loads without
+ * `expo-sqlite`.
+ */
+export function generatedTaskCounts(
+  flags: Record<GeneratedEnabledKey, boolean>,
+  kitchenEnabled: boolean,
+): { on: number; total: number } {
+  const listed = listedGeneratedKinds(kitchenEnabled);
+  return {
+    on: listed.filter(spec => flags[spec.enabledKey]).length,
+    total: listed.length,
+  };
+}
 
 /**
  * The three-input opt-out, written once instead of three times.

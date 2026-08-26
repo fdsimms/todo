@@ -56,6 +56,7 @@ import { PressableScale } from '../components/PressableScale';
 import { GroceryItemSheet, type CollapsibleFieldKey } from '../components/GroceryItemSheet';
 import { ItemDisposalOffer } from '../components/ItemDisposalOffer';
 import { LeftoverSheet } from '../components/LeftoverSheet';
+import { PantryReviewSheet } from '../components/PantryReviewSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
 import { featureHidden } from '../utils/simpleMode';
 import type { ScannedGtinLink } from '../utils/scanResolve';
@@ -189,6 +190,7 @@ export function KitchenScreen() {
   const [openLeftoverId, setOpenLeftoverId] = useState<string | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
 
   // This screen never unmounts once visited (the drawer's tabs stay mounted
   // under `enableScreens(false)`), so a use-by day computed once at mount
@@ -334,6 +336,20 @@ export function KitchenScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusEntryId, focusStamp, handledFocusStamp]);
+
+  // The other half of the kitchen link: "Review what's in the pantry" carries
+  // `?review=1` (see pantryReviewTasks.PANTRY_REVIEW_LINK_URL) and lands here
+  // with the deck up. Its own stamp rather than a share of focusStamp above —
+  // the two arrive from different links and never together, and one flag
+  // answering for both would make a bare use-up link that happened to follow a
+  // review link reopen the deck.
+  const reviewStamp: number | undefined = route.params?.openPantryReview;
+  const [handledReviewStamp, setHandledReviewStamp] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (reviewStamp === undefined || reviewStamp === handledReviewStamp) return;
+    setHandledReviewStamp(reviewStamp);
+    setReviewOpen(true);
+  }, [reviewStamp, handledReviewStamp]);
 
   // Read live from the store by id so the sheet's caption follows an edit it
   // just made.
@@ -683,6 +699,17 @@ export function KitchenScreen() {
                 onPress: () => setScanOpen(true),
                 accessibilityLabel: 'Scan a barcode into the pantry',
               }]),
+          // Ungated, unlike the two above: the review deck needs no API key and
+          // no camera, it writes only what this screen's own rows already write
+          // (see PantryReviewSheet), and it is the one action here that is
+          // useful with nothing else set up. The sheet handles an empty deck
+          // itself rather than the button hiding, so the answer to "is there
+          // anything to check" is given where it was asked.
+          {
+            icon: 'albums-outline' as const,
+            onPress: () => setReviewOpen(true),
+            accessibilityLabel: 'Go through the pantry one thing at a time',
+          },
         ]}
       />
       <GroceriesHubPills active="Kitchen" />
@@ -802,6 +829,8 @@ export function KitchenScreen() {
         onClose={() => setReceiptOpen(false)}
         onApply={handleReceiptApply}
       />
+
+      <PantryReviewSheet visible={reviewOpen} onClose={() => setReviewOpen(false)} />
 
       <LeftoverSheet
         visible={openLeftover !== null}

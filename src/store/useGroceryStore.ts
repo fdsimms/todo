@@ -51,6 +51,7 @@ import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/g
 import { hasUserFacts, factSignature, linkCounts } from '../utils/groceryFacts';
 import { describeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
+import type { PantryReviewAnswer } from '../utils/pantryReview';
 import { wantsShelfLifePrompt, type DisposalOutcome } from '../utils/itemDisposal';
 import { expiresAtForOpening, expiresAtForPurchase } from '../utils/groceryShelfLife';
 import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/groceryExpiry';
@@ -678,6 +679,45 @@ interface GroceryStore {
    * through `bulkDeleteTasks`.
    */
   setRunningLow: (id: string, low: boolean, opts?: { registerUndo?: boolean }) => void;
+  /**
+   * One card's answer in the pantry review deck (see
+   * `src/utils/pantryReview.ts`).
+   *
+   * **Each answer writes exactly what its own pill already writes, and nothing
+   * more.** "Still have it" is `setOnHandUntil`'s "Got it" value, "Out of it" is
+   * the sentinel `markOutOfMany` writes, and "Running low" is `setRunningLow`
+   * itself. The deck deliberately invents no cascade between them — a right
+   * swipe does not clear a `runningLowAt`, because running low still means you
+   * have it (see `probablyHaveReason`), and an "Out of it" does not either,
+   * because the precedence already shadows it and a purchase clears both.
+   *
+   * **It raises no disposal question**, unlike a single-row `markOutOfMany`.
+   * That offer asks how one thing left the pantry, and it is a good question
+   * when a person has just tapped one ✕ deliberately; asked eleven times in a
+   * row it is the "recall five kitchens" a batch already declines to ask (see
+   * `CookRecapSheet` and `bulkSetCooked`). The bit still gets written, so the
+   * pantry is correct either way and only the extra record is missed.
+   *
+   * **And it registers no undo**, unlike everything else in this store that
+   * changes a row. A session is a run of small answers, so a queue holding
+   * eleven of them would let a shake take back one eleventh of a pass the user
+   * has already closed — and the deck offers its own per-card Undo, which is
+   * the affordance a mis-swipe actually reaches for. `revertPantryAnswer` is
+   * what that button calls.
+   */
+  answerPantryReview: (itemId: string, answer: PantryReviewAnswer) => void;
+  /**
+   * Put one row back exactly as it was — the deck's Undo button.
+   *
+   * Takes the whole snapshot rather than an answer to invert, because the three
+   * answers are not each other's opposites: undoing "Running low" means
+   * restoring whatever `onList`/`sortOrder`/`lastAddedAt` were before it, which
+   * only the row itself knows. Same shape `markOutOfMany`'s own undo closure
+   * uses internally.
+   *
+   * A row deleted since the answer is left alone rather than resurrected.
+   */
+  revertPantryAnswer: (item: GroceryItem) => void;
   /**
    * The remembered shelf life — a dumb setter, unlike setExpiresAt: this
    * never touches expiresAt or the use-up task on its own. See
@@ -2688,6 +2728,38 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         },
       });
     }
+  },
+
+  answerPantryReview(itemId, answer) {
+    // 'low' is setRunningLow outright, including its one-directional reach into
+    // onList — that reach is the whole reason this answer is in the deck (see
+    // PantryReviewAnswer), so routing round it would leave the middle answer
+    // with nothing to show for itself.
+    if (answer === 'low') {
+      get().setRunningLow(itemId, true, { registerUndo: false });
+      return;
+    }
+    const item = get().items.find(i => i.id === itemId);
+    if (!item) return;
+    // Both remaining answers are one column, which is why they share a path:
+    // "still have it" is the window a fresh "Got it" asserts for, and "out of
+    // it" is the sentinel. Bare `new Date()` on purpose — a pantry window is
+    // measured in real elapsed days rather than logical ones, the same call
+    // defaultOnHandUntil's other callers make.
+    const until = answer === 'have' ? defaultOnHandUntil(item, new Date()) : OUT_OF_IT_UNTIL;
+    if (item.onHandUntil === until) return;
+    const updated: GroceryItem = { ...item, onHandUntil: until };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === itemId ? updated : i)) }));
+  },
+
+  revertPantryAnswer(item) {
+    // Guarded on the row still being there: a snapshot written back
+    // unconditionally would resurrect an item deleted from another screen
+    // while the deck was open.
+    if (!get().items.some(i => i.id === item.id)) return;
+    dbUpdateGroceryItem(item);
+    set(s => ({ items: s.items.map(i => (i.id === item.id ? item : i)) }));
   },
 
   setShelfLifeDays(id, days) {

@@ -117,6 +117,7 @@ export function MealCalendarSettings() {
       footer="Adds an all-day event for each planned meal to the calendar you pick here, named for its slot, e.g. “Dinner: Lemon garlic salmon”. Meals planned from now on, not the ones already in the plan. The meal plan is always the one that's right; moving or deleting the event on the device doesn't change it."
     >
       <SettingsRow
+        entryId="mealCalendar"
         icon="calendar-outline"
         iconColor={mealCalendarId ? colors.accent : undefined}
         label="Write meals to"
@@ -134,6 +135,7 @@ export function MealCalendarSettings() {
           <View style={styles.sep} />
           {permission === 'denied' ? (
             <SettingsRow
+              entryId="calendarPermission"
               icon="lock-closed-outline"
               iconColor={colors.warning}
               label="Calendar access"

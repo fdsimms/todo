@@ -21,6 +21,17 @@ import {
 } from '../utils/settingsIndex';
 import { searchSettings } from '../utils/settingsSearch';
 import { settingsSummaries } from '../utils/settingsSummary';
+import { generatedTaskCounts } from '../utils/generatedTasks';
+
+/**
+ * How the Groceries & meals line names the unit setting. Null for `asWritten`,
+ * which is the default and so says nothing — the summaries name what's *on*.
+ */
+const UNIT_SYSTEM_SUMMARY: Record<string, string | null> = {
+  asWritten: null,
+  metric: 'Metric',
+  us: 'US units',
+};
 
 /**
  * The Settings index.
@@ -29,7 +40,12 @@ import { settingsSummaries } from '../utils/settingsSummary';
  * seven screenfuls with no landmarks and no way to find anything but scrolling
  * past it. Everything still exists; it's a tap away instead of a scroll away,
  * and the search field is there for when you don't know which group something
- * lives in — which, with eight of them, is most of the time.
+ * lives in — which, with ten of them, is most of the time.
+ *
+ * Search opens onto the *row* it matched rather than onto the group holding it
+ * (see `./settings/SettingsFocus`), which is what keeps a group's size from
+ * being a findability problem: a setting added anywhere is two taps from the
+ * search field as long as it has an entry in the index.
  */
 export function SettingsScreen() {
   const navigation = useNavigation();
@@ -41,7 +57,10 @@ export function SettingsScreen() {
 
   const settings = useSettingsStore();
 
-  const groups = useMemo(() => visibleSettingsGroups(Platform.OS), []);
+  const groups = useMemo(
+    () => visibleSettingsGroups(Platform.OS, settings.kitchenEnabled),
+    [settings.kitchenEnabled]
+  );
   // Search must not turn up a row that isn't rendered, so the kitchen entries
   // leave the index with the area, and the simplified-mode ones with theirs —
   // the same contract `iosOnly` has.
@@ -52,6 +71,27 @@ export function SettingsScreen() {
   const results = useMemo(() => searchSettings(entries, query.trim()), [entries, query]);
 
   const demoActive = useDemoStore(s => s.active);
+
+  // Counted from the same list the group's own rows render from, so "4 of 12
+  // on" can't disagree with what's behind the row.
+  const generatorCounts = useMemo(
+    () => generatedTaskCounts({
+      mealCookTasks: settings.mealCookTasks,
+      groceryUseUpTasks: settings.groceryUseUpTasks,
+      pantryCheckTasks: settings.pantryCheckTasks,
+      pantryReviewTasks: settings.pantryReviewTasks,
+      leftoverUseUpTasks: settings.leftoverUseUpTasks,
+      mealPlanNudgeEnabled: settings.mealPlanNudgeEnabled,
+      mealShortfallTasks: settings.mealShortfallTasks,
+      projectReviewTasks: settings.projectReviewTasks,
+      supplyReorderTasks: settings.supplyReorderTasks,
+      calendarReviewTasks: settings.calendarReviewTasks,
+      birthdayTasks: settings.birthdayTasks,
+      birthdayGiftTasks: settings.birthdayGiftTasks,
+      reachOutTasks: settings.reachOutTasks,
+    }, settings.kitchenEnabled),
+    [settings]
+  );
 
   const summaries = useMemo(() => settingsSummaries({
     themeMode: settings.themeMode,
@@ -67,6 +107,10 @@ export function SettingsScreen() {
     calendarReadEnabled: settings.calendarReadEnabled,
     calendarIds: settings.calendarIds,
     simpleMode: settings.simpleMode,
+    generatedOn: generatorCounts.on,
+    generatedTotal: generatorCounts.total,
+    mealsOnToday: settings.mealsOnToday === 'inline',
+    unitSystemLabel: UNIT_SYSTEM_SUMMARY[settings.unitSystem] ?? null,
     vacationMode: settings.vacationMode,
     autoRemoveExpiredTasks: settings.autoRemoveExpiredTasks,
     autoArchiveProjectsOnComplete: settings.autoArchiveProjectsOnComplete,
@@ -88,9 +132,12 @@ export function SettingsScreen() {
     : colors.textSecondary
   );
 
-  const openGroup = (groupId: SettingsGroupId) =>
+  // `entryId` is what makes a result open onto its row rather than onto the top
+  // of the group holding it — the half of search that was never wired up. The
+  // index rows below pass none, since browsing to a group means the group.
+  const openGroup = (groupId: SettingsGroupId, entryId?: string) =>
     (navigation as never as { navigate: (n: string, p: object) => void })
-      .navigate('SettingsGroup', { groupId });
+      .navigate('SettingsGroup', { groupId, entryId });
 
   const groupRow = (group: SettingsGroup) => {
     const tint = tintOf(group.tint);
@@ -132,6 +179,9 @@ export function SettingsScreen() {
 
   const searching = query.trim().length > 0;
 
+  const configureGroups = useMemo(() => groups.filter(g => g.tint !== 'neutral'), [groups]);
+  const housekeepingGroups = useMemo(() => groups.filter(g => g.tint === 'neutral'), [groups]);
+
   return (
     <View style={[styles.root, { paddingTop: insets.top + spacing.md }]}>
       <DetailHeader title="Settings" onBack={() => navigation.goBack()} />
@@ -151,11 +201,15 @@ export function SettingsScreen() {
       >
         {!searching && (
           <>
-            {/* Split where the subject changes from how the app looks and
-                behaves to what it holds — the same break the old screen made
-                with eighteen headers. */}
-            <View style={styles.card}>{groups.slice(0, 4).map(groupRow)}</View>
-            <View style={styles.card}>{groups.slice(4).map(groupRow)}</View>
+            {/* Split where the subject changes from what you configure to what
+                the app holds — the same break the old screen made with eighteen
+                headers. Derived from the tint rather than a slice index, because
+                that is the line the tint already draws (see SETTINGS_GROUPS):
+                with a fixed `slice(0, 4)` every group added had to remember to
+                move the number, and Tasks & projects was already on the wrong
+                side of it. A group added now files itself. */}
+            <View style={styles.card}>{configureGroups.map(groupRow)}</View>
+            <View style={styles.card}>{housekeepingGroups.map(groupRow)}</View>
           </>
         )}
 
@@ -172,7 +226,7 @@ export function SettingsScreen() {
                   {i > 0 && <View style={styles.sep} />}
                   <TouchableOpacity
                     style={styles.resultRow}
-                    onPress={() => openGroup(group.id)}
+                    onPress={() => openGroup(group.id, hit.entry.id)}
                     activeOpacity={interaction.activeOpacity}
                     accessibilityRole="button"
                     accessibilityLabel={`${hit.entry.label}, in ${group.title}`}

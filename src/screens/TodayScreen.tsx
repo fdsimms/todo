@@ -928,6 +928,9 @@ export function TodayScreen() {
       // actually be seen instead. Same move checkTripExpiry makes on focus, and
       // for the same reason: it turns something already true into something
       // visible. A no-op boolean check while the setting is off.
+      // Ahead of the drip at every call site, so the bulk offer gets to
+      // suppress the per-item rows in the same pass rather than one behind it.
+      useTaskStore.getState().checkPantryReviewTasks();
       useTaskStore.getState().checkPantryCheckTasks();
       // On focus as well, for the pantry check's exact reason: a shortfall task
       // is answered somewhere else entirely — its link opens the Meal Plan
@@ -983,6 +986,7 @@ export function TodayScreen() {
           // Same shape one shelf over: a pantry guess runs out purely by time
           // passing, and stops needing an answer the moment the user gives one
           // from the sheet this task links to.
+          useTaskStore.getState().checkPantryReviewTasks();
           useTaskStore.getState().checkPantryCheckTasks();
           // A meal comes into shopping range purely by time passing, and stops
           // wanting a shop the moment the plan changes under it — re-planned,

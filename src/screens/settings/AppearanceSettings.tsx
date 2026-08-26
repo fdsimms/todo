@@ -66,7 +66,9 @@ export function AppearanceSettings() {
 
   return (
     <>
-      <SettingsSection label="Theme">
+      {/* entryId on the section, not a row: the control here *is* the
+          segmented control. Same for Typeface below. */}
+      <SettingsSection label="Theme" entryId="theme">
         <SettingsSegments
           options={THEME_OPTIONS}
           selected={themeMode}
@@ -75,6 +77,7 @@ export function AppearanceSettings() {
         />
         <View style={styles.sep} />
         <SettingsRow
+          entryId="fabHand"
           icon="add-circle-outline"
           iconColor={colors.accent}
           label="Add button"
@@ -92,6 +95,7 @@ export function AppearanceSettings() {
 
       <SettingsSection
         label="Typeface"
+        entryId="typeface"
         footer={
           appFontRandomize
             ? 'Picks one of the checked fonts at random every time the app cold starts.'
@@ -99,6 +103,7 @@ export function AppearanceSettings() {
         }
       >
         <SettingsRow
+          entryId="appFontRandomize"
           icon="shuffle-outline"
           iconColor={appFontRandomize ? colors.accent : undefined}
           label="Randomize"
@@ -159,6 +164,7 @@ export function AppearanceSettings() {
 
       <SettingsSection label="Feedback">
         <SettingsRow
+          entryId="haptics"
           icon="phone-portrait-outline"
           iconColor={hapticsEnabled ? colors.accent : undefined}
           label="Haptic feedback"
@@ -170,6 +176,7 @@ export function AppearanceSettings() {
         />
         <View style={styles.sep} />
         <SettingsRow
+          entryId="shakeToUndo"
           icon="phone-portrait-outline"
           iconColor={shakeToUndoEnabled ? colors.accent : undefined}
           label="Shake to undo"
@@ -181,6 +188,7 @@ export function AppearanceSettings() {
         />
         <View style={styles.sep} />
         <SettingsRow
+          entryId="confirmBeforeDeleting"
           icon="trash-outline"
           iconColor={confirmBeforeDeleting ? colors.accent : undefined}
           label="Confirm before deleting"
@@ -192,6 +200,7 @@ export function AppearanceSettings() {
         />
         <View style={styles.sep} />
         <SettingsRow
+          entryId="hideHelpText"
           icon="information-circle-outline"
           iconColor={hideHelpText ? colors.accent : undefined}
           label="Hide help text"
@@ -203,6 +212,7 @@ export function AppearanceSettings() {
         />
         <View style={styles.sep} />
         <SettingsRow
+          entryId="tipsEnabled"
           icon="bulb-outline"
           iconColor={tipsEnabled ? colors.accent : undefined}
           label="Tips"

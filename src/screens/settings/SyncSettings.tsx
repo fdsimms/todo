@@ -41,6 +41,7 @@ export function SyncSettings() {
       footer="Changes are exchanged when you open the app on each device."
     >
       <SettingsRow
+        entryId="syncEnabled"
         icon="cloud-outline"
         iconColor={enabled ? colors.accent : undefined}
         label="Sync with iCloud"
@@ -62,6 +63,7 @@ export function SyncSettings() {
 
       {enabled && (
         <SettingsRow
+          entryId="syncNow"
           icon="refresh-outline"
           iconColor={colors.accent}
           label="Sync now"
