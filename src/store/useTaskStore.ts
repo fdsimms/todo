@@ -4257,6 +4257,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    */
   checkMealSlotTasks() {
     const settings = useSettingsStore.getState();
+    // The same gate checkPantryCheckTasks takes, and for the same reason —
+    // which that one's comment claimed was unique to it, back when it was. This
+    // pass fires on time passing rather than on a purchase or an edit, so with
+    // the area hidden it went on laying down three meal tasks a day (both
+    // settings ship on) with no Settings row left rendering to stop them.
+    // Skipping without advancing mealSlotTasksWrittenThroughDayKey, the way the
+    // nudge skips without recording its week: the mark is a high-water the pass
+    // only ever writes past, so moving it here would punch a hole in the window
+    // that the area coming back could never fill in.
+    if (!settings.kitchenEnabled) return;
     if (!settings.mealCookTasks || settings.mealSlotsEnabled.length === 0) return;
 
     // The *logical* day, not the calendar one: at 1am with a 2am reset the meal
@@ -4291,6 +4301,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    */
   backfillMealSlotTasks(slots) {
     const settings = useSettingsStore.getState();
+    // The same gate the pass above takes. Unreachable today — the only caller
+    // is a Settings row that stops rendering with the area off — but that is a
+    // fact about a component two files away, and "the UI can't call it" is
+    // exactly the reasoning that left checkMealSlotTasks ungated while it wrote
+    // three tasks a day. A write path states its own preconditions.
+    if (!settings.kitchenEnabled) return;
     if (!settings.mealCookTasks || slots.length === 0) return;
     const today = dayKeyOf(getLogicalToday());
     const mark = settings.mealSlotTasksWrittenThroughDayKey;
@@ -4303,10 +4319,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   checkPantryCheckTasks() {
     const settings = useSettingsStore.getState();
     if (!settings.pantryCheckTasks) return;
-    // The whole grocery area can be switched off (kitchenEnabled), and unlike
-    // every other grocery generator this one fires on time passing rather than
-    // on a purchase or an edit — so without this gate it would be the one part
-    // of a hidden feature still writing rows onto Today.
+    // The whole grocery area can be switched off (kitchenEnabled), and this
+    // generator fires on time passing rather than on a purchase or an edit — so
+    // without this gate it would be a hidden feature still writing rows onto
+    // Today. This used to say "unlike every other grocery generator", which
+    // stopped being true the moment mealSlot arrived firing on the same trigger
+    // — and that stale claim is most of why mealSlot shipped without the gate.
+    // Which generators need one is `GeneratedKindSpec.kitchen` now, rather than
+    // a sentence here that goes out of date silently.
     if (!settings.kitchenEnabled) return;
 
     const tasks = get().tasks;

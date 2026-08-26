@@ -2,9 +2,12 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
-import { ensureGeneratedTaskCategory } from '../../store/useCategoryStore';
+import { ensureGeneratedTaskCategory, useCategoryStore } from '../../store/useCategoryStore';
+import { useShallow } from 'zustand/react/shallow';
+import { categoryLabel } from '../../utils/categoryLabel';
+import { haptics } from '../../utils/haptics';
 import {
-  GENERATED_KIND_LIST,
+  listedGeneratedKinds,
   type GeneratedKind,
   type GeneratedKindSpec,
 } from '../../utils/generatedTasks';
@@ -83,27 +86,43 @@ function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
   });
 }
 
-interface Props {
-  /** For naming the current value in each generator's disclosure row. */
-  categoryOptions: { value: string | null; label: string }[];
-  /**
-   * The parent screen's own pill builder, shared rather than rebuilt: a closed
-   * set gets a segmented control, but categories are the user's own and there
-   * can be fifteen, which is `PillGroup`'s job. See newTaskCategoryOptions.
-   */
-  categoryPills: (
-    selected: string | null,
-    onSelect: (value: string | null) => void,
-    describe: (label: string) => string,
-  ) => PillGroupOption[];
-}
-
-export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props) {
+export function GeneratedTasksSection() {
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const sectionStyles = useMemo(() => makeStyles(colors), [colors]);
 
   const s = useSettingsStore();
+  const categories = useCategoryStore(useShallow(state => state.categories));
+
+  // Built here rather than handed down, now that this is a screen of its own
+  // rather than a section inside Tasks & projects. Not a segmented control: the
+  // categories are the user's own and there can be fifteen, which is
+  // `PillGroup`'s job (it caps and filters) and not a track's. `None` is
+  // `pinned` — the option meaning "no choice" is never buried behind "N more".
+  const categoryOptions: { value: string | null; label: string }[] = useMemo(() => [
+    { value: null, label: 'None' },
+    ...categories.map(c => ({ value: c.name, label: categoryLabel(c.name, categories) })),
+  ], [categories]);
+
+  const categoryPills = (
+    selected: string | null,
+    onSelect: (value: string | null) => void,
+    describe: (label: string) => string,
+  ): PillGroupOption[] => categoryOptions.map(o => ({
+    key: String(o.value),
+    label: o.label,
+    selected: o.value === selected,
+    pinned: o.value === null,
+    accessibilityLabel: describe(o.label),
+    onPress: () => { haptics.tap(); onSelect(o.value); },
+  }));
+
+  // The kitchen's generators go with the area, the way every other kitchen row
+  // does — but the other six stay, which is the whole point of the flag living
+  // on the registry. This section used to sit inside Tasks & projects' own
+  // `{kitchenEnabled && …}` block, so switching the area off took all twelve
+  // rows away while six of the generators behind them kept writing tasks.
+  const listed = useMemo(() => listedGeneratedKinds(s.kitchenEnabled), [s.kitchenEnabled]);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [pickerDate, setPickerDate] = useState<Date>(() => hhmmToDate(s.mealPlanNudgeTime));
 
@@ -233,6 +252,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="groceryUseUpLeadDays"
             icon="calendar-outline"
             label="Show the task"
             hint="How many days before the use-by date the task falls due."
@@ -265,6 +285,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="mealShortfallLeadDays"
             icon="calendar-outline"
             label="Show the task"
             hint="How many days before the meal the shopping task falls due."
@@ -297,6 +318,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="birthdayLeadDays"
             icon="calendar-outline"
             label="Show the task"
             hint="How many days before the birthday the task falls due."
@@ -333,6 +355,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="birthdayGiftLeadDays"
             icon="calendar-outline"
             label="Show the task"
             hint="How many days before the birthday the gift task falls due."
@@ -365,6 +388,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
         <>
           <View style={styles.sep} />
           <SettingsRow
+            entryId="mealSlotsEnabled"
             icon="restaurant-outline"
             iconColor={s.mealSlotsEnabled.length > 0 ? colors.accent : undefined}
             label="Meals you eat"
@@ -416,7 +440,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
       return (
         <>
           <View style={styles.sep} />
-          <SettingsRow icon="calendar-outline" iconColor={colors.accent} label="Nudge me on" tight />
+          <SettingsRow entryId="mealPlanNudgeTime" icon="calendar-outline" iconColor={colors.accent} label="Nudge me on" tight />
           <SettingsSegments
             attached
             options={weekdaySegmentOptions}
@@ -453,10 +477,11 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
 
   return (
     <SettingsSection
-      label="Tasks the app adds"
+      // No label: this is the whole of its group, so the screen's own header is
+      // already saying "Automatic tasks" directly above it.
       footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again: the grocery item or the leftover it came from remembers your answer, and a meal task stays gone for the rest of the day."
     >
-      {GENERATED_KIND_LIST.map((spec, i) => {
+      {listed.map((spec, i) => {
         const on = enabledOf(spec.kind);
         return (
           <React.Fragment key={spec.kind}>
@@ -469,6 +494,10 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
                 which is the whole point of gathering them. */}
             {i > 0 && <View style={sectionStyles.groupBreak} />}
             <SettingsRow
+              // Built the same way settingsIndex builds its ids, for the reason
+              // the AI rows are: both sides map over the same registry, so
+              // neither can name a row the other hasn't got.
+              entryId={`gen:${spec.kind}`}
               icon={spec.icon}
               iconColor={on ? colors.accent : undefined}
               label={spec.label}
@@ -481,6 +510,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
               <>
                 <View style={styles.sep} />
                 <SettingsRow
+                  entryId={`gen:${spec.kind}:category`}
                   icon="pricetag-outline"
                   label="File them under"
                   hint="With none, they sit loose at the top of Today above your categories."
@@ -508,6 +538,7 @@ export function GeneratedTasksSection({ categoryOptions, categoryPills }: Props)
               than inside either generator's own extras — see useUpTaskCap. */}
           <View style={sectionStyles.groupBreak} />
           <SettingsRow
+            entryId="useUpTaskCap"
             icon="layers-outline"
             label="Limit use-up tasks"
             hint={

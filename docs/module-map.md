@@ -74,7 +74,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
 - `src/utils/fuzzySearch.ts` — SearchResult, fuzzySearch, GroupSearchResult, searchGroups
-- `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, wantsGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, hasAnyGeneratedTask, generatedTaskCountOf, generatedSourceOf, +3 more
+- `src/utils/generatedTasks.ts` — GENERATED_KINDS, GeneratedEnabledKey, GeneratedKindSpec, GENERATED_KIND_SPECS, GENERATED_KIND_LIST, listedGeneratedKinds, generatedTaskCounts, wantsGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind, +6 more
 - `src/utils/groceryAisles.ts` — DEFAULT_AISLES, OTHER_AISLE, AISLE_LEXICON, aisleForName, rememberAisles, remapRememberedAisle, forgetRememberedAisle, renameRememberedAisle, normalizeAisleOrder, hiddenDefaultAisles, +1 more
 - `src/utils/groceryExpiry.ts` — wantsUseUpTask, useUpTaskTitle, clampUseUpLeadDays, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/groceryFacts.ts` — ItemRelations, linkCounts, hasUserFacts, factSignature
@@ -172,6 +172,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/sectionListLayout.ts` — CellLayout, sectionListCellLayout
 - `src/utils/secureApiKey.ts` — API_KEY_SECURE_KEY, API_KEY_LEGACY_SETTING, loadAnthropicApiKey, saveAnthropicApiKey, FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadSecureKey, saveSecureKey
 - `src/utils/segmentColumns.ts` — segmentRows
+- `src/utils/settingsFocusScroll.ts` — SETTINGS_FOCUS_PADDING, settingsFocusScrollTarget
 - `src/utils/settingsIndex.ts` — SettingsGroupId, SettingsTint, SettingsGroup, SETTINGS_GROUPS, SettingsEntry, SETTINGS_ENTRIES, visibleSettingsGroups, visibleSettingsEntries, settingsGroup
 - `src/utils/settingsSearch.ts` — SettingsSearchResult, searchSettings
 - `src/utils/settingsSummary.ts` — SettingsSummaryInput, settingsSummaries
