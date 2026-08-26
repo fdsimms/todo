@@ -773,31 +773,27 @@ export function BackfillScreen() {
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
-            <View style={[styles.progressSide, styles.progressSideStart]}>
-              {history.length > 0 && (
-                <TouchableOpacity
-                  onPress={goBack}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Previous task"
-                >
-                  <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
+            {history.length > 0 && (
+              <TouchableOpacity
+                onPress={goBack}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Previous task"
+              >
+                <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
-            <View style={[styles.progressSide, styles.progressSideEnd]}>
-              {!!currentId && (
-                <TouchableOpacity
-                  onPress={skip}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Skip this task for now"
-                >
-                  <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
+            {!!currentId && (
+              <TouchableOpacity
+                onPress={skip}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this task for now"
+              >
+                <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -890,31 +886,27 @@ export function BackfillScreen() {
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
-            <View style={[styles.progressSide, styles.progressSideStart]}>
-              {history.length > 0 && (
-                <TouchableOpacity
-                  onPress={goBack}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Previous category"
-                >
-                  <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
+            {history.length > 0 && (
+              <TouchableOpacity
+                onPress={goBack}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Previous category"
+              >
+                <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
-            <View style={[styles.progressSide, styles.progressSideEnd]}>
-              {!!currentId && (
-                <TouchableOpacity
-                  onPress={skip}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Skip this category for now"
-                >
-                  <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
+            {!!currentId && (
+              <TouchableOpacity
+                onPress={skip}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this category for now"
+              >
+                <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -987,31 +979,27 @@ export function BackfillScreen() {
         />
         {sessionTotal > 0 && (
           <View style={styles.progressRow}>
-            <View style={[styles.progressSide, styles.progressSideStart]}>
-              {history.length > 0 && (
-                <TouchableOpacity
-                  onPress={goBack}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Previous person"
-                >
-                  <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
+            {history.length > 0 && (
+              <TouchableOpacity
+                onPress={goBack}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Previous person"
+              >
+                <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
             <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
-            <View style={[styles.progressSide, styles.progressSideEnd]}>
-              {!!currentId && (
-                <TouchableOpacity
-                  onPress={skip}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Skip this person for now"
-                >
-                  <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-            </View>
+            {!!currentId && (
+              <TouchableOpacity
+                onPress={skip}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this person for now"
+              >
+                <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
           </View>
         )}
 
@@ -1186,31 +1174,27 @@ export function BackfillScreen() {
       />
       {sessionTotal > 0 && (
         <View style={styles.progressRow}>
-          <View style={[styles.progressSide, styles.progressSideStart]}>
-            {history.length > 0 && (
-              <TouchableOpacity
-                onPress={goBack}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Previous project"
-              >
-                <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-          </View>
+          {history.length > 0 && (
+            <TouchableOpacity
+              onPress={goBack}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Previous project"
+            >
+              <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
           <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
-          <View style={[styles.progressSide, styles.progressSideEnd]}>
-            {!!currentId && (
-              <TouchableOpacity
-                onPress={skip}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Skip this project for now"
-              >
-                <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
-              </TouchableOpacity>
-            )}
-          </View>
+          {!!currentId && (
+            <TouchableOpacity
+              onPress={skip}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Skip this project for now"
+            >
+              <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
         </View>
       )}
 
@@ -1553,17 +1537,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
 
   entitySwitch: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
 
+  // Centered as one tight cluster — icon, text, icon — rather than the
+  // icons pinned to the row's outer edges, which at screen width left them
+  // nowhere near the count they act on.
   progressRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.md,
   },
-  // Matches the "Previous"/"Skip" icons' width so the progress text stays
-  // centered whether or not either one has something to act on right now.
-  progressSide: { width: 24 },
-  progressSideStart: { alignItems: 'flex-start' },
-  progressSideEnd: { alignItems: 'flex-end' },
 
   fieldList: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm },
   fieldRow: {
@@ -1590,11 +1574,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   fieldCountDone: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
 
   progress: {
-    flex: 1,
     color: colors.textTertiary,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
-    textAlign: 'center',
   },
 
   reviewContent: { paddingHorizontal: spacing.md, paddingTop: spacing.md, gap: spacing.lg },
