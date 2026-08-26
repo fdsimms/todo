@@ -822,6 +822,24 @@ describe('demo mode', () => {
     expect(open.some(t => t.deferUntil !== null)).toBe(true);
   });
 
+  // The project screen's "Stack" FAB item builds a stack whose members carry
+  // both a groupId and the project's id — otherwise that combination ships
+  // untested. Without a row like this, a stack member reads as an ordinary
+  // project task with no stack header anywhere else in the app.
+  it('seeds a stack whose members also belong to a project', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    expect(kitchen).toBeDefined();
+
+    const quotes = useTaskGroupStore.getState().groups.find(g => g.title === 'Contractor quotes');
+    expect(quotes).toBeDefined();
+
+    const members = useTaskStore.getState().tasks.filter(t => t.groupId === quotes!.id);
+    expect(members.length).toBeGreaterThan(0);
+    expect(members.every(t => t.projectId === kitchen!.id)).toBe(true);
+  });
+
   it('seeds a reference-list project excluded from every nudge', () => {
     // A checklist project like Gift ideas has nothing but undated tasks —
     // exactly what would otherwise read as "gone quiet" — so the seed only

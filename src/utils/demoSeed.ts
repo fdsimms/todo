@@ -597,6 +597,19 @@ export function seedDemoData(): void {
     if (done) completeTask(t.id, answer !== undefined ? { deliverableValue: answer } : undefined);
   });
 
+  // A stack built inside the project, the way the project screen's own
+  // "Stack" FAB item does it — each member gets both a groupId and this
+  // project's id, so it counts toward the project's own task list and stays
+  // grouped everywhere else a stack renders (Today, the Stacks screen,
+  // Search). Without one seeded, that combination reads as untested.
+  const quotes = createGroup('Contractor quotes', 'Home');
+  const abcQuote = addNewGroupedTask(quotes.id, 'Call ABC Contractors');
+  const sunriseQuote = addNewGroupedTask(quotes.id, 'Call Sunrise Builders');
+  updateTask(abcQuote.id, { dueDate: addDays(today, 2).toISOString() });
+  updateTask(sunriseQuote.id, { dueDate: addDays(today, 2).toISOString() });
+  addExistingToProject(abcQuote.id, kitchen.id);
+  addExistingToProject(sunriseQuote.id, kitchen.id);
+
   // A reference list, not a to-do list: nothing here ever gets a date, and
   // nudgeOptIn defaults to false, so it never trips the gone-quiet nudge or
   // shows up in "Pull from projects" the way an ordinary undated project

@@ -51,9 +51,18 @@ interface Props {
   /** True when this stack was just created and hasn't been titled yet — changes the header title. */
   isNew?: boolean;
   onClose: () => void;
+  /**
+   * When set, every task added to this stack — new or existing — also joins
+   * this project, and the existing-task picker only offers tasks with no
+   * project yet, the same rule the project screen's own "Add existing task"
+   * list uses. Set by the project detail screen's "Stack" FAB item; every
+   * other caller (Today, Search, the Stacks screen) leaves this unset and a
+   * stack built there stays project-less, same as before.
+   */
+  projectId?: string | null;
 }
 
-export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
+export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -63,6 +72,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const addNewGroupedTask = useTaskStore(s => s.addNewGroupedTask);
   const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
+  const addExistingToProject = useTaskStore(s => s.addExistingToProject);
   const removeFromGroup = useTaskStore(s => s.removeFromGroup);
   const reorderGroupChildren = useTaskStore(s => s.reorderGroupChildren);
   const applyGroupCategory = useTaskStore(s => s.applyGroupCategory);
@@ -138,7 +148,8 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const commitChild = (title: string) => {
     const trimmed = title.trim();
     if (!group || !trimmed) return;
-    addNewGroupedTask(group.id, trimmed);
+    const task = addNewGroupedTask(group.id, trimmed);
+    if (projectId) addExistingToProject(task.id, projectId);
     // The field closes on submit here (returnKeyType="done", no
     // blurOnSubmit={false}), so there's no burst to keep together.
   };
@@ -146,6 +157,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
   const commitExisting = (taskId: string) => {
     if (!group) return;
     addExistingToGroup(taskId, group.id);
+    if (projectId) addExistingToProject(taskId, projectId);
     // The picker stays open for a run of adds.
   };
 
@@ -160,9 +172,10 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
       !t.parentId &&
       !t.groupId &&
       !t.completed &&
+      (!projectId || !t.projectId) &&
       (q === '' || t.title.toLowerCase().includes(q))
     );
-  }, [allTasks, existingSearch, group]);
+  }, [allTasks, existingSearch, group, projectId]);
   const EXISTING_TASK_PICKER_LIMIT = 30;
   const eligibleForAdd = useMemo(
     () => eligibleMatches.slice(0, EXISTING_TASK_PICKER_LIMIT),
@@ -475,7 +488,9 @@ export function TaskGroupEditor({ visible, group, isNew, onClose }: Props) {
                 </TouchableOpacity>
               ))}
               {eligibleForAdd.length === 0 && (
-                <Text style={styles.existingEmpty}>No matching unstacked tasks</Text>
+                <Text style={styles.existingEmpty}>
+                  {projectId ? 'No matching tasks with no stack or project yet' : 'No matching unstacked tasks'}
+                </Text>
             )}
               {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (
                 <Text style={styles.existingEmpty}>
