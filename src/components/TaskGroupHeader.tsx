@@ -11,6 +11,7 @@ import { WhenPicker } from './WhenPicker';
 import { SpotlightScrim } from './SpotlightOverlay';
 import { SwipeableRow } from './SwipeableRow';
 import { AnimatedCollapsible } from './AnimatedCollapsible';
+import { PinIcon } from './PinIcon';
 
 interface Props {
   group: TaskGroup;
@@ -46,6 +47,16 @@ interface Props {
   onPressEdit: (groupId: string) => void;
   /** Long-pressing the title starts dragging the whole group (see TodayScreen). */
   onDrag?: () => void;
+  /**
+   * Whether every pin-eligible member (see pinGroup) is currently pinned —
+   * drives the button's filled/orange state. Ignored when onPressPin is
+   * omitted.
+   */
+  pinned?: boolean;
+  /** True when there is nothing eligible to pin right now — greys the button out rather than hiding it, matching the stack editor's own pin-all button. */
+  pinDisabled?: boolean;
+  /** Omitted, no pin button renders at all. */
+  onPressPin?: (groupId: string) => void;
 }
 
 export function TaskGroupHeader({
@@ -59,6 +70,9 @@ export function TaskGroupHeader({
   onSwipeSelect,
   onPressEdit,
   onDrag,
+  pinned = false,
+  pinDisabled = false,
+  onPressPin,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -211,9 +225,23 @@ export function TaskGroupHeader({
                 )}
               </TouchableOpacity>
 
-              {/* Pin-all used to sit here beside the ⋯. Two always-on icon
-                  buttons made the header the busiest row on the screen for
-                  the rarest action on it; it lives in the stack editor now. */}
+              {onPressPin && (
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); onPressPin(group.id); }}
+                  disabled={pinDisabled}
+                  hitSlop={8}
+                  style={styles.iconBtn}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: pinDisabled, selected: pinned }}
+                  accessibilityLabel={`${pinned ? 'Unpin' : 'Pin'} all tasks in ${group.title}`}
+                >
+                  <PinIcon
+                    filled={pinned}
+                    size={iconSize.sm}
+                    color={pinDisabled ? colors.textTertiary : (pinned ? colors.orange : colors.textSecondary)}
+                  />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
                 onPress={() => onPressEdit(group.id)}
                 hitSlop={8}
