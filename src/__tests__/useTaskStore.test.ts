@@ -310,7 +310,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskDraft: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
-  vacationPause: false,
+  vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
   timerElapsedSeconds: 0,
@@ -753,7 +753,7 @@ describe('addTask', () => {
     const expenseRule = {
       id: 'r1', keywords: ['expense'], match: 'startsWith',
       category: 'Work', projectId: null, tags: ['receipts'],
-      priority: 0, effort: 0, stripKeyword: false, enabled: true,
+      priority: 0, effort: 0, linkUrl: null, stripKeyword: false, enabled: true,
     };
 
     it('files a matching task by the rule', () => {
@@ -843,6 +843,17 @@ describe('addTask', () => {
       withRules([{ ...expenseRule, projectId: 'p1' }]);
       const task = useTaskStore.getState().addTask({ title: 'expense lunch', projectId: 'p2' });
       expect(task.projectId).toBe('p2');
+    });
+
+    it('fills a link, same as any other field a rule names', () => {
+      withRules([{ ...expenseRule, linkUrl: 'ynab://' }]);
+      expect(useTaskStore.getState().addTask({ title: 'expense lunch' }).linkUrl).toBe('ynab://');
+    });
+
+    it('never overrides a link the caller named', () => {
+      withRules([{ ...expenseRule, linkUrl: 'ynab://' }]);
+      const task = useTaskStore.getState().addTask({ title: 'expense lunch', linkUrl: 'https://example.com' });
+      expect(task.linkUrl).toBe('https://example.com');
     });
   });
 
@@ -2678,6 +2689,7 @@ describe('applyTitleRuleToExisting', () => {
     tags: ['admin'],
     priority: 0,
     effort: 1,
+    linkUrl: null,
     stripKeyword: false,
     enabled: true,
   };
@@ -2733,6 +2745,19 @@ describe('applyTitleRuleToExisting', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', title: 'Water the plants' })], lastAction: null });
     expect(useTaskStore.getState().applyTitleRuleToExisting(expenseRule)).toBe(0);
     expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('fills a link, and undoes it along with everything else', () => {
+    const ynabRule: TitleRule = { ...expenseRule, category: null, tags: [], effort: 0, linkUrl: 'ynab://' };
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', title: 'Expense the ynab check-in' })],
+    });
+
+    useTaskStore.getState().applyTitleRuleToExisting(ynabRule);
+    expect(useTaskStore.getState().tasks[0].linkUrl).toBe('ynab://');
+
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks[0].linkUrl).toBeNull();
   });
 });
 
@@ -3714,6 +3739,7 @@ describe('checkReachOutTasks', () => {
     phoneNumber: null, email: null, linkUrl: null,
     cadenceDays: 30, nudgeOptIn: true, cadenceSetAt: daysAgo(45),
     reachOutDeclinedAt: null, askAbout: '',
+    backfillDismissedFields: [],
     ...overrides,
   });
 
@@ -3995,7 +4021,7 @@ describe('checkMealPlanNudge', () => {
       titleRules: [{
         id: 'r1', keywords: ['monday'], match: 'startsWith',
         category: 'Work', projectId: null, tags: ['admin'],
-        priority: 0, effort: 0, stripKeyword: false, enabled: true,
+        priority: 0, effort: 0, linkUrl: null, stripKeyword: false, enabled: true,
       }],
     }));
     useTaskStore.setState({ tasks: [] });
@@ -10235,10 +10261,11 @@ describe('pending Apple Reminders imports', () => {
 
 // ─── placing a newly added task at a chosen seam ─────────────────────────────
 //
-// The in-card add button (MiniFab) can be dropped between two rows rather than
-// tapped. Both store adds append, so the editors place by adding and then
-// handing the whole intended order back — these cover that two-step, which is
-// the part that can silently put a row somewhere nobody asked for.
+// TaskEditor's subtask field can still target a specific seam
+// (pendingSubtaskIndex) even though nothing in its own UI sets one anymore.
+// Both store adds append, so placing at a seam is add-then-hand-the-whole-
+// intended-order-back — these cover that two-step, which is the part that can
+// silently put a row somewhere nobody asked for.
 
 describe('placing a new subtask at an index', () => {
   const seed = () => useTaskStore.setState({
@@ -10305,7 +10332,10 @@ describe('placing a new stack member at an index', () => {
     });
   };
 
-  // What TaskGroupEditor's commitChild does.
+  // reorderGroupChildren's own fold, exercised directly: a caller (like a
+  // roster drag reorder) hands back the roster order with a new id spliced
+  // in, and the tombstone the roster hides has to keep its slot among the
+  // full child list rather than being renumbered over.
   const addAt = (index: number) => {
     const ids = useTaskStore.getState().groupRosterOf('g1').map(m => m.id);
     const created = useTaskStore.getState().addNewGroupedTask('g1', 'new');

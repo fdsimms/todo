@@ -73,7 +73,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskDraft: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
-  vacationPause: false,
+  vacationPause: false, excludeFromSuggestions: false,
   archived: false,
   archivedAt: null,
   timerStartedAt: null,
@@ -436,6 +436,7 @@ const makePerson = (over: Partial<Person> & Pick<Person, 'id' | 'name'>): Person
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
   cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, askAbout: '',
+  backfillDismissedFields: [],
   ...over,
 });
 

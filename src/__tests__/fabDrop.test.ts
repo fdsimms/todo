@@ -2,21 +2,17 @@ import {
   AUTOSCROLL_EDGE,
   AUTOSCROLL_MAX_STEP,
   CANCEL_RADIUS,
-  MINI_CANCEL_RADIUS,
   autoscrollStep,
   categoriesByIndex,
   fabHomeState,
   indicatorY,
   isOverFabHome,
-  miniDropIndex,
-  miniDropIndicatorY,
   resolveFabDrop,
   slotAtX,
   targetKey,
   zoneAtY,
   zoneKey,
   type DropZone,
-  type MiniRow,
   type ZoneRect,
 } from '../utils/fabDrop';
 
@@ -393,113 +389,31 @@ describe('autoscrollStep', () => {
   });
 });
 
-// The in-card button's list: four 44pt subtask rows, flush against each other,
-// measured in the card's own coordinates rather than the window's.
-const MINI: MiniRow[] = [
-  { top: 0, height: 44 },
-  { top: 44, height: 44 },
-  { top: 88, height: 44 },
-  { top: 132, height: 44 },
-];
-
-describe('miniDropIndex', () => {
-  it('puts a drop above the first row at the very top', () => {
-    expect(miniDropIndex(MINI, -40)).toBe(0);
-    expect(miniDropIndex(MINI, 0)).toBe(0);
-  });
-
-  it('splits each row at its midpoint', () => {
-    expect(miniDropIndex(MINI, 21)).toBe(0);
-    expect(miniDropIndex(MINI, 23)).toBe(1);
-    expect(miniDropIndex(MINI, 65)).toBe(1);
-    expect(miniDropIndex(MINI, 67)).toBe(2);
-  });
-
-  it('lands on the lower seam exactly on a midpoint', () => {
-    expect(miniDropIndex(MINI, 22)).toBe(1);
-    expect(miniDropIndex(MINI, 110)).toBe(3);
-  });
-
-  it('reads the end of the list past the last row, rather than no target', () => {
-    expect(miniDropIndex(MINI, 154)).toBe(4);
-    expect(miniDropIndex(MINI, 176)).toBe(4);
-    // Well below the card: still the end, because a tap means the same thing.
-    expect(miniDropIndex(MINI, 9000)).toBe(4);
-  });
-
-  it('answers 0 for an empty list', () => {
-    expect(miniDropIndex([], 0)).toBe(0);
-    expect(miniDropIndex([], 500)).toBe(0);
-  });
-
-  it('steps over a collapsed row without ever landing on it', () => {
-    const collapsed: MiniRow[] = [
-      { top: 0, height: 44 },
-      { top: 44, height: 0 },
-      { top: 44, height: 44 },
-    ];
-    // Crossing row 0's midpoint skips the zero-height row and stops at seam 1,
-    // never at seam 2 which would sit inside the collapsed row.
-    expect(miniDropIndex(collapsed, 30)).toBe(1);
-    expect(miniDropIndex(collapsed, 70)).toBe(3);
-  });
-
-  it('resolves a seam between rows that are not flush', () => {
-    const gapped: MiniRow[] = [
-      { top: 0, height: 40 },
-      { top: 60, height: 40 },
-    ];
-    // The 20pt gutter belongs to whichever midpoint the finger has passed.
-    expect(miniDropIndex(gapped, 50)).toBe(1);
-    expect(miniDropIndex(gapped, 85)).toBe(2);
-  });
-});
-
-describe('miniDropIndicatorY', () => {
-  it('draws the first seam at the top of the list', () => {
-    expect(miniDropIndicatorY(MINI, 0)).toBe(0);
-  });
-
-  it('draws a middle seam at the bottom of the row above it', () => {
-    expect(miniDropIndicatorY(MINI, 1)).toBe(44);
-    expect(miniDropIndicatorY(MINI, 3)).toBe(132);
-  });
-
-  it('draws the last seam at the bottom of the list', () => {
-    expect(miniDropIndicatorY(MINI, 4)).toBe(176);
-  });
-
-  it('clamps an index past either end', () => {
-    expect(miniDropIndicatorY(MINI, 99)).toBe(176);
-    expect(miniDropIndicatorY(MINI, -3)).toBe(0);
-  });
-
-  it('has nowhere to draw on an empty list', () => {
-    expect(miniDropIndicatorY([], 0)).toBe(0);
-  });
-});
-
 describe('fabHomeState — cancel radius', () => {
+  // A tighter radius than the screen button's own, to prove `radius` is
+  // actually read rather than the default silently winning.
+  const TIGHT_RADIUS = 28;
+
   it('still uses the screen button radius by default', () => {
     // Unchanged for Fab: 40 away is inside 44.
     expect(fabHomeState(0, -40, true)).toBe('returned');
     expect(fabHomeState(0, -40, true, CANCEL_RADIUS)).toBe('returned');
   });
 
-  it('lets the in-card button hold a tighter catch, so short lists stay droppable', () => {
-    // 35pt up is home for the big button and out over the rows for the small one.
+  it('honours a tighter radius than the default', () => {
+    // 35pt up is home for the default radius and out over a tighter one.
     expect(fabHomeState(0, -35, true)).toBe('returned');
-    expect(fabHomeState(0, -35, true, MINI_CANCEL_RADIUS)).toBe('outside');
-    expect(fabHomeState(0, -20, true, MINI_CANCEL_RADIUS)).toBe('returned');
+    expect(fabHomeState(0, -35, true, TIGHT_RADIUS)).toBe('outside');
+    expect(fabHomeState(0, -20, true, TIGHT_RADIUS)).toBe('returned');
   });
 
   it('still distinguishes the lift from a return, whatever the radius', () => {
-    expect(fabHomeState(0, -10, false, MINI_CANCEL_RADIUS)).toBe('inside');
-    expect(fabHomeState(0, -10, true, MINI_CANCEL_RADIUS)).toBe('returned');
+    expect(fabHomeState(0, -10, false, TIGHT_RADIUS)).toBe('inside');
+    expect(fabHomeState(0, -10, true, TIGHT_RADIUS)).toBe('returned');
   });
 
   it('agrees with isOverFabHome on the radius it is given', () => {
-    expect(isOverFabHome(0, -35, MINI_CANCEL_RADIUS)).toBe(false);
-    expect(isOverFabHome(0, -28, MINI_CANCEL_RADIUS)).toBe(true);
+    expect(isOverFabHome(0, -35, TIGHT_RADIUS)).toBe(false);
+    expect(isOverFabHome(0, -28, TIGHT_RADIUS)).toBe(true);
   });
 });

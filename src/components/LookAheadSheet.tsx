@@ -14,7 +14,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { WhenPicker } from './WhenPicker';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import {
   spacing,
@@ -91,6 +93,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
   const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const fade = useScrollEdgeFade();
 
   const allTasks = useTaskStore(s => s.tasks);
   const deloadTasks = useTaskStore(s => s.deloadTasks);
@@ -626,13 +629,17 @@ export function LookAheadSheet({ visible, onClose }: Props) {
             <View style={styles.headerSpacer} />
           </View>
 
+          <View style={styles.scrollWrap}>
           <ScrollView
             style={styles.scroll}
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
+            {...fade.scrollProps}
           >
             {mode === 'read' ? readBody : moveBody}
           </ScrollView>
+          <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bg} />
+          </View>
 
           {mode === 'read'
             ? canMove && (
@@ -733,6 +740,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   sheetTitle: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
   headerSpacer: { width: 64 },
+  // Holds the list and the band together so the band anchors to the list's
+  // own bottom edge rather than the card's, which is below the actions.
+  scrollWrap: { flex: 1 },
   scroll: { flex: 1 },
   scrollContent: { padding: spacing.md, gap: spacing.md },
 

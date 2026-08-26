@@ -21,9 +21,11 @@ import { spacing, radius, font, fontWeight, border, animation, interaction, icon
 import { haptics } from '../utils/haptics';
 import { SafeBlurView } from './SafeBlurView';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { dayKeyOf } from '../utils/dateUtils';
 import { slotLabel, upcomingDays } from '../utils/mealPlan';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
 /** Kept clear above the sheet so its title never slides under the status bar. */
@@ -90,6 +92,7 @@ export function PlanMealSheet({ visible, title, onPlan, onPlanned, onClose }: Pr
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const fade = useScrollEdgeFade();
   const { height: windowHeight } = useWindowDimensions();
 
   const hiddenY = useSheetHiddenOffset();
@@ -200,11 +203,13 @@ export function PlanMealSheet({ visible, title, onPlan, onPlanned, onClose }: Pr
           <View style={styles.handle} />
         </View>
 
+        <View style={styles.cardWrap}>
         <ScrollView
           style={styles.card}
           contentContainerStyle={styles.cardContent}
           bounces={false}
           showsVerticalScrollIndicator={false}
+          {...fade.scrollProps}
         >
           <View style={styles.headerRow}>
             <Text style={styles.heading} numberOfLines={2}>{title ?? ''}</Text>
@@ -284,6 +289,8 @@ export function PlanMealSheet({ visible, title, onPlan, onPlanned, onClose }: Pr
             </TouchableOpacity>
           )}
         </ScrollView>
+        <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />
+        </View>
       </Animated.View>
     </Modal>
   );
@@ -309,6 +316,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     height: 4,
     borderRadius: 2,
     backgroundColor: colors.bgQuaternary,
+  },
+  // Wraps the scrolling card so the fade can be anchored to its bottom
+  // edge. It carries the card's outer layout — the shrink that lets the
+  // card give way to the sheet's maxHeight, the gap below it, and the
+  // rounded clip the band has to sit inside — because an absolute child
+  // is positioned from its parent's border box: left on the card, the
+  // band would overhang the corners and the margin below it.
+  cardWrap: {
+    flexShrink: 1,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
   },
   card: {
     backgroundColor: colors.bgSecondary,

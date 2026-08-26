@@ -24,6 +24,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, iconSize, type Colors } from '../theme';
@@ -83,6 +84,7 @@ import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatDuration } from
 import { TaskEditor, type TaskDraft } from './TaskEditor';
 import { RECURRENCE_LABELS, onlyNewestWeekday } from './RecurrencePicker';
 import { SegmentedControl } from './SegmentedControl';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import { PRIORITY_SEGMENTS } from '../utils/prioritySegments';
 import { ORDINAL_OPTIONS } from '../utils/recurrenceLabels';
@@ -286,6 +288,7 @@ export function QuickAddModal({
   // title in view no matter how tall the open panel is.
   const sheetMaxHeight = windowHeight - keyboardHeight - insets.top - insets.bottom - spacing.xl * 2;
   const styles = useMemo(() => makeStyles(colors, sheetMaxHeight), [colors, sheetMaxHeight]);
+  const fade = useScrollEdgeFade();
 
   // `onDone` runs after `onClose`, once the sheet has actually faded out —
   // callers that also need to change what's on screen behind the sheet (e.g.
@@ -487,6 +490,7 @@ export function QuickAddModal({
     priority: Priority;
     effort: Effort;
     tags: string[];
+    linkUrl: string | null;
   } | null>(null);
 
   useEffect(() => {
@@ -494,22 +498,26 @@ export function QuickAddModal({
     // The baseline is what the sheet would hold with no rules at all — the
     // drop's category or Settings' default. A rule is one step more specific
     // than those, so it wins them, and losing the match hands the field back.
+    // linkUrl has no such baseline (the sheet always opens with none), so its
+    // base is simply null, same as projectId.
     const baseCategory = seedRef.current?.category ?? newTaskDefaults.category;
     const basePriority: Priority = newTaskDefaults.priority ?? 0;
     const baseEffort: Effort = newTaskDefaults.effort ?? 0;
     const prev = appliedRuleRef.current
-      ?? { category: baseCategory, projectId: null, priority: basePriority, effort: baseEffort, tags: [] };
+      ?? { category: baseCategory, projectId: null, priority: basePriority, effort: baseEffort, tags: [], linkUrl: null };
     const next = {
       category: ruleFill?.category ?? baseCategory,
       projectId: ruleFill?.projectId ?? null,
       priority: ruleFill && ruleFill.priority !== 0 ? ruleFill.priority : basePriority,
       effort: ruleFill && ruleFill.effort !== 0 ? ruleFill.effort : baseEffort,
       tags: ruleFill?.tags ?? [],
+      linkUrl: ruleFill?.linkUrl ?? null,
     };
     setCategory(cur => (cur === prev.category ? next.category : cur));
     setProjectId(cur => (cur === prev.projectId ? next.projectId : cur));
     setPriority(cur => (cur === prev.priority ? next.priority : cur));
     setEffort(cur => (cur === prev.effort ? next.effort : cur));
+    setLinkUrl(cur => (cur === prev.linkUrl ? next.linkUrl : cur));
     // Tags accumulate rather than claim a slot (see resolveTitleRules), so the
     // reconcile is per tag: drop the ones this put there and the rule no
     // longer names, keep everything else exactly where it was.
@@ -530,6 +538,7 @@ export function QuickAddModal({
       ruleFill,
       ruleFill.category ? categoryLabel(ruleFill.category, categories) : null,
       projects.find(p => p.id === ruleFill.projectId)?.title ?? null,
+      ruleFill.linkUrl ? linkLabel(ruleFill.linkUrl) : null,
     );
     const word = ruleFill.matched[0].match.keyword;
     return targets ? `“${word}” · ${targets}` : `“${word}”`;
@@ -1306,7 +1315,11 @@ export function QuickAddModal({
               up past the top of the screen once the keyboard's offset was
               added on top. Scrolling the content keeps the title pinned at
               the top of a sheet that can no longer grow past the screen. */}
-          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            {...fade.scrollProps}
+          >
           {/* Where the button was dropped. Removable: the drop chose a place,
               it didn't commit you to one. */}
           {seedActive && seedLabel ? (
@@ -2198,6 +2211,12 @@ export function QuickAddModal({
             </TouchableOpacity>
           )}
           </ScrollView>
+          <ScrollEdgeFade
+            edge="bottom"
+            opacity={fade.bottomOpacity}
+            color={colors.bgSecondary}
+            style={styles.scrollFade}
+          />
         </Animated.View>
       </View>
       <WhenPicker
@@ -2260,6 +2279,11 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingHorizontal: spacing.xl,
     paddingBottom: spacing.xl,
   },
+  // Clears the sheet's own bottom padding — an absolute child is positioned
+  // from the border box, so `bottom: 0` would sit under the last row rather
+  // than over it. Spans the full width, padding included, which is what the
+  // content dissolving into the sheet wants.
+  scrollFade: { bottom: spacing.md },
   sheet: {
     backgroundColor: colors.bgSecondary,
     borderRadius: 20,

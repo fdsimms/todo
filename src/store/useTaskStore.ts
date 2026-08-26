@@ -311,6 +311,7 @@ function applyTitleRulesToDraft(
     tags: fill.tags.length > 0
       ? [...(draft.tags ?? []), ...fill.tags.filter(t => !(draft.tags ?? []).includes(t))]
       : draft.tags,
+    linkUrl: draft.linkUrl ?? fill.linkUrl,
   };
 }
 
@@ -437,6 +438,7 @@ function newTaskFromDraft(
     extraTaskTitle: draft.extraTaskTitle ?? null,
     extraTaskDraft: draft.extraTaskDraft ?? null,
     vacationPause: draft.vacationPause ?? false,
+    excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
     actualMinutes: draft.actualMinutes ?? null,
     timedMinutes: draft.timedMinutes ?? null,
@@ -3685,7 +3687,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Snapshotted before anything is written, so the whole catch-up undoes as
     // one action — the shape deloadTasks below uses, and for the same reason:
     // a fan-out of N separate undo entries is N shakes to put one decision
-    // back. Only the five fields a rule can fill are captured; the undo is a
+    // back. Only the six fields a rule can fill are captured; the undo is a
     // narrow patch, never a whole-task replay.
     const snapshots = entries.map(({ task }) => ({
       id: task.id,
@@ -3694,6 +3696,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       priority: task.priority,
       effort: task.effort,
       tags: task.tags,
+      linkUrl: task.linkUrl,
     }));
 
     dbTransaction(() => {
@@ -3708,6 +3711,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         priority: s.priority,
         effort: s.effort,
         tags: s.tags,
+        linkUrl: s.linkUrl,
       })),
     });
     return entries.length;
@@ -5037,6 +5041,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       extraTaskTally: 0,
       previousExtraTaskTally: 0,
       vacationPause: false,
+      excludeFromSuggestions: false,
       timerStartedAt: null,
       actualMinutes: null,
       timedMinutes: null,
@@ -5214,6 +5219,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       extraTaskTally: 0,
       previousExtraTaskTally: 0,
       vacationPause: false,
+      excludeFromSuggestions: false,
       timerStartedAt: null,
       actualMinutes: null,
       timedMinutes: null,

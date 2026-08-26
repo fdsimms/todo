@@ -11,10 +11,12 @@ import {
   Dimensions,
 } from 'react-native';
 import { SafeBlurView } from './SafeBlurView';
+import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { parseISO } from 'date-fns/parseISO';
+import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, animation, interaction, type Colors } from '../theme';
 import { patchNotes } from '../utils/patchNotes';
@@ -43,6 +45,7 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const fade = useScrollEdgeFade();
   const patchNotesQaStatus = useSettingsStore(s => s.patchNotesQaStatus);
   const setPatchNoteQaStatus = useSettingsStore(s => s.setPatchNoteQaStatus);
   const [hideReviewed, setHideReviewed] = useState(false);
@@ -222,12 +225,14 @@ export function PatchNotesModal({ visible, onDismiss }: Props) {
               ItemSeparatorComponent={() => <View style={styles.sep} />}
               showsVerticalScrollIndicator={false}
               bounces={false}
+              {...fade.scrollProps}
               windowSize={7}
               maxToRenderPerBatch={16}
               initialNumToRender={16}
               removeClippedSubviews
               ListEmptyComponent={<Text style={styles.emptyText}>All caught up. Nothing left to review.</Text>}
             />
+            <ScrollEdgeFade edge="bottom" opacity={fade.bottomOpacity} color={colors.bgSecondary} />
           </View>
 
           <TouchableOpacity style={styles.doneCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>

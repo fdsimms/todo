@@ -52,6 +52,7 @@ import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRe
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { isStaleNote } from '../utils/personNotes';
+import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { mealYearRange, taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
 import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -444,6 +445,19 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // Nothing seeded carrying excludeFromSuggestions reads as a feature the app
+  // doesn't have — one open-ended, low-priority task opts out of suggested
+  // pins and focus sessions.
+  it('seeds a task that opts out of suggestions', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const reading = tasks.find(t => t.title === 'Read a chapter of the Le Guin');
+    expect(reading?.excludeFromSuggestions).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // The month grid's one distinctive mark is a dot for an occurrence that has
   // no row yet, and only a fixed-schedule recurrence with a due date produces
   // one (see canProject). Nothing else in the seed asserts that combination
@@ -745,6 +759,23 @@ describe('demo mode', () => {
     expect(filed!.effort).toBe(rule.effort);
   });
 
+  // Same proof as the rule above, for the field a rule fills that isn't
+  // category/tags/effort — a link is invisible on a row until something
+  // opens it, so what this pins is that the seeded task's linkUrl came from
+  // the rule rather than from its own draft.
+  it('seeds a title rule that fills a link, and a task it filed', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const rules = useSettingsStore.getState().titleRules;
+    const rule = rules.find(r => r.linkUrl !== null);
+    expect(rule).toBeDefined();
+    expect(rule!.keywords).toContain('ynab');
+
+    const filed = useTaskStore.getState().tasks.find(t => t.title.toLowerCase().includes('ynab'));
+    expect(filed).toBeDefined();
+    expect(filed!.linkUrl).toBe(rule!.linkUrl);
+  });
+
   it('leaves a backlog for a rule written in demo mode to offer to file', () => {
     useDemoStore.getState().enterDemoMode();
 
@@ -907,6 +938,19 @@ describe('demo seed — people', () => {
   it('an opted-in person has a real cadence behind the opt-in', () => {
     const optedIn = usePersonStore.getState().people.find(p => p.nudgeOptIn)!;
     expect(optedIn.cadenceDays).toBeGreaterThan(0);
+  });
+
+  // The Backfill screen's People pool has nothing to walk unless somebody in
+  // the seed is short of one of its three fields, and a screen showing "set for
+  // everyone" three times reads as a screen that does nothing. The gaps are
+  // already there for their own reasons — most people carry no cadence (the
+  // test above), and a birthday is optional — so this pins them rather than
+  // asking the seed for anything new.
+  it('leaves each backfillable person field with somebody to fill it in for', () => {
+    const counts = personBackfillFieldCounts(usePersonStore.getState().people);
+    for (const field of PERSON_BACKFILL_FIELDS) {
+      expect(counts[field.id]).toBeGreaterThan(0);
+    }
   });
 
   // Rule 7 in one row: the clock decides when to speak, the note decides what

@@ -72,6 +72,21 @@ at all is one simplified mode doesn't produce (the default `newTaskDefaults.dest
 The count behind that runs only while the mode is on, so nobody else pays for the pass over every
 task.
 
+## The add button offers what is left
+
+Today's add button is a menu of four (Chain, Stack, Template, Task) and a project's is a menu of
+three (Add existing task, Template, New task). Three of Today's four and one of the project's three
+start a capability the mode hides, so `addMenuItemShown` filters them out and Today's button is left
+holding Task alone. `FabMenu` performs a lone item on the tap rather than accordioning out to offer
+it, so the button becomes a plain "open quick add" without either caller branching on the count.
+
+`SIMPLE_ADD_MENU_FEATURES` is a third row map beside the editor's and the grocery sheet's, and the
+difference between it and those two is that it takes no `set`. A row in an editor is looking at a
+task that either uses the feature or doesn't; a menu item is a blank offer to start a new one, and a
+new one is never already in use. So this is the "only *starting* a new one goes" rule below rather
+than rule 2: an install with stacks keeps the Stacks screen that edits them, and loses the button
+that makes another.
+
 ## Two things deliberately outlive the switch
 
 A running focus session keeps the header action that opens it, and a running shopping trip keeps

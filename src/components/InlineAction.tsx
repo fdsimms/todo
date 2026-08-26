@@ -8,7 +8,13 @@ import { font, fontWeight, radius, spacing, type Colors } from '../theme';
 type Variant = 'accent' | 'neutral';
 
 interface Props {
-  label: string;
+  /**
+   * Omit for an icon-only pill (see `icon`) — a control dense enough rows
+   * need, once its meaning is explained somewhere the row itself doesn't have
+   * to repeat (a section hint, say). `accessibilityLabel` is doing the labeling
+   * job instead, so pass one that says what the tap does, not just its icon's name.
+   */
+  label?: string;
   onPress: () => void;
   icon?: keyof typeof Ionicons.glyphMap;
   /**
@@ -73,7 +79,14 @@ export function InlineAction({
 
   return (
     <PressableScale
-      style={[styles.pill, { backgroundColor: bg }, disabled && styles.disabled, style]}
+      style={[
+        styles.pill,
+        // Tighter, even padding without a label — closer to a circle around
+        // the icon alone, rather than the wider pill a run of text needs.
+        { backgroundColor: bg, paddingHorizontal: label ? 12 : spacing.sm },
+        disabled && styles.disabled,
+        style,
+      ]}
       onPress={onPress}
       disabled={disabled}
       haptic={haptic}
@@ -82,7 +95,7 @@ export function InlineAction({
       accessibilityState={{ disabled }}
     >
       {icon && <Ionicons name={icon} size={14} color={fg} />}
-      <Text style={[styles.label, { color: fg }]}>{label}</Text>
+      {!!label && <Text style={[styles.label, { color: fg }]}>{label}</Text>}
     </PressableScale>
   );
 }
@@ -90,7 +103,7 @@ export function InlineAction({
 const makeStyles = (colors: Colors) => StyleSheet.create({
   pill: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.xs,
-    paddingHorizontal: 12, paddingVertical: 7, minHeight: 32,
+    paddingVertical: 7, minHeight: 32,
     borderRadius: radius.full,
   },
   disabled: { opacity: 0.4 },

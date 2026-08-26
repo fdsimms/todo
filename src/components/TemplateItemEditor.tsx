@@ -129,6 +129,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [vacationPause, setVacationPause] = useState(false);
+  const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
@@ -182,6 +183,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setEffort(item?.effort ?? draft?.effort ?? 0);
     setEstimatedMinutes(item?.estimatedMinutes ?? draft?.estimatedMinutes ?? null);
     setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
+    setExcludeFromSuggestions(item?.excludeFromSuggestions ?? draft?.excludeFromSuggestions ?? false);
     setRecurrenceType(item?.recurrenceType ?? draft?.recurrenceType ?? 'none');
     setRecurrenceInterval(item?.recurrenceInterval ?? draft?.recurrenceInterval ?? 1);
     setRecurrenceDays(item?.recurrenceDays ?? draft?.recurrenceDays ?? []);
@@ -300,6 +302,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       effort,
       estimatedMinutes,
       vacationPause,
+      excludeFromSuggestions,
       recurrenceType,
       recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
@@ -782,6 +785,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           onPress={() => { haptics.tap(); setOptional(!optional); }}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="switch"
+          accessibilityLabel="Optional"
           accessibilityState={{ checked: optional }}
         >
           <Ionicons name="help-circle-outline" size={18} color={optional ? colors.accent : colors.textSecondary} />
@@ -799,6 +803,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           onPress={() => { haptics.tap(); setVacationPause(!vacationPause); }}
           activeOpacity={interaction.activeOpacity}
           accessibilityRole="switch"
+          accessibilityLabel="Pause on vacation"
           accessibilityState={{ checked: vacationPause }}
         >
           <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
@@ -808,6 +813,24 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </View>
           <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
             <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+        <View style={styles.sep} />
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setExcludeFromSuggestions(!excludeFromSuggestions); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Skip in suggestions"
+          accessibilityState={{ checked: excludeFromSuggestions }}
+        >
+          <Ionicons name="color-wand-outline" size={18} color={excludeFromSuggestions ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Skip in suggestions</Text>
+            <Text style={styles.optionHint}>Keeps tasks created from this item out of suggested pins and focus sessions</Text>
+          </View>
+          <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
       </View>
@@ -878,9 +901,18 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                           </Text>
                         </View>
                       </TouchableOpacity>
-                      <Text style={[styles.chainItemTitle, isCurrentStep && styles.chainItemTitleActive]}>
-                        {chainItem.title}
-                      </Text>
+                      <TouchableOpacity
+                        style={styles.chainItemTitle}
+                        onLongPress={drag}
+                        delayLongPress={interaction.delayLongPress}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Reorder chain step ${chainItem.title}`}
+                      >
+                        <Text style={[styles.chainItemTitleText, isCurrentStep && styles.chainItemTitleActive]}>
+                          {chainItem.title}
+                        </Text>
+                      </TouchableOpacity>
                       <StepMinutes
                         value={chainItem.estimatedMinutes}
                         label={chainItem.title}
@@ -893,16 +925,6 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
                         datesNextStep={chainItem.deliverableDatesNextStep === true}
                         onPress={() => setQuestionStepId(chainItem.id)}
                       />
-                      <TouchableOpacity
-                        onLongPress={drag}
-                        delayLongPress={150}
-                        hitSlop={8}
-                        style={styles.dragHandle}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Reorder chain step ${chainItem.title}`}
-                      >
-                        <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
-                      </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => {
                           // Same by-id tracking as the SortableList's own
@@ -1028,16 +1050,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             onReorder={setSubtasks}
             renderItem={(sub, _displayIndex, drag) => (
               <View style={styles.chainItemRow}>
-                <Text style={styles.chainItemTitle}>{sub.title}</Text>
                 <TouchableOpacity
+                  style={styles.chainItemTitle}
                   onLongPress={drag}
-                  delayLongPress={150}
-                  hitSlop={8}
-                  style={styles.dragHandle}
+                  delayLongPress={interaction.delayLongPress}
+                  activeOpacity={interaction.activeOpacity}
                   accessibilityRole="button"
                   accessibilityLabel={`Reorder subtask ${sub.title}`}
                 >
-                  <Ionicons name="reorder-three" size={18} color={colors.textTertiary} />
+                  <Text style={styles.chainItemTitleText}>{sub.title}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setSubtasks(prev => prev.filter(s => s.id !== sub.id))}
@@ -1489,9 +1510,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chainItemDotActive: { backgroundColor: colors.accent },
   chainItemDotText: { color: colors.textSecondary, fontSize: 11, fontWeight: '700' },
   chainItemDotTextActive: { color: colors.onAccent },
-  chainItemTitle: { flex: 1, color: colors.text, fontSize: font.md },
+  chainItemTitle: { flex: 1 },
+  chainItemTitleText: { color: colors.text, fontSize: font.md },
   chainItemTitleActive: { color: colors.accent, fontWeight: '600' },
-  dragHandle: { padding: 4 },
   chainItemDelete: { padding: 4 },
   chainInputRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: 7 },
   chainInput: {

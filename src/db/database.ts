@@ -1065,6 +1065,17 @@ export function initDatabase(): void {
     // as exactly the behaviour they already had — a reminder that tracks the
     // due date's own day.
     'ALTER TABLE tasks ADD COLUMN reminder_offset_days INTEGER',
+    // Per-task counterpart to categories.exclude_from_pin_suggestions — see
+    // Task.excludeFromSuggestions. Default 0 on every existing row, which
+    // reads as "not opted out", the state every task was in before this
+    // column existed.
+    'ALTER TABLE tasks ADD COLUMN exclude_from_suggestions INTEGER NOT NULL DEFAULT 0',
+    // Same mechanism as tasks/categories/projects.backfill_dismissed_fields
+    // above, for the Backfill screen's fourth pool — see
+    // Person.backfillDismissedFields. Empty on every existing row, which reads
+    // as "nothing has been declined yet" and is what every person was already
+    // in before the screen could walk them.
+    "ALTER TABLE people ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1811,6 +1822,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     extraTaskTally: (row.extra_task_tally as number) ?? 0,
     previousExtraTaskTally: (row.previous_extra_task_tally as number) ?? 0,
     vacationPause: Boolean(row.vacation_pause),
+    excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
     timedMinutes: (row.timed_minutes as number | null) ?? null,
@@ -1869,8 +1881,8 @@ export function dbInsertTask(task: Task): void {
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
-      person_ids, waiting_on_person_id, reminder_offset_days
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1931,6 +1943,7 @@ export function dbInsertTask(task: Task): void {
       task.supplyGroceryItemId ?? null,
       JSON.stringify(task.personIds), task.waitingOnPersonId ?? null,
       task.reminderOffsetDays ?? null,
+      task.excludeFromSuggestions ? 1 : 0,
     ]
   );
 }
@@ -1955,7 +1968,7 @@ export function dbUpdateTask(task: Task): void {
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
-      person_ids=?, waiting_on_person_id=?, reminder_offset_days=?
+      person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2017,6 +2030,7 @@ export function dbUpdateTask(task: Task): void {
       task.supplyGroceryItemId ?? null,
       JSON.stringify(task.personIds), task.waitingOnPersonId ?? null,
       task.reminderOffsetDays ?? null,
+      task.excludeFromSuggestions ? 1 : 0,
       task.id,
     ]
   );
@@ -3995,6 +4009,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     cadenceSetAt: (row.cadence_set_at as string) ?? null,
     reachOutDeclinedAt: (row.reach_out_declined_at as string) ?? null,
     askAbout: (row.ask_about as string) ?? '',
+    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
 
@@ -4008,8 +4023,9 @@ export function dbInsertPerson(person: Person): void {
     `INSERT INTO people (
       id, name, nickname, notes, sort_order, archived, archived_at, created_at,
       birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
-      phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at, ask_about
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at, ask_about,
+      backfill_dismissed_fields
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
@@ -4018,6 +4034,7 @@ export function dbInsertPerson(person: Person): void {
       person.birthdayGiftTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
       person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
+      JSON.stringify(person.backfillDismissedFields),
     ]
   );
 }
@@ -4027,7 +4044,8 @@ export function dbUpdatePerson(person: Person): void {
     `UPDATE people SET
       name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
-      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?, ask_about=?
+      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?, ask_about=?,
+      backfill_dismissed_fields=?
     WHERE id=?`,
     [
       person.name, person.nickname, person.notes, person.sortOrder,
@@ -4037,6 +4055,7 @@ export function dbUpdatePerson(person: Person): void {
       person.birthdayGiftTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
       person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
+      JSON.stringify(person.backfillDismissedFields),
       person.id,
     ]
   );

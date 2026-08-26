@@ -189,6 +189,12 @@ export interface TitleRule {
   tags: string[];
   priority: Priority;
   effort: Effort;
+  // Same field and meaning as `Task.linkUrl` — a known app's scheme (see
+  // `KNOWN_LINK_APPS`) or a custom URL, opened by the row's link button. "Add
+  // a link to the YNAB app when I mention YNAB" is this field: the rule is a
+  // filing decision like category or a tag, not a schedule one, so it fits
+  // the same null-means-nothing contract as the rest of the row.
+  linkUrl: string | null;
   // Take the matched word back out of the title ("expense lunch" → "lunch").
   // Off by default: the word is usually part of what the task is called, and
   // a rule that silently rewrites what someone typed is a worse first
@@ -482,6 +488,20 @@ export interface Person {
    * wrote, which is the whole point of it.
    */
   askAbout: string;
+  /**
+   * Which Backfill fields (see `src/utils/peopleBackfill.ts`) this person has
+   * been told to stop asking about — same mechanism and same reasoning as
+   * `Project.backfillDismissedFields`, holding `PersonBackfillFieldId` values
+   * as plain strings since a `Person` field can't depend on a type from
+   * `src/utils`.
+   *
+   * It records a decision about *your own list*, never one about them: "this
+   * person's birthday isn't something I want on file" rather than anything
+   * ranking or grading anybody. The two permanent fields above
+   * (`birthdayTaskOptOut`, `birthdayGiftTaskOptOut`) are about what the app
+   * writes; this one is only about what it asks.
+   */
+  backfillDismissedFields: string[];
 }
 
 /**
@@ -1178,6 +1198,17 @@ export interface Task {
 
   vacationPause: boolean;    // hide and protect streak while vacation mode is on
 
+  // Keep this task out of suggested pins (see suggestPinTasks) and suggested
+  // focus queues (see suggestFocusTasks). Only the suggesters honour it — the
+  // task stays visible everywhere and can still be pinned or queued by hand.
+  // Same naming convention and same mechanism as Category.excludeFromSuggestions,
+  // one level down: a task in an otherwise ordinary category that's still bad
+  // shortlist company (an open-ended "read more later", a standing chore that
+  // outranks nothing). The two aren't mutually exclusive — a task's own category
+  // being flagged already excludes it, and this flag reaches the tasks a whole
+  // category isn't the right unit for.
+  excludeFromSuggestions: boolean;
+
   // Hides the task from every list (Today, Later, etc.) indefinitely, unlike
   // vacationPause which only hides while vacation mode is on. Completion
   // history stays in SQLite untouched; unarchiving resets streakCount to 0
@@ -1416,6 +1447,11 @@ export interface TemplateItem {
   recurrenceCount: number | null;
 
   vacationPause: boolean;
+  // Seeds Task.excludeFromSuggestions on the task this item creates. Same
+  // parity as vacationPause above — a template item for a routine chore can
+  // start its instances out of the suggesters without a follow-up trip to
+  // the task's own editor.
+  excludeFromSuggestions: boolean;
   estimatedMinutes: number | null;
 
   // What the task created from this item asks for when it's completed, or null

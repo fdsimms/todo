@@ -160,6 +160,18 @@ describe('resolveTitleRules', () => {
     const b = rule({ keywords: ['urgent'], match: 'contains', priority: 4, stripKeyword: true });
     expect(resolveTitleRules('expense urgent lunch', [a, b])!.cleanTitle).toBe('lunch');
   });
+
+  it('fills a link the same way it fills a category', () => {
+    const r = rule({ keywords: ['ynab'], match: 'contains', linkUrl: 'ynab://' });
+    expect(resolveTitleRules('check the ynab budget', [r])!.linkUrl).toBe('ynab://');
+  });
+
+  it('gives a contested link to the longer, more specific keyword', () => {
+    const broad = rule({ keywords: ['ynab'], match: 'contains', linkUrl: 'ynab://' });
+    const specific = rule({ keywords: ['ynab budget'], match: 'contains', linkUrl: 'https://example.com/budget' });
+    expect(resolveTitleRules('check the ynab budget', [broad, specific])!.linkUrl)
+      .toBe('https://example.com/budget');
+  });
 });
 
 describe('titleRuleSaysNothing / titleRuleIsUseless', () => {
@@ -177,6 +189,11 @@ describe('titleRuleSaysNothing / titleRuleIsUseless', () => {
   it('counts a lone tag or a priority as something to say', () => {
     expect(titleRuleSaysNothing(rule({ tags: ['receipts'] }))).toBe(false);
     expect(titleRuleSaysNothing(rule({ priority: 2 }))).toBe(false);
+  });
+
+  it('counts a link as something to say', () => {
+    expect(titleRuleSaysNothing(rule({ linkUrl: 'ynab://' }))).toBe(false);
+    expect(titleRuleIsUseless(rule({ keywords: ['ynab'], linkUrl: 'ynab://' }))).toBe(false);
   });
 });
 
@@ -218,6 +235,18 @@ describe('parseTitleRules', () => {
     expect(rules[0].keywords).toEqual(['expense']);
     expect(resolveTitleRules('expense lunch', rules)!.category).toBe('Work');
   });
+
+  it('reads a stored link back, and drops a non-string or blank one to null', () => {
+    const stored = JSON.stringify([
+      { id: 'a', keywords: ['ynab'], linkUrl: 'ynab://' },
+      { id: 'b', keywords: ['expense'], category: 'Work', linkUrl: 7 },
+      { id: 'c', keywords: ['expense'], category: 'Work', linkUrl: '   ' },
+    ]);
+    const rules = parseTitleRules(stored);
+    expect(rules.find(r => r.id === 'a')!.linkUrl).toBe('ynab://');
+    expect(rules.find(r => r.id === 'b')!.linkUrl).toBeNull();
+    expect(rules.find(r => r.id === 'c')!.linkUrl).toBeNull();
+  });
 });
 
 describe('descriptions', () => {
@@ -228,16 +257,21 @@ describe('descriptions', () => {
   });
 
   it('names up to three targets and then falls back to a count', () => {
-    expect(describeTitleRuleTargets(rule({ category: 'Work', tags: ['receipts'] }), 'Work', null))
+    expect(describeTitleRuleTargets(rule({ category: 'Work', tags: ['receipts'] }), 'Work', null, null))
       .toBe('Work · #receipts');
     expect(describeTitleRuleTargets(
-      rule({ category: 'Work', projectId: 'p1', priority: 3, effort: 4, tags: ['a'] }), 'Work', 'Q3',
+      rule({ category: 'Work', projectId: 'p1', priority: 3, effort: 4, tags: ['a'] }), 'Work', 'Q3', null,
     )).toBe('5 details');
   });
 
   it('says nothing about a field whose category or project has since been deleted', () => {
-    expect(describeTitleRuleTargets(rule({ category: 'Gone', tags: ['receipts'] }), null, null))
+    expect(describeTitleRuleTargets(rule({ category: 'Gone', tags: ['receipts'] }), null, null, null))
       .toBe('#receipts');
+  });
+
+  it('names the link a rule opens, same as any other target', () => {
+    expect(describeTitleRuleTargets(rule({ linkUrl: 'ynab://' }), null, null, 'YNAB'))
+      .toBe('YNAB');
   });
 });
 
@@ -312,7 +346,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskDraft: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
-  vacationPause: false,
+  vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
   timerElapsedSeconds: 0,
@@ -392,5 +426,14 @@ describe('titleRuleBacklog', () => {
     const entry = titleRuleBacklog(tasks, rule({ ...expense, stripKeyword: true }))[0];
     expect(entry.updates).not.toHaveProperty('title');
     expect(entry.task.title).toBe('Expense the client lunch');
+  });
+
+  it('fills a link only when the task has none of its own', () => {
+    const ynab = rule({ keywords: ['ynab'], match: 'contains', linkUrl: 'ynab://' });
+    const unset = [makeTask({ id: 'a', title: 'Check the ynab budget' })];
+    expect(titleRuleBacklog(unset, ynab)[0].updates).toEqual({ linkUrl: 'ynab://' });
+
+    const already = [makeTask({ id: 'b', title: 'Check the ynab budget', linkUrl: 'https://example.com' })];
+    expect(titleRuleBacklog(already, ynab)).toEqual([]);
   });
 });
