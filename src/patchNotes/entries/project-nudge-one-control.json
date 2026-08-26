@@ -1,0 +1,4 @@
+{
+  "message": "A project's nudge settings are one control now, \"Bring this up\", with three answers: Never, When I ask, or Every so often. It replaces the \"Include in nudges\" switch and the separate cadence underneath it, which took two settings to say one thing. Settings › Default review cadence now actually applies to new projects: pick anything but Never and a new project starts opted in at that cadence.",
+  "date": "2026-08-26"
+}

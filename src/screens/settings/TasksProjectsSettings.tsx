@@ -299,7 +299,7 @@ export function TasksProjectsSettings() {
           icon="notifications-outline"
           iconColor={defaultProjectNudgeCadenceDays > 0 ? colors.accent : undefined}
           label="Default review cadence"
-          hint="What a new project starts with. Never by default. This doesn't touch projects you've already created, and each one can still override it."
+          hint="What a new project's “Bring this up” starts at. Never by default, which keeps a new project out of nudges entirely; anything else opts it in at that cadence. This doesn't touch projects you've already created, and each one can still override it."
           value={describeCadence(defaultProjectNudgeCadenceDays)}
           tight
         />

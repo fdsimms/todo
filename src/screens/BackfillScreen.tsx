@@ -48,6 +48,8 @@ import {
 import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, toCadenceParts, fromCadenceParts, withCadenceUnit, describeCadence, cadenceUnitLabel,
   type CadenceParts,
+  FALLBACK_CADENCE_DAYS,
+  nudgeFieldsFor,
 } from '../utils/nudgeCadence';
 import { personHistory } from '../utils/personHistory';
 import { observedCadenceDays, describeObservedCadence } from '../utils/reachOutTasks';
@@ -301,13 +303,19 @@ export function BackfillScreen() {
     return d;
   }, [currentTask?.dueDate]);
 
-  // The nudge-cadence draft starts from whatever the project already has
-  // stored (usually 0/Never, but see isProjectFieldMissing's note on a
-  // seeded default) rather than always resetting to Never — same "show what's
-  // actually there" call the custom-estimate reset above doesn't need to
-  // make, since a task missing an estimate has nothing to show.
+  // The cadence draft starts from whatever the project already has stored
+  // (see isProjectFieldMissing's note on a seeded default) rather than always
+  // resetting — same "show what's actually there" call the custom-estimate
+  // reset above doesn't need to make, since a task missing an estimate has
+  // nothing to show. Never falls back to a real interval: this pool exists to
+  // opt projects *in*, and "Skip for now" and the dismiss below are how you
+  // say no, so a cadence that can never fire has nothing to offer here.
   useEffect(() => {
-    if (currentProject) setNudgeDraft(toCadenceParts(currentProject.nudgeCadenceDays));
+    if (currentProject) {
+      setNudgeDraft(toCadenceParts(
+        currentProject.nudgeCadenceDays > 0 ? currentProject.nudgeCadenceDays : FALLBACK_CADENCE_DAYS,
+      ));
+    }
   }, [currentProject?.id]);
 
   const chooseTaskField = (id: BackfillFieldId) => {
@@ -487,7 +495,7 @@ export function BackfillScreen() {
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
-    updateProject(currentProject.id, { nudgeOptIn: true, nudgeCadenceDays: fromCadenceParts(nudgeDraft) });
+    updateProject(currentProject.id, nudgeFieldsFor('scheduled', fromCadenceParts(nudgeDraft)));
   };
 
   // The three person handlers, one per field, for the reason applyNudge above
@@ -1196,15 +1204,13 @@ export function BackfillScreen() {
                   onChange={next => setNudgeDraft(prev => ({ ...prev, count: next }))}
                   min={1}
                   max={CADENCE_UNIT_MAX[nudgeDraft.unit]}
-                  allowNull
-                  emptyLabel="Never"
-                  label="Nudge cadence"
+                  label="Review cadence"
                   describeValue={n => describeCadence(fromCadenceParts({ ...nudgeDraft, count: n }))}
                 />
               </View>
               <View style={styles.pillRow}>
                 {CADENCE_UNITS.map(unit => {
-                  const unitSelected = nudgeDraft.count !== null && nudgeDraft.unit === unit;
+                  const unitSelected = nudgeDraft.unit === unit;
                   return (
                     <PressableScale
                       key={unit}
@@ -1222,10 +1228,10 @@ export function BackfillScreen() {
                 style={[styles.toggleButton, { backgroundColor: colors.accent }]}
                 onPress={applyNudge}
                 accessibilityRole="button"
-                accessibilityLabel={`Set nudge cadence to ${describeCadence(fromCadenceParts(nudgeDraft))}`}
+                accessibilityLabel={`Bring this project up every ${describeCadence(fromCadenceParts(nudgeDraft))}`}
               >
                 <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
-                <Text style={styles.toggleButtonText}>Set nudge cadence</Text>
+                <Text style={styles.toggleButtonText}>Bring it up this often</Text>
               </PressableScale>
             </View>
           )}

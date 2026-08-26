@@ -8,6 +8,86 @@
  * can't run out of granularity above them.
  */
 
+import type { Project } from '../types';
+
+/**
+ * What a project has been asked to do about going quiet: one question, three
+ * answers, stored across the two fields that used to be two controls.
+ *
+ * `nudgeOptIn` and `nudgeCadenceDays` were set independently in the editor, as
+ * a switch and a nested stepper, and between them they answered one question in
+ * a way nobody could hold in their head. Getting a project to chase you took
+ * turning the switch on *and* stepping the cadence off Never; the pull sheet
+ * grew two separate empty-state reasons for the two ways of being off
+ * (`nudge-excluded`, `cadence-off`); and Settings' own "Default review cadence"
+ * could not work at all, because a new project was seeded with the cadence and
+ * hardcoded to `nudgeOptIn: false`, which the gate refuses before it ever reads
+ * a cadence.
+ *
+ * The three answers are genuinely distinct, which is why this is a three-way
+ * and not the boolean the merge might suggest:
+ *
+ * - `never` — out of every nudge surface, asked or unasked. A reference list
+ *   ("Gift ideas") is never a candidate to pull into today, however you got to
+ *   the sheet. This is `nudgeOptIn: false`.
+ * - `on-ask` — appears in "Pull from projects" when you open it, and never
+ *   volunteers. Tapping the button *is* the nudge, so there is nothing left to
+ *   opt into; what the cadence answers is "when should I chase you unprompted",
+ *   and this says never.
+ * - `scheduled` — the above, plus a review task once it has been quiet for
+ *   `nudgeCadenceDays`. `autoSchedule` is only meaningful here.
+ *
+ * The encoding is unchanged, so nothing stored has to migrate: `never` is
+ * `nudgeOptIn: false`, and the other two are `nudgeOptIn: true` split by
+ * whether the cadence is positive. What changed is that one control now writes
+ * both fields, so the two can no longer be set into a combination that means
+ * something the user didn't pick.
+ */
+export type NudgeMode = 'never' | 'on-ask' | 'scheduled';
+
+/** The order the three answers are offered in: quietest first. */
+export const NUDGE_MODES: readonly NudgeMode[] = ['never', 'on-ask', 'scheduled'];
+
+/** Which of the three a stored project is in. */
+export function nudgeModeOf(project: Pick<Project, 'nudgeOptIn' | 'nudgeCadenceDays'>): NudgeMode {
+  if (!project.nudgeOptIn) return 'never';
+  return project.nudgeCadenceDays > 0 ? 'scheduled' : 'on-ask';
+}
+
+/**
+ * The two stored fields for one chosen answer.
+ *
+ * `cadenceDays` is only read for `scheduled`, and a `scheduled` with nothing
+ * positive to count falls back to a fortnight rather than storing a cadence
+ * that can never fire — picking "Every…" and landing on Never is the exact
+ * contradiction this whole type exists to make unrepresentable.
+ */
+export function nudgeFieldsFor(
+  mode: NudgeMode,
+  cadenceDays: number,
+): Pick<Project, 'nudgeOptIn' | 'nudgeCadenceDays'> {
+  if (mode === 'never') return { nudgeOptIn: false, nudgeCadenceDays: 0 };
+  if (mode === 'on-ask') return { nudgeOptIn: true, nudgeCadenceDays: 0 };
+  return { nudgeOptIn: true, nudgeCadenceDays: cadenceDays > 0 ? cadenceDays : FALLBACK_CADENCE_DAYS };
+}
+
+/** What "Every…" lands on when it's picked from Never. Two weeks. */
+export const FALLBACK_CADENCE_DAYS = 14;
+
+/** The segment labels, and the collapsed summary the editor row shows. */
+export const NUDGE_MODE_LABEL: Record<NudgeMode, string> = {
+  never: 'Never',
+  'on-ask': 'When I ask',
+  scheduled: 'Every…',
+};
+
+/** "Never" / "When I ask" / "Every 2 weeks" — the field's collapsed summary. */
+export function describeNudge(project: Pick<Project, 'nudgeOptIn' | 'nudgeCadenceDays'>): string {
+  const mode = nudgeModeOf(project);
+  if (mode === 'scheduled') return `Every ${describeCadence(project.nudgeCadenceDays)}`;
+  return NUDGE_MODE_LABEL[mode];
+}
+
 export type CadenceUnit = 'days' | 'weeks' | 'months';
 
 /** The order the unit pills are offered in. */

@@ -6,6 +6,8 @@ import {
 } from '../store/useProjectStore';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { formatDeadlineDate } from '../utils/dateUtils';
+import { nudgeModeOf } from '../utils/nudgeCadence';
+import { useSettingsStore } from '../store/useSettingsStore';
 import {
   dbGetAllProjects,
   dbInsertProject,
@@ -493,6 +495,31 @@ describe('createProject / updateProject / getProjectById', () => {
     expect(project.nudgeCadenceDays).toBe(DEFAULT_NUDGE_CADENCE_DAYS);
     expect(project.autoSchedule).toBe(false);
     expect(project.nudgeOptIn).toBe(false);
+  });
+
+  // The Settings default used to seed the cadence beside a hardcoded
+  // nudgeOptIn: false, and classifyProject refuses on that flag before it ever
+  // reads a cadence — so setting the default to "Every 2 weeks" changed
+  // nothing and every new project was still silent.
+  describe('seeding from the Settings default', () => {
+    afterEach(() => {
+      useSettingsStore.setState({ defaultProjectNudgeCadenceDays: DEFAULT_NUDGE_CADENCE_DAYS });
+    });
+
+    it('opts a new project in when the default names a cadence', () => {
+      useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 14 });
+      const project = useProjectStore.getState().createProject('Loft conversion', null, null);
+      expect(project.nudgeCadenceDays).toBe(14);
+      expect(project.nudgeOptIn).toBe(true);
+      expect(nudgeModeOf(project)).toBe('scheduled');
+    });
+
+    it('leaves a new project out of nudges entirely when the default is Never', () => {
+      useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 0 });
+      const project = useProjectStore.getState().createProject('Gift ideas', null, null);
+      expect(project.nudgeOptIn).toBe(false);
+      expect(nudgeModeOf(project)).toBe('never');
+    });
   });
 
   // Regression test for the narrow patch whitelist: these two are only

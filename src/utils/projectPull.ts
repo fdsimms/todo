@@ -134,9 +134,9 @@ export type PullEmptyReason =
   | 'vacation'
   /** No unarchived projects to pull from at all. */
   | 'no-projects'
-  /** nudgeOptIn is false — the project is excluded from every nudge surface. */
+  /** Set to Never: the project is excluded from every nudge surface. */
   | 'nudge-excluded'
-  /** nudgeCadenceDays is 0 — the project has never been opted in. */
+  /** Set to “When I ask”: it belongs in this sheet, but never volunteers. */
   | 'cadence-off'
   /** Stalled, but on auto-schedule, so the drip handles it instead. */
   | 'auto-scheduled'
@@ -540,14 +540,19 @@ export function describePullEmpty(state: PullEmptyState): string {
       return 'Vacation mode is on. Project nudges are paused until you turn it off.';
     case 'no-projects':
       return 'No projects yet. Tasks filed under one can be pulled in from here.';
+    // Both of these name the one control that decides them, and its answers,
+    // because nothing else in the sheet points at the switch that is off.
     case 'nudge-excluded':
       return count === total
-        ? 'No project is included in nudges yet. Open a project and turn on “Include in nudges” to have it show up here.'
-        : `${projects(count)} of ${total} aren't included in nudges. Turn on “Include in nudges” on one to have it show up here.${rest}`;
+        ? 'Every project is set to never be chased. Open one and set “Bring this up” to “When I ask” to have it show up here.'
+        : `${projects(count)} of ${total} are set to never be chased. Set “Bring this up” to “When I ask” on one to have it show up here.${rest}`;
+    // Only reachable from a 'nudge'-mode diagnosis: “When I ask” is exactly a
+    // project that belongs in this sheet and nowhere else, so the sheet the
+    // user opened themselves never refuses one for this reason.
     case 'cadence-off':
       return count === total
-        ? 'No project is set to be nudged yet. Open a project and set “Nudge me” to have it show up here.'
-        : `${projects(count)} of ${total} aren't set to be nudged. Set “Nudge me” on one to include it.${rest}`;
+        ? 'No project is set to bring itself up. Open one and set “Bring this up” to “Every…” to be nudged without asking.'
+        : `${projects(count)} of ${total} only show up when you ask. Set “Bring this up” to “Every…” on one to be nudged without asking.${rest}`;
     case 'too-soon':
       return state.daysUntilQuiet !== undefined
         ? `Nothing has been quiet long enough yet. The next one is due in ${state.daysUntilQuiet} day${state.daysUntilQuiet === 1 ? '' : 's'}.`

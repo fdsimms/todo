@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
 import { getCurrentDayStart } from '../utils/dateUtils';
+import { nudgeFieldsFor } from '../utils/nudgeCadence';
 import { isRealCompletion } from '../utils/missed';
 import { useSettingsStore } from './useSettingsStore';
 import {
@@ -190,6 +191,17 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
 
   createProject(title, targetStartDate, targetEndDate) {
     const maxOrder = get().projects.reduce((m, p) => Math.max(m, p.sortOrder), 0);
+    // Settings' "Default review cadence" decides both fields, not just the
+    // number. It used to seed the cadence beside a hardcoded `nudgeOptIn:
+    // false`, and `classifyProject` refuses on that flag *before* it ever reads
+    // a cadence — so setting the default to "Every 2 weeks" changed nothing and
+    // every new project was still silent. The two are one control now (see
+    // nudgeFieldsFor), and the default answers it whole.
+    //
+    // A default of Never is still the default, and still means what it did:
+    // being asked about a project you never decided you wanted chasing is the
+    // annoying half of this feature.
+    const defaultCadenceDays = useSettingsStore.getState().defaultProjectNudgeCadenceDays;
     const project: Project = {
       id: generateId(),
       title,
@@ -205,10 +217,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       // Seeded from the global default at creation time only — changing the
       // default in Settings later never touches a project already created.
-      nudgeCadenceDays: useSettingsStore.getState().defaultProjectNudgeCadenceDays,
+      ...nudgeFieldsFor(defaultCadenceDays > 0 ? 'scheduled' : 'never', defaultCadenceDays),
       autoSchedule: false,
       sequential: false,
-      nudgeOptIn: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
     };
