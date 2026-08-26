@@ -1180,6 +1180,7 @@ export function RecipeDetailScreen() {
             variant="neutral"
             surface="page"
             onPress={openImagePicker}
+            style={styles.addPhoto}
           />
         )}
 
@@ -1824,6 +1825,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     minHeight: 32,
     justifyContent: 'center',
     paddingHorizontal: spacing.xs,
+  },
+  // alignSelf keeps it the width of its label — stretched to the column it
+  // would read as a banner rather than a pill (same fix as splitPill below).
+  addPhoto: {
+    alignSelf: 'flex-start',
   },
   summary: {
     color: colors.textSecondary,
