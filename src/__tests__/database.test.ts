@@ -1873,6 +1873,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
+    varietyOfKey: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -1953,6 +1954,7 @@ describe('grocery items', () => {
       usedUpCount: 0,
       spoiledCount: 0,
       lastSpoiledAt: null,
+      varietyOfKey: null,
       preferredProductId: 'p1',
       productStrict: true,
     });

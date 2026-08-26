@@ -248,8 +248,8 @@ export function KitchenScreen() {
   // you're looking for, and a suggestion block that ignored the query would be
   // the one part of the screen not answering it.
   const suggestions = useMemo(
-    () => (query ? [] : useUpRecipes(useUpEntries(entries), recipes)),
-    [entries, recipes, query]
+    () => (query ? [] : useUpRecipes(useUpEntries(entries), recipes, items)),
+    [entries, recipes, items, query]
   );
   const shownSuggestions = useMemo(
     // Two, which is what fits above the fold without pushing the pantry itself

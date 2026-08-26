@@ -304,6 +304,7 @@ exports.
 | what to cook with what's about to go off | `src/utils/useUpRecipes.ts` — see `docs/arch/groceries.md` |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see `docs/arch/groceries.md` |
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see `docs/arch/groceries.md` |
+| "white onion is still onion" | `src/utils/itemVarieties.ts` — see `docs/arch/groceries.md` |
 | "always use oat milk for milk" | `src/utils/standingSwaps.ts` — see `docs/arch/groceries.md` |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see `docs/arch/recipes.md` |
 | "serrano or jalapeño", decided at the shelf | `ChoiceResolution.undecided` in `src/utils/recipeComponents.ts` — see `docs/arch/groceries.md` |
@@ -339,15 +340,16 @@ exports.
 **Read narrowly.** 46 files are over 1,000 lines, 28 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (6.4k), `components/TaskEditor.tsx` (4.7k), `db/database.ts` (4.2k),
-`store/useGroceryStore.ts` (4.2k), `screens/TodayScreen.tsx` (4.1k), `types/index.ts` (3.7k),
-`components/TaskItem.tsx` (3.7k), `components/QuickAddModal.tsx` (2.9k),
-`store/useSettingsStore.ts` (2.7k), `utils/demoSeed.ts` (2.5k).
+`store/useTaskStore.ts` (6.4k), `components/TaskEditor.tsx` (4.7k),
+`store/useGroceryStore.ts` (4.3k), `db/database.ts` (4.2k), `screens/TodayScreen.tsx` (4.1k),
+`types/index.ts` (3.7k), `components/TaskItem.tsx` (3.7k),
+`components/QuickAddModal.tsx` (2.9k), `store/useSettingsStore.ts` (2.7k),
+`utils/demoSeed.ts` (2.5k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **214 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **215 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

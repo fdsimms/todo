@@ -154,6 +154,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
+    varietyOfKey: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -850,6 +851,98 @@ describe('classifyPlanned', () => {
       { name: 'Salt', nameKey: 'salt', quantity: '', aisle: null, source: 'Sat Soup' },
     ];
     expect(classifyPlanned(planned, [], now)[0].quantity).toBe('×3');
+  });
+
+  // Varieties (GroceryItem.varietyOfKey) — a generic line covered by a
+  // declared variety becomes that variety's row, so every downstream read and
+  // write lands on a real catalog row. See itemVarieties.ts.
+  describe('varieties', () => {
+    const onHandDate = new Date(2026, 8, 1).toISOString();
+    const plannedOnion = [
+      { name: 'onion', nameKey: 'onion', quantity: '1', aisle: null, source: 'Tue Ragù' },
+    ];
+
+    it('re-files a generic line under the variety the pantry vouches for', () => {
+      const white = item({ name: 'White onion', varietyOfKey: 'onion', onHandUntil: onHandDate });
+      const row = classifyPlanned(plannedOnion, [white], now)[0];
+
+      expect(row.nameKey).toBe('white onion');
+      expect(row.name).toBe('White onion');
+      expect(row.category).toBe('probablyHave');
+      expect(row.known).toBe(true);
+      // The recipe's own word survives as provenance, same as a standing swap.
+      expect(row.swappedFrom).toBe('onion');
+    });
+
+    it('reads a variety already on the list as covering the ask', () => {
+      const white = item({ name: 'White onion', varietyOfKey: 'onion', onList: true });
+      const row = classifyPlanned(plannedOnion, [white], now)[0];
+      expect(row.category).toBe('alreadyOnList');
+      expect(row.nameKey).toBe('white onion');
+    });
+
+    it('lets an exact generic row that answers win outright', () => {
+      const onion = item({ name: 'Onion', onHandUntil: onHandDate });
+      const white = item({ name: 'White onion', varietyOfKey: 'onion', onList: true });
+      const row = classifyPlanned(plannedOnion, [onion, white], now)[0];
+      expect(row.nameKey).toBe('onion');
+      expect(row.category).toBe('probablyHave');
+      expect(row.swappedFrom).toBeNull();
+    });
+
+    it('leaves the ask an honest needToBuy when no variety answers', () => {
+      // Declared, but the app has no reason to believe you have it — and a
+      // generic "onion" is also the right thing to put in the trolley.
+      const white = item({ name: 'White onion', varietyOfKey: 'onion', onList: false });
+      const row = classifyPlanned(plannedOnion, [white], now)[0];
+      expect(row.nameKey).toBe('onion');
+      expect(row.category).toBe('needToBuy');
+    });
+
+    it('merges a re-filed generic line into the variety’s own group', () => {
+      const white = item({ name: 'White onion', varietyOfKey: 'onion', onHandUntil: onHandDate });
+      const planned = [
+        ...plannedOnion,
+        { name: 'White onion', nameKey: 'white onion', quantity: '2', aisle: null, source: 'Thu Curry' },
+      ];
+      const rows = classifyPlanned(planned, [white], now);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].sources).toEqual(['Thu Curry', 'Tue Ragù']);
+      expect(rows[0].quantity).toBe('3');
+    });
+
+    it('captions a specific ask with the on-hand family, without moving it', () => {
+      const onion = item({ name: 'Onion', onHandUntil: onHandDate });
+      const white = item({ name: 'White onion', varietyOfKey: 'onion', onHandUntil: onHandDate });
+      const red = item({ name: 'Red onion', varietyOfKey: 'onion' });
+      const planned = [
+        { name: 'red onion', nameKey: 'red onion', quantity: '1', aisle: null, source: 'Tue Ragù' },
+      ];
+      const row = classifyPlanned(planned, [onion, white, red], now)[0];
+
+      expect(row.category).toBe('needToBuy');
+      expect(row.reason).toBe('you have onion or white onion');
+    });
+
+    it('lets a hand-authored substitute caption outrank the family one', () => {
+      const white = item({ name: 'White onion', varietyOfKey: 'onion', onHandUntil: onHandDate });
+      const red = item({ name: 'Red onion', varietyOfKey: 'onion' });
+      const shallot = item({ name: 'Shallot', onHandUntil: onHandDate });
+      const planned = [
+        { name: 'red onion', nameKey: 'red onion', quantity: '', aisle: null, source: 'Tue Ragù' },
+      ];
+      const link = {
+        itemId: red.id,
+        subItemId: shallot.id,
+        note: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        ratioFrom: null,
+        ratioTo: null,
+        standing: false,
+      };
+      const row = classifyPlanned(planned, [white, red, shallot], now, [link])[0];
+      expect(row.reason).toBe('you have shallot');
+    });
   });
 });
 

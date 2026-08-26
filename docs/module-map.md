@@ -92,6 +92,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, withinOneEdit, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary
 - `src/utils/itemDisposal.ts` — DisposalOutcome, REPEAT_WASTE_THRESHOLD, disposalAnswerCount, describeDisposalHistory, wantsShelfLifePrompt
 - `src/utils/itemSubs.ts` — Substitute, substitutesFor, substituteForItems, describeSubstituteLink, describeSubstitutes, SubstitutedQuantity, substituteQuantity, substitutesOnHand, describeSubstitutesOnHand, resolveShoppingSubstitutes
+- `src/utils/itemVarieties.ts` — varietyIndex, NO_VARIETIES, coveringVariety, familyOnHand, genericNameSuggestions, describeFamilyOnHand
 - `src/utils/kitchenHistory.ts` — KitchenEventKind, KitchenEvent, KitchenHistoryDay, kitchenEvents, kitchenHistoryDays, filterKitchenEvents
 - `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, parseKitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, KitchenEntry, KitchenSection, compareKitchenEntries, +4 more
 - `src/utils/kitchenReorder.ts` — KitchenRow, kitchenRowKey, KitchenDestination, KitchenMove, buildKitchenRows, resolveKitchenDrop, kitchenDragRange

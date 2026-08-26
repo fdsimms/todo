@@ -948,14 +948,16 @@ has no dish decision to defer — but the loser then sat there looking outstandi
 
 ## Substitutes (`ItemSubLink`) — one item standing in for another
 
-**The vocabulary rule, so it can't drift: products *of* an item, either/or on the list,
-alternatives on the recipe, substitutes on the item — and a substitute marked "always use this
-instead" is a standing swap.** Five adjacent terms for five genuinely different things; settled
-here rather than left to be re-argued per PR.
+**The vocabulary rule, so it can't drift: products *of* an item, varieties *of* a name,
+either/or on the list, alternatives on the recipe, substitutes on the item — and a substitute
+marked "always use this instead" is a standing swap.** Six adjacent terms for six genuinely
+different things; settled here rather than left to be re-argued per PR.
 
 First, is it even the same thing you're buying? A different box of it is a **product** (above) —
 Arnold's white instead of Arnold's wheat is not a substitution, it's the other one under the same
-item. Everything below is about reaching for a *different item*.
+item. A different *item* that is still the thing a recipe named, more precisely — white onion for
+a line saying "onion" — is a **variety** (below), the one vertical relation here. Everything
+below the varieties section is about reaching for a genuinely *different thing*.
 
 The one-line test for which of those you're looking at: **does the answer depend on the dish?**
 If yes it's a `choiceGroup` — both options intended, equals, decided per cooking in
@@ -1144,6 +1146,55 @@ Three rules the resolver enforces, all pinned by `standingSwaps.test.ts`:
   links, and its one write turns a rule off *without* forgetting the substitute. A rule that
   rewrites what lands in the trolley has to be answerable somewhere that isn't "open every
   grocery item and check".
+
+## Varieties (`GroceryItem.varietyOfKey`) — white onion is a kind of onion
+
+Every relation above is *lateral* — a product is a box of one item, either/or and alternatives
+pair equals, a substitute is a different thing you'd tolerate. None of them could say that one
+catalog item *is* the thing a recipe named, more precisely, so a line saying "onion" read as a
+brand-new ingredient while white onion sat in the pantry, and the shortfall generator wrote
+"Shop for Tuesday" over an onion in the drawer. `varietyOfKey` is the one vertical relation:
+an item declares the generic *name* it's a variety of, and `src/utils/itemVarieties.ts` is the
+read side.
+
+- **The generic is a key, not an item id.** The generic side is what recipe lines say
+  (`RecipeIngredient.nameKey` is the bridge), and plenty of generics never exist as a row —
+  "onion" is only ever a word recipes use. Same precedent as the aisle overrides, keyed by
+  `nameKey` and outliving rows. The cost is renames: `renameItem` and `mergeItems` both re-point
+  declarations aimed at a key that's changing, and both clear a declaration that would leave a
+  row a variety of itself.
+- **Asymmetric on purpose, and the asymmetry is the feature.** A specific item satisfies a
+  generic ask; a generic never satisfies a specific one. "Onion" is answered by any declared
+  variety the app has a reason to believe you have; "red onion" matches only red onion, and the
+  rest of the family surfaces as the same "you have white onion" caption a substitute gets —
+  informing, never buying.
+- **A covered generic line *becomes* the variety's row** (`classifyPlanned`'s re-file pass),
+  rather than being captioned in place: the category, the display name, and above all what a
+  cook-recap answer or a restock writes to all land on a real catalog row. `swappedFrom` carries
+  the recipe's own word, so the row reads "instead of onion" exactly as a standing swap does.
+  Only when the line's own key answers nothing — an exact match always wins outright — and only
+  for a variety that answers (`coveringVariety` runs classifyPlanned's own ladder across the
+  family: on the list, then staple, then the pantry guess). A declared variety nobody has
+  changes nothing, and the ask stays an honest needToBuy under the generic name, which is also
+  the right thing to put in the trolley.
+- **Single hop, never a chain.** Readers ask "which items declare themselves varieties of this
+  key" and stop, so a mis-filed pointer can't loop and "vegetable" can't transitively claim
+  every onion. A chain just means the middle name answers for the outer one and nothing else.
+- **`useUpRecipes` aliases a dying variety onto its generic key** — a recipe calling for
+  "onion" counts as using up the white onion that's about to turn. Exact keys on both hops, a
+  real dying entry under the generic key wins over the alias, and two dying varieties settle on
+  the more urgent. The module's no-fuzzy-matching rule stands: a declaration is user-authored,
+  not a guess.
+- **`ingredientCatalogMatch` reads a declared-covered generic as `linked`** (`reason:
+  'variety'`), so the "did you mean White onion?" badge stands down once the relation is
+  recorded — renaming the recipe line to the variety is exactly the over-specifying this
+  replaces. Identity only: whether anything is on hand is the shopping reads' question.
+- **Nothing infers a declaration.** The user says so, in the item sheet's Variety of field
+  (suggestions are the item's own trailing words plus generics already in use —
+  `genericNameSuggestions`). Same discipline as substitutes, and a declaration is a user fact
+  (`hasUserFacts`), so it protects its row from the clearList sweep.
+- **Standing swaps stay exact-key.** A swap is a rewrite mandate; firing a generic's mandate on
+  a line that named a specific variety would override a specificity the user wrote down.
 
 ## Deciding at the shelf — an ingredient choice that survives onto the list
 

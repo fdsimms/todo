@@ -1805,6 +1805,36 @@ export interface GroceryItem {
   // just sits there looking outstanding, and finishShopping would leave it on
   // the list for ever.
   choiceGroup: string | null;
+  /**
+   * The generic name this item is a variety of, as a `groceryNameKey` —
+   * "white onion" carries `'onion'`. Null (the overwhelmingly common case)
+   * means the item is not a variety of anything, or nobody has said so.
+   *
+   * This is the one *vertical* relation between catalog identities, and it's
+   * deliberately a key rather than an item id: the generic side is what recipe
+   * lines say (`RecipeIngredient.nameKey` is the bridge), and plenty of
+   * generics never exist as a row of their own — you buy white onions and red
+   * onions, and "Onion" is only ever a word recipes use. Same precedent as the
+   * aisle overrides, which are keyed by nameKey and outlive rows.
+   *
+   * The semantics are asymmetric on purpose, and that asymmetry is the whole
+   * feature: a *specific* item satisfies a *generic* ask (a recipe line saying
+   * "onion" is answered by white onion in the pantry — classifyPlanned,
+   * useUpRecipes), while a generic never satisfies a specific one (a line
+   * saying "red onion" matches only red onion; the parent and its other
+   * varieties surface as a "you have white onion" caption, the same informing-
+   * never-buying rule substitutes follow). Where a substitute is a lateral
+   * link between two different things, this says the item *is* the thing,
+   * more precisely named.
+   *
+   * Single hop, never a chain: readers ask "which items declare themselves
+   * varieties of this key" (`itemVarieties.ts`) and don't walk further, so a
+   * mis-filed chain can't loop and "vegetable" never transitively claims
+   * every onion. Nothing infers one — the user says so, same discipline as
+   * substitutes — and `renameItem`/`mergeItems` re-point declarations at a
+   * generic whose key changes.
+   */
+  varietyOfKey: string | null;
   // Always on hand — salt, pepper, water, the things nobody actually shops
   // for. Set by hand on GroceryItemSheet, and unlike onHandUntil it never
   // expires: a staple isn't a guess about recent purchases, it's a standing

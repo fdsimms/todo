@@ -1,0 +1,4 @@
+{
+  "message": "A grocery item can now declare which general ingredient it's a variety of, like white onion for onion. Set \"Variety of\" on the item, and a recipe line naming the general ingredient counts as covered while you have any declared variety: shopping suggestions, meal shortfall tasks and use-up recipes all read it. A line naming a specific variety still matches only that one, and the rest of the family shows up as a \"you have white onion\" note the way substitutes do",
+  "date": "2026-08-26"
+}

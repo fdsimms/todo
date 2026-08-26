@@ -47,6 +47,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
+    varietyOfKey: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null,
@@ -96,6 +97,28 @@ describe('matchIngredientToCatalog', () => {
     expect(match.kind).toBe('linked');
     expect(match.item?.name).toBe('Skyr');
     expect(match.suggestedName).toBeNull();
+  });
+
+  it('links a generic the catalog holds a declared variety of, offering nothing to rename', () => {
+    // "onion" with only White onion in the catalog used to badge the row with
+    // a rename offer — the over-specifying the variety declaration replaces.
+    const items = [makeItem({ name: 'White onion', varietyOfKey: 'onion' })];
+    const match = matchIngredientToCatalog('onion', items, NOW);
+    expect(match.kind).toBe('linked');
+    expect(match.reason).toBe('variety');
+    expect(match.item?.name).toBe('White onion');
+    expect(match.suggestedName).toBeNull();
+  });
+
+  it('prefers an exact row over a variety declaration', () => {
+    const items = [
+      makeItem({ name: 'White onion', varietyOfKey: 'onion' }),
+      makeItem({ name: 'Onion' }),
+    ];
+    const match = matchIngredientToCatalog('onion', items, NOW);
+    expect(match.kind).toBe('linked');
+    expect(match.reason).toBeNull();
+    expect(match.item?.name).toBe('Onion');
   });
 
   it('answers unknown for an empty or unparseable name', () => {

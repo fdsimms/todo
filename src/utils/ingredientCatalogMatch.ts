@@ -1,6 +1,7 @@
 import type { GroceryItem } from '../types';
 import { groceryNameKey, suggestShorterCatalogName } from './groceryParse';
 import { rankGrocerySuggestions } from './grocerySuggest';
+import { varietyIndex } from './itemVarieties';
 
 /**
  * What a recipe ingredient line resolves to in the grocery catalog, and — when
@@ -46,10 +47,19 @@ export type IngredientMatchReason =
   /** The autocomplete's own ranking, which is also where plural tolerance lives. */
   | 'ranked'
   /** One character out — "skir" → "Skyr". The only tier that tolerates a misspelling. */
-  | 'similar';
+  | 'similar'
+  /**
+   * The line names a generic the catalog holds declared varieties of — "onion"
+   * against a white onion carrying `varietyOfKey: 'onion'`. The one reason
+   * that rides on `linked` rather than `suggested`: the line has crossed the
+   * bridge (every shopping read resolves it through `itemVarieties.ts`), so
+   * there is nothing to offer and nothing to rename — renaming it to the
+   * variety is exactly the over-specifying this relation exists to avoid.
+   */
+  | 'variety';
 
 export type IngredientMatchKind =
-  /** Exact `nameKey` hit: this line already *is* that catalog row. */
+  /** Exact `nameKey` hit, or a generic covered by its declared varieties (`reason: 'variety'`). */
   | 'linked'
   /** No exact hit, but something close enough to offer. */
   | 'suggested'
@@ -191,6 +201,7 @@ function matchOne(
   name: string,
   items: readonly GroceryItem[],
   byKey: ReadonlyMap<string, GroceryItem>,
+  varieties: ReadonlyMap<string, GroceryItem[]>,
   now: Date
 ): IngredientCatalogMatch {
   const key = groceryNameKey(name);
@@ -198,6 +209,14 @@ function matchOne(
 
   const exact = byKey.get(key);
   if (exact) return { kind: 'linked', item: exact, suggestedName: null, reason: null };
+
+  // Identity, not pantry state: whether any variety is actually on hand is the
+  // shopping reads' question, asked at shop time. Here a declaration alone
+  // means the line resolves, so the badge and the "did you mean" both stand
+  // down. First declared variety in catalog order, the same first-wins rule
+  // `indexByKey` uses.
+  const covered = varieties.get(key)?.[0];
+  if (covered) return { kind: 'linked', item: covered, suggestedName: null, reason: 'variety' };
 
   const suggest = (item: GroceryItem, reason: IngredientMatchReason): IngredientCatalogMatch => ({
     kind: 'suggested',
@@ -230,7 +249,7 @@ export function matchIngredientToCatalog(
   items: readonly GroceryItem[],
   now: Date
 ): IngredientCatalogMatch {
-  return matchOne(name, items, indexByKey(items), now);
+  return matchOne(name, items, indexByKey(items), varietyIndex(items), now);
 }
 
 function indexByKey(items: readonly GroceryItem[]): Map<string, GroceryItem> {
@@ -254,7 +273,8 @@ export function matchIngredientsToCatalog(
   now: Date
 ): IngredientCatalogMatch[] {
   const byKey = indexByKey(items);
-  return names.map(name => matchOne(name, items, byKey, now));
+  const varieties = varietyIndex(items);
+  return names.map(name => matchOne(name, items, byKey, varieties, now));
 }
 
 export interface CatalogMatchSummary {

@@ -36,6 +36,7 @@ function makeItem(name: string, overrides: Partial<GroceryItem> = {}): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
+    varietyOfKey: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null,
@@ -87,6 +88,7 @@ describe('hasUserFacts', () => {
     ['a use-up opt-out', { useUpTask: false }],
     ['a preferred box', { preferredProductId: 'p1' }],
     ['a brand-strict rule', { productStrict: true }],
+    ['a variety declaration', { varietyOfKey: 'onion' }],
     ['a typed note', { note: 'the green one' }],
     ['a hand-set quantity', { quantity: '2 bags', quantityFromRecipe: false }],
   ])('is true for %s', (_label, patch) => {

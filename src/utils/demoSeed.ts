@@ -1536,6 +1536,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     setExpiresAt,
     setShelfLifeDays,
     setUseUpTask,
+    setVarietyOfKey,
     finishShopping,
     addAisle,
     deleteAisle,
@@ -1860,6 +1861,20 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   const cornTortillas = ensureCatalogItem('Corn tortillas');
   if (cornTortillas) {
     linkItemSub(itemNamed('Tortillas').id, cornTortillas.id);
+  }
+
+  // A variety (GroceryItem.varietyOfKey): the one vertical relation in the catalog, and invisible
+  // until something declares one. White onion is the salsa verde's own
+  // ingredient line, so that recipe's line reads as a known item — and any
+  // line naming plain "onion" reads as covered while this row is on hand,
+  // which is the half nothing else in the seed could show. The generic is a
+  // key with no row of its own on purpose: that's the common case ("onion" is
+  // only ever a word recipes use), and the item sheet's Variety of field shows
+  // the bare key for it.
+  const whiteOnion = ensureCatalogItem('White onion');
+  if (whiteOnion) {
+    setVarietyOfKey(whiteOnion.id, 'onion');
+    setOnHandUntil(whiteOnion.id, defaultOnHandUntil(whiteOnion, new Date()));
   }
 
   // Everything else typed above is still sitting on the list, since only what
