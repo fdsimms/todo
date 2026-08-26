@@ -462,6 +462,11 @@ export function AddMealsToListSheet({
                       })}
                     </View>
                   )}
+                  {category === 'needToBuy' && (
+                    <Text style={styles.sectionHint}>
+                      Tap "In pantry" on anything you already have to skip buying it and remember that for next time.
+                    </Text>
+                  )}
                   {category === 'alreadyOnList' && (
                     <Text style={styles.sectionHint}>
                       Already on the list. Check one to top up its quantity.
