@@ -245,21 +245,25 @@ export function RecipesScreen() {
   } = useRowSelection();
 
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
-  // still the one under your thumb.
+  // still the one under your thumb. The three import items sit in the same
+  // order as RecipeSourcePicker's own Paste/Link/Photo tabs, so the menu and
+  // the sheet it opens agree on which one is the "default" way in.
   const addMenuItems = useMemo<FabMenuItem[]>(() => ([
+    { key: 'paste', label: 'Paste text', icon: 'clipboard-outline' },
     { key: 'link', label: 'From a link', icon: 'link-outline' },
     { key: 'import', label: 'From a photo', icon: 'camera-outline' },
     { key: 'name', label: 'New recipe', icon: 'add-circle-outline' },
   ]), []);
 
   const handleAddMenuSelect = useCallback((key: string) => {
-    // Both import items open the one sheet, on their own tab — see
+    // All three import items open the one sheet, on their own tab — see
     // RecipeCreateSheet's initialMode. Either way this is an import the user is
     // starting from scratch, so any page left over from the shared-link banner
     // is cleared rather than turning up pre-filled in a field they came here to
     // type into themselves.
     setImportUrl(null);
-    if (key === 'link') { setImportMode('link'); setImportVisible(true); }
+    if (key === 'paste') { setImportMode('paste'); setImportVisible(true); }
+    else if (key === 'link') { setImportMode('link'); setImportVisible(true); }
     else if (key === 'import') { setImportMode('photo'); setImportVisible(true); }
     else setAddVisible(true);
   }, []);

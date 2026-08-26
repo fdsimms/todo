@@ -169,9 +169,9 @@ export function RecipeCreateSheet({
   const [sourceAuthor, setSourceAuthor] = useState('');
   const edits = usePendingEdits();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
-  // Whichever add-menu item opened it — "From a link" and "From a photo" both
-  // land here, and each opens on its own tab rather than making that tap feel
-  // ignored. Every other tab is still one tap away.
+  // Whichever add-menu item opened it — "Paste text", "From a link" and "From
+  // a photo" all land here, and each opens on its own tab rather than making
+  // that tap feel ignored. Every other tab is still one tap away.
   const input = useRecipeImportSource(initialMode);
   const { resolveSource, reset: resetInput, setMode, setUrl } = input;
 
