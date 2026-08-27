@@ -54,6 +54,15 @@ interface Props {
   onReorderCategories: () => void;
   /** How many categories there are to order, shown as the action's hint. */
   categoryCount: number;
+  /**
+   * Opens today's events sheet — the same sheet an event row on Today opens,
+   * reachable here too since hiding every event leaves no row left to tap.
+   * Omitted when the calendar read is off, still loading, or demo mode is
+   * active (see TodayScreen's own gate on `todayCalendarEvents`).
+   */
+  onManageEvents?: () => void;
+  /** How many events are on today, shown as the action's hint. */
+  eventCount?: number;
 }
 
 /**
@@ -74,6 +83,8 @@ export function TodayOptionsMenu({
   reachOutCount,
   onReorderCategories,
   categoryCount,
+  onManageEvents,
+  eventCount,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -232,6 +243,32 @@ export function TodayOptionsMenu({
             </View>
             <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
           </TouchableOpacity>
+          {onManageEvents && (
+            <>
+            <View style={styles.optionSep} />
+            <TouchableOpacity
+              style={styles.optionRow}
+              onPress={() => {
+                haptics.tap();
+                onManageEvents();
+              }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel="Today's events"
+            >
+              <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
+              <View style={styles.optionContent}>
+                <Text style={styles.optionLabel}>Today’s events</Text>
+                <Text style={styles.optionHint}>
+                  {(eventCount ?? 0) > 0
+                    ? `See and hide any of today’s ${eventCount} calendar ${eventCount === 1 ? 'event' : 'events'}`
+                    : 'Nothing on the calendar today'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+            </TouchableOpacity>
+            </>
+          )}
           <View style={styles.optionSep} />
           <TouchableOpacity
             style={styles.optionRow}

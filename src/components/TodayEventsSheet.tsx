@@ -16,6 +16,8 @@ import {
   describeEventReminderOffset,
   eventReminderKey,
 } from '../utils/eventReminders';
+import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
+import { hiddenEventKey } from '../utils/hiddenEvents';
 import { animateLayout } from '../utils/layoutAnimation';
 
 /** `null` is the "no reminder" segment — distinct from 0, which is a real offset (at start time). */
@@ -46,14 +48,17 @@ interface Props {
  * shows the time (or "All day"), the title, and location when EventKit has
  * one. The event itself is still read-only (see `calendarSync.ts`); a
  * location gets a directions button (opening the system Maps app isn't a
- * write to the event, so it doesn't break that rule), and the bell lets a
+ * write to the event, so it doesn't break that rule), the bell lets a
  * row carry a lightweight local reminder — see `src/utils/eventReminders.ts`
- * for why that's a small standalone mechanism rather than a `Task`.
+ * for why that's a small standalone mechanism rather than a `Task` — and the
+ * eye lets a row stop showing up here and on Today at all, the same way and
+ * for the same reason (`src/utils/hiddenEvents.ts`).
  *
- * **All-day events don't get the bell.** "N minutes before start" means
- * "before local midnight" for an all-day event, which isn't a useful
- * reminder for anything the way it's used here (a birthday, a holiday) —
- * the offsets this picker offers only make sense for a timed event.
+ * **All-day events don't get the bell, but do get the eye.** "N minutes
+ * before start" means "before local midnight" for an all-day event, which
+ * isn't a useful reminder the way it's used here (a birthday, a holiday) —
+ * but a birthday you don't want reminding about is exactly the case hiding
+ * is for, so that button isn't timed-event-only.
  */
 export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Props) {
   const colors = useColors();
@@ -61,6 +66,9 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
   const remindersByKey = useEventReminderStore(s => s.remindersByKey);
   const setReminder = useEventReminderStore(s => s.setReminder);
   const clearReminder = useEventReminderStore(s => s.clearReminder);
+  const hiddenByKey = useHiddenEventsStore(s => s.hiddenByKey);
+  const hideEvent = useHiddenEventsStore(s => s.hideEvent);
+  const unhideEvent = useHiddenEventsStore(s => s.unhideEvent);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const toggleExpanded = (key: string) => {
@@ -96,9 +104,10 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
             const key = eventReminderKey(event);
             const reminder = remindersByKey[key];
             const expanded = expandedKey === key;
+            const hidden = hiddenEventKey(event) in hiddenByKey;
             return (
               <View key={key}>
-                <View style={styles.row}>
+                <View style={[styles.row, hidden && styles.rowHidden]}>
                   <View style={styles.rowIcon}>
                     <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
                   </View>
@@ -131,24 +140,42 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
                       </View>
                     )}
                   </View>
-                  {!event.allDay && (
+                  <View style={styles.rowActions}>
+                    {!event.allDay && (
+                      <PressableScale
+                        style={styles.actionButton}
+                        onPress={() => toggleExpanded(key)}
+                        haptic
+                        accessibilityLabel={
+                          reminder
+                            ? `Reminder set, ${describeEventReminderOffset(reminder.offsetMinutes).toLowerCase()}. Tap to change.`
+                            : `Set a reminder for ${event.title || 'this event'}`
+                        }
+                      >
+                        <Ionicons
+                          name={reminder ? 'notifications' : 'notifications-outline'}
+                          size={iconSize.sm}
+                          color={reminder ? colors.accent : colors.textTertiary}
+                        />
+                      </PressableScale>
+                    )}
                     <PressableScale
-                      style={styles.bellButton}
-                      onPress={() => toggleExpanded(key)}
+                      style={styles.actionButton}
+                      onPress={() => (hidden ? unhideEvent(event) : hideEvent(event))}
                       haptic
                       accessibilityLabel={
-                        reminder
-                          ? `Reminder set, ${describeEventReminderOffset(reminder.offsetMinutes).toLowerCase()}. Tap to change.`
-                          : `Set a reminder for ${event.title || 'this event'}`
+                        hidden
+                          ? `Show ${event.title || 'this event'} on Today again`
+                          : `Hide ${event.title || 'this event'} from Today`
                       }
                     >
                       <Ionicons
-                        name={reminder ? 'notifications' : 'notifications-outline'}
+                        name={hidden ? 'eye-off' : 'eye-off-outline'}
                         size={iconSize.sm}
-                        color={reminder ? colors.accent : colors.textTertiary}
+                        color={hidden ? colors.accent : colors.textTertiary}
                       />
                     </PressableScale>
-                  )}
+                  </View>
                 </View>
 
                 {expanded && (
@@ -222,7 +249,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   calendarDot: { width: 6, height: 6, borderRadius: radius.full },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   rowLocation: { flexShrink: 1, color: colors.textTertiary, fontSize: font.xs },
-  bellButton: {
+  // A hidden event stays in this list (it's how you find your way back to
+  // un-hiding it) but reads as put-away, the same dimming a completed task
+  // row gets elsewhere in the app.
+  rowHidden: { opacity: 0.5 },
+  rowActions: { flexDirection: 'row', alignItems: 'center' },
+  actionButton: {
     width: 32,
     height: 32,
     alignItems: 'center',

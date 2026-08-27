@@ -62,6 +62,12 @@ const UNCATEGORIZED = '';
  * sort by (`calendarBusy` is explicit that an all-day event isn't minutes), and
  * a birthday reading "12:00 AM" in the caption column would be the app
  * inventing a time the calendar never gave it.
+ *
+ * **A hidden event is dropped too**, for a different reason than a finished
+ * one: the user asked never to be reminded of this occurrence, and rows on
+ * Today are exactly the reminder. It stays a fact `useHiddenEventsStore` knows
+ * rather than one folded into `BusyEvent` — the event itself is a read-only
+ * mirror of EventKit, and hiding is a local opinion about it.
  */
 export function eventContextRows(
   events: readonly BusyEvent[],
@@ -77,14 +83,17 @@ export function eventContextRows(
      * this once more than one calendar is being read.
      */
     calendarsById?: Readonly<Record<string, { title: string; color: string }>>;
+    /** True for an occurrence the user hid — see `useHiddenEventsStore`. */
+    isHidden?: (event: Pick<BusyEvent, 'id' | 'start'>) => boolean;
   },
 ): ContextRow[] {
-  const { now, category, use24Hour, calendarsById } = opts;
+  const { now, category, use24Hour, calendarsById, isHidden } = opts;
   const at = now.getTime();
 
   const rows: Array<{ row: ContextRow; allDay: boolean; start: number }> = [];
   for (const event of events) {
     if (!isLiveEvent(event)) continue;
+    if (isHidden?.(event)) continue;
     const start = new Date(event.start).getTime();
     const end = new Date(event.end).getTime();
     if (Number.isNaN(start) || Number.isNaN(end)) continue;
