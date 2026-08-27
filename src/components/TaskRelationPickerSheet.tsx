@@ -303,6 +303,7 @@ export function TaskRelationPickerSheet({ visible, onClose, relation, taskId, co
               placeholder="Search tasks"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}
+              spellCheck={false}
               returnKeyType="search"
             />
           </View>

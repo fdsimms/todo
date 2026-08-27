@@ -2047,6 +2047,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // glitching. Only suppress it while that overlay is actually
           // showing; autocorrect stays on for ordinary typing.
           autoCorrect={!hasTitleOverlay}
+          // Spell check is a different signal than autocorrect — a red
+          // squiggle, not a rewrite — so it never fights the overlay and
+          // stays on unconditionally: a title is real prose, not one of the
+          // opaque fields (link/phone/email) this pairing is off for.
+          spellCheck
           multiline blurOnSubmit
           selection={titleCaret.selection}
           onSelectionChange={titleCaret.onSelectionChange}
@@ -4126,6 +4131,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     keyboardType="url"
                     autoCapitalize="none"
                     autoCorrect={false}
+                    spellCheck={false}
                     returnKeyType="done"
                   />
                 </View>
@@ -4169,6 +4175,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   // visible instead of implicit.
                   keyboardType="phone-pad"
                   autoCorrect={false}
+                  spellCheck={false}
                   autoFocus
                 />
                 <TouchableOpacity
@@ -4217,6 +4224,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  spellCheck={false}
                   returnKeyType="done"
                   autoFocus
                 />

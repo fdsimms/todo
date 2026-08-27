@@ -358,7 +358,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **231 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **234 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -389,6 +389,13 @@ stores; that's where a new test goes. Only pure logic is tested (`src/utils`, `s
 no React renderer installed, so there are no component or screen tests. Don't add a renderer to
 cover a UI change — verify those by reasoning about the code (and by mocking it, see **Mock a
 visual change** below), and say so plainly rather than implying you ran them.
+
+The 1:1 rule holds for every file in `src/utils`, `src/db`, and the task/grocery stores. Two
+stores are the deliberate exception and carry no test file: `useTemplateCategoryStore` and
+`useWidgetCompletionStore` are thin wrappers over a db read/write or a queue with no branching
+logic of their own to pin down — same reasoning as skipping a component test, just for a store
+instead of a screen. Don't read their absence as a gap to fill; add one only if the store grows
+real logic beyond passing values through.
 
 ## Working style
 

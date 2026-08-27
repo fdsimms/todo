@@ -102,6 +102,7 @@ export function RecipeComponentPicker({ visible, recipe, onClose, onSelect }: Pr
                 placeholderTextColor={colors.textTertiary}
                 autoCapitalize="none"
                 autoCorrect={false}
+                spellCheck={false}
                 returnKeyType="search"
                 clearButtonMode="while-editing"
                 accessibilityLabel="Search recipes"

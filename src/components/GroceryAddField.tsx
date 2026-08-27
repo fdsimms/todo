@@ -432,7 +432,9 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
           // keystrokes-and-return rather than ten taps into a sheet.
           blurOnSubmit={false}
           // iOS inline prediction draws over the field and fights the
-          // suggestion list underneath it.
+          // suggestion list underneath it. Spell check is a different signal
+          // (a squiggle, not a rewrite) and stays on: these are real item
+          // names, not an opaque value, so a caught typo is worth showing.
           autoCorrect={false}
           autoCapitalize="none"
           maxLength={GROCERY_NAME_MAX_LENGTH}

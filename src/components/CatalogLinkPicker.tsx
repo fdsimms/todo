@@ -56,6 +56,7 @@ export function CatalogLinkPicker({ items, initialQuery, excludeItemId, onPick }
           placeholder="Find an item in your grocery catalog…"
           placeholderTextColor={colors.textTertiary}
           autoCorrect={false}
+          spellCheck={false}
           autoCapitalize="none"
           accessibilityLabel="Find an item in your grocery catalog"
         />

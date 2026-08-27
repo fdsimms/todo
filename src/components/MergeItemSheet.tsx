@@ -170,6 +170,7 @@ export function MergeItemSheet({ visible, itemId, onClose, onMerged }: Props) {
                 placeholder="Find an item…"
                 placeholderTextColor={colors.textTertiary}
                 autoCorrect={false}
+                spellCheck={false}
                 autoCapitalize="none"
                 accessibilityLabel="Find the item to merge with"
               />

@@ -1530,6 +1530,7 @@ export function GroceryItemSheet({
             placeholder="e.g. 2 lb, x3, a bunch"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
+            spellCheck={false}
             maxLength={GROCERY_QUANTITY_MAX_LENGTH}
             accessibilityLabel="Quantity"
           />
