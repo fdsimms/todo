@@ -85,17 +85,20 @@ struct AddTaskIntent: AppIntent {
 
 // Donates AddTaskIntent to the system so it's selectable directly — no
 // Shortcut to build first — from the Shortcuts app, Siri, and (the point of
-// this file) iOS 17+'s Action Button "Shortcut" picker. A phrase with no
-// parameter leaves the title unfilled, which is what makes Siri prompt with
-// the intent's own requestValueDialog and take the answer by voice — a
-// double-press of the Action Button, spoken title, done.
+// this file) iOS 17+'s Action Button "Shortcut" picker. The phrase leaves the
+// title unfilled, which is what makes Siri prompt with the intent's own
+// requestValueDialog and take the answer by voice — a double-press of the
+// Action Button, spoken title, done. It can't interpolate \.$title into the
+// phrase to take the title inline instead: App Shortcut phrases only accept
+// AppEntity/AppEnum parameters, and title is a free-text String, so Xcode's
+// ExtractAppIntentsMetadata archive step rejects it ("AppEntity and AppEnum
+// are the only allowed types for title").
 struct DundundunShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: AddTaskIntent(),
             phrases: [
                 "Add a task in \(.applicationName)",
-                "Add \(\.$title) in \(.applicationName)",
             ],
             shortTitle: "Add Task",
             systemImageName: "square.and.pencil"
