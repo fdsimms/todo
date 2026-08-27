@@ -4124,6 +4124,25 @@ describe('checkCalendarReviewTasks', () => {
     expect(reviewTasks()).toHaveLength(0);
   });
 
+  it('holds the task back until the chosen time of day, when one is set', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ calendarReviewTimeSegment: 'evening' }));
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    const [review] = reviewTasks();
+    expect(review.timeSegments).toEqual(['evening']);
+  });
+
+  it('carries no time-of-day hold-back by default', () => {
+    useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });
+
+    useTaskStore.getState().checkCalendarReviewTasks();
+
+    const [review] = reviewTasks();
+    expect(review.timeSegments).toEqual([]);
+  });
+
   it('is a no-op while the setting is off', () => {
     useSettingsStore.getState.mockReturnValue(settings({ calendarReviewTasks: false }));
     useCalendarStore.getState.mockReturnValue({ events: [tomorrowEvent()], loaded: true });

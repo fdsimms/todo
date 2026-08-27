@@ -4990,6 +4990,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    * (`calendarReviewLastDayKey`, recorded unconditionally the moment a day is
    * considered — see writeGeneratedOptOut). Unlike the nudge it writes at most
    * one task, not a week's worth, so there is no cap and no stack.
+   *
+   * `calendarReviewTimeSegment` holds it back until a part of the day, same as
+   * a task's own Time of day field — read once, at creation, so changing the
+   * setting shapes the next task this writes rather than reaching back to
+   * rewrite one already on the list.
    */
   checkCalendarReviewTasks() {
     const settings = useSettingsStore.getState();
@@ -5054,6 +5059,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       draft: () => ({
         title: CALENDAR_REVIEW_TITLE,
         dueDate: dueDate.toISOString(),
+        timeSegments: settings.calendarReviewTimeSegment ? [settings.calendarReviewTimeSegment] : [],
         category: settings.calendarEventCategory,
         ...generatedBy('calendarReview', tomorrowKey),
       }),
