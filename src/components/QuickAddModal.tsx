@@ -260,15 +260,27 @@ export function QuickAddModal({
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const showSub = Keyboard.addListener(showEvent, e => {
+    const updateHeight = (e: { endCoordinates?: { height: number } }) => {
       const height = e.endCoordinates?.height ?? 0;
+      if (height <= 0) return;
       setKeyboardHeight(height);
       Animated.spring(keyboardOffsetAnim, {
         toValue: -height / 2,
         ...animation.spring.smooth,
         useNativeDriver: true,
       }).start();
-    });
+    };
+    const showSub = Keyboard.addListener(showEvent, updateHeight);
+    // TitleTokenAccessory/NumberPadAccessory's InputAccessoryView can attach
+    // to the keyboard a frame after this field's first focus in a session —
+    // iOS then reports the corrected total height (keyboard + accessory bar)
+    // through keyboardWillChangeFrame rather than a second keyboardWillShow.
+    // Without listening for it, keyboardHeight stays sized to the keyboard
+    // alone: keyboardBacking and the sheet's own centering don't reserve
+    // room for the bar, which then doesn't clear the keyboard.
+    const changeFrameSub = Platform.OS === 'ios'
+      ? Keyboard.addListener('keyboardWillChangeFrame', updateHeight)
+      : null;
     const hideSub = Keyboard.addListener(hideEvent, () => {
       setKeyboardHeight(0);
       Animated.spring(keyboardOffsetAnim, {
@@ -279,6 +291,7 @@ export function QuickAddModal({
     });
     return () => {
       showSub.remove();
+      changeFrameSub?.remove();
       hideSub.remove();
     };
   }, []);
