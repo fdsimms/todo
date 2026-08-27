@@ -131,7 +131,9 @@ import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
 import { dayKeyOf, getDayStart } from '../utils/dateUtils';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
-import { eventsIn } from '../utils/calendarBusy';
+import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
+import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
+import { hiddenEventKey } from '../utils/hiddenEvents';
 import { TodayEventsSheet } from '../components/TodayEventsSheet';
 import {
   SpotlightOverlay,
@@ -1596,6 +1598,15 @@ export function TodayScreen() {
   const calendarEventCategory = useSettingsStore(s => s.calendarEventCategory);
   const mealCookTaskCategory = useSettingsStore(s => s.mealCookTaskCategory);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  // An event the user asked never to be reminded of again — read as the raw
+  // map (not the store's own `isHidden`, which closes over `get()` and so
+  // wouldn't re-render this on a change) same as TodayEventsSheet reads
+  // `remindersByKey` directly rather than through `reminderFor`.
+  const hiddenEventsByKey = useHiddenEventsStore(s => s.hiddenByKey);
+  const isEventHidden = useCallback(
+    (event: Pick<BusyEvent, 'id' | 'start'>) => hiddenEventKey(event) in hiddenEventsByKey,
+    [hiddenEventsByKey]
+  );
 
   /**
    * What's about to be wasted, and which of today's meals would eat it (#1689).
@@ -1645,6 +1656,7 @@ export function TodayScreen() {
         category: calendarEventCategory,
         use24Hour: use24HourTime,
         calendarsById: eventCalendarTags,
+        isHidden: isEventHidden,
       }));
     }
     // The kitchen leads the meals it shares a section with, and that ordering
@@ -1679,6 +1691,7 @@ export function TodayScreen() {
     return rows;
   }, [
     todayCalendarEvents, calendarEventCategory, use24HourTime, eventCalendarTags,
+    isEventHidden,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     kitchenOnToday, kitchenEntries, kitchenPlannedUses,
     minuteTick,
@@ -3869,6 +3882,11 @@ export function TodayScreen() {
             setCategoryOrderVisible(true);
           }}
           categoryCount={allCategories.length}
+          onManageEvents={calendarReadEnabled && calendarLoaded && !demoActive ? () => {
+            setOptionsMenuVisible(false);
+            setEventsSheetVisible(true);
+          } : undefined}
+          eventCount={todayCalendarEvents.length}
         />
 
         <CategoryOrderSheet

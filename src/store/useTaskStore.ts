@@ -40,6 +40,7 @@ import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import { listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from './useGroceryStore';
 import { useEventReminderStore } from './useEventReminderStore';
+import { useHiddenEventsStore } from './useHiddenEventsStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
@@ -1787,6 +1788,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // swap-the-database hazard: a reminder set in one database (real or
     // demo) is meaningless once the file underneath has changed.
     useEventReminderStore.getState().initialize();
+    // Same settings-table read, same swap-the-database hazard: an event hidden
+    // in one database (real or demo) is meaningless once the file underneath
+    // has changed.
+    useHiddenEventsStore.getState().initialize();
     const tasks = dbGetAllTasks();
     backfillRecurrenceAnchors(tasks);
     const tagRegistry = dbGetTagRegistry();
