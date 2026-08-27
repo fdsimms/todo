@@ -84,6 +84,9 @@ import {
   scheduleTripReminder,
   cancelTripReminder,
   rescheduleTripReminder,
+  scheduleEventReminder,
+  cancelEventReminder,
+  rescheduleAllEventReminders,
   TASK_REMINDER_CATEGORY,
   scheduleQuotaNudges,
   cancelQuotaNudges,
@@ -92,6 +95,7 @@ import {
 } from '../utils/notifications';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { setDemoModeActive } from '../utils/demoState';
+import type { EventReminder } from '../utils/eventReminders';
 import type { Shop, StepTimer } from '../types';
 
 const FUTURE = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -624,6 +628,81 @@ describe('scheduleTripReminder', () => {
     mockSettings.tripReminderEnabled = false;
     await scheduleTripReminder('Costco', new Date().toISOString());
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('active-trip-reminder');
+  });
+});
+
+const makeEventReminder = (overrides: Partial<EventReminder> = {}): EventReminder => ({
+  key: 'evt-1|2026-01-01T09:00:00.000Z',
+  eventId: 'evt-1',
+  // 30 minutes out with a 15-minute offset leaves the trigger itself 15
+  // minutes in the future — comfortable headroom against real-clock drift
+  // between building this fixture and the assertion running.
+  eventStart: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
+  eventTitle: 'Standup',
+  offsetMinutes: 15,
+  ...overrides,
+});
+
+describe('scheduleEventReminder', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('schedules offsetMinutes before the event start, namespaced by key', async () => {
+    const reminder = makeEventReminder({ eventStart: new Date(Date.now() + 20 * 60 * 1000).toISOString(), offsetMinutes: 5 });
+    await scheduleEventReminder(reminder);
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.identifier).toBe(`event-reminder:${reminder.key}`);
+    expect(call.content.title).toBe('Standup');
+    const msBefore = Date.parse(reminder.eventStart) - new Date(call.trigger.date).getTime();
+    expect(msBefore).toBe(5 * 60 * 1000);
+  });
+
+  it('always cancels the previous one first, by the same namespaced id', async () => {
+    const reminder = makeEventReminder();
+    await scheduleEventReminder(reminder);
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(`event-reminder:${reminder.key}`);
+  });
+
+  it('does not schedule once the trigger moment has already passed', async () => {
+    const reminder = makeEventReminder({ eventStart: new Date().toISOString(), offsetMinutes: 30 });
+    await scheduleEventReminder(reminder);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('suppresses rather than defers a trigger landing in quiet hours', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 1, 21, 50)); // 9:50pm
+    mockSettings.quietHoursStart = '22:00';
+    mockSettings.quietHoursEnd = '07:00';
+    // 15 minutes before a 10:20pm meeting lands the trigger at 10:05pm —
+    // inside the window, and still ahead of the 9:50pm "now" above.
+    const eventStart = new Date(2026, 0, 1, 22, 20);
+    const reminder = makeEventReminder({ eventStart: eventStart.toISOString(), offsetMinutes: 15 });
+    await scheduleEventReminder(reminder);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+    jest.useRealTimers();
+  });
+});
+
+describe('cancelEventReminder', () => {
+  it('cancels by the namespaced id', async () => {
+    jest.clearAllMocks();
+    await cancelEventReminder('evt-1|2026-01-01T09:00:00.000Z');
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('event-reminder:evt-1|2026-01-01T09:00:00.000Z');
+  });
+});
+
+describe('rescheduleAllEventReminders', () => {
+  it('schedules every reminder passed in', async () => {
+    jest.clearAllMocks();
+    const reminders = [makeEventReminder({ key: 'a' }), makeEventReminder({ key: 'b', eventId: 'evt-2' })];
+    await rescheduleAllEventReminders(reminders);
+    expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(2);
+  });
+
+  it('does nothing for an empty list', async () => {
+    jest.clearAllMocks();
+    await rescheduleAllEventReminders([]);
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 });
 
@@ -1165,6 +1244,24 @@ describe('rescheduleAllReminders restores the trip reminder it just cancelled', 
   });
 });
 
+// The fourth thing, and the one the "own id prefix, cancel by prefix" note in
+// rescheduleAllReminders was written for — omitted entirely, same as trip
+// info, it's simply left cancelled.
+describe('rescheduleAllReminders restores event reminders it just cancelled', () => {
+  it('reschedules every event reminder passed in, after the blanket cancel', async () => {
+    const reminder = makeEventReminder();
+    await rescheduleAllReminders([], undefined, [reminder]);
+    const ids = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(c => c[0].identifier);
+    expect(ids).toContain(`event-reminder:${reminder.key}`);
+  });
+
+  it('schedules nothing extra when none are passed', async () => {
+    await rescheduleAllReminders([]);
+    const ids = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(c => c[0].identifier);
+    expect(ids.some(id => id.startsWith('event-reminder:'))).toBe(false);
+  });
+});
+
 // ─── demo mode ────────────────────────────────────────────────────────────
 //
 // A demo task is seeded through the normal addTask action, which schedules a
@@ -1203,6 +1300,12 @@ describe('demo mode suppresses scheduling', () => {
     setDemoModeActive(true);
     await scheduleDailyAgenda([dueOnAgendaDay()]);
     expect(agendaCall()).toBeUndefined();
+  });
+
+  it('does not schedule a calendar-event reminder', async () => {
+    setDemoModeActive(true);
+    await scheduleEventReminder(makeEventReminder());
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 
   it('resumes scheduling normally once demo mode is cleared', async () => {

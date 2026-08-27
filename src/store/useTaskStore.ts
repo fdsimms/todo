@@ -38,6 +38,7 @@ import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
 import { useGroceryStore } from './useGroceryStore';
+import { useEventReminderStore } from './useEventReminderStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
@@ -1777,6 +1778,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // What's in the fridge — pointed at by the plan the same way recipes are,
     // and on the same swap-the-database hazard.
     useLeftoverStore.getState().initialize();
+    // Read from the settings table the same way, and on the same
+    // swap-the-database hazard: a reminder set in one database (real or
+    // demo) is meaningless once the file underneath has changed.
+    useEventReminderStore.getState().initialize();
     const tasks = dbGetAllTasks();
     backfillRecurrenceAnchors(tasks);
     const tagRegistry = dbGetTagRegistry();
@@ -1788,7 +1793,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     set({ tasks, tagRegistry, initialized: true });
     const { tripShopId, tripStartedAt, shops } = useGroceryStore.getState();
-    rescheduleAllReminders(tasks, { shopId: tripShopId, startedAt: tripStartedAt, shops });
+    const eventReminders = Object.values(useEventReminderStore.getState().remindersByKey);
+    rescheduleAllReminders(tasks, { shopId: tripShopId, startedAt: tripStartedAt, shops }, eventReminders);
     // Deliberately after the set() above, not inside useLeftoverStore's own
     // initialize(): reconciling reads useTaskStore.getState().tasks to find
     // each leftover's live task, and at the point leftovers load (just above)
