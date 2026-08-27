@@ -92,6 +92,16 @@ export function estimatedMinutesFor(task: EstimateSource): number | null {
 }
 
 /**
+ * Whether `applyMeasuredTime` would actually change what `estimatedMinutesFor`
+ * reads back for this task. False mid-chain when the active step carries its
+ * own estimate — that one always wins over the task-level fields
+ * `applyMeasuredTime` writes, so applying it would be a silent no-op.
+ */
+export function measuredTimeAppliesTo(task: EstimateSource): boolean {
+  return activeChainStep(task)?.estimatedMinutes == null;
+}
+
+/**
  * Total estimated minutes across a set of tasks, falling back to each task's
  * coarse effort bucket when it has no precise estimate. Powers the "how full
  * is today" workload readout.

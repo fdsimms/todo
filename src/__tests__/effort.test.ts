@@ -1,5 +1,5 @@
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatClockDuration,
-  formatDuration, formatStopwatch, applyMeasuredTime, sumEstimatedMinutes, estimatedMinutesFor } from '../utils/effort';
+  formatDuration, formatStopwatch, applyMeasuredTime, measuredTimeAppliesTo, sumEstimatedMinutes, estimatedMinutesFor } from '../utils/effort';
 import type { ChainItem, Effort } from '../types';
 
 const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
@@ -227,5 +227,30 @@ describe('applyMeasuredTime', () => {
       const r = applyMeasuredTime(m);
       expect(r.actualMinutes).toBe(r.estimatedMinutes);
     });
+  });
+});
+
+describe('measuredTimeAppliesTo', () => {
+  it('is true for a plain, non-chained task', () => {
+    expect(measuredTimeAppliesTo({ estimatedMinutes: 30, effort: 0, chainEnabled: false, chainIndex: 0, chainItems: [] })).toBe(true);
+  });
+
+  it('is true on a chain step that carries no estimate of its own', () => {
+    const task = {
+      estimatedMinutes: 90, effort: 0 as Effort, chainEnabled: true,
+      chainIndex: 2, chainItems: [step('Warm up', 5), step('Main set', 45), step('Cool down')],
+    };
+    expect(measuredTimeAppliesTo(task)).toBe(true);
+  });
+
+  it('is false when the active chain step has its own estimate — applyMeasuredTime would write fields estimatedMinutesFor never reads back', () => {
+    const task = {
+      estimatedMinutes: 90, effort: 0 as Effort, chainEnabled: true,
+      chainIndex: 0, chainItems: [step('Warm up', 5), step('Main set', 45)],
+    };
+    expect(measuredTimeAppliesTo(task)).toBe(false);
+    // Proof, not just assertion: the task-level field this would write is
+    // never what estimatedMinutesFor reads back while that step is active.
+    expect(estimatedMinutesFor({ ...task, estimatedMinutes: 999 })).toBe(5);
   });
 });

@@ -1374,12 +1374,15 @@ export interface Task {
 
   // Time tracking — measure how long a task actually takes
   timerStartedAt: string | null; // ISO timestamp while a live timer runs; null when stopped
-  // Measured duration, set by the stopwatch; null = never timed. Always equal
-  // to estimatedMinutes once set — timing a task *is* how its estimate gets
-  // corrected (see applyMeasuredTime), so this is not a second opinion about
-  // how long the task takes. Its only remaining job is the "Timed" label on
-  // the expanded task row and in the Logbook, which says the number was
-  // measured rather than guessed.
+  // Measured duration; null = never timed. Set by the stopwatch, or offered
+  // from a focus session's own Done tap (FocusSessionSheet, gated by
+  // focusMeasuredMinutes/measuredTimeAppliesTo so it only fires on a clock
+  // reading that actually means something). Always equal to estimatedMinutes
+  // once set — timing a task *is* how its estimate gets corrected (see
+  // applyMeasuredTime), so this is not a second opinion about how long the
+  // task takes. Its only remaining job is the "Timed" label on the expanded
+  // task row and in the Logbook, which says the number was measured rather
+  // than guessed.
   actualMinutes: number | null;
 
   // Timed tasks ("play violin for 15 minutes") — a duration the task counts

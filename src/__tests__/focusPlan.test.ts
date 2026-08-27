@@ -3,6 +3,7 @@ import {
   advanceFocusSession,
   buildFocusPlan,
   currentFocusStep,
+  focusMeasuredMinutes,
   focusPlanTotals,
   focusProjectedEnd,
   focusRemainingMinutes,
@@ -324,6 +325,38 @@ describe('reading a session against the clock', () => {
   it('lists a task’s stretches that are still ahead', () => {
     const s = session([work('a', 20, 1, 2), rest(5), work('a', 20, 2, 2)], { stepIndex: 1 });
     expect(upcomingStepsForTask(s, 'a')).toEqual([work('a', 20, 2, 2)]);
+  });
+});
+
+describe('focusMeasuredMinutes', () => {
+  const t0 = Date.parse('2026-08-22T09:00:00.000Z');
+
+  it('is null on a rest step', () => {
+    const s = session([rest(5)], { stepStartedAt: new Date(t0).toISOString() });
+    expect(focusMeasuredMinutes(s, t0 + 300_000)).toBeNull();
+  });
+
+  it('is null on a split task, which the session has no way to measure in full', () => {
+    const s = session([work('a', 20, 1, 2)], { stepStartedAt: new Date(t0).toISOString() });
+    expect(focusMeasuredMinutes(s, t0 + 1_200_000)).toBeNull();
+  });
+
+  it('rounds the elapsed time on a single-stretch task', () => {
+    const s = session([work('a', 25)], { stepStartedAt: new Date(t0).toISOString() });
+    expect(focusMeasuredMinutes(s, t0 + 42 * 60_000)).toBe(42);
+  });
+
+  it('counts banked time from a pause on top of the segment in flight', () => {
+    const s = session([work('a', 25)], {
+      stepStartedAt: new Date(t0).toISOString(),
+      stepElapsedSeconds: 10 * 60,
+    });
+    expect(focusMeasuredMinutes(s, t0 + 5 * 60_000)).toBe(15);
+  });
+
+  it('floors at one minute rather than reporting zero', () => {
+    const s = session([work('a', 25)], { stepStartedAt: new Date(t0).toISOString() });
+    expect(focusMeasuredMinutes(s, t0 + 10_000)).toBe(1);
   });
 });
 

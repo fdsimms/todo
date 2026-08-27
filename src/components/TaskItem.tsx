@@ -2491,12 +2491,13 @@ export const TaskItem = React.memo(function TaskItem({
               </View>
             )}
 
-            {/* The stopwatch is the only writer of `actualMinutes`, so this
-                readout is also the only place a mistimed run can be put right
-                — stop it ten minutes late and the number is wrong for good
-                otherwise, estimate included (`applyMeasuredTime`). Editing in
-                place rather than back in the editor because this is where you
-                are when you notice. */}
+            {/* The stopwatch and a focus session's Done tap are the only
+                writers of `actualMinutes`, so this readout is also the only
+                place a mistimed run can be put right — stop it ten minutes
+                late and the number is wrong for good otherwise, estimate
+                included (`applyMeasuredTime`). Editing in place rather than
+                back in the editor because this is where you are when you
+                notice. */}
             {task.actualMinutes != null && (
               <View style={[
                 styles.recurrenceRow,

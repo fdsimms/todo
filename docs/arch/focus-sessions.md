@@ -280,6 +280,42 @@ in the row being there, and going quiet when it isn't. **Both numbers, not
 one** — they only coincide as the day's span closes, and "how many before this
 goes quiet" is the question someone mid-session is actually asking.
 
+## Correcting an estimate from what it actually took
+
+A session's Done tap can offer to update the task's estimate to the clock
+reading for the step just finished (`focusMeasuredMinutes` in
+`focusPlan.ts`, wired in `FocusSessionSheet.handleDone`). It reuses
+`applyMeasuredTime`/`useTaskStore.setMeasuredTime` — the same mechanism the
+standalone stopwatch writes through — so the corrected number gets the same
+"Timed" label on the row and in the Logbook, and the same in-place correction
+affordance, regardless of which one measured it.
+
+Three gates, and each exists because the naive version is wrong in a specific
+way:
+
+- **Offered only from this Done tap, never from `syncWithTasks`.** A task
+  ticked off from the Today list while the session runs behind it is caught
+  there, but the session's clock reading has no relationship to when that
+  work actually happened — the task could have been finished long before the
+  step's clock says, or well after. Only the in-the-moment tap is a stand-in
+  for a stopwatch; the background sync path never offers this.
+- **Only a task worked in a single stretch (`step.partCount === 1`).** The
+  session doesn't keep what a split task's earlier stretches cost — see "The
+  plan is stored, not re-derived" above and the "not a timesheet" note in
+  `focusPlan.ts` — so a step that's part 2 of 3 can only speak for a third of
+  the task. `focusMeasuredMinutes` returns null rather than a number that
+  quietly undercounts.
+- **Skipped entirely mid-chain when the active step carries its own
+  estimate** (`measuredTimeAppliesTo` in `effort.ts`). `estimatedMinutesFor`
+  reads a chain step's own estimate ahead of the task-level fields
+  `applyMeasuredTime` writes, so applying it there would change nothing a
+  reader ever sees — a silent no-op is worse than not offering at all.
+
+No threshold beyond "the numbers differ": same stance `applyMeasuredTime`
+itself takes on a typed estimate — a measurement is better evidence than a
+guess, so there's nothing to protect the old number from. A task with no
+estimate at all is offered too, worded as "Save" rather than "Update".
+
 ## Why the store takes tasks as arguments
 
 `useTaskStore.initialize` fans out to `useFocusStore.initialize`, so an import
