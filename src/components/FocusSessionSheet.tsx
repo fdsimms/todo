@@ -6,7 +6,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { estimatedMinutesFor, formatDuration, formatStopwatch, measuredTimeAppliesTo } from '../utils/effort';
+import { estimatedMinutesFor, formatDuration, formatStopwatch, measuredTimeAppliesTo, measuredTimeDiffersEnough } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
@@ -238,7 +238,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     const measured = focusMeasuredMinutes(session, now);
     if (measured != null && measuredTimeAppliesTo(currentTask)) {
       const currentEstimate = estimatedMinutesFor(currentTask);
-      if (currentEstimate !== measured) {
+      if (measuredTimeDiffersEnough(currentEstimate, measured)) {
         haptics.tap();
         Alert.alert(
           currentEstimate == null ? 'Save time estimate?' : 'Update time estimate?',

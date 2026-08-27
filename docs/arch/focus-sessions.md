@@ -311,10 +311,16 @@ way:
   `applyMeasuredTime` writes, so applying it there would change nothing a
   reader ever sees — a silent no-op is worse than not offering at all.
 
-No threshold beyond "the numbers differ": same stance `applyMeasuredTime`
-itself takes on a typed estimate — a measurement is better evidence than a
-guess, so there's nothing to protect the old number from. A task with no
-estimate at all is offered too, worded as "Save" rather than "Update".
+- **A real miss, not any miss** (`measuredTimeDiffersEnough` in `effort.ts`).
+  Unlike `applyMeasuredTime` itself — which has no threshold, because a
+  deliberate stopwatch run is already a decision to measure — this reading is
+  a byproduct of running the plan, so it needs to actually disagree before
+  it's worth a tap: the greater of 5 minutes or 25% of the existing estimate.
+  A 5-minute task running 6 is normal slop, not a correction; a 4-hour
+  estimate running 20 minutes over is the same story at a different scale.
+  A task with no estimate at all skips the threshold — there's nothing to
+  weigh the reading against — and is offered worded as "Save" rather than
+  "Update".
 
 ## Why the store takes tasks as arguments
 

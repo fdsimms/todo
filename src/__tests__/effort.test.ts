@@ -1,5 +1,6 @@
 import { EFFORT_MINUTES, effortToMinutes, minutesToEffort, formatClockDuration,
-  formatDuration, formatStopwatch, applyMeasuredTime, measuredTimeAppliesTo, sumEstimatedMinutes, estimatedMinutesFor } from '../utils/effort';
+  formatDuration, formatStopwatch, applyMeasuredTime, measuredTimeAppliesTo, measuredTimeDiffersEnough,
+  sumEstimatedMinutes, estimatedMinutesFor } from '../utils/effort';
 import type { ChainItem, Effort } from '../types';
 
 const step = (title: string, estimatedMinutes: number | null = null): ChainItem =>
@@ -252,5 +253,38 @@ describe('measuredTimeAppliesTo', () => {
     // Proof, not just assertion: the task-level field this would write is
     // never what estimatedMinutesFor reads back while that step is active.
     expect(estimatedMinutesFor({ ...task, estimatedMinutes: 999 })).toBe(5);
+  });
+});
+
+describe('measuredTimeDiffersEnough', () => {
+  it('is always true against no estimate — there is nothing to weigh it against', () => {
+    expect(measuredTimeDiffersEnough(null, 1)).toBe(true);
+    expect(measuredTimeDiffersEnough(null, 500)).toBe(true);
+  });
+
+  it('shrugs off a small miss on a short task — the minute floor, not the ratio, governs', () => {
+    expect(measuredTimeDiffersEnough(5, 6)).toBe(false); // 1 min / 20%, under the 5-min floor
+    expect(measuredTimeDiffersEnough(5, 9)).toBe(false); // 4 min, still under the floor
+    expect(measuredTimeDiffersEnough(5, 10)).toBe(true); // 5 min clears the floor
+  });
+
+  it('shrugs off a small percentage on a long task — the ratio, not the floor, governs', () => {
+    expect(measuredTimeDiffersEnough(240, 260)).toBe(false); // 20 min / 8%, under 25% of 240 (60)
+    expect(measuredTimeDiffersEnough(240, 295)).toBe(false); // 55 min, still under 60
+    expect(measuredTimeDiffersEnough(240, 300)).toBe(true); // 60 min clears 25%
+  });
+
+  it('catches a real miss in the middle range', () => {
+    expect(measuredTimeDiffersEnough(30, 35)).toBe(false); // 5 min < max(5, 7.5)
+    expect(measuredTimeDiffersEnough(30, 45)).toBe(true);  // 15 min clears both
+  });
+
+  it('is symmetric — running short counts as much as running long', () => {
+    expect(measuredTimeDiffersEnough(30, 25)).toBe(false);
+    expect(measuredTimeDiffersEnough(30, 10)).toBe(true);
+  });
+
+  it('treats an exact match as nothing to offer', () => {
+    expect(measuredTimeDiffersEnough(30, 30)).toBe(false);
   });
 });
