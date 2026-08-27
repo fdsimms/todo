@@ -776,14 +776,25 @@ wheels (month, day, year) answer the question directly instead of routing it
 through a control built to answer a different one.
 
 **The year is a separate decision from the month and day, gated by its own
-"Include year" toggle, off by default.** The native spinner always shows some
-concrete year — there is no blank wheel position — so without an explicit
-toggle there would be no way to tell "this person's year is 1992" apart from
-"the wheel happened to be sitting on 1992". Off by default because a
-year-less birthday is the common case (people genuinely don't know it), and
-this is the one field on the sheet where silence is the honest default, not a
-gap. Turning it off doesn't clear a year already on file until Save; turning
-it on takes whatever year the wheel is currently sitting on.
+"Include year" toggle.** The native spinner always shows some concrete year —
+there is no blank wheel position — so without an explicit toggle there would
+be no way to tell "this person's year is 1992" apart from "the wheel happened
+to be sitting on 1992". On by default for a new birthday, since capturing the
+year is the common intent and a toggle sitting below the wheel is easy to
+miss on the way to Save; reopening an existing birthday reflects whatever was
+actually saved instead (on if a year is on file, off if it isn't), so a
+year-less entry someone chose deliberately doesn't grow a year just from
+being reopened. Turning it off doesn't clear a year already on file until
+Save; turning it on takes whatever year the wheel is currently sitting on.
+
+**Save also appears as a full-width button at the bottom, beside Clear.**
+The header keeps its own `SheetHeaderButton` Save alongside Cancel, matching
+every other sheet in the app, but both buttons at the bottom of this sheet
+used to look identical in weight — a small header Save and a big red Clear
+below the wheel — and Clear reads at a glance as "the button here" simply by
+being the only full-width one. The bottom Save button gives Save equal visual
+weight to Clear so the two aren't distinguishable only by remembering which
+one is small and blue versus big and red.
 
 **`Person.birthYear` is never read to compute anything.** It existed once
 before, solely to back a "Turning 34" chip, and once that display was removed

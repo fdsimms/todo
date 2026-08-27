@@ -1253,6 +1253,14 @@ export function BackfillScreen() {
             <View style={styles.actionRow}>
               <PressableScale
                 style={styles.skipButton}
+                onPress={skip}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this task for now"
+              >
+                <Text style={styles.skipText}>Skip for now</Text>
+              </PressableScale>
+              <PressableScale
+                style={styles.skipButton}
                 onPress={dismiss}
                 accessibilityRole="button"
                 accessibilityLabel={`${dismissLabel} for this task`}
@@ -1365,6 +1373,14 @@ export function BackfillScreen() {
             </PressableScale>
 
             <View style={styles.actionRow}>
+              <PressableScale
+                style={styles.skipButton}
+                onPress={skip}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this category for now"
+              >
+                <Text style={styles.skipText}>Skip for now</Text>
+              </PressableScale>
               <PressableScale
                 style={styles.skipButton}
                 onPress={dismiss}
@@ -1617,6 +1633,14 @@ export function BackfillScreen() {
             )}
 
             <View style={styles.actionRow}>
+              <PressableScale
+                style={styles.skipButton}
+                onPress={skip}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this person for now"
+              >
+                <Text style={styles.skipText}>Skip for now</Text>
+              </PressableScale>
               <PressableScale
                 style={styles.skipButton}
                 onPress={dismiss}
@@ -1888,6 +1912,14 @@ export function BackfillScreen() {
           )}
 
           <View style={styles.actionRow}>
+            <PressableScale
+              style={styles.skipButton}
+              onPress={skip}
+              accessibilityRole="button"
+              accessibilityLabel="Skip this project for now"
+            >
+              <Text style={styles.skipText}>Skip for now</Text>
+            </PressableScale>
             <PressableScale
               style={styles.skipButton}
               onPress={dismiss}
