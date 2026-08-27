@@ -294,7 +294,7 @@ export interface CatalogMatchSummary {
 }
 
 /**
- * The counts a header line reads out ("12 ingredients · 9 in your groceries").
+ * The counts a header line reads out ("12 ingredients · 9 in your grocery catalog").
  *
  * Separate from the matches themselves because the summary is what makes the
  * bridge visible *without* a glyph on every row: the per-line badge is reserved

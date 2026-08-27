@@ -428,12 +428,12 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setName(catalogSuggestion); }}
             accessibilityRole="button"
-            accessibilityLabel={`Use "${catalogSuggestion}" instead, it's already in your catalog`}
+            accessibilityLabel={`Use "${catalogSuggestion}" instead, it's already in your grocery catalog`}
           >
             <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.accent} />
             <View style={styles.suggestionBody}>
               <Text style={styles.suggestionTitle}>Did you mean “{catalogSuggestion}”?</Text>
-              <Text style={styles.suggestionDetail}>Already in your catalog.</Text>
+              <Text style={styles.suggestionDetail}>Already in your grocery catalog.</Text>
             </View>
           </TouchableOpacity>
         )}
@@ -469,7 +469,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           accessibilityLabel={
             catalogItem
               ? `Choose a different existing item for ${catalogItem.name}`
-              : 'Link this line to an existing item in your groceries'
+              : 'Link this line to an existing item in your grocery catalog'
           }
         />
         {linkOpen && (
@@ -536,7 +536,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       {/* The other half of this line's identity. See the component note: the
           bridge has always existed, this is the first place it's visible. */}
       <View style={styles.sectionCard}>
-        <Text style={styles.groupLabel}>In your groceries</Text>
+        <Text style={styles.groupLabel}>In your grocery catalog</Text>
         {catalogItem ? (
           <TouchableOpacity
             style={styles.catalogRow}
@@ -558,15 +558,15 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
         ) : (
           <>
             <Text style={styles.hint}>
-              Not in your groceries yet. Add it to give it a brand, a store, a price or what
-              you'd accept instead. This doesn't put it on your shopping list.
+              Not in your grocery catalog yet. Add it to give it a brand, a store, a price
+              or what you'd accept instead. This doesn't put it on your shopping list.
             </Text>
             <InlineAction
-              label="Add to groceries"
+              label="Add to catalog"
               icon="basket-outline"
               onPress={addIngredientToCatalog}
               style={styles.addToCatalogButton}
-              accessibilityLabel={`Add ${name.trim() || ingredient.name} to your groceries`}
+              accessibilityLabel={`Add ${name.trim() || ingredient.name} to your grocery catalog`}
             />
           </>
         )}
@@ -666,12 +666,12 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             beside them made a grid with no ceiling out of a grid that had one,
             and buried the siblings behind an "N more" counting hundreds. */}
         <InlineAction
-          label="Find in your groceries"
+          label="Find in your catalog"
           icon="basket-outline"
           variant="neutral"
           style={styles.linkAction}
           onPress={() => { haptics.tap(); animateLayout(); setAltLinkOpen(v => !v); }}
-          accessibilityLabel="Find an alternative in your groceries"
+          accessibilityLabel="Find an alternative in your grocery catalog"
         />
         {altLinkOpen && (
           <CatalogLinkPicker
@@ -824,8 +824,8 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
         />
         <Text style={styles.hint}>
           Only used the next time this lands on your grocery list, and only if you haven’t
-          already told the app where it goes. If it’s already in your groceries with an aisle
-          set, this doesn’t change it.
+          already told the app where it goes. If it’s already in your grocery catalog with
+          an aisle set, this doesn’t change it.
         </Text>
       </View>
 

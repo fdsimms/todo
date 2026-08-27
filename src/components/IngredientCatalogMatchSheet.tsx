@@ -114,20 +114,20 @@ export function IngredientCatalogMatchSheet({
       header={
         <>
           <SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />
-          <Text style={styles.headerTitle}>In your groceries</Text>
+          <Text style={styles.headerTitle}>In your grocery catalog</Text>
           <View style={styles.headerSpacer} />
         </>
       }
     >
       <Text style={styles.count}>
-        {summary.linked} of {summary.total} already in your groceries.
+        {summary.linked} of {summary.total} already in your grocery catalog.
       </Text>
 
       {suggested.length === 0 && unknown.length === 0 ? (
         <EmptyState
           icon="basket-outline"
           title="Every ingredient is linked"
-          subtitle="Each line here matches an item in your groceries, so a brand, a store or a substitute set on either one reaches the other."
+          subtitle="Each line here matches an item in your grocery catalog, so a brand, a store or a substitute set on either one reaches the other."
         />
       ) : null}
 
@@ -149,7 +149,7 @@ export function IngredientCatalogMatchSheet({
                 onPress={() => accept(ingredient, match)}
                 accessibilityRole="button"
                 accessibilityLabel={`Rename ${ingredient.name} to ${match.suggestedName}`}
-                accessibilityHint="Double tap to link this line to that item in your groceries"
+                accessibilityHint="Double tap to link this line to that item in your grocery catalog"
               >
                 <Text style={styles.linkButtonText}>Link</Text>
               </TouchableOpacity>
@@ -165,15 +165,15 @@ export function IngredientCatalogMatchSheet({
             </View>
           ))}
           <Text style={styles.hint}>
-            Linking renames the line to match the item in your groceries. It doesn't add
-            anything to your shopping list.
+            Linking renames the line to match the item in your grocery catalog. It
+            doesn't add anything to your shopping list.
           </Text>
         </View>
       )}
 
       {unknown.length > 0 && (
         <View style={styles.sectionCard}>
-          <Text style={styles.groupLabel}>Not in your groceries</Text>
+          <Text style={styles.groupLabel}>Not in your catalog</Text>
           {unknown.map(({ ingredient }) => (
             <TouchableOpacity
               key={ingredient.id}
@@ -181,16 +181,17 @@ export function IngredientCatalogMatchSheet({
               activeOpacity={interaction.activeOpacity}
               onPress={() => { haptics.tap(); onEditIngredient(ingredient); }}
               accessibilityRole="button"
-              accessibilityLabel={`${ingredient.name}, not in your groceries`}
-              accessibilityHint="Double tap to search your groceries for it, or add it"
+              accessibilityLabel={`${ingredient.name}, not in your grocery catalog`}
+              accessibilityHint="Double tap to search your grocery catalog for it, or add it"
             >
               <Text style={styles.rowName} numberOfLines={1}>{ingredient.name}</Text>
               <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
             </TouchableOpacity>
           ))}
           <Text style={styles.hint}>
-            Nothing is wrong with these. Most ingredients are bought once and never need a
-            row of their own.
+            These aren't in your grocery catalog. Adding one lets you set a brand, a
+            store, a price or a substitute for it. Most ingredients are bought once and
+            don't need that.
           </Text>
         </View>
       )}
