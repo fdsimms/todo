@@ -16,7 +16,7 @@ import { font, fontWeight, type Colors } from './index';
  * `value: { ...disclosureValue(colors), flexShrink: 1 }`.
  */
 export const disclosureValue = (colors: Colors): TextStyle => ({
-  color: colors.accent,
+  color: colors.accentText,
   fontSize: font.sm,
   fontWeight: fontWeight.medium,
 });

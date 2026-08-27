@@ -240,7 +240,7 @@ const makeStyles = (colors: Colors, isDark: boolean, surface: 'page' | 'card') =
   segmentDisabled: { opacity: 0.4 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   segmentText: {
-    color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium,
+    color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium,
     flexShrink: 1,
   },
   segmentTextSelected: { color: colors.text, fontWeight: fontWeight.semibold },

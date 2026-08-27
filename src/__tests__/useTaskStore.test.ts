@@ -198,6 +198,8 @@ jest.mock('../store/useSettingsStore', () => ({
 jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn().mockResolvedValue(undefined),
   cancelTaskReminder: jest.fn().mockResolvedValue(undefined),
+  scheduleQuotaNudges: jest.fn().mockResolvedValue(undefined),
+  cancelQuotaNudges: jest.fn().mockResolvedValue(undefined),
   rescheduleAllReminders: jest.fn().mockResolvedValue(undefined),
   scheduleTimerAlarm: jest.fn().mockResolvedValue(undefined),
   cancelTimerAlarm: jest.fn().mockResolvedValue(undefined),
@@ -282,6 +284,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   targetUnit: null,
   progressCount: 0,
   allowOvershoot: false,
+  quotaIntervalMinutes: null,
+  quotaReminders: false,
+  quotaStartedAt: null,
   tags: [],
   category: null,
   sortOrder: 1,
@@ -9641,6 +9646,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9658,6 +9666,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 5,
           streakCount: 3,
           streakDate: new Date(2025, 5, 9).toISOString(),
@@ -9679,6 +9690,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 13, // past the target of 8
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9694,6 +9708,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 0,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9723,6 +9740,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9734,6 +9754,241 @@ describe('quota tasks', () => {
       const next = tasks.find(t => t.id !== 'water')!;
       expect(next.progressCount).toBe(0);
       expect(next.completed).toBe(false);
+    });
+  });
+
+  describe('logging past the target', () => {
+    it('keeps counting on an allowOvershoot task instead of completing it', () => {
+      // isQuotaOnPace deliberately keeps such a task on Today past its target
+      // so the extra can be logged; without the guard in logQuotaUnit the very
+      // next tap completed it, undoing the feature one line from where it was
+      // declared.
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7, allowOvershoot: true })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(8);
+      expect(useTaskStore.getState().tasks).toHaveLength(1); // no successor spawned
+    });
+
+    it('keeps counting past the target on an allowOvershoot task', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 8, allowOvershoot: true })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(9);
+    });
+
+    it('keeps counting on an interval quota, whose target is arithmetic', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 7, quotaIntervalMinutes: 20 })],
+      });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(8);
+    });
+  });
+
+  describe('interval quotas', () => {
+    const run = (overrides: Partial<Task> = {}) =>
+      quota({
+        id: 'eyes',
+        title: 'Look 20 feet away',
+        quotaIntervalMinutes: 20,
+        quotaReminders: true,
+        windowStart: '09:00',
+        windowEnd: '17:00',
+        targetCount: 24,
+        ...overrides,
+      });
+
+    describe('derived target count', () => {
+      it('re-derives the count when the window moves', () => {
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().updateTask('eyes', { windowEnd: '13:00' });
+
+        // Four hours at 20 minutes is 12, not the 24 an eight-hour day held.
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(12);
+      });
+
+      it('re-derives the count when the interval changes', () => {
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().updateTask('eyes', { quotaIntervalMinutes: 30 });
+
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(16);
+      });
+
+      it('leaves a plain quota\'s count alone', () => {
+        useTaskStore.setState({ tasks: [quota({ windowStart: '09:00', windowEnd: '17:00' })] });
+        useTaskStore.getState().updateTask('water', { windowEnd: '13:00' });
+
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(8);
+      });
+
+      it('lets a patch naming targetCount win, so a snapshot undo is faithful', () => {
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().updateTask('eyes', { windowEnd: '13:00', targetCount: 24 });
+
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(24);
+      });
+    });
+
+    describe('startQuotaRun', () => {
+      it('stamps the run and keeps the interval, losing the count', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 10, 30, 0));
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().startQuotaRun('eyes');
+
+        const task = useTaskStore.getState().tasks[0];
+        expect(task.quotaStartedAt).toBe(new Date(2025, 5, 10, 10, 30, 0).toISOString());
+        // 10:30–17:00 is 6.5 hours: 19 breaks 20 minutes apart, not 24 squeezed in.
+        expect(task.targetCount).toBe(19);
+      });
+
+      it('is undoable back to the count it had', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 10, 30, 0));
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().startQuotaRun('eyes');
+        useTaskStore.getState().undoLastAction();
+
+        const task = useTaskStore.getState().tasks[0];
+        expect(task.quotaStartedAt).toBeNull();
+        expect(task.targetCount).toBe(24);
+      });
+
+      it('ignores a completed task', () => {
+        useTaskStore.setState({ tasks: [run({ completed: true })] });
+        useTaskStore.getState().startQuotaRun('eyes');
+
+        expect(useTaskStore.getState().tasks[0].quotaStartedAt).toBeNull();
+      });
+    });
+
+    describe('sweepFinishedQuotaRuns', () => {
+      it('closes the run when its window shuts, at whatever count', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({ tasks: [run({ progressCount: 18, streakCount: 4 })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.completed).toBe(true);
+        // The record of the day, not clamped up to the target.
+        expect(closed.progressCount).toBe(18);
+      });
+
+      it('closes a run nobody tapped at all, rather than leaving it overdue', () => {
+        // The case sweepOvershootQuotas deliberately skips: there, an untouched
+        // tally means an abandoned day. Here the nudges fired regardless, so
+        // the run happened — and leaving it would stack one overdue row per day
+        // on the routine least likely to be tapped.
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({ tasks: [run({ progressCount: 0 })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.completed).toBe(true);
+        expect(closed.progressCount).toBe(0);
+      });
+
+      it('keeps the streak running on a short day', () => {
+        // The whole reason this doesn't go through rolloverQuotas, which forces
+        // streakCount to 0: falling "short" of arithmetic is not a miss.
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({
+          tasks: [run({
+            progressCount: 3,
+            streakCount: 6,
+            streakDate: new Date(2025, 5, 9, 0, 0, 0).toISOString(),
+          })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.streakCount).toBe(7);
+      });
+
+      it('leaves a run still under way alone', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 14, 0, 0));
+        useTaskStore.setState({ tasks: [run({ progressCount: 9 })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+      });
+
+      it('honours a hand-started run\'s later start but the window\'s own end', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 16, 30, 0));
+        useTaskStore.setState({
+          tasks: [run({ quotaStartedAt: new Date(2025, 5, 10, 10, 30, 0).toISOString() })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        // Starting late moved the start, not the finish — 16:30 is still inside it.
+        expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+      });
+
+      it('closes a run left over from an earlier day whatever the clock says now', () => {
+        jest.setSystemTime(new Date(2025, 5, 11, 9, 30, 0));
+        useTaskStore.setState({
+          tasks: [run({ dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(), progressCount: 5 })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.completed).toBe(true);
+        expect(closed.progressCount).toBe(5);
+      });
+
+      it('leaves a plain quota to rolloverQuotas', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({ tasks: [quota({ windowStart: '09:00', windowEnd: '17:00' })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+      });
+
+      it('spawns tomorrow\'s run from the window again', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({
+          tasks: [run({
+            progressCount: 12,
+            quotaStartedAt: new Date(2025, 5, 10, 10, 30, 0).toISOString(),
+          })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const next = useTaskStore.getState().tasks.find(t => t.id !== 'eyes')!;
+        expect(next.progressCount).toBe(0);
+        // A late start is a statement about one morning, not about the schedule.
+        expect(next.quotaStartedAt).toBeNull();
+      });
+    });
+
+    it('is left alone by rolloverQuotas, which would break its streak', () => {
+      jest.setSystemTime(new Date(2025, 5, 11, 9, 0, 0));
+      useTaskStore.setState({
+        tasks: [run({ dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(), progressCount: 3 })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
+    it('is left alone by sweepOvershootQuotas even when it also allows overshoot', () => {
+      jest.setSystemTime(new Date(2025, 5, 11, 9, 0, 0));
+      useTaskStore.setState({
+        tasks: [run({
+          dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(),
+          progressCount: 3,
+          allowOvershoot: true,
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
     });
   });
 });

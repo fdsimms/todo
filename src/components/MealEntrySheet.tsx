@@ -615,6 +615,7 @@ export function MealEntrySheet({
           <SheetActionRow
             icon="trash-outline"
             color={colors.red}
+            destructive
             label="Remove from plan"
             onPress={() => { haptics.warning(); dismiss(onRemove); }}
             accessibilityLabel="Take this off the plan"
@@ -753,7 +754,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   dayChipTop: {
-    color: colors.textTertiary,
+    color: colors.text,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
   },
@@ -772,7 +773,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent,
   },
   chipText: {
-    color: colors.textSecondary,
+    color: colors.text,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },

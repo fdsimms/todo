@@ -538,7 +538,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary, alignItems: 'center',
   },
   segmentPillActive: { backgroundColor: colors.accent },
-  segmentPillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  segmentPillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   segmentPillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   applyRow: { alignItems: 'flex-start', marginTop: spacing.sm, paddingHorizontal: spacing.xs },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md },
@@ -549,7 +549,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary, alignItems: 'center', justifyContent: 'center',
   },
   dayPillActive: { backgroundColor: colors.accent },
-  dayPillText: { color: colors.textSecondary, fontSize: font.xs, fontWeight: fontWeight.medium },
+  dayPillText: { color: colors.text, fontSize: font.xs, fontWeight: fontWeight.medium },
   dayPillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   timePillRow: { flexDirection: 'row', gap: spacing.sm },
   timePill: {
