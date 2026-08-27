@@ -114,6 +114,9 @@ import { SortableList } from '../components/SortableList';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { QuickSearchModal } from '../components/QuickSearchModal';
+import { EventImportSheet } from '../components/EventImportSheet';
+import type { ExtractedCalendarEvent } from '../services/aiSuggestions';
+import { draftFromExtractedEvent } from '../utils/calendarEventImport';
 import type { TaskKind } from '../utils/taskKinds';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
@@ -593,6 +596,11 @@ export function TodayScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
+  const [eventImportVisible, setEventImportVisible] = useState(false);
+  // Events still waiting to become a task, from an itinerary import that read
+  // more than one. Drained one at a time by the effect below, which opens the
+  // next as soon as the editor closes on the previous — see its own comment.
+  const [pendingEventImports, setPendingEventImports] = useState<ExtractedCalendarEvent[]>([]);
   const [pullingToSearch, setPullingToSearch] = useState(false);
   const [quickSearchVisible, setQuickSearchVisible] = useState(false);
   const [filterVisible, setFilterVisible] = useState(false);
@@ -1308,8 +1316,43 @@ export function TodayScreen() {
         setGroupEditorVisible(true);
         break;
       }
+      case 'import':
+        setEventImportVisible(true);
+        break;
     }
   };
+
+  // Opens the full editor pre-filled from the first event a photo or paste
+  // read, queuing any the rest for the draining effect below. Goes straight
+  // to the editor rather than quick add: quick add's seed can't carry notes
+  // or a location, and an imported event routinely has both (a phone number,
+  // an address) — see the design note on EventImportSheet.
+  const handleEventsImported = (events: ExtractedCalendarEvent[]) => {
+    const [first, ...rest] = events;
+    if (!first) return;
+    setPendingEventImports(rest);
+    setEditingTask(null);
+    setEditorInitialDraft(draftFromExtractedEvent(first));
+    setEditorVisible(true);
+  };
+
+  // Drains the queue an itinerary import left behind: as soon as the editor
+  // closes — saved or cancelled, either is "done with this one" — and there's
+  // still something waiting, open the next. Deliberately a separate effect
+  // rather than special-cased inside the editor's own onClose: that callback
+  // fires while `editorVisible` is still true, and flipping it false then true
+  // again in the same handler nets out to no change at all, so TaskEditor's
+  // own seeding effect (keyed on `[visible, task]`) would never see a reason
+  // to re-run and the second event would silently reuse the first one's draft.
+  // Watching the close land as its own render is what makes the reopen real.
+  useEffect(() => {
+    if (editorVisible || pendingEventImports.length === 0) return;
+    const [next, ...rest] = pendingEventImports;
+    setPendingEventImports(rest);
+    setEditingTask(null);
+    setEditorInitialDraft(draftFromExtractedEvent(next));
+    setEditorVisible(true);
+  }, [editorVisible, pendingEventImports]);
 
   // ==== the lists: store tasks narrowed to what this view mode shows ====
   const filtered = useMemo(() => {
@@ -3833,6 +3876,12 @@ export function TodayScreen() {
           template={applyTemplate}
           onClose={() => setApplyTemplate(null)}
           onApplied={tasks => { if (tasks[0]) openEditor(tasks[0]); }}
+        />
+
+        <EventImportSheet
+          visible={eventImportVisible}
+          onClose={() => setEventImportVisible(false)}
+          onImported={handleEventsImported}
         />
 
         <DeliverablePromptQueue {...queueProps} />

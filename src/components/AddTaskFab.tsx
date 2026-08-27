@@ -4,7 +4,7 @@ import { FabMenu, type FabDragHandlers, type FabMenuItem } from './Fab';
 import { addMenuItemShown } from '../utils/simpleMode';
 import { useSettingsStore } from '../store/useSettingsStore';
 
-export type AddTaskType = 'chain' | 'stack' | 'template' | 'task';
+export type AddTaskType = 'chain' | 'stack' | 'template' | 'import' | 'task';
 
 // Bottom-up, so plain "Task" — far and away the most common — lands closest
 // to the button. There's deliberately no "Recurring" entry: it created a plain
@@ -14,6 +14,7 @@ const ITEMS: FabMenuItem[] = [
   { key: 'chain', label: 'Chain', icon: 'git-commit' },
   { key: 'stack', label: 'Stack', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
+  { key: 'import', label: 'Import event', icon: 'scan-outline' },
   { key: 'task', label: 'Task', icon: 'checkbox' },
 ];
 

@@ -5,11 +5,11 @@
 
 export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
-  | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport';
+  | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
-  'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport',
+  'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -94,6 +94,12 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     kitchen: true,
     simple: true,
   },
+  {
+    id: 'calendarImport',
+    label: 'Import event from photo or text',
+    hint: 'Reads a title, date, time, and location out of a pasted confirmation or a photo of one',
+    simple: true,
+  },
 ];
 
 /**
@@ -135,5 +141,15 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // costs is a couple of cents a trip. Still per-feature switchable, so
     // anyone who disagrees can turn it down without touching the rest.
     receiptImport: { enabled: true, model: 'claude-sonnet-5' },
+    // Off by default, unlike every other feature here: this is the one AI
+    // feature that can send a photo of something that isn't the user's own
+    // task data by nature — a doctor's appointment confirmation, someone
+    // else's travel itinerary — so turning it on is an opt-in rather than an
+    // opt-out, the same call productLookupEnabled makes for the one other
+    // feature in the app that reaches a third party on data the user didn't
+    // type themselves. Sonnet for the same reason receiptImport picked it
+    // over the default: a misread date or address is expensive to have
+    // wrong, and the cost difference per import is negligible.
+    calendarImport: { enabled: false, model: 'claude-sonnet-5' },
   };
 }

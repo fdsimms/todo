@@ -18,7 +18,7 @@ describe('AI features', () => {
 describe('aiFeaturesFor', () => {
   it('drops the kitchen features when the area is off', () => {
     expect(aiFeaturesFor(false).map(f => f.id))
-      .toEqual(['taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions']);
+      .toEqual(['taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'calendarImport']);
   });
 
   it('keeps them all when it is on', () => {
@@ -29,6 +29,7 @@ describe('aiFeaturesFor', () => {
     const on = aiFeaturesFor(true, true).map(f => f.id);
     expect(on).not.toContain('substitutes');
     expect(on).not.toContain('receiptImport');
+    expect(on).not.toContain('calendarImport');
     // Nothing else goes: recipe import and meal ideas still have a screen.
     expect(on).toContain('recipeExtraction');
     expect(on).toContain('mealIdeas');

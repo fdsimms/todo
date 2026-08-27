@@ -1089,6 +1089,16 @@ export interface Task {
   // isn't a `tel:` linkUrl.
   emailAddress: string | null;
 
+  // A physical place the task is about — an appointment's address, a venue.
+  // Free text, not geocoded: nothing in the app plots it or opens it in Maps
+  // (that's a real future reader, not a reason to hold this field back), so
+  // it's stored exactly as read rather than validated into a shape a mapping
+  // API would want. Distinct from linkUrl and phoneNumber for the reason
+  // those two are distinct from each other — a different kind of task action
+  // gets its own field rather than overloading one that already has a
+  // meaning.
+  location: string | null;
+
   // "Waiting on" — the id of another task that must be done before this one
   // becomes actionable (e.g. "return the router" waiting on "cancel the
   // internet plan"). The fifth reason a task can be hidden, and the only one

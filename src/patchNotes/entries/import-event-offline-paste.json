@@ -1,0 +1,4 @@
+{
+  "message": "Import event now reads a pasted confirmation without an API key, picking out the date, time, and location on its own. It reads one event at a time and says so when the text mentions others. Photos, and whole itineraries, still need Claude.",
+  "date": "2026-08-27"
+}

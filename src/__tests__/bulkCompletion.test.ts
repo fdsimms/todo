@@ -42,7 +42,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   supplyLeadDays: null, supplyDeclinedAtCount: null, supplyGroceryItemId: null,
   tags: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0, priority: 0, effort: 0,
   estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null, linkUrl: null,
-  phoneNumber: null, emailAddress: null, blockedById: null, waitingOnPersonId: null,
+  phoneNumber: null, emailAddress: null, location: null, blockedById: null, waitingOnPersonId: null,
   deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
   deadlineOnCalendar: false, calendarEventId: null, timeBlockEventId: null,
   pendingImport: null, backfillDismissedFields: [],

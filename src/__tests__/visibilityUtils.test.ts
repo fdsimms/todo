@@ -175,7 +175,7 @@ const baseTask: Task = {
   archivedAt: null,
   linkUrl: null,
   phoneNumber: null,
-  emailAddress: null,
+  emailAddress: null, location: null,
   blockedById: null,
   waitingOnPersonId: null,
   deliverableKind: null,

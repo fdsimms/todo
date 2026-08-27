@@ -149,6 +149,8 @@ const DURATION_UNIT_SEGMENTS = [
 /** Pre-filled values carried over from the quick add modal when creating a new task. */
 export interface TaskDraft {
   title: string;
+  /** Carried over when the draft comes from something that already read a body of text — an imported event's phone number or prep note, for instance. */
+  notes?: string;
   priority: Priority;
   effort: Effort;
   estimatedMinutes: number | null;
@@ -168,6 +170,8 @@ export interface TaskDraft {
   recurrenceFromCompletion: boolean;
   recurrenceEndDate: Date | null;
   recurrenceCount: number | null;
+  /** Carried over when the draft already names a specific time — an imported event's appointment time, for instance. */
+  reminderTime?: Date | null;
   /** Preselects the Chain toggle when opening a brand-new task. */
   chainEnabled?: boolean;
   /** Steps already built in quick add, so "More details" doesn't drop them. */
@@ -179,6 +183,7 @@ export interface TaskDraft {
   linkUrl?: string | null;
   phoneNumber?: string | null;
   emailAddress?: string | null;
+  location?: string | null;
   targetCount?: number | null;
   targetUnit?: string | null;
   allowOvershoot?: boolean;
@@ -454,6 +459,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [emailAddress, setEmailAddress] = useState<string | null>(null);
   const [showEmailField, setShowEmailField] = useState(false);
   const [emailText, setEmailText] = useState('');
+  const [location, setLocation] = useState<string | null>(null);
+  const [showLocationField, setShowLocationField] = useState(false);
+  const [locationText, setLocationText] = useState('');
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
   const [showStreak, setShowStreak] = useState(false);
@@ -630,6 +638,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setLinkUrl(task.linkUrl ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
+      setLocation(task.location ?? null);
       setBlockedById(task.blockedById ?? null);
       setWaitingOnPersonId(task.waitingOnPersonId ?? null);
       setBlocksIds(blockedTasksOf(task.id).map(t => t.id));
@@ -638,9 +647,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setExtraTaskTitle(task.extraTaskTitle ?? '');
       setExtraTaskDraft(task.extraTaskDraft ?? null);
     } else {
-      setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
+      setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -659,6 +668,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setLinkUrl(initialDraft?.linkUrl ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
+      setLocation(initialDraft?.location ?? null);
       setBlockedById(null);
       setWaitingOnPersonId(null);
       setBlocksIds([]);
@@ -672,6 +682,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setShowLinkPicker(false); setCustomLinkText('');
     setShowPhoneField(false); setPhoneText(task?.phoneNumber ?? initialDraft?.phoneNumber ?? '');
     setShowEmailField(false); setEmailText(task?.emailAddress ?? initialDraft?.emailAddress ?? '');
+    setShowLocationField(false); setLocationText(task?.location ?? initialDraft?.location ?? '');
     setPickerMode('none'); setShowWhenPicker(false); setShowDeadlinePicker(false); setShowEndDatePicker(false); setPickerDate(new Date()); setWindowPickerMode('none'); setNewTag(''); setAddingTag(false);
     setNewSubtaskTitle(''); setPendingSubtaskIndex(null); setDraftSubtasks([]);
     setNewChainItemTitle(''); setAddingChainItem(false);
@@ -681,7 +692,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setStreakEditorOpen(false); setStreakDraft(task?.streakCount ?? 0);
     initialStateRef.current = JSON.stringify({
       title: task ? task.title : (initialDraft?.title ?? ''),
-      notes: task ? task.notes : '',
+      notes: task ? task.notes : (initialDraft?.notes ?? ''),
       category: task ? (task.category ?? null) : (initialDraft?.category ?? null),
       projectId: task ? (task.projectId ?? null) : (initialDraft?.projectId ?? null),
       tags: task ? task.tags : (initialDraft?.tags ?? []),
@@ -715,7 +726,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       supplyLeadDays: task ? (task.supplyLeadDays ?? null) : null,
       supplyGroceryItemId: task ? (task.supplyGroceryItemId ?? null) : null,
       deferUntil: task?.deferUntil ?? null,
-      reminderTime: task?.reminderTime ?? null,
+      reminderTime: task ? (task.reminderTime ?? null) : (initialDraft?.reminderTime?.toISOString() ?? null),
       reminderKind: task?.reminderKind ?? 'notification',
       reminderOffsetDays: task?.reminderOffsetDays ?? null,
       recurrenceType: task ? task.recurrenceType : (initialDraft?.recurrenceType ?? 'none'),
@@ -743,6 +754,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
+      location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
       blockedById: task?.blockedById ?? null,
       waitingOnPersonId: task?.waitingOnPersonId ?? null,
       deliverableKind: task?.deliverableKind ?? null,
@@ -1010,6 +1022,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       linkUrl: resolveLinkUrl(),
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
+      location: resolveLocation(),
       blockedById,
       waitingOnPersonId,
       deliverableKind,
@@ -1408,6 +1421,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setShowEmailField(false);
   };
 
+  const commitLocation = () => {
+    const t = locationText.trim();
+    setLocation(t || null);
+    setShowLocationField(false);
+  };
+
   // ==== the other exits: cancel, delete ====
   // Save can fire before the custom link input's onBlur/onSubmitEditing has
   // committed its text to `linkUrl` state (e.g. tapping the header Save
@@ -1429,6 +1448,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const resolveEmailAddress = () => {
     const t = emailText.trim();
     return showEmailField && t ? t : emailAddress;
+  };
+
+  // Same race, same fix, for the location field.
+  const resolveLocation = () => {
+    const t = locationText.trim();
+    return showLocationField && t ? t : location;
   };
 
   const enableRecurrence = () => {
@@ -1485,6 +1510,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       linkUrl,
       phoneNumber,
       emailAddress,
+      location,
       blockedById,
       waitingOnPersonId,
       deliverableKind,
@@ -3108,6 +3134,45 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTouched(true); } : undefined}
             />
+              </>
+            ),
+          },
+          {
+            key: 'location', label: 'Location',
+            keywords: ['address', 'place', 'venue', 'where'],
+            node: (
+              <>
+            <EditorRow
+              icon="location-outline"
+              label="Location"
+              hint="Where this task happens — an appointment's address, a venue."
+              value={location ?? undefined}
+              expanded={showLocationField}
+              onPress={() => {
+                // Same pattern as Phone/Email: no presets, so it opens with
+                // what's already there.
+                setLocationText(location ?? '');
+                setShowLocationField(v => !v);
+              }}
+              onClear={location ? () => { setLocation(null); setLocationText(''); setShowLocationField(false); } : undefined}
+            />
+            {showLocationField && (
+              <View style={[styles.linkCustomRow, styles.linkCustomRowSpaced]}>
+                <Ionicons name="location-outline" size={16} color={colors.textSecondary} />
+                <TextInput
+                  style={styles.linkCustomInput}
+                  value={locationText}
+                  onChangeText={setLocationText}
+                  onSubmitEditing={commitLocation}
+                  onBlur={commitLocation}
+                  placeholder="e.g. 156 William Street"
+                  placeholderTextColor={colors.textTertiary}
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  autoFocus
+                />
+              </View>
+            )}
               </>
             ),
           },
