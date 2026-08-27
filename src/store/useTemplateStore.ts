@@ -445,11 +445,11 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
         ? useTaskGroupStore.getState().createGroup(runName, runCategory)
         : null;
       const runProject = (!options?.targetProjectId && container === 'project')
-        ? useProjectStore.getState().createProject(
-            runName,
-            anchors.start?.toISOString() ?? null,
-            anchors.end?.toISOString() ?? null,
-          )
+        // The run's end anchor becomes the project's deadline. Its start
+        // anchor has nowhere to go now that a project carries one date rather
+        // than a range (see Project.deadline) — it still places the *items*,
+        // which is the half that was ever load-bearing.
+        ? useProjectStore.getState().createProject(runName, anchors.end?.toISOString() ?? null)
         : null;
       const projectId = options?.targetProjectId ?? runProject?.id ?? null;
 

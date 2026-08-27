@@ -22,7 +22,8 @@ import {
   spacing,
   type Colors,
 } from '../theme';
-import type { GroceryItem } from '../types';
+import type { GroceryItem, GroceryListEntry } from '../types';
+import { entryFor } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
   buildPantryReviewDeck,
@@ -84,10 +85,15 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
    *
    * Snapshots rather than a list of answers: the three answers aren't each
    * other's opposites, so undoing "Running low" means restoring the
-   * `onList`/`sortOrder`/`lastAddedAt` it may have changed, which only the row
-   * as it stood can say. See `revertPantryAnswer`.
+   * `lastAddedAt` it may have changed and the trolley it may have put the row
+   * in, which only the row and its membership as they stood can say. Both, and
+   * not just the row: membership is a table now (see `GroceryListEntry`), so
+   * the item alone can't say whether it was already on this list.
    */
-  const [history, setHistory] = useState<GroceryItem[]>([]);
+  const [history, setHistory] = useState<Array<{
+    item: GroceryItem;
+    entry: GroceryListEntry | null;
+  }>>([]);
 
   const pan = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   // Read by the responder callbacks, which are built once and would otherwise
@@ -115,10 +121,12 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
       // Snapshotted from the store rather than from the card, so the row put
       // back by Undo is the one that was actually written over — the card holds
       // the item as the deck was built, which may be a few answers old by now.
-      const live = useGroceryStore.getState().items.find(i => i.id === card.item.id);
+      const state = useGroceryStore.getState();
+      const live = state.items.find(i => i.id === card.item.id);
+      const entry = entryFor(state.listEntries, card.item.id, state.activeListId);
       haptics.tap();
       answerPantryReview(card.item.id, answer);
-      setHistory(h => [...h, live ?? card.item]);
+      setHistory(h => [...h, { item: live ?? card.item, entry }]);
       setIndex(i => i + 1);
       pan.setValue({ x: 0, y: 0 });
     },
@@ -152,7 +160,7 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
     if (history.length === 0) return;
     haptics.tap();
     const previous = history[history.length - 1];
-    revertPantryAnswer(previous);
+    revertPantryAnswer(previous.item, previous.entry);
     setHistory(h => h.slice(0, -1));
     setIndex(i => Math.max(0, i - 1));
     pan.setValue({ x: 0, y: 0 });

@@ -47,6 +47,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
+    varietyOfKey: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null,
@@ -96,6 +97,63 @@ describe('matchIngredientToCatalog', () => {
     expect(match.kind).toBe('linked');
     expect(match.item?.name).toBe('Skyr');
     expect(match.suggestedName).toBeNull();
+  });
+
+  it('links a generic the catalog holds a declared variety of, offering nothing to rename', () => {
+    // "onion" with only White onion in the catalog used to badge the row with
+    // a rename offer — the over-specifying the variety declaration replaces.
+    const items = [makeItem({ name: 'White onion', varietyOfKey: 'onion' })];
+    const match = matchIngredientToCatalog('onion', items, NOW);
+    expect(match.kind).toBe('linked');
+    expect(match.reason).toBe('variety');
+    expect(match.item?.name).toBe('White onion');
+    expect(match.suggestedName).toBeNull();
+  });
+
+  it('refuses the ranked tier when two candidates score identically', () => {
+    // Both score matchWeight 2 against "onion" with equal familiarity, so the
+    // sort falls through to name length and the alphabet — no basis for a
+    // correction offered as the answer.
+    const items = [makeItem({ name: 'White onion' }), makeItem({ name: 'Red onion' })];
+    expect(matchIngredientToCatalog('onion', items, NOW).kind).toBe('unknown');
+  });
+
+  it('still ranks when familiarity actually separates the two', () => {
+    // A tie is refused; a decision is not. Buying one of them weekly is real
+    // evidence, and is what the ranked tier exists to read.
+    const items = [
+      makeItem({ name: 'White onion', purchaseCount: 12, lastPurchasedAt: daysAgo(3) }),
+      makeItem({ name: 'Red onion' }),
+    ];
+    const match = matchIngredientToCatalog('onion', items, NOW);
+    expect(match.kind).toBe('suggested');
+    expect(match.reason).toBe('ranked');
+    expect(match.suggestedName).toBe('White onion');
+  });
+
+  it('lets a lower tier answer a line the ranked tie refused', () => {
+    // Refusing the tier is not refusing the line: `similar` still gets its
+    // turn, which is why the ranked tier falls through rather than returning
+    // no match outright.
+    const items = [
+      makeItem({ name: 'Onion soup mix' }),
+      makeItem({ name: 'Onion powder' }),
+      makeItem({ name: 'Onian' }),
+    ];
+    const match = matchIngredientToCatalog('onion', items, NOW);
+    expect(match.reason).toBe('similar');
+    expect(match.suggestedName).toBe('Onian');
+  });
+
+  it('prefers an exact row over a variety declaration', () => {
+    const items = [
+      makeItem({ name: 'White onion', varietyOfKey: 'onion' }),
+      makeItem({ name: 'Onion' }),
+    ];
+    const match = matchIngredientToCatalog('onion', items, NOW);
+    expect(match.kind).toBe('linked');
+    expect(match.reason).toBeNull();
+    expect(match.item?.name).toBe('Onion');
   });
 
   it('answers unknown for an empty or unparseable name', () => {

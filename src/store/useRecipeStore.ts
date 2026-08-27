@@ -112,7 +112,6 @@ interface RecipeStore {
    * and a tag's spelling is its identity.
    */
   setTags: (id: string, tags: readonly string[]) => void;
-  toggleFavorite: (id: string) => void;
   /**
    * Deliberately doesn't rewrite the recipes that used this one as a component
    * — see RecipeComponent.recipeId. Unfiling the links would silently edit
@@ -124,8 +123,8 @@ interface RecipeStore {
   deleteRecipe: (id: string) => void;
   /** Deletes every named recipe. No undo — same as deleteRecipe's own confirm-only flow. */
   bulkDeleteRecipes: (ids: string[]) => void;
-  /** Sets favorite on every named recipe at once — the bulk form of toggleFavorite. */
-  bulkSetFavorite: (ids: string[], favorite: boolean) => void;
+  /** Sets vote on every named recipe at once — the bulk form of setVote. */
+  bulkSetVote: (ids: string[], vote: RecipeVote | null) => void;
 
   /**
    * Bumps cookCount and stamps lastCookedAt. Called once per "Mark cooked" on
@@ -390,7 +389,6 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       components: [],
       prepTasks: [],
       steps: [],
-      favorite: false,
       sortOrder: maxOrder + 1,
       createdAt: new Date().toISOString(),
       cookCount: 0,
@@ -531,12 +529,6 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     save(set, { ...recipe, tags: next });
   },
 
-  toggleFavorite(id) {
-    const recipe = get().recipes.find(r => r.id === id);
-    if (!recipe) return;
-    save(set, { ...recipe, favorite: !recipe.favorite });
-  },
-
   deleteRecipe(id) {
     const recipe = get().recipes.find(r => r.id === id);
     dbDeleteRecipe(id);
@@ -552,11 +544,11 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     set(s => ({ recipes: s.recipes.filter(r => !idSet.has(r.id)) }));
   },
 
-  bulkSetFavorite(ids, favorite) {
+  bulkSetVote(ids, vote) {
     const idSet = new Set(ids);
-    const toUpdate = get().recipes.filter(r => idSet.has(r.id) && r.favorite !== favorite);
+    const toUpdate = get().recipes.filter(r => idSet.has(r.id) && r.vote !== vote);
     if (toUpdate.length === 0) return;
-    const updated = toUpdate.map(r => ({ ...r, favorite }));
+    const updated = toUpdate.map(r => ({ ...r, vote }));
     updated.forEach(dbUpdateRecipe);
     const byId = new Map(updated.map(r => [r.id, r]));
     set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));

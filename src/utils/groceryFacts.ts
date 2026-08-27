@@ -129,9 +129,10 @@ const FACT_READERS: ReadonlyArray<(item: GroceryItem) => string> = [
   i => (i.pantryCheckDeclinedAt ? `declined:${i.pantryCheckDeclinedAt}` : ''),
   i => (i.useUpTask !== null ? `useUp:${i.useUpTask}` : ''),
 
-  // Which one of it.
+  // Which one of it — and which thing it's one of.
   i => (i.preferredProductId ? `box:${i.preferredProductId}` : ''),
   i => (i.productStrict ? 'strict' : ''),
+  i => (i.varietyOfKey ? `varietyOf:${i.varietyOfKey}` : ''),
 
   // Typed onto the row. A quantity only counts when the user set it — the
   // recipe-owned kind is `addFromPlan`'s bookkeeping, not a preference (see

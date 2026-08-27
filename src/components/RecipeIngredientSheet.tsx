@@ -24,6 +24,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { aisleForName } from '../utils/groceryAisles';
 import { groceryNameKey, splitAlternativeNames } from '../utils/groceryParse';
+import { varietyOfferFor } from '../utils/itemVarieties';
 import { matchIngredientToCatalog } from '../utils/ingredientCatalogMatch';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
@@ -86,6 +87,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
+  const setVarietyOfKey = useGroceryStore(s => s.setVarietyOfKey);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -238,6 +240,28 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // opened onto a sheet with nothing to accept would be the worst of both.
   const catalogMatch = matchIngredientToCatalog(name, groceryItems, new Date());
   const catalogSuggestion = catalogMatch.kind === 'suggested' ? catalogMatch.suggestedName : null;
+
+  // The same match read the other way round. When what turned up is a *variety*
+  // of what the line says — "onion" turning up White onion — renaming the line
+  // is the wrong accept: the recipe said "onion" on purpose, and narrowing it
+  // to one variety is a promise about the dish nobody made. Declaring the
+  // relation instead fixes every recipe naming the generic at once and leaves
+  // this line as written. Offered beside the rename rather than replacing it,
+  // since a near-duplicate ("Onions" for "onion") wants the rename and only a
+  // person can tell the two apart.
+  //
+  // Only before a declaration exists: `matchIngredientToCatalog` reads a
+  // covered generic as `linked`, so this whole card is already gone by then.
+  const varietyOffer = catalogMatch.kind === 'suggested'
+    ? varietyOfferFor(groceryNameKey(name), catalogMatch.item)
+    : null;
+
+  const acceptVariety = () => {
+    if (!varietyOffer) return;
+    setVarietyOfKey(varietyOffer.id, groceryNameKey(name));
+    haptics.success();
+    animateLayout();
+  };
 
   // "cheddar or manchego" wants to be two rows in a choice group, not one
   // catalog entry nothing can ever match — see splitAlternativeNames. Offered,
@@ -410,6 +434,28 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             <View style={styles.suggestionBody}>
               <Text style={styles.suggestionTitle}>Did you mean “{catalogSuggestion}”?</Text>
               <Text style={styles.suggestionDetail}>Already in your grocery catalog.</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+        {!!varietyOffer && (
+          <TouchableOpacity
+            style={styles.suggestionRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={acceptVariety}
+            accessibilityRole="button"
+            accessibilityLabel={
+              `Record that ${varietyOffer.name} is a kind of ${name.trim().toLowerCase()}, `
+              + 'keeping this line as written'
+            }
+          >
+            <Ionicons name="git-branch-outline" size={iconSize.sm} color={colors.accent} />
+            <View style={styles.suggestionBody}>
+              <Text style={styles.suggestionTitle}>
+                Is “{varietyOffer.name}” a kind of {name.trim().toLowerCase()}?
+              </Text>
+              <Text style={styles.suggestionDetail}>
+                Keeps this line as written, and any {name.trim().toLowerCase()} you have counts for it.
+              </Text>
             </View>
           </TouchableOpacity>
         )}

@@ -64,7 +64,7 @@ import {
 import { formatScale } from '../utils/recipeScale';
 import { MEAL_PLAN_RETENTION_DAYS, LEFTOVER_RETENTION_DAYS } from '../types';
 import { isQuotaPartial, isMissed, displayTitleFor, quotaFraction } from '../utils/visibilityUtils';
-import { peopleOn } from '../utils/peopleRegistry';
+import { peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from '../components/HighlightedText';
 import { formatQuotaProgress } from '../utils/quotaUnit';
@@ -789,7 +789,8 @@ const LogbookRow = React.memo(function LogbookRow({
   // actually links (peopleOn(task)), not the whole roster.
   const displayTitle = displayTitleFor(task);
   const titleMentionRanges: [number, number][] = useMemo(
-    () => matchPersonMentions(displayTitle, peopleOn(task)).map((m): [number, number] => [m.start, m.end]),
+    () => matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds))
+      .map((m): [number, number] => [m.start, m.end]),
     [displayTitle, task.personIds]
   );
 

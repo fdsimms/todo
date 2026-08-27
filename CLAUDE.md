@@ -61,17 +61,25 @@ an audience that isn't there. Anything worth remembering once the PR merges has 
 as a thing, not as a sentence: either fixed now, or filed as a real GitHub issue (apply the four
 labels from the scheme below same as any other issue).
 
+**Never file an issue without asking first.** Filing is a decision, same as fixing is, and it's
+the user's to make — issues pile up unread otherwise, and "I filed it so it's handled" is exactly
+the false comfort this rule exists to prevent. This holds even when filing feels like the obviously
+right call, and even for a follow-up you noticed yourself rather than one the user raised.
+
 When finishing a task turns up adjacent work you've decided not to do — a related surface, a
-follow-up feature, a design question you scoped out — don't narrate that decision in the PR body
-and move on. Before you call the task done: fold it into the current PR if it's small enough, or
-file it as its own issue if it isn't. A PR body can reference the issue number for context, but
-the issue is what persists; the paragraph explaining your reasoning isn't. Do this for every
-scope decision the task surfaced, not just the one you'd think to mention — if a "What's left"
-list would otherwise have three items, that's three issues, not three bullet points.
+follow-up feature, a design question you scoped out, a sharp edge you noticed along the way —
+don't narrate that decision in the PR body and move on, and don't silently open an issue for it
+either. Before you call the task done: stop and ask — `AskUserQuestion` if the harness has it, a
+plain question in chat otherwise — with fix it now / file an issue / leave it as the options, the
+same "stop and ask, don't just mention" duty as "Bugs found in passing" above. A PR body can
+reference the issue number for context once one exists, but the issue is what persists; the
+paragraph explaining your reasoning isn't. Do this for every scope decision the task surfaced, not
+just the one you'd think to mention — if a "What's left" list would otherwise have three items,
+that's three questions, not three bullet points or three issues filed on your own judgment.
 
 This is "Bugs found in passing" above, generalized past bugs specifically: the thing that must not
-happen is a decision (fix it / file it / leave it) sitting only in prose that nobody is going to
-reread.
+happen is a decision (fix it / file it / leave it) made unilaterally, or left sitting only in prose
+that nobody is going to reread.
 
 ## User-facing copy
 
@@ -255,7 +263,8 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (eleven generators now: `birthdayGift` is the newest, and the one whose source shares a file with the reminder beside it) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (fourteen generators now: `weather` is the newest, and the first whose source is a rule the user wrote rather than a row) |
+| a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
@@ -283,6 +292,7 @@ exports.
 | the Face ID app lock | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` — see `docs/arch/app-lock.md` |
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
+| a separate list for a week away, and a row in two trolleys at once | `src/utils/groceryLists.ts` + `GroceryListEntry` — see `docs/arch/groceries.md` |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
 | grocery autocomplete, catalog ranking | `src/utils/grocerySuggest.ts` |
 | which bread — brands, variants, and rating them | `src/utils/groceryProduct.ts` (`ItemProduct`) — see `docs/arch/groceries.md` |
@@ -304,6 +314,7 @@ exports.
 | what to cook with what's about to go off | `src/utils/useUpRecipes.ts` — see `docs/arch/groceries.md` |
 | "apples or pears" on the shopping list | `resolveChoice` in `src/store/useGroceryStore.ts` — see `docs/arch/groceries.md` |
 | "if there's no butter, use margarine" | `src/utils/itemSubs.ts` — see `docs/arch/groceries.md` |
+| "white onion is still onion" | `src/utils/itemVarieties.ts` — see `docs/arch/groceries.md` |
 | "always use oat milk for milk" | `src/utils/standingSwaps.ts` — see `docs/arch/groceries.md` |
 | one recipe used inside another | `src/utils/recipeComponents.ts` — see `docs/arch/recipes.md` |
 | "serrano or jalapeño", decided at the shelf | `ChoiceResolution.undecided` in `src/utils/recipeComponents.ts` — see `docs/arch/groceries.md` |
@@ -336,18 +347,19 @@ exports.
 <!-- BEGIN GENERATED: repo-stats -->
 <!-- Regenerated by scripts/check-doc-stats.js. Run it after adding or growing a file. -->
 
-**Read narrowly.** 46 files are over 1,000 lines, 28 of
+**Read narrowly.** 48 files are over 1,000 lines, 30 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (6.4k), `components/TaskEditor.tsx` (4.7k), `db/database.ts` (4.2k),
-`store/useGroceryStore.ts` (4.2k), `screens/TodayScreen.tsx` (4.1k), `types/index.ts` (3.7k),
-`components/TaskItem.tsx` (3.7k), `components/QuickAddModal.tsx` (2.9k),
-`store/useSettingsStore.ts` (2.7k), `utils/demoSeed.ts` (2.5k).
+`store/useTaskStore.ts` (6.8k), `components/TaskEditor.tsx` (4.8k),
+`store/useGroceryStore.ts` (4.7k), `db/database.ts` (4.6k), `screens/TodayScreen.tsx` (4.1k),
+`types/index.ts` (4.0k), `components/TaskItem.tsx` (3.7k),
+`components/QuickAddModal.tsx` (2.9k), `store/useSettingsStore.ts` (2.8k),
+`utils/demoSeed.ts` (2.7k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **214 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **227 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -846,6 +858,23 @@ Three decisions worth not re-deriving:
   with no visible reason why is the one way this breaks.
 
 **List rows** use the iOS inset-grouped card treatment app-wide — match the styling in `TaskItem.itemWrapper` (Search/Logbook/Tags/Categories/Projects rows follow the same pattern). Section headers are uppercase `font.xs` semibold **`textSecondary`** with `letterSpacing: 0.8` — every one of them, the editor group labels (`EditorGroup`, `CollapsibleField`) and the Settings section labels included. `textTertiary` measures 2.84:1 on `bgSecondary` in dark, under even the 3:1 large-text bar, and these are the one grey the app repeats on every screen; `textSecondary` is 5.22:1 and was already the other grey in use. Raising the size instead was the alternative and was rejected — it makes the headers louder than the rows they label. `textTertiary` is still right where dimness is the *signal* rather than decoration (`CollapsibleField`'s `summaryEmpty`, which is how a field says it has no value). The one row that is deliberately *not* a card is `TaskGroupHeader` — a stack heads its tasks rather than sitting among them, so it's a transparent caption (see the note on its `band` style; every filled-card version of it read as a *selected* row, because a brighter card surface is what this app uses for pressed and dragged). What ties it to its tasks is enclosure, not resemblance: `TaskGroupTray` puts the header and the child cards in one `bgSunken` region, and the children drop their own margins to sit on its padding. Grouping a header with its rows by giving the header a card-like treatment is the move that keeps failing here — reach for the region instead.
+
+**A `presentationStyle="pageSheet"` Modal is dismissible by an iOS swipe-down, and that gesture calls the Modal's `onRequestClose` — not whatever the header's Cancel button runs, if the two aren't the same function.** A bare `onRequestClose={onClose}` on a sheet that stages typed or picked state before an explicit Save/Add is a silent-data-loss bug, not a style choice: the swipe bypasses the save path entirely, the same way it does for `EditorSheet`'s own pageSheet-vs-fullScreen tradeoff noted below. This shipped as a bug for four sheets first (#1681/#1682), and turned out to be the default rather than the exception — a sweep of the rest of the app (#2192) found the identical bare-`onClose` `onRequestClose` on fourteen more. **Any new `pageSheet` Modal holding state that isn't committed immediately needs a `handleCancel`, not a bare `onClose`, wired to both `onRequestClose` and the header's Cancel/Back button:**
+```tsx
+const handleCancel = () => {
+  const dirty = /* differs from what the sheet opened with, or from what's saved */;
+  if (!dirty) { onClose(); return; }
+  Alert.alert(
+    'Discard changes?',
+    'You have unsaved changes. Are you sure you want to discard them?',
+    [
+      { text: 'Keep editing', style: 'cancel' },
+      { text: 'Discard', style: 'destructive', onPress: onClose },
+    ],
+  );
+};
+```
+Same copy every time, mirroring `TaskEditor`'s own `handleCancel` — don't invent new wording per sheet. The dirty check's *shape* varies with what the sheet stages: `RecipeToListSheet`/`SuggestMealsSheet` (a baseline ref stamped on open, since a recompute can reseed the same state under the user), `ProductSheet`/`SubstituteSheet` (differs from the saved row), `TemplateSuggestionsSheet`/`GroceryAISheet` (any generated batch exists at all, since regenerating costs a real request), `PrepTasksReviewSheet` (something was deselected off an all-checked default). A sheet whose fields **commit immediately** on tap/blur instead (`GroceryItemSheet`, `StandingSwapsSheet`, most plain pickers) has nothing to guard — that's the other valid answer, not a workaround, and no `handleCancel` is needed. Two are their own read: `CategoryEditor`'s `onRequestClose` already runs the same save path "Done" does (autosave instead of a confirm — solves the same bug, just not by asking), and a `presentationStyle="fullScreen"` Modal (`EditorSheet`, `PantryReviewSheet`) has no swipe gesture at all, so there's nothing to guard.
 
 ### Drag and drop — handle with care
 

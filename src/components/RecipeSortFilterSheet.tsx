@@ -24,18 +24,17 @@ interface Props {
   onClose: () => void;
   sort: RecipeSortOption;
   onSortChange: (s: RecipeSortOption) => void;
-  favoritesOnly: boolean;
-  onFavoritesOnlyChange: (favoritesOnly: boolean) => void;
+  lovedOnly: boolean;
+  onLovedOnlyChange: (lovedOnly: boolean) => void;
 }
 
 const SORT_OPTIONS: { value: RecipeSortOption; label: string; icon: string }[] = [
-  { value: 'default', label: 'Favorites first', icon: 'list' },
+  { value: 'default', label: 'Loved first', icon: 'thumbs-up' },
   { value: 'name', label: 'Name (A–Z)', icon: 'text' },
   { value: 'cooked-recent', label: 'Recently cooked', icon: 'time' },
   { value: 'cooked-oldest', label: 'Not cooked in a while', icon: 'hourglass' },
   { value: 'ingredients-asc', label: 'Fewest ingredients', icon: 'remove-circle-outline' },
   { value: 'ingredients-desc', label: 'Most ingredients', icon: 'add-circle-outline' },
-  { value: 'voted', label: 'Loved first', icon: 'thumbs-up' },
 ];
 
 /**
@@ -43,14 +42,14 @@ const SORT_OPTIONS: { value: RecipeSortOption; label: string; icon: string }[] =
  * SortFilterSheet for tasks, same chrome and the same controlled-component
  * shape (no internal sort/filter state, just the open/close animation).
  *
- * Filtering is a single "Favorites only" toggle, not a chip grid like
+ * Filtering is a single "Loved only" toggle, not a chip grid like
  * priority/effort on the task sheet: category and meal-type filters (#1086,
  * #1104) aren't built yet, and one boolean doesn't need PillGroup's
  * open-vocabulary treatment or SortFilterSheet's multi-select chips. A future
  * dimension slots in as another `chips` group beside this one.
  */
 export function RecipeSortFilterSheet({
-  visible, onClose, sort, onSortChange, favoritesOnly, onFavoritesOnlyChange,
+  visible, onClose, sort, onSortChange, lovedOnly, onLovedOnlyChange,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -119,11 +118,11 @@ export function RecipeSortFilterSheet({
     })
   ).current;
 
-  const activeCount = (sort !== 'default' ? 1 : 0) + (favoritesOnly ? 1 : 0);
+  const activeCount = (sort !== 'default' ? 1 : 0) + (lovedOnly ? 1 : 0);
 
   const reset = () => {
     onSortChange('default');
-    onFavoritesOnlyChange(false);
+    onLovedOnlyChange(false);
   };
 
   return (
@@ -189,21 +188,21 @@ export function RecipeSortFilterSheet({
             <Text style={[styles.groupLabel, { marginTop: spacing.lg }]}>Filter</Text>
             <View style={styles.chips}>
               <TouchableOpacity
-                style={[styles.chip, favoritesOnly && styles.chipActive]}
+                style={[styles.chip, lovedOnly && styles.chipActive]}
                 onPress={() => {
                   haptics.tap();
-                  onFavoritesOnlyChange(!favoritesOnly);
+                  onLovedOnlyChange(!lovedOnly);
                 }}
                 accessibilityRole="button"
-                accessibilityState={{ selected: favoritesOnly }}
+                accessibilityState={{ selected: lovedOnly }}
               >
                 <Ionicons
-                  name="star"
+                  name="thumbs-up"
                   size={13}
-                  color={favoritesOnly ? colors.onAccent : colors.orange}
+                  color={lovedOnly ? colors.onAccent : colors.orange}
                 />
-                <Text style={[styles.chipText, favoritesOnly && styles.chipTextActive]}>
-                  Favorites only
+                <Text style={[styles.chipText, lovedOnly && styles.chipTextActive]}>
+                  Loved only
                 </Text>
               </TouchableOpacity>
             </View>
@@ -274,6 +273,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
   chipActive: { backgroundColor: colors.accent },
-  chipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  chipText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
 });

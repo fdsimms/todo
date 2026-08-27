@@ -34,6 +34,7 @@ import { isDemoModeActive } from './demoState';
 export interface WidgetBridge {
   writeWidgetSnapshot: (jsonString: string) => Promise<boolean>;
   drainPendingWidgetCompletions: () => Promise<string[]>;
+  drainPendingAddTasks: () => Promise<string[]>;
   drainSharedLinks: () => Promise<string[]>;
   syncTimerLiveActivities: (jsonString: string) => Promise<boolean>;
   syncTripLiveActivity: (jsonString: string) => Promise<boolean>;

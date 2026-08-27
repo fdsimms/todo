@@ -2,7 +2,7 @@ export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
-export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'ingredients-asc' | 'ingredients-desc' | 'voted';
+export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'ingredients-asc' | 'ingredients-desc';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
 // 'persistent' is 'alarm' that re-rings on an interval until the task is
 // completed, rather than once — see src/utils/alarmChain.ts.
@@ -212,6 +212,48 @@ export interface TitleRule {
 // name). There is deliberately no regex mode — see titleRules.ts.
 export type TitleRuleMatch = 'startsWith' | 'contains';
 
+/**
+ * A closed set rather than an open vocabulary, on purpose — see
+ * `SegmentedControl`'s own rule for what makes a set "closed": these are the
+ * conditions `classifyWeather()` (`src/utils/weatherCondition.ts`) can ever
+ * report, so a rule naming anything else could never fire. `sunny` and `cold`
+ * (or `sunny` and `hot`) can both be true of the same day at once — see that
+ * module for why the classifier returns a list rather than picking one.
+ */
+export type WeatherCondition = 'sunny' | 'rainy' | 'snowy' | 'cold' | 'hot';
+
+/**
+ * "On a sunny day, add a task to put on sunscreen" — a user-authored rule
+ * matched against today's weather, the same "vocabulary the user wrote down"
+ * shape as `TitleRule` above and stored the same way (`weatherRules` in
+ * settings, see `useSettingsStore.ts` and `parseWeatherRules` in
+ * `weatherTasks.ts`). Unlike a title rule, a match doesn't fill in fields on a
+ * task somebody's already creating — it creates the task, through the shared
+ * generated-task mechanism (`generatedBy('weather', ...)`), which is why a
+ * rule needs its own `lastFiredDayKey` rather than reading the tri-state
+ * opt-out every sourced generator gets: the "source" here is a rule living in
+ * settings, not a row anything could stamp a decline onto (see the
+ * `'weather'` case of `GeneratedKind` above).
+ */
+export interface WeatherRule {
+  id: string;
+  condition: WeatherCondition;
+  /** The task's title, e.g. "Put on sunscreen". */
+  title: string;
+  // Off keeps the rule written down but stops it firing — the same call
+  // TitleRule.enabled makes, so turning one off doesn't mean losing it.
+  enabled: boolean;
+  /**
+   * The day key (`dayKeyOf`) this rule last created a task on, or was
+   * considered and found not to apply — whichever happened most recently.
+   * Written unconditionally before the day's weather is even checked, the
+   * same "mark the day considered before deciding" order calendarReview's
+   * `calendarReviewLastDayKey` uses, so a task swiped away doesn't come
+   * straight back on the next foreground sweep the same day.
+   */
+  lastFiredDayKey: string | null;
+}
+
 // A lightweight, collapsible label for grouping several independent tasks
 // together (e.g. "Take supplements" grouping Coq10/Vitamin D/Iron, each on
 // its own schedule). Deliberately NOT a Task — it has no dueDate, recurrence,
@@ -302,17 +344,41 @@ export interface FocusSession {
 // and picks off over time (e.g. "Summer Bucket List") — independent of
 // TaskGroup (same-day cohorts), Category, and Tags, so a task can belong to
 // all four at once. Unlike TaskGroup, a Project has its own optional
-// targetStartDate/targetEndDate and can be browsed on its own even when
-// nothing inside it is due today. It has no persisted "completed" state —
-// completion is always derived from its tasks (see projectProgress in
-// useProjectStore) — only an explicit archived flag the user (or, if the
-// autoArchiveProjectsOnComplete setting is on, completeTask) sets.
+// deadline and can be browsed on its own even when nothing inside it is due
+// today.
+//
+// It carries *two* end states, and they are independent: `completed` (finished,
+// listed under Completed) and `archived` (filed away, out of the active list).
+// Both are explicit flags the user sets, or that completeTask sets on their
+// behalf when the autoCompleteProjectsOnDone setting is on. Neither is derived
+// from the tasks — `projectProgress` answers "how far along", which is a
+// different question, and deliberately never reaches 100% for a project holding
+// a recurring member.
 export interface Project {
   id: string;
   title: string;
   notes: string;
-  targetStartDate: string | null;
-  targetEndDate: string | null;
+  /**
+   * A target date to finish by. Informational, exactly like `Task.deadline`:
+   * it is shown on the project's card, flagged once it passes (see
+   * isProjectPastWindow) and affects nothing about scheduling or when any task
+   * appears. It shares that field's name because it is the same idea one
+   * container out, and shares its formatter (`formatDeadlineDate`).
+   *
+   * It replaced a `targetStartDate`/`targetEndDate` pair. The start half had
+   * exactly one reader in its whole life — the "From Jun 1" side of the label
+   * on the project card — so it gated nothing, sorted nothing, and reached
+   * neither search, stats nor the widget. Two fields where one was decoration
+   * read as a schedule the project did not have, which is what #1740 had to
+   * add a paragraph of footer copy to deny.
+   *
+   * Still persisted in the `target_end_date` column, which is not renamed for
+   * the same reason `cycle_items` and `exclude_from_pin_suggestions` aren't:
+   * renaming one costs a data migration for every install and buys nothing a
+   * comment can't say. `target_start_date` stays on the table too, unread and
+   * never written, the way `task_groups.completed_at` does.
+   */
+  deadline: string | null;
   // Name of a ProjectCategory, purely for grouping projects on the Projects
   // page. Independent of task Category — never affects the tasks inside the
   // project (their own categories, visibility, etc. are untouched).
@@ -502,6 +568,34 @@ export interface Person {
    * writes; this one is only about what it asks.
    */
   backfillDismissedFields: string[];
+  /**
+   * The `PersonGroup` this person belongs to, or null. A couple or a
+   * household you always catch up with together, so the reach-out nudge can
+   * fold them into one task instead of asking about each of them apart —
+   * see `docs/arch/people.md`'s "Groups" section. Single-valued, like
+   * `Task.groupId` pointing at a `TaskGroup`: a person is a member of at most
+   * one group at a time.
+   */
+  groupId: string | null;
+}
+
+/**
+ * A couple, a household, anyone you'd never think to catch up with
+ * separately — a lightweight, renameable label a `Person` hangs off of via
+ * `Person.groupId`, the same "label, not a join table" shape `TaskGroup`
+ * uses for stacks. It carries no cadence, no history and no nudge settings
+ * of its own: those stay on each `Person`, and a group only changes how the
+ * reach-out nudge presents people who share one (see
+ * `collapseGroupedReachOuts` in `src/utils/reachOutTasks.ts`) and how an
+ * "@name" mention resolves (see `docs/arch/people.md`).
+ */
+export interface PersonGroup {
+  id: string;
+  name: string;
+  // Hand-ordered, the same independent number space Person.sortOrder is —
+  // never re-ranked by recency or by anything about the people in it.
+  sortOrder: number;
+  createdAt: string;
 }
 
 /**
@@ -570,7 +664,7 @@ export interface PersonNote {
 }
 
 /**
- * Which of the app's eleven unattended generators wrote a task — see
+ * Which of the app's fourteen unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
  *
@@ -627,7 +721,14 @@ export type GeneratedKind =
   // src/utils/reachOutTasks.ts. Silent on everybody until they are explicitly
   // opted in, which is what keeps "who am I neglecting" a question the app
   // never asks.
-  | 'reachOut';
+  | 'reachOut'
+  // A user-configured rule ("sunny -> Put on sunscreen") matched against
+  // today's weather — see src/utils/weatherTasks.ts. Its source id is a day
+  // key and a rule id (`${dayKey}#${ruleId}`), the same "square on the
+  // calendar, not a row" position calendarReview is in, and for the same
+  // reason writeGeneratedOptOut has nothing to write for it: the rule it
+  // points at lives in settings, not in a row a stamp could be spent against.
+  | 'weather';
 
 export interface Task {
   id: string;
@@ -773,6 +874,53 @@ export interface Task {
   // under target — a normal completion, not a miss. Off by default, so an
   // existing quota task keeps completing the instant it hits target.
   allowOvershoot: boolean;
+
+  // How often one unit falls due, in minutes. The interval and the count are
+  // the same triangle read from different corners — a span divided by one
+  // gives the other — and which one is *stored* decides what stays fixed when
+  // the span moves. Storing the count keeps "24 a day" and squeezes the
+  // spacing; storing the interval keeps "every 20 minutes" and takes fewer of
+  // them. For anything the user actually thinks of as a cadence (an eye break
+  // every 20 minutes, standing up every half hour) the second is what they
+  // mean, and it's the only one that survives quotaStartedAt moving the start
+  // (see quotaRunSpan in src/utils/quotaSchedule.ts).
+  //
+  // So when this is set, `targetCount` is *derived* from it and the run's
+  // span, recomputed wherever either changes (see QUOTA_SPAN_FIELDS in
+  // useTaskStore) rather than typed. Every existing reader keeps reading
+  // targetCount and needs to know nothing about this column — the same call
+  // recurrenceAnchorDate makes about staying inside the recurrence engine.
+  //
+  // null = the count is the primitive, which is every quota task that predates
+  // this and every one whose target is a real goal ("8 glasses") rather than
+  // arithmetic.
+  quotaIntervalMinutes: number | null;
+  // Send a notification each time a unit falls due, instead of only surfacing
+  // the row on Today.
+  //
+  // A quota has always paced silently, which is right for water (you'll see
+  // the row when you next look at your phone) and useless for anything whose
+  // whole point is to interrupt you — the row can't nudge you off a screen if
+  // looking at the row means looking at a screen. Materialised as N one-shot
+  // notifications for the reason src/utils/alarmChain.ts spells out at length:
+  // the layer underneath only understands one fire at one time.
+  //
+  // Independent of quotaIntervalMinutes on purpose. A cadence you don't want
+  // to be nudged about is a real thing to ask for, and so is being nudged
+  // about a plain count.
+  quotaReminders: boolean;
+  // When today's run was started by hand, if it was — the "start now" that
+  // makes a fixed window optional.
+  //
+  // Deliberately its own per-occurrence timestamp rather than a write to
+  // windowStart: the window is the schedule and holds for every day, while
+  // this is one morning that began at 10:30. It rides no successor
+  // (completeTask clears it beside progressCount), so a run started late
+  // today says nothing about tomorrow.
+  //
+  // Only honoured on its own logical day, so an app left closed over a
+  // weekend doesn't resume Friday's run on Monday. null = the window decides.
+  quotaStartedAt: string | null;
 
   // Supply — how many units of a consumable are left, for a recurring task
   // that spends one every time it's done. Replacing a CPAP filter monthly out
@@ -1532,7 +1680,7 @@ export interface TemplateItemGroup {
 //   'none'    — loose tasks, the original behavior
 //   'stack'   — one TaskGroup named after the run
 //   'project' — one Project named after the run, the apply's two anchor dates
-//               becoming its targetStartDate/targetEndDate
+//               becoming its deadline
 //   'task'    — one real Task named after the run, every item becoming a
 //               subtask of it instead of a top-level task of its own. Takes
 //               no dates of its own, same as a stack — there's no Task field
@@ -1671,6 +1819,86 @@ export interface PriceObservation {
   productId?: string | null;
 }
 
+/**
+ * A shopping list other than the one at home — "Airbnb", "Beach house",
+ * "Camping". Named, created by the user, and deleted when the trip is over.
+ *
+ * **There is no row for the home list, and that's the whole migration story.**
+ * `GroceryItem.listId` is null for it, so every row that existed before this
+ * shipped is already on it and nothing had to be backfilled. It also means the
+ * one list that must always exist can't be renamed into nothing or deleted by
+ * accident: it isn't data.
+ *
+ * **A list is a scope on the trolley, not a second catalog.** There is still
+ * one `GroceryItem` per thing you buy — one aisle, one purchase history, one
+ * pantry state, one set of substitutes — and a list only says which trolley a
+ * row is in right now. That's why membership lives on the item beside `onList`
+ * rather than in a join table: a row can only be on one list at a time for the
+ * same reason it can only have one `checked` and one `sortOrder`.
+ *
+ * **Every list but home is an "away" list, and an away trip records nothing.**
+ * Finishing one takes the checked rows off and stops there: no purchase count,
+ * no price, no store link, no use-by countdown, and none of the pantry claims a
+ * purchase normally refutes. Groceries bought for a rented kitchen 400 miles
+ * away are not evidence about yours, and the failure that rules out is
+ * concrete — a week at the beach otherwise leaves the app certain there are
+ * eggs in your fridge and quoting you Cape Cod prices for months. There is
+ * deliberately no per-list switch for this: "home" and "away" is the whole
+ * distinction, and a flag would be a second thing to explain and a second state
+ * for every purchase path to respect.
+ */
+export interface GroceryList {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
+/**
+ * One row's place in one list's trolley — the membership record, and the source
+ * of truth for every list including the one at home.
+ *
+ * **A row can be in two trolleys at once, and that is the whole reason this is a
+ * table rather than a column on the item.** The staples you need in both
+ * kitchens are the ordinary case, not an edge one: adding "milk" to the Airbnb
+ * list must not take it off the list at home, which is exactly what a singular
+ * `GroceryItem.listId` did. Everything that has to differ per list is therefore
+ * here rather than on the item:
+ *
+ * - **`checked`** must be, or ticking milk off at the shop near the rental would
+ *   show it as in the cart at home, and the next trip there would buy it.
+ * - **`choiceGroup`** must be, because an either/or is *this* trolley's "apples
+ *   or pears" — see `GroceryItem.choiceGroup`, which says so in as many words.
+ * - **`sortOrder`** must be, because each list is walked in its own order. This
+ *   is the one of the three that would merely have been untidy shared; it comes
+ *   along because the other two settle the shape anyway.
+ *
+ * Everything that is a fact about the *thing you buy* stays on `GroceryItem` and
+ * is emphatically not duplicated here: one aisle, one purchase history, one
+ * pantry state, one set of products, one set of substitutes. A list scopes the
+ * trolley, never the catalog.
+ *
+ * **`listId` is null for the list at home**, which has no `GroceryList` row —
+ * see that type. In SQLite it is stored as `''` instead, because the table is
+ * keyed on (item, list) and SQLite treats NULLs in a key as distinct, so a null
+ * would let one row join one list twice.
+ *
+ * **The item's own `onList`/`checked`/`sortOrder`/`choiceGroup` mirror the home
+ * entry** and are maintained by the single function that writes these. That is
+ * what lets every reader written before separate lists existed keep working
+ * unchanged and keep meaning what it always meant.
+ */
+export interface GroceryListEntry {
+  itemId: string;
+  /** Null is the list at home. Stored as '' — see above. */
+  listId: string | null;
+  checked: boolean;
+  sortOrder: number;
+  choiceGroup: string | null;
+  /** When this row joined this list. The per-list half of `lastAddedAt`. */
+  addedAt: string;
+}
+
 export interface GroceryItem {
   id: string;
   // What the user last typed — the label. "Whole milk" and "milk" reading
@@ -1742,6 +1970,22 @@ export interface GroceryItem {
   // — the user typing an amount by hand — always takes ownership.
   quantityFromRecipe: boolean;
   note: string;
+  /**
+   * Whether this row is in the trolley of the **list at home** — see
+   * `GroceryListEntry`, which is where every list's membership actually lives.
+   *
+   * A mirror of that list's entry, maintained on every membership write, and
+   * kept because it is what every reader that predates separate lists means by
+   * "on the list": the home list is the original one and these columns have
+   * always held it. Nothing writes them except the one function that writes an
+   * entry, so the two can't drift.
+   *
+   * **It is deliberately not "in some trolley".** The four readers that want
+   * that broader question — `hasUserFacts`, `catalogPruneCandidates`,
+   * `pantryCheckTasks`, and the Pantry row's "on the list" caption — ask
+   * `onListAnywhere` (`src/utils/groceryLists.ts`) instead, because a row on the
+   * Airbnb list must not be swept as unused or asked about as absent.
+   */
   onList: boolean;
   // Invariant: checked implies onList.
   checked: boolean;
@@ -1805,6 +2049,36 @@ export interface GroceryItem {
   // just sits there looking outstanding, and finishShopping would leave it on
   // the list for ever.
   choiceGroup: string | null;
+  /**
+   * The generic name this item is a variety of, as a `groceryNameKey` —
+   * "white onion" carries `'onion'`. Null (the overwhelmingly common case)
+   * means the item is not a variety of anything, or nobody has said so.
+   *
+   * This is the one *vertical* relation between catalog identities, and it's
+   * deliberately a key rather than an item id: the generic side is what recipe
+   * lines say (`RecipeIngredient.nameKey` is the bridge), and plenty of
+   * generics never exist as a row of their own — you buy white onions and red
+   * onions, and "Onion" is only ever a word recipes use. Same precedent as the
+   * aisle overrides, which are keyed by nameKey and outlive rows.
+   *
+   * The semantics are asymmetric on purpose, and that asymmetry is the whole
+   * feature: a *specific* item satisfies a *generic* ask (a recipe line saying
+   * "onion" is answered by white onion in the pantry — classifyPlanned,
+   * useUpRecipes), while a generic never satisfies a specific one (a line
+   * saying "red onion" matches only red onion; the parent and its other
+   * varieties surface as a "you have white onion" caption, the same informing-
+   * never-buying rule substitutes follow). Where a substitute is a lateral
+   * link between two different things, this says the item *is* the thing,
+   * more precisely named.
+   *
+   * Single hop, never a chain: readers ask "which items declare themselves
+   * varieties of this key" (`itemVarieties.ts`) and don't walk further, so a
+   * mis-filed chain can't loop and "vegetable" never transitively claims
+   * every onion. Nothing infers one — the user says so, same discipline as
+   * substitutes — and `renameItem`/`mergeItems` re-point declarations at a
+   * generic whose key changes.
+   */
+  varietyOfKey: string | null;
   // Always on hand — salt, pepper, water, the things nobody actually shops
   // for. Set by hand on GroceryItemSheet, and unlike onHandUntil it never
   // expires: a staple isn't a guess about recent purchases, it's a standing
@@ -2899,15 +3173,17 @@ export const RECIPE_SOURCE_TYPE_LABELS: Record<RecipeSourceType, string> = {
   other: 'Other',
 };
 
-// Whether you'd cook it again. Two poles and null (no opinion, the common
-// state — nothing infers one, cooking a recipe isn't liking it), the same
-// shape ProductRating uses for a grocery product and for the same reason: the
-// question is "would I make this again", not a score to keep consistent.
-export type RecipeVote = 'up' | 'down';
+// Whether you'd cook it again, and how much. Three rungs and null (no
+// opinion, the common state — nothing infers one, cooking a recipe isn't
+// liking it). This is also the recipe box's one "is this any good" signal —
+// it replaced a separate favorite star, so the top rung is what floats a
+// recipe to the top of the box and what a favorite used to mean.
+export type RecipeVote = 'loved' | 'liked' | 'never';
 
 export const RECIPE_VOTE_LABELS: Record<RecipeVote, string> = {
-  up: 'Loved it',
-  down: 'Not for me',
+  loved: 'Loved it',
+  liked: 'Liked it',
+  never: 'Never again',
 };
 
 // A dish you cook, with what it takes to shop for it.
@@ -3033,7 +3309,6 @@ export interface Recipe {
   // second list to keep in step with this one, worth adding only once
   // something actually reads them (#1695).
   steps: RecipeStep[];
-  favorite: boolean;
   sortOrder: number;
   createdAt: string;
   /**
@@ -3049,7 +3324,9 @@ export interface Recipe {
   /**
    * Set from the edit page, or offered the first time the recipe is marked
    * cooked (see useRecipeStore.setVote, MealPlanScreen.setCooked). Null is
-   * "no opinion yet", not "fine" — see RecipeVote.
+   * "no opinion yet", not "fine" — see RecipeVote. This is the recipe box's
+   * one rating: there is no separate favorite flag any more, and 'loved' is
+   * what a starred recipe used to mean.
    */
   vote: RecipeVote | null;
 

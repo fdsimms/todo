@@ -283,6 +283,138 @@ the same trade the `unavailable` branch makes when a substitute joins it. It is 
 that branch's "Not here": the store has the item, just not your box, and collapsing the two
 claims would say a shop had nothing when it had the thing and not your version of it.
 
+## Separate lists (`GroceryList`) — the trolley for a week away
+
+"I'm going on vacation and I don't want to see the shopping I need at home." A `GroceryList` is a
+named second trolley — "Airbnb", "Beach house" — and `GroceryItem.listId` says which one a row is
+in right now. The reads are in `src/utils/groceryLists.ts`; the writes are `useGroceryStore`'s.
+
+**There is no row for the home list, and that absence is most of the design.** `listId` is `null`
+for it, so every row that existed before this shipped is already on it and nothing was backfilled;
+the one list that must always exist can't be renamed into nothing or deleted by accident, because
+it isn't data. Every function that takes a list takes `string | null`, which is also why none of
+them can be written as a truthiness check.
+
+**A list is a scope on the trolley, not a second catalog.** There is still one `GroceryItem` per
+thing you buy, with one aisle, one purchase history, one pantry state, one set of substitutes and
+one set of products. Only *membership* is per-list, and it lives in `grocery_list_items` — one row
+per (item, list), carrying `checked`, `sortOrder` and `choiceGroup`.
+
+**A row can be in two trolleys at once, and that is what the table is for.** The staples you need
+in both kitchens are the ordinary case, not an edge one: adding "milk" to the Airbnb list must not
+take it off the list at home. A singular `GroceryItem.listId` did exactly that, which is why it
+lasted one commit. Three fields had to move with it:
+
+- **`checked`**, or ticking milk off at the shop near the rental would show it as in the cart at
+  home, and the next trip there would buy it.
+- **`choiceGroup`**, because an either/or is *this* trolley's "apples or pears" — the field's own
+  note has always said so.
+- **`sortOrder`**, because each list is walked in its own order. This is the one that would merely
+  have been untidy shared; it comes along because the other two settle the shape anyway.
+
+- **Every add lands on the active list**, wherever it comes from: the add field, a recipe's
+  ingredients, "I'm nearly out of this", the catalog's Add button. That's the one rule the switcher
+  rests on, and the alternative — asking which list, per add — is a question nobody wants twelve
+  times a trip. `addByName` takes a `listId` option for the single caller that needs to override it
+  (below). **Adding a row to a list it is already in is a no-op on the entry**, so the tick and the
+  slot in the walk order survive: typing "milk" twice must not un-tick the milk in your cart.
+- **`GroceryItem.onList`/`checked`/`sortOrder`/`choiceGroup` are still there, and they mirror the
+  *home* entry.** That is what lets every reader written before separate lists keep working and
+  keep meaning what it meant: the home list is the original one and these columns have always held
+  it. Two functions write them and they are twins — `dbSyncGroceryHomeColumns` in SQLite and
+  `withHomeMembership` in memory — both reached only through the store's single `writeMembership`
+  path, so they cannot drift.
+- **`onList` is the exception: it is the broad "in any trolley" question.** It has to be, because
+  `clearList`'s sweep and the catalog prune both read it to decide whether a row is unused, and a
+  row on the Airbnb list is not unused. The four readers that want that question and don't have the
+  item to hand ask `onListAnywhere`/`listedAnywhere` instead: the sweep, `catalogPruneCandidates`,
+  `pantryCheckTasks`, and the Pantry row's "on the list" caption.
+- **`itemsOnList` projects, it does not just filter.** It returns each row with that list's
+  `checked`/`sortOrder`/`choiceGroup` written over the item's own, which is what keeps
+  `buildGrocerySections`, the drag maths, the share text, the trip planner and the finish sheet
+  taking a plain `GroceryItem[]`. A caller that filtered `items` by entry instead would hand every
+  one of them the home list's ticks — **so never read `item.checked` off `store.items` to answer a
+  question about a list.**
+- **`grocery_items.list_id` is dead.** It was the singular column this replaced, and it survives
+  only as the input to the one-time migration that filled `grocery_list_items`. Written by nothing
+  since, the same treatment `in_catalog` and `task_groups.completed_at` get.
+- **A drop decides two things with two different scopes**, and `applyDrop` is where that shows: the
+  *aisle* is a fact about the item (dragging bread to Frozen means bread is in Frozen, on every
+  list) while the *rank* is this trolley's walk order and belongs to the entry.
+- **`activeListId` is a persisted setting, not a column**, like `grocery_group_by` beside it: it
+  says what this device is looking at. It persists because a vacation outlasts an app launch, and
+  it is repaired at read time against the lists that exist — the same treatment `lastShopId` and
+  the active trip get, and for the same reason.
+- **It does not sync, while the lists themselves do.** `grocery_lists` is in `SYNC_TRACKED_TABLES`
+  and has to be: `grocery_items.list_id` syncs, and on a device with no row to resolve it against
+  the whole Airbnb trolley would read as the home list. Which list you are *looking at* is
+  per-device, so one phone in the rental kitchen doesn't move the other one's screen.
+- **Switching lists ends any running trip.** A trip is "I'm standing in this store shopping for
+  this trolley", and switching trolleys makes the second half false.
+- **Deleting a list drops its entries first**, and that is the one place grocery's usual
+  dangling-pointer tolerance does *not* apply. An entry naming a list that no longer exists would
+  keep the row in a deleted list's count for ever, and `listId` reads as `null` — the home list — if
+  anything resolved it. `dbDeleteGroceryList` owns it. The rows themselves stay in the catalog, and
+  a row that is *also* on another list stays on that one: a list going away is a statement about
+  one trip, not about the coffee.
+
+### An away trip records nothing
+
+Every list except home is an "away" list (`isAwayList`), and finishing one takes the checked rows
+off and stops there: no purchase count, no `lastPurchasedAt`, no use-by day, no price observation,
+no `ItemShopLink`, and none of the pantry claims a purchase normally refutes (`onHandUntil`,
+`frozenAt`, `openedAt`, `runningLowAt` are all left standing). No supply is restocked and no use-up
+task is spawned.
+
+The failure that rules out is concrete: groceries bought for a rented kitchen 400 miles away are
+not evidence about yours, and without this a week at the beach leaves the app certain there are
+eggs in your fridge, quoting Cape Cod prices for months, and nagging about milk it thinks is
+going off.
+
+- **"Home" and "away" is the whole distinction — there is deliberately no per-list switch.** A flag
+  would be a second thing to explain and a second state for every purchase path to respect.
+- **`dbFinishGroceryShopping` derives `away` from the `listId` it was given** rather than taking a
+  second parameter, because the two could then disagree. It runs a shorter `UPDATE` and returns.
+- **`list_id IS ?`, never `= ?`.** SQLite's `=` is never true against NULL, and NULL is the home
+  list — so a home trip would select nothing at all. `database.test.ts` covers this against real
+  SQLite for exactly that reason: the store's own tests mock the db away, so a `=` would pass every
+  one of them.
+- **The store enforces it in four places**, because the record is assembled in four: the shop it
+  resolves, the shelf-life days it computes, the prices it forwards, and the in-memory patch that
+  mirrors the db. The patch splits the purchase record into one conditional spread so a column
+  added later can't be half-covered.
+- **The finish sheet drops the questions rather than discarding the answers.** `away` hides the
+  store picker, the "anything they didn't have?" section, the price fields and the receipt scan —
+  every one of them asks about what a purchase *leaves behind*. What's left is the confirm, which
+  is still worth asking for: it is what empties the trolley.
+- **`StartTripPrompt` offers no stores on an away list**, which leaves it as the Finish button
+  alone — the shape it already takes for anyone with no stores on file. Every store on record is
+  one near home.
+
+### The Reminders mirror is the home list, always
+
+`groceryReminderMirror` is the one reader that deliberately doesn't follow the active list. It is a
+two-way sync against a standing Apple Reminders list: a row that stops being `onList` here has its
+reminder *deleted* over there, so mirroring whichever list was on screen would empty that Reminders
+list the moment you switched to the Airbnb one, and the import half would read the emptiness back
+as everything having been ticked off. A vacation list is a week; the mirrored list is a fixture of
+the household.
+
+That is also the one caller of `addByName`'s `listId` option: a reminder imported while an away
+list is up must land at home, or the mirror's next pass reads it as absent and deletes the reminder
+it just came from.
+
+### What is deliberately *not* scoped
+
+Not everything that reads `onList` means "on the list you're looking at", and three cases are left
+unscoped on purpose:
+
+- **`catalogPruneCandidates`** asks "is this in any trolley", which is the conservative reading an
+  unrecoverable delete wants.
+- **`pantryCheckTasks`** won't ask "do you still have X" about a row on any list.
+- **`KitchenScreen`'s "on the list" caption**, for the same reason: the row is on a list, and which
+  one is not what a pantry row is answering.
+
 ## Grocery stores (`Shop`) — which shop has which items
 
 The rest of the grocery feature isn't written up here yet; this section covers only stores, which
@@ -948,14 +1080,16 @@ has no dish decision to defer — but the loser then sat there looking outstandi
 
 ## Substitutes (`ItemSubLink`) — one item standing in for another
 
-**The vocabulary rule, so it can't drift: products *of* an item, either/or on the list,
-alternatives on the recipe, substitutes on the item — and a substitute marked "always use this
-instead" is a standing swap.** Five adjacent terms for five genuinely different things; settled
-here rather than left to be re-argued per PR.
+**The vocabulary rule, so it can't drift: products *of* an item, varieties *of* a name,
+either/or on the list, alternatives on the recipe, substitutes on the item — and a substitute
+marked "always use this instead" is a standing swap.** Six adjacent terms for six genuinely
+different things; settled here rather than left to be re-argued per PR.
 
 First, is it even the same thing you're buying? A different box of it is a **product** (above) —
 Arnold's white instead of Arnold's wheat is not a substitution, it's the other one under the same
-item. Everything below is about reaching for a *different item*.
+item. A different *item* that is still the thing a recipe named, more precisely — white onion for
+a line saying "onion" — is a **variety** (below), the one vertical relation here. Everything
+below the varieties section is about reaching for a genuinely *different thing*.
 
 The one-line test for which of those you're looking at: **does the answer depend on the dish?**
 If yes it's a `choiceGroup` — both options intended, equals, decided per cooking in
@@ -1144,6 +1278,82 @@ Three rules the resolver enforces, all pinned by `standingSwaps.test.ts`:
   links, and its one write turns a rule off *without* forgetting the substitute. A rule that
   rewrites what lands in the trolley has to be answerable somewhere that isn't "open every
   grocery item and check".
+
+## Varieties (`GroceryItem.varietyOfKey`) — white onion is a kind of onion
+
+Every relation above is *lateral* — a product is a box of one item, either/or and alternatives
+pair equals, a substitute is a different thing you'd tolerate. None of them could say that one
+catalog item *is* the thing a recipe named, more precisely, so a line saying "onion" read as a
+brand-new ingredient while white onion sat in the pantry, and the shortfall generator wrote
+"Shop for Tuesday" over an onion in the drawer. `varietyOfKey` is the one vertical relation:
+an item declares the generic *name* it's a variety of, and `src/utils/itemVarieties.ts` is the
+read side.
+
+- **The generic is a key, not an item id.** The generic side is what recipe lines say
+  (`RecipeIngredient.nameKey` is the bridge), and plenty of generics never exist as a row —
+  "onion" is only ever a word recipes use. Same precedent as the aisle overrides, keyed by
+  `nameKey` and outliving rows. The cost is renames: `renameItem` and `mergeItems` both re-point
+  declarations aimed at a key that's changing, and both clear a declaration that would leave a
+  row a variety of itself.
+- **Asymmetric on purpose, and the asymmetry is the feature.** A specific item satisfies a
+  generic ask; a generic never satisfies a specific one. "Onion" is answered by any declared
+  variety the app has a reason to believe you have; "red onion" matches only red onion, and the
+  rest of the family surfaces as the same "you have white onion" caption a substitute gets —
+  informing, never buying.
+- **A covered generic line *becomes* the variety's row** (`classifyPlanned`'s re-file pass),
+  rather than being captioned in place: the category, the display name, and above all what a
+  cook-recap answer or a restock writes to all land on a real catalog row. `swappedFrom` carries
+  the recipe's own word, so the row reads "instead of onion" exactly as a standing swap does.
+  Only when the line's own key answers nothing — an exact match always wins outright — and only
+  for a variety that answers (`coveringVariety` runs classifyPlanned's own ladder across the
+  family: on the list, then staple, then the pantry guess). A declared variety nobody has
+  changes nothing, and the ask stays an honest needToBuy under the generic name, which is also
+  the right thing to put in the trolley.
+- **Single hop, never a chain.** Readers ask "which items declare themselves varieties of this
+  key" and stop, so a mis-filed pointer can't loop and "vegetable" can't transitively claim
+  every onion. A chain just means the middle name answers for the outer one and nothing else.
+- **`useUpRecipes` aliases a dying variety onto its generic key** — a recipe calling for
+  "onion" counts as using up the white onion that's about to turn. Exact keys on both hops, a
+  real dying entry under the generic key wins over the alias, and two dying varieties settle on
+  the more urgent. The module's no-fuzzy-matching rule stands: a declaration is user-authored,
+  not a guess.
+- **`catalogCoverage` credits a variety at *full* weight**, which is the one place the
+  difference from a substitute is a number rather than a rule. `SUBSTITUTE_RECENCY_CREDIT`
+  discounts a substitute on purpose (#1568: a fully-stocked recipe must outrank one stocked
+  only by tolerated stand-ins), and a variety must not be discounted the same way — it *is*
+  the thing the line named, so a kitchen stocking white onions would otherwise rank below one
+  holding a row called plain "Onion" for the same dish. It resolves the freshest of the family
+  rather than `coveringVariety`'s ladder, because this feeds a recency average and wants the
+  best evidence the line is coverable tonight, where that one picks what a shopping read files
+  a row under. The index is built on the first line that misses, so an install with no
+  declarations never allocates it — this runs once per recipe over the whole catalog.
+  `countLikelyInPantry` needed nothing: it reads `classifyPlanned`'s rows, which already carry
+  the variety's own key by the time it counts them.
+- **`ingredientCatalogMatch` reads a declared-covered generic as `linked`** (`reason:
+  'variety'`), so the "did you mean White onion?" badge stands down once the relation is
+  recorded — renaming the recipe line to the variety is exactly the over-specifying this
+  replaces. Identity only: whether anything is on hand is the shopping reads' question.
+- **The badge is also where a declaration gets made**, since that's where anyone actually
+  notices the gap. `varietyOfferFor` tests the *shape* rather than the match tier — the catalog
+  name must end with the line's whole key at a word boundary, the mirror of `longestPrefixItem`
+  — and `RecipeIngredientSheet` offers "Is White onion a kind of onion?" beside the rename.
+  Only the ranked tier can produce that shape (`shorter` and `prefix` both need the catalog key
+  to be the shorter one), so gating on the reason as well would restate the shape in a way that
+  could drift from it. Both accepts stay on offer: a near-duplicate ("Onions" for "onion") wants
+  the rename, and only a person can tell the two apart. An item that already declares something
+  is left alone.
+- **The ranked tier refuses a tie**, which is what makes the offer above trustworthy: two
+  candidates on an identical score mean the sort fell through to name length and the alphabet,
+  and a catalog holding White onion and Red onion would otherwise badge one of them for "onion"
+  with nothing saying the other exists. `GrocerySuggestion.score` is exposed for exactly this
+  one reader. It falls through rather than returning no match, so the tiers below still get
+  their turn — same refusal `uniqueSimilarItem` makes, and the same reasoning.
+- **Nothing infers a declaration.** The user says so, in the item sheet's Variety of field
+  (suggestions are the item's own trailing words plus generics already in use —
+  `genericNameSuggestions`). Same discipline as substitutes, and a declaration is a user fact
+  (`hasUserFacts`), so it protects its row from the clearList sweep.
+- **Standing swaps stay exact-key.** A swap is a rewrite mandate; firing a generic's mandate on
+  a line that named a specific variety would override a specificity the user wrote down.
 
 ## Deciding at the shelf — an ingredient choice that survives onto the list
 

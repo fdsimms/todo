@@ -18,6 +18,7 @@ import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 import { substitutesOnHand } from './itemSubs';
+import { varietyIndex } from './itemVarieties';
 import { standingSwapMap } from './standingSwaps';
 import { formatDuration } from './effort';
 import {
@@ -657,8 +658,9 @@ export function cleanChoiceGroup(raw: string | null | undefined): string | null 
 /**
  * Ranks recipes for the library's search field, mirroring
  * rankGrocerySuggestions' 3/2/1 prefix / word-start / substring weighting so
- * searching here behaves the way searching the catalog already does. Favorites
- * break ties; nothing else does, because Phase 1 has no cook history to rank on.
+ * searching here behaves the way searching the catalog already does. The vote
+ * breaks ties, loved first; nothing else does, because Phase 1 has no cook
+ * history to rank on.
  *
  * Below the name, the ladder runs tag (0.75) → ingredient (0.5) → attribution
  * (0.4) → notes (0.25), ordered by how deliberate the match is: a tag is a label
@@ -730,7 +732,7 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
   return scored
     .sort((a, b) =>
       b.weight - a.weight ||
-      Number(b.recipe.favorite) - Number(a.recipe.favorite) ||
+      voteRank(a.recipe.vote) - voteRank(b.recipe.vote) ||
       a.recipe.name.localeCompare(b.recipe.name)
     )
     .map(s => s.recipe);
@@ -855,28 +857,40 @@ export function describePrepTime(recipe: Recipe): string {
 }
 
 /**
- * Favorites-first ordering for the unfiltered recipe box — the same sort
+ * Loved-first ordering for the unfiltered recipe box — the same sort
  * RecipesScreen has always applied to its flat list, pulled out so
  * groupRecipesByMealType can give each of its sections the identical order
  * instead of inventing a second one. A search ranking (rankRecipes) is a
  * different question — "what matches this text" — so it's never routed
  * through here.
+ *
+ * Ranked by `vote` rather than a separate favorite flag — loved
+ * first, then liked, then no opinion, then never-again last — with
+ * `sortOrder` breaking ties within a rung. Most recipes carry no vote at
+ * all, so for them this is exactly the plain `sortOrder` list it always was;
+ * only an explicitly rated recipe moves.
  */
 export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
   return [...recipes].sort((a, b) =>
-    Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder
+    voteRank(a.vote) - voteRank(b.vote) || a.sortOrder - b.sortOrder
   );
 }
 
-// Up first, then no opinion, then down — the same order productsForItem
-// ranks ProductRating in (groceryProduct.ts), minus that list's "preferred"
-// rung, which a recipe has no equivalent of.
+// Loved first, then liked, then no opinion, then never-again last — the same
+// order productsForItem ranks ProductRating in (groceryProduct.ts), minus
+// that list's "preferred" rung, which a recipe has no equivalent of. No
+// opinion sits above never-again for the same reason it always did: cooking
+// something you never explicitly rejected isn't the same as having decided
+// against it.
 function voteRank(vote: RecipeVote | null): number {
-  return vote === 'up' ? 0 : vote === 'down' ? 2 : 1;
+  if (vote === 'loved') return 0;
+  if (vote === 'liked') return 1;
+  if (vote === 'never') return 3;
+  return 2;
 }
 
 /**
- * The box's sort options beyond the default favorites-first order — driven by
+ * The box's sort options beyond the default loved-first order — driven by
  * RecipeSortFilterSheet, mirroring SortFilterSheet's `sort` for tasks. Kept as
  * one switch over RecipeSortOption (rather than a comparator per screen)
  * because it's the one place `describeCookHistory`'s underlying fields
@@ -891,8 +905,6 @@ export function sortRecipesBy(recipes: readonly Recipe[], sort: RecipeSortOption
   switch (sort) {
     case 'name':
       return [...recipes].sort((a, b) => a.name.localeCompare(b.name));
-    case 'voted':
-      return [...recipes].sort((a, b) => voteRank(a.vote) - voteRank(b.vote));
     case 'cooked-recent':
       return [...recipes].sort((a, b) => {
         if (!a.lastCookedAt && !b.lastCookedAt) return 0;
@@ -938,7 +950,7 @@ export interface RecipeMealTypeSection {
  * A meal type with no recipes is omitted entirely rather than rendered empty,
  * same as makeCategoryGroups omitting empty categories.
  *
- * `sort` orders each section independently, defaulting to the favorites-first
+ * `sort` orders each section independently, defaulting to the loved-first
  * order every section used before RecipeSortFilterSheet existed — a caller
  * that never asked for a different sort keeps exactly the layout it had.
  */
@@ -1015,7 +1027,7 @@ export function recipeListItemKey(item: RecipeListItem): string {
  * is left exactly as it was — they were never in reach of the drop.
  *
  * `settled` is the regrouped layout (rebuilt with groupRecipesByMealType, so
- * favorites-first order within a section is preserved) to render immediately,
+ * loved-first order within a section is preserved) to render immediately,
  * matching what the store-derived list will recompute to once the writes land.
  */
 export function resolveRecipeMealTypeDrop(
@@ -1153,6 +1165,31 @@ const MIN_SUGGESTION_COVERAGE = 0.5;
 // when the substitute genuinely beats that.
 const SUBSTITUTE_RECENCY_CREDIT = 0.75;
 
+/**
+ * The freshest of a generic's declared varieties, or null for none.
+ *
+ * Freshest rather than `itemVarieties.coveringVariety`'s ladder, because the
+ * two answer different questions: that one picks what a *shopping* read should
+ * file a line under, where this feeds a recency average and wants the family's
+ * best evidence that the line is coverable tonight. Ties keep the first in
+ * catalog order, the same first-wins every other reader here uses.
+ */
+function bestByRecency(
+  candidates: readonly GroceryItem[] | undefined,
+  now: Date
+): GroceryItem | null {
+  let best: GroceryItem | null = null;
+  let bestScore = -1;
+  for (const candidate of candidates ?? []) {
+    const score = purchaseRecency(candidate, now);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 function catalogCoverage(
   recipe: Recipe,
   items: readonly GroceryItem[],
@@ -1176,10 +1213,26 @@ function catalogCoverage(
   ).map(f => f.ingredient);
   if (ingredients.length === 0) return { matched: 0, total: 0, coverage: 0, avgRecency: 0 };
   const byKey = new Map(items.map(i => [i.nameKey, i]));
+  // Built on the first line that misses, not up front: this runs once per
+  // recipe over the whole catalog, and an install where nobody has declared a
+  // variety would otherwise pay a second full pass per recipe to learn there
+  // are none. Once built it costs the same single pass `byKey` already does.
+  let varieties: ReadonlyMap<string, GroceryItem[]> | null = null;
   let matched = 0;
   let recencySum = 0;
   for (const ingredient of ingredients) {
-    const item = byKey.get(ingredient.nameKey);
+    // A generic line the catalog only stocks varieties of is covered — "onion"
+    // against a White onion declaring `varietyOfKey: 'onion'`. Unlike the
+    // substitute credit below this is *full* credit, and the asymmetry is the
+    // whole point of the relation: a substitute is a different thing you would
+    // tolerate, where a variety **is** the thing the recipe named, more
+    // precisely. Discounting it would rank a kitchen that stocks white onions
+    // below one holding a row called plain "Onion", for the same dish.
+    let item = byKey.get(ingredient.nameKey);
+    if (!item && ingredient.nameKey) {
+      varieties ??= varietyIndex(items);
+      item = bestByRecency(varieties.get(ingredient.nameKey), now) ?? undefined;
+    }
     if (!item) continue;
     matched += 1;
     // `matched` (hence `coverage`) is existence-only and unaffected by

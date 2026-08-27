@@ -97,7 +97,6 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     components: [],
     prepTasks: [],
     steps: [],
-    favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
     cookCount: 0,
@@ -753,11 +752,20 @@ describe('describeRecipe', () => {
 });
 
 describe('sortRecipesForDisplay', () => {
-  it('puts favorites first, then sortOrder', () => {
-    const a = recipe('A', { sortOrder: 2, favorite: false });
-    const b = recipe('B', { sortOrder: 1, favorite: true });
-    const c = recipe('C', { sortOrder: 0, favorite: false });
+  it('puts loved recipes first, then sortOrder', () => {
+    const a = recipe('A', { sortOrder: 2, vote: null });
+    const b = recipe('B', { sortOrder: 1, vote: 'loved' });
+    const c = recipe('C', { sortOrder: 0, vote: null });
     expect(sortRecipesForDisplay([a, b, c]).map(r => r.name)).toEqual(['B', 'C', 'A']);
+  });
+
+  it('ranks loved, then liked, then no opinion, then never-again last', () => {
+    const loved = recipe('Loved', { vote: 'loved', sortOrder: 3 });
+    const liked = recipe('Liked', { vote: 'liked', sortOrder: 2 });
+    const noOpinion = recipe('No opinion', { vote: null, sortOrder: 1 });
+    const never = recipe('Never', { vote: 'never', sortOrder: 0 });
+    expect(sortRecipesForDisplay([never, noOpinion, liked, loved]).map(r => r.name))
+      .toEqual(['Loved', 'Liked', 'No opinion', 'Never']);
   });
 
   it('does not mutate the input array', () => {
@@ -770,14 +778,14 @@ describe('sortRecipesForDisplay', () => {
 
 describe('sortRecipesBy', () => {
   it('defaults to sortRecipesForDisplay for "default"', () => {
-    const a = recipe('A', { sortOrder: 1, favorite: false });
-    const b = recipe('B', { sortOrder: 0, favorite: true });
+    const a = recipe('A', { sortOrder: 1, vote: null });
+    const b = recipe('B', { sortOrder: 0, vote: 'loved' });
     expect(sortRecipesBy([a, b], 'default').map(r => r.name)).toEqual(['B', 'A']);
   });
 
-  it('sorts by name A-Z, ignoring favorite', () => {
-    const a = recipe('Banana Bread', { favorite: false });
-    const b = recipe('Apple Pie', { favorite: true });
+  it('sorts by name A-Z, ignoring vote', () => {
+    const a = recipe('Banana Bread', { vote: null });
+    const b = recipe('Apple Pie', { vote: 'loved' });
     expect(sortRecipesBy([a, b], 'name').map(r => r.name)).toEqual(['Apple Pie', 'Banana Bread']);
   });
 
@@ -795,14 +803,6 @@ describe('sortRecipesBy', () => {
     const never = recipe('Never', { lastCookedAt: null });
     expect(sortRecipesBy([never, recent, older], 'cooked-oldest').map(r => r.name))
       .toEqual(['Older', 'Recent', 'Never']);
-  });
-
-  it('sorts by vote, loved first and not-for-me last, no opinion in between', () => {
-    const loved = recipe('Loved', { vote: 'up' });
-    const noOpinion = recipe('No opinion', { vote: null });
-    const notForMe = recipe('Not for me', { vote: 'down' });
-    expect(sortRecipesBy([notForMe, noOpinion, loved], 'voted').map(r => r.name))
-      .toEqual(['Loved', 'No opinion', 'Not for me']);
   });
 
   it('sorts by ingredient count, ascending and descending', () => {
@@ -839,9 +839,9 @@ describe('groupRecipesByMealType', () => {
     expect(sections[1].data.map(r => r.name)).toEqual(['Mystery']);
   });
 
-  it('sorts each section favorites-first by sortOrder, same as the flat list', () => {
-    const a = recipe('A', { mealType: 'snack', sortOrder: 2, favorite: false });
-    const b = recipe('B', { mealType: 'snack', sortOrder: 1, favorite: true });
+  it('sorts each section loved-first by sortOrder, same as the flat list', () => {
+    const a = recipe('A', { mealType: 'snack', sortOrder: 2, vote: null });
+    const b = recipe('B', { mealType: 'snack', sortOrder: 1, vote: 'loved' });
     const sections = groupRecipesByMealType([a, b]);
     expect(sections[0].data.map(r => r.name)).toEqual(['B', 'A']);
   });
@@ -850,7 +850,7 @@ describe('groupRecipesByMealType', () => {
     expect(groupRecipesByMealType([])).toEqual([]);
   });
 
-  it('sorts each section with a caller-supplied comparator instead of the favorites-first default', () => {
+  it('sorts each section with a caller-supplied comparator instead of the loved-first default', () => {
     const a = recipe('Banana', { mealType: 'snack' });
     const b = recipe('Apple', { mealType: 'snack' });
     const sections = groupRecipesByMealType([a, b], list => sortRecipesBy(list, 'name'));
@@ -987,9 +987,9 @@ describe('rankRecipes', () => {
     expect(rankRecipes('gluten-free', [gf]).map(r => r.name)).toEqual(['Brownies']);
   });
 
-  it('breaks a tie on favourite', () => {
+  it('breaks a tie on vote, loved first', () => {
     const a = recipe('Chicken a', { nameKey: 'chicken a' });
-    const b = recipe('Chicken b', { nameKey: 'chicken b', favorite: true });
+    const b = recipe('Chicken b', { nameKey: 'chicken b', vote: 'loved' });
     expect(rankRecipes('chicken', [a, b])[0].name).toBe('Chicken b');
   });
 
@@ -1339,6 +1339,48 @@ describe('scoreRecipeAgainstCatalog', () => {
     const items = [item('Onions', { nameKey: 'onions' })];
     expect(scoreRecipeAgainstCatalog(full, items, now))
       .toBeGreaterThan(scoreRecipeAgainstCatalog(partial, items, now));
+  });
+
+  // Varieties (GroceryItem.varietyOfKey) — a generic line the catalog only
+  // stocks varieties of is covered, at full credit. See catalogCoverage.
+  it('counts a declared variety as covering a generic line', () => {
+    const r = recipe('Ragù', { ingredients: [ing('Onion', { nameKey: 'onion' })] });
+    const declared = [item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion' })];
+    const undeclared = [item('White onion', { nameKey: 'white onion' })];
+
+    expect(scoreRecipeAgainstCatalog(r, declared, now)).toBeGreaterThan(0);
+    expect(scoreRecipeAgainstCatalog(r, undeclared, now)).toBe(0);
+  });
+
+  it('gives a variety full credit, unlike a substitute', () => {
+    // A substitute is a different thing you would tolerate; a variety *is* the
+    // thing the recipe named. A kitchen stocking white onions must not rank
+    // below one holding a row called plain "Onion" for the same dish.
+    const r = recipe('Ragù', { ingredients: [ing('Onion', { nameKey: 'onion' })] });
+    const bought = new Date(2026, 7, 10).toISOString();
+    const direct = [item('Onion', { nameKey: 'onion', lastPurchasedAt: bought })];
+    const variety = [item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion', lastPurchasedAt: bought })];
+
+    expect(scoreRecipeAgainstCatalog(r, variety, now)).toBe(scoreRecipeAgainstCatalog(r, direct, now));
+  });
+
+  it('reads the freshest of several declared varieties', () => {
+    const r = recipe('Ragù', { ingredients: [ing('Onion', { nameKey: 'onion' })] });
+    const stale = item('Red onion', { nameKey: 'red onion', varietyOfKey: 'onion', lastPurchasedAt: new Date(2026, 0, 1).toISOString() });
+    const fresh = item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion', lastPurchasedAt: new Date(2026, 7, 10).toISOString() });
+
+    expect(scoreRecipeAgainstCatalog(r, [stale, fresh], now))
+      .toBe(scoreRecipeAgainstCatalog(r, [fresh], now));
+  });
+
+  it('still prefers a direct row over a variety of the same key', () => {
+    // An exact match always wins outright, the same rule classifyPlanned keeps.
+    const r = recipe('Ragù', { ingredients: [ing('Onion', { nameKey: 'onion' })] });
+    const direct = item('Onion', { nameKey: 'onion', lastPurchasedAt: new Date(2026, 7, 10).toISOString() });
+    const variety = item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion', lastPurchasedAt: new Date(2026, 0, 1).toISOString() });
+
+    expect(scoreRecipeAgainstCatalog(r, [direct, variety], now))
+      .toBe(scoreRecipeAgainstCatalog(r, [direct], now));
   });
 
   it('nudges a recently bought match above a stale one at equal coverage', () => {

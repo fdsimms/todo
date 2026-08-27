@@ -1,5 +1,5 @@
-import { fuzzySearch, mergeRanges, searchGroups } from '../utils/fuzzySearch';
-import type { Task, TaskGroup } from '../types';
+import { fuzzySearch, mergeRanges, searchGroups, searchProjects } from '../utils/fuzzySearch';
+import type { Project, Task, TaskGroup } from '../types';
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => ({ dayResetTime: '00:00', vacationMode: false }) },
@@ -47,6 +47,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   targetCount: null,
   targetUnit: null,
   allowOvershoot: false,
+  quotaIntervalMinutes: null,
+  quotaReminders: false,
+  quotaStartedAt: null,
   progressCount: 0,
   tags: [],
   sortOrder: 1,
@@ -465,5 +468,88 @@ describe('searchGroups', () => {
     const results = searchGroups([group], 'packing', new Map());
     expect(results[0].memberTitles).toEqual([]);
     expect(results[0].memberCount).toBe(0);
+  });
+});
+
+// ─── searchProjects ─────────────────────────────────────────────────────────
+
+const makeProject = (overrides: Partial<Project> = {}): Project => ({
+  id: 'p1',
+  title: 'Kitchen refresh',
+  notes: '',
+  deadline: null,
+  category: null,
+  sortOrder: 1,
+  archived: false,
+  archivedAt: null,
+  completed: false,
+  completedAt: null,
+  createdAt: '2025-01-01T00:00:00.000Z',
+  nudgeCadenceDays: 0,
+  autoSchedule: false,
+  sequential: false,
+  nudgeOptIn: false,
+  reviewDeclinedAt: null,
+  backfillDismissedFields: [],
+  ...overrides,
+});
+
+describe('searchProjects', () => {
+  it('returns nothing for an empty query', () => {
+    expect(searchProjects([makeProject()], '', new Map())).toEqual([]);
+    expect(searchProjects([makeProject()], '   ', new Map())).toEqual([]);
+  });
+
+  it('matches a project by title, and says where the match landed', () => {
+    const results = searchProjects([makeProject({ title: 'Kitchen refresh' })], 'kitchen', new Map());
+    expect(results).toHaveLength(1);
+    expect(results[0].project.title).toBe('Kitchen refresh');
+    expect(results[0].titleMatches).toEqual([[0, 7]]);
+  });
+
+  // The one reader Project.notes has ever had beyond the field that writes it.
+  it('matches a project by its notes', () => {
+    const project = makeProject({ title: 'Kitchen refresh', notes: 'The installer quoted separately' });
+    const results = searchProjects([project], 'installer', new Map());
+    expect(results).toHaveLength(1);
+    // Notes score, but nothing in the title is highlighted for a notes-only hit.
+    expect(results[0].titleMatches).toEqual([]);
+  });
+
+  it('ranks a title match above a notes-only match', () => {
+    const titled = makeProject({ id: 'a', title: 'Garage shelving' });
+    const noted = makeProject({ id: 'b', title: 'Loft conversion', notes: 'clear the garage first' });
+    const results = searchProjects([noted, titled], 'garage', new Map());
+    expect(results.map(r => r.project.id)).toEqual(['a', 'b']);
+  });
+
+  it('skips a project nothing in it matches', () => {
+    expect(searchProjects([makeProject({ title: 'Kitchen refresh' })], 'passport', new Map())).toEqual([]);
+  });
+
+  // Still worth finding, just not what you were most likely looking for.
+  it('ranks archived and completed projects below active ones at equal scores', () => {
+    const active = makeProject({ id: 'a', title: 'Garage shelving' });
+    const done = makeProject({ id: 'b', title: 'Garage shelving', completed: true });
+    const filed = makeProject({ id: 'c', title: 'Garage shelving', archived: true });
+    const results = searchProjects([done, filed, active], 'garage shelving', new Map());
+    expect(results[0].project.id).toBe('a');
+    expect(results.map(r => r.project.id).slice(1).sort()).toEqual(['b', 'c']);
+  });
+
+  it('carries the progress it is handed, and reads 0/0 for a project with none', () => {
+    const projects = [makeProject({ id: 'a' }), makeProject({ id: 'b' })];
+    const results = searchProjects(projects, 'kitchen', new Map([['a', { done: 3, total: 5 }]]));
+    const byId = (id: string) => results.find(r => r.project.id === id)!;
+    expect(byId('a').progress).toEqual({ done: 3, total: 5 });
+    expect(byId('b').progress).toEqual({ done: 0, total: 0 });
+  });
+
+  it('requires every word of a multi-word query to contribute', () => {
+    const project = makeProject({ title: 'Kitchen refresh' });
+    // Both words are in the title, so this scores higher than either alone.
+    const both = searchProjects([project], 'kitchen refresh', new Map());
+    const one = searchProjects([project], 'kitchen', new Map());
+    expect(both[0].score).toBeGreaterThan(one[0].score);
   });
 });

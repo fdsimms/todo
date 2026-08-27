@@ -70,7 +70,11 @@ export function InlineAction({
   const styles = makeStyles(colors);
 
   const neutral = variant === 'neutral';
-  const fg = neutral ? colors.textSecondary : tint ?? colors.accent;
+  // `text`, not a grey: a neutral pill's label sits on bgTertiary/bgSecondary,
+  // where textSecondary measures 4.3:1 — the same reason every other
+  // unselected control's label was raised. The accent variant is what
+  // ranks the pair; dimming the quieter one's text isn't.
+  const fg = neutral ? colors.text : tint ?? colors.accentText;
   const bg = neutral
     ? (surface === 'page' ? colors.bgSecondary : colors.bgTertiary)
     : tint

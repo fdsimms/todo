@@ -72,6 +72,11 @@ import {
   dbDeleteItemProduct,
   dbSetProductGtin,
   dbClearGroceryList,
+  dbGetAllGroceryLists,
+  dbInsertGroceryList,
+  dbDeleteGroceryList,
+  dbGetAllGroceryListEntries,
+  dbSetGroceryListEntry,
   dbGetGroceryAisleOrder,
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
@@ -191,6 +196,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   targetCount: null,
   targetUnit: null,
   allowOvershoot: false,
+  quotaIntervalMinutes: null,
+  quotaReminders: false,
+  quotaStartedAt: null,
   progressCount: 0,
   tags: [],
   category: null,
@@ -269,7 +277,8 @@ beforeEach(() => {
     // link or a product left behind by the previous test names an item this
     // one has just deleted, and every `dbGetAll…()[0]` read below would be
     // holding somebody else's row.
-    'DELETE FROM grocery_items; DELETE FROM grocery_shops;' +
+    'DELETE FROM grocery_items; DELETE FROM grocery_shops; DELETE FROM grocery_lists;' +
+    'DELETE FROM grocery_list_items;' +
     'DELETE FROM grocery_item_shops; DELETE FROM grocery_item_products;'
   );
 });
@@ -555,6 +564,9 @@ describe('dbInsertTask + rowToTask round-trip', () => {
         targetCount: null,
         targetUnit: null,
         allowOvershoot: false,
+        quotaIntervalMinutes: null,
+        quotaReminders: false,
+        quotaStartedAt: null,
         progressCount: 0,
         chainEnabled: true,
         vacationPause: true,
@@ -1498,8 +1510,7 @@ describe('Projects', () => {
     id: 'project-1',
     title: 'Summer Bucket List',
     notes: '',
-    targetStartDate: null,
-    targetEndDate: null,
+    deadline: null,
     category: null,
     sortOrder: 1,
     archived: false,
@@ -1517,11 +1528,10 @@ describe('Projects', () => {
   });
 
   it('insert → getAll round-trips a project', () => {
-    dbInsertProject(makeProject({ targetStartDate: '2026-06-01T00:00:00.000Z', targetEndDate: '2026-09-01T00:00:00.000Z' }));
+    dbInsertProject(makeProject({ deadline: '2026-09-01T00:00:00.000Z' }));
     const [p] = dbGetAllProjects();
     expect(p.title).toBe('Summer Bucket List');
-    expect(p.targetStartDate).toBe('2026-06-01T00:00:00.000Z');
-    expect(p.targetEndDate).toBe('2026-09-01T00:00:00.000Z');
+    expect(p.deadline).toBe('2026-09-01T00:00:00.000Z');
     expect(p.archived).toBe(false);
     expect(p.completed).toBe(false);
   });
@@ -1693,7 +1703,7 @@ describe('backup and restore', () => {
     dbInsertTask(makeTask({ id: 't1', title: 'Walk the dog', tags: ['home'], priority: 3 }));
     dbInsertTask(makeTask({ id: 't2', title: 'Pay rent', completed: true }));
     dbInsertProject({
-      id: 'p1', title: 'Summer list', notes: '', targetStartDate: null, targetEndDate: null,
+      id: 'p1', title: 'Summer list', notes: '', deadline: null,
       category: null, sortOrder: 1, archived: false, archivedAt: null, completed: false, completedAt: null,
       createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false, sequential: false,
       nudgeOptIn: true,
@@ -1842,6 +1852,29 @@ describe('backup and restore', () => {
 // Groceries
 // ---------------------------------------------------------------------------
 
+/**
+ * Inserts a catalog row *and*, when it says it's on the list, its membership of
+ * the list at home.
+ *
+ * Membership lives in `grocery_list_items` now (see `GroceryListEntry`), so a
+ * fixture that only inserts the item describes a row in nobody's trolley — and
+ * every test below that finishes a trip or clears a list would then find
+ * nothing. The item's own four columns are the home entry's mirror, so writing
+ * both here is exactly what "this row is on the list, ticked" has always meant.
+ */
+function insertListedGroceryItem(item: GroceryItem): void {
+  dbInsertGroceryItem(item);
+  if (!item.onList) return;
+  dbSetGroceryListEntry({
+    itemId: item.id,
+    listId: null,
+    checked: item.checked,
+    sortOrder: item.sortOrder,
+    choiceGroup: item.choiceGroup,
+    addedAt: item.lastAddedAt ?? item.createdAt,
+  });
+}
+
 function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: string }): GroceryItem {
   return {
     nameKey: overrides.name.toLowerCase(),
@@ -1873,6 +1906,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
+    varietyOfKey: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -1953,10 +1987,11 @@ describe('grocery items', () => {
       usedUpCount: 0,
       spoiledCount: 0,
       lastSpoiledAt: null,
+      varietyOfKey: null,
       preferredProductId: 'p1',
       productStrict: true,
     });
-    dbInsertGroceryItem(item);
+    insertListedGroceryItem(item);
 
     expect(dbGetAllGroceryItems()).toEqual([item]);
   });
@@ -1972,7 +2007,7 @@ describe('grocery items', () => {
     const item = makeGroceryItem({
       id: 'g1', name: 'Olive oil', onList: true, checked: true, quantity: '1 l',
     });
-    dbInsertGroceryItem(item);
+    insertListedGroceryItem(item);
 
     dbFinishGroceryShopping('2026-08-01T00:00:00.000Z', shop.id, {}, { g1: 1299 });
 
@@ -1988,10 +2023,16 @@ describe('grocery items', () => {
 
   it('appends each trip to the window, newest first', () => {
     const item = makeGroceryItem({ id: 'g1', name: 'Olive oil', onList: true, checked: true });
-    dbInsertGroceryItem(item);
+    insertListedGroceryItem(item);
 
     dbFinishGroceryShopping('2026-06-01T00:00:00.000Z', null, {}, { g1: 1299 });
-    dbUpdateGroceryItem({ ...dbGetAllGroceryItems()[0], onList: true, checked: true });
+    // Back in the trolley for a second trip. Through the membership table, not
+    // the row: the item's own `checked` is that entry's mirror now, so writing
+    // it directly would leave the trip nothing to find.
+    dbSetGroceryListEntry({
+      itemId: 'g1', listId: null, checked: true, sortOrder: 1,
+      choiceGroup: null, addedAt: '2026-07-01T00:00:00.000Z',
+    });
     dbFinishGroceryShopping('2026-08-01T00:00:00.000Z', null, {}, { g1: 1399 });
 
     expect(dbGetAllGroceryItems()[0].priceHistory.map(o => o.minor)).toEqual([1399, 1299]);
@@ -1999,7 +2040,7 @@ describe('grocery items', () => {
 
   it('records nothing for a trip that named no price', () => {
     const item = makeGroceryItem({ id: 'g1', name: 'Olive oil', onList: true, checked: true });
-    dbInsertGroceryItem(item);
+    insertListedGroceryItem(item);
 
     dbFinishGroceryShopping('2026-08-01T00:00:00.000Z', null, {}, {});
 
@@ -2011,7 +2052,7 @@ describe('grocery items', () => {
   // row a recipe calling for "cottage cheese" matches. See ItemProduct.
   it('stores a product without disturbing the item’s name key', () => {
     const item = makeGroceryItem({ id: 'g1', name: 'Cottage cheese', nameKey: 'cottage cheese' });
-    dbInsertGroceryItem(item);
+    insertListedGroceryItem(item);
     dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: 'Good Culture', variant: 'low fat' }));
     dbUpdateGroceryItem({ ...item, preferredProductId: 'p1' });
 
@@ -2024,7 +2065,7 @@ describe('grocery items', () => {
   });
 
   it('upserts a product by id, so editing one is not a second row', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
     const product = makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's", variant: 'wheat' });
     dbSetItemProduct(product);
     dbSetItemProduct({ ...product, variant: 'white', productKey: "arnolds|white", rating: 'avoid', note: 'Too soft' });
@@ -2037,7 +2078,7 @@ describe('grocery items', () => {
   // The no-duplicates guarantee lives in SQLite, not in a store method a
   // future call site could go around — same as grocery_items.name_key.
   it('refuses two products of one item with the same key', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
     dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's", variant: 'wheat' }));
     expect(() =>
       dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g1', brand: "Arnold's", variant: 'wheat' }))
@@ -2045,7 +2086,7 @@ describe('grocery items', () => {
   });
 
   it('leaves a box’s barcode alone when the row is rewritten', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
     const product = makeProduct({ id: 'p1', itemId: 'g1', brand: 'Beyond Meat', variant: 'Cajun' });
     dbSetItemProduct(product);
     dbSetProductGtin('p1', '00850003201115');
@@ -2062,7 +2103,7 @@ describe('grocery items', () => {
   // A GTIN denotes one box in the world, so pointing it at a second one has to
   // take it off the first rather than fail or duplicate.
   it('moves a barcode off the box that held it', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
     dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: 'Beyond Meat' }));
     dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g1', brand: 'Field Roast' }));
     dbSetProductGtin('p1', '00850003201115');
@@ -2073,7 +2114,7 @@ describe('grocery items', () => {
   });
 
   it('is a no-op to re-claim a barcode the same box already has', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
     dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: 'Beyond Meat' }));
     dbSetProductGtin('p1', '00850003201115');
     dbSetProductGtin('p1', '00850003201115');
@@ -2084,7 +2125,7 @@ describe('grocery items', () => {
   // The uniqueness guarantee lives in SQLite rather than only in the write
   // path, same as the product-key index above.
   it('refuses two boxes claiming one barcode behind dbSetProductGtin’s back', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
     dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: 'Beyond Meat' }));
     dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g1', brand: 'Field Roast' }));
     dbSetProductGtin('p1', '00850003201115');
@@ -2098,7 +2139,7 @@ describe('grocery items', () => {
   // Partial index: the barcode-less majority isn't indexed and can't collide
   // with itself.
   it('allows any number of boxes with no barcode', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
     dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's" }));
     dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g1', brand: "Dave's" }));
 
@@ -2106,7 +2147,7 @@ describe('grocery items', () => {
   });
 
   it('drops the link with the box, so a deleted product frees its barcode', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Sausage' }));
     dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: 'Beyond Meat' }));
     dbSetProductGtin('p1', '00850003201115');
     dbDeleteItemProduct('p1');
@@ -2119,8 +2160,8 @@ describe('grocery items', () => {
   // Scoped to the item, not the catalog: two items may both have a "store
   // brand" product and those are two different boxes.
   it('allows the same product key under two different items', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk' }));
     dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: null, variant: 'store brand' }));
     dbSetItemProduct(makeProduct({ id: 'p2', itemId: 'g2', brand: null, variant: 'store brand' }));
 
@@ -2131,7 +2172,7 @@ describe('grocery items', () => {
   // column written by a newer build can't render as a rating this one can't
   // explain.
   it('reads an unknown rating as no opinion', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
     mockRawDb
       .prepare('INSERT INTO grocery_item_products (id, item_id, brand, product_key, rating, created_at) VALUES (?,?,?,?,?,?)')
       .run('p1', 'g1', "Arnold's", 'arnolds|', 'adored', '2026-01-01T00:00:00.000Z');
@@ -2142,7 +2183,7 @@ describe('grocery items', () => {
   // Hand-written, because FKs are off — a box that isn't a box *of* anything
   // is unreadable, not merely orphaned.
   it('deletes an item’s products with the item', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread' }));
     dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's", variant: 'wheat' }));
     dbDeleteGroceryItem('g1');
 
@@ -2152,7 +2193,7 @@ describe('grocery items', () => {
   // Both directions of the cascade: the item that preferred it, and the store
   // links that named it. See dbDeleteItemProduct.
   it('takes every pointer at a product with it when the product goes', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread', preferredProductId: 'p1' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread', preferredProductId: 'p1' }));
     dbInsertGroceryShop(makeShop({ id: 's1', name: 'Safeway' }));
     dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's", variant: 'wheat' }));
     dbSetItemShopLink(makeShopLink({
@@ -2172,8 +2213,8 @@ describe('grocery items', () => {
   });
 
   it('round-trips productStrict, defaulting an untouched row to off', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cottage cheese', productStrict: true }));
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cottage cheese', productStrict: true }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk' }));
 
     const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i.productStrict]));
     expect(byId.get('g1')).toBe(true);
@@ -2196,7 +2237,7 @@ describe('grocery items', () => {
   // sync merge, a hand-edited backup, or an install that upgraded across the
   // migration. Unknown always counts, so "no claims" is the safe answer.
   it('reads a malformed unavailable_product_ids blob as no claims', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
     dbInsertGroceryShop(makeShop({ id: 's1', name: 'Safeway' }));
     mockRawDb
       .prepare('INSERT INTO grocery_item_shops (item_id, shop_id, unavailable_product_ids) VALUES (?,?,?)')
@@ -2209,9 +2250,9 @@ describe('grocery items', () => {
   // flattened: unanswered has to survive as unanswered, or every item in the
   // catalog reads as an explicit "no use-up task". See GroceryItem.useUpTask.
   it('keeps useUpTask\'s three states apart', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', useUpTask: null }));
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', useUpTask: false }));
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g3', name: 'Bread', useUpTask: true }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', useUpTask: null }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', useUpTask: false }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g3', name: 'Bread', useUpTask: true }));
 
     const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i.useUpTask]));
     expect(byId.get('g1')).toBeNull();
@@ -2231,20 +2272,20 @@ describe('grocery items', () => {
   });
 
   it('leaves sourceRecipeId/sourceRecipeTitle null when the item was never added from a recipe', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
     const item = dbGetAllGroceryItems()[0];
     expect(item.sourceRecipeId).toBeNull();
     expect(item.sourceRecipeTitle).toBeNull();
   });
 
   it('keeps null quantity null rather than turning it into a string', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
     expect(dbGetAllGroceryItems()[0].quantity).toBeNull();
   });
 
   it('round-trips quantityFromRecipe, defaulting false for a row that never sets it', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Rice', quantity: '3/4 cup', quantityFromRecipe: true }));
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Rice', quantity: '3/4 cup', quantityFromRecipe: true }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk' }));
 
     const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i.quantityFromRecipe]));
     expect(byId.get('g1')).toBe(true);
@@ -2252,7 +2293,7 @@ describe('grocery items', () => {
   });
 
   it('stores booleans as 0/1 and reads them back as booleans', () => {
-    dbInsertGroceryItem(makeGroceryItem({
+    insertListedGroceryItem(makeGroceryItem({
       id: 'g1', name: 'Milk', onList: false, checked: false,
     }));
     const raw = mockRawDb.prepare('SELECT on_list, checked FROM grocery_items WHERE id = ?').get('g1') as {
@@ -2271,7 +2312,7 @@ describe('grocery items', () => {
   // gets. Asserted so a future migration can't quietly stop satisfying the
   // column's NOT NULL.
   it('still writes the retired in_catalog column', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', onList: false }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', onList: false }));
     const raw = mockRawDb
       .prepare('SELECT in_catalog FROM grocery_items WHERE id = ?')
       .get('g1') as { in_catalog: number };
@@ -2281,15 +2322,15 @@ describe('grocery items', () => {
   // The no-duplicates guarantee lives in the schema, not in a store method a
   // future call site could bypass.
   it('rejects a second row with the same name_key', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', nameKey: 'milk' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', nameKey: 'milk' }));
     expect(() =>
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'MILK', nameKey: 'milk' }))
+      insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'MILK', nameKey: 'milk' }))
     ).toThrow();
   });
 
   it('updates in place', () => {
     const item = makeGroceryItem({ id: 'g1', name: 'Milk' });
-    dbInsertGroceryItem(item);
+    insertListedGroceryItem(item);
     dbUpdateGroceryItem({ ...item, aisle: 'Dairy & Eggs', quantity: '1 gal', checked: true });
 
     const [after] = dbGetAllGroceryItems();
@@ -2299,7 +2340,7 @@ describe('grocery items', () => {
   });
 
   it('deletes', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
     dbDeleteGroceryItem('g1');
     expect(dbGetAllGroceryItems()).toEqual([]);
   });
@@ -2311,7 +2352,7 @@ describe('grocery items', () => {
     });
 
     it('goes with the item it was taught for', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cilantro' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cilantro' }));
       dbSetStoreAlias(alias('a1', 'g1', 'grn onion'));
 
       dbDeleteGroceryItem('g1');
@@ -2321,8 +2362,8 @@ describe('grocery items', () => {
 
     // Which is why mergeItems re-points first — see dbRepointStoreAliases.
     it('survives the merge cascade when re-pointed first', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cilantro' }));
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Coriander' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cilantro' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Coriander' }));
       dbSetStoreAlias(alias('a1', 'g1', 'grn onion'));
       dbSetStoreAlias(alias('a2', 'g2', 'corndr'));
 
@@ -2336,9 +2377,9 @@ describe('grocery items', () => {
     });
 
     it('leaves other items alone', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cilantro' }));
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Coriander' }));
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g3', name: 'Bread' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Cilantro' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Coriander' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g3', name: 'Bread' }));
       dbSetStoreAlias(alias('a1', 'g1', 'grn onion'));
       dbSetStoreAlias(alias('a3', 'g3', 'wht loaf'));
 
@@ -2366,8 +2407,8 @@ describe('grocery items', () => {
     });
 
     beforeEach(() => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Butter', nameKey: 'butter' }));
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Margarine', nameKey: 'margarine' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Butter', nameKey: 'butter' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Margarine', nameKey: 'margarine' }));
     });
 
     it('round-trips a link and its note', () => {
@@ -2426,7 +2467,7 @@ describe('grocery items', () => {
     // CASCADE would silently do nothing. Both directions, since the deleted
     // row can be either half of a pair.
     it('cascades on item delete, from both sides', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g3', name: 'Olive oil', nameKey: 'olive oil' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g3', name: 'Olive oil', nameKey: 'olive oil' }));
       dbSetItemSubLink(link('g1', 'g2'));
       dbSetItemSubLink(link('g3', 'g2'));
 
@@ -2437,15 +2478,141 @@ describe('grocery items', () => {
   });
 
   it('orders by sort_order', () => {
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Zucchini', nameKey: 'zucchini', sortOrder: 9 }));
-    dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Apples', nameKey: 'apples', sortOrder: 2 }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Zucchini', nameKey: 'zucchini', sortOrder: 9 }));
+    insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Apples', nameKey: 'apples', sortOrder: 2 }));
     expect(dbGetAllGroceryItems().map(i => i.id)).toEqual(['g2', 'g1']);
+  });
+
+  // The two functions that had to grow a list scope, and the one SQL subtlety
+  // that scope turns on: `list_id IS ?` rather than `= ?`, because `=` is never
+  // true against NULL and NULL is the list at home. Written against real SQLite
+  // for exactly that reason — the store's own tests mock the db away, so a `=`
+  // here would pass every one of them and silently finish nothing.
+  // Membership lives in grocery_list_items now — a row can be in two trolleys
+  // at once with its own tick in each (see GroceryListEntry). These cover the
+  // half only real SQLite can: the (item, list) key, the cascade, and the
+  // mirror that keeps grocery_items' own four columns answering for home.
+  describe('list membership', () => {
+    function seedTwoLists() {
+      dbInsertGroceryList({ id: 'l1', name: 'Airbnb', sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z' });
+      // `onList: false` on both, so the only membership here is the entries
+      // written below — the helper above would otherwise file each in the
+      // trolley at home as well, which is not what this seed describes.
+      insertListedGroceryItem(makeGroceryItem({ id: 'milk', name: 'Milk', nameKey: 'milk', onList: false }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'coffee', name: 'Coffee', nameKey: 'coffee', onList: false }));
+      // Milk in both trolleys — the ordinary case, and the one a single
+      // `list_id` column could not express.
+      dbSetGroceryListEntry({
+        itemId: 'milk', listId: null, checked: true, sortOrder: 1,
+        choiceGroup: null, addedAt: '2026-08-01T00:00:00.000Z',
+      });
+      dbSetGroceryListEntry({
+        itemId: 'milk', listId: 'l1', checked: false, sortOrder: 1,
+        choiceGroup: null, addedAt: '2026-08-01T00:00:00.000Z',
+      });
+      dbSetGroceryListEntry({
+        itemId: 'coffee', listId: 'l1', checked: true, sortOrder: 2,
+        choiceGroup: null, addedAt: '2026-08-01T00:00:00.000Z',
+      });
+    }
+
+    it('keeps one row in two trolleys, each with its own tick', () => {
+      seedTwoLists();
+      const mine = dbGetAllGroceryListEntries().filter(e => e.itemId === 'milk');
+      expect(mine).toHaveLength(2);
+      expect(mine.find(e => e.listId === null)!.checked).toBe(true);
+      expect(mine.find(e => e.listId === 'l1')!.checked).toBe(false);
+    });
+
+    it('mirrors the home entry onto the item, and reads on_list as "any trolley"', () => {
+      seedTwoLists();
+      const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
+      // Milk has a home entry, so its four columns are that entry's.
+      expect(byId.get('milk')!.onList).toBe(true);
+      expect(byId.get('milk')!.checked).toBe(true);
+      // Coffee is on the Airbnb list alone: on_list says so (the broad
+      // question, which is what stops a prune sweeping it), but `checked`
+      // answers for a home entry that doesn't exist.
+      expect(byId.get('coffee')!.onList).toBe(true);
+      expect(byId.get('coffee')!.checked).toBe(false);
+    });
+
+    it('finishes the home list without touching an away one', () => {
+      seedTwoLists();
+
+      expect(dbFinishGroceryShopping('2026-08-07T12:00:00.000Z')).toEqual(['milk']);
+
+      // Milk left the home trolley and stayed in the Airbnb one.
+      const left = dbGetAllGroceryListEntries().filter(e => e.itemId === 'milk');
+      expect(left.map(e => e.listId)).toEqual(['l1']);
+      expect(dbGetAllGroceryItems().find(i => i.id === 'milk')!.purchaseCount).toBe(1);
+    });
+
+    it('finishes an away list without touching home', () => {
+      seedTwoLists();
+
+      expect(dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', null, {}, {}, new Set(), 'l1'))
+        .toEqual(['coffee']);
+
+      const left = dbGetAllGroceryListEntries();
+      expect(left.filter(e => e.itemId === 'coffee')).toEqual([]);
+      expect(left.some(e => e.itemId === 'milk' && e.listId === null)).toBe(true);
+    });
+
+    it('records nothing on an away trip’s rows', () => {
+      seedTwoLists();
+
+      // A shop, a use-by day and a price all passed in, and all ignored.
+      dbFinishGroceryShopping(
+        '2026-08-07T12:00:00.000Z', 'shop-1', { coffee: '2026-08-10' }, { coffee: 899 }, new Set(), 'l1'
+      );
+
+      const row = dbGetAllGroceryItems().find(i => i.id === 'coffee')!;
+      expect(row.purchaseCount).toBe(0);
+      expect(row.lastPurchasedAt).toBeNull();
+      expect(row.expiresAt).toBeNull();
+      expect(row.lastPriceMinor).toBeNull();
+      expect(dbGetAllItemShopLinks()).toEqual([]);
+    });
+
+    it('clears one list at a time', () => {
+      seedTwoLists();
+
+      expect(dbClearGroceryList('l1').sort()).toEqual(['coffee', 'milk']);
+
+      expect(dbGetAllGroceryListEntries().map(e => e.itemId)).toEqual(['milk']);
+      // Milk is still in the trolley at home, so it still reads as on a list.
+      expect(dbGetAllGroceryItems().find(i => i.id === 'milk')!.onList).toBe(true);
+      // Coffee is in no trolley at all now.
+      expect(dbGetAllGroceryItems().find(i => i.id === 'coffee')!.onList).toBe(false);
+    });
+
+    it('deletes a list and empties its trolley, leaving the rows themselves alone', () => {
+      seedTwoLists();
+
+      expect(dbDeleteGroceryList('l1').sort()).toEqual(['coffee', 'milk']);
+
+      expect(dbGetAllGroceryLists()).toEqual([]);
+      // Nothing points at a list that no longer exists — an entry left behind
+      // would keep a deleted list's rows in somebody's count for ever.
+      expect(dbGetAllGroceryListEntries().every(e => e.listId === null)).toBe(true);
+      // And the rows are still in the catalog.
+      expect(dbGetAllGroceryItems()).toHaveLength(2);
+    });
+
+    it('takes a deleted item out of every trolley', () => {
+      seedTwoLists();
+
+      dbDeleteGroceryItem('milk');
+
+      expect(dbGetAllGroceryListEntries().some(e => e.itemId === 'milk')).toBe(false);
+    });
   });
 
   describe('dbFinishGroceryShopping', () => {
     it('touches only the checked rows and returns their ids', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', nameKey: 'milk', checked: true, purchaseCount: 3 }));
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', nameKey: 'eggs', checked: false }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', nameKey: 'milk', checked: true, purchaseCount: 3 }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', nameKey: 'eggs', checked: false }));
 
       expect(dbFinishGroceryShopping('2026-08-07T12:00:00.000Z')).toEqual(['g1']);
 
@@ -2461,11 +2628,11 @@ describe('grocery items', () => {
     // The SQL half of the product stamp — the store-side mirror of the patch
     // in useGroceryStore.finishShopping. Only a strict row earns it.
     it('records the product on the link only when the item insists on one', () => {
-      dbInsertGroceryItem(makeGroceryItem({
+      insertListedGroceryItem(makeGroceryItem({
         id: 'g1', name: 'Cottage cheese', nameKey: 'cottage cheese', checked: true,
         preferredProductId: 'p1', productStrict: true,
       }));
-      dbInsertGroceryItem(makeGroceryItem({
+      insertListedGroceryItem(makeGroceryItem({
         id: 'g2', name: 'Yoghurt', nameKey: 'yoghurt', checked: true,
         preferredProductId: 'p2', productStrict: false,
       }));
@@ -2484,10 +2651,10 @@ describe('grocery items', () => {
     // unlike the link above: naming a product is already the statement that
     // this is the one you buy.
     it('bumps the preferred product’s purchase count, strict or not', () => {
-      dbInsertGroceryItem(makeGroceryItem({
+      insertListedGroceryItem(makeGroceryItem({
         id: 'g1', name: 'Bread', checked: true, preferredProductId: 'p1',
       }));
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk', checked: true }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk', checked: true }));
       dbSetItemProduct(makeProduct({ id: 'p1', itemId: 'g1', brand: "Arnold's", variant: 'wheat' }));
 
       dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', 'shop-1');
@@ -2501,7 +2668,7 @@ describe('grocery items', () => {
     // packet you have just carried home — the same correction the item row
     // already gets from the blanket clear above it.
     it('clears the bought box’s own pantry claims', () => {
-      dbInsertGroceryItem(makeGroceryItem({
+      insertListedGroceryItem(makeGroceryItem({
         id: 'g1', name: 'Bread', checked: true, preferredProductId: 'p1',
       }));
       dbSetItemProduct(makeProduct({
@@ -2524,7 +2691,7 @@ describe('grocery items', () => {
     // A box nobody preferred at the till says nothing about which one came
     // home, so its claims are left exactly where they were.
     it('leaves a box the trip did not name alone', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread', checked: true }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread', checked: true }));
       dbSetItemProduct(makeProduct({
         id: 'p1', itemId: 'g1', brand: 'Store brand', frozenAt: '2026-07-01T00:00:00.000Z',
       }));
@@ -2538,8 +2705,8 @@ describe('grocery items', () => {
     // now — it has to survive the blanket `frozen_at = NULL` that is about the
     // *previous* bag, or the freeze lives in memory only and is gone on reload.
     it('stamps the rows this trip is putting straight in the freezer', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Chicken', checked: true }));
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk', checked: true }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Chicken', checked: true }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Milk', checked: true }));
 
       dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', null, {}, {}, new Set(['g1']));
 
@@ -2551,7 +2718,7 @@ describe('grocery items', () => {
     // Coming home with something refutes every claim about this store's shelf
     // at once — the same correction the item-level negative already gets.
     it('clears every per-product claim at the store it was bought from', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread', checked: true }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Bread', checked: true }));
       dbSetItemShopLink(makeShopLink({
         itemId: 'g1',
         shopId: 'shop-1',
@@ -2565,18 +2732,18 @@ describe('grocery items', () => {
 
     // Deleting would lose the ranking signal, not just the row.
     it('never deletes', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true }));
       dbFinishGroceryShopping('2026-08-07T12:00:00.000Z');
       expect(dbGetAllGroceryItems()).toHaveLength(1);
     });
 
     it('ignores a checked row that is already off the list', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', onList: false, checked: true }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', onList: false, checked: true }));
       expect(dbFinishGroceryShopping('2026-08-07T12:00:00.000Z')).toEqual([]);
     });
 
     it('is a no-op on an empty trolley', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
       expect(dbFinishGroceryShopping('2026-08-07T12:00:00.000Z')).toEqual([]);
       expect(dbGetAllGroceryItems()[0].purchaseCount).toBe(0);
     });
@@ -2585,8 +2752,8 @@ describe('grocery items', () => {
     // an assertion to store. What a trip writes here is a clear, so that
     // coming home with something takes back an "Out of it" left on it.
     it('clears on_hand_until rather than stamping a window', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true, onHandUntil: OUT_OF_IT_UNTIL }));
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', checked: true, onHandUntil: '2026-09-01T00:00:00.000Z' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true, onHandUntil: OUT_OF_IT_UNTIL }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', checked: true, onHandUntil: '2026-09-01T00:00:00.000Z' }));
 
       dbFinishGroceryShopping('2026-08-07T12:00:00.000Z');
 
@@ -2596,8 +2763,8 @@ describe('grocery items', () => {
     });
 
     it('leaves on_hand_until alone on a row the trip did not buy', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true }));
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', checked: false, onHandUntil: OUT_OF_IT_UNTIL }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', checked: true }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', checked: false, onHandUntil: OUT_OF_IT_UNTIL }));
       dbFinishGroceryShopping('2026-08-07T12:00:00.000Z');
       const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
       expect(byId.get('g2')!.onHandUntil).toBe(OUT_OF_IT_UNTIL);
@@ -2606,8 +2773,8 @@ describe('grocery items', () => {
 
   describe('dbClearGroceryList', () => {
     it('empties the list without crediting a purchase', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', nameKey: 'milk', checked: true, purchaseCount: 3 }));
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', nameKey: 'eggs' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk', nameKey: 'milk', checked: true, purchaseCount: 3 }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g2', name: 'Eggs', nameKey: 'eggs' }));
 
       expect(dbClearGroceryList().sort()).toEqual(['g1', 'g2']);
 
@@ -2619,7 +2786,7 @@ describe('grocery items', () => {
     // Unlists and never deletes: which rows an abandoned trip leaves behind
     // needs an item's links to answer, so `clearList` owns that sweep now.
     it('parks every row off-list instead of deleting any', () => {
-      dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
+      insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Milk' }));
       const cleared = dbClearGroceryList();
       const items = dbGetAllGroceryItems();
       expect(cleared).toEqual(['g1']);
@@ -2705,7 +2872,7 @@ describe('grocery items', () => {
         quantity: '2 gal',
         purchaseCount: 12,
       });
-      dbInsertGroceryItem(item);
+      insertListedGroceryItem(item);
 
       const backup = dbExportTables();
       mockRawDb.exec('DELETE FROM grocery_items');

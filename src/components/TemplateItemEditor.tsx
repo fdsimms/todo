@@ -1424,7 +1424,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
-  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
   pillHint: { color: colors.textTertiary, fontSize: 10, marginTop: 2 },
   /** One question's row of answers. Multi-select, so the pills fill with accent rather than taking the segmented track's raised treatment — several can be on at once. */

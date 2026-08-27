@@ -78,11 +78,25 @@ export function PrepTasksReviewSheet({ visible, recipe, recipesById, resolution,
 
   const addCount = ticked.size;
 
+  // Every task starts ticked, so a deselection is the only user decision
+  // there is to lose — a swipe-down would otherwise drop it with no dialog.
+  const handleCancel = () => {
+    if (ticked.size === prepTasks.length) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'Which prep tasks you checked will be lost.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
           <Text style={styles.headerTitle} numberOfLines={1}>Prep tasks</Text>
           <SheetHeaderButton
             label={addCount > 0 ? `Add ${addCount}` : 'Add'}

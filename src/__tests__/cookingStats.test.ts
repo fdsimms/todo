@@ -89,7 +89,6 @@ function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     components: [],
     prepTasks: [],
     steps: [],
-    favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
     cookCount: 0,

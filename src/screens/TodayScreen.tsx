@@ -944,7 +944,18 @@ export function TodayScreen() {
       // from the reorder task's own completion prompt, which completeTask
       // already sweeps for. This is the half that catches the clock.
       useTaskStore.getState().checkSupplyReorderTasks();
-      const interval = setInterval(() => forceRefresh(n => n + 1), 30000);
+      const interval = setInterval(() => {
+        // On the tick as well as on foreground, unlike every other maintenance
+        // pass, because this is the one whose trigger can arrive while the
+        // user is looking at the row: a run ends when its window shuts, not at
+        // the day boundary. Without it a run that closed at 17:00 with the app
+        // open would leave the task sitting in the Expired bucket until the
+        // next foreground — expired being precisely the wrong word for a
+        // routine that just finished. Idempotent and self-clearing: the
+        // completion it writes is what stops it matching again.
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+        forceRefresh(n => n + 1);
+      }, 30000);
       // Also refresh the instant the app comes back to the foreground
       // (e.g. reopened the next morning), instead of waiting on the tick.
       const subscription = AppState.addEventListener('change', state => {
@@ -954,6 +965,10 @@ export function TodayScreen() {
           // Opt-in counterpart to rolloverQuotas, for allowOvershoot tasks —
           // see its doc comment in useTaskStore.ts.
           useTaskStore.getState().sweepOvershootQuotas();
+          // The third quota day-close, for interval quotas — see its doc
+          // comment. Here as well as on the tick above, since a phone closed
+          // before its window shut comes back with the run already over.
+          useTaskStore.getState().sweepFinishedQuotaRuns();
           // After rolloverQuotas/sweepOvershootQuotas: either can complete and
           // spawn members, which changes what a project counts as scheduled.
           useTaskStore.getState().dripStalledProjects();
@@ -1006,6 +1021,9 @@ export function TodayScreen() {
           // reads is kept current by useCalendarSync's own AppState listener
           // rather than anything here.
           useTaskStore.getState().checkCalendarReviewTasks();
+          // Beside it, same trigger — the reading this checks against is kept
+          // current by useWeatherSync's own AppState listener.
+          useTaskStore.getState().checkWeatherTasks();
           // And any template whose schedule came due while the app sat in the
           // background (#1781) — a weekly run would otherwise wait for the next
           // cold start, which for a phone left open all week never comes. Same
