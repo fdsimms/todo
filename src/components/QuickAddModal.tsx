@@ -854,6 +854,22 @@ export function QuickAddModal({
     setSupplyUnit(supplyParsed.unit ?? '');
   };
 
+  // Whichever single tooltip is currently up, applied — shared by the
+  // tooltip bubble's own tap and the accessory bar's confirm checkmark
+  // (TitleTokenAccessory), a second way to accept it without looking away
+  // from the keyboard. Excludes ambiguousMention on purpose: that state
+  // offers a row of candidate pills instead of one thing to confirm.
+  const applyActiveParse = () => {
+    if (parsed) applyParse();
+    else if (categoryTagsParsed) applyCategoryTags();
+    else if (linkParsed) applyLink();
+    else if (phoneParsed) applyPhone();
+    else if (emailParsed) applyEmail();
+    else if (durationParsed) applyDuration();
+    else if (supplyParsed) applySupply();
+  };
+  const confirmVisible = activeMatch !== null && !ambiguousMention;
+
   const addStep = (stepTitle: string) => {
     const t = stepTitle.trim();
     if (!t) return;
@@ -1475,7 +1491,7 @@ export function QuickAddModal({
                 ) : (
                   <PressableScale
                     style={styles.tooltipBubble}
-                    onPress={parsed ? applyParse : categoryTagsParsed ? applyCategoryTags : linkParsed ? applyLink : phoneParsed ? applyPhone : emailParsed ? applyEmail : durationParsed ? applyDuration : applySupply}
+                    onPress={applyActiveParse}
                     onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                   >
                     <Ionicons
@@ -2253,7 +2269,12 @@ export function QuickAddModal({
         onClose={() => setCategoryPickerVisible(false)}
       />
       <NumberPadAccessory />
-      <TitleTokenAccessory nativeID={TITLE_TOKEN_ACCESSORY_ID} onInsert={insertTitleToken} />
+      <TitleTokenAccessory
+        nativeID={TITLE_TOKEN_ACCESSORY_ID}
+        onInsert={insertTitleToken}
+        onConfirm={applyActiveParse}
+        confirmVisible={confirmVisible}
+      />
     </Modal>
     {/* newTaskDefaults.openEditorAfterQuickAdd hand-off — see createTask. A
         sibling of the sheet above rather than something rendered inside it,
