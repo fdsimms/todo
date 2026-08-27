@@ -41,6 +41,8 @@ import { ProjectsOptionsMenu, type ProjectFilter } from '../components/ProjectsO
 import { ProjectCategoriesSheet } from '../components/ProjectCategoriesSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { SelectionDot } from '../components/SelectionDot';
+import { SwipeableRow } from '../components/SwipeableRow';
+import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
@@ -100,9 +102,11 @@ export function ProjectsScreen() {
   const [categoriesSheetVisible, setCategoriesSheetVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
-  // Entered from the header, like Templates and for the same reason: both of a
-  // project row's gestures are already spoken for — tap opens the project,
-  // long press starts a reorder drag.
+  // Also reachable from the header, since both of a project row's own
+  // gestures are already spoken for — tap opens the project, long press
+  // starts a reorder drag — but swiping a row is the normal entry point
+  // every other bulk-selecting list in the app uses, and there's no reason
+  // this one should be the odd one out.
   const {
     selectionMode,
     selectedIds,
@@ -111,6 +115,8 @@ export function ProjectsScreen() {
     exitSelection,
     selectAll,
     deselectAll,
+    painting,
+    paintProps,
   } = useRowSelection();
 
   // Set while editingProject is one freshly created from quick add's "More
@@ -388,98 +394,31 @@ export function ProjectsScreen() {
     // own restore affordance, and an archived one is filed away regardless.
     const allDone = projectFilter === 'active' && progress.total > 0 && progress.done === progress.total;
     return (
-      <TouchableOpacity
-        style={[
-          styles.projectRow,
-          isActive && styles.projectRowActive,
-          selectionMode && selected && styles.projectRowSelected,
-        ]}
+      <ProjectRow
+        project={project}
+        progress={progress}
+        pastWindow={pastWindow}
+        deadlineText={deadlineText}
+        projectFilter={projectFilter}
+        allDone={allDone}
+        selectionMode={selectionMode}
+        selected={selected}
+        isActive={isActive}
+        drag={drag}
+        colors={colors}
+        styles={styles}
         onPress={() =>
           selectionMode
             ? toggleSelection(project.id)
             : (navigation as any).navigate('ProjectDetail', { projectId: project.id })
         }
-        // Reordering is off while selecting: the long press that would start a
-        // drag is how a mis-tapped row gets picked up instead.
-        onLongPress={selectionMode ? undefined : drag}
-        delayLongPress={interaction.delayLongPress}
-        activeOpacity={interaction.activeOpacity}
-        accessibilityRole={selectionMode ? 'checkbox' : 'button'}
-        accessibilityState={selectionMode ? { checked: selected } : undefined}
-        accessibilityLabel={`${project.title}, ${progress.done} of ${progress.total} done`}
-        accessibilityHint={
-          selectionMode
-            ? 'Double tap to select project'
-            : 'Double tap to view tasks in this project. Long press to reorder.'
-        }
-      >
-        <View style={styles.projectInfo}>
-          <View style={styles.projectTitleRow}>
-            <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
-            {/* Nothing a row can do to itself while a selection is being
-                built — each of these acts on one project and would fight the
-                bar. The dot takes the slot they vacate, which is the trailing
-                edge every selectable row in the app puts it on. */}
-            {selectionMode ? (
-              <SelectionDot selected={selected} onPress={() => toggleSelection(project.id)} />
-            ) : (
-              <>
-              {projectFilter === 'archived' && (
-                <TouchableOpacity
-                  onPress={() => handleQuickUnarchive(project)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Unarchive ${project.title}`}
-                >
-                  <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
-                </TouchableOpacity>
-              )}
-              {projectFilter === 'completed' && (
-                <TouchableOpacity
-                  onPress={() => handleQuickUncomplete(project)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Restore ${project.title} to active`}
-                >
-                  <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
-                </TouchableOpacity>
-              )}
-              {allDone && (
-                <TouchableOpacity
-                  onPress={() => handleQuickComplete(project)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Mark ${project.title} complete: every task is done`}
-                >
-                  <Ionicons name="checkmark-circle" size={16} color={colors.green} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                onPress={() => setEditingProject(project)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                accessibilityRole="button"
-                accessibilityLabel={`Edit ${project.title}`}
-              >
-                <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
-              </TouchableOpacity>
-              </>
-            )}
-          </View>
-          {progress.total > 0 && (
-            <View style={styles.progressRow}>
-              <View style={styles.progressBarWrap}>
-                <ProgressBar progress={progress.done / progress.total} />
-              </View>
-              <Text style={styles.progressText}>{progress.done}/{progress.total}</Text>
-            </View>
-          )}
-          {deadlineText && (
-            <Text style={[styles.rangeText, pastWindow && { color: colors.orange }]} numberOfLines={1}>
-              {pastWindow ? `Overdue · ${deadlineText}` : deadlineText}
-            </Text>
-          )}
-        </View>
-      </TouchableOpacity>
+        onToggleSelect={() => toggleSelection(project.id)}
+        onSwipeSelect={() => enterSelectionMode(project.id)}
+        onQuickUnarchive={() => handleQuickUnarchive(project)}
+        onQuickUncomplete={() => handleQuickUncomplete(project)}
+        onQuickComplete={() => handleQuickComplete(project)}
+        onEdit={() => setEditingProject(project)}
+      />
     );
   };
 
@@ -520,6 +459,7 @@ export function ProjectsScreen() {
 
       <TipHost screen="projects" />
 
+      <PaintSelectionProvider {...paintProps}>
       <FabDropZoneProvider
         ref={dropZonesRef}
         onIntentChange={fabIntentChannel.publish}
@@ -546,8 +486,9 @@ export function ProjectsScreen() {
           keyExtractor={item => item.key}
           // The user can't scroll during an add-button drag (the button's
           // responder has the touch); the drag scrolls it instead, through the
-          // control below.
-          scrollEnabled={!fabDragging}
+          // control below. Same while a paint gesture owns the touch — see
+          // PaintSelectionProvider.
+          scrollEnabled={!fabDragging && !painting}
           scrollControlRef={scrollControl}
           contentContainerStyle={styles.list}
           ListFooterComponent={
@@ -572,6 +513,7 @@ export function ProjectsScreen() {
         />
       )}
       </FabDropZoneProvider>
+      </PaintSelectionProvider>
 
       {/* The bulk bar sits where the button does, and adding a project isn't
           something you're doing mid-selection anyway. */}
@@ -648,6 +590,144 @@ export function ProjectsScreen() {
   );
 }
 
+/**
+ * Project list row. Swipe left enters bulk selection, same contract as every
+ * other list in the app; long press still reorders, and swiping is disabled
+ * while a selection is already in progress so it can't fight the drag or the
+ * dot. Nothing to reschedule here (a project's deadline isn't a "when" in the
+ * SwipeableRow sense — there's no single date being moved), so no
+ * `whenAction`.
+ */
+function ProjectRow({
+  project, progress, pastWindow, deadlineText, projectFilter, allDone,
+  selectionMode, selected, isActive, drag, colors, styles,
+  onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit,
+}: {
+  project: Project;
+  progress: { done: number; total: number };
+  pastWindow: boolean;
+  deadlineText: string | null;
+  projectFilter: ProjectFilter;
+  allDone: boolean;
+  selectionMode: boolean;
+  selected: boolean;
+  isActive?: boolean;
+  drag?: () => void;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+  onPress: () => void;
+  onToggleSelect: () => void;
+  onSwipeSelect: () => void;
+  onQuickUnarchive: () => void;
+  onQuickUncomplete: () => void;
+  onQuickComplete: () => void;
+  onEdit: () => void;
+}) {
+  // Excluded for the floating drag overlay's copy — it shares the dragged
+  // row's id, and registering both would leave the real row's slot evicted
+  // the moment the overlay unmounts.
+  const paintRef = usePaintSelectionRow(isActive ? null : project.id);
+
+  return (
+    <SwipeableRow
+      style={styles.projectCard}
+      enabled={!selectionMode}
+      selectAction={{ onSelect: onSwipeSelect, accessibilityLabel: `Select ${project.title}` }}
+    >
+      <View ref={paintRef}>
+        <TouchableOpacity
+          style={[
+            styles.projectRow,
+            isActive && styles.projectRowActive,
+            selectionMode && selected && styles.projectRowSelected,
+          ]}
+          onPress={onPress}
+          // Reordering is off while selecting: the long press that would start a
+          // drag is how a mis-tapped row gets picked up instead.
+          onLongPress={selectionMode ? undefined : drag}
+          delayLongPress={interaction.delayLongPress}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole={selectionMode ? 'checkbox' : 'button'}
+          accessibilityState={selectionMode ? { checked: selected } : undefined}
+          accessibilityLabel={`${project.title}, ${progress.done} of ${progress.total} done`}
+          accessibilityHint={
+            selectionMode
+              ? 'Double tap to select project'
+              : 'Double tap to view tasks in this project. Long press to reorder.'
+          }
+        >
+          <View style={styles.projectInfo}>
+            <View style={styles.projectTitleRow}>
+              <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
+              {/* Nothing a row can do to itself while a selection is being
+                  built — each of these acts on one project and would fight the
+                  bar. The dot takes the slot they vacate, which is the trailing
+                  edge every selectable row in the app puts it on. */}
+              {selectionMode ? (
+                <SelectionDot selected={selected} onPress={onToggleSelect} />
+              ) : (
+                <>
+                {projectFilter === 'archived' && (
+                  <TouchableOpacity
+                    onPress={onQuickUnarchive}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Unarchive ${project.title}`}
+                  >
+                    <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
+                  </TouchableOpacity>
+                )}
+                {projectFilter === 'completed' && (
+                  <TouchableOpacity
+                    onPress={onQuickUncomplete}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Restore ${project.title} to active`}
+                  >
+                    <Ionicons name="arrow-undo-outline" size={16} color={colors.accent} />
+                  </TouchableOpacity>
+                )}
+                {allDone && (
+                  <TouchableOpacity
+                    onPress={onQuickComplete}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Mark ${project.title} complete: every task is done`}
+                  >
+                    <Ionicons name="checkmark-circle" size={16} color={colors.green} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  onPress={onEdit}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit ${project.title}`}
+                >
+                  <Ionicons name="ellipsis-horizontal" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+                </>
+              )}
+            </View>
+            {progress.total > 0 && (
+              <View style={styles.progressRow}>
+                <View style={styles.progressBarWrap}>
+                  <ProgressBar progress={progress.done / progress.total} />
+                </View>
+                <Text style={styles.progressText}>{progress.done}/{progress.total}</Text>
+              </View>
+            )}
+            {deadlineText && (
+              <Text style={[styles.rangeText, pastWindow && { color: colors.orange }]} numberOfLines={1}>
+                {pastWindow ? `Overdue · ${deadlineText}` : deadlineText}
+              </Text>
+            )}
+          </View>
+        </TouchableOpacity>
+      </View>
+    </SwipeableRow>
+  );
+}
+
 const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
@@ -669,13 +749,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.8,
   },
+  // The card's margin and radius live here, on SwipeableRow's own `style`
+  // prop, rather than on the row below — see the note on SwipeableRow for why
+  // a rounded row leaves its revealed panel square-cornered behind it.
+  projectCard: {
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+  },
+  // Flush, so it slides over the swipe panel rather than beside it.
   projectRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.bgSecondary,
-    marginHorizontal: spacing.md,
-    marginVertical: 2,
-    borderRadius: radius.md,
     paddingHorizontal: spacing.md,
     paddingVertical: 12,
     gap: spacing.md,
