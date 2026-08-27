@@ -103,6 +103,7 @@ import {
   cheapestShopFor,
   describePriceStanding,
   describeShopPrices,
+  pricedSince,
   priceStandingFor,
   shopPricesFor,
 } from '../utils/groceryPrice';
@@ -1379,6 +1380,17 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(
       items.some(i => !i.onList && i.purchaseCount === 0 && !i.lastAddedAt)
     ).toBe(true);
+    // Milk was priced the moment it went in the cart on today's trip — the
+    // trip price chip's "recorded" state. Bananas is checked but left
+    // unpriced, so the chip's other state (an unconfirmed "+ Price") has a
+    // seeded instance too.
+    const { tripShopId, tripStartedAt } = useGroceryStore.getState();
+    const milk = onList.find(i => i.name === 'Milk')!;
+    const bananas = onList.find(i => i.name === 'Bananas')!;
+    expect(milk.checked).toBe(true);
+    expect(bananas.checked).toBe(true);
+    expect(pricedSince(milk, tripShopId, itemShops, tripStartedAt!)).toBe(true);
+    expect(pricedSince(bananas, tripShopId, itemShops, tripStartedAt!)).toBe(false);
   });
 
   it('seeds a recipe page waiting to be imported from the share sheet', () => {

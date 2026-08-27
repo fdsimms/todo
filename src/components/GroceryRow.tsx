@@ -17,8 +17,14 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem, type ItemProduct } from '../types';
 import { SwipeableRow } from './SwipeableRow';
+import { InlineAction } from './InlineAction';
 import { convertQuantity } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
+import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
+
+// Matches GroceryItemSheet's own price field — "10000.00" is the longest a
+// price this app allows (GROCERY_PRICE_MINOR_MAX) ever renders as.
+const PRICE_INPUT_MAX_LENGTH = 8;
 
 const CHECKBOX_SIZE = 24;
 // Generous beyond the visual box, matching TaskItem's checkbox hitSlop —
@@ -91,6 +97,29 @@ interface Props {
   swapSubstituteId?: string;
   /** Tap the "· or margarine" clause: swap this item for that substitute. */
   onSwapForSubstitute?: (itemId: string, subItemId: string) => void;
+  /**
+   * What this item costs at the active trip's store, computed by the screen
+   * (only it knows the trip and the item→shop links) — same hand-down as
+   * `storeMarker`, and for the same reason: this row is memoised, and reading
+   * itemShops here would re-render every row on any store write. Present
+   * (possibly `null`, meaning no price known yet) only while a trip is
+   * running and this row is checked; absent otherwise, which is what hides
+   * the chip below entirely.
+   */
+  tripPriceMinor?: number | null;
+  /**
+   * Whether `tripPriceMinor` was actually set during *this* trip, as opposed
+   * to being carried over from an earlier one — see `pricedSince`. Decides
+   * whether the chip reads as an already-recorded value or an unconfirmed
+   * guess worth checking.
+   */
+  tripPriceRecorded?: boolean;
+  /**
+   * Commits a price typed into the trip chip. `null` clears whatever price
+   * was there — the screen resolves that to `setItemPrice`/`clearItemShopPrice`
+   * against the trip's shop, since only it knows which one that is.
+   */
+  onSetTripPrice?: (id: string, minor: number | null) => void;
 }
 
 /**
@@ -130,11 +159,15 @@ export const GroceryRow = React.memo(function GroceryRow({
   storeMarker,
   swapSubstituteId,
   onSwapForSubstitute,
+  tripPriceMinor,
+  tripPriceRecorded = false,
+  onSetTripPrice,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const renameItem = useGroceryStore(s => s.renameItem);
   const unitSystem = useSettingsStore(s => s.unitSystem);
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
   // The row is read-only text, so it shows the amount in the reader's units.
   // The item sheet's field deliberately doesn't — that one is editable, and an
@@ -147,6 +180,33 @@ export const GroceryRow = React.memo(function GroceryRow({
   // is what toggles checked now.
   const [renaming, setRenaming] = useState(false);
   const [draftName, setDraftName] = useState(item.name);
+
+  // The trip price chip's own inline edit, same shape as renaming above:
+  // tapping the chip swaps it for a TextInput, blurring or submitting
+  // commits. Kept in this row rather than lifted to the screen because it's
+  // purely a transient "am I mid-edit" flag with no bearing on any other row.
+  const [pricingActive, setPricingActive] = useState(false);
+  const [draftPrice, setDraftPrice] = useState('');
+
+  const startPricing = () => {
+    setDraftPrice(tripPriceMinor != null ? priceToInput(tripPriceMinor) : '');
+    setPricingActive(true);
+  };
+
+  const commitPrice = () => {
+    // Mirrors GroceryItemSheet's own commitPrice: blank clears an existing
+    // price, an unparseable typo is left alone rather than treated as a
+    // clear, and a price unchanged from what's already there writes nothing.
+    if (!pricingActive) return;
+    setPricingActive(false);
+    const trimmed = draftPrice.trim();
+    if (!trimmed) {
+      if (tripPriceMinor != null) onSetTripPrice?.(item.id, null);
+      return;
+    }
+    const parsed = parsePriceInput(trimmed);
+    if (parsed !== null && parsed !== tripPriceMinor) onSetTripPrice?.(item.id, parsed);
+  };
 
   // Brand and variant name one product, so they compose into one caption line
   // rather than taking one each — a fifth treatment on a row that can already
@@ -352,6 +412,56 @@ export const GroceryRow = React.memo(function GroceryRow({
               {shownQuantity}
             </Text>
           </View>
+        )}
+
+        {/* Present only while a trip is running and this row is checked — see
+            onSetTripPrice's doc comment. Hidden while selecting, same as the
+            trailing icons below: a tap here has to select the row, not open
+            an edit. Three states, same shape as the inline rename above:
+            nothing recorded yet (an InlineAction, "add a thing" to this row),
+            recorded (a plain pill, tap to correct it), and mid-edit (a
+            TextInput swapped in for either). */}
+        {!!onSetTripPrice && !selectionMode && (
+          pricingActive ? (
+            <View style={styles.priceField}>
+              <Text style={styles.priceSymbol}>{currencySymbol}</Text>
+              <TextInput
+                style={styles.priceInput}
+                value={draftPrice}
+                onChangeText={text => setDraftPrice(formatPriceInput(text))}
+                onBlur={commitPrice}
+                onSubmitEditing={commitPrice}
+                autoFocus
+                keyboardType="number-pad"
+                returnKeyType="done"
+                placeholder="0.00"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={PRICE_INPUT_MAX_LENGTH}
+                accessibilityLabel={`Price for ${item.name}`}
+              />
+            </View>
+          ) : tripPriceRecorded && tripPriceMinor != null ? (
+            <TouchableOpacity
+              onPress={startPricing}
+              hitSlop={{ top: 10, bottom: 10, left: 6, right: 6 }}
+              accessibilityRole="button"
+              accessibilityLabel={`Price ${formatPrice(tripPriceMinor, currencySymbol)}. Double tap to change it.`}
+            >
+              <View style={styles.pricedPill}>
+                <Text style={styles.pricedPillText} numberOfLines={1}>
+                  {formatPrice(tripPriceMinor, currencySymbol)}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <InlineAction
+              icon="pricetag-outline"
+              label="Price"
+              variant="neutral"
+              onPress={startPricing}
+              accessibilityLabel={`Add a price for ${item.name}`}
+            />
+          )
         )}
       </TouchableOpacity>
 
@@ -573,6 +683,47 @@ function makeStyles(colors: Colors) {
     qtyTextChecked: {
       textDecorationLine: 'line-through',
       color: colors.textTertiary,
+    },
+    // The recorded state of the trip price chip — same geometry as qtyPill so
+    // the two read as siblings, tinted with the accent the same way a set
+    // value would be (this is the one thing on the row that a trip actually
+    // asked the user to do, unlike the quantity beside it).
+    pricedPill: {
+      backgroundColor: colors.accentSubtle,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+    },
+    pricedPillText: {
+      fontSize: font.sm,
+      fontWeight: fontWeight.semibold,
+      color: colors.accentText,
+    },
+    // The chip's own mid-edit state — small and inline rather than the item
+    // sheet's full-width field, since this is a number typed in passing while
+    // holding a trolley, not a form. No lineHeight (see the app-wide rule on
+    // TextInput) — height instead, matching nameInput's own fix for the same
+    // reason.
+    priceField: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+    },
+    priceSymbol: {
+      fontSize: font.sm,
+      fontWeight: fontWeight.semibold,
+      color: colors.textSecondary,
+    },
+    priceInput: {
+      fontSize: font.sm,
+      fontWeight: fontWeight.semibold,
+      color: colors.text,
+      padding: 0,
+      height: font.sm + 6,
+      minWidth: 44,
     },
   });
 }

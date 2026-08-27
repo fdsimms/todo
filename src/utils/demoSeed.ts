@@ -1695,6 +1695,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     linkItemSub,
     setShopExcludedFromSuggestions,
     startTrip,
+    setItemPrice,
     addList,
     setActiveList,
     itemById,
@@ -2328,6 +2329,13 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   //
   // Last, because `setActiveList` above ends a running trip.
   startTrip(traderJoes.id);
+
+  // ...and Milk already has its price for today's trip, priced the moment it
+  // went in the cart — the capability this seed exists for. Bananas is left
+  // unpriced so the "+ Price" chip has an instance too: a demo where every
+  // checked row already carried a price would hide the affordance behind the
+  // one state nobody needs it for.
+  setItemPrice(itemNamed('Milk').id, 349, traderJoes.id);
 }
 
 // ---------------------------------------------------------------------------
