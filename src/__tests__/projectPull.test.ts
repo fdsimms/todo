@@ -140,8 +140,7 @@ const PROJECT_BASE: Project = {
   id: 'p1',
   title: 'Kitchen remodel',
   notes: '',
-  targetStartDate: null,
-  targetEndDate: null,
+  deadline: null,
   category: null,
   sortOrder: 0,
   archived: false,
@@ -644,7 +643,10 @@ describe('diagnosePullEmpty', () => {
 
     const state = diagnosePullEmpty(projects, tasks, 'nudge');
     expect(state).toEqual({ reason: 'cadence-off', count: 2, total: 2 });
-    expect(describePullEmpty(state!)).toContain('Nudge me');
+    // Names the control and the answer that turns it on, since nothing else
+    // in the sheet points at the setting that is off.
+    expect(describePullEmpty(state!)).toContain('Bring this up');
+    expect(describePullEmpty(state!)).toContain('Every');
   });
 
   // Unlike cadence-off, nudgeOptIn is a hard exclusion — it reports in both
@@ -662,7 +664,8 @@ describe('diagnosePullEmpty', () => {
     for (const mode of ['ask', 'nudge'] as const) {
       const state = diagnosePullEmpty(projects, tasks, mode);
       expect(state).toEqual({ reason: 'nudge-excluded', count: 2, total: 2 });
-      expect(describePullEmpty(state!)).toContain('Include in nudges');
+      expect(describePullEmpty(state!)).toContain('Bring this up');
+      expect(describePullEmpty(state!)).toContain('When I ask');
     }
   });
 

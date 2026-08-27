@@ -71,8 +71,8 @@ export function TasksProjectsSettings() {
   const setVacationEnd = useSettingsStore(s => s.setVacationEnd);
   const autoRemoveExpiredTasks = useSettingsStore(s => s.autoRemoveExpiredTasks);
   const setAutoRemoveExpiredTasks = useSettingsStore(s => s.setAutoRemoveExpiredTasks);
-  const autoArchiveProjectsOnComplete = useSettingsStore(s => s.autoArchiveProjectsOnComplete);
-  const setAutoArchiveProjectsOnComplete = useSettingsStore(s => s.setAutoArchiveProjectsOnComplete);
+  const autoCompleteProjectsOnDone = useSettingsStore(s => s.autoCompleteProjectsOnDone);
+  const setAutoCompleteProjectsOnDone = useSettingsStore(s => s.setAutoCompleteProjectsOnDone);
   const postponeCheckEnabled = useSettingsStore(s => s.postponeCheckEnabled);
   const setPostponeCheckEnabled = useSettingsStore(s => s.setPostponeCheckEnabled);
   const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
@@ -283,15 +283,15 @@ export function TasksProjectsSettings() {
 
       <SettingsSection label="Projects">
         <SettingsRow
-          entryId="autoArchiveProjects"
+          entryId="autoCompleteProjects"
           icon="briefcase-outline"
-          iconColor={autoArchiveProjectsOnComplete ? colors.accent : undefined}
-          label="Auto-archive projects"
-          hint={autoArchiveProjectsOnComplete
-            ? 'A project archives itself once every task in it is done'
-            : 'A finished project sits at 100% until you archive it'}
-          toggle={autoArchiveProjectsOnComplete}
-          onPress={() => setAutoArchiveProjectsOnComplete(!autoArchiveProjectsOnComplete)}
+          iconColor={autoCompleteProjectsOnDone ? colors.accent : undefined}
+          label="Auto-complete projects"
+          hint={autoCompleteProjectsOnDone
+            ? 'A project marks itself complete once every task in it is done. You can still archive it afterwards'
+            : 'A finished project sits at 100% until you mark it complete'}
+          toggle={autoCompleteProjectsOnDone}
+          onPress={() => setAutoCompleteProjectsOnDone(!autoCompleteProjectsOnDone)}
         />
         <View style={styles.sep} />
         <SettingsRow
@@ -299,7 +299,7 @@ export function TasksProjectsSettings() {
           icon="notifications-outline"
           iconColor={defaultProjectNudgeCadenceDays > 0 ? colors.accent : undefined}
           label="Default review cadence"
-          hint="What a new project starts with. Never by default. This doesn't touch projects you've already created, and each one can still override it."
+          hint="What a new project's “Bring this up” starts at. Never by default, which keeps a new project out of nudges entirely; anything else opts it in at that cadence. This doesn't touch projects you've already created, and each one can still override it."
           value={describeCadence(defaultProjectNudgeCadenceDays)}
           tight
         />

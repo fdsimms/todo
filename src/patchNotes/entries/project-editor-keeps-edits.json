@@ -1,0 +1,4 @@
+{
+  "message": "Clearing a project's name no longer throws away the other changes you made in the same sheet. The name is kept as it was and everything else saves.",
+  "date": "2026-08-26"
+}

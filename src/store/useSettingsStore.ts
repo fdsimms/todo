@@ -274,7 +274,17 @@ interface SettingsStore {
   // still persisted under the 'autoRemoveExpiredTasks' settings key, so the
   // legacy 'true'/'false' values migrate on read rather than needing a new one.
   autoRemoveExpiredTasks: ExpiredTaskGraceDays;
-  autoArchiveProjectsOnComplete: boolean;
+  /**
+   * Whether a project marks itself complete once every task in it is done.
+   *
+   * It used to *archive* instead, under the key it is still persisted beneath
+   * (see initialize's read-time migration). That predated Project.completed and
+   * disagreed with every affordance a person taps for the same moment, all of
+   * which mark the project completed — so with the setting on, a finished
+   * project skipped the Completed list entirely. Archiving stays a separate,
+   * later decision, the same as it is for a project finished by hand.
+   */
+  autoCompleteProjectsOnDone: boolean;
   /**
    * Whether the date picker speaks up when you go to push a task you've already
    * pushed postponeCheckThreshold times. See src/utils/postpone.ts.
@@ -970,7 +980,7 @@ interface SettingsStore {
   setVacationMode: (on: boolean, endDate?: string | null) => void;
   setVacationEnd: (endDate: string | null) => void;
   setAutoRemoveExpiredTasks: (days: ExpiredTaskGraceDays) => void;
-  setAutoArchiveProjectsOnComplete: (on: boolean) => void;
+  setAutoCompleteProjectsOnDone: (on: boolean) => void;
   setFocusWorkCapMinutes: (minutes: number) => void;
   setFocusDefaultWorkMinutes: (minutes: number) => void;
   setFocusRestAfterTasks: (count: number | null) => void;
@@ -1084,7 +1094,7 @@ const DEFAULT_SETTINGS = {
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
   tripReminderEnabled: false,
-  autoArchiveProjectsOnComplete: false,
+  autoCompleteProjectsOnDone: false,
   postponeCheckEnabled: true,
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
   focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
@@ -1428,7 +1438,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   vacationStart: null,
   vacationEnd: null,
   autoRemoveExpiredTasks: null,
-  autoArchiveProjectsOnComplete: false,
+  autoCompleteProjectsOnDone: false,
   postponeCheckEnabled: true,
   postponeCheckThreshold: DEFAULT_POSTPONE_THRESHOLD,
   focusWorkCapMinutes: FOCUS_DEFAULTS.workCapMinutes,
@@ -1584,7 +1594,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
     const autoRemoveExpiredTasks = parseExpiredTaskGrace(dbGetSetting('autoRemoveExpiredTasks'));
-    const autoArchiveProjectsOnComplete = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
+    // Still read from the 'autoArchiveProjectsOnComplete' key: the behaviour
+    // changed from archiving to completing, but the question the toggle asks
+    // ("finish this project for me when its last task is done") did not, so an
+    // install that had it on keeps it on rather than being silently reset. Same
+    // read-time migration autoRemoveExpiredTasks above uses for its own rename.
+    const autoCompleteProjectsOnDone = dbGetSetting('autoArchiveProjectsOnComplete') === 'true';
     const focusWorkCapMinutes = parseFocusWorkCapMinutes(dbGetSetting('focusWorkCapMinutes'));
     const focusDefaultWorkMinutes = parseFocusDefaultWorkMinutes(dbGetSetting('focusDefaultWorkMinutes'));
     const focusRestAfterTasks = parseFocusRestAfterTasks(dbGetSetting('focusRestAfterTasks'));
@@ -1863,7 +1878,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, weatherTasks, weatherTaskCategory, weatherRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, weatherTasks, weatherTaskCategory, weatherRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2229,9 +2244,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ autoRemoveExpiredTasks: days });
   },
 
-  setAutoArchiveProjectsOnComplete(on: boolean) {
+  setAutoCompleteProjectsOnDone(on: boolean) {
+    // Written back under the legacy key, so an install that downgrades or
+    // restores an older backup still reads the choice the user made.
     dbSetSetting('autoArchiveProjectsOnComplete', on ? 'true' : 'false');
-    set({ autoArchiveProjectsOnComplete: on });
+    set({ autoCompleteProjectsOnDone: on });
   },
 
   setPostponeCheckEnabled(on: boolean) {

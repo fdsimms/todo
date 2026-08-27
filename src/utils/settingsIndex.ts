@@ -420,8 +420,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['simple', 'quick add', 'chips', 'declutter', 'basic', 'minimal'] },
   { id: 'hideCategories', groupId: 'tasksProjects', label: 'Hide categories', section: 'Today',
     keywords: ['flat', 'one list', 'headers', 'sections', 'group', 'ungrouped', 'today'] },
-  { id: 'autoArchiveProjects', groupId: 'tasksProjects', label: 'Auto-archive projects', section: 'Projects',
-    keywords: ['finished', 'complete'] },
+  { id: 'autoCompleteProjects', groupId: 'tasksProjects', label: 'Auto-complete projects', section: 'Projects',
+    // 'archive' and 'auto-archive' stay indexed: this row archived a finished
+    // project until it started completing one, and someone who set it up under
+    // the old behaviour will search for the old word.
+    keywords: ['finished', 'done', 'archive', 'auto-archive', 'wrap up'] },
   // Named for the row as it reads now. It was indexed as "Default nudge
   // cadence" long after the row had been renamed, which is a result naming a
   // label nobody can find on the screen it opens.
