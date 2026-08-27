@@ -24,7 +24,11 @@ import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
+import { TaskGroupHeader } from '../components/TaskGroupHeader';
+import { TaskGroupBody } from '../components/TaskGroupBody';
+import { TaskGroupTray } from '../components/TaskGroupTray';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
+import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
@@ -53,6 +57,14 @@ type RootStackParamList = {
 // One shared empty array for a task with no subtasks — a fresh `[]` per row per
 // render is exactly the identity churn the grouping below exists to avoid.
 const NO_SUBTASKS: Task[] = [];
+const NO_GROUP_CHILDREN: Task[] = [];
+
+// A project's incomplete tasks, with any stacked among them collapsed into a
+// single 'group' entry each — mirrors Today's own CategoryListItem, minus the
+// category header this screen doesn't have.
+type ProjectListItem =
+  | { type: 'task'; task: Task }
+  | { type: 'group'; group: TaskGroup; children: Task[] };
 
 // Bottom-up: "New task" ends up closest to the button.
 const ADD_MENU_ITEMS: FabMenuItem[] = [
@@ -89,6 +101,12 @@ export function ProjectDetailScreen() {
   const completeProject = useTaskStore(s => s.completeProject);
   const createTaskGroup = useTaskGroupStore(s => s.createGroup);
   const removeGroupRow = useTaskGroupStore(s => s.removeGroupRow);
+  const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
+  const setGroupCollapsed = useTaskGroupStore(s => s.setGroupCollapsed);
+  const groupRosterOf = useTaskStore(s => s.groupRosterOf);
+  const completeGroup = useTaskStore(s => s.completeGroup);
+  const deferGroup = useTaskStore(s => s.deferGroup);
+  const pinGroup = useTaskStore(s => s.pinGroup);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -99,6 +117,12 @@ export function ProjectDetailScreen() {
   // an untitled one is garbage-collected on close rather than left behind
   // as a nameless stack (see TodayScreen's own newStackIdRef).
   const newStackIdRef = React.useRef<string | null>(null);
+  // Set while a group header's drag() is in flight, so its body can collapse
+  // for the duration rather than dragging a tall floating tray — see the same
+  // state in TodayScreen. pendingGroupDragRef is read from onDragBegin, which
+  // fires synchronously inside drag(), so the id is never set a frame late.
+  const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
+  const pendingGroupDragRef = React.useRef<string | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   // True while a subtask inside the expanded row is mid-drag; the list has to
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
@@ -226,6 +250,66 @@ export function ProjectDetailScreen() {
   }, [allTasks]);
   const subtasksOf = (id: string): Task[] => subtasksByParent.get(id) ?? NO_SUBTASKS;
 
+  // Every task currently assigned to a group, across the whole app — a
+  // TaskGroup has no projectId of its own (it's scoped by its children), and
+  // TaskGroupHeader's "N/M done today" tally needs the stack's whole roster
+  // regardless of which project happens to hold a given member. Same
+  // computation as TodayScreen's own childrenByGroupId.
+  const childrenByGroupId = useMemo(() => {
+    const map = new Map<string, Task[]>();
+    for (const t of allTasks) {
+      if (!t.groupId) continue;
+      const list = map.get(t.groupId);
+      if (list) list.push(t);
+      else map.set(t.groupId, [t]);
+    }
+    for (const list of map.values()) list.sort((a, b) => a.sortOrder - b.sortOrder);
+    return map;
+  }, [allTasks]);
+
+  // Same pin-eligibility computation as TodayScreen's groupPinInfo, so the
+  // pin button on a stack header reads the same whichever screen it's on.
+  const groupPinInfo = useMemo(() => {
+    const map = new Map<string, { pinnable: boolean; pinned: boolean }>();
+    for (const group of taskGroups) {
+      const roster = groupRoster(childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN);
+      const eligible = roster.filter(c => !c.completed && isRelevantToGroupToday(c));
+      map.set(group.id, { pinnable: eligible.length > 0, pinned: eligible.length > 0 && eligible.every(c => c.pinned) });
+    }
+    return map;
+  }, [taskGroups, childrenByGroupId]);
+
+  const taskGroupById = useMemo(() => new Map(taskGroups.map(g => [g.id, g])), [taskGroups]);
+
+  // incompleteProjectTasks with any stacked tasks collapsed into a single
+  // 'group' entry, positioned where the first of its members falls in the
+  // project's own order — the same "slot a stack takes among loose tasks"
+  // idea as makeCategoryGroups, just without a category to merge within,
+  // since this screen doesn't section by category.
+  const projectListItems: ProjectListItem[] = useMemo(() => {
+    const items: ProjectListItem[] = [];
+    const seenGroups = new Set<string>();
+    for (const task of incompleteProjectTasks) {
+      if (!task.groupId) {
+        items.push({ type: 'task', task });
+        continue;
+      }
+      if (seenGroups.has(task.groupId)) continue;
+      seenGroups.add(task.groupId);
+      const group = taskGroupById.get(task.groupId);
+      if (!group) {
+        items.push({ type: 'task', task });
+        continue;
+      }
+      items.push({
+        type: 'group',
+        group,
+        children: incompleteProjectTasks.filter(t => t.groupId === task.groupId),
+      });
+    }
+    return items;
+  }, [incompleteProjectTasks, taskGroupById]);
+
   // The row handlers take the row's own id rather than closing over it, so one
   // callback serves every row — TaskItem is memoized and a fresh arrow per row
   // per render defeats its shallow compare silently, putting every mounted row
@@ -253,6 +337,37 @@ export function ProjectDetailScreen() {
     setExpandedTaskId(null);
     enterSelectionMode(id);
   }, [enterSelectionMode]);
+
+  // Same id-bound shape as the row handlers above, and the same four actions
+  // TodayScreen's own stack headers get — see groupHeaderProps there.
+  const handleGroupSwipeSelect = useCallback((groupId: string) => {
+    const ids = groupRosterOf(groupId).filter(t => !t.completed).map(t => t.id);
+    if (ids.length === 0) return;
+    setExpandedTaskId(null);
+    enterSelectionMode(ids);
+  }, [groupRosterOf, enterSelectionMode]);
+
+  const handleGroupComplete = useCallback((groupId: string) => {
+    const roster = useTaskStore.getState().groupRosterOf(groupId);
+    requestComplete({
+      ids: roster.filter(t => !t.completed).map(t => t.id),
+      complete: skipIds => completeGroup(groupId, { skipIds }),
+    });
+  }, [completeGroup, requestComplete]);
+  const handleGroupDefer = useCallback((groupId: string, date: Date) => deferGroup(groupId, date), [deferGroup]);
+  const handleGroupPin = useCallback((groupId: string) => pinGroup(groupId), [pinGroup]);
+  const handleGroupPressEdit = useCallback((groupId: string) => {
+    const group = useTaskGroupStore.getState().getGroupById(groupId);
+    if (!group) return;
+    setEditingGroup(group);
+    setGroupEditorVisible(true);
+  }, []);
+
+  const startGroupDrag = (groupId: string, drag: () => void) => {
+    pendingGroupDragRef.current = groupId;
+    drag();
+    pendingGroupDragRef.current = null;
+  };
 
   const listTouchStart = React.useRef<{ x: number; y: number } | null>(null);
   const handleListTouchStart = (e: GestureResponderEvent) => {
@@ -313,6 +428,46 @@ export function ProjectDetailScreen() {
     setEditingTask(null);
     setEditorInitialDraft({ ...draft, projectId: project?.id ?? null });
     setEditorVisible(true);
+  };
+
+  // Shared by a loose top-level row and a stacked task rendered inside its
+  // group's tray — same capabilities either way (checkbox, swipe actions,
+  // expand-for-subtasks); only the drag source and the indent differ.
+  // `indented` rows are already under their stack's header, so the inline
+  // stack chip (`showGroup`) would just repeat it.
+  const renderProjectTaskItem = (
+    task: Task,
+    opts: { drag?: () => void; isActive?: boolean; indented?: boolean } = {},
+  ) => {
+    const subs = subtasksOf(task.id);
+    const step = steps.indexOf(task);
+    return (
+      <TaskItem
+        task={task}
+        drag={selectionMode ? undefined : opts.drag}
+        isActive={opts.isActive}
+        stepNumber={sequential && step >= 0 ? step + 1 : null}
+        locked={sequential && step > 0}
+        onPress={handleRowPress}
+        expanded={expandedTaskId === task.id}
+        onEdit={handleRowEdit}
+        subtaskCount={subs.length}
+        subtaskDoneCount={subs.filter(t => t.completed).length}
+        subtasks={subs}
+        onSubtaskDragStateChange={setDraggingSubtask}
+        spotlightDisabled={expandedTaskId !== null && expandedTaskId !== task.id && !selectionMode}
+        selectionMode={selectionMode}
+        selected={selectedIds.has(task.id)}
+        onSelect={toggleSelection}
+        onSwipeSelect={handleRowSwipeSelect}
+        indented={opts.indented}
+        showCategory
+        showGroup={!opts.indented}
+        showDate
+        showPin={false}
+        highlighted={task.id === flashTaskId}
+      />
+    );
   };
 
   const eligibleForAdd = useMemo(() => {
@@ -406,19 +561,30 @@ export function ProjectDetailScreen() {
         <PaintSelectionProvider {...paintProps}>
           <ReorderableList
             scrollEnabled={!painting && !draggingSubtask}
-            data={incompleteProjectTasks}
-            keyExtractor={t => t.id}
-            // An expanded row's card shadow falls across the row below it, so
-            // the row has to be lifted over its neighbours — see
-            // ReorderableList's own note on why this can't live on the card.
-            rowElevated={t => t.id === expandedTaskId}
+            data={projectListItems}
+            keyExtractor={item => item.type === 'group' ? `g-${item.group.id}` : item.task.id}
+            // Two rows need lifting over their neighbours: an expanded row,
+            // whose card shadow falls across the row below it, and a task
+            // group's tray, for the same reason — see ReorderableList's own
+            // note on why this can't live on the card.
+            rowElevated={item => item.type === 'task' && item.task.id === expandedTaskId}
             // paddingTop only applies once there's a first row to clear — with
             // none, it's top-only padding inside the flexGrow:1 box the empty
             // state centers in, which pushes that centering down off true
             // middle. Same reasoning as ListFooterComponent below.
             contentContainerStyle={[{ flexGrow: 1 }, incompleteProjectTasks.length > 0 && { paddingTop: spacing.sm }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             onHoverChange={haptics.dragTick}
-            onReorder={reordered => reorderProjectTasks(projectId, reordered.map(t => t.id))}
+            // A dragged group moves as the single row it renders as, so its
+            // children just ride along in their existing relative order —
+            // reorderProjectTasks only needs the flattened id order.
+            onReorder={reordered => {
+              const orderedIds = reordered.flatMap(item =>
+                item.type === 'group' ? item.children.map(t => t.id) : [item.task.id],
+              );
+              reorderProjectTasks(projectId, orderedIds);
+            }}
+            onDragBegin={() => setDraggingGroupId(pendingGroupDragRef.current)}
+            onDragEnd={() => setDraggingGroupId(null)}
             // Inside the scroll content, not pinned above the list: it's
             // reference material, so it should scroll out of the way once
             // you're working through the tasks. Not tappable while selecting —
@@ -431,37 +597,43 @@ export function ProjectDetailScreen() {
               />
             }
             renderItem={({ item, drag, isActive }) => {
-              const subs = subtasksOf(item.id);
-              // Position in the live order, 1-based — the same ranking
-              // isSequenceBlocked gates on, so the number on the row and the
-              // lock on it can't disagree.
-              const step = steps.indexOf(item);
-              return (
-                <TaskItem
-                  task={item}
-                  drag={selectionMode ? undefined : drag}
-                  isActive={isActive}
-                  stepNumber={sequential && step >= 0 ? step + 1 : null}
-                  locked={sequential && step > 0}
-                  onPress={handleRowPress}
-                  expanded={expandedTaskId === item.id}
-                  onEdit={handleRowEdit}
-                  subtaskCount={subs.length}
-                  subtaskDoneCount={subs.filter(t => t.completed).length}
-                  subtasks={subs}
-                  onSubtaskDragStateChange={setDraggingSubtask}
-                  spotlightDisabled={expandedTaskId !== null && expandedTaskId !== item.id && !selectionMode}
-                  selectionMode={selectionMode}
-                  selected={selectedIds.has(item.id)}
-                  onSelect={toggleSelection}
-                  onSwipeSelect={handleRowSwipeSelect}
-                  showCategory
-                  showGroup
-                  showDate
-                  showPin={false}
-                  highlighted={item.id === flashTaskId}
-                />
-              );
+              if (item.type === 'group') {
+                const { group, children } = item;
+                const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
+                return (
+                  <TaskGroupTray>
+                    <TaskGroupHeader
+                      group={group}
+                      allChildren={allChildren}
+                      pinned={groupPinInfo.get(group.id)?.pinned ?? false}
+                      pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
+                      onToggleCollapse={() => {
+                        if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+                        haptics.tap();
+                        setDraggingGroupId(null);
+                        setGroupCollapsed(group.id, !group.collapsed);
+                      }}
+                      onComplete={handleGroupComplete}
+                      onDefer={handleGroupDefer}
+                      onSwipeSelect={handleGroupSwipeSelect}
+                      onPressEdit={handleGroupPressEdit}
+                      onPressPin={handleGroupPin}
+                      onDrag={!selectionMode && drag ? () => startGroupDrag(group.id, drag) : undefined}
+                    />
+                    <TaskGroupBody
+                      expanded={!group.collapsed && draggingGroupId !== group.id}
+                      hasChildren={children.length > 0}
+                    >
+                      {children.map(child => (
+                        <React.Fragment key={child.id}>
+                          {renderProjectTaskItem(child, { indented: true })}
+                        </React.Fragment>
+                      ))}
+                    </TaskGroupBody>
+                  </TaskGroupTray>
+                );
+              }
+              return renderProjectTaskItem(item.task, { drag, isActive });
             }}
             ListEmptyComponent={
               completedProjectTasks.length === 0 ? (
