@@ -2447,6 +2447,42 @@ export function dbInsertProjectCategory(name: string): ProjectCategory {
   return { id, name, sortOrder };
 }
 
+/**
+ * Deleting a project category unfiles the projects in it, exactly as
+ * dbDeleteCategory does for tasks and stacks. It touches no task: a project's
+ * category is purely for grouping the Projects page and never reaches the
+ * tasks inside it (see Project.category).
+ */
+export function dbDeleteProjectCategory(name: string): void {
+  db.withTransactionSync(() => {
+    db.runSync('DELETE FROM project_categories WHERE name = ?', [name]);
+    db.runSync('UPDATE projects SET category = NULL WHERE category = ?', [name]);
+  });
+}
+
+/** Full-row insert, used only to restore a snapshot on undo — see dbInsertCategoryRow. */
+export function dbInsertProjectCategoryRow(category: ProjectCategory): void {
+  db.runSync(
+    'INSERT INTO project_categories (id, name, sort_order) VALUES (?, ?, ?)',
+    [category.id, category.name, category.sortOrder]
+  );
+}
+
+export function dbRenameProjectCategory(id: string, oldName: string, newName: string): void {
+  db.withTransactionSync(() => {
+    db.runSync('UPDATE project_categories SET name = ? WHERE id = ?', [newName, id]);
+    db.runSync('UPDATE projects SET category = ? WHERE category = ?', [newName, oldName]);
+  });
+}
+
+export function dbBatchUpdateProjectCategorySortOrders(updates: { id: string; sortOrder: number }[]): void {
+  db.withTransactionSync(() => {
+    for (const { id, sortOrder } of updates) {
+      db.runSync('UPDATE project_categories SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+    }
+  });
+}
+
 // ─── Task Groups ────────────────────────────────────────────────────────────
 
 function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
@@ -3991,8 +4027,11 @@ function rowToProject(row: Record<string, unknown>): Project {
     id: row.id as string,
     title: row.title as string,
     notes: row.notes as string,
-    targetStartDate: (row.target_start_date as string) ?? null,
-    targetEndDate: (row.target_end_date as string) ?? null,
+    // target_start_date is deliberately not read: the field it backed had one
+    // reader in its life and is gone (see Project.deadline). The column stays
+    // on the table, unread and never written, the way task_groups.completed_at
+    // does — dropping one costs a migration for every install and buys nothing.
+    deadline: (row.target_end_date as string) ?? null,
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     archived: Boolean(row.archived),
@@ -4016,9 +4055,9 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_start_date, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at, backfill_dismissed_fields) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at, backfill_dismissed_fields) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
-      project.id, project.title, project.notes, project.targetStartDate, project.targetEndDate,
+      project.id, project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.createdAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
@@ -4029,9 +4068,9 @@ export function dbInsertProject(project: Project): void {
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_start_date=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=? WHERE id=?',
     [
-      project.title, project.notes, project.targetStartDate, project.targetEndDate,
+      project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,

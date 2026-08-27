@@ -1,4 +1,4 @@
-import type { Task, TaskGroup } from '../types';
+import type { Project, Task, TaskGroup } from '../types';
 import { displayTitleFor } from './visibilityUtils';
 import { mergeRanges, scoreSubstring } from './ranges';
 
@@ -99,6 +99,76 @@ export function fuzzySearch(
   const ranksActive = (r: SearchResult) => !r.task.completed || heldIds.has(r.task.id);
   return results.sort((a, b) => {
     // Completed tasks rank below active ones at equal scores
+    if (ranksActive(a) !== ranksActive(b)) return ranksActive(a) ? -1 : 1;
+    return b.score - a.score;
+  });
+}
+
+export interface ProjectSearchResult {
+  project: Project;
+  score: number;
+  titleMatches: [number, number][];
+  /** done/total, so the row reads the same as the one on the Projects page. */
+  progress: { done: number; total: number };
+}
+
+/**
+ * Matches projects by title and notes.
+ *
+ * There was no project search at all until this: a task's project *name* was
+ * scored as one of that task's own fields (see `fuzzySearch` above), so typing
+ * "kitchen" surfaced the tasks in Kitchen refresh and never the project, and
+ * the Projects page has no search of its own. Past a couple of dozen projects,
+ * finding one was scrolling. Stacks have had `searchGroups` the whole time.
+ *
+ * Notes are matched at the same weight a task's are, which is also the one
+ * reader `Project.notes` has ever had beyond the field that writes it. A
+ * project's notes are where the context that isn't a task goes ("the installer
+ * quoted separately"), and that is exactly the thing someone comes back
+ * looking for.
+ *
+ * `progress` is passed in rather than computed here: this module is pure and
+ * `projectProgress` lives in the store, and every caller already has it.
+ */
+export function searchProjects(
+  projects: Project[],
+  query: string,
+  progressByProject: Map<string, { done: number; total: number }>
+): ProjectSearchResult[] {
+  const q = query.trim();
+  if (!q) return [];
+
+  const words = q.split(/\s+/).filter(Boolean);
+  const results: ProjectSearchResult[] = [];
+
+  for (const project of projects) {
+    let totalScore = 0;
+    let titleMatches: [number, number][] = [];
+
+    for (const word of words) {
+      const titleResult = scoreSubstring(project.title, word);
+      totalScore += titleResult.score * 2;
+      if (titleResult.ranges.length > 0) {
+        titleMatches = titleMatches.concat(titleResult.ranges);
+      }
+      totalScore += scoreSubstring(project.notes, word).score * 0.5;
+    }
+
+    if (totalScore > 0) {
+      results.push({
+        project,
+        score: totalScore,
+        titleMatches: mergeRanges(titleMatches),
+        progress: progressByProject.get(project.id) ?? { done: 0, total: 0 },
+      });
+    }
+  }
+
+  // Archived and completed projects rank below active ones at equal scores,
+  // the same call `fuzzySearch` makes for completed tasks: they're still worth
+  // finding, they're just not what you were most likely looking for.
+  const ranksActive = (r: ProjectSearchResult) => !r.project.archived && !r.project.completed;
+  return results.sort((a, b) => {
     if (ranksActive(a) !== ranksActive(b)) return ranksActive(a) ? -1 : 1;
     return b.score - a.score;
   });

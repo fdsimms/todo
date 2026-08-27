@@ -1504,8 +1504,7 @@ describe('Projects', () => {
     id: 'project-1',
     title: 'Summer Bucket List',
     notes: '',
-    targetStartDate: null,
-    targetEndDate: null,
+    deadline: null,
     category: null,
     sortOrder: 1,
     archived: false,
@@ -1523,11 +1522,10 @@ describe('Projects', () => {
   });
 
   it('insert → getAll round-trips a project', () => {
-    dbInsertProject(makeProject({ targetStartDate: '2026-06-01T00:00:00.000Z', targetEndDate: '2026-09-01T00:00:00.000Z' }));
+    dbInsertProject(makeProject({ deadline: '2026-09-01T00:00:00.000Z' }));
     const [p] = dbGetAllProjects();
     expect(p.title).toBe('Summer Bucket List');
-    expect(p.targetStartDate).toBe('2026-06-01T00:00:00.000Z');
-    expect(p.targetEndDate).toBe('2026-09-01T00:00:00.000Z');
+    expect(p.deadline).toBe('2026-09-01T00:00:00.000Z');
     expect(p.archived).toBe(false);
     expect(p.completed).toBe(false);
   });
@@ -1699,7 +1697,7 @@ describe('backup and restore', () => {
     dbInsertTask(makeTask({ id: 't1', title: 'Walk the dog', tags: ['home'], priority: 3 }));
     dbInsertTask(makeTask({ id: 't2', title: 'Pay rent', completed: true }));
     dbInsertProject({
-      id: 'p1', title: 'Summer list', notes: '', targetStartDate: null, targetEndDate: null,
+      id: 'p1', title: 'Summer list', notes: '', deadline: null,
       category: null, sortOrder: 1, archived: false, archivedAt: null, completed: false, completedAt: null,
       createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false, sequential: false,
       nudgeOptIn: true,

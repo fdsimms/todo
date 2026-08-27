@@ -23,16 +23,26 @@ interface Props {
   onFilterChange: (v: ProjectFilter) => void;
   completedCount: number;
   archivedCount: number;
+  /** Opens the sheet that renames, deletes and reorders project categories. */
+  onManageCategories: () => void;
+  categoryCount: number;
 }
 
 /**
- * The Projects screen's overflow ("...") menu. Its one job today is switching
- * between the active, completed and archived lists — the direct toggle button
- * it replaced took a header slot for something reached rarely, the same
- * reason Today's own display options live behind its "..." rather than as
- * buttons.
+ * The Projects screen's overflow ("...") menu: which of the three lists is on
+ * screen, and the door to the category pool. The direct toggle button it
+ * replaced took a header slot for something reached rarely, the same reason
+ * Today's own display options live behind its "..." rather than as buttons.
+ *
+ * The category row goes here rather than on the header for the same reason.
+ * It's the *only* way to rename, delete or reorder a project category —
+ * creating one is offered inline wherever a project is filed, which is why the
+ * pool was append-only for so long without it being obvious.
  */
-export function ProjectsOptionsMenu({ visible, onClose, filter, onFilterChange, completedCount, archivedCount }: Props) {
+export function ProjectsOptionsMenu({
+  visible, onClose, filter, onFilterChange, completedCount, archivedCount,
+  onManageCategories, categoryCount,
+}: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -124,6 +134,39 @@ export function ProjectsOptionsMenu({ visible, onClose, filter, onFilterChange, 
           </TouchableOpacity>
         </View>
 
+        <View style={[styles.optionsCard, styles.secondCard]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => {
+              haptics.tap();
+              // Dismissed first, so the two modals don't overlap — a sheet
+              // presented from under one that is still animating out inherits
+              // the dismissal (see the nested-modal note in ProjectDetail).
+              Animated.parallel([
+                Animated.spring(translateY, { toValue: hiddenY, ...animation.spring.bouncy, useNativeDriver: true }),
+                Animated.timing(backdropOpacity, { toValue: 0, duration: animation.duration.fast, useNativeDriver: true }),
+              ]).start(() => {
+                onClose();
+                onManageCategories();
+              });
+            }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel="Project categories"
+          >
+            <Ionicons name="folder-outline" size={18} color={colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Project categories</Text>
+              <Text style={styles.optionHint}>
+                {categoryCount > 0
+                  ? `Rename, reorder or delete the ${categoryCount === 1 ? 'one you have' : `${categoryCount} you have`}`
+                  : 'Group projects under headings of your own'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
           <Text style={styles.cancelLabel}>Close</Text>
         </TouchableOpacity>
@@ -150,6 +193,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     overflow: 'hidden',
     marginBottom: spacing.sm,
   },
+  // Its own card, not a fourth row in the one above: those three are one
+  // question (which list am I looking at) with a tick on the current answer,
+  // and a row that opens somewhere else is not an answer to it.
+  secondCard: { marginBottom: spacing.sm },
   optionRow: {
     flexDirection: 'row',
     alignItems: 'center',

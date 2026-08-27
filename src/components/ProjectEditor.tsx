@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Project } from '../types';
-import { TITLE_MAX_LENGTH, DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
+import { TITLE_MAX_LENGTH } from '../types';
 import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
@@ -21,20 +21,45 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 import { CountStepper } from './CountStepper';
+import { SegmentedControl, type SegmentOption } from './SegmentedControl';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
-import { formatDeadlineDate, formatStartDate } from '../utils/dateUtils';
+import { formatDeadlineDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
   CADENCE_UNITS,
   CADENCE_UNIT_MAX,
+  FALLBACK_CADENCE_DAYS,
+  NUDGE_MODES,
+  NUDGE_MODE_LABEL,
   cadenceUnitLabel,
   describeCadence,
+  describeNudge,
   fromCadenceParts,
+  nudgeFieldsFor,
+  nudgeModeOf,
   toCadenceParts,
   withCadenceUnit,
+  type NudgeMode,
 } from '../utils/nudgeCadence';
+
+const NUDGE_MODE_OPTIONS: SegmentOption<NudgeMode>[] = NUDGE_MODES.map(mode => ({
+  value: mode,
+  label: NUDGE_MODE_LABEL[mode],
+}));
+
+/**
+ * One line per answer, under the track. These say what the app will *do*,
+ * because the labels can't: "When I ask" and "Every…" are the difference
+ * between a project that waits to be looked for and one that comes to you, and
+ * neither three-word label carries that on its own.
+ */
+const NUDGE_MODE_HINT: Record<NudgeMode, string> = {
+  never: 'Stays out of "Pull from projects" and never writes a review task. For a list you keep rather than work through, like gift ideas.',
+  'on-ask': 'Shows up in "Pull from projects" when you open it, and never brings itself up.',
+  scheduled: 'Adds a review task once it has gone this long with nothing scheduled.',
+};
 
 interface Props {
   visible: boolean;
@@ -67,18 +92,20 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [category, setCategory] = useState<string | null>(null);
-  const [targetStartDate, setTargetStartDate] = useState<Date | null>(null);
-  const [targetEndDate, setTargetEndDate] = useState<Date | null>(null);
-  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
-  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [deadline, setDeadline] = useState<Date | null>(null);
+  const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   // Collapsed to the chosen category until tapped, like every other editor.
   const [categoryOpen, setCategoryOpen] = useState(false);
-  const [nudgeCadenceDays, setNudgeCadenceDays] = useState(DEFAULT_NUDGE_CADENCE_DAYS);
+  // The merged nudge control: one chosen answer, plus the cadence the third of
+  // them counts in. The cadence is held positive whatever the project stored,
+  // so switching to "Every…" always lands on a real interval rather than on a
+  // schedule that can never fire (see nudgeFieldsFor).
+  const [nudgeMode, setNudgeMode] = useState<NudgeMode>('never');
+  const [nudgeCadenceDays, setNudgeCadenceDays] = useState(FALLBACK_CADENCE_DAYS);
   const [autoSchedule, setAutoSchedule] = useState(false);
   const [sequential, setSequential] = useState(false);
-  const [nudgeOptIn, setNudgeOptIn] = useState(false);
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   useEffect(() => {
@@ -86,12 +113,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setTitle(project.title);
     setNotes(project.notes);
     setCategory(project.category);
-    setTargetStartDate(project.targetStartDate ? new Date(project.targetStartDate) : null);
-    setTargetEndDate(project.targetEndDate ? new Date(project.targetEndDate) : null);
-    setNudgeCadenceDays(project.nudgeCadenceDays);
+    setDeadline(project.deadline ? new Date(project.deadline) : null);
+    setNudgeMode(nudgeModeOf(project));
+    setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
     setSequential(project.sequential);
-    setNudgeOptIn(project.nudgeOptIn);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -116,22 +142,32 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const saveAndClose = () => {
     if (!project) { onClose(); return; }
     const trimmed = title.trim();
-    if (trimmed) {
-      updateProject(project.id, {
-        title: trimmed,
-        notes,
-        category: resolveCategory(),
-        targetStartDate: targetStartDate ? targetStartDate.toISOString() : null,
-        targetEndDate: targetEndDate ? targetEndDate.toISOString() : null,
-        nudgeCadenceDays,
-        // A cadence of "never", or being excluded outright, leaves nothing for
-        // auto-scheduling to trigger on, so the three can't disagree about
-        // whether this project is managed.
-        autoSchedule: nudgeOptIn && nudgeCadenceDays > 0 && autoSchedule,
-        sequential,
-        nudgeOptIn,
-      });
-    }
+    updateProject(project.id, {
+      // A blank name is refused, but it must not take the rest of the sheet
+      // with it. The whole `updateProject` used to sit behind `if (trimmed)`,
+      // so clearing the title on an existing project — a stray select-all, a
+      // fumbled backspace — silently dropped the dates, category, notes and
+      // every toggle changed in the same session, with no alert and nothing on
+      // screen to say so (the stored title comes back on reopen, so the sheet
+      // looked untouched). Falling back to the stored title keeps the refusal
+      // and commits everything else.
+      //
+      // A project created from quick add's "More details" is stored with a
+      // blank title until it's named, so this writes '' back for that one —
+      // which is exactly what ProjectsScreen's handleEditorClose still reads to
+      // discard a row that never got a name.
+      title: trimmed || project.title,
+      notes,
+      category: resolveCategory(),
+      deadline: deadline ? deadline.toISOString() : null,
+      ...nudgeFieldsFor(nudgeMode, nudgeCadenceDays),
+      // Anything but a scheduled cadence leaves nothing for auto-scheduling to
+      // trigger on, so the two can't disagree about whether this project is
+      // managed. The drip's own gate stays in 'nudge' mode for the same reason
+      // (see dripCandidate) — this just means it is never asked.
+      autoSchedule: nudgeMode === 'scheduled' && autoSchedule,
+      sequential,
+    });
     onClose();
   };
 
@@ -201,24 +237,14 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       footer={
         <>
           <WhenPicker
-            visible={showStartDatePicker}
-            value={targetStartDate}
-            title="Start date"
+            visible={showDeadlinePicker}
+            value={deadline}
+            title="Deadline"
             showTimeOfDay={false}
             showSuggest={false}
-            onConfirm={(date) => { setTargetStartDate(date); setShowStartDatePicker(false); }}
-            onClear={() => { setTargetStartDate(null); setShowStartDatePicker(false); }}
-            onCancel={() => setShowStartDatePicker(false)}
-          />
-          <WhenPicker
-            visible={showEndDatePicker}
-            value={targetEndDate}
-            title="Target date"
-            showTimeOfDay={false}
-            showSuggest={false}
-            onConfirm={(date) => { setTargetEndDate(date); setShowEndDatePicker(false); }}
-            onClear={() => { setTargetEndDate(null); setShowEndDatePicker(false); }}
-            onCancel={() => setShowEndDatePicker(false)}
+            onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
+            onClear={() => { setDeadline(null); setShowDeadlinePicker(false); }}
+            onCancel={() => setShowDeadlinePicker(false)}
           />
         </>
       }
@@ -295,131 +321,108 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
 
       <View style={[styles.card, { marginTop: spacing.lg }]}>
         <EditorRow
-          icon="play-outline"
-          label="Start date"
-          value={targetStartDate ? formatStartDate(targetStartDate.toISOString()) : undefined}
-          onPress={() => setShowStartDatePicker(true)}
-          onClear={targetStartDate ? () => setTargetStartDate(null) : undefined}
-        />
-        <View style={styles.sep} />
-        <EditorRow
           icon="flag-outline"
-          label="Target date"
-          value={targetEndDate ? formatDeadlineDate(targetEndDate.toISOString()) : undefined}
-          onPress={() => setShowEndDatePicker(true)}
-          onClear={targetEndDate ? () => setTargetEndDate(null) : undefined}
+          label="Deadline"
+          value={deadline ? formatDeadlineDate(deadline.toISOString()) : undefined}
+          onPress={() => setShowDeadlinePicker(true)}
+          onClear={deadline ? () => setDeadline(null) : undefined}
         />
       </View>
-      {/* #1740: this used to only explain the target date, leaving "Start
-          date" to sit unexplained next to a card full of scheduling toggles
-          — reasonably read as gating something. Neither date does; both are
-          purely informational (see Project.targetStartDate/targetEndDate). */}
+      {/* Same flag icon and the same word a task's own deadline uses, because
+          it is the same idea one container out. It replaced a "Start date" /
+          "Target date" pair whose first half had one reader in its life (see
+          Project.deadline) — #1740 had to add a paragraph here denying that
+          either of them scheduled anything, and half of that paragraph went
+          with the field it was denying. */}
       <Text style={styles.sectionFooter}>
-        Optional, just for reference: shown on the project's card, with no effect on scheduling or when tasks appear. If the target date passes before the project's done, nothing happens automatically; it's just flagged so you can decide what to do.
+        Optional. Shown on the project's card, with no effect on scheduling or when tasks appear. If it passes before the project's done, nothing happens automatically; it's just flagged so you can decide what to do.
       </Text>
 
-      <View style={[styles.card, { marginTop: spacing.lg }]}>
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => { haptics.tap(); animateLayout(); setNudgeOptIn(v => !v); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Include in nudges"
-          accessibilityState={{ checked: nudgeOptIn }}
+      {/* One question, three answers. "Include in nudges" and "Review cadence"
+          used to be a switch and a stepper nested inside it, which took two
+          controls to say one thing and let them be set into combinations
+          nobody chose — see NudgeMode in utils/nudgeCadence. */}
+      <View style={[styles.sectionCard, { marginTop: spacing.lg }]}>
+        <CollapsibleField
+          label="Bring this up"
+          summary={describeNudge(nudgeFieldsFor(nudgeMode, nudgeCadenceDays))}
+          hint="A project's tasks only reach Today once they have a date, so a project with nothing scheduled goes quiet. This is what happens when it does."
+          expanded={cadenceOpen}
+          onToggle={() => setCadenceOpen(v => !v)}
         >
-          <Ionicons name="notifications-outline" size={18} color={nudgeOptIn ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Include in nudges</Text>
-            <Text style={styles.optionHint}>
-              {nudgeOptIn
-                ? 'Can get a review task when it goes quiet, and appear in "Pull from projects"'
-                : 'Never gets a review task or appears in "Pull from projects"; off by default for a list you\'re not scheduling from'}
-            </Text>
+          <View style={styles.modeBlock}>
+            <SegmentedControl
+              label="Bring this up"
+              options={NUDGE_MODE_OPTIONS}
+              value={nudgeMode}
+              onChange={next => { animateLayout(); setNudgeMode(next); }}
+            />
+            <Text style={styles.modeHint}>{NUDGE_MODE_HINT[nudgeMode]}</Text>
           </View>
-          <View style={[styles.toggle, nudgeOptIn && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, nudgeOptIn && styles.toggleKnobOn]} />
-          </View>
-        </TouchableOpacity>
-      </View>
-      <Text style={styles.sectionFooter}>
-        A project's tasks only show up on Today once they have a date, so a project with nothing
-        scheduled goes quiet. This decides whether that gets your attention or stays quiet on
-        purpose, like a running list of gift ideas.
-      </Text>
 
-      {nudgeOptIn && (
-        <>
-          <View style={[styles.sectionCard, { marginTop: spacing.lg }]}>
-            <CollapsibleField
-              label="Review cadence"
-              summary={describeCadence(nudgeCadenceDays)}
-              hint="How long this project can sit with nothing scheduled before it gets a review task. Step below 1 for Never."
-              expanded={cadenceOpen}
-              onToggle={() => setCadenceOpen(v => !v)}
-            >
-              <View style={styles.cadenceRow}>
-                <CountStepper
-                  value={cadence.count}
-                  onChange={next => setNudgeCadenceDays(fromCadenceParts({ ...cadence, count: next }))}
-                  min={1}
-                  max={CADENCE_UNIT_MAX[cadence.unit]}
-                  allowNull
-                  emptyLabel="Never"
-                  label="Review cadence"
-                  describeValue={n => describeCadence(fromCadenceParts({ ...cadence, count: n }))}
-                />
-                <View style={styles.pillRow}>
-                  {CADENCE_UNITS.map(unit => {
-                    // Never has no unit — leaving all three unlit is what says so.
-                    const active = cadence.count !== null && cadence.unit === unit;
-                    return (
-                      <TouchableOpacity
-                        key={unit}
-                        style={[styles.pill, active && styles.pillActiveNeutral]}
-                        onPress={() => {
-                          haptics.tap();
-                          setNudgeCadenceDays(fromCadenceParts(withCadenceUnit(cadence, unit)));
-                        }}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: active }}
-                      >
-                        <Text style={[styles.pillText, active && styles.pillTextActive]}>
-                          {cadenceUnitLabel(unit)}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
+          {nudgeMode === 'scheduled' && (
+            <View style={styles.cadenceRow}>
+              <CountStepper
+                value={cadence.count}
+                onChange={next => setNudgeCadenceDays(fromCadenceParts({ ...cadence, count: next }))}
+                min={1}
+                max={CADENCE_UNIT_MAX[cadence.unit]}
+                label="Review cadence"
+                describeValue={n => describeCadence(fromCadenceParts({ ...cadence, count: n }))}
+              />
+              {/* No allowNull on the stepper: the track above is where Never
+                  lives now, and two controls clearing to the same state is the
+                  ambiguity this merge removed. */}
+              <View style={styles.pillRow}>
+                {CADENCE_UNITS.map(unit => {
+                  const active = cadence.unit === unit;
+                  return (
+                    <TouchableOpacity
+                      key={unit}
+                      style={[styles.pill, active && styles.pillActiveNeutral]}
+                      onPress={() => {
+                        haptics.tap();
+                        setNudgeCadenceDays(fromCadenceParts(withCadenceUnit(cadence, unit)));
+                      }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                    >
+                      <Text style={[styles.pillText, active && styles.pillTextActive]}>
+                        {cadenceUnitLabel(unit)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-            </CollapsibleField>
-          </View>
-
-          {nudgeCadenceDays > 0 && (
-            <View style={[styles.card, { marginTop: spacing.lg }]}>
-              <TouchableOpacity
-                style={styles.optionRow}
-                onPress={() => { haptics.tap(); setAutoSchedule(v => !v); }}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="switch"
-                accessibilityLabel="Keep it moving"
-                accessibilityState={{ checked: autoSchedule }}
-              >
-                <Ionicons name="play-forward-outline" size={18} color={autoSchedule ? colors.accent : colors.textSecondary} />
-                <View style={styles.optionContent}>
-                  <Text style={styles.optionLabel}>Keep it moving</Text>
-                  <Text style={styles.optionHint}>
-                    {autoSchedule
-                      ? 'Dates the next task for you instead of asking'
-                      : 'Ask before scheduling anything from this project'}
-                  </Text>
-                </View>
-                <View style={[styles.toggle, autoSchedule && styles.toggleOn]}>
-                  <View style={[styles.toggleKnob, autoSchedule && styles.toggleKnobOn]} />
-                </View>
-              </TouchableOpacity>
             </View>
           )}
-        </>
+        </CollapsibleField>
+      </View>
+
+      {nudgeMode === 'scheduled' && (
+        <View style={[styles.card, { marginTop: spacing.lg }]}>
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setAutoSchedule(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Keep it moving"
+            accessibilityState={{ checked: autoSchedule }}
+          >
+            <Ionicons name="play-forward-outline" size={18} color={autoSchedule ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Keep it moving</Text>
+              <Text style={styles.optionHint}>
+                {autoSchedule
+                  ? 'Dates the next task for you instead of asking'
+                  : 'Ask before scheduling anything from this project'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, autoSchedule && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, autoSchedule && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        </View>
       )}
 
       <View style={[styles.card, { marginTop: spacing.xl }]}>
@@ -548,6 +551,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     overflow: 'hidden',
   },
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  modeBlock: { marginTop: spacing.md, gap: spacing.sm },
+  modeHint: { color: colors.textTertiary, fontSize: font.xs },
   // The unit pills stay one group: at a narrow width the whole set drops to a
   // second line rather than splitting "Months" off on its own.
   cadenceRow: {

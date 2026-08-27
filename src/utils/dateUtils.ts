@@ -204,9 +204,8 @@ export function formatTaskDate(
  * means nothing, leaving the field where it means something with no way to
  * sound more serious.
  *
- * It keeps the day count where formatStartDate (same reasoning, project start
- * dates) drops to a calendar date, because "sitting here two days" is exactly
- * what a task row is trying to say — a project start four months back isn't.
+ * It keeps the day count on purpose: "sitting here two days" is exactly what a
+ * task row is trying to say.
  */
 export function formatScheduledDate(iso: string, dayResetTime?: string): string {
   const d = new Date(iso);
@@ -221,9 +220,10 @@ export function formatScheduledDate(iso: string, dayResetTime?: string): string 
 }
 
 /**
- * A date that can actually be missed — `Task.deadline`, and a project's
- * targetEndDate. This is the only formatter that says "overdue", and it is
- * never correct on a `dueDate`; use formatScheduledDate there.
+ * A date that can actually be missed — `Task.deadline` and `Project.deadline`,
+ * which is why they share a name. This is the only formatter that says
+ * "overdue", and it is never correct on a `dueDate`; use formatScheduledDate
+ * there.
  */
 export function formatDeadlineDate(iso: string, dayResetTime?: string): string {
   const d = new Date(iso);
@@ -233,22 +233,6 @@ export function formatDeadlineDate(iso: string, dayResetTime?: string): string {
   const diff = differenceInCalendarDays(d, today);
   if (diff < 0) return `${Math.abs(diff)}d overdue`;
   if (isSameWeek(d, today, { weekStartsOn: getWeekStart() })) return format(d, 'EEEE');
-  return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
-}
-
-/**
- * Like formatScheduledDate, but for a project's targetStartDate — which marks
- * when to start thinking about/doing the project. A start date months back is
- * just when the project began, so it reads as its calendar date rather than
- * carrying a day count nobody is counting.
- */
-export function formatStartDate(iso: string, dayResetTime?: string): string {
-  const d = new Date(iso);
-  const today = getDayStart(new Date(), dayResetTime);
-  if (isSameDay(d, today)) return 'Today';
-  if (isSameDay(d, addDays(today, 1))) return 'Tomorrow';
-  const diff = differenceInCalendarDays(d, today);
-  if (diff >= 0 && isSameWeek(d, today, { weekStartsOn: getWeekStart() })) return format(d, 'EEEE');
   return format(d, d.getFullYear() === today.getFullYear() ? 'MMM d' : 'MMM d, yyyy');
 }
 

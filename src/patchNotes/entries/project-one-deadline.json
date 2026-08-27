@@ -1,0 +1,4 @@
+{
+  "message": "A project has one date now, \"Deadline\", instead of a start date and a target date. It means what a task's deadline means: shown on the project's card, flagged once it passes, and no effect on scheduling. The start date is gone. It was only ever printed on the card, and two dates read as a schedule a project doesn't have.",
+  "date": "2026-08-26"
+}
