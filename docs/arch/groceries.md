@@ -283,6 +283,121 @@ the same trade the `unavailable` branch makes when a substitute joins it. It is 
 that branch's "Not here": the store has the item, just not your box, and collapsing the two
 claims would say a shop had nothing when it had the thing and not your version of it.
 
+## Separate lists (`GroceryList`) — the trolley for a week away
+
+"I'm going on vacation and I don't want to see the shopping I need at home." A `GroceryList` is a
+named second trolley — "Airbnb", "Beach house" — and `GroceryItem.listId` says which one a row is
+in right now. The reads are in `src/utils/groceryLists.ts`; the writes are `useGroceryStore`'s.
+
+**There is no row for the home list, and that absence is most of the design.** `listId` is `null`
+for it, so every row that existed before this shipped is already on it and nothing was backfilled;
+the one list that must always exist can't be renamed into nothing or deleted by accident, because
+it isn't data. Every function that takes a list takes `string | null`, which is also why none of
+them can be written as a truthiness check.
+
+**A list is a scope on the trolley, not a second catalog.** There is still one `GroceryItem` per
+thing you buy, with one aisle, one purchase history, one pantry state, one set of substitutes and
+one set of products. Only *membership* is per-list, which is why `listId` lives on the item beside
+`onList` rather than in a join table, and why it is cleared by every path that takes a row off the
+list — `removeFromList`, `removeFromListMany`, `clearList`, `finishShopping`, `swapForSubstitute`,
+`resolveChoice` — exactly as `choiceGroup` is. Carried off-list it would decide, silently and weeks
+later, which list a re-add landed on.
+
+- **A row can only be on one list at a time**, for the same reason it has one `checked` and one
+  `sortOrder`. So adding a name that is already on another list *moves* it. See "The cost of
+  singular membership" below, which is the one open question here.
+- **Every add lands on the active list**, wherever it comes from: the add field, a recipe's
+  ingredients, "I'm nearly out of this", the catalog's Add button. That's the one rule the switcher
+  rests on, and the alternative — asking which list, per add — is a question nobody wants twelve
+  times a trip. `addByName` takes a `listId` option for the single caller that needs to override it
+  (below).
+- **`activeListId` is a persisted setting, not a column**, like `grocery_group_by` beside it: it
+  says what this device is looking at. It persists because a vacation outlasts an app launch, and
+  it is repaired at read time against the lists that exist — the same treatment `lastShopId` and
+  the active trip get, and for the same reason.
+- **It does not sync, while the lists themselves do.** `grocery_lists` is in `SYNC_TRACKED_TABLES`
+  and has to be: `grocery_items.list_id` syncs, and on a device with no row to resolve it against
+  the whole Airbnb trolley would read as the home list. Which list you are *looking at* is
+  per-device, so one phone in the rental kitchen doesn't move the other one's screen.
+- **Switching lists ends any running trip.** A trip is "I'm standing in this store shopping for
+  this trolley", and switching trolleys makes the second half false.
+- **Deleting a list parks its trolley first**, and that is the one place grocery's usual
+  dangling-pointer tolerance does *not* apply. A `listId` naming a list that no longer exists reads
+  as `null`, and `null` is the home list — so leaving the rows would tip a deleted "Airbnb" trolley
+  straight into the kitchen at home. `dbDeleteGroceryList` owns the unlisting. The rows themselves
+  park, as they do everywhere else here: a list going away is a statement about the trip, not about
+  the coffee.
+
+### An away trip records nothing
+
+Every list except home is an "away" list (`isAwayList`), and finishing one takes the checked rows
+off and stops there: no purchase count, no `lastPurchasedAt`, no use-by day, no price observation,
+no `ItemShopLink`, and none of the pantry claims a purchase normally refutes (`onHandUntil`,
+`frozenAt`, `openedAt`, `runningLowAt` are all left standing). No supply is restocked and no use-up
+task is spawned.
+
+The failure that rules out is concrete: groceries bought for a rented kitchen 400 miles away are
+not evidence about yours, and without this a week at the beach leaves the app certain there are
+eggs in your fridge, quoting Cape Cod prices for months, and nagging about milk it thinks is
+going off.
+
+- **"Home" and "away" is the whole distinction — there is deliberately no per-list switch.** A flag
+  would be a second thing to explain and a second state for every purchase path to respect.
+- **`dbFinishGroceryShopping` derives `away` from the `listId` it was given** rather than taking a
+  second parameter, because the two could then disagree. It runs a shorter `UPDATE` and returns.
+- **`list_id IS ?`, never `= ?`.** SQLite's `=` is never true against NULL, and NULL is the home
+  list — so a home trip would select nothing at all. `database.test.ts` covers this against real
+  SQLite for exactly that reason: the store's own tests mock the db away, so a `=` would pass every
+  one of them.
+- **The store enforces it in four places**, because the record is assembled in four: the shop it
+  resolves, the shelf-life days it computes, the prices it forwards, and the in-memory patch that
+  mirrors the db. The patch splits the purchase record into one conditional spread so a column
+  added later can't be half-covered.
+- **The finish sheet drops the questions rather than discarding the answers.** `away` hides the
+  store picker, the "anything they didn't have?" section, the price fields and the receipt scan —
+  every one of them asks about what a purchase *leaves behind*. What's left is the confirm, which
+  is still worth asking for: it is what empties the trolley.
+- **`StartTripPrompt` offers no stores on an away list**, which leaves it as the Finish button
+  alone — the shape it already takes for anyone with no stores on file. Every store on record is
+  one near home.
+
+### The Reminders mirror is the home list, always
+
+`groceryReminderMirror` is the one reader that deliberately doesn't follow the active list. It is a
+two-way sync against a standing Apple Reminders list: a row that stops being `onList` here has its
+reminder *deleted* over there, so mirroring whichever list was on screen would empty that Reminders
+list the moment you switched to the Airbnb one, and the import half would read the emptiness back
+as everything having been ticked off. A vacation list is a week; the mirrored list is a fixture of
+the household.
+
+That is also the one caller of `addByName`'s `listId` option: a reminder imported while an away
+list is up must land at home, or the mirror's next pass reads it as absent and deletes the reminder
+it just came from.
+
+### What is deliberately *not* scoped
+
+Not everything that reads `onList` means "on the list you're looking at", and three cases are left
+unscoped on purpose:
+
+- **`catalogPruneCandidates`** asks "is this in any trolley", which is the conservative reading an
+  unrecoverable delete wants.
+- **`pantryCheckTasks`** won't ask "do you still have X" about a row on any list.
+- **`KitchenScreen`'s "on the list" caption**, for the same reason: the row is on a list, and which
+  one is not what a pantry row is answering.
+
+### The cost of singular membership
+
+One `listId` per row means a name can be in one trolley at a time, so typing "milk" onto the Airbnb
+list while milk is on the list at home **moves it**, and the home list quietly loses it. That is the
+model working as designed rather than a bug in it, but it bites in the most ordinary case — the
+staples you need in both kitchens — and it is worth knowing before extending this.
+
+The alternative is a `grocery_list_items` join table carrying `checked`, `sort_order` and
+`choice_group` per (item, list), with `onList` derived. That is the honest shape for multi-list
+membership and it is a large refactor of `useGroceryStore`; it was not taken here. The demo seed
+works around the same constraint by picking away-list names that aren't in the home trolley, and
+says so.
+
 ## Grocery stores (`Shop`) — which shop has which items
 
 The rest of the grocery feature isn't written up here yet; this section covers only stores, which

@@ -97,6 +97,7 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   const inputRef = useRef<TextInput>(null);
 
   const items = useGroceryStore(s => s.items);
+  const activeListId = useGroceryStore(s => s.activeListId);
   const itemProducts = useGroceryStore(s => s.itemProducts);
   const addByName = useGroceryStore(s => s.addByName);
   const addManyFromText = useGroceryStore(s => s.addManyFromText);
@@ -150,8 +151,10 @@ export const GroceryAddField = forwardRef<GroceryAddFieldHandle, Props>(function
   }, []);
 
   const suggestions = useMemo(
-    () => (focused ? rankGrocerySuggestions(text, items, new Date()) : []),
-    [focused, text, items]
+    // The "On list" pill each suggestion may carry is about the list being
+    // added to, so a thing on your list at home reads as addable here.
+    () => (focused ? rankGrocerySuggestions(text, items, new Date(), 5, activeListId) : []),
+    [focused, text, items, activeListId]
   );
 
   // What committing `text` right now would actually save — the whole point is

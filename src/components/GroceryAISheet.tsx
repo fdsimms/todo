@@ -69,6 +69,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const activeListId = useGroceryStore(s => s.activeListId);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const setAisleMany = useGroceryStore(s => s.setAisleMany);
   const addByName = useGroceryStore(s => s.addByName);
@@ -90,8 +91,8 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   // Anything currently sitting in the catch-all and on the list — the exact
   // gap the lexicon left.
   const unsorted = useMemo(
-    () => items.filter(i => i.onList && i.aisle === OTHER_AISLE),
-    [items]
+    () => items.filter(i => i.onList && i.listId === activeListId && i.aisle === OTHER_AISLE),
+    [items, activeListId]
   );
 
   const reset = useCallback(() => {

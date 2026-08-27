@@ -113,7 +113,9 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const { isDark } = useTheme();
   // A scalar, so it's referentially stable and needs no useShallow. Counts
   // what's still to buy — items already in the trolley aren't a reason to go.
-  const groceryCount = useGroceryStore(s => s.items.filter(i => i.onList && !i.checked).length);
+  const groceryCount = useGroceryStore(
+    s => s.items.filter(i => i.onList && i.listId === s.activeListId && !i.checked).length
+  );
   // The one row this can remove, so the filter runs on every render rather
   // than being hoisted — it's a ten-item array and the setting is a scalar.
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);

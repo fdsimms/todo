@@ -54,7 +54,12 @@ export function GroceriesHubPills({ active }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
-  const groceryCount = useGroceryStore(s => s.items.filter(i => i.onList && !i.checked).length);
+  // The list you're actually looking at, not every trolley you have going —
+  // a pill reading 22 while the Airbnb list holds four is counting shopping
+  // this tab won't show you. See GroceryItem.listId.
+  const groceryCount = useGroceryStore(
+    s => s.items.filter(i => i.onList && i.listId === s.activeListId && !i.checked).length
+  );
   // The leftovers nudge, and the whole reason it's here rather than only on the
   // meal plan itself: a container going off tomorrow is worth knowing about
   // while you're standing in the shop about to buy more food. Counted rather

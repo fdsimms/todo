@@ -89,6 +89,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const renameAisle = useGroceryStore(s => s.renameAisle);
   const deleteAisle = useGroceryStore(s => s.deleteAisle);
   const items = useGroceryStore(useShallow(s => s.items));
+  const activeListId = useGroceryStore(s => s.activeListId);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const addShop = useGroceryStore(s => s.addShop);
@@ -159,7 +160,9 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   // never land something below it.
   const draggable = useMemo(() => aisleOrder.filter(a => a !== OTHER_AISLE), [aisleOrder]);
 
-  const countFor = (aisle: string) => items.filter(i => i.aisle === aisle && i.onList).length;
+  // On the active list, like every other count the Groceries tab shows.
+  const countFor = (aisle: string) =>
+    items.filter(i => i.aisle === aisle && i.onList && i.listId === activeListId).length;
 
   const commitAisleRename = () => {
     if (!editingAisle) return;

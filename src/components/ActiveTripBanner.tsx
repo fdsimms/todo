@@ -76,7 +76,11 @@ export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Prop
   const colors = useColors();
   const styles = makeStyles(colors);
 
-  const checkedCount = useGroceryStore(s => s.items.filter(i => i.onList && i.checked).length);
+  // Scoped to the active list, like everything else the trip touches: the
+  // Finish button this number gates on finishes that list and no other.
+  const checkedCount = useGroceryStore(
+    s => s.items.filter(i => i.onList && i.listId === s.activeListId && i.checked).length
+  );
 
   const handleClear = () => {
     haptics.tap();

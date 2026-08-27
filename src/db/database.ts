@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Person, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Person, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -289,6 +289,17 @@ export function initDatabase(): void {
       purchase_count INTEGER NOT NULL DEFAULT 0,
       last_added_at TEXT,
       last_purchased_at TEXT,
+      created_at TEXT NOT NULL
+    );
+
+    -- The shopping lists other than the one at home. There is deliberately no
+    -- row for home: grocery_items.list_id is NULL for it, which is what makes
+    -- this table need no backfill and what stops the one list that must always
+    -- exist from being renamed or deleted. See GroceryList in types.
+    CREATE TABLE IF NOT EXISTS grocery_lists (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL,
+      sort_order REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL
     );
 
@@ -1076,6 +1087,11 @@ export function initDatabase(): void {
     // as "nothing has been declined yet" and is what every person was already
     // in before the screen could walk them.
     "ALTER TABLE people ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
+    // Which shopping list a row is on. NULL on every existing row, and NULL is
+    // the home list — so an install upgrading into this has its whole trolley
+    // exactly where it was, with no backfill to get wrong. See
+    // GroceryItem.listId, and grocery_lists above for why home has no row.
+    'ALTER TABLE grocery_items ADD COLUMN list_id TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1324,6 +1340,9 @@ export const BACKUP_TABLES = [
   'person_notes',
   'task_groups',
   'grocery_shops',
+  // Before grocery_items: a row's list_id points at one, so restoring the
+  // lists first means a restored trolley never names a list that isn't there.
+  'grocery_lists',
   'grocery_items',
   'grocery_item_shops',
   'grocery_item_subs',
@@ -2488,6 +2507,9 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     quantityFromRecipe: Boolean(row.quantity_from_recipe),
     note: (row.note as string) ?? '',
     onList: Boolean(row.on_list),
+    // Null is the home list, which is also what a row written before the
+    // column existed reads as. See GroceryItem.listId.
+    listId: (row.list_id as string) ?? null,
     checked: Boolean(row.checked),
     sortOrder: (row.sort_order as number) ?? 0,
     purchaseCount: (row.purchase_count as number) ?? 0,
@@ -2536,8 +2558,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        pantry_check_declined_at, used_up_count, spoiled_count, last_spoiled_at,
-       last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, list_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -2552,6 +2574,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
+      item.listId ?? null,
     ]
   );
 }
@@ -2565,7 +2588,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        pantry_check_declined_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
-       preferred_product_id=?, brand_strict=?
+       preferred_product_id=?, brand_strict=?, list_id=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -2581,6 +2604,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0,
+      item.listId ?? null,
       item.id,
     ]
   );
@@ -2643,8 +2667,20 @@ export function dbFinishGroceryShopping(
   // Without it the store's matching in-memory patch was the only record of the
   // freeze, so it survived until the next load and no further (see
   // finishShopping, whose comment has always said this wins).
-  frozenIds: ReadonlySet<string> = new Set()
+  frozenIds: ReadonlySet<string> = new Set(),
+  // Which list is being finished — null for the one at home. Everything below
+  // is scoped to it, so a trip at the Airbnb can't tick off the milk you still
+  // need at home.
+  //
+  // It doubles as the away flag rather than there being a second parameter,
+  // because the two could then disagree: "away" is exactly "not the home
+  // list", and see `away` below for what that costs a trip.
+  listId: string | null = null
 ): string[] {
+  // `IS` rather than `=`, which is the whole reason this reads oddly: SQLite's
+  // `=` is never true against NULL, so a home trip (list_id IS NULL on every
+  // row of it) would select nothing at all.
+  const away = listId !== null;
   // quantity comes back with the id because a price is only meaningful
   // alongside what it bought (see GroceryItem.lastPriceQuantity), and the
   // trolley's quantities are still on the rows at this point — the bulk UPDATE
@@ -2660,12 +2696,36 @@ export function dbFinishGroceryShopping(
     price_history: string | null;
   }>(
     `SELECT id, quantity, preferred_product_id, brand_strict, price_history
-       FROM grocery_items WHERE checked = 1 AND on_list = 1`
+       FROM grocery_items WHERE checked = 1 AND on_list = 1 AND list_id IS ?`,
+    [listId]
   );
   if (rows.length === 0) return [];
+  if (away) {
+    // An away trip is a checklist, not a record. The rows come off the list and
+    // that is the whole write: no purchase count, no last-purchased stamp, no
+    // use-by day, no price, no store link, and none of the pantry claims a
+    // purchase normally refutes. Food carried into a rented kitchen is not
+    // evidence about the one at home, and every column skipped here is one that
+    // would otherwise still be lying about it a month later. See GroceryList.
+    //
+    // `list_id = NULL` alongside `on_list = 0`, for GroceryItem.listId's reason:
+    // a row that has left the list has left the list it was on, and carrying
+    // the id off would decide where a re-add landed weeks later. The home
+    // statement below sets it too — where it is already NULL on every row it
+    // touches, and is there so the invariant reads the same in both.
+    db.runSync(
+      `UPDATE grocery_items
+          SET on_list = 0, checked = 0, in_catalog = 1, list_id = NULL,
+              quantity = CASE WHEN quantity_from_recipe = 1 THEN NULL ELSE quantity END,
+              quantity_from_recipe = 0
+        WHERE checked = 1 AND on_list = 1 AND list_id IS ?`,
+      [listId]
+    );
+    return rows.map(r => r.id);
+  }
   db.runSync(
     `UPDATE grocery_items
-        SET on_list = 0, checked = 0, in_catalog = 1,
+        SET on_list = 0, checked = 0, in_catalog = 1, list_id = NULL,
             purchase_count = purchase_count + 1,
             last_purchased_at = ?,
             on_hand_until = NULL,
@@ -2674,8 +2734,8 @@ export function dbFinishGroceryShopping(
             running_low_at = NULL,
             quantity = CASE WHEN quantity_from_recipe = 1 THEN NULL ELSE quantity END,
             quantity_from_recipe = 0
-      WHERE checked = 1 AND on_list = 1`,
-    [purchasedAt]
+      WHERE checked = 1 AND on_list = 1 AND list_id IS ?`,
+    [purchasedAt, listId]
   );
   // on_hand_until is *cleared* by a purchase rather than written, and it rides
   // the bulk UPDATE above because null is the same value for every row.
@@ -2841,15 +2901,98 @@ export function dbFinishGroceryShopping(
  * `hasUserFacts` — and those live above this layer. `clearList` does the
  * sweep, this returns everything it unlisted.
  */
-export function dbClearGroceryList(): string[] {
-  const rows = db.getAllSync<{ id: string }>('SELECT id FROM grocery_items WHERE on_list = 1');
+export function dbClearGroceryList(listId: string | null = null): string[] {
+  // `IS` rather than `=`, for dbFinishGroceryShopping's reason: `=` is never
+  // true against NULL, and NULL is the home list.
+  const rows = db.getAllSync<{ id: string }>(
+    'SELECT id FROM grocery_items WHERE on_list = 1 AND list_id IS ?',
+    [listId]
+  );
   if (rows.length === 0) return [];
   // choice_group goes with the list it belonged to: an either/or is this
   // trolley's "apples or pears", so a cleared list has no choice left to make.
   // Written here as well as in `clearList`'s in-memory patch, or the pair comes
-  // back on the next launch.
-  db.runSync('UPDATE grocery_items SET on_list = 0, checked = 0, choice_group = NULL WHERE on_list = 1');
+  // back on the next launch. list_id goes for the same reason and in the same
+  // breath — see GroceryItem.listId.
+  db.runSync(
+    `UPDATE grocery_items SET on_list = 0, checked = 0, choice_group = NULL, list_id = NULL
+      WHERE on_list = 1 AND list_id IS ?`,
+    [listId]
+  );
   return rows.map(r => r.id);
+}
+
+// ─── Grocery lists ──────────────────────────────────────────────────────────
+//
+// A table for the reason stores got one rather than a settings key: a list is
+// referenced by every row currently in its trolley, so it needs an id that
+// survives a rename. The home list is the deliberate absence here — see
+// GroceryList in types.
+
+function rowToGroceryList(row: Record<string, unknown>): GroceryList {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    sortOrder: (row.sort_order as number) ?? 0,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllGroceryLists(): GroceryList[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM grocery_lists ORDER BY sort_order ASC, created_at ASC'
+  );
+  return rows.map(rowToGroceryList);
+}
+
+export function dbInsertGroceryList(list: GroceryList): void {
+  db.runSync(
+    'INSERT INTO grocery_lists (id, name, sort_order, created_at) VALUES (?,?,?,?)',
+    [list.id, list.name, list.sortOrder, list.createdAt]
+  );
+}
+
+export function dbUpdateGroceryList(list: GroceryList): void {
+  db.runSync(
+    'UPDATE grocery_lists SET name=?, sort_order=? WHERE id=?',
+    [list.name, list.sortOrder, list.id]
+  );
+}
+
+/**
+ * Deletes a list and takes its trolley off the list on the way.
+ *
+ * **Unlisting is not optional and not resolve-or-shrug**, which is the one
+ * place grocery's usual dangling-pointer tolerance doesn't apply: a `list_id`
+ * naming a list that no longer exists reads as null, and null is the *home*
+ * list — so leaving the rows would tip a deleted "Airbnb" trolley straight into
+ * the kitchen at home. Same statement `dbClearGroceryList` makes, for the same
+ * reason: the trip isn't happening, so its list isn't either. The rows
+ * themselves park, exactly as they do everywhere else here.
+ */
+export function dbDeleteGroceryList(id: string): string[] {
+  const cleared = dbClearGroceryList(id);
+  db.runSync('DELETE FROM grocery_lists WHERE id = ?', [id]);
+  return cleared;
+}
+
+/**
+ * Which list the Groceries screen is showing, or null for the one at home.
+ *
+ * A setting rather than a column, like `grocery_group_by` beside it: it says
+ * what this device is looking at right now, not anything about a list. It
+ * persists rather than being session-only because a vacation outlasts an app
+ * launch, and coming back to the home list every morning is the whole thing
+ * this feature exists to stop.
+ */
+export function dbGetGroceryActiveList(): string | null {
+  // `||` rather than `??`: clearing it writes an empty string (dbSetSetting
+  // takes a string), and '' is the home list just as much as an absent key is.
+  return dbGetSetting('grocery_active_list') || null;
+}
+
+export function dbSetGroceryActiveList(id: string | null): void {
+  dbSetSetting('grocery_active_list', id ?? '');
 }
 
 // The aisle order is a JSON string list in `settings`, not a table — the

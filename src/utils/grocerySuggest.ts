@@ -94,7 +94,14 @@ export function rankGrocerySuggestions(
   query: string,
   items: readonly GroceryItem[],
   now: Date,
-  limit = 5
+  limit = 5,
+  /**
+   * Which list the `onList` flag is about — see `onListIn`. Last, and optional,
+   * because two of the four callers rank the catalog without ever reading the
+   * flag (`CatalogLinkPicker`, `ingredientCatalogMatch`), and "in some trolley"
+   * is the honest answer for them rather than a list id they'd have to invent.
+   */
+  listId?: string | null
 ): GrocerySuggestion[] {
   const queryKey = groceryNameKey(query);
   if (!queryKey) return [];
@@ -109,16 +116,39 @@ export function rankGrocerySuggestions(
       a.item.name.localeCompare(b.item.name)
     )
     .slice(0, limit)
-    .map(x => ({ item: x.item, onList: x.item.onList }));
+    .map(x => ({ item: x.item, onList: onListIn(x.item, listId) }));
+}
+
+/**
+ * Whether a row is in the trolley the caller means.
+ *
+ * `undefined` is "any list at all", which is what `item.onList` says on its
+ * own and the right reading for a caller with no list in mind. A `string | null`
+ * names one — `null` being the list at home (see `GroceryItem.listId`), which
+ * is exactly why this can't be written as a truthiness check.
+ */
+function onListIn(item: GroceryItem, listId: string | null | undefined): boolean {
+  if (!item.onList) return false;
+  return listId === undefined || item.listId === listId;
 }
 
 /**
  * The "you buy this every week" shelf. Only things not currently on the list —
  * offering to add what's already there is the one thing this sheet must not do.
+ *
+ * `listId` says which list "already there" is about, and passing it matters
+ * more here than in the ranker above: a staple sitting on your list at home is
+ * exactly what you want offered while you're stocking a rental kitchen, and
+ * reading `onList` bare would hide it. Omitted, this stays "in some trolley".
  */
-export function rankedCatalogItems(items: readonly GroceryItem[], now: Date, limit = 40): GroceryItem[] {
+export function rankedCatalogItems(
+  items: readonly GroceryItem[],
+  now: Date,
+  limit = 40,
+  listId?: string | null
+): GroceryItem[] {
   return items
-    .filter(i => !i.onList)
+    .filter(i => !onListIn(i, listId))
     .map(item => ({ item, score: familiarity(item, now) }))
     .sort((a, b) =>
       b.score - a.score ||

@@ -1132,9 +1132,30 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(byName.get('lemon')?.suggestedName).toBe('Lemons');
   });
 
+  it('seeds a second shopping list, left inactive', () => {
+    const { items, lists, activeListId } = useGroceryStore.getState();
+
+    // Invisible until something uses it: with only "Groceries" on file the
+    // switcher is a chevron beside a title that never changes.
+    const airbnb = lists.find(l => l.name === 'Airbnb');
+    expect(airbnb).toBeDefined();
+    expect(items.filter(i => i.onList && i.listId === airbnb!.id).length).toBeGreaterThan(0);
+
+    // The demo's own shop is at home, so the screen opens there and the away
+    // list is something you find rather than something you land in.
+    expect(activeListId).toBeNull();
+    expect(items.filter(i => i.onList && i.listId === null).length).toBeGreaterThan(0);
+
+    // And the trip survived being seeded around: setActiveList ends one, so
+    // the away list has to be built before startTrip.
+    expect(useGroceryStore.getState().tripShopId).not.toBeNull();
+  });
+
   it('seeds a grocery catalog bigger than the list, with a trip in progress', () => {
     const { items, itemShops, itemProducts } = useGroceryStore.getState();
-    const onList = items.filter(i => i.onList);
+    // The home list — every count below is about the trolley the demo's own
+    // trip is shopping, not about both lists at once.
+    const onList = items.filter(i => i.onList && i.listId === null);
 
     expect(onList.length).toBeGreaterThan(5);
     // Not on the list right now — which is exactly what the catalog reads.
@@ -1490,7 +1511,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // exactly what it reads off summarizeTrip([], plan).suggestion, and a
     // seed that shopped its whole list clean would read as a feature the app
     // hasn't got.
-    const plan = planTrip(items, itemShops, shops);
+    // The home list only, the same scope ShoppingTripSheet plans over: the
+    // demo's away list holds shopping for a kitchen this trip isn't for.
+    const plan = planTrip(items.filter(i => i.listId === null), itemShops, shops);
     expect(plan.coverage.length).toBeGreaterThanOrEqual(2);
     const [head, second] = summarizeTrip([], plan).suggestion;
     expect(head?.shop.name).toBe("Trader Joe's");

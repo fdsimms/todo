@@ -124,6 +124,7 @@ export function AddMealsToListSheet({
   const unitSystem = useSettingsStore(s => s.unitSystem);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const activeListId = useGroceryStore(s => s.activeListId);
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const addToPantry = useGroceryStore(s => s.addToPantry);
@@ -135,7 +136,9 @@ export function AddMealsToListSheet({
 
   const classified = useMemo(() => {
     const planned = collectPlannedIngredients(entries, recipesById, range, swaps);
-    return classifyPlanned(planned, items, new Date(), itemSubs);
+    // Against the list being added to — see classifyPlanned's own note on why
+    // an unscoped read silently drops shopping.
+    return classifyPlanned(planned, items, new Date(), itemSubs, activeListId);
   }, [entries, recipesById, range, items, itemSubs, swaps]);
 
   const byCategory = useMemo(() => {

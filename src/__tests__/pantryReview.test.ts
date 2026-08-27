@@ -35,6 +35,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     quantityFromRecipe: false,
     note: '',
     onList: false,
+    listId: null,
     checked: false,
     sortOrder: seq,
     // Three purchases across a year: a 122-day window, long enough that a case

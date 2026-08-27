@@ -448,7 +448,18 @@ export function classifyPlanned(
    * is nothing to say, which is also every caller's behaviour before this
    * existed.
    */
-  itemSubs: readonly ItemSubLink[] = []
+  itemSubs: readonly ItemSubLink[] = [],
+  /**
+   * Which list "already on the list" is about — the one being added to. Null,
+   * the default, is the list at home, which is what every caller meant before
+   * separate lists existed.
+   *
+   * It has to be scoped or the classification is wrong in the direction that
+   * silently drops shopping: a row sitting on your list at home would come
+   * back as `alreadyOnList` while planning meals for a rental, and the sheet
+   * would leave it unticked on the assumption you were already buying it.
+   */
+  listId: string | null = null
 ): ClassifiedIngredient[] {
   const byKey = new Map<string, GroceryItem>();
   for (const item of items) byKey.set(item.nameKey, item);
@@ -477,7 +488,7 @@ export function classifyPlanned(
 
     let category: PlanCategory;
     let reason: string | null = null;
-    if (match?.onList) {
+    if (match?.onList && match.listId === listId) {
       category = match.checked ? 'inCart' : 'alreadyOnList';
     } else if (match?.isStaple) {
       category = 'staple';

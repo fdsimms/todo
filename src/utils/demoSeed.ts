@@ -1546,6 +1546,8 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     linkItemSub,
     setShopExcludedFromSuggestions,
     startTrip,
+    addList,
+    setActiveList,
     itemById,
   } = useGroceryStore.getState();
 
@@ -2123,12 +2125,43 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     sourceRecipeTitle: 'Weeknight chicken stir-fry',
   })));
 
+  // A second list, for the week away. Seeded because separate lists are one of
+  // the capabilities that stay invisible until something uses them: with only
+  // "Groceries" on file the switcher is a chevron beside a title that never
+  // changes, which reads as a feature the app hasn't got.
+  //
+  // Built by switching to it and adding normally rather than by writing
+  // `listId` onto rows — every add path stamps the active list, and going
+  // through the same door is what stops the seed drifting from the store.
+  //
+  // **Before `startTrip`, and none of these names is in the home trolley.**
+  // Both constraints are the store being honest rather than the seed being
+  // fussy: `setActiveList` ends any running trip (switching trolleys makes "I'm
+  // standing in this store shopping for *this*" false), and an add moves a row
+  // that is already on another list rather than putting it on both, so seeding
+  // "Milk" here would quietly take it off the home list the demo's own trip is
+  // about to shop.
+  //
+  // Left as the *inactive* list, with the screen opening on Groceries: the
+  // demo's whole shop is at home, so someone handed the phone should find the
+  // away list rather than land in it.
+  const airbnb = addList('Airbnb');
+  if (airbnb) {
+    setActiveList(airbnb.id);
+    ['Coffee', 'Butter', 'Olive oil', 'Greek yogurt', 'Paper towels'].forEach(name =>
+      addByName(name, undefined, undefined, { registerUndo: false })
+    );
+    setActiveList(null);
+  }
+
   // ...and you're at Trader Joe's right now, which is the only state in which
   // the list says anything about stores. Two of the three things a row can say
   // are on screen because of it: Tortillas are marked as not stocked here, and
   // Peanut butter is on record at Costco alone. The third ("Usually X") can't
   // be seeded honestly — it needs an item bought at two stores while you stand
   // in a third, and this demo has two stores anyone would shop at.
+  //
+  // Last, because `setActiveList` above ends a running trip.
   startTrip(traderJoes.id);
 }
 

@@ -1671,6 +1671,41 @@ export interface PriceObservation {
   productId?: string | null;
 }
 
+/**
+ * A shopping list other than the one at home — "Airbnb", "Beach house",
+ * "Camping". Named, created by the user, and deleted when the trip is over.
+ *
+ * **There is no row for the home list, and that's the whole migration story.**
+ * `GroceryItem.listId` is null for it, so every row that existed before this
+ * shipped is already on it and nothing had to be backfilled. It also means the
+ * one list that must always exist can't be renamed into nothing or deleted by
+ * accident: it isn't data.
+ *
+ * **A list is a scope on the trolley, not a second catalog.** There is still
+ * one `GroceryItem` per thing you buy — one aisle, one purchase history, one
+ * pantry state, one set of substitutes — and a list only says which trolley a
+ * row is in right now. That's why membership lives on the item beside `onList`
+ * rather than in a join table: a row can only be on one list at a time for the
+ * same reason it can only have one `checked` and one `sortOrder`.
+ *
+ * **Every list but home is an "away" list, and an away trip records nothing.**
+ * Finishing one takes the checked rows off and stops there: no purchase count,
+ * no price, no store link, no use-by countdown, and none of the pantry claims a
+ * purchase normally refutes. Groceries bought for a rented kitchen 400 miles
+ * away are not evidence about yours, and the failure that rules out is
+ * concrete — a week at the beach otherwise leaves the app certain there are
+ * eggs in your fridge and quoting you Cape Cod prices for months. There is
+ * deliberately no per-list switch for this: "home" and "away" is the whole
+ * distinction, and a flag would be a second thing to explain and a second state
+ * for every purchase path to respect.
+ */
+export interface GroceryList {
+  id: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+}
+
 export interface GroceryItem {
   id: string;
   // What the user last typed — the label. "Whole milk" and "milk" reading
@@ -1743,6 +1778,26 @@ export interface GroceryItem {
   quantityFromRecipe: boolean;
   note: string;
   onList: boolean;
+  /**
+   * Which list this row is on right now — null for the one at home. See
+   * `GroceryList`.
+   *
+   * **A membership field, not a fact about the item**, which puts it in the
+   * same company as `checked`, `sortOrder` and `choiceGroup` rather than
+   * alongside `aisle` or `isStaple`. It is meaningful only while `onList`, and
+   * every path that takes a row off the list clears it in the same breath the
+   * way `choiceGroup` is cleared — `removeFromList`, `removeFromListMany`,
+   * `clearList`, `finishShopping`, `swapForSubstitute` and `resolveChoice`.
+   * Carried off-list it would decide, silently and weeks later, which list a
+   * re-add landed on.
+   *
+   * **Resolve-or-shrug is not enough here**, unlike every other cross-row
+   * pointer in this file: an id naming a deleted list would read as null, which
+   * is the home list, so a deleted "Airbnb" would tip its whole trolley into
+   * the kitchen at home. `deleteList` unlists its rows first, which is the same
+   * statement `clearList` makes about a trip nobody is doing after all.
+   */
+  listId: string | null;
   // Invariant: checked implies onList.
   checked: boolean;
   // There is deliberately no `inCatalog` here any more (#1998). Every row is a

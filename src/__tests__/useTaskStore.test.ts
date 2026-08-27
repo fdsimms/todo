@@ -123,6 +123,8 @@ jest.mock('../db/database', () => ({
   // groceries.
   dbGetGroceryAisleOverrides: jest.fn().mockReturnValue({}),
   dbGetGroceryGroupBy: jest.fn().mockReturnValue('aisle'),
+  dbGetAllGroceryLists: jest.fn().mockReturnValue([]),
+  dbGetGroceryActiveList: jest.fn().mockReturnValue(null),
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbGetAllItemSubLinks: jest.fn().mockReturnValue([]),
@@ -3506,7 +3508,7 @@ describe('checkPantryCheckTasks', () => {
   const lapsedItem = (overrides: Partial<GroceryItem> = {}): GroceryItem => ({
     id: 'g-1', name: 'Flour', nameKey: 'flour', preferredProductId: null, productStrict: false,
     aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
-    onList: false, checked: false, sortOrder: 1,
+    onList: false, listId: null, checked: false, sortOrder: 1,
     purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(125), createdAt: daysAgo(366),
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
@@ -3743,7 +3745,7 @@ describe('checkPantryReviewTasks', () => {
   const guessedItem = (i: number, overrides: Partial<GroceryItem> = {}): GroceryItem => ({
     id: `g-${i}`, name: `Thing ${i}`, nameKey: `thing ${i}`, preferredProductId: null, productStrict: false,
     aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
-    onList: false, checked: false, sortOrder: i,
+    onList: false, listId: null, checked: false, sortOrder: i,
     purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(10), createdAt: daysAgo(366),
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
@@ -5039,7 +5041,7 @@ describe('checkMealShortfallTasks', () => {
       items: [{
         id: 'g-1', name: 'Onions', nameKey: 'onions', preferredProductId: null, productStrict: false,
         aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
-        onList: true, checked: false, sortOrder: 1,
+        onList: true, listId: null, checked: false, sortOrder: 1,
         purchaseCount: 0, lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
         onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
         isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
@@ -10762,7 +10764,7 @@ describe('postponeCount', () => {
 describe('deleting a use-up task', () => {
   const item = {
     id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
-    onList: false, checked: false, sortOrder: 1, purchaseCount: 3,
+    onList: false, listId: null, checked: false, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: '2026-08-17', frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null,
@@ -10813,7 +10815,7 @@ describe('deleting a use-up task', () => {
 describe('completing a use-up task', () => {
   const groceryItem = {
     id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
-    onList: false, checked: false, sortOrder: 1, purchaseCount: 3,
+    onList: false, listId: null, checked: false, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: '2026-08-17', frozenAt: null, openedAt: null, runningLowAt: null, shelfLifeDays: null, useUpTask: null,

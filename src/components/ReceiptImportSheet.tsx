@@ -204,6 +204,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const activeListId = useGroceryStore(s => s.activeListId);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const addShop = useGroceryStore(s => s.addShop);
@@ -423,7 +424,9 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
    * in beforehand, and either way it is on the list.
    */
   const pairRows = useMemo(
-    () => items.filter(i => i.onList).map(i => ({ id: i.id, name: i.name })),
+    // The rows a receipt can match are the ones in the trolley it's a receipt
+    // for, which is the list being shown.
+    () => items.filter(i => i.onList && i.listId === activeListId).map(i => ({ id: i.id, name: i.name })),
     [items]
   );
 

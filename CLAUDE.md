@@ -283,6 +283,7 @@ exports.
 | the Face ID app lock | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` — see `docs/arch/app-lock.md` |
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
+| a separate list for a week away, and what an away trip doesn't record | `src/utils/groceryLists.ts` (+ `activeListId` in `useGroceryStore`) — see `docs/arch/groceries.md` |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
 | grocery autocomplete, catalog ranking | `src/utils/grocerySuggest.ts` |
 | which bread — brands, variants, and rating them | `src/utils/groceryProduct.ts` (`ItemProduct`) — see `docs/arch/groceries.md` |
@@ -339,15 +340,16 @@ exports.
 **Read narrowly.** 46 files are over 1,000 lines, 28 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (6.4k), `components/TaskEditor.tsx` (4.7k), `db/database.ts` (4.2k),
-`store/useGroceryStore.ts` (4.2k), `screens/TodayScreen.tsx` (4.1k), `types/index.ts` (3.7k),
-`components/TaskItem.tsx` (3.7k), `components/QuickAddModal.tsx` (2.9k),
-`store/useSettingsStore.ts` (2.7k), `utils/demoSeed.ts` (2.5k).
+`store/useTaskStore.ts` (6.4k), `components/TaskEditor.tsx` (4.7k),
+`store/useGroceryStore.ts` (4.4k), `db/database.ts` (4.4k), `screens/TodayScreen.tsx` (4.1k),
+`types/index.ts` (3.8k), `components/TaskItem.tsx` (3.7k),
+`components/QuickAddModal.tsx` (2.9k), `store/useSettingsStore.ts` (2.7k),
+`utils/demoSeed.ts` (2.5k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **214 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **215 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

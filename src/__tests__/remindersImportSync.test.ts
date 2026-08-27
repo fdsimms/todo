@@ -59,6 +59,8 @@ interface MockGroceryItem {
   name?: string;
   quantity?: string | null;
   checked?: boolean;
+  /** null is the list at home, which is the only list the mirror reads. */
+  listId?: string | null;
 }
 let mockGroceryItems: MockGroceryItem[] = [];
 jest.mock('../store/useGroceryStore', () => ({
@@ -954,6 +956,7 @@ describe('importReminders — the two-way grocery mirror', () => {
     nameKey: over.name.trim().toLowerCase(),
     quantity: null,
     onList: true,
+    listId: null,
     checked: false,
     ...over,
   });
@@ -991,7 +994,9 @@ describe('importReminders — the two-way grocery mirror', () => {
 
     const outcome = await freshSync().importReminders();
 
-    expect(mockAddByName).toHaveBeenCalledWith('eggs', undefined, undefined, { registerUndo: false });
+    // `listId: null` pins the import to the list at home whatever list is on
+    // screen — see mirrorItems.
+    expect(mockAddByName).toHaveBeenCalledWith('eggs', undefined, undefined, { registerUndo: false, listId: null });
     expect(outcome.imported).toBe(1);
     expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
   });

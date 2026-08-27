@@ -397,14 +397,29 @@ function mirrorTarget(): string | null {
   return groceryImportListId;
 }
 
-/** What one grocery row looks like to the mirror. */
+/**
+ * What one grocery row looks like to the mirror.
+ *
+ * **The mirror is the list at home and nothing else** (`listId === null`), which
+ * is the one place separate lists deliberately don't follow the active list.
+ * This sync is two-way against a standing Apple Reminders list: a row that
+ * stops being `onList` here has its reminder *deleted* over there, so mirroring
+ * whichever list was on screen would empty that Reminders list the moment you
+ * switched to the Airbnb one, and the import half would then read the emptiness
+ * back as the user having ticked everything off. A vacation list is a week; the
+ * mirrored list is a fixture of the household. See GroceryList.
+ *
+ * `groceryMirrorSignature` below applies the same filter, and has to: keyed on
+ * a broader set, a change to an away list would spend an EventKit fetch to
+ * discover there was nothing to do.
+ */
 function mirrorItems(): MirrorItem[] {
   return useGroceryStore.getState().items.map(item => ({
     id: item.id,
     name: item.name,
     nameKey: item.nameKey,
     quantity: item.quantity,
-    onList: item.onList,
+    onList: item.onList && item.listId === null,
     checked: item.checked,
   }));
 }
@@ -418,7 +433,8 @@ function mirrorItems(): MirrorItem[] {
 export function groceryMirrorSignature(): string {
   const parts: string[] = [];
   for (const item of useGroceryStore.getState().items) {
-    if (!item.onList) continue;
+    // The home list only, exactly as mirrorItems above reads it.
+    if (!item.onList || item.listId !== null) continue;
     // Separated on every side, because concatenating free text straight onto
     // an id lets two different lists spell the same signature, and a collision
     // here is a change that never syncs.
@@ -512,7 +528,11 @@ async function mirrorOnce(): Promise<MirrorOutcome | null> {
         // name already in the catalog is re-listed rather than duplicated.
         // registerUndo: false because this is not something the user just did —
         // a sync-driven add sitting under their next shake is not an undo.
-        const item = store.addByName(add.title, undefined, undefined, { registerUndo: false });
+        // `listId: null` — the list at home, whatever list is on screen. The
+        // mirror only ever reads home (see mirrorItems), so a row landing
+        // anywhere else would read as absent on the next pass and take the
+        // reminder it came from down with it.
+        const item = store.addByName(add.title, undefined, undefined, { registerUndo: false, listId: null });
         if (!item) continue;
         nextLinks.push({
           reminderId: add.reminderId,

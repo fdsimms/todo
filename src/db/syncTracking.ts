@@ -68,6 +68,11 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'templates', key: ['id'] },
   { name: 'grocery_items', key: ['id'] },
   { name: 'grocery_shops', key: ['id'] },
+  // The away lists. It has to travel even though *which* one a device is
+  // looking at doesn't (see `grocery_active_list` in the prose below):
+  // `grocery_items.list_id` syncs, and on a device with no row to resolve it
+  // against the whole Airbnb trolley would read as the home list.
+  { name: 'grocery_lists', key: ['id'] },
   { name: 'grocery_item_shops', key: ['item_id', 'shop_id'] },
   { name: 'grocery_item_subs', key: ['item_id', 'sub_item_id'] },
   // Keyed by id rather than (item_id, product_key) even though that pair is
@@ -241,6 +246,11 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   other phone would read it as answers about events it has never seen.
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
+ * - `grocery_active_list`, `grocery_group_by` — which shopping list one device
+ *   is showing and how it groups the rows. The lists themselves sync
+ *   (`grocery_lists`); which of them you are *looking at* is the same kind of
+ *   fact as `grocery_trip_shop_id` below, and one phone in the rental kitchen
+ *   should not move the other one's screen off the list at home.
  * - `grocery_trip_shop_id`, `grocery_trip_started_at`,
  *   `mealPlanNudgeLastFiredWeekKey`, `mealPlanNudgeGroupId`,
  *   `meal_plan_added_to_list`, `patchNotesQaStatus`, `filterEfforts`,

@@ -72,6 +72,9 @@ import {
   dbDeleteItemProduct,
   dbSetProductGtin,
   dbClearGroceryList,
+  dbGetAllGroceryLists,
+  dbInsertGroceryList,
+  dbDeleteGroceryList,
   dbGetGroceryAisleOrder,
   dbGetGroceryAisleOverrides,
   dbSetGroceryAisleOverrides,
@@ -269,7 +272,7 @@ beforeEach(() => {
     // link or a product left behind by the previous test names an item this
     // one has just deleted, and every `dbGetAll…()[0]` read below would be
     // holding somebody else's row.
-    'DELETE FROM grocery_items; DELETE FROM grocery_shops;' +
+    'DELETE FROM grocery_items; DELETE FROM grocery_shops; DELETE FROM grocery_lists;' +
     'DELETE FROM grocery_item_shops; DELETE FROM grocery_item_products;'
   );
 });
@@ -1852,6 +1855,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     quantityFromRecipe: false,
     note: '',
     onList: true,
+    listId: null,
     checked: false,
     sortOrder: 1,
     purchaseCount: 0,
@@ -1939,6 +1943,7 @@ describe('grocery items', () => {
       quantity: '2 gal',
       note: 'the blue cap one',
       onList: true,
+      listId: null,
       checked: true,
       sortOrder: 4,
       purchaseCount: 12,
@@ -2440,6 +2445,90 @@ describe('grocery items', () => {
     dbInsertGroceryItem(makeGroceryItem({ id: 'g1', name: 'Zucchini', nameKey: 'zucchini', sortOrder: 9 }));
     dbInsertGroceryItem(makeGroceryItem({ id: 'g2', name: 'Apples', nameKey: 'apples', sortOrder: 2 }));
     expect(dbGetAllGroceryItems().map(i => i.id)).toEqual(['g2', 'g1']);
+  });
+
+  // The two functions that had to grow a list scope, and the one SQL subtlety
+  // that scope turns on: `list_id IS ?` rather than `= ?`, because `=` is never
+  // true against NULL and NULL is the list at home. Written against real SQLite
+  // for exactly that reason — the store's own tests mock the db away, so a `=`
+  // here would pass every one of them and silently finish nothing.
+  describe('scoping a trip to one list', () => {
+    function seedTwoLists() {
+      dbInsertGroceryList({ id: 'l1', name: 'Airbnb', sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z' });
+      dbInsertGroceryItem(makeGroceryItem({
+        id: 'home', name: 'Milk', nameKey: 'milk', checked: true, listId: null,
+      }));
+      dbInsertGroceryItem(makeGroceryItem({
+        id: 'away', name: 'Coffee', nameKey: 'coffee', checked: true, listId: 'l1',
+      }));
+    }
+
+    it('finishes the home list without touching an away one', () => {
+      seedTwoLists();
+
+      expect(dbFinishGroceryShopping('2026-08-07T12:00:00.000Z')).toEqual(['home']);
+
+      const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
+      expect(byId.get('home')!.onList).toBe(false);
+      expect(byId.get('away')!.onList).toBe(true);
+      expect(byId.get('away')!.listId).toBe('l1');
+    });
+
+    it('finishes an away list without touching home', () => {
+      seedTwoLists();
+
+      expect(dbFinishGroceryShopping('2026-08-07T12:00:00.000Z', null, {}, {}, new Set(), 'l1'))
+        .toEqual(['away']);
+
+      const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
+      expect(byId.get('away')!.onList).toBe(false);
+      expect(byId.get('away')!.listId).toBeNull();
+      expect(byId.get('home')!.onList).toBe(true);
+    });
+
+    it('records nothing on an away trip’s rows', () => {
+      dbInsertGroceryList({ id: 'l1', name: 'Airbnb', sortOrder: 1, createdAt: '2026-08-01T00:00:00.000Z' });
+      dbInsertGroceryItem(makeGroceryItem({
+        id: 'away', name: 'Coffee', nameKey: 'coffee', checked: true, listId: 'l1',
+        purchaseCount: 2, lastPurchasedAt: '2026-01-01T00:00:00.000Z',
+      }));
+
+      // A shop, a use-by day and a price all passed in, and all ignored.
+      dbFinishGroceryShopping(
+        '2026-08-07T12:00:00.000Z', 'shop-1', { away: '2026-08-10' }, { away: 899 }, new Set(), 'l1'
+      );
+
+      const row = dbGetAllGroceryItems()[0];
+      expect(row.purchaseCount).toBe(2);
+      expect(row.lastPurchasedAt).toBe('2026-01-01T00:00:00.000Z');
+      expect(row.expiresAt).toBeNull();
+      expect(row.lastPriceMinor).toBeNull();
+      expect(dbGetAllItemShopLinks()).toEqual([]);
+    });
+
+    it('clears one list at a time', () => {
+      seedTwoLists();
+
+      expect(dbClearGroceryList('l1')).toEqual(['away']);
+
+      const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
+      expect(byId.get('away')!.onList).toBe(false);
+      expect(byId.get('home')!.onList).toBe(true);
+    });
+
+    it('deletes a list and parks its trolley, leaving the rows themselves alone', () => {
+      seedTwoLists();
+
+      expect(dbDeleteGroceryList('l1')).toEqual(['away']);
+
+      expect(dbGetAllGroceryLists()).toEqual([]);
+      const byId = new Map(dbGetAllGroceryItems().map(i => [i.id, i]));
+      // Parked, not deleted — a list going away says nothing about the coffee.
+      expect(byId.get('away')!.onList).toBe(false);
+      // And never left pointing at a list that no longer exists, which would
+      // read as the home list and tip the trolley into the kitchen at home.
+      expect(byId.get('away')!.listId).toBeNull();
+    });
   });
 
   describe('dbFinishGroceryShopping', () => {

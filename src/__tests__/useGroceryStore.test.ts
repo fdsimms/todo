@@ -15,6 +15,7 @@ import {
   dbRepointStoreAliases,
   dbFinishGroceryShopping,
   dbClearGroceryList,
+  dbDeleteGroceryList,
   dbGetAllGroceryShops,
   dbInsertGroceryShop,
   dbUpdateGroceryShop,
@@ -42,7 +43,7 @@ import { groceryNameKey } from '../utils/groceryParse';
 import { DEFAULT_AISLES, OTHER_AISLE } from '../utils/groceryAisles';
 import { OUT_OF_IT_UNTIL, probablyHaveReason } from '../utils/grocerySuggest';
 import { expiryDaysFromNow, expiryKeyFor, openShelfLifeDaysFor } from '../utils/groceryShelfLife';
-import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, Shop, StoreAlias, Task } from '../types';
+import type { GroceryItem, GroceryList, ItemProduct, ItemShopLink, ItemSubLink, Shop, StoreAlias, Task } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
@@ -54,6 +55,12 @@ jest.mock('../db/database', () => ({
   dbSetGroceryAisleOverrides: jest.fn(),
   dbGetGroceryGroupBy: jest.fn().mockReturnValue('aisle'),
   dbSetGroceryGroupBy: jest.fn(),
+  dbGetAllGroceryLists: jest.fn().mockReturnValue([]),
+  dbInsertGroceryList: jest.fn(),
+  dbUpdateGroceryList: jest.fn(),
+  dbDeleteGroceryList: jest.fn().mockReturnValue([]),
+  dbGetGroceryActiveList: jest.fn().mockReturnValue(null),
+  dbSetGroceryActiveList: jest.fn(),
   dbInsertGroceryItem: jest.fn(),
   dbUpdateGroceryItem: jest.fn(),
   dbDeleteGroceryItem: jest.fn(),
@@ -182,6 +189,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     quantityFromRecipe: false,
     note: '',
     onList: false,
+    listId: null,
     checked: false,
     sortOrder: seq,
     purchaseCount: 0,
@@ -237,10 +245,14 @@ function seed(
     storeAliases?: StoreAlias[];
     tripShopId?: string | null;
     tripStartedAt?: string | null;
+    lists?: GroceryList[];
+    activeListId?: string | null;
   } = {}
 ) {
   useGroceryStore.setState({
     items,
+    lists: extra.lists ?? [],
+    activeListId: extra.activeListId ?? null,
     aisleOrder: [...DEFAULT_AISLES],
     hiddenAisles: [],
     groceryGroupBy: 'aisle',
@@ -268,6 +280,7 @@ beforeEach(() => {
   (dbGetGroceryGroupBy as jest.Mock).mockReturnValue('aisle');
   (dbFinishGroceryShopping as jest.Mock).mockReturnValue([]);
   (dbClearGroceryList as jest.Mock).mockReturnValue([]);
+  (dbDeleteGroceryList as jest.Mock).mockReturnValue([]);
   (dbGetAllGroceryShops as jest.Mock).mockReturnValue([]);
   (dbGetAllItemShopLinks as jest.Mock).mockReturnValue([]);
   (dbGetAllItemSubLinks as jest.Mock).mockReturnValue([]);
@@ -895,7 +908,7 @@ describe('finishShopping', () => {
     const receiptDate = '2026-08-15T12:00:00.000Z';
     useGroceryStore.getState().finishShopping(null, {}, receiptDate);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(receiptDate, null, expect.any(Object), {}, expect.any(Set));
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(receiptDate, null, expect.any(Object), {}, expect.any(Set), null);
     expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.lastPurchasedAt)
       .toBe(receiptDate);
   });
@@ -1838,7 +1851,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping(costco.id);
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id, expect.any(Object), expect.any(Object), expect.any(Set));
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), costco.id, expect.any(Object), expect.any(Object), expect.any(Set), null);
     const links = useGroceryStore.getState().itemShops;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ itemId: milk.id, shopId: costco.id, purchaseCount: 1 });
@@ -2067,7 +2080,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping();
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set));
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null);
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
     // ...and the item-level count still moved, which is what makes the two
     // numbers diverge and why nothing may sum links to get a total.
@@ -2082,7 +2095,7 @@ describe('finishShopping with a store', () => {
 
     useGroceryStore.getState().finishShopping('shop-deleted-mid-sheet');
 
-    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set));
+    expect(dbFinishGroceryShopping).toHaveBeenCalledWith(expect.any(String), null, expect.any(Object), expect.any(Object), expect.any(Set), null);
     expect(useGroceryStore.getState().itemShops).toHaveLength(0);
   });
 
@@ -4155,6 +4168,7 @@ describe('setFrozen', () => {
     const spinach = makeItem({
       name: 'Spinach',
       onList: true,
+      listId: null,
       checked: true,
       frozenAt: '2026-05-01T09:00:00.000Z',
     });
@@ -5850,5 +5864,264 @@ describe('per-box pantry state', () => {
     const stored = useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!;
     expect(stored.frozenAt).toBe(frozenAt);
     expect(stored.purchaseCount).toBe(0);
+  });
+});
+
+
+// ─── separate lists ──────────────────────────────────────────────────────────
+
+describe('separate shopping lists', () => {
+  const AIRBNB: GroceryList = { id: 'l1', name: 'Airbnb', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+
+  it('lands a typed add on the list being shown', () => {
+    seed([], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+    const item = useGroceryStore.getState().addByName('coffee');
+
+    expect(item.listId).toBe(AIRBNB.id);
+  });
+
+  it('lands a typed add on the home list when that is what is being shown', () => {
+    seed([], { lists: [AIRBNB], activeListId: null });
+
+    expect(useGroceryStore.getState().addByName('coffee').listId).toBeNull();
+  });
+
+  it('moves a row already on another list rather than putting it on both', () => {
+    // `listId` is singular for the reason `checked` is. Re-adding milk while
+    // the Airbnb list is up is a statement about where you are shopping.
+    const milk = makeItem({ name: 'Milk', onList: true, listId: null });
+    seed([milk], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+    useGroceryStore.getState().addByName('milk');
+
+    expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.listId).toBe(AIRBNB.id);
+  });
+
+  it('honours an explicit listId over the active one, for the Reminders mirror', () => {
+    seed([], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+    const item = useGroceryStore.getState().addByName('eggs', undefined, undefined, { listId: null });
+
+    expect(item.listId).toBeNull();
+  });
+
+  it('mints a row off-list with no list id at all', () => {
+    // Naming something to hold a substitute is not a plan to buy it, so there
+    // is no trolley for it to be in.
+    seed([], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+    expect(useGroceryStore.getState().ensureCatalogItem('margarine')!.listId).toBeNull();
+  });
+
+  it('clears the list id when a row comes off the list', () => {
+    const milk = makeItem({ name: 'Milk', onList: true, listId: AIRBNB.id });
+    seed([milk], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+    useGroceryStore.getState().removeFromList(milk.id);
+
+    const after = useGroceryStore.getState().items.find(i => i.id === milk.id)!;
+    expect(after.onList).toBe(false);
+    expect(after.listId).toBeNull();
+  });
+
+  it('clears only the list being shown', () => {
+    seed([], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+    useGroceryStore.getState().clearList();
+
+    expect(dbClearGroceryList).toHaveBeenCalledWith(AIRBNB.id);
+  });
+
+  it('adds a running-low row to the list being shown', () => {
+    const oil = makeItem({ name: 'Olive oil', onList: false, listId: null });
+    seed([oil], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+    useGroceryStore.getState().setRunningLow(oil.id, true);
+
+    expect(useGroceryStore.getState().items.find(i => i.id === oil.id)!.listId).toBe(AIRBNB.id);
+  });
+
+  it('leaves a row already on a list where it is when it is marked low', () => {
+    const oil = makeItem({ name: 'Olive oil', onList: true, listId: null });
+    seed([oil], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+    useGroceryStore.getState().setRunningLow(oil.id, true);
+
+    expect(useGroceryStore.getState().items.find(i => i.id === oil.id)!.listId).toBeNull();
+  });
+
+  describe('deleting a list', () => {
+    it('parks its trolley rather than deleting the rows', () => {
+      const coffee = makeItem({ name: 'Coffee', onList: true, listId: AIRBNB.id, purchaseCount: 3 });
+      seed([coffee], { lists: [AIRBNB], activeListId: AIRBNB.id });
+      (dbDeleteGroceryList as jest.Mock).mockReturnValue([coffee.id]);
+
+      useGroceryStore.getState().deleteList(AIRBNB.id);
+
+      const after = useGroceryStore.getState().items.find(i => i.id === coffee.id)!;
+      expect(after.onList).toBe(false);
+      expect(after.listId).toBeNull();
+      expect(after.purchaseCount).toBe(3);
+    });
+
+    it('drops back to the home list when the deleted one was being shown', () => {
+      seed([], { lists: [AIRBNB], activeListId: AIRBNB.id });
+      (dbDeleteGroceryList as jest.Mock).mockReturnValue([]);
+
+      useGroceryStore.getState().deleteList(AIRBNB.id);
+
+      expect(useGroceryStore.getState().activeListId).toBeNull();
+      expect(useGroceryStore.getState().lists).toEqual([]);
+    });
+  });
+
+  describe('naming a list', () => {
+    it('refuses a name the home list already has', () => {
+      seed([], { lists: [] });
+      expect(useGroceryStore.getState().addList('Groceries')).toBeNull();
+      expect(useGroceryStore.getState().addList('  groceries ')).toBeNull();
+    });
+
+    it('refuses a duplicate, whatever its case', () => {
+      seed([], { lists: [AIRBNB] });
+      expect(useGroceryStore.getState().addList('airbnb')).toBeNull();
+    });
+
+    it('refuses a blank name', () => {
+      seed([], { lists: [] });
+      expect(useGroceryStore.getState().addList('   ')).toBeNull();
+    });
+
+    it('renames in place, keeping the id every row in its trolley points at', () => {
+      seed([], { lists: [AIRBNB] });
+
+      expect(useGroceryStore.getState().renameList(AIRBNB.id, 'Beach house')).toBe(true);
+      expect(useGroceryStore.getState().lists[0]).toEqual({ ...AIRBNB, name: 'Beach house' });
+    });
+  });
+
+  describe('switching lists', () => {
+    it('ends any trip', () => {
+      // A trip is "I am standing in this store shopping for this trolley", and
+      // switching trolleys makes the second half false.
+      seed([], {
+        lists: [AIRBNB],
+        activeListId: null,
+        tripShopId: 'shop-1',
+        tripStartedAt: new Date().toISOString(),
+      });
+
+      useGroceryStore.getState().setActiveList(AIRBNB.id);
+
+      expect(useGroceryStore.getState().tripShopId).toBeNull();
+    });
+
+    it('falls back to home for a list that no longer exists', () => {
+      seed([], { lists: [AIRBNB], activeListId: AIRBNB.id });
+
+      useGroceryStore.getState().setActiveList('gone');
+
+      expect(useGroceryStore.getState().activeListId).toBeNull();
+    });
+  });
+
+  describe('finishing an away trip', () => {
+    // The whole rule, in the four places it is enforced: an away trip is a
+    // checklist, not a record. See GroceryList.
+    function seedAwayTrip() {
+      const coffee = makeItem({
+        name: 'Coffee',
+        onList: true,
+        listId: AIRBNB.id,
+        checked: true,
+        purchaseCount: 2,
+        lastPurchasedAt: '2026-01-01T00:00:00.000Z',
+        onHandUntil: OUT_OF_IT_UNTIL,
+        runningLowAt: '2026-01-01T00:00:00.000Z',
+      });
+      seed([coffee], { lists: [AIRBNB], activeListId: AIRBNB.id, shops: [makeShop('Costco')] });
+      (dbFinishGroceryShopping as jest.Mock).mockReturnValue([coffee.id]);
+      return coffee;
+    }
+
+    it('tells the db which list it is finishing', () => {
+      seedAwayTrip();
+
+      useGroceryStore.getState().finishShopping(null, {});
+
+      expect(dbFinishGroceryShopping).toHaveBeenCalledWith(
+        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id
+      );
+    });
+
+    it('takes the row off the list', () => {
+      const coffee = seedAwayTrip();
+
+      useGroceryStore.getState().finishShopping(null, {});
+
+      const after = useGroceryStore.getState().items.find(i => i.id === coffee.id)!;
+      expect(after.onList).toBe(false);
+      expect(after.listId).toBeNull();
+      expect(after.checked).toBe(false);
+    });
+
+    it('bumps no purchase count and stamps no purchase date', () => {
+      const coffee = seedAwayTrip();
+
+      useGroceryStore.getState().finishShopping(null, {});
+
+      const after = useGroceryStore.getState().items.find(i => i.id === coffee.id)!;
+      expect(after.purchaseCount).toBe(2);
+      expect(after.lastPurchasedAt).toBe('2026-01-01T00:00:00.000Z');
+    });
+
+    it('refutes none of the pantry claims a real purchase would', () => {
+      // Coffee bought for a rental is not the coffee you are out of at home.
+      const coffee = seedAwayTrip();
+
+      useGroceryStore.getState().finishShopping(null, {});
+
+      const after = useGroceryStore.getState().items.find(i => i.id === coffee.id)!;
+      expect(after.onHandUntil).toBe(OUT_OF_IT_UNTIL);
+      expect(after.runningLowAt).toBe('2026-01-01T00:00:00.000Z');
+    });
+
+    it('records no price, even when the caller passes one', () => {
+      const coffee = seedAwayTrip();
+
+      useGroceryStore.getState().finishShopping(null, { [coffee.id]: 899 });
+
+      const after = useGroceryStore.getState().items.find(i => i.id === coffee.id)!;
+      expect(after.lastPriceMinor).toBeNull();
+      expect(after.priceHistory).toEqual([]);
+      // And the db is told nothing to record either, rather than being trusted
+      // to drop it on its own.
+      expect(dbFinishGroceryShopping).toHaveBeenCalledWith(
+        expect.any(String), null, {}, {}, expect.any(Set), AIRBNB.id
+      );
+    });
+
+    it('links no store, even when the caller names one', () => {
+      // Every store on file is one near home. A trip at the shop by the rental
+      // is not evidence about where you can get this.
+      seedAwayTrip();
+      const shopId = useGroceryStore.getState().shops[0].id;
+
+      useGroceryStore.getState().finishShopping(shopId, {});
+
+      expect(useGroceryStore.getState().itemShops).toEqual([]);
+      expect(useGroceryStore.getState().lastShopId).toBeNull();
+    });
+
+    it('still records everything on the list at home', () => {
+      const milk = makeItem({ name: 'Milk', onList: true, listId: null, checked: true, purchaseCount: 2 });
+      seed([milk], { lists: [AIRBNB], activeListId: null });
+      (dbFinishGroceryShopping as jest.Mock).mockReturnValue([milk.id]);
+
+      useGroceryStore.getState().finishShopping(null, {});
+
+      expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.purchaseCount).toBe(3);
+    });
   });
 });

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import type { GroceryItem, GroceryList, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -8,6 +8,12 @@ import {
   dbRepointStoreAliases,
   dbFinishGroceryShopping,
   dbClearGroceryList,
+  dbGetAllGroceryLists,
+  dbInsertGroceryList,
+  dbUpdateGroceryList,
+  dbDeleteGroceryList,
+  dbGetGroceryActiveList,
+  dbSetGroceryActiveList,
   dbGetGroceryAisleOrder,
   dbSetGroceryAisleOrder,
   dbGetAllGroceryShops,
@@ -46,6 +52,7 @@ import { clampSupplyReorderAt, restockedSupplyCount } from '../utils/supply';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
+import { HOME_LIST_NAME, isAwayList } from '../utils/groceryLists';
 import { appendPriceObservation, mergePriceHistories } from '../utils/priceHistory';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import { hasUserFacts, factSignature, linkCounts } from '../utils/groceryFacts';
@@ -237,6 +244,43 @@ interface GroceryStore {
   groceryGroupBy: 'aisle' | 'recipe';
   setGroceryGroupBy: (groupBy: 'aisle' | 'recipe') => void;
   /**
+   * The shopping lists besides the one at home — "Airbnb", "Beach house". They
+   * live here rather than in a store of their own for the reason `shops` and
+   * `aisleOrder` do: grocery configuration read by the same screens.
+   *
+   * **The home list is not in here**, and that absence is the design — see
+   * `GroceryList`. Anything rendering a picker has to put it in front by hand,
+   * which `HOME_LIST_NAME` is for.
+   */
+  lists: GroceryList[];
+  /**
+   * The list the Groceries screen is showing, or null for the one at home.
+   *
+   * **Every add lands on this list**, wherever it comes from — the add field, a
+   * recipe's ingredients, "I'm nearly out of this", the catalog's Add button.
+   * That's the one rule the switcher rests on, and the alternative (asking
+   * which list, per add) is a question nobody wants twelve times a trip.
+   *
+   * Persisted rather than session-only, because a vacation outlasts an app
+   * launch. Repaired at read time against the lists that actually exist, the
+   * same way `resolveActiveTrip` repairs a trip: a list deleted on another
+   * device, or in a restore, falls back to home rather than showing an empty
+   * trolley nobody can name.
+   */
+  activeListId: string | null;
+  setActiveList: (id: string | null) => void;
+  /** Null when the name is blank or already taken. */
+  addList: (name: string) => GroceryList | null;
+  /** False when the name is blank or collides with another list. */
+  renameList: (id: string, name: string) => boolean;
+  /**
+   * Deletes a list and parks whatever was in its trolley — see
+   * `dbDeleteGroceryList` for why the parking isn't optional. Switches back to
+   * home if this was the list being shown.
+   */
+  deleteList: (id: string) => void;
+  reorderLists: (ids: string[]) => void;
+  /**
    * The item a just-completed "Use up X" task points at — what
    * UseUpResolveSheet (mounted in AppNavigator) asks about as soon as it's
    * set, with an explicit "Used it up" / "Went bad" prompt, so completing
@@ -326,7 +370,20 @@ interface GroceryStore {
     /** `registerUndo: false` suppresses the per-call shake-to-undo entry — batch
      * callers (addManyFromText, addFromPlan) use this and register one
      * combined action of their own after the loop. */
-    opts?: { registerUndo?: boolean }
+    opts?: {
+      registerUndo?: boolean;
+      /**
+       * Which list to add to. Omitted — every hand-driven caller — this is the
+       * active list, which is the one rule the switcher rests on.
+       *
+       * Exactly one caller names one: the Reminders mirror's import half, which
+       * is pinned to the list at home (see `mirrorItems`). Without it, a
+       * reminder imported while the Airbnb list was on screen would land there,
+       * and the mirror's very next pass would read the row as gone from home
+       * and delete the reminder it had just come from.
+       */
+      listId?: string | null;
+    }
   ) => GroceryItem;
   /** A pasted block, one item per line. */
   addManyFromText: (raw: string) => { added: GroceryItem[]; alreadyOnList: GroceryItem[] };
@@ -1156,6 +1213,13 @@ function newItemRow(fields: {
   sortOrder: number;
   createdAt: string;
   onList: boolean;
+  /**
+   * Which list this row is being added to — null for the one at home, and
+   * ignored entirely when `onList` is false. See GroceryItem.listId: a row
+   * that isn't on a list isn't on a *particular* list either, and letting an
+   * off-list row keep an id would decide where a re-add landed weeks later.
+   */
+  listId?: string | null;
   quantity?: string | null;
   note?: string | null;
   choiceGroup?: string | null;
@@ -1185,6 +1249,7 @@ function newItemRow(fields: {
     quantityFromRecipe: false,
     note: fields.note ?? '',
     onList: fields.onList,
+    listId: fields.onList ? fields.listId ?? null : null,
     checked: false,
     sortOrder: fields.sortOrder,
     purchaseCount: 0,
@@ -1397,6 +1462,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   aisleOverrides: {},
   cartHoldIds: [],
   groceryGroupBy: 'aisle',
+  lists: [],
+  activeListId: null,
   pendingUseUpItemId: null,
   disposalOffer: null,
   initialized: false,
@@ -1451,6 +1518,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     );
     const tripShopId = storedTrip?.id ?? null;
     const tripStartedAt = tripShopId ? dbGetTripStartedAt() : null;
+    // Repaired against the lists that exist, for the reason lastShopId above
+    // is: the setting outlives the list it names, and a restore or a delete on
+    // another device would otherwise leave the screen showing an empty trolley
+    // it can't name. Not written back, like the aisle order and the trip.
+    const lists = dbGetAllGroceryLists();
+    const storedList = dbGetGroceryActiveList();
+    const activeListId = lists.some(l => l.id === storedList) ? storedList : null;
     if (cartHoldTimer) {
       clearTimeout(cartHoldTimer);
       cartHoldTimer = null;
@@ -1470,6 +1544,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       tripStartedAt,
       cartHoldIds: [],
       groceryGroupBy: dbGetGroceryGroupBy(),
+      lists,
+      activeListId,
       pendingUseUpItemId: null,
       disposalOffer: null,
       initialized: true,
@@ -1479,6 +1555,83 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setGroceryGroupBy(groupBy) {
     dbSetGroceryGroupBy(groupBy);
     set({ groceryGroupBy: groupBy });
+  },
+
+  setActiveList(id) {
+    const next = id && get().lists.some(l => l.id === id) ? id : null;
+    if (next === get().activeListId) return;
+    dbSetGroceryActiveList(next);
+    // The trip goes with the list. A trip is "I'm standing in this store
+    // shopping for this trolley", and switching trolleys makes the second half
+    // false — leaving it running would keep marking rows up against a store
+    // chosen for a list you're no longer looking at. Same three-terminator
+    // discipline clearList follows, for the same reason.
+    get().endTrip();
+    // cartHoldIds are the just-ticked rows still holding their slot in the list
+    // you were looking at. They mean nothing on another one, and a stale id
+    // would hold a row of the new list in place.
+    set({ activeListId: next, cartHoldIds: [] });
+  },
+
+  addList(name) {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+    // Compared case-insensitively, and against the home list's own name too:
+    // a second "Groceries" would be two rows in the picker saying the same
+    // thing, one of which isn't the list it names.
+    const taken = (n: string) => n.trim().toLowerCase() === trimmed.toLowerCase();
+    if (taken(HOME_LIST_NAME) || get().lists.some(l => taken(l.name))) return null;
+    const list: GroceryList = {
+      id: generateId(),
+      name: trimmed,
+      sortOrder: get().lists.reduce((max, l) => Math.max(max, l.sortOrder), 0) + 1,
+      createdAt: new Date().toISOString(),
+    };
+    dbInsertGroceryList(list);
+    set(s => ({ lists: [...s.lists, list] }));
+    return list;
+  },
+
+  renameList(id, name) {
+    const trimmed = name.trim();
+    if (!trimmed) return false;
+    const list = get().lists.find(l => l.id === id);
+    if (!list) return false;
+    const taken = (n: string) => n.trim().toLowerCase() === trimmed.toLowerCase();
+    if (taken(HOME_LIST_NAME) || get().lists.some(l => l.id !== id && taken(l.name))) return false;
+    const updated = { ...list, name: trimmed };
+    dbUpdateGroceryList(updated);
+    set(s => ({ lists: s.lists.map(l => (l.id === id ? updated : l)) }));
+    return true;
+  },
+
+  deleteList(id) {
+    if (!get().lists.some(l => l.id === id)) return;
+    // The rows park rather than being deleted, exactly as they do everywhere
+    // else here — a list going away is a statement about the trip, not about
+    // the milk. dbDeleteGroceryList owns the unlisting; see its note for why
+    // leaving the rows pointed at a list that no longer exists would tip them
+    // into the home trolley instead.
+    const cleared = new Set(dbDeleteGroceryList(id));
+    set(s => ({
+      lists: s.lists.filter(l => l.id !== id),
+      items: s.items.map(i => (
+        cleared.has(i.id) ? { ...i, onList: false, checked: false, choiceGroup: null, listId: null } : i
+      )),
+      cartHoldIds: s.activeListId === id ? [] : s.cartHoldIds,
+    }));
+    if (get().activeListId === id) get().setActiveList(null);
+  },
+
+  reorderLists(ids) {
+    const byId = new Map(get().lists.map(l => [l.id, l]));
+    const ordered = ids.map(id => byId.get(id)).filter((l): l is GroceryList => !!l);
+    // Anything the caller didn't name keeps its place at the end rather than
+    // being dropped, the same tolerance reorderShops shows.
+    for (const list of get().lists) if (!ids.includes(list.id)) ordered.push(list);
+    const updated = ordered.map((l, i) => ({ ...l, sortOrder: i + 1 }));
+    for (const l of updated) dbUpdateGroceryList(l);
+    set({ lists: updated });
   },
 
   setPendingUseUpItem(id) {
@@ -1522,6 +1675,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const now = new Date().toISOString();
     const existing = key ? get().items.find(i => i.nameKey === key) : undefined;
     const wasOnList = existing?.onList === true;
+    // `in` rather than `??`, because null is a real answer here — the list at
+    // home — and the Reminders mirror passes exactly that. See the option's own
+    // note on the interface above.
+    const targetListId = opts && 'listId' in opts ? opts.listId ?? null : get().activeListId;
 
     if (existing) {
       const updated: GroceryItem = {
@@ -1529,6 +1686,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // The typed name wins — capitalisation and wording are the user's.
         name: name || existing.name,
         onList: true,
+        // The list you're looking at, unless a caller named one. Every add
+        // lands on the active list — that's the one rule, and it's what makes
+        // the switcher mean what it says. A row already sitting on another
+        // list is *moved* to this one rather than being on both: `listId` is
+        // singular for the reason `checked` is (see GroceryItem.listId).
+        listId: targetListId,
         checked: false,
         // Only overwrite the quantity when this add actually carried one;
         // typing "milk" to re-add shouldn't wipe the "2 gal" set last week.
@@ -1595,6 +1758,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       quantity,
       note,
       onList: true,
+      listId: targetListId,
       sortOrder: nextSortOrder(get().items),
       createdAt: now,
       choiceGroup,
@@ -1659,12 +1823,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   addExistingMany(ids) {
     const wanted = new Set(ids);
     const now = new Date().toISOString();
+    const listId = get().activeListId;
     const updates: GroceryItem[] = [];
     let order = nextSortOrder(get().items);
 
     for (const item of get().items) {
       if (!wanted.has(item.id) || item.onList) continue;
-      updates.push({ ...item, onList: true, checked: false, lastAddedAt: now, sortOrder: order++ });
+      // Onto the active list, same rule as every other add — see addByName.
+      updates.push({ ...item, onList: true, listId, checked: false, lastAddedAt: now, sortOrder: order++ });
     }
     if (updates.length === 0) return;
 
@@ -2712,6 +2878,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       runningLowAt: low ? new Date().toISOString() : null,
       // One direction only — see the note on the interface above.
       onList: low ? true : item.onList,
+      // Onto the list you're looking at, same rule as every other add. A row
+      // already on one keeps the list it was on: this reaches into `onList` in
+      // one direction, and moving somebody else's row between trolleys is more
+      // than "I'm nearly out of this" means.
+      listId: low && !wasOnList ? get().activeListId : item.listId,
       // A row put on the list by this needs a slot on it; one already there
       // keeps the slot it had.
       sortOrder: low && !wasOnList ? nextSortOrder(get().items) : item.sortOrder,
@@ -2830,6 +3001,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const toUnlist = losers.map(i => ({
       ...i,
       onList: false,
+      listId: null,
       checked: false,
       choiceGroup: null,
       quantity: i.quantityFromRecipe ? null : i.quantity,
@@ -2927,6 +3099,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const updated = {
       ...item,
       onList: false,
+      listId: null,
       checked: false,
       choiceGroup: null,
       quantity: item.quantityFromRecipe ? null : item.quantity,
@@ -2949,6 +3122,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       toUpdate.push({
         ...item,
         onList: false,
+        listId: null,
         checked: false,
         choiceGroup: null,
         quantity: item.quantityFromRecipe ? null : item.quantity,
@@ -3005,21 +3179,42 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   finishShopping(shopId = null, priceById = {}, purchasedAt = new Date().toISOString(), frozenIds) {
     const now = new Date(purchasedAt);
+    // The list being finished, and whether it is one you're away from home for.
+    // **An away trip records nothing** — see GroceryList: no purchase count, no
+    // price, no store link, no use-by day, and none of the pantry claims a
+    // purchase normally refutes. That's enforced in four places from here, and
+    // they are four rather than one because the record is assembled in four:
+    // the shop resolved below, the shelf-life days, the prices, and the
+    // in-memory patch that mirrors the db. `dbFinishGroceryShopping` runs its
+    // own shorter UPDATE off the same `listId`.
+    const listId = get().activeListId;
+    const away = isAwayList(listId);
     // A shop deleted between opening the finish sheet and confirming it would
-    // otherwise write links nothing can resolve.
-    const shop = shopId ? get().shops.find(s => s.id === shopId) ?? null : null;
+    // otherwise write links nothing can resolve. Dropped outright when away:
+    // a store 400 miles from home is not where you get this, and a link saying
+    // so would send you back there.
+    const shop = !away && shopId ? get().shops.find(s => s.id === shopId) ?? null : null;
     // The use-by day for everything in the trolley the shelf-life lexicon
     // recognises — which is a minority of any real list, and meant to be (see
     // groceryShelfLife.ts). Every purchase re-stamps rather than keeping
     // whatever was there: a second bag of spinach is fresh spinach, and
     // inheriting the old bag's day would have the app nagging about food
     // bought this afternoon.
+    //
+    // Left empty for an away trip, which also leaves `soonestFirst` below empty
+    // and so spawns no use-up tasks: a countdown on the milk in a rented fridge
+    // is a chore about food you will not be near when it turns.
     const expiresAtById: Record<string, string> = {};
     for (const i of get().items) {
-      if (!i.checked || !i.onList) continue;
+      if (away || !i.checked || !i.onList || i.listId !== listId) continue;
       const expires = expiresAtForPurchase(i, now);
       if (expires) expiresAtById[i.id] = expires;
     }
+    // Nothing an away trip cost is recorded, so nothing downstream has to be
+    // told twice. Reassigned here rather than guarded at each of the four
+    // readers below (the db call, the link patch, the item patch, the quantity
+    // snapshot), which is exactly how one of them would come to be missed.
+    if (away) priceById = {};
     // The quantity each price was for, captured before the trip clears the
     // trolley — a price with no quantity beside it is the ambiguity
     // GroceryItem.lastPriceQuantity exists to close. Read from state rather
@@ -3042,7 +3237,8 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       shop?.id ?? null,
       expiresAtById,
       priceById,
-      frozenIds ?? new Set()
+      frozenIds ?? new Set(),
+      listId
     );
     if (ids.length === 0) return 0;
     const done = new Set(ids);
@@ -3165,10 +3361,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // surviving in state would keep a stale row on the Pantry screen for the
       // rest of the session. Preferred-only, exactly like the db — a trip that
       // bought an item with no preference says nothing about which box it was.
+      // Empty for an away trip, alongside the item-level record below it and
+      // for the same reason: the packet in a rented freezer is not one of
+      // yours, so nothing here should start counting it as one.
       const boughtProductIds = new Set(
-        before
-          .map(i => i.preferredProductId)
-          .filter((id): id is string => id !== null)
+        away
+          ? []
+          : before
+              .map(i => i.preferredProductId)
+              .filter((id): id is string => id !== null)
       );
 
       return {
@@ -3190,7 +3391,22 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
             ? {
                 ...i,
                 onList: false,
+                listId: null,
                 checked: false,
+                // Mirrors the db's own CASE: the shop it was for has happened,
+                // so a recipe-owned quantity doesn't outlive it. A hand-set one
+                // survives untouched. Above the split below because it is the
+                // one thing an away trip does write — the shop happened either
+                // way, and the amount a recipe asked for was for that shop.
+                quantity: i.quantityFromRecipe ? null : i.quantity,
+                quantityFromRecipe: false,
+                // Everything from here down is the *record* a purchase leaves
+                // on the catalog row, and an away trip leaves none of it: see
+                // GroceryList, and the shorter UPDATE dbFinishGroceryShopping
+                // runs off the same flag. One spread rather than a guard per
+                // field, so a column added to this patch later can't be
+                // half-covered.
+                ...(away ? null : {
                 purchaseCount: i.purchaseCount + 1,
                 lastPurchasedAt: purchasedAt,
                 // Cleared, not written: probablyHaveReason reads the purchase
@@ -3215,11 +3431,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                 // refutes an "Out of it".
                 runningLowAt: null,
                 expiresAt: expiresAtById[i.id] ?? i.expiresAt,
-                // Mirrors the db's own CASE: the shop it was for has happened,
-                // so a recipe-owned quantity doesn't outlive it. A hand-set one
-                // survives untouched.
-                quantity: i.quantityFromRecipe ? null : i.quantity,
-                quantityFromRecipe: false,
                 // Only the rows the user priced. Everything else keeps the
                 // price and the stamp it already had — see the db's own note.
                 ...(priceById[i.id] !== undefined
@@ -3235,6 +3446,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
                       }),
                     }
                   : null),
+                }),
               }
             : i
         ),
@@ -3262,7 +3474,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // Coming home with the thing is what refills the supply it stocks. After
     // the set() for the same reason the reconciles above are: each read has to
     // see the rows as they now stand.
-    const supplyBefore = restockLinkedSupplies(done);
+    //
+    // Not on an away trip: a supply counts down a task done at home, and
+    // "coming home with" is precisely what buying dish soap for a rental isn't.
+    const supplyBefore = away ? restockLinkedSupplies(new Set()) : restockLinkedSupplies(done);
 
     get().setLastAction({
       label: `Bought ${ids.length} ${ids.length === 1 ? 'thing' : 'things'}`,
@@ -3320,7 +3535,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   clearList() {
     const before = get().items;
-    const ids = dbClearGroceryList();
+    // The list you're looking at, and only it. "I'm not doing this trip after
+    // all" is a statement about one trolley — clearing the Airbnb list must
+    // leave the shopping you still need at home exactly where it was.
+    const ids = dbClearGroceryList(get().activeListId);
     if (ids.length === 0) return 0;
     const cleared = new Set(ids);
     // Deliberately no purchaseCount bump: nothing was bought, and inflating
@@ -3348,7 +3566,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const parked = before.filter(i => cleared.has(i.id) && !deletedIds.has(i.id));
     set(s => ({
       items: s.items.map(i => (
-        cleared.has(i.id) ? { ...i, onList: false, checked: false, choiceGroup: null } : i
+        cleared.has(i.id) ? { ...i, onList: false, checked: false, choiceGroup: null, listId: null } : i
       )),
       cartHoldIds: [],
     }));
@@ -3939,6 +4157,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const updatedSub: GroceryItem = {
       ...sub,
       onList: true,
+      // The list the row it's standing in for was on, not the active one: a
+      // swap made at the shelf is a substitution *within* a trolley, and the
+      // screen offering it is showing that trolley anyway.
+      listId: item.listId,
       checked: false,
       quantity: quantity ?? sub.quantity,
       quantityFromRecipe: quantity ? item.quantityFromRecipe : sub.quantityFromRecipe,
@@ -3954,6 +4176,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const updatedItem: GroceryItem = {
       ...item,
       onList: false,
+      listId: null,
       checked: false,
       choiceGroup: null,
       quantity: item.quantityFromRecipe ? null : item.quantity,

@@ -13,6 +13,7 @@ import {
   interaction,
   type Colors,
 } from '../theme';
+import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
@@ -98,11 +99,16 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const activeListId = useGroceryStore(s => s.activeListId);
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const shops = useGroceryStore(useShallow(s => s.shops));
   const lastShopId = useGroceryStore(s => s.lastShopId);
 
-  const plan = useMemo(() => planTrip(items, itemShops, shops), [items, itemShops, shops]);
+  // The trolley being shopped, not every trolley you have going: a plan built
+  // over both lists would send you to a store for things on a list you aren't
+  // shopping today.
+  const listRows = useMemo(() => itemsOnList(items, activeListId), [items, activeListId]);
+  const plan = useMemo(() => planTrip(listRows, itemShops, shops), [listRows, itemShops, shops]);
   const total = plan.itemIds.length;
 
   const linkItemShopMany = useGroceryStore(s => s.linkItemShopMany);

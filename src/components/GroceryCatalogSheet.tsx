@@ -59,6 +59,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const activeListId = useGroceryStore(s => s.activeListId);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   // For the prune offer's hasUserFacts test — an unrecoverable delete must be
@@ -143,12 +144,15 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
 
   const rows = useMemo(() => {
     if (query.trim()) {
-      return rankGrocerySuggestions(query, scoped, now, 50)
+      return rankGrocerySuggestions(query, scoped, now, 50, activeListId)
         .filter(s => !s.onList)
         .map(s => s.item);
     }
-    return rankedCatalogItems(scoped, now);
-  }, [query, scoped, now]);
+    // Scoped to the active list, not to "on any list": a staple already on the
+    // list at home is exactly what Buy again should offer while you're
+    // stocking a rental kitchen.
+    return rankedCatalogItems(scoped, now, 40, activeListId);
+  }, [query, scoped, now, activeListId]);
 
   // Deliberately over `items` and not `scoped`: the prune offer is about the
   // whole catalog, and scoping it to a store would offer to forget a subset
