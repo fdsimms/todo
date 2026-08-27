@@ -212,6 +212,48 @@ export interface TitleRule {
 // name). There is deliberately no regex mode — see titleRules.ts.
 export type TitleRuleMatch = 'startsWith' | 'contains';
 
+/**
+ * A closed set rather than an open vocabulary, on purpose — see
+ * `SegmentedControl`'s own rule for what makes a set "closed": these are the
+ * conditions `classifyWeather()` (`src/utils/weatherCondition.ts`) can ever
+ * report, so a rule naming anything else could never fire. `sunny` and `cold`
+ * (or `sunny` and `hot`) can both be true of the same day at once — see that
+ * module for why the classifier returns a list rather than picking one.
+ */
+export type WeatherCondition = 'sunny' | 'rainy' | 'snowy' | 'cold' | 'hot';
+
+/**
+ * "On a sunny day, add a task to put on sunscreen" — a user-authored rule
+ * matched against today's weather, the same "vocabulary the user wrote down"
+ * shape as `TitleRule` above and stored the same way (`weatherRules` in
+ * settings, see `useSettingsStore.ts` and `parseWeatherRules` in
+ * `weatherTasks.ts`). Unlike a title rule, a match doesn't fill in fields on a
+ * task somebody's already creating — it creates the task, through the shared
+ * generated-task mechanism (`generatedBy('weather', ...)`), which is why a
+ * rule needs its own `lastFiredDayKey` rather than reading the tri-state
+ * opt-out every sourced generator gets: the "source" here is a rule living in
+ * settings, not a row anything could stamp a decline onto (see the
+ * `'weather'` case of `GeneratedKind` above).
+ */
+export interface WeatherRule {
+  id: string;
+  condition: WeatherCondition;
+  /** The task's title, e.g. "Put on sunscreen". */
+  title: string;
+  // Off keeps the rule written down but stops it firing — the same call
+  // TitleRule.enabled makes, so turning one off doesn't mean losing it.
+  enabled: boolean;
+  /**
+   * The day key (`dayKeyOf`) this rule last created a task on, or was
+   * considered and found not to apply — whichever happened most recently.
+   * Written unconditionally before the day's weather is even checked, the
+   * same "mark the day considered before deciding" order calendarReview's
+   * `calendarReviewLastDayKey` uses, so a task swiped away doesn't come
+   * straight back on the next foreground sweep the same day.
+   */
+  lastFiredDayKey: string | null;
+}
+
 // A lightweight, collapsible label for grouping several independent tasks
 // together (e.g. "Take supplements" grouping Coq10/Vitamin D/Iron, each on
 // its own schedule). Deliberately NOT a Task — it has no dueDate, recurrence,
@@ -570,7 +612,7 @@ export interface PersonNote {
 }
 
 /**
- * Which of the app's eleven unattended generators wrote a task — see
+ * Which of the app's fourteen unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
  *
@@ -627,7 +669,14 @@ export type GeneratedKind =
   // src/utils/reachOutTasks.ts. Silent on everybody until they are explicitly
   // opted in, which is what keeps "who am I neglecting" a question the app
   // never asks.
-  | 'reachOut';
+  | 'reachOut'
+  // A user-configured rule ("sunny -> Put on sunscreen") matched against
+  // today's weather — see src/utils/weatherTasks.ts. Its source id is a day
+  // key and a rule id (`${dayKey}#${ruleId}`), the same "square on the
+  // calendar, not a row" position calendarReview is in, and for the same
+  // reason writeGeneratedOptOut has nothing to write for it: the rule it
+  // points at lives in settings, not in a row a stamp could be spent against.
+  | 'weather';
 
 export interface Task {
   id: string;

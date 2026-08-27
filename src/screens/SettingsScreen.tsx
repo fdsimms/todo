@@ -89,6 +89,7 @@ export function SettingsScreen() {
       birthdayTasks: settings.birthdayTasks,
       birthdayGiftTasks: settings.birthdayGiftTasks,
       reachOutTasks: settings.reachOutTasks,
+      weatherTasks: settings.weatherTasks,
     }, settings.kitchenEnabled),
     [settings]
   );

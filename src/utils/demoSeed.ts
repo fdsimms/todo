@@ -29,6 +29,7 @@ import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
 import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
+import { weatherSourceId, defaultWeatherRules } from './weatherTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -670,6 +671,27 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Calendar Events',
     ...generatedBy('calendarReview', dayKeyOf(addDays(today, 1))),
+  });
+
+  // A weather task — off by default, same reasoning as the two generators
+  // above: seeded directly rather than left to checkWeatherTasks, which reads
+  // the real device location and network, neither of which this fictional
+  // day should touch (see isDemoModeActive in checkWeatherTasks). The rule
+  // itself is still written to settings, alongside the two it ships with but
+  // doesn't fire today, so the sheet that lists them isn't empty either.
+  addCategory('Weather');
+  setCategoryEmoji('Weather', '☀️');
+  useSettingsStore.getState().setWeatherTaskCategory('Weather');
+  const [sunscreenRule, ...otherWeatherRules] = defaultWeatherRules();
+  useSettingsStore.getState().setWeatherRules([
+    { ...sunscreenRule, lastFiredDayKey: dayKeyOf(today) },
+    ...otherWeatherRules,
+  ]);
+  addTask({
+    title: sunscreenRule.title,
+    dueDate: today.toISOString(),
+    category: 'Weather',
+    ...generatedBy('weather', weatherSourceId(dayKeyOf(today), sunscreenRule.id)),
   });
 
   // Marked complete rather than archived — demonstrates Project.completed,

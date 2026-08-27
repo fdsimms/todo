@@ -255,7 +255,8 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (eleven generators now: `birthdayGift` is the newest, and the one whose source shares a file with the reminder beside it) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (fourteen generators now: `weather` is the newest, and the first whose source is a rule the user wrote rather than a row) |
+| a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
@@ -339,15 +340,15 @@ exports.
 **Read narrowly.** 46 files are over 1,000 lines, 28 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (6.4k), `components/TaskEditor.tsx` (4.7k), `db/database.ts` (4.2k),
-`store/useGroceryStore.ts` (4.2k), `screens/TodayScreen.tsx` (4.1k), `types/index.ts` (3.7k),
+`store/useTaskStore.ts` (6.5k), `components/TaskEditor.tsx` (4.7k), `db/database.ts` (4.2k),
+`store/useGroceryStore.ts` (4.2k), `screens/TodayScreen.tsx` (4.1k), `types/index.ts` (3.8k),
 `components/TaskItem.tsx` (3.7k), `components/QuickAddModal.tsx` (2.9k),
-`store/useSettingsStore.ts` (2.7k), `utils/demoSeed.ts` (2.5k).
+`store/useSettingsStore.ts` (2.8k), `utils/demoSeed.ts` (2.5k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **215 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **217 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

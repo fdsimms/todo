@@ -1,9 +1,10 @@
-# Generated tasks: the thirteen things that write a task unattended
+# Generated tasks: the fourteen things that write a task unattended
 
 The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
 project reviews, pantry checks and the pantry review, supply reorders, the
-daily calendar review, birthdays and the reach-out nudge.
-Read this before adding a fourteenth generator: the whole point of the refactor
+daily calendar review, birthdays, the reach-out nudge and weather-matched
+tasks.
+Read this before adding a fifteenth generator: the whole point of the refactor
 it describes is that a new one costs a rules module and a registry entry, not a
 column.
 
@@ -21,7 +22,7 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the thirteen things that write a task unattended
+## Generated tasks — the fourteen things that write a task unattended
 
 Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
@@ -320,6 +321,51 @@ See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where 
     which demo mode must never read from or expose the existence of. The demo's own example task is
     seeded directly in `demoSeed.ts`, the same way `pantryCheck`'s is, rather than left to the real
     sweep.
+
+- **`weather` is the fourteenth, and it's `calendarReview` one shelf over — a rule the user wrote
+  matched against a day-keyed reading, rather than a fixed question about a fixed source.** "On a
+  sunny day, put on sunscreen" becomes a task the same way "tomorrow has events" does: no source
+  row, a settings-level idempotency mark instead of a per-row stamp, and creation through the
+  shared `reconcileGeneratedTask`. What's new is that there can be several such rules at once
+  (`src/utils/weatherTasks.ts`, `WeatherRule` in `types/index.ts`), each independently askable —
+  which is what pushes its source id one level deeper than a plain day key.
+  - **The source id is `${dayKey}#${ruleId}`, and the rule id is what keeps two rules from
+    colliding on the same day.** `calendarReview` gets away with a bare day key because it asks
+    exactly one question a day; a weather rule set can ask several ("sunny → sunscreen" and "cold
+    → coat" can both be true of the same clear, chilly morning), and each needs its own row.
+  - **Each rule carries its own `lastFiredDayKey`, rather than one shared settings field.**
+    `calendarReviewLastDayKey` is a single scalar because there's a single question; here the mark
+    has to be per-rule, so it lives on the rule object itself — the same place `pantryCheck`'s
+    stamp lives on its source row, and bounded for the same reason: deleting the rule deletes the
+    mark with it, no separate pruning pass required. Written unconditionally before the day's
+    weather is even checked, the same order `calendarReviewLastDayKey` is written in, so a task
+    swiped away doesn't come straight back on the next foreground sweep the same day.
+  - **`writeGeneratedOptOut` has nothing to write for this kind either, and for the identical
+    reason `calendarReview` has nothing: the "source" is a rule living in settings, not a row.**
+    The per-rule mark above is what stands between a delete and a recreate, not an opt-out stamped
+    by the generic mechanism.
+  - **The reading itself lives in `useWeatherStore`, not in the check function.** Same split
+    `useCalendarStore` draws against `checkCalendarReviewTasks`: a small in-memory store
+    (`src/store/useWeatherStore.ts`) owns asking the device for a location and asking Open-Meteo
+    what the weather is there, refreshed once a day on the same three triggers `useCalendarSync`
+    settled on (mount, a relevant settings change, foreground). `checkWeatherTasks` only ever reads
+    whatever snapshot is already there — it never fetches — so a cold launch before the first fetch
+    resolves finds nothing to do, exactly as `calendarReview` does before `useCalendarSync`'s first
+    read lands.
+  - **No key, and that's a deliberate choice of provider, not an oversight.** Open-Meteo's forecast
+    API needs none, which is the same "no key, no traffic" shape Open Food Facts plays as the
+    keyless member of the barcode chain in `productLookup.ts` — made here the *only* source rather
+    than a fallback among paid ones, because a weather feature that needed a key pasted into
+    Settings would be inert for everyone who never does that, and nothing about checking the
+    weather is genuinely provider-specific the way the Anthropic calls are.
+  - **Location is read-only from this generator's side — it never requests permission.**
+    `getCurrentLocation()` (`src/utils/weatherLocation.ts`) answers null if permission isn't
+    already granted rather than prompting; asking is a Settings action, from a row in the rule
+    sheet, the same "a background sweep doesn't ask, a person does" line `useCalendarSync`'s own
+    `refresh()` draws.
+  - **It ships off**, like `pantryCheck` and `pantryReview`, and for a reason of its own on top of
+    theirs: it's the one generator that also wants a location fix, which is not something to start
+    reading without being asked.
 
 - **`mealShortfall` is the tenth, and it fires on a *meal coming into range*.** Planning a week
   has never required owning any of it, so a dish you can't cook was indistinguishable from one you
