@@ -13,11 +13,13 @@ import {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { InlineAction } from './InlineAction';
+import { CookbookMergeSheet } from './CookbookMergeSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
-import { RECIPE_SOURCE_MAX_LENGTH } from '../types';
+import { RECIPE_SOURCE_MAX_LENGTH, type Cookbook } from '../types';
 
 interface Props {
   visible: boolean;
@@ -41,12 +43,14 @@ export function CookbookEditor({ visible, cookbookId, onClose }: Props) {
   const cookbook = useRecipeStore(s => (cookbookId ? s.cookbookById(cookbookId) : undefined));
   const renameCookbook = useRecipeStore(s => s.renameCookbook);
   const deleteCookbook = useRecipeStore(s => s.deleteCookbook);
+  const mergeCookbooks = useRecipeStore(s => s.mergeCookbooks);
   const recipeCount = useRecipeStore(s =>
     cookbookId ? s.recipes.filter(r => r.cookbookId === cookbookId).length : 0
   );
 
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
+  const [mergeVisible, setMergeVisible] = useState(false);
 
   // Reloads from the store each time the sheet opens on a book, so a
   // half-finished edit from last time never leaks into the next one — same
@@ -91,6 +95,20 @@ export function CookbookEditor({ visible, cookbookId, onClose }: Props) {
         ? `Unlink "${cookbook?.title}" from ${recipeCount} ${recipeCount === 1 ? 'recipe' : 'recipes'}? They'll keep their author and title text, just not the link to this book.`
         : `Delete "${cookbook?.title}"?`,
       onConfirm: () => { deleteCookbook(cookbookId); onClose(); },
+    });
+  };
+
+  // The book open here is always the survivor — its title and author are
+  // what every repointed recipe mirrors, so "merge another book in" reads the
+  // same direction the picker asks it in.
+  const handleMergeSelect = (loser: Cookbook) => {
+    if (!cookbookId || !cookbook) return;
+    haptics.warning();
+    confirmDelete({
+      title: 'Merge these books?',
+      message: `"${loser.title}" will come off the shelf, and its recipes will move to "${cookbook.title}".`,
+      confirmLabel: 'Merge',
+      onConfirm: () => { haptics.success(); mergeCookbooks(cookbookId, loser.id); },
     });
   };
 
@@ -141,8 +159,29 @@ export function CookbookEditor({ visible, cookbookId, onClose }: Props) {
             {recipeCount === 0 ? 'No recipes' : recipeCount === 1 ? '1 recipe' : `${recipeCount} recipes`} linked
             to this book. Changing the title or author here updates every one of them.
           </Text>
+
+          {/* For the same book imported twice under a slightly different
+              title or author (see recipeProvenance.ts) — folds another book's
+              recipes into this one and removes it from the shelf. */}
+          <View style={styles.mergeRow}>
+            <InlineAction
+              label="Merge another book in"
+              icon="git-merge-outline"
+              variant="neutral"
+              onPress={() => { haptics.tap(); setMergeVisible(true); }}
+            />
+          </View>
         </View>
       </KeyboardAvoidingView>
+
+      {cookbookId && (
+        <CookbookMergeSheet
+          visible={mergeVisible}
+          survivorId={cookbookId}
+          onClose={() => setMergeVisible(false)}
+          onSelect={handleMergeSelect}
+        />
+      )}
     </Modal>
   );
 }
@@ -175,5 +214,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
     paddingHorizontal: spacing.xs,
     marginTop: spacing.lg,
+  },
+  mergeRow: {
+    alignItems: 'flex-start',
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.xs,
   },
 });

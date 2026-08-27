@@ -380,6 +380,27 @@ person cannot.
 - **It carries no `personIds`**, for the reason the birthday task carries none:
   ticking it off would otherwise reset the very clock that wrote it, without
   you having actually reached out.
+- **Pushed past the postpone-check threshold, the task offers to turn its own
+  cadence off** — `WhenPicker`'s reach-out variant of `PostponeCheckBanner`.
+  A reach-out row is a `Task` like any other and already accrues
+  `postponeCount`, so this reuses `shouldNudgePostpone` outright rather than
+  inventing a second threshold. **The wording is the whole risk**: the offer
+  names the reminder ("Turn off reminders for Sarah?"), never the friendship
+  ("do you still want to keep up with her?") — the same discipline
+  `reachOutTitle` already applies to the row itself. Accepting clears
+  `cadenceDays`/`nudgeOptIn`/`cadenceSetAt`, the same "stop nudging me about
+  this person" the editor offers, so there's no third state to invent.
+  Declining — deferring the task again instead — stamps
+  `Person.reachOutOfferDeclinedAt`, its own lapsing stamp rather than a reuse
+  of `reachOutDeclinedAt` above: that one is a decline of the *row* (a swipe
+  on Today), this one a decline of the *offer*, and collapsing them would
+  make swiping the row away also silence an offer nobody has seen yet, or the
+  reverse. Held for the same window `declineHoldDays` already gives the
+  swipe-away, so the offer stays quiet for a while rather than repeating on
+  the very next deferral. A reach-out task sourced from a `PersonGroup`
+  (`reachOutPersonId` returning a group id) has no single person to turn
+  reminders off for, so the picker falls back to the generic "Stop asking"
+  mute for that one instead of guessing a member.
 
 **Somebody with no history is measured from when the cadence was turned on, not
 from nothing.** `Person.cadenceSetAt` is stamped on the off→on transition and

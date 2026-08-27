@@ -542,6 +542,14 @@ export interface Person {
   // above, and both mean "never chase me about this person again", which is far
   // more than one swipe says.
   reachOutDeclinedAt: string | null;
+  // When the "turn off reminders for X" offer (WhenPicker's reach-out variant
+  // of PostponeCheckBanner, shown once a reach-out task has been pushed past
+  // the threshold) was last declined by deferring the task again instead of
+  // accepting it. Same lapsing-stamp shape as reachOutDeclinedAt above, and
+  // deliberately its own field rather than reusing that one: that stamp
+  // records declining the *row* (a swipe on Today), this one declining the
+  // *offer* — see docs/arch/people.md, "the reach-out nudge".
+  reachOutOfferDeclinedAt: string | null;
   /**
    * Something to ask them about next time — "the new job", "how the move went".
    *

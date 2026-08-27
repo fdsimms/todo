@@ -1169,6 +1169,13 @@ export function initDatabase(): void {
     // varieties existed, so every item keeps matching recipe lines by its own
     // exact key alone. See GroceryItem.varietyOfKey.
     'ALTER TABLE grocery_items ADD COLUMN variety_of_key TEXT',
+    // When the "turn off reminders for X" offer (see PostponeCheckBanner's
+    // reach-out variant) was last declined by deferring past it — a lapsing
+    // stamp, not a verdict, same shape as reach_out_declined_at beside it. See
+    // Person.reachOutOfferDeclinedAt. Null on every existing row, which reads
+    // as "never declined", the only state that could be true before this
+    // column existed.
+    'ALTER TABLE people ADD COLUMN reach_out_offer_declined_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4517,6 +4524,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     nudgeOptIn: Boolean(row.nudge_opt_in),
     cadenceSetAt: (row.cadence_set_at as string) ?? null,
     reachOutDeclinedAt: (row.reach_out_declined_at as string) ?? null,
+    reachOutOfferDeclinedAt: (row.reach_out_offer_declined_at as string) ?? null,
     askAbout: (row.ask_about as string) ?? '',
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
     groupId: (row.group_id as string) ?? null,
@@ -4533,9 +4541,10 @@ export function dbInsertPerson(person: Person): void {
     `INSERT INTO people (
       id, name, nickname, notes, sort_order, archived, archived_at, created_at,
       birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
-      phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at, ask_about,
+      phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at,
+      reach_out_offer_declined_at, ask_about,
       backfill_dismissed_fields, group_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
@@ -4543,7 +4552,8 @@ export function dbInsertPerson(person: Person): void {
       person.birthdayTaskOptOut ? 1 : 0,
       person.birthdayGiftTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
-      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
+      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt,
+      person.reachOutOfferDeclinedAt, person.askAbout,
       JSON.stringify(person.backfillDismissedFields),
       person.groupId,
     ]
@@ -4555,7 +4565,8 @@ export function dbUpdatePerson(person: Person): void {
     `UPDATE people SET
       name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
-      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?, ask_about=?,
+      phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?,
+      reach_out_offer_declined_at=?, ask_about=?,
       backfill_dismissed_fields=?, group_id=?
     WHERE id=?`,
     [
@@ -4565,7 +4576,8 @@ export function dbUpdatePerson(person: Person): void {
       person.birthdayTaskOptOut ? 1 : 0,
       person.birthdayGiftTaskOptOut ? 1 : 0,
       person.phoneNumber, person.email, person.linkUrl,
-      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
+      person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt,
+      person.reachOutOfferDeclinedAt, person.askAbout,
       JSON.stringify(person.backfillDismissedFields),
       person.groupId,
       person.id,

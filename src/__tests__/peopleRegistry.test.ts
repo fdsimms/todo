@@ -16,7 +16,7 @@ const person = (id: string, name: string, groupId: string | null = null): Person
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
-  cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, askAbout: '',
+  cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
   backfillDismissedFields: [], groupId,
 });
 

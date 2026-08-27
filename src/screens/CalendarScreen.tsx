@@ -226,24 +226,31 @@ export function CalendarScreen() {
         <Text style={styles.sectionLabel}>{label}</Text>
         {tasks.map(task => {
           const subs = subtasksOf(task.id);
+          // Rows here are plain ScrollView siblings, not a virtualized list, so
+          // — like ReorderableList's own rowElevated — the wrapper's zIndex
+          // alone is enough to lift an expanded row's overflow above the row
+          // painted after it. See useElevatedCellRenderer for the FlatList
+          // equivalent this screen doesn't need.
+          const elevated = expandedTaskId === task.id;
           return (
-            <TaskItem
-              key={task.id}
-              task={task}
-              onPress={handleRowPress}
-              expanded={expandedTaskId === task.id}
-              onEdit={handleRowEdit}
-              subtaskCount={subs.length}
-              subtaskDoneCount={subs.filter(t => t.completed).length}
-              subtasks={subs}
-              // Without this the subtask drag is silently dead on this screen:
-              // a native scroll view only stands down for a responder that's
-              // one of its ancestors, and SortableList's is a descendant.
-              onSubtaskDragStateChange={setDraggingSubtask}
-              // A day cell already says which day this is; repeating "Today" on
-              // every row of the 13th is noise.
-              showCategory
-            />
+            <View key={task.id} style={elevated && styles.rowElevated}>
+              <TaskItem
+                task={task}
+                onPress={handleRowPress}
+                expanded={elevated}
+                onEdit={handleRowEdit}
+                subtaskCount={subs.length}
+                subtaskDoneCount={subs.filter(t => t.completed).length}
+                subtasks={subs}
+                // Without this the subtask drag is silently dead on this screen:
+                // a native scroll view only stands down for a responder that's
+                // one of its ancestors, and SortableList's is a descendant.
+                onSubtaskDragStateChange={setDraggingSubtask}
+                // A day cell already says which day this is; repeating "Today" on
+                // every row of the 13th is noise.
+                showCategory
+              />
+            </View>
           );
         })}
       </View>
@@ -641,6 +648,13 @@ function makeStyles(colors: Colors) {
     },
     section: {
       marginBottom: spacing.md,
+    },
+    // Same zIndex/elevation pair ReorderableList's own rowElevated style
+    // reaches for, so an expanded row's shadow isn't clipped by the plain
+    // sibling row painted after it.
+    rowElevated: {
+      zIndex: 10,
+      elevation: 10,
     },
     sectionLabel: {
       color: colors.textSecondary,

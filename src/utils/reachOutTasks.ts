@@ -56,6 +56,21 @@ export function declinedRecently(
 }
 
 /**
+ * Whether the "turn off reminders for X" offer (WhenPicker's reach-out
+ * variant of the postpone-check banner) was declined recently enough to stay
+ * quiet — same hold window `declinedRecently` gives the row's own swipe-away,
+ * so a person who says "not now" either way gets the same breathing room.
+ */
+export function offerDeclinedRecently(
+  person: Pick<Person, 'reachOutOfferDeclinedAt' | 'cadenceDays'>,
+  today: Date
+): boolean {
+  if (!person.reachOutOfferDeclinedAt) return false;
+  const since = differenceInCalendarDays(today, new Date(person.reachOutOfferDeclinedAt));
+  return since < declineHoldDays(person.cadenceDays);
+}
+
+/**
  * The id a reach-out task speaks for, or null for any other task — a
  * personId for a solo nudge, or a `PersonGroup` id once
  * `collapseGroupedReachOuts` has folded several people into one row. The name

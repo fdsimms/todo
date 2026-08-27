@@ -79,6 +79,7 @@ import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { featureHidden, visibleLenses } from '../utils/simpleMode';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { useMealPlanNudgeProgress } from '../hooks/useMealPlanNudgeProgress';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -650,6 +651,10 @@ export function TodayScreen() {
   // each needs its own ref and its own record of where it last settled.
   const unscheduledScroll = useKeyboardInsetScroll<FlatList>();
   const inboxScroll = useKeyboardInsetScroll<FlatList>();
+  // Lifts the expanded row's cell above the row below it — Unscheduled and
+  // Inbox are genuine FlatLists, unlike Today/Later's own ReorderableList
+  // (see useElevatedCellRenderer for why that one needs no equivalent).
+  const elevatedUnscheduledCell = useElevatedCellRenderer<Task>(t => t.id, expandedTaskId);
   // Extra bottom padding so the last rows aren't hidden behind the floating
   // BulkActionBar.
   const extraListBottomPadding = selectionMode
@@ -1747,6 +1752,9 @@ export function TodayScreen() {
     // task id sharing this list.
     : item.type === 'context' ? item.row.id
     : item.task.id;
+  // Inbox's own elevated-cell renderer — same reasoning as
+  // elevatedUnscheduledCell above, keyed the same way the list itself is.
+  const elevatedInboxCell = useElevatedCellRenderer<ListItem>(listItemKey, expandedTaskId);
 
   // Set by Today's one list. There used to be two — a plain FlatList swapped
   // in whenever anything was pinned — and the swap is gone with the lift-out.
@@ -3619,6 +3627,7 @@ export function TodayScreen() {
             scrollEnabled={!painting && !draggingSubtask}
             data={filteredUnscheduledTasks}
             keyExtractor={t => t.id}
+            CellRendererComponent={elevatedUnscheduledCell}
             // No getItemLayout (rows are variable-height), so a target past
             // what's mounted so far fails the first attempt — retry once RN's
             // own estimate has caught up.
@@ -3714,6 +3723,7 @@ export function TodayScreen() {
             scrollEnabled={!painting && !draggingSubtask}
             data={inboxData}
             keyExtractor={listItemKey}
+            CellRendererComponent={elevatedInboxCell}
             onScrollToIndexFailed={info => {
               setTimeout(() => {
                 inboxScroll.ref.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.3 });
