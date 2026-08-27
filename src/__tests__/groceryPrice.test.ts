@@ -11,6 +11,7 @@ import {
   lastPriceFor,
   lastPricedAmountFor,
   parsePriceInput,
+  pricedSince,
   priceStandingFor,
   priceToInput,
   shopPricesFor,
@@ -611,6 +612,40 @@ describe('lastPriceFor', () => {
 
   it('is null when nothing has ever been priced', () => {
     expect(lastPriceFor(makeItem(), costco.id, [])).toBeNull();
+  });
+});
+
+describe('pricedSince', () => {
+  const since = '2026-08-20T00:00:00.000Z';
+
+  it('is false when nothing has ever been priced', () => {
+    expect(pricedSince(makeItem(), null, [], since)).toBe(false);
+  });
+
+  it('is false for a price recorded before the trip started', () => {
+    const item = makeItem({ lastPriceMinor: 429, lastPricedAt: '2026-08-19T23:00:00.000Z' });
+    expect(pricedSince(item, null, [], since)).toBe(false);
+  });
+
+  it('is true for a price recorded at or after the trip started', () => {
+    const item = makeItem({ lastPriceMinor: 429, lastPricedAt: '2026-08-20T00:05:00.000Z' });
+    expect(pricedSince(item, null, [], since)).toBe(true);
+  });
+
+  it('prefers the store link over the item, same precedence as lastPriceFor', () => {
+    const item = makeItem({ lastPriceMinor: 429, lastPricedAt: '2026-08-20T00:05:00.000Z' });
+    // The store's own price is stale even though the item-level one is fresh —
+    // the trip is standing in Costco, so Costco's own timestamp is what answers.
+    const links = [
+      link({ itemId: item.id, shopId: costco.id, lastPriceMinor: 319, lastPricedAt: '2026-08-01T00:00:00.000Z' }),
+    ];
+    expect(pricedSince(item, costco.id, links, since)).toBe(false);
+  });
+
+  it('falls back to the item when the store has no price of its own', () => {
+    const item = makeItem({ lastPriceMinor: 429, lastPricedAt: '2026-08-20T00:05:00.000Z' });
+    const links = [link({ itemId: item.id, shopId: costco.id })];
+    expect(pricedSince(item, costco.id, links, since)).toBe(true);
   });
 });
 

@@ -69,7 +69,7 @@ import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { OTHER_AISLE } from '../utils/groceryAisles';
-import { describeListEstimate, estimateListTotal, priceToInput } from '../utils/groceryPrice';
+import { describeListEstimate, estimateListTotal, lastPriceFor, pricedSince, priceToInput } from '../utils/groceryPrice';
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTaskStore } from '../store/useTaskStore';
@@ -192,6 +192,8 @@ export function GroceryScreen() {
   const markItemsUnavailable = useGroceryStore(s => s.markItemsUnavailable);
   const linkItemSub = useGroceryStore(s => s.linkItemSub);
   const swapForSubstitute = useGroceryStore(s => s.swapForSubstitute);
+  const setItemPrice = useGroceryStore(s => s.setItemPrice);
+  const clearItemShopPrice = useGroceryStore(s => s.clearItemShopPrice);
   const clearList = useGroceryStore(s => s.clearList);
   const applyDrop = useGroceryStore(s => s.applyDrop);
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -390,6 +392,36 @@ export function GroceryScreen() {
     }
     return out;
   }, [activeTripShop, listRows, items, itemShops, shops, itemSubs, itemProducts]);
+
+  // What each checked row costs at the trip's own store, and whether that
+  // number was actually typed during *this* trip — see GroceryRow's
+  // tripPriceMinor/tripPriceRecorded doc comments for why the row needs both
+  // rather than just the price. Scoped to checked rows only: an unchecked one
+  // gets no chip, so it costs nothing to compute for it.
+  const tripPriceById = useMemo(() => {
+    const out = new Map<string, { minor: number | null; recorded: boolean }>();
+    if (!activeTripShop || !tripStartedAt) return out;
+    for (const item of listRows) {
+      if (!item.checked) continue;
+      out.set(item.id, {
+        minor: lastPriceFor(item, activeTripShop.id, itemShops),
+        recorded: pricedSince(item, activeTripShop.id, itemShops, tripStartedAt),
+      });
+    }
+    return out;
+  }, [activeTripShop, tripStartedAt, listRows, itemShops]);
+
+  // Resolves to setItemPrice/clearItemShopPrice against the trip's own store
+  // — the row itself only knows the item id and a number, not which of the
+  // two writes that implies or which shop it's for.
+  const handleSetTripPrice = useCallback(
+    (id: string, minor: number | null) => {
+      if (!activeTripShop) return;
+      if (minor === null) clearItemShopPrice(id, activeTripShop.id);
+      else setItemPrice(id, minor, activeTripShop.id);
+    },
+    [activeTripShop, setItemPrice, clearItemShopPrice]
+  );
 
   const checkedCount = useMemo(() => listRows.filter(i => i.checked).length, [listRows]);
 
@@ -1155,10 +1187,13 @@ export function GroceryScreen() {
           storeMarker={storeMarkers.get(row.item.id)?.text}
           swapSubstituteId={storeMarkers.get(row.item.id)?.substituteId}
           onSwapForSubstitute={handleSwapForSubstitute}
+          tripPriceMinor={tripPriceById.get(row.item.id)?.minor}
+          tripPriceRecorded={tripPriceById.get(row.item.id)?.recorded}
+          onSetTripPrice={tripPriceById.has(row.item.id) ? handleSetTripPrice : undefined}
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers]
+    [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers, tripPriceById, handleSetTripPrice]
   );
 
   // The "Start shopping" card, mounted either as the list's header or as a

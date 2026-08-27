@@ -522,6 +522,30 @@ export function lastPricedAmountFor(
 }
 
 /**
+ * Whether the price `lastPricedAmountFor` would return was actually set at or
+ * after `since` — "did I already price this during the trip that started
+ * then", as opposed to that function's "what number do I show", which is
+ * happy to answer with a price from months ago. A deliberately separate
+ * function rather than a second return field on `lastPricedAmountFor`: that
+ * one's return shape is shared with `typicalPriceFor` precisely so a caller
+ * can swap one for the other, and a median has no single date to compare
+ * against (see that function's own note) — adding one here would break that.
+ */
+export function pricedSince(
+  item: GroceryItem,
+  shopId: string | null,
+  links: readonly ItemShopLink[],
+  since: string
+): boolean {
+  if (shopId) {
+    const link = links.find(l => l.itemId === item.id && l.shopId === shopId);
+    if (link?.lastPriceMinor != null) return !!link.lastPricedAt && link.lastPricedAt >= since;
+  }
+  if (item.lastPriceMinor == null) return false;
+  return !!item.lastPricedAt && item.lastPricedAt >= since;
+}
+
+/**
  * What this item *usually* costs — the median of the run kept for it, falling
  * back to the last price when there is no run to take one of.
  *
