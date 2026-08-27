@@ -52,6 +52,12 @@ interface FocusStore {
   extendStep: (minutes: number) => void;
   /** Drop a task's remaining stretches without counting it as done. */
   skipTask: (taskId: string) => void;
+  /**
+   * Drop a quota task's remaining stretches, same as `skipTask`, but count it
+   * toward the closing summary anyway — for a task that's on pace, where
+   * there's nothing left to do right now rather than something left undone.
+   */
+  finishForNow: (taskId: string) => void;
   /** Reconcile the plan against the task list. Cheap, and safe to over-call. */
   syncWithTasks: (tasks: readonly Task[]) => void;
   /** End the session and forget it. */
@@ -152,6 +158,14 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
     // closing summary counts what actually got done.
     const next = pruneFocusPlan(session, id => id === taskId);
     if (next !== session) persist(next, set);
+  },
+
+  finishForNow(taskId) {
+    const { session } = get();
+    if (!session) return;
+    const next = pruneFocusPlan(session, id => id === taskId);
+    if (next === session) return;
+    persist({ ...next, completedTaskIds: [...next.completedTaskIds, taskId] }, set);
   },
 
   syncWithTasks(tasks) {

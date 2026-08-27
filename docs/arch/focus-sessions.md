@@ -261,6 +261,16 @@ The last unit still completes the task, because `logQuotaUnit` hands off to
 Logbook are unchanged, and the session notices through `syncWithTasks` like any
 other completion.
 
+**An on-pace quota task can be marked Done for now instead of Skipped.**
+`useFocusStore.finishForNow` replaces Skip in the secondary row exactly while
+`isQuotaOnPace(quotaTask)` holds. Mechanically it's `skipTask`'s own
+`pruneFocusPlan` — the task's remaining stretches leave the plan, no unit is
+logged, the task itself is untouched — with one addition: the id is stamped
+onto `completedTaskIds` anyway. That's a deliberate exception to "only
+completion is added to `completedTaskIds`" above: being on pace already means
+today's obligation is met for now, so ending the session should read as a task
+handled, not one abandoned.
+
 The count is spelled out on the stage above the clock, with
 `quotaUnitsToPace` (`visibilityUtils.ts`) and `formatQuotaCatchUp`
 (`quotaUnit.ts`) between them saying how many logs put it back on pace and how

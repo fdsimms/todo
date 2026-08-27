@@ -11,7 +11,7 @@ import { formatTimeOfDay } from '../utils/dateUtils';
 import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
 import { mailtoUrl } from '../utils/email';
-import { displayTitleFor, isQuotaTask, quotaUnitsToPace, quotaRidesOutTheDay } from '../utils/visibilityUtils';
+import { displayTitleFor, isQuotaTask, isQuotaOnPace, quotaUnitsToPace, quotaRidesOutTheDay } from '../utils/visibilityUtils';
 import { formatQuotaCatchUp, formatQuotaProgress, formatQuotaTarget } from '../utils/quotaUnit';
 import {
   currentFocusStep,
@@ -80,6 +80,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const advance = useFocusStore(s => s.advance);
   const extendStep = useFocusStore(s => s.extendStep);
   const skipTask = useFocusStore(s => s.skipTask);
+  const finishForNow = useFocusStore(s => s.finishForNow);
   const endSession = useFocusStore(s => s.endSession);
 
   const byId = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks]);
@@ -178,6 +179,10 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const quotaLogFinishes = quotaTask
     ? !quotaRidesOutTheDay(quotaTask) && quotaTask.progressCount + 1 >= quotaTask.targetCount!
     : false;
+  // On pace, there's nothing left to log right now — Skip becomes "Done for
+  // now" in that state, same underlying prune but counted toward the closing
+  // summary, since being caught up isn't the same as abandoning the task.
+  const onPace = quotaTask ? isQuotaOnPace(quotaTask) : false;
 
   const handleEnd = () => {
     haptics.warning();
@@ -225,6 +230,12 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     haptics.tap();
     if (step.kind === 'rest' || step.taskId === null) advance();
     else skipTask(step.taskId);
+  };
+
+  const handleFinishForNow = () => {
+    if (!quotaTask) return;
+    haptics.success();
+    finishForNow(quotaTask.id);
   };
 
   const handleOpenSettings = () => {
@@ -431,13 +442,21 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
 
             <TouchableOpacity
               style={styles.secondaryBtn}
-              onPress={handleSkip}
+              onPress={onPace ? handleFinishForNow : handleSkip}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
-              accessibilityLabel={isRest ? 'Skip this break' : `Skip ${titleOf(step.taskId)}`}
+              accessibilityLabel={
+                onPace
+                  ? `Done for now, on pace, ${titleOf(step.taskId)}`
+                  : (isRest ? 'Skip this break' : `Skip ${titleOf(step.taskId)}`)
+              }
             >
-              <Ionicons name="play-skip-forward-outline" size={iconSize.md} color={colors.textSecondary} />
-              <Text style={styles.secondaryLabel}>Skip</Text>
+              <Ionicons
+                name={onPace ? 'checkmark-done-circle-outline' : 'play-skip-forward-outline'}
+                size={iconSize.md}
+                color={onPace ? colors.green : colors.textSecondary}
+              />
+              <Text style={styles.secondaryLabel}>{onPace ? 'Done for now' : 'Skip'}</Text>
             </TouchableOpacity>
           </View>
         </View>

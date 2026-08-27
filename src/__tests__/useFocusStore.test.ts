@@ -231,6 +231,22 @@ describe('skipTask', () => {
   });
 });
 
+describe('finishForNow', () => {
+  it('drops a task and counts it toward the summary anyway', () => {
+    state().startSession([task('a'), task('b')], OPTIONS);
+    state().finishForNow('a');
+    expect(live().completedTaskIds).toEqual(['a']);
+    expect(live().steps.map(s => s.taskId)).toEqual([null, 'b']);
+  });
+
+  it('ignores a task that is not in the plan', () => {
+    state().startSession([task('a')], OPTIONS);
+    (dbSaveFocusSession as jest.Mock).mockClear();
+    state().finishForNow('nope');
+    expect(dbSaveFocusSession).not.toHaveBeenCalled();
+  });
+});
+
 describe('initialize', () => {
   it('picks a stored session back up and puts its alarm back', () => {
     state().startSession([task('a'), task('b')], OPTIONS);
