@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { listRemainingCount } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -54,7 +55,11 @@ export function GroceriesHubPills({ active }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const navigation = useNavigation<any>();
-  const groceryCount = useGroceryStore(s => s.items.filter(i => i.onList && !i.checked).length);
+  // The list you're actually looking at, not every trolley you have going —
+  // a pill reading 22 while the Airbnb list holds four is counting shopping
+  // this tab won't show you. Off the entries, because a row can be in two
+  // trolleys with a different tick in each: see GroceryListEntry.
+  const groceryCount = useGroceryStore(s => listRemainingCount(s.listEntries, s.activeListId));
   // The leftovers nudge, and the whole reason it's here rather than only on the
   // meal plan itself: a container going off tomorrow is worth knowing about
   // while you're standing in the shop about to buy more food. Counted rather
@@ -143,7 +148,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
   pillActive: { backgroundColor: colors.accent },
-  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  pillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   pillBadge: {
     position: 'absolute', top: -4, right: -4,

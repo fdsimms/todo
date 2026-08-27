@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
+import { listCheckedCount } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { haptics } from '../utils/haptics';
 
@@ -76,7 +77,9 @@ export function ActiveTripBanner({ shopName, onChange, onFinish, onClear }: Prop
   const colors = useColors();
   const styles = makeStyles(colors);
 
-  const checkedCount = useGroceryStore(s => s.items.filter(i => i.onList && i.checked).length);
+  // Scoped to the active list, like everything else the trip touches: the
+  // Finish button this number gates on finishes that list and no other.
+  const checkedCount = useGroceryStore(s => listCheckedCount(s.listEntries, s.activeListId));
 
   const handleClear = () => {
     haptics.tap();

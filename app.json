@@ -55,6 +55,12 @@
         }
       ],
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Lets dundundun check today's weather where you are, so a rule you've set up (like sunscreen on a sunny day) can add its task. It only reads your location once a day when this is turned on, and never in the background."
+        }
+      ],
+      [
         "expo-local-authentication",
         {
           "faceIDPermission": "Lets dundundun ask for Face ID before it opens, so an unlocked phone doesn't hand over your task list."

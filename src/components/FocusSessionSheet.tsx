@@ -11,7 +11,7 @@ import { formatTimeOfDay } from '../utils/dateUtils';
 import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
 import { mailtoUrl } from '../utils/email';
-import { displayTitleFor, isQuotaTask, quotaUnitsToPace } from '../utils/visibilityUtils';
+import { displayTitleFor, isQuotaTask, quotaUnitsToPace, quotaRidesOutTheDay } from '../utils/visibilityUtils';
 import { formatQuotaCatchUp, formatQuotaProgress, formatQuotaTarget } from '../utils/quotaUnit';
 import {
   currentFocusStep,
@@ -171,10 +171,12 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     : undefined;
   const quotaToPace = quotaTask ? quotaUnitsToPace(quotaTask) : 0;
   // The unit that meets the target completes the task (logQuotaUnit hands off),
-  // so it earns the completion haptic rather than the log one. An overshoot
-  // target never reaches that: logging past its target is the point.
+  // so it earns the completion haptic rather than the log one. A target that
+  // rides the day out never reaches that: logging past its target is the
+  // point for an overshoot, and for a cadence the target is arithmetic rather
+  // than a finish line.
   const quotaLogFinishes = quotaTask
-    ? !quotaTask.allowOvershoot && quotaTask.progressCount + 1 >= quotaTask.targetCount!
+    ? !quotaRidesOutTheDay(quotaTask) && quotaTask.progressCount + 1 >= quotaTask.targetCount!
     : false;
 
   const handleEnd = () => {

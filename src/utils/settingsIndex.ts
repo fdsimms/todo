@@ -217,6 +217,8 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   // instead of what the setting does.
   pantryReview: ['cupboard', 'stock', 'take stock', 'swipe', 'deck', 'still have', 'grocery',
     'kitchen', 'generated', 'automatic'],
+  weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
+    'location', 'temperature', 'generated', 'automatic'],
 };
 
 /**
@@ -408,12 +410,21 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'titleRules', groupId: 'tasksProjects', label: 'Title rules', section: 'New tasks',
     keywords: ['keyword', 'expense', 'automatic', 'auto file', 'category', 'project', 'tag',
       'starts with', 'parse', 'shortcut', 'prefix', 'why did this', 'link', 'url', 'app'] },
+  // Sits under the generator's own section, beside gen:weather and
+  // gen:weather:category (see GENERATED_ENTRIES) — this is the row that opens
+  // the rule editor those two can't.
+  { id: 'weatherRules', groupId: 'generated', label: 'Rules', section: 'Weather-based tasks',
+    keywords: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat',
+      'forecast', 'location', 'condition', 'weather rule'] },
   { id: 'simpleTaskForm', groupId: 'tasksProjects', label: 'Show fewer fields', section: 'Task form',
     keywords: ['simple', 'quick add', 'chips', 'declutter', 'basic', 'minimal'] },
   { id: 'hideCategories', groupId: 'tasksProjects', label: 'Hide categories', section: 'Today',
     keywords: ['flat', 'one list', 'headers', 'sections', 'group', 'ungrouped', 'today'] },
-  { id: 'autoArchiveProjects', groupId: 'tasksProjects', label: 'Auto-archive projects', section: 'Projects',
-    keywords: ['finished', 'complete'] },
+  { id: 'autoCompleteProjects', groupId: 'tasksProjects', label: 'Auto-complete projects', section: 'Projects',
+    // 'archive' and 'auto-archive' stay indexed: this row archived a finished
+    // project until it started completing one, and someone who set it up under
+    // the old behaviour will search for the old word.
+    keywords: ['finished', 'done', 'archive', 'auto-archive', 'wrap up'] },
   // Named for the row as it reads now. It was indexed as "Default nudge
   // cadence" long after the row had been renamed, which is a result naming a
   // label nobody can find on the screen it opens.

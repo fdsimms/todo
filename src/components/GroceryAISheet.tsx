@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -22,6 +23,7 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
+import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
   suggestGroceryAisles,
@@ -69,6 +71,8 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const activeListId = useGroceryStore(s => s.activeListId);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const setAisleMany = useGroceryStore(s => s.setAisleMany);
   const addByName = useGroceryStore(s => s.addByName);
@@ -90,8 +94,8 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   // Anything currently sitting in the catch-all and on the list — the exact
   // gap the lexicon left.
   const unsorted = useMemo(
-    () => items.filter(i => i.onList && i.aisle === OTHER_AISLE),
-    [items]
+    () => itemsOnList(items, listEntries, activeListId).filter(i => i.aisle === OTHER_AISLE),
+    [items, listEntries, activeListId]
   );
 
   const reset = useCallback(() => {
@@ -214,6 +218,25 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const rowCount = mode === 'tidy' ? tidyRows.length : recipeRows.length;
   const canApply = !loading && accepted.size > 0;
 
+  // A reviewed batch (tidy moves or recipe rows) is expensive to get back,
+  // and typed/pasted/photographed recipe input hasn't been run yet — either
+  // way a swipe-down would otherwise drop it with no dialog.
+  const handleCancel = () => {
+    const dirty = rowCount > 0
+      || !!recipeInput.text.trim()
+      || !!recipeInput.url.trim()
+      || !!recipeInput.photo;
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
 
   // A deterministic failure — a mistyped address, a site that refuses us, a page
   // that builds its recipe in the browser — fails identically however many times
@@ -333,10 +356,10 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
             <Text style={styles.headerTitle}>

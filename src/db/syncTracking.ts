@@ -69,6 +69,15 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'templates', key: ['id'] },
   { name: 'grocery_items', key: ['id'] },
   { name: 'grocery_shops', key: ['id'] },
+  // The away lists. They have to travel even though *which* one a device is
+  // looking at doesn't — see `grocery_active_list` in the prose below.
+  { name: 'grocery_lists', key: ['id'] },
+  // Which lists a row is in, and its place in each. The membership itself, so
+  // without it a second device sees every trolley empty. Keyed on the pair it
+  // is keyed on in SQLite; both halves are base36 from generateId() (or '' for
+  // the home list), so joining them with KEY_SEPARATOR is safe — the same test
+  // grocery_item_shops beside it passes and grocery_store_aliases fails.
+  { name: 'grocery_list_items', key: ['item_id', 'list_id'] },
   { name: 'grocery_item_shops', key: ['item_id', 'shop_id'] },
   { name: 'grocery_item_subs', key: ['item_id', 'sub_item_id'] },
   // Keyed by id rather than (item_id, product_key) even though that pair is
@@ -166,6 +175,10 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'newTaskDefaults',
   'defaultReminderLeadMinutes',
   'defaultProjectNudgeCadenceDays',
+  // Legacy key name for what is now autoCompleteProjectsOnDone: the setting
+  // changed from archiving a finished project to completing one, but it is
+  // still persisted (and therefore synced) under the key it shipped with, so
+  // devices on either side of the change agree about what it holds.
   'autoArchiveProjectsOnComplete',
   'autoRemoveExpiredTasks',
   'completedRetentionDays',
@@ -242,6 +255,11 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   other phone would read it as answers about events it has never seen.
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
+ * - `grocery_active_list`, `grocery_group_by` — which shopping list one device
+ *   is showing and how it groups the rows. The lists themselves sync
+ *   (`grocery_lists`); which of them you are *looking at* is the same kind of
+ *   fact as `grocery_trip_shop_id` below, and one phone in the rental kitchen
+ *   should not move the other one's screen off the list at home.
  * - `grocery_trip_shop_id`, `grocery_trip_started_at`,
  *   `mealPlanNudgeLastFiredWeekKey`, `mealPlanNudgeGroupId`,
  *   `meal_plan_added_to_list`, `patchNotesQaStatus`, `filterEfforts`,

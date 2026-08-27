@@ -5,6 +5,9 @@ import {
   isProjectPastWindow,
 } from '../store/useProjectStore';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
+import { formatDeadlineDate } from '../utils/dateUtils';
+import { nudgeModeOf } from '../utils/nudgeCadence';
+import { useSettingsStore } from '../store/useSettingsStore';
 import {
   dbGetAllProjects,
   dbInsertProject,
@@ -65,6 +68,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   targetCount: null,
   targetUnit: null,
   allowOvershoot: false,
+  quotaIntervalMinutes: null,
+  quotaReminders: false,
+  quotaStartedAt: null,
   progressCount: 0,
   tags: [],
   category: null,
@@ -132,8 +138,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   id: 'project-1',
   title: 'Summer Bucket List',
   notes: '',
-  targetStartDate: null,
-  targetEndDate: null,
+  deadline: null,
   category: null,
   sortOrder: 1,
   archived: false,
@@ -389,38 +394,77 @@ describe('projectDecisions', () => {
 
 describe('isProjectPastWindow', () => {
   it('is false when there is no target end date', () => {
-    const project = makeProject({ targetEndDate: null });
+    const project = makeProject({ deadline: null });
     expect(isProjectPastWindow(project, { done: 0, total: 2 })).toBe(false);
   });
 
   it('is false when the target end date is in the future', () => {
     const future = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
-    const project = makeProject({ targetEndDate: future });
+    const project = makeProject({ deadline: future });
     expect(isProjectPastWindow(project, { done: 0, total: 2 })).toBe(false);
   });
 
   it('is true when the target end date has passed and the project is incomplete and not archived', () => {
     const past = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
-    const project = makeProject({ targetEndDate: past, archived: false });
+    const project = makeProject({ deadline: past, archived: false });
     expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(true);
   });
 
   it('is false when the project is archived, even past its window', () => {
     const past = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
-    const project = makeProject({ targetEndDate: past, archived: true });
+    const project = makeProject({ deadline: past, archived: true });
     expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(false);
   });
 
   it('is false when the project hit 100% naturally, even if not archived', () => {
     const past = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
-    const project = makeProject({ targetEndDate: past, archived: false });
+    const project = makeProject({ deadline: past, archived: false });
     expect(isProjectPastWindow(project, { done: 2, total: 2 })).toBe(false);
   });
 
   it('is false when the project is marked complete, even past its window', () => {
     const past = new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString();
-    const project = makeProject({ targetEndDate: past, archived: false, completed: true });
+    const project = makeProject({ deadline: past, archived: false, completed: true });
     expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(false);
+  });
+
+  // The ±24h fixtures above straddle the noon boundary by a full day, so none
+  // of them could catch the bug these are here for: WhenPicker stores every
+  // date it confirms at noon, and the old `< Date.now()` comparison therefore
+  // went true at 12:00 on the target day itself.
+  //
+  // The clock is pinned deliberately. Built off a live `new Date()`, half of
+  // these pass against the buggy comparison too — whether they catch it depends
+  // on whether the suite happens to run before or after midday, which is not a
+  // test. 18:00 local is "the afternoon of the target day", the window where
+  // the old code was wrong and the new code has to hold.
+  describe('on the afternoon of the target day', () => {
+    // Local, not a UTC ISO literal: every gate here works in local calendar
+    // days (getDayStart), so a UTC-pinned instant would land on a different day
+    // for a runner east or west of the fixture's own offset.
+    const afternoonOfTargetDay = new Date(2026, 5, 15, 18, 0, 0);
+    const noonOn = (y: number, m: number, d: number) => new Date(y, m, d, 12, 0, 0).toISOString();
+
+    beforeEach(() => { jest.useFakeTimers().setSystemTime(afternoonOfTargetDay); });
+    afterEach(() => { jest.useRealTimers(); });
+
+    it('is false at noon on the target day, while the project is still due', () => {
+      const project = makeProject({ deadline: noonOn(2026, 5, 15) });
+      expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(false);
+    });
+
+    it('is true once the target day itself has passed', () => {
+      const project = makeProject({ deadline: noonOn(2026, 5, 14) });
+      expect(isProjectPastWindow(project, { done: 1, total: 2 })).toBe(true);
+    });
+
+    // The flag and the label render side by side on the project card, so the
+    // one failure mode worth pinning is them disagreeing: "Past window · Today".
+    it('never flags a window the deadline formatter still calls Today', () => {
+      const iso = noonOn(2026, 5, 15);
+      expect(formatDeadlineDate(iso)).toBe('Today');
+      expect(isProjectPastWindow(makeProject({ deadline: iso }), { done: 1, total: 2 })).toBe(false);
+    });
   });
 });
 
@@ -428,9 +472,9 @@ describe('isProjectPastWindow', () => {
 
 describe('createProject / updateProject / getProjectById', () => {
   it('creates a project with the given fields and persists it', () => {
-    const project = useProjectStore.getState().createProject('Summer Bucket List', null, '2026-09-01T00:00:00.000Z');
+    const project = useProjectStore.getState().createProject('Summer Bucket List', '2026-09-01T00:00:00.000Z');
     expect(project.title).toBe('Summer Bucket List');
-    expect(project.targetEndDate).toBe('2026-09-01T00:00:00.000Z');
+    expect(project.deadline).toBe('2026-09-01T00:00:00.000Z');
     expect(project.archived).toBe(false);
     expect(dbInsertProject).toHaveBeenCalledWith(project);
     expect(useProjectStore.getState().projects).toContainEqual(project);
@@ -449,10 +493,35 @@ describe('createProject / updateProject / getProjectById', () => {
   });
 
   it('gives a new project the default nudge cadence, with auto-scheduling off', () => {
-    const project = useProjectStore.getState().createProject('Kitchen remodel', null, null);
+    const project = useProjectStore.getState().createProject('Kitchen remodel', null);
     expect(project.nudgeCadenceDays).toBe(DEFAULT_NUDGE_CADENCE_DAYS);
     expect(project.autoSchedule).toBe(false);
     expect(project.nudgeOptIn).toBe(false);
+  });
+
+  // The Settings default used to seed the cadence beside a hardcoded
+  // nudgeOptIn: false, and classifyProject refuses on that flag before it ever
+  // reads a cadence — so setting the default to "Every 2 weeks" changed
+  // nothing and every new project was still silent.
+  describe('seeding from the Settings default', () => {
+    afterEach(() => {
+      useSettingsStore.setState({ defaultProjectNudgeCadenceDays: DEFAULT_NUDGE_CADENCE_DAYS });
+    });
+
+    it('opts a new project in when the default names a cadence', () => {
+      useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 14 });
+      const project = useProjectStore.getState().createProject('Loft conversion', null);
+      expect(project.nudgeCadenceDays).toBe(14);
+      expect(project.nudgeOptIn).toBe(true);
+      expect(nudgeModeOf(project)).toBe('scheduled');
+    });
+
+    it('leaves a new project out of nudges entirely when the default is Never', () => {
+      useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 0 });
+      const project = useProjectStore.getState().createProject('Gift ideas', null);
+      expect(project.nudgeOptIn).toBe(false);
+      expect(nudgeModeOf(project)).toBe('never');
+    });
   });
 
   // Regression test for the narrow patch whitelist: these two are only

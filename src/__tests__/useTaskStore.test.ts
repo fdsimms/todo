@@ -8,6 +8,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { MAX_PROJECT_REVIEW_TASKS } from '../utils/projectReviewTasks';
 import { MAX_PANTRY_CHECK_TASKS } from '../utils/pantryCheckTasks';
 import { MAX_MEAL_SHORTFALL_TASKS } from '../utils/mealShortfallTasks';
@@ -55,6 +56,7 @@ import type { GroceryItem, Person, Project, Task, TaskGroup, TitleRule } from '.
 jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
   dbGetSetting: jest.fn().mockReturnValue(null),
+  dbSetSetting: jest.fn(),
   dbGetAllTasks: jest.fn().mockReturnValue([]),
   dbGetTagRegistry: jest.fn().mockReturnValue([]),
   dbGetCategoryRegistry: jest.fn().mockReturnValue([]),
@@ -89,6 +91,10 @@ jest.mock('../db/database', () => ({
   dbDeletePersonGroup: jest.fn(),
   dbGetAllProjectCategories: jest.fn().mockReturnValue([]),
   dbInsertProjectCategory: jest.fn(),
+  dbInsertProjectCategoryRow: jest.fn(),
+  dbDeleteProjectCategory: jest.fn(),
+  dbRenameProjectCategory: jest.fn(),
+  dbBatchUpdateProjectCategorySortOrders: jest.fn(),
   dbGetAllTemplateCategories: jest.fn().mockReturnValue([]),
   dbInsertTemplateCategory: jest.fn(),
   dbInsertTask: jest.fn(),
@@ -127,6 +133,9 @@ jest.mock('../db/database', () => ({
   // groceries.
   dbGetGroceryAisleOverrides: jest.fn().mockReturnValue({}),
   dbGetGroceryGroupBy: jest.fn().mockReturnValue('aisle'),
+  dbGetAllGroceryLists: jest.fn().mockReturnValue([]),
+  dbGetAllGroceryListEntries: jest.fn().mockReturnValue([]),
+  dbGetGroceryActiveList: jest.fn().mockReturnValue(null),
   dbGetAllGroceryShops: jest.fn().mockReturnValue([]),
   dbGetAllItemShopLinks: jest.fn().mockReturnValue([]),
   dbGetAllItemSubLinks: jest.fn().mockReturnValue([]),
@@ -182,7 +191,7 @@ jest.mock('../store/useCategoryStore', () => ({
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: jest.fn(() => ({
-      dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
       newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
       // The settings that name a category — renaming or deleting one has to
       // carry them with it (see renameCategory/deleteCategory).
@@ -198,6 +207,8 @@ jest.mock('../store/useSettingsStore', () => ({
 jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn().mockResolvedValue(undefined),
   cancelTaskReminder: jest.fn().mockResolvedValue(undefined),
+  scheduleQuotaNudges: jest.fn().mockResolvedValue(undefined),
+  cancelQuotaNudges: jest.fn().mockResolvedValue(undefined),
   rescheduleAllReminders: jest.fn().mockResolvedValue(undefined),
   scheduleTimerAlarm: jest.fn().mockResolvedValue(undefined),
   cancelTimerAlarm: jest.fn().mockResolvedValue(undefined),
@@ -282,6 +293,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   targetUnit: null,
   progressCount: 0,
   allowOvershoot: false,
+  quotaIntervalMinutes: null,
+  quotaReminders: false,
+  quotaStartedAt: null,
   tags: [],
   category: null,
   sortOrder: 1,
@@ -359,8 +373,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   id: 'project-1',
   title: 'Test Project',
   notes: '',
-  targetStartDate: null,
-  targetEndDate: null,
+  deadline: null,
   category: null,
   sortOrder: 1,
   archived: false,
@@ -404,7 +417,7 @@ beforeEach(() => {
   useTemplateStore.setState({ templates: [], initialized: false });
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
   useSettingsStore.getState.mockReturnValue({
-    dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+    dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
     mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
     calendarEventCategory: null, collapsedCategories: [], titleRules: [],
@@ -446,7 +459,8 @@ describe('initialize', () => {
     useTaskStore.getState().initialize();
     expect(rescheduleAllReminders).toHaveBeenCalledWith(
       tasks,
-      { shopId: null, startedAt: null, shops: [] }
+      { shopId: null, startedAt: null, shops: [] },
+      []
     );
   });
 });
@@ -892,7 +906,7 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
 
   const withDefaults = (newTaskDefaults: Record<string, unknown>) => {
     useSettingsStore.getState.mockReturnValue({
-      dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
       newTaskDefaults,
     });
   };
@@ -7950,7 +7964,7 @@ describe('sweepExpiredTasks', () => {
   it('leaves expired tasks in place when the setting is Never', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: null,
       vacationMode: false,
     });
@@ -7963,7 +7977,7 @@ describe('sweepExpiredTasks', () => {
   it('deletes expired tasks when the setting is Immediately, leaving active ones', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 0,
       vacationMode: false,
     });
@@ -7984,7 +7998,7 @@ describe('sweepExpiredTasks', () => {
   it('rolls an expired recurring task forward instead of deleting it', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 0,
       vacationMode: false,
     });
@@ -8011,7 +8025,7 @@ describe('sweepExpiredTasks', () => {
   it('still deletes a recurring task whose schedule has already run out', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 0,
       vacationMode: false,
     });
@@ -8035,7 +8049,7 @@ describe('sweepExpiredTasks', () => {
   it('spares a vacation-paused expired task while vacation mode is on', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 0,
       vacationMode: true,
     });
@@ -8052,7 +8066,7 @@ describe('sweepExpiredTasks', () => {
   it('leaves a just-expired task alone while its grace period has not elapsed', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 7, // 7-day grace period
       vacationMode: false,
     });
@@ -8068,7 +8082,7 @@ describe('sweepExpiredTasks', () => {
   it('deletes a task once its grace period has elapsed past the window close', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 7, // 7-day grace period
       vacationMode: false,
     });
@@ -8106,7 +8120,7 @@ describe('purgeOldCompletedTasks', () => {
   const withRetention = (completedRetentionDays: number | null) => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: false,
       vacationMode: false,
       completedRetentionDays,
@@ -8877,7 +8891,7 @@ describe('deleteCategory', () => {
     const setLeftoverUseUpTaskCategory = jest.fn();
     const setCalendarEventCategory = jest.fn();
     useSettingsStore.getState.mockReturnValue({
-      dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
       newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
       mealCookTaskCategory: 'Kitchen', groceryUseUpTaskCategory: 'Kitchen', leftoverUseUpTaskCategory: 'Kitchen',
       calendarEventCategory: 'Kitchen', collapsedCategories: [], titleRules: [],
@@ -9072,40 +9086,46 @@ describe('uncompleteProject', () => {
 
 // ─── completeTask: project auto-archive ────────────────────────────────────────
 
-describe('completeTask auto-archiving a finished project', () => {
+describe('completeTask auto-completing a finished project', () => {
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
 
-  it('does nothing when autoArchiveProjectsOnComplete is off (default)', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false });
+  it('does nothing when autoCompleteProjectsOnDone is off (default)', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: false });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().completeTask('a');
-    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.completed).toBe(false);
   });
 
-  it('archives the project when the last task completes and the setting is on', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+  // Completed, and *only* completed. The setting used to archive instead, which
+  // sent a finished project past the Completed list every manual affordance
+  // puts it in — so "not archived" is half of what this test is for.
+  it('completes the project when the last task completes and the setting is on', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().completeTask('a');
-    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(true);
+    const project = useProjectStore.getState().projects.find(p => p.id === 'p1');
+    expect(project?.completed).toBe(true);
+    expect(project?.completedAt).not.toBeNull();
+    expect(project?.archived).toBe(false);
   });
 
-  it('does not archive the project while other tasks in it are still incomplete', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+  it('does not complete the project while other tasks in it are still incomplete', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({
       tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p1', completed: false })],
     });
     useTaskStore.getState().completeTask('a');
-    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.completed).toBe(false);
   });
 
   // The fresh occurrence a recurring completion spawns is real outstanding
-  // work, so ticking tonight's habit must not archive the project out from
+  // work, so ticking tonight's habit must not call the project done out from
   // under tomorrow's.
-  it('does not archive a project whose only member is a recurring task', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+  it('does not complete a project whose only member is a recurring task', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({
       tasks: [makeTask({
@@ -9117,35 +9137,35 @@ describe('completeTask auto-archiving a finished project', () => {
       })],
     });
     useTaskStore.getState().completeTask('habit');
-    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.completed).toBe(false);
   });
 
   it('ignores tasks with no projectId', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: null })] });
     expect(() => useTaskStore.getState().completeTask('a')).not.toThrow();
   });
 
-  it('unarchives the project again when the completion is undone', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+  it('uncompletes the project again when the completion is undone', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().completeTask('a');
     useTaskStore.getState().undoLastAction();
-    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(false);
+    expect(useProjectStore.getState().getProjectById('p1')!.completed).toBe(false);
     expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.completed).toBe(false);
   });
 
-  it('leaves a project the user had already archived alone when the completion is undone', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+  it('leaves a project the user had already completed alone when the completion is undone', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({
-      projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })],
+      projects: [makeProject({ id: 'p1', completed: true, completedAt: '2025-01-01T00:00:00.000Z' })],
     });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().completeTask('a');
     useTaskStore.getState().undoLastAction();
-    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(true);
+    expect(useProjectStore.getState().getProjectById('p1')!.completed).toBe(true);
   });
 });
 
@@ -9641,6 +9661,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9658,6 +9681,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 5,
           streakCount: 3,
           streakDate: new Date(2025, 5, 9).toISOString(),
@@ -9679,6 +9705,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 13, // past the target of 8
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9694,6 +9723,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 0,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9723,6 +9755,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9734,6 +9769,241 @@ describe('quota tasks', () => {
       const next = tasks.find(t => t.id !== 'water')!;
       expect(next.progressCount).toBe(0);
       expect(next.completed).toBe(false);
+    });
+  });
+
+  describe('logging past the target', () => {
+    it('keeps counting on an allowOvershoot task instead of completing it', () => {
+      // isQuotaOnPace deliberately keeps such a task on Today past its target
+      // so the extra can be logged; without the guard in logQuotaUnit the very
+      // next tap completed it, undoing the feature one line from where it was
+      // declared.
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7, allowOvershoot: true })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(8);
+      expect(useTaskStore.getState().tasks).toHaveLength(1); // no successor spawned
+    });
+
+    it('keeps counting past the target on an allowOvershoot task', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 8, allowOvershoot: true })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(9);
+    });
+
+    it('keeps counting on an interval quota, whose target is arithmetic', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 7, quotaIntervalMinutes: 20 })],
+      });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(8);
+    });
+  });
+
+  describe('interval quotas', () => {
+    const run = (overrides: Partial<Task> = {}) =>
+      quota({
+        id: 'eyes',
+        title: 'Look 20 feet away',
+        quotaIntervalMinutes: 20,
+        quotaReminders: true,
+        windowStart: '09:00',
+        windowEnd: '17:00',
+        targetCount: 24,
+        ...overrides,
+      });
+
+    describe('derived target count', () => {
+      it('re-derives the count when the window moves', () => {
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().updateTask('eyes', { windowEnd: '13:00' });
+
+        // Four hours at 20 minutes is 12, not the 24 an eight-hour day held.
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(12);
+      });
+
+      it('re-derives the count when the interval changes', () => {
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().updateTask('eyes', { quotaIntervalMinutes: 30 });
+
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(16);
+      });
+
+      it('leaves a plain quota\'s count alone', () => {
+        useTaskStore.setState({ tasks: [quota({ windowStart: '09:00', windowEnd: '17:00' })] });
+        useTaskStore.getState().updateTask('water', { windowEnd: '13:00' });
+
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(8);
+      });
+
+      it('lets a patch naming targetCount win, so a snapshot undo is faithful', () => {
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().updateTask('eyes', { windowEnd: '13:00', targetCount: 24 });
+
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(24);
+      });
+    });
+
+    describe('startQuotaRun', () => {
+      it('stamps the run and keeps the interval, losing the count', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 10, 30, 0));
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().startQuotaRun('eyes');
+
+        const task = useTaskStore.getState().tasks[0];
+        expect(task.quotaStartedAt).toBe(new Date(2025, 5, 10, 10, 30, 0).toISOString());
+        // 10:30–17:00 is 6.5 hours: 19 breaks 20 minutes apart, not 24 squeezed in.
+        expect(task.targetCount).toBe(19);
+      });
+
+      it('is undoable back to the count it had', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 10, 30, 0));
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().startQuotaRun('eyes');
+        useTaskStore.getState().undoLastAction();
+
+        const task = useTaskStore.getState().tasks[0];
+        expect(task.quotaStartedAt).toBeNull();
+        expect(task.targetCount).toBe(24);
+      });
+
+      it('ignores a completed task', () => {
+        useTaskStore.setState({ tasks: [run({ completed: true })] });
+        useTaskStore.getState().startQuotaRun('eyes');
+
+        expect(useTaskStore.getState().tasks[0].quotaStartedAt).toBeNull();
+      });
+    });
+
+    describe('sweepFinishedQuotaRuns', () => {
+      it('closes the run when its window shuts, at whatever count', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({ tasks: [run({ progressCount: 18, streakCount: 4 })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.completed).toBe(true);
+        // The record of the day, not clamped up to the target.
+        expect(closed.progressCount).toBe(18);
+      });
+
+      it('closes a run nobody tapped at all, rather than leaving it overdue', () => {
+        // The case sweepOvershootQuotas deliberately skips: there, an untouched
+        // tally means an abandoned day. Here the nudges fired regardless, so
+        // the run happened — and leaving it would stack one overdue row per day
+        // on the routine least likely to be tapped.
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({ tasks: [run({ progressCount: 0 })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.completed).toBe(true);
+        expect(closed.progressCount).toBe(0);
+      });
+
+      it('keeps the streak running on a short day', () => {
+        // The whole reason this doesn't go through rolloverQuotas, which forces
+        // streakCount to 0: falling "short" of arithmetic is not a miss.
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({
+          tasks: [run({
+            progressCount: 3,
+            streakCount: 6,
+            streakDate: new Date(2025, 5, 9, 0, 0, 0).toISOString(),
+          })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.streakCount).toBe(7);
+      });
+
+      it('leaves a run still under way alone', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 14, 0, 0));
+        useTaskStore.setState({ tasks: [run({ progressCount: 9 })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+      });
+
+      it('honours a hand-started run\'s later start but the window\'s own end', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 16, 30, 0));
+        useTaskStore.setState({
+          tasks: [run({ quotaStartedAt: new Date(2025, 5, 10, 10, 30, 0).toISOString() })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        // Starting late moved the start, not the finish — 16:30 is still inside it.
+        expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+      });
+
+      it('closes a run left over from an earlier day whatever the clock says now', () => {
+        jest.setSystemTime(new Date(2025, 5, 11, 9, 30, 0));
+        useTaskStore.setState({
+          tasks: [run({ dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(), progressCount: 5 })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.completed).toBe(true);
+        expect(closed.progressCount).toBe(5);
+      });
+
+      it('leaves a plain quota to rolloverQuotas', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({ tasks: [quota({ windowStart: '09:00', windowEnd: '17:00' })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+      });
+
+      it('spawns tomorrow\'s run from the window again', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({
+          tasks: [run({
+            progressCount: 12,
+            quotaStartedAt: new Date(2025, 5, 10, 10, 30, 0).toISOString(),
+          })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const next = useTaskStore.getState().tasks.find(t => t.id !== 'eyes')!;
+        expect(next.progressCount).toBe(0);
+        // A late start is a statement about one morning, not about the schedule.
+        expect(next.quotaStartedAt).toBeNull();
+      });
+    });
+
+    it('is left alone by rolloverQuotas, which would break its streak', () => {
+      jest.setSystemTime(new Date(2025, 5, 11, 9, 0, 0));
+      useTaskStore.setState({
+        tasks: [run({ dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(), progressCount: 3 })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
+    it('is left alone by sweepOvershootQuotas even when it also allows overshoot', () => {
+      jest.setSystemTime(new Date(2025, 5, 11, 9, 0, 0));
+      useTaskStore.setState({
+        tasks: [run({
+          dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(),
+          progressCount: 3,
+          allowOvershoot: true,
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
     });
   });
 });
@@ -11899,5 +12169,131 @@ describe('updateTask: the extra task draft', () => {
 
     useTaskStore.getState().updateTask('practice', { extraTaskDraft: null });
     expect(useTaskStore.getState().tasks[0].extraTaskDraft).toBeNull();
+  });
+});
+
+// ─── deleteProjectCategory ──────────────────────────────────────────────────
+
+describe('deleteProjectCategory', () => {
+  beforeEach(() => {
+    useProjectCategoryStore.setState({
+      categories: [{ id: 'pc1', name: 'Travel', sortOrder: 1 }],
+      initialized: true,
+    });
+  });
+
+  it('unfiles the projects in it and leaves everything else alone', () => {
+    useProjectStore.setState({
+      projects: [
+        makeProject({ id: 'p1', category: 'Travel' }),
+        makeProject({ id: 'p2', category: 'Home' }),
+        makeProject({ id: 'p3', category: null }),
+      ],
+    });
+    useTaskStore.getState().deleteProjectCategory('Travel');
+
+    expect(useProjectCategoryStore.getState().categories).toHaveLength(0);
+    const byId = (id: string) => useProjectStore.getState().projects.find(p => p.id === id);
+    expect(byId('p1')?.category).toBeNull();
+    expect(byId('p2')?.category).toBe('Home');
+    expect(byId('p3')?.category).toBeNull();
+  });
+
+  // A project category never reaches the tasks inside its projects — it groups
+  // the Projects page and nothing else (see Project.category). Deleting one
+  // must not touch a task's own category, which is a different vocabulary.
+  it('does not touch the task categories of the projects it unfiles', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', category: 'Travel' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1', category: 'Travel' })] });
+    useTaskStore.getState().deleteProjectCategory('Travel');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.category).toBe('Travel');
+  });
+
+  it('restores the category and re-files its projects on undo', () => {
+    useProjectStore.setState({
+      projects: [
+        makeProject({ id: 'p1', category: 'Travel' }),
+        makeProject({ id: 'p2', category: 'Travel' }),
+        makeProject({ id: 'p3', category: 'Home' }),
+      ],
+    });
+    useTaskStore.getState().deleteProjectCategory('Travel');
+    useTaskStore.getState().undoLastAction();
+
+    expect(useProjectCategoryStore.getState().categories.map(c => c.name)).toEqual(['Travel']);
+    const byId = (id: string) => useProjectStore.getState().projects.find(p => p.id === id);
+    expect(byId('p1')?.category).toBe('Travel');
+    expect(byId('p2')?.category).toBe('Travel');
+    // Never in it, so never re-filed into it.
+    expect(byId('p3')?.category).toBe('Home');
+  });
+
+  it('is a no-op on a category that is not there', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', category: 'Home' })] });
+    useTaskStore.getState().deleteProjectCategory('Missing');
+    expect(useProjectStore.getState().projects[0].category).toBe('Home');
+    expect(useProjectCategoryStore.getState().categories).toHaveLength(1);
+  });
+});
+
+// ─── bulkRemoveFromProject ──────────────────────────────────────────────────
+
+describe('bulkRemoveFromProject', () => {
+  it('unfiles every selected task that was in a project', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1' }),
+        makeTask({ id: 'b', projectId: 'p1' }),
+        makeTask({ id: 'c', projectId: 'p1' }),
+      ],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'b']);
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.projectId).toBeNull();
+    expect(byId('b')?.projectId).toBeNull();
+    expect(byId('c')?.projectId).toBe('p1');
+  });
+
+  it('leaves the tasks otherwise untouched', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1', category: 'Home', priority: 2, dueDate: '2026-06-01T12:00:00.000Z' })],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a']);
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a');
+    expect(task?.category).toBe('Home');
+    expect(task?.priority).toBe(2);
+    expect(task?.dueDate).toBe('2026-06-01T12:00:00.000Z');
+  });
+
+  // One entry for the batch: each updateTask leaves its own, and the queue
+  // holds one, so without this the last task unfiled would be the only one a
+  // shake brings back.
+  it('brings the whole batch back on a single undo', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p1' })],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'b']);
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.every(t => t.projectId === 'p1')).toBe(true);
+  });
+
+  // Scoped to one project's screen today, but a selection spanning two must
+  // not all come back into whichever was read first.
+  it('returns each task to its own project on undo', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p2' })],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'b']);
+    useTaskStore.getState().undoLastAction();
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.projectId).toBe('p1');
+    expect(byId('b')?.projectId).toBe('p2');
+  });
+
+  it('does nothing, and registers no undo, when nothing selected is in a project', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: null })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'missing']);
+    expect(useTaskStore.getState().lastAction).toBeNull();
   });
 });

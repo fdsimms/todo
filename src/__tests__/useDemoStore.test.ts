@@ -16,9 +16,13 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
+import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
+import { liveProjectSteps } from '../utils/projectOrder';
+import { isHeldBack } from '../utils/visibilityUtils';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
+import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
@@ -175,6 +179,8 @@ jest.mock('expo-sqlite', () => {
 jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn(),
   cancelTaskReminder: jest.fn(),
+  scheduleQuotaNudges: jest.fn(),
+  cancelQuotaNudges: jest.fn(),
   rescheduleAllReminders: jest.fn(),
   // Reached through useTaskStore.initialize, which fans out to useFocusStore.
   scheduleFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
@@ -203,6 +209,13 @@ jest.mock('../utils/deadlineCalendarSync', () => ({
 // AppState directly.
 jest.mock('../store/useCalendarStore', () => ({
   useCalendarStore: { getState: () => ({ events: [], loaded: false }) },
+}));
+// And the same again for the weather store, which also imports AppState
+// directly — checkWeatherTasks reads its snapshot but demo mode seeds its
+// weather task by hand (see demoSeed.ts), so an empty snapshot here is never
+// actually read.
+jest.mock('../store/useWeatherStore', () => ({
+  useWeatherStore: { getState: () => ({ snapshot: null, snapshotDayKey: null, refreshing: false }) },
 }));
 
 // ---------------------------------------------------------------------------
@@ -243,7 +256,7 @@ describe('demo mode', () => {
   it('hides real categories, tags, projects and stacks too, not just tasks', () => {
     useTaskStore.getState().addCategory('Therapy');
     useTaskStore.getState().addTag('confidential');
-    useProjectStore.getState().createProject('Divorce paperwork', null, null);
+    useProjectStore.getState().createProject('Divorce paperwork', null);
     useTaskGroupStore.getState().createGroup('Medications', null);
 
     useDemoStore.getState().enterDemoMode();
@@ -556,6 +569,25 @@ describe('demo mode', () => {
     expect(target.progressCount).toBeLessThan(target.targetCount!);
     // A target always repeats — it resets by spawning its next occurrence.
     expect(target.recurrenceType).not.toBe('none');
+  });
+
+  it('seeds a daily target paced by an interval, nudges and all', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const paced = tasks.find(t => t.quotaIntervalMinutes !== null);
+    expect(paced).toBeDefined();
+    // The window is what the interval divides, so a seeded cadence without one
+    // would be spacing itself across whatever active hours happened to be set.
+    expect(paced!.windowStart).not.toBeNull();
+    expect(paced!.windowEnd).not.toBeNull();
+    // The nudge is the whole reason this kind exists — a cadence you have to
+    // keep checking the app for is the thing it's meant to replace.
+    expect(paced!.quotaReminders).toBe(true);
+    // Behind and short of its count: the state it spends the day in, and the
+    // one it closes out in without that being a miss.
+    expect(paced!.progressCount).toBeGreaterThan(0);
+    expect(paced!.progressCount).toBeLessThan(paced!.targetCount!);
   });
 
   // A timed task can hand its countdown out to its subtasks, and one that
@@ -875,6 +907,60 @@ describe('demo mode', () => {
     expect(progress.done).toBe(progress.total);
   });
 
+  it('seeds project categories, with projects filed under them and outside them', () => {
+    // The Projects screen is built around category sections, so a board where
+    // every project is uncategorized renders as a flat list and the grouping
+    // reads as a feature the app hasn't got. Both branches of
+    // groupProjectsByCategory need something in them: the uncategorized run
+    // that leads with no header, and the named sections under theirs.
+    useDemoStore.getState().enterDemoMode();
+
+    const categories = useProjectCategoryStore.getState().categories.map(c => c.name);
+    expect(categories.length).toBeGreaterThan(1);
+
+    const projects = useProjectStore.getState().projects;
+    expect(projects.some(p => p.category !== null)).toBe(true);
+    expect(projects.some(p => p.category === null)).toBe(true);
+    // Every category a project claims is one that exists in the pool — a
+    // dangling name renders a section header for a category the picker can't
+    // offer.
+    projects.forEach(p => {
+      if (p.category !== null) expect(categories).toContain(p.category);
+    });
+  });
+
+  it('seeds a sequential project, with its later steps actually held back', () => {
+    // Project.sequential is invisible on a project of one live step: the
+    // padlock, the step numbers and the "In order" caption all need a second
+    // step that is genuinely blocked, not merely further down the list.
+    useDemoStore.getState().enterDemoMode();
+
+    const passport = useProjectStore.getState().projects.find(p => p.title === 'Renew my passport');
+    expect(passport?.sequential).toBe(true);
+
+    const steps = liveProjectSteps(passport!.id, useTaskStore.getState().tasks);
+    expect(steps.length).toBeGreaterThan(1);
+    expect(isHeldBack(steps[0])).toBe(false);
+    expect(steps.slice(1).every(t => isHeldBack(t))).toBe(true);
+  });
+
+  it('seeds a project carrying a deadline', () => {
+    // The one date a project has, and the "By Oct 10" line on its card. With
+    // none seeded that line never renders and the field reads as absent.
+    useDemoStore.getState().enterDemoMode();
+    expect(useProjectStore.getState().projects.some(p => p.deadline !== null)).toBe(true);
+  });
+
+  it('seeds an archived project and a project carrying notes', () => {
+    // Two empty surfaces otherwise: the Projects screen's Archived filter, and
+    // the notes row that heads a project's own screen.
+    useDemoStore.getState().enterDemoMode();
+
+    const projects = useProjectStore.getState().projects;
+    expect(projects.some(p => p.archived)).toBe(true);
+    expect(projects.some(p => p.notes.trim() !== '')).toBe(true);
+  });
+
   it('seeds a task that has been pushed enough times to trip the postpone check', () => {
     // Invisible until something has a history: a fresh demo database has none,
     // so without a stamped count the date picker never shows the prompt and the
@@ -1167,9 +1253,37 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(byName.get('lemon')?.suggestedName).toBe('Lemons');
   });
 
+  it('seeds a second shopping list, left inactive', () => {
+    const { items, lists, listEntries, activeListId } = useGroceryStore.getState();
+
+    // Invisible until something uses it: with only "Groceries" on file the
+    // switcher is a chevron beside a title that never changes.
+    const airbnb = lists.find(l => l.name === 'Airbnb');
+    expect(airbnb).toBeDefined();
+    expect(listEntries.filter(e => e.listId === airbnb!.id).length).toBeGreaterThan(0);
+
+    // The demo's own shop is at home, so the screen opens there and the away
+    // list is something you find rather than something you land in.
+    expect(activeListId).toBeNull();
+    expect(listEntries.filter(e => e.listId === null).length).toBeGreaterThan(0);
+
+    // And at least one row is in both trolleys at once, which is the thing a
+    // single list_id column could not express and the reason the join table
+    // exists — see GroceryListEntry.
+    const home = new Set(listEntries.filter(e => e.listId === null).map(e => e.itemId));
+    const away = listEntries.filter(e => e.listId === airbnb!.id).map(e => e.itemId);
+    expect(away.some(id => home.has(id))).toBe(true);
+
+    // And the trip survived being seeded around: setActiveList ends one, so
+    // the away list has to be built before startTrip.
+    expect(useGroceryStore.getState().tripShopId).not.toBeNull();
+  });
+
   it('seeds a grocery catalog bigger than the list, with a trip in progress', () => {
-    const { items, itemShops, itemProducts } = useGroceryStore.getState();
-    const onList = items.filter(i => i.onList);
+    const { items, itemShops, itemProducts, listEntries } = useGroceryStore.getState();
+    // The home list — every count below is about the trolley the demo's own
+    // trip is shopping, not about both lists at once.
+    const onList = itemsOnList(items, listEntries, null);
 
     expect(onList.length).toBeGreaterThan(5);
     // Not on the list right now — which is exactly what the catalog reads.
@@ -1502,7 +1616,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {
-    const { shops, itemShops, aisleOrder, hiddenAisles, items } = useGroceryStore.getState();
+    const { shops, itemShops, aisleOrder, hiddenAisles, items, listEntries } = useGroceryStore.getState();
 
     expect(shops.length).toBeGreaterThanOrEqual(3);
     // "It has everything, but don't send me there".
@@ -1525,7 +1639,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // exactly what it reads off summarizeTrip([], plan).suggestion, and a
     // seed that shopped its whole list clean would read as a feature the app
     // hasn't got.
-    const plan = planTrip(items, itemShops, shops);
+    // The home list only, the same scope ShoppingTripSheet plans over: the
+    // demo's away list holds shopping for a kitchen this trip isn't for.
+    const plan = planTrip(itemsOnList(items, listEntries, null), itemShops, shops);
     expect(plan.coverage.length).toBeGreaterThanOrEqual(2);
     const [head, second] = summarizeTrip([], plan).suggestion;
     expect(head?.shop.name).toBe("Trader Joe's");
@@ -2003,6 +2119,29 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(review!.category).toBe('Calendar Events');
     expect(useSettingsStore.getState().calendarEventCategory).toBe('Calendar Events');
     expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+  });
+
+  it('seeds a weather task and the rules alongside it', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const rules = settings.weatherRules;
+    expect(rules.length).toBe(3);
+    const sunscreenRule = rules.find(r => r.condition === 'sunny');
+    expect(sunscreenRule).toBeDefined();
+
+    const weatherTask = tasks.find(t => t.generatedKind === 'weather');
+    expect(weatherTask).toBeDefined();
+    expect(weatherTask!.title).toBe(sunscreenRule!.title);
+    expect(weatherTask!.category).toBe('Weather');
+    expect(settings.weatherTaskCategory).toBe('Weather');
+    expect(weatherTask!.generatedSourceId).toBe(`${dayKeyOf(getCurrentDayStart())}#${sunscreenRule!.id}`);
+    // Only the rule that fired is marked considered for today — the other two
+    // are still askable on whatever day their own condition shows up.
+    expect(sunscreenRule!.lastFiredDayKey).toBe(dayKeyOf(getCurrentDayStart()));
+    rules.filter(r => r.id !== sunscreenRule!.id).forEach(r => {
+      expect(r.lastFiredDayKey).toBeNull();
+    });
   });
 
   it('leaves that item free of a use-by date, so it carries one task and not two', () => {

@@ -26,6 +26,7 @@ import { useTripLiveActivitySync } from './src/utils/tripLiveActivity';
 import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
+import { useWeatherSync } from './src/store/useWeatherStore';
 import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
 import { runStartupSequence, runStartupStep } from './src/utils/startup';
@@ -127,6 +128,7 @@ function AppRoot() {
   const checkPantryReviewTasks = useTaskStore(s => s.checkPantryReviewTasks);
   const checkMealShortfallTasks = useTaskStore(s => s.checkMealShortfallTasks);
   const checkCalendarReviewTasks = useTaskStore(s => s.checkCalendarReviewTasks);
+  const checkWeatherTasks = useTaskStore(s => s.checkWeatherTasks);
   const checkBirthdayTasks = useTaskStore(s => s.checkBirthdayTasks);
   const checkBirthdayGiftTasks = useTaskStore(s => s.checkBirthdayGiftTasks);
   const checkReachOutTasks = useTaskStore(s => s.checkReachOutTasks);
@@ -213,6 +215,10 @@ function AppRoot() {
       // window still holds yesterday's read) can act on it immediately rather
       // than waiting for the first foreground.
       ['check calendar review tasks', checkCalendarReviewTasks],
+      // Beside it, same trigger again — this rarely does anything at
+      // cold-launch time either, since the snapshot it reads is only ever
+      // populated by useWeatherSync's own effect.
+      ['check weather tasks', checkWeatherTasks],
       // Birthdays, which share the same trigger — a date arriving rather than a
       // source changing — and read the people initTasks' fan-out has loaded.
       // After initSettings for the same reason the meal pass is: the day a task
@@ -269,7 +275,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkPantryReviewTasks, checkMealShortfallTasks, checkBirthdayTasks, checkBirthdayGiftTasks, checkReachOutTasks, checkCalendarReviewTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkPantryReviewTasks, checkMealShortfallTasks, checkBirthdayTasks, checkBirthdayGiftTasks, checkReachOutTasks, checkCalendarReviewTasks, checkWeatherTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
@@ -293,6 +299,10 @@ function AppRoot() {
   // EKEventStoreChanged bridge, so this refreshes on foreground rather than
   // subscribing to anything.
   useCalendarSync();
+  // Keeps today's weather reading current, on the same three triggers —
+  // inert until weatherTasks is switched on, and never requests location
+  // permission itself (see getCurrentLocation).
+  useWeatherSync();
   useSyncOnForeground();
 
   // Keeps the iOS Today widget's shared snapshot in sync with the task store.

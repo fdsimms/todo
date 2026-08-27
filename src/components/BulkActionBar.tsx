@@ -38,6 +38,18 @@ interface Props {
   onGroup?: (title: string) => void;
   // Pinning is a Today concept, so it's omitted the same way grouping is.
   onTogglePin?: () => void;
+  /**
+   * Unfiles the selection from the project it's in. Passed only by
+   * ProjectDetailScreen, and hidden everywhere else the way grouping and
+   * pinning are: on any other screen the selection spans projects, or none.
+   *
+   * It exists because adding a task to a project was a first-class flow with
+   * its own picker while taking one out was reachable from nowhere on that
+   * screen — the store action had one caller, the non-cascading delete, and by
+   * hand it meant opening the task's own editor and setting Project to "Not
+   * set".
+   */
+  onRemoveFromProject?: () => void;
   /** True when every selected task is already pinned — the action then reads "Unpin". */
   allPinned?: boolean;
   onSelectAll: () => void;
@@ -66,6 +78,7 @@ export function BulkActionBar({
   onSetPriority,
   onMarkMissed,
   onGroup,
+  onRemoveFromProject,
   onTogglePin,
   allPinned = false,
   onSelectAll,
@@ -236,6 +249,20 @@ export function BulkActionBar({
               <Ionicons name="close-circle-outline" size={18} color={colors.textSecondary} />
               <Text style={styles.moreRowText}>Missed</Text>
             </TouchableOpacity>
+            {/* Same immediate shape, and deliberately not destructive-tinted:
+                the tasks keep everything else and stay in the list, they just
+                stop being filed here. */}
+            {onRemoveFromProject && (
+              <TouchableOpacity
+                style={styles.moreRow}
+                onPress={() => { haptics.impactMedium(); onRemoveFromProject(); }}
+                accessibilityRole="button"
+                accessibilityLabel="Remove from project"
+              >
+                <Ionicons name="briefcase-outline" size={18} color={colors.textSecondary} />
+                <Text style={styles.moreRowText}>Remove from project</Text>
+              </TouchableOpacity>
+            )}
           </View>
         )}
 

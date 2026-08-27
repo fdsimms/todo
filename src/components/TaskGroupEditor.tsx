@@ -573,7 +573,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   pillActive: { backgroundColor: colors.bgQuaternary },
-  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  pillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   pillTextActive: { color: colors.text, fontWeight: fontWeight.semibold },
   tagInput: {
     color: colors.text, fontSize: font.sm,

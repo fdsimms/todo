@@ -16,6 +16,7 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
+import { trolleyStateFor } from '../utils/groceryLists';
 import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import {
@@ -148,6 +149,12 @@ export function RecipeToListSheet({
   const unitSystem = useSettingsStore(s => s.unitSystem);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const activeListId = useGroceryStore(s => s.activeListId);
+  const inTrolley = useMemo(
+    () => trolleyStateFor(listEntries, activeListId),
+    [listEntries, activeListId]
+  );
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const addToPantry = useGroceryStore(s => s.addToPantry);
@@ -193,9 +200,11 @@ export function RecipeToListSheet({
       plannedIngredientsForRecipe(recipe, recipesById, { chosen: choices, undecided }, scale, swaps),
       items,
       new Date(),
-      itemSubs
+      itemSubs,
+      // Against the list being added to, not "any list" — see classifyPlanned.
+      inTrolley
     );
-  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale]);
+  }, [recipe, recipesById, items, itemSubs, swaps, choiceKey, scale, inTrolley]);
 
   // "or jalapeño" on each option of a group left open, so a row in Need to buy
   // reads as one of a pair rather than as a second thing to buy. Keyed on

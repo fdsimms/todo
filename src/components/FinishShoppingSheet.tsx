@@ -94,6 +94,15 @@ interface Props {
    * arrives through `seedStamp`.
    */
   onScanReceipt?: () => void;
+  /**
+   * Finishing a list you're away from home for, which records nothing — see
+   * `GroceryList`. Every question below is about what a purchase *leaves
+   * behind* (which store stocks this, what it cost, what they didn't have),
+   * and an away trip leaves none of it, so the sheet drops them rather than
+   * collecting answers it is about to discard. What's left is the confirm,
+   * which is still worth asking for: this is what empties the trolley.
+   */
+  away?: boolean;
   onClose: () => void;
   onFinished: (
     shopId: string | null,
@@ -176,6 +185,7 @@ export function FinishShoppingSheet({
   seedPurchasedAt,
   seedStamp,
   onScanReceipt,
+  away = false,
   onClose,
   onFinished,
 }: Props) {
@@ -392,14 +402,21 @@ export function FinishShoppingSheet({
           {...keyboardScroll.props}
         >
           <Text style={styles.intro}>
-            {countLabel}. Everything stays in your catalog for next time.
+            {countLabel}.{' '}
+            {away
+              ? 'Nothing here is added to your pantry, prices or purchase history.'
+              : 'Everything stays in your catalog for next time.'}
           </Text>
 
           {/* Above the questions it answers, because that's what it is: the
               store and the price of every row are printed on the paper in your
               hand, and typing forty of them is the thing nobody does. It stays
-              an offer rather than a step — the sheet works untouched. */}
-          {!!onScanReceipt && (
+              an offer rather than a step — the sheet works untouched.
+
+              Gone on an away trip along with the questions it fills in: a
+              receipt is read for its store and its prices, and neither is
+              kept. */}
+          {!!onScanReceipt && !away && (
             <View style={styles.scanWrap}>
               <InlineAction
                 label="Scan a receipt"
@@ -409,6 +426,13 @@ export function FinishShoppingSheet({
             </View>
           )}
 
+          {/* The store, the leftovers and the prices are one block on an away
+              trip's behalf: each of the three records something about a shop
+              you're going to keep going back to, and an away trip records none
+              of it. Wrapped together rather than guarded three times, so a
+              fourth question added here can't be forgotten. */}
+          {!away && (
+          <>
           <Text style={styles.label}>WHERE DID YOU SHOP?</Text>
           <Text style={styles.hint}>
             Optional. Naming a store is what lets you see which store has which items later.
@@ -628,6 +652,8 @@ export function FinishShoppingSheet({
                 })}
               </View>
             </>
+          )}
+          </>
           )}
         </ScrollView>
       </View>

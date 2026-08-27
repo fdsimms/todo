@@ -70,7 +70,7 @@ export function SheetHeaderButton({
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
-  label: { color: colors.accent, fontSize: font.md },
+  label: { color: colors.accentText, fontSize: font.md },
   confirm: { fontWeight: fontWeight.semibold },
   disabled: { opacity: 0.4 },
 });
