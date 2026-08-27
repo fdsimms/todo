@@ -310,6 +310,20 @@ describe('parseTaskInput — recurrence', () => {
     expectDay(yearlyOn.schedule.dueDate, 2026, 5, 1); // June 1 already passed this year
   });
 
+  it('maps a numeric "every M/D" date to yearly recurrence', () => {
+    const r = parseTaskInput('renew warranty every 3/10', NOW)!;
+    expect(r.cleanTitle).toBe('renew warranty');
+    expect(r.schedule.recurrenceType).toBe('yearly');
+    expect(r.schedule.recurrenceInterval).toBe(1);
+    expectDay(r.schedule.dueDate, 2026, 2, 10); // March 10 — already past this year, rolls to next
+    expect(describeSchedule(r.schedule, NOW)).toBe('Every Mar 10');
+
+    // Day-first when the first number can't be a month.
+    const swapped = parseTaskInput('renew warranty every 25/12', NOW)!;
+    expect(swapped.schedule.recurrenceType).toBe('yearly');
+    expectDay(swapped.schedule.dueDate, 2025, 11, 25); // Dec 25 — still ahead this year
+  });
+
   it('maps a fixed day-of-month to monthly recurrence with recurrenceMonthDay', () => {
     const a = parseTaskInput('pay rent on the 1st of every month', NOW)!;
     expect(a.schedule.recurrenceType).toBe('monthly');
