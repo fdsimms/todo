@@ -14,6 +14,7 @@ import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { InlineAction } from '../components/InlineAction';
 import { PersonEditor } from '../components/PersonEditor';
+import { PersonHistorySheet } from '../components/PersonHistorySheet';
 import { PersonNoteSheet } from '../components/PersonNoteSheet';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
@@ -44,6 +45,7 @@ import {
   lastTogether,
   personHistory,
   personUpcoming,
+  type HistoryEntry,
 } from '../utils/personHistory';
 
 type RootStackParamList = {
@@ -107,6 +109,7 @@ export function PersonDetailScreen() {
   const addTask = useTaskStore(s => s.addTask);
   const updateTask = useTaskStore(s => s.updateTask);
   const completeTask = useTaskStore(s => s.completeTask);
+  const deleteTask = useTaskStore(s => s.deleteTask);
   // The index rather than a scan: `Task.personIds` is an array on the row (see
   // the field note), so this is the reverse direction and it is rebuilt only
   // when the store replaces its array.
@@ -131,6 +134,11 @@ export function PersonDetailScreen() {
   const [guestMeals, setGuestMeals] = useState<GuestMeal[]>([]);
   const allNotes = usePersonNoteStore(useShallow(s => s.notes));
   const [noteSheet, setNoteSheet] = useState<{ note: PersonNote | null; kind: PersonNoteKind } | null>(null);
+  // Two separate flags rather than one union: an in-progress add has no
+  // `HistoryEntry` to carry (there's no task yet), so `entry: null` would be
+  // ambiguous between "closed" and "adding".
+  const [addingHistory, setAddingHistory] = useState(false);
+  const [editingHistoryEntry, setEditingHistoryEntry] = useState<HistoryEntry | null>(null);
   // Meal plan entries are read straight from SQLite rather than off the meal
   // plan store's `entries`, which holds whatever week that screen last showed
   // — see guestMealsFor. Re-read whenever a meal changes, so naming a guest on
@@ -252,10 +260,33 @@ export function PersonDetailScreen() {
     updateTask(task.id, { completedAt: at.toISOString() });
   };
 
-  /** The rare thing that was never a task, and happened just now. */
+  /**
+   * The rare thing that was never a task.
+   *
+   * Opens `PersonHistorySheet` rather than writing directly: it used to record
+   * "Time with {name}" at the current instant on a single tap, with nothing
+   * shown first, which is exactly what made the entry both generic and a
+   * surprise. The sheet is that missing step — same default title, same
+   * default time, now visible and editable before anything is saved.
+   */
   const addToHistory = () => {
-    haptics.success();
-    recordTogether(`Time with ${name}`, new Date(), [person.id]);
+    haptics.tap();
+    setAddingHistory(true);
+  };
+
+  const saveHistoryEntry = (title: string, at: Date) => {
+    if (editingHistoryEntry) {
+      updateTask(editingHistoryEntry.taskId, { title, completedAt: at.toISOString() });
+    } else {
+      recordTogether(title, at, [person.id]);
+    }
+    setAddingHistory(false);
+    setEditingHistoryEntry(null);
+  };
+
+  const deleteHistoryEntry = (taskId: string) => {
+    deleteTask(taskId);
+    setEditingHistoryEntry(null);
   };
 
   /**
@@ -400,13 +431,19 @@ export function PersonDetailScreen() {
             {history.map((entry, i) => (
               <View key={entry.taskId}>
                 {i > 0 && <View style={styles.sep} />}
-                <View style={styles.entryRow}>
+                <TouchableOpacity
+                  style={styles.entryRow}
+                  onPress={() => { haptics.tap(); setEditingHistoryEntry(entry); }}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Edit "${entry.title}", ${describeLastTogether(new Date(entry.at), today)}`}
+                >
                   <Ionicons name="checkmark-circle-outline" size={14} color={colors.textTertiary} />
                   <Text style={styles.entryTitle} numberOfLines={1}>{entry.title}</Text>
                   <Text style={styles.entryDate}>
                     {describeLastTogether(new Date(entry.at), today)}
                   </Text>
-                </View>
+                </TouchableOpacity>
               </View>
             ))}
           </View>
@@ -488,6 +525,14 @@ export function PersonDetailScreen() {
       </ScrollView>
 
       <PersonEditor visible={editing} person={person} onClose={() => setEditing(false)} />
+      <PersonHistorySheet
+        visible={addingHistory || editingHistoryEntry !== null}
+        personName={name}
+        entry={editingHistoryEntry}
+        onSave={saveHistoryEntry}
+        onDelete={deleteHistoryEntry}
+        onClose={() => { setAddingHistory(false); setEditingHistoryEntry(null); }}
+      />
       <PersonNoteSheet
         visible={noteSheet !== null}
         personId={person.id}
