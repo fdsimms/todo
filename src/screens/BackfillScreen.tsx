@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, FlatList, StyleSheet, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -11,6 +11,7 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -18,6 +19,8 @@ import { PressableScale } from '../components/PressableScale';
 import { SegmentedControl } from '../components/SegmentedControl';
 import { CategoryPickerList } from '../components/CategoryPicker';
 import { CountStepper } from '../components/CountStepper';
+import { PillGroup } from '../components/PillGroup';
+import { SubstituteSheet } from '../components/SubstituteSheet';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { RemindMePicker } from '../components/RemindMePicker';
 import { BirthdayPicker } from '../components/BirthdayPicker';
@@ -47,6 +50,10 @@ import {
   personCadencePatch, groupmatesOf, groupmateCadenceOffer, type PersonBackfillFieldId,
 } from '../utils/peopleBackfill';
 import {
+  ITEM_BACKFILL_FIELDS, itemBackfillCandidates, itemBackfillFieldCounts, dismissItemBackfillField,
+  type ItemBackfillFieldId,
+} from '../utils/itemBackfill';
+import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, toCadenceParts, fromCadenceParts, withCadenceUnit, describeCadence, cadenceUnitLabel,
   type CadenceParts,
   FALLBACK_CADENCE_DAYS,
@@ -54,7 +61,10 @@ import {
 } from '../utils/nudgeCadence';
 import { personHistory } from '../utils/personHistory';
 import { observedCadenceDays, describeObservedCadence } from '../utils/reachOutTasks';
-import { EFFORT_LABELS, type Effort, type Person, type ReminderKind, type Task } from '../types';
+import { genericNameSuggestions } from '../utils/itemVarieties';
+import { substitutesFor, describeSubstitutes } from '../utils/itemSubs';
+import { groceryNameKey } from '../utils/groceryParse';
+import { EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH, type Effort, type Person, type ReminderKind, type Task } from '../types';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -92,12 +102,22 @@ const PERSON_FIELD_ICONS: Record<PersonBackfillFieldId, keyof typeof Ionicons.gl
   askAbout: 'chatbubble-ellipses-outline',
 };
 
-type EntityKind = 'task' | 'category' | 'project' | 'person';
+// Neither item field is a plain toggle either — `variety` opens a name
+// picker, `substitutes` opens the same sheet the grocery row's swap glyph
+// does — so, like the project/person maps above, there's no filled/outline
+// pair to switch between.
+const ITEM_FIELD_ICONS: Record<ItemBackfillFieldId, keyof typeof Ionicons.glyphMap> = {
+  substitutes: 'swap-horizontal-outline',
+  variety: 'layers-outline',
+};
+
+type EntityKind = 'task' | 'category' | 'project' | 'person' | 'item';
 const ENTITY_KIND_SEGMENTS = [
   { value: 'task' as const, label: 'Tasks' },
   { value: 'category' as const, label: 'Categories' },
   { value: 'project' as const, label: 'Projects' },
   { value: 'person' as const, label: 'People' },
+  { value: 'item' as const, label: 'Items' },
 ];
 
 // Bucket 0 ("—") is left off — see estimatePatchFor's doc comment for why.
@@ -121,21 +141,22 @@ const DURATION_UNIT_SEGMENTS = [
  * place immediately. No swiping; a tap commits the value (writing straight
  * through `updateTask`/the category and project stores, same as their own
  * editors) and advances, which is the fast, low-friction loop the
- * field-by-field flow is for. The `Tasks`/`Categories`/`Projects` segmented
- * control on the field-picker step chooses which pool `active` (and
- * everything downstream) reads from.
+ * field-by-field flow is for. The `Tasks`/`Categories`/`Projects`/`People`/
+ * `Items` segmented control on the field-picker step chooses which pool
+ * `active` (and everything downstream) reads from.
  *
  * The queue is *live*, not a snapshot: it's `backfillCandidates`/
- * `categoryBackfillCandidates`/`projectBackfillCandidates` recomputed off the
- * current list every render, filtered against `skippedIds` for items left
- * for later this session. That's what lets a plain "current item is the
- * front of the queue" model work with no index to keep in sync — once an
- * item's field is set it drops out on its own. Tasks, categories and
- * projects all carry a plain `id`, so the same `skippedIds` set works for
- * any of them without knowing which kind is active.
+ * `categoryBackfillCandidates`/`projectBackfillCandidates`/
+ * `itemBackfillCandidates` recomputed off the current list every render,
+ * filtered against `skippedIds` for items left for later this session.
+ * That's what lets a plain "current item is the front of the queue" model
+ * work with no index to keep in sync — once an item's field is set it drops
+ * out on its own. Tasks, categories, projects and grocery items all carry a
+ * plain `id`, so the same `skippedIds` set works for any of them without
+ * knowing which kind is active.
  *
- * **The People pool plays by `docs/arch/people.md`'s rules, not by the three
- * above it.** Two of them bite here and both are held in `peopleBackfill.ts`
+ * **The People pool plays by `docs/arch/people.md`'s rules, not by the other
+ * pools.** Two of them bite here and both are held in `peopleBackfill.ts`
  * rather than in this file: the queue runs in the People screen's own hand
  * order rather than alphabetically (an alphabetical queue is still the app
  * replacing a ranking somebody made on purpose), and nothing about the pool
@@ -143,6 +164,18 @@ const DURATION_UNIT_SEGMENTS = [
  * card shows that its siblings don't is the *cadence offer* — a number out of
  * your own history, which is rule 5 and the reason declaring a frequency for a
  * friend never has to be the only way in.
+ *
+ * **The Items pool's two fields aren't toggles either**, same shape as the
+ * project/person value-picker fields: `variety` opens the same generic-name
+ * grid `GroceryItemSheet`'s own Variety of field does (`genericNameSuggestions`),
+ * and `substitutes` opens the actual `SubstituteSheet` rather than reproducing
+ * its search-and-link flow inline. Because that sheet writes to the store
+ * itself (`linkItemSub`) rather than returning a value the way `RemindMePicker`/
+ * `BirthdayPicker` do, its card snapshots the item's substitute ids on open and
+ * diffs them on close (`openSubstituteSheet`/`closeSubstituteSheet`) to decide
+ * whether anything was actually added — a cancel leaves the card exactly where
+ * it was, and only a real add logs a session entry and lets the live queue
+ * drop the item.
  *
  * The header's redo icon (task fields only, for now) starts the same loop
  * over from scratch — every live task for the field, including ones already
@@ -155,7 +188,8 @@ type ActiveField =
   | { kind: 'task'; id: BackfillFieldId }
   | { kind: 'category'; id: CategoryBackfillFieldId }
   | { kind: 'project'; id: ProjectBackfillFieldId }
-  | { kind: 'person'; id: PersonBackfillFieldId };
+  | { kind: 'person'; id: PersonBackfillFieldId }
+  | { kind: 'item'; id: ItemBackfillFieldId };
 
 /**
  * One line of the compact review shown once a field's queue empties: what got
@@ -200,6 +234,11 @@ export function BackfillScreen() {
   const people = usePersonStore(useShallow(s => s.people));
   const updatePerson = usePersonStore(s => s.updatePerson);
   const personGroups = usePersonGroupStore(useShallow(s => s.groups));
+  const groceryItems = useGroceryStore(useShallow(s => s.items));
+  const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
+  const setVarietyOfKey = useGroceryStore(s => s.setVarietyOfKey);
+  const unlinkItemSub = useGroceryStore(s => s.unlinkItemSub);
+  const setItemBackfillDismissedFields = useGroceryStore(s => s.setItemBackfillDismissedFields);
 
   const [entityKind, setEntityKind] = useState<EntityKind>('task');
   const [active, setActive] = useState<ActiveField | null>(null);
@@ -246,11 +285,19 @@ export function BackfillScreen() {
   // person the card is about, so this is opt-in every time rather than
   // remembered across cards.
   const [applyCadenceToGroup, setApplyCadenceToGroup] = useState(false);
+  // The items pool's own picker, for the `substitutes` field — see the
+  // module doc comment above for why this is a real sheet rather than an
+  // inline control.
+  const [subSheetOpen, setSubSheetOpen] = useState(false);
+  // Snapshot of the current item's substitute ids, taken when the sheet
+  // opens — see openSubstituteSheet/closeSubstituteSheet.
+  const subsBeforeRef = useRef<Set<string>>(new Set());
 
   const taskCounts = useMemo(() => backfillFieldCounts(tasks, categories), [tasks, categories]);
   const categoryCounts = useMemo(() => categoryBackfillFieldCounts(categories), [categories]);
   const projectCounts = useMemo(() => projectBackfillFieldCounts(projects), [projects]);
   const personCounts = useMemo(() => personBackfillFieldCounts(people), [people]);
+  const itemCounts = useMemo(() => itemBackfillFieldCounts(groceryItems, itemSubs), [groceryItems, itemSubs]);
 
   const taskQueue = useMemo(
     () => active?.kind === 'task'
@@ -276,17 +323,25 @@ export function BackfillScreen() {
     () => active?.kind === 'person' ? personBackfillCandidates(people, active.id).filter(p => !skippedIds.has(p.id)) : [],
     [people, active, skippedIds]
   );
+  const itemQueue = useMemo(
+    () => active?.kind === 'item' ? itemBackfillCandidates(groceryItems, active.id, itemSubs).filter(i => !skippedIds.has(i.id)) : [],
+    [groceryItems, active, skippedIds, itemSubs]
+  );
   const currentProject = active?.kind === 'project'
     ? (manualCurrentId ? projects.find(p => p.id === manualCurrentId) ?? (projectQueue[0] ?? null) : (projectQueue[0] ?? null))
     : null;
   const currentPerson = active?.kind === 'person'
     ? (manualCurrentId ? people.find(p => p.id === manualCurrentId) ?? (personQueue[0] ?? null) : (personQueue[0] ?? null))
     : null;
+  const currentItem = active?.kind === 'item'
+    ? (manualCurrentId ? groceryItems.find(i => i.id === manualCurrentId) ?? (itemQueue[0] ?? null) : (itemQueue[0] ?? null))
+    : null;
   const queueLength = active?.kind === 'task' ? taskQueue.length
     : active?.kind === 'category' ? categoryQueue.length
     : active?.kind === 'project' ? projectQueue.length
-    : personQueue.length;
-  const currentId = currentTask?.id ?? currentCategory?.id ?? currentProject?.id ?? currentPerson?.id ?? null;
+    : active?.kind === 'person' ? personQueue.length
+    : itemQueue.length;
+  const currentId = currentTask?.id ?? currentCategory?.id ?? currentProject?.id ?? currentPerson?.id ?? currentItem?.id ?? null;
 
   /**
    * The cadence this person's own history suggests, or null when there is not
@@ -335,6 +390,7 @@ export function BackfillScreen() {
     setReminderPickerOpen(false);
     setBirthdayPickerOpen(false);
     setApplyCadenceToGroup(false);
+    setSubSheetOpen(false);
   }, [currentId]);
 
   // Whatever is already on file, so the field shows what's actually there
@@ -418,6 +474,17 @@ export function BackfillScreen() {
     setManualCurrentId(null);
     setSessionLog([]);
     setSessionTotal(personBackfillCandidates(people, id).length);
+  };
+
+  const chooseItemField = (id: ItemBackfillFieldId) => {
+    haptics.tap();
+    animateLayout();
+    setActive({ kind: 'item', id });
+    setSkippedIds(new Set());
+    setHistory([]);
+    setManualCurrentId(null);
+    setSessionLog([]);
+    setSessionTotal(itemBackfillCandidates(groceryItems, id, itemSubs).length);
   };
 
   const backToFields = () => {
@@ -796,7 +863,7 @@ export function BackfillScreen() {
         valueText: "Won't ask again",
         undo: () => updateProject(projectId, before),
       });
-    } else {
+    } else if (active.kind === 'person') {
       if (!currentPerson) return;
       const personId = currentPerson.id;
       const before = { backfillDismissedFields: currentPerson.backfillDismissedFields };
@@ -807,7 +874,82 @@ export function BackfillScreen() {
         valueText: "Won't ask again",
         undo: () => updatePerson(personId, before),
       });
+    } else {
+      if (!currentItem) return;
+      const itemId = currentItem.id;
+      const before = currentItem.backfillDismissedFields;
+      setItemBackfillDismissedFields(itemId, dismissItemBackfillField(currentItem, active.id).backfillDismissedFields);
+      logSession({
+        itemId,
+        title: currentItem.name,
+        valueText: "Won't ask again",
+        undo: () => setItemBackfillDismissedFields(itemId, before),
+      });
     }
+  };
+
+  // The item pool's `variety` field — a value picker like category/project's
+  // own applies, so no advance() call: setting a key drops the item from the
+  // live queue on its own once it no longer satisfies isItemFieldMissing.
+  const applyVariety = (key: string) => {
+    if (!currentItem || active?.kind !== 'item') return;
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    const itemId = currentItem.id;
+    const before = currentItem.varietyOfKey;
+    setVarietyOfKey(itemId, key);
+    const label = groceryItems.find(i => i.nameKey === key)?.name ?? key;
+    logSession({
+      itemId,
+      title: currentItem.name,
+      valueText: label,
+      undo: () => setVarietyOfKey(itemId, before),
+    });
+  };
+
+  // Same validation GroceryItemSheet's own Variety of field runs before
+  // minting a generic name nobody's typed before.
+  const handleCreateVariety = (name: string): string | void => {
+    if (!currentItem) return;
+    const key = groceryNameKey(name);
+    if (!key) return 'That isn’t a usable name.';
+    if (key === currentItem.nameKey) return 'An item can’t be a variety of itself.';
+    haptics.success();
+    applyVariety(key);
+  };
+
+  // The item pool's `substitutes` field opens the real SubstituteSheet rather
+  // than reproducing its search/link flow — see the module doc comment for
+  // why. This just remembers what the item had before, so close can tell
+  // whether anything was actually added.
+  const openSubstituteSheet = () => {
+    if (!currentItem) return;
+    haptics.tap();
+    subsBeforeRef.current = new Set(substitutesFor(currentItem.id, itemSubs, groceryItems).map(s => s.item.id));
+    setSubSheetOpen(true);
+  };
+
+  const closeSubstituteSheet = () => {
+    setSubSheetOpen(false);
+    if (!currentItem || active?.kind !== 'item') return;
+    const store = useGroceryStore.getState();
+    const nowSubs = substitutesFor(currentItem.id, store.itemSubs, store.items);
+    const added = nowSubs.filter(s => !subsBeforeRef.current.has(s.item.id));
+    // Cancelled, or nothing new — leave the card exactly where it was rather
+    // than logging a session entry for a value that didn't change.
+    if (added.length === 0) return;
+    recordVisited();
+    setManualCurrentId(null);
+    const itemId = currentItem.id;
+    const addedIds = added.map(s => s.item.id);
+    logSession({
+      itemId,
+      title: currentItem.name,
+      valueText: describeSubstitutes(nowSubs)!,
+      undo: () => addedIds.forEach(subId => unlinkItemSub(itemId, subId)),
+    });
   };
 
   // iOS's number-pad keyboard has no return key (see NumberPadAccessory), so
@@ -968,6 +1110,46 @@ export function BackfillScreen() {
               icon="people-outline"
               title="Nobody added yet"
               subtitle="People you add on the People screen show up here, so you can fill in birthdays and reminders for them a few at a time."
+              bottomOffset={tabBarHeight}
+            />
+          )
+        )}
+        {entityKind === 'item' && (
+          groceryItems.length > 0 ? (
+            <ScrollView contentContainerStyle={[styles.fieldList, { paddingBottom: tabBarHeight + spacing.lg }]}>
+              {ITEM_BACKFILL_FIELDS.map(field => {
+                const count = itemCounts[field.id];
+                return (
+                  <TouchableOpacity
+                    key={field.id}
+                    style={[styles.fieldRow, shadows.card]}
+                    onPress={() => chooseItemField(field.id)}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${field.label}, ${count === 0 ? 'every item already has one' : `${count} ${count === 1 ? 'item needs' : 'items need'} one`}`}
+                  >
+                    <View style={styles.fieldIcon}>
+                      <Ionicons name={ITEM_FIELD_ICONS[field.id]} size={iconSize.md} color={colors.accent} />
+                    </View>
+                    <View style={styles.fieldBody}>
+                      <Text style={styles.fieldLabel}>{field.label}</Text>
+                      <Text style={styles.fieldHint}>{field.hint}</Text>
+                      <Text style={count === 0 ? styles.fieldCountDone : styles.fieldCount}>
+                        {count === 0 ? 'Every item already has one' : `${count} ${count === 1 ? 'item needs' : 'items need'} one`}
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            // Nothing to walk until the catalog has a row in it — same call
+            // the People pool makes above for the same reason.
+            <EmptyState
+              icon="basket-outline"
+              title="Nothing in your catalog yet"
+              subtitle="Items you add on the Groceries screen show up here, so you can fill in varieties and substitutes for them a few at a time."
               bottomOffset={tabBarHeight}
             />
           )
@@ -1479,15 +1661,163 @@ export function BackfillScreen() {
     );
   }
 
-  const projectField = PROJECT_BACKFILL_FIELDS.find(f => f.id === active.id)!;
-  const currentProjectTaskCount = currentProject
-    ? tasks.filter(t => t.projectId === currentProject.id && !t.completed && !t.archived).length
-    : 0;
+  if (active.kind === 'project') {
+    const projectField = PROJECT_BACKFILL_FIELDS.find(f => f.id === active.id)!;
+    const currentProjectTaskCount = currentProject
+      ? tasks.filter(t => t.projectId === currentProject.id && !t.completed && !t.archived).length
+      : 0;
+
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <DetailHeader
+          title={projectField.label}
+          onBack={backToFields}
+          backAccessibilityLabel="Back to fields"
+        />
+        {sessionTotal > 0 && (
+          <View style={styles.progressRow}>
+            {history.length > 0 && (
+              <TouchableOpacity
+                onPress={goBack}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Previous project"
+              >
+                <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+            <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+            {!!currentId && (
+              <TouchableOpacity
+                onPress={skip}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this project for now"
+              >
+                <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {currentProject ? (
+          <ScrollView
+            contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View style={[styles.itemCard, shadows.card]}>
+              <Text style={styles.itemTitle} numberOfLines={2}>{currentProject.title}</Text>
+              <View style={styles.metaRow}>
+                <View style={styles.metaChip}>
+                  <Ionicons name="checkbox-outline" size={iconSize.xs} color={colors.textSecondary} />
+                  <Text style={styles.metaText} numberOfLines={1}>
+                    {currentProjectTaskCount} {currentProjectTaskCount === 1 ? 'task' : 'tasks'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {active.id === 'sequential' ? (
+              <PressableScale
+                style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+                onPress={applySequential}
+                accessibilityRole="button"
+                accessibilityLabel={projectField.label}
+              >
+                <Ionicons name="list" size={iconSize.md} color={colors.onAccent} />
+                <Text style={styles.toggleButtonText}>{projectField.label}</Text>
+              </PressableScale>
+            ) : (
+              <View style={styles.cadenceRow}>
+                <View style={styles.cadenceStepperRow}>
+                  <CountStepper
+                    value={nudgeDraft.count}
+                    onChange={next => setNudgeDraft(prev => ({ ...prev, count: next }))}
+                    min={1}
+                    max={CADENCE_UNIT_MAX[nudgeDraft.unit]}
+                    label="Review cadence"
+                    describeValue={n => describeCadence(fromCadenceParts({ ...nudgeDraft, count: n }))}
+                  />
+                </View>
+                <View style={styles.pillRow}>
+                  {CADENCE_UNITS.map(unit => {
+                    const unitSelected = nudgeDraft.unit === unit;
+                    return (
+                      <PressableScale
+                        key={unit}
+                        style={[styles.pill, unitSelected && styles.pillActive]}
+                        onPress={() => { haptics.tap(); setNudgeDraft(prev => withCadenceUnit(prev, unit)); }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: unitSelected }}
+                      >
+                        <Text style={styles.pillText}>{cadenceUnitLabel(unit)}</Text>
+                      </PressableScale>
+                    );
+                  })}
+                </View>
+                <PressableScale
+                  style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+                  onPress={applyNudge}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Bring this project up every ${describeCadence(fromCadenceParts(nudgeDraft))}`}
+                >
+                  <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
+                  <Text style={styles.toggleButtonText}>Bring it up this often</Text>
+                </PressableScale>
+              </View>
+            )}
+
+            <View style={styles.actionRow}>
+              <PressableScale
+                style={styles.skipButton}
+                onPress={dismiss}
+                accessibilityRole="button"
+                accessibilityLabel={`Leave "${projectField.label}" off for this project and don't ask again`}
+              >
+                <Text style={styles.skipText}>Don't ask again</Text>
+              </PressableScale>
+            </View>
+          </ScrollView>
+        ) : sessionLog.length > 0 ? (
+          <SessionReview
+            entries={sessionLog}
+            onUndo={undoSessionEntry}
+            onDone={backToFields}
+            tabBarHeight={tabBarHeight}
+            colors={colors}
+            styles={styles}
+            itemWord="project"
+            itemWordPlural="projects"
+          />
+        ) : (
+          <EmptyState
+            icon="checkmark-circle-outline"
+            title="All caught up"
+            subtitle="Every project already has this set. Pick another field to keep going."
+            actionLabel="Choose another field"
+            onAction={backToFields}
+            bottomOffset={tabBarHeight}
+          />
+        )}
+      </View>
+    );
+  }
+
+  const itemField = ITEM_BACKFILL_FIELDS.find(f => f.id === active.id)!;
+  const currentItemSubs = currentItem ? substitutesFor(currentItem.id, itemSubs, groceryItems) : [];
+  const varietyOptions = currentItem
+    ? genericNameSuggestions(currentItem, groceryItems).map(({ key, label }) => ({
+        key,
+        label,
+        selected: key === currentItem.varietyOfKey,
+        onPress: () => applyVariety(key),
+      }))
+    : [];
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <DetailHeader
-        title={projectField.label}
+        title={itemField.label}
         onBack={backToFields}
         backAccessibilityLabel="Back to fields"
       />
@@ -1498,7 +1828,7 @@ export function BackfillScreen() {
               onPress={goBack}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Previous project"
+              accessibilityLabel="Previous item"
             >
               <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
             </TouchableOpacity>
@@ -1509,7 +1839,7 @@ export function BackfillScreen() {
               onPress={skip}
               hitSlop={8}
               accessibilityRole="button"
-              accessibilityLabel="Skip this project for now"
+              accessibilityLabel="Skip this item for now"
             >
               <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
             </TouchableOpacity>
@@ -1517,71 +1847,44 @@ export function BackfillScreen() {
         </View>
       )}
 
-      {currentProject ? (
+      {currentItem ? (
         <ScrollView
           contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
           keyboardShouldPersistTaps="handled"
         >
           <View style={[styles.itemCard, shadows.card]}>
-            <Text style={styles.itemTitle} numberOfLines={2}>{currentProject.title}</Text>
+            <Text style={styles.itemTitle} numberOfLines={2}>{currentItem.name}</Text>
             <View style={styles.metaRow}>
               <View style={styles.metaChip}>
-                <Ionicons name="checkbox-outline" size={iconSize.xs} color={colors.textSecondary} />
-                <Text style={styles.metaText} numberOfLines={1}>
-                  {currentProjectTaskCount} {currentProjectTaskCount === 1 ? 'task' : 'tasks'}
-                </Text>
+                <Ionicons name="location-outline" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.metaText} numberOfLines={1}>{currentItem.aisle}</Text>
               </View>
             </View>
+            {!!currentItem.note.trim() && (
+              <Text style={styles.itemNotes} numberOfLines={2}>{currentItem.note.trim()}</Text>
+            )}
           </View>
 
-          {active.id === 'sequential' ? (
+          {active.id === 'variety' ? (
+            <PillGroup
+              options={varietyOptions}
+              noun="name"
+              onCreate={handleCreateVariety}
+              createMaxLength={GROCERY_NAME_MAX_LENGTH}
+              filterPlaceholder="Find or type a general name…"
+            />
+          ) : (
             <PressableScale
               style={[styles.toggleButton, { backgroundColor: colors.accent }]}
-              onPress={applySequential}
+              onPress={openSubstituteSheet}
               accessibilityRole="button"
-              accessibilityLabel={projectField.label}
+              accessibilityLabel={`Add a substitute for ${currentItem.name}`}
             >
-              <Ionicons name="list" size={iconSize.md} color={colors.onAccent} />
-              <Text style={styles.toggleButtonText}>{projectField.label}</Text>
+              <Ionicons name="swap-horizontal" size={iconSize.md} color={colors.onAccent} />
+              <Text style={styles.toggleButtonText}>
+                {currentItemSubs.length > 0 ? 'Add another substitute' : 'Add substitute'}
+              </Text>
             </PressableScale>
-          ) : (
-            <View style={styles.cadenceRow}>
-              <View style={styles.cadenceStepperRow}>
-                <CountStepper
-                  value={nudgeDraft.count}
-                  onChange={next => setNudgeDraft(prev => ({ ...prev, count: next }))}
-                  min={1}
-                  max={CADENCE_UNIT_MAX[nudgeDraft.unit]}
-                  label="Review cadence"
-                  describeValue={n => describeCadence(fromCadenceParts({ ...nudgeDraft, count: n }))}
-                />
-              </View>
-              <View style={styles.pillRow}>
-                {CADENCE_UNITS.map(unit => {
-                  const unitSelected = nudgeDraft.unit === unit;
-                  return (
-                    <PressableScale
-                      key={unit}
-                      style={[styles.pill, unitSelected && styles.pillActive]}
-                      onPress={() => { haptics.tap(); setNudgeDraft(prev => withCadenceUnit(prev, unit)); }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: unitSelected }}
-                    >
-                      <Text style={styles.pillText}>{cadenceUnitLabel(unit)}</Text>
-                    </PressableScale>
-                  );
-                })}
-              </View>
-              <PressableScale
-                style={[styles.toggleButton, { backgroundColor: colors.accent }]}
-                onPress={applyNudge}
-                accessibilityRole="button"
-                accessibilityLabel={`Bring this project up every ${describeCadence(fromCadenceParts(nudgeDraft))}`}
-              >
-                <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
-                <Text style={styles.toggleButtonText}>Bring it up this often</Text>
-              </PressableScale>
-            </View>
           )}
 
           <View style={styles.actionRow}>
@@ -1589,7 +1892,7 @@ export function BackfillScreen() {
               style={styles.skipButton}
               onPress={dismiss}
               accessibilityRole="button"
-              accessibilityLabel={`Leave "${projectField.label}" off for this project and don't ask again`}
+              accessibilityLabel={`Leave "${itemField.label}" unset for this item and don't ask again`}
             >
               <Text style={styles.skipText}>Don't ask again</Text>
             </PressableScale>
@@ -1603,19 +1906,24 @@ export function BackfillScreen() {
           tabBarHeight={tabBarHeight}
           colors={colors}
           styles={styles}
-          itemWord="project"
-          itemWordPlural="projects"
+          itemWord="item"
+          itemWordPlural="items"
         />
       ) : (
         <EmptyState
           icon="checkmark-circle-outline"
           title="All caught up"
-          subtitle="Every project already has this set. Pick another field to keep going."
+          subtitle="Nothing left to fill in for this field. Pick another to keep going."
           actionLabel="Choose another field"
           onAction={backToFields}
           bottomOffset={tabBarHeight}
         />
       )}
+      <SubstituteSheet
+        visible={subSheetOpen}
+        itemId={currentItem?.id ?? null}
+        onClose={closeSubstituteSheet}
+      />
     </View>
   );
 }

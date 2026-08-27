@@ -2332,6 +2332,13 @@ export interface GroceryItem {
    * by hand has nothing here to un-say.
    */
   priceHistory: PriceObservation[];
+  /**
+   * Which Backfill screen fields the user has said not to ask about again on
+   * this item — "this genuinely isn't a variety of anything", not "not right
+   * now" (that's the screen's own session-only skip). Same mechanism as
+   * `Task.backfillDismissedFields`, holding `ItemBackfillFieldId` values.
+   */
+  backfillDismissedFields: string[];
 }
 
 // How many days before an item's expiry its "Use up X" task falls due.

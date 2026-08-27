@@ -1176,6 +1176,11 @@ export function initDatabase(): void {
     // as "never declined", the only state that could be true before this
     // column existed.
     'ALTER TABLE people ADD COLUMN reach_out_offer_declined_at TEXT',
+    // Same mechanism as tasks/categories/projects/people.backfill_dismissed_fields
+    // above, for the Backfill screen's item pool (variety, substitutes). Empty
+    // on every existing row, which reads as "nothing dismissed yet" — the only
+    // honest state before this column existed. See GroceryItem.backfillDismissedFields.
+    "ALTER TABLE grocery_items ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2767,6 +2772,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     lastSpoiledAt: (row.last_spoiled_at as string) ?? null,
     varietyOfKey: (row.variety_of_key as string) ?? null,
     priceHistory: parsePriceHistory(row.price_history as string | null),
+    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
 
@@ -2784,8 +2790,9 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        pantry_check_declined_at, used_up_count, spoiled_count, last_spoiled_at,
-       last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key,
+       backfill_dismissed_fields)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -2800,6 +2807,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,
+      JSON.stringify(item.backfillDismissedFields),
     ]
   );
 }
@@ -2813,7 +2821,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        pantry_check_declined_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
-       preferred_product_id=?, brand_strict=?, variety_of_key=?
+       preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -2829,6 +2837,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,
+      JSON.stringify(item.backfillDismissedFields),
       item.id,
     ]
   );
