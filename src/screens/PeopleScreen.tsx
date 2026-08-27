@@ -17,6 +17,7 @@ import { ContactPickerSheet } from '../components/ContactPickerSheet';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { SelectionDot } from '../components/SelectionDot';
 import { SimpleBulkBar } from '../components/SimpleBulkBar';
+import { SwipeableRow } from '../components/SwipeableRow';
 import { PaintSelectionProvider, usePaintSelectionRow } from '../components/PaintSelection';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { useColors } from '../theme/ThemeContext';
@@ -78,10 +79,12 @@ export function PeopleScreen() {
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // The same bulk-selection machinery every other selectable list uses — see
-  // useRowSelection. Entry is header-icon only, the same call ArchivedScreen
-  // makes for the same reason: the row's long press is already spoken for by
-  // drag-to-reorder (the list's one hand-made ranking, see docs/arch/people.md
-  // rule 3), so there is no swipe or long-press left to also start a selection.
+  // useRowSelection. Reachable from the header icon and, like every other
+  // bulk-selecting list in the app, from swiping a row left — the row's long
+  // press is spoken for by drag-to-reorder (the list's one hand-made ranking,
+  // see docs/arch/people.md rule 3), but that only rules out long-press as a
+  // second entry point, not swipe, which is a distinct gesture and coexists
+  // with drag everywhere else it's used (Projects, Stacks, Today).
   const {
     selectionMode, selectedIds, enterSelectionMode, toggleSelection,
     exitSelection, selectAll, deselectAll, painting, paintProps,
@@ -183,11 +186,8 @@ export function PeopleScreen() {
             active: showArchived,
             accessibilityLabel: showArchived ? 'Show current people' : 'Show archived people',
           },
-          ...(visiblePeople.length > 0 ? [{
-            icon: 'checkmark-circle-outline' as const,
-            onPress: () => enterSelectionMode(),
-            accessibilityLabel: 'Select people',
-          }] : []),
+          // Selecting is reached by swiping a row now, same as every other
+          // bulk-selecting list — no header button needed.
         ]}
       />
 
@@ -263,6 +263,7 @@ export function PeopleScreen() {
                   onLongPress={canDrag ? drag : undefined}
                   canDrag={canDrag}
                   onToggleSelect={() => toggleSelection(person.id)}
+                  onSwipeSelect={() => enterSelectionMode(person.id)}
                   styles={styles}
                   colors={colors}
                 />
@@ -355,62 +356,71 @@ interface PersonRowProps {
   // site), which needs its own hint text distinct from selectionMode's.
   canDrag: boolean;
   onToggleSelect: () => void;
+  onSwipeSelect: () => void;
   styles: ReturnType<typeof makeStyles>;
   colors: Colors;
 }
 
 /** One row of the list — same shape as ArchivedScreen's own row: a tappable
  * body plus a trailing slot that's the chevron normally and a SelectionDot
- * while bulk-selecting. */
+ * while bulk-selecting. Swipe left enters bulk selection, same contract as
+ * every other list in the app; long press still reorders (see canDrag), and
+ * swiping is disabled while already selecting so it can't fight the dot. */
 function PersonRow({
   person, name, birthdayLabel, soon, isActive, selectionMode, selected,
-  onPress, onLongPress, canDrag, onToggleSelect, styles, colors,
+  onPress, onLongPress, canDrag, onToggleSelect, onSwipeSelect, styles, colors,
 }: PersonRowProps) {
   const paintRef = usePaintSelectionRow(person.id);
   const spokenMeta = birthdayLabel ? `Birthday ${birthdayLabel}` : null;
   return (
-    <View
-      ref={paintRef}
-      style={[styles.row, isActive && styles.rowActive, selectionMode && selected && styles.rowSelected]}
+    <SwipeableRow
+      style={styles.card}
+      enabled={!selectionMode}
+      selectAction={{ onSelect: onSwipeSelect, accessibilityLabel: `Select ${name}` }}
     >
-      <TouchableOpacity
-        style={styles.rowBody}
-        onPress={onPress}
-        onLongPress={onLongPress}
-        delayLongPress={interaction.delayLongPress}
-        activeOpacity={interaction.activeOpacity}
-        accessibilityRole="button"
-        accessibilityLabel={spokenMeta ? `${name}. ${spokenMeta}` : name}
-        accessibilityHint={selectionMode ? undefined : canDrag ? 'Double tap to open. Long press to reorder.' : 'Double tap to open.'}
+      <View
+        ref={paintRef}
+        style={[styles.row, isActive && styles.rowActive, selectionMode && selected && styles.rowSelected]}
       >
-        <View style={[styles.avatar, { backgroundColor: colors.accentSubtle }]}>
-          <Text style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
-        </View>
-        <View style={styles.info}>
-          <Text style={styles.name} numberOfLines={1}>{name}</Text>
-          {birthdayLabel && (
-            <View style={styles.metaRow}>
-              <Ionicons
-                name="gift-outline"
-                size={11}
-                // Accent only inside the lead window, and accent rather than a
-                // warning colour: a birthday coming up is a nice thing, not a
-                // debt. Nothing on this screen is ever red.
-                color={soon ? colors.accent : colors.textTertiary}
-              />
-              <Text style={[styles.metaText, soon && styles.metaSoon]} numberOfLines={1}>
-                {birthdayLabel}
-              </Text>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-      {selectionMode ? (
-        <SelectionDot selected={selected} onPress={onToggleSelect} />
-      ) : (
-        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-      )}
-    </View>
+        <TouchableOpacity
+          style={styles.rowBody}
+          onPress={onPress}
+          onLongPress={onLongPress}
+          delayLongPress={interaction.delayLongPress}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="button"
+          accessibilityLabel={spokenMeta ? `${name}. ${spokenMeta}` : name}
+          accessibilityHint={selectionMode ? undefined : canDrag ? 'Double tap to open. Long press to reorder.' : 'Double tap to open.'}
+        >
+          <View style={[styles.avatar, { backgroundColor: colors.accentSubtle }]}>
+            <Text style={styles.avatarText}>{name.slice(0, 1).toUpperCase()}</Text>
+          </View>
+          <View style={styles.info}>
+            <Text style={styles.name} numberOfLines={1}>{name}</Text>
+            {birthdayLabel && (
+              <View style={styles.metaRow}>
+                <Ionicons
+                  name="gift-outline"
+                  size={11}
+                  // Accent only inside the lead window, and accent rather than a
+                  // warning colour: a birthday coming up is a nice thing, not a
+                  // debt. Nothing on this screen is ever red.
+                  color={soon ? colors.accent : colors.textTertiary}
+                />
+                <Text style={[styles.metaText, soon && styles.metaSoon]} numberOfLines={1}>
+                  {birthdayLabel}
+                </Text>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+        {selectionMode ? (
+          <SelectionDot selected={selected} onPress={onToggleSelect} />
+        ) : (
+          <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+        )}
+      </View>
+    </SwipeableRow>
   );
 }
 
@@ -422,12 +432,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.bgTertiary,
   },
+  // The card's margin and radius live here, on SwipeableRow's own `style`
+  // prop, rather than on the row below — see the note on SwipeableRow for why
+  // a rounded row leaves its revealed panel square-cornered behind it.
+  card: {
+    borderRadius: radius.md,
+    marginBottom: spacing.sm,
+  },
+  // Flush, so it slides over the swipe panel rather than beside it.
   row: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     backgroundColor: colors.bgSecondary,
-    borderRadius: radius.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,
-    marginBottom: spacing.sm,
   },
   rowActive: { backgroundColor: colors.bgTertiary },
   rowSelected: { backgroundColor: colors.accentSubtle },
