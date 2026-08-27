@@ -18,6 +18,7 @@ import {
   quotaExpectedByNow,
   quotaUnitsToPace,
   isQuotaOnPace,
+  quotaRidesOutTheDay,
   quotaLeavesTodayAfterLog,
   quotaNextDueAt,
   isQuotaPartial,
@@ -139,6 +140,9 @@ const baseTask: Task = {
   targetCount: null,
   targetUnit: null,
   allowOvershoot: false,
+  quotaIntervalMinutes: null,
+  quotaReminders: false,
+  quotaStartedAt: null,
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
@@ -1500,6 +1504,21 @@ describe('quota tasks', () => {
         dueDate: new Date(2025, 5, 11, 12, 0, 0).toISOString(),
       };
       expect(isTaskVisible(tomorrow)).toBe(false);
+    });
+
+    it('an interval quota stays visible past target too — its count is arithmetic', () => {
+      // Same treatment allowOvershoot gets, through the shared predicate: a
+      // cadence has no finish line to have crossed, so reading as permanently
+      // on pace the moment span ÷ interval is reached would take it off Today
+      // for the rest of a run that is still running.
+      const paced = { ...quotaTask, quotaIntervalMinutes: 20, progressCount: 8 };
+      expect(isQuotaOnPace(paced)).toBe(false);
+      expect(isTaskVisible(paced)).toBe(true);
+      expect(quotaRidesOutTheDay(paced)).toBe(true);
+    });
+
+    it('a plain quota does not ride the day out', () => {
+      expect(quotaRidesOutTheDay(quotaTask)).toBe(false);
     });
 
     it('allowOvershoot: stays visible/loggable past target, unlike a plain quota', () => {
