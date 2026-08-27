@@ -1,6 +1,7 @@
 import {
   CALENDAR_REVIEW_TITLE,
   calendarReviewDayKey,
+  calendarReviewEventsFor,
   wantsCalendarReview,
 } from '../utils/calendarReviewTasks';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -48,5 +49,39 @@ describe('calendarReviewDayKey', () => {
 describe('CALENDAR_REVIEW_TITLE', () => {
   it('never varies — there is exactly one question this asks', () => {
     expect(CALENDAR_REVIEW_TITLE).toBe('Review tomorrow\'s calendar');
+  });
+});
+
+describe('calendarReviewEventsFor', () => {
+  const task = { generatedKind: 'calendarReview', generatedSourceId: '2026-08-26' } as
+    Pick<Task, 'generatedKind' | 'generatedSourceId'>;
+
+  it('reads back the events on the day the task names', () => {
+    const onDay = makeEvent({
+      id: 'e-on-day',
+      start: new Date(2026, 7, 26, 14).toISOString(),
+      end: new Date(2026, 7, 26, 15).toISOString(),
+    });
+    const dayBefore = makeEvent({
+      id: 'e-before',
+      start: new Date(2026, 7, 25, 14).toISOString(),
+      end: new Date(2026, 7, 25, 15).toISOString(),
+    });
+    const dayAfter = makeEvent({
+      id: 'e-after',
+      start: new Date(2026, 7, 27, 14).toISOString(),
+      end: new Date(2026, 7, 27, 15).toISOString(),
+    });
+    expect(calendarReviewEventsFor(task, [onDay, dayBefore, dayAfter])).toEqual([onDay]);
+  });
+
+  it('is empty for any other kind of task, even one carrying a source id', () => {
+    const other = { generatedKind: 'projectReview', generatedSourceId: '2026-08-26' } as
+      Pick<Task, 'generatedKind' | 'generatedSourceId'>;
+    expect(calendarReviewEventsFor(other, [makeEvent()])).toEqual([]);
+  });
+
+  it('is empty when there is nothing on the day', () => {
+    expect(calendarReviewEventsFor(task, [])).toEqual([]);
   });
 });
