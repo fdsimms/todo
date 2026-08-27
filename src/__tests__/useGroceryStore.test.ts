@@ -4920,6 +4920,46 @@ describe('use-up tasks', () => {
     expect(useUpTaskFor(spinach.id)).toBeUndefined();
   });
 
+  it('drops the live task when the item is marked out of it, and undo brings it back', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+
+    useGroceryStore.getState().markOutOfMany([spinach.id]);
+
+    // Answered here, so the task asking the same question must not survive —
+    // otherwise it resurfaces the next morning for something already resolved.
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+
+    useGroceryStore.getState().undoLastAction();
+
+    // Undo puts the row back on hand, so the task it was standing in for
+    // comes back with it.
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+    // Not a permanent opt-out — the drop was silent, not a decision.
+    expect(useGroceryStore.getState().items[0].useUpTask).not.toBe(false);
+  });
+
+  it('answerPantryReview("out") drops the live task, and reverting it restores that too', () => {
+    mockUseUpTasks = true;
+    const spinach = makeItem({ name: NAME });
+    seed([spinach]);
+    useGroceryStore.getState().setExpiresAt(spinach.id, '2026-08-17');
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+    const before = useGroceryStore.getState().items[0];
+
+    useGroceryStore.getState().answerPantryReview(spinach.id, 'out');
+
+    expect(useUpTaskFor(spinach.id)).toBeUndefined();
+
+    useGroceryStore.getState().revertPantryAnswer(before, null);
+
+    expect(useUpTaskFor(spinach.id)).toBeDefined();
+    expect(useGroceryStore.getState().items[0].useUpTask).not.toBe(false);
+  });
+
   it('honours an opt-out on the item, which is what deleting the task records', () => {
     mockUseUpTasks = true;
     const spinach = makeItem({ name: NAME, useUpTask: false });

@@ -258,7 +258,7 @@ render, so listing them adds lines without adding answers.
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
 - `src/store/useSyncStore.ts` — SyncPhase, useSyncStore, isSyncSupported
 - `src/store/useTaskGroupStore.ts` — useTaskGroupStore
-- `src/store/useTaskStore.ts` — CONTENT_FIELDS, useTaskStore
+- `src/store/useTaskStore.ts` — CONTENT_FIELDS, derivedTargetCount, useTaskStore
 - `src/store/useTemplateCategoryStore.ts` — useTemplateCategoryStore
 - `src/store/useTemplateStore.ts` — ApplyTemplateOptions, useTemplateStore
 - `src/store/useWeatherStore.ts` — useWeatherStore, useWeatherSync

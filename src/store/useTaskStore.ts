@@ -891,9 +891,13 @@ const QUOTA_SPAN_FIELDS = ['windowStart', 'windowEnd', 'quotaIntervalMinutes', '
  * count it already had when it isn't.
  *
  * Reads the same span the pace ramp and the notifier read, so the three can't
- * disagree about how many units a day holds.
+ * disagree about how many units a day holds. Exported so TaskEditor can keep
+ * its own on-screen count in step with the cadence as the user edits it,
+ * rather than saving whatever was last typed into the stepper.
  */
-function derivedTargetCount(task: Task): number | null {
+export function derivedTargetCount(task: Pick<Task,
+  'windowStart' | 'windowEnd' | 'quotaStartedAt' | 'quotaIntervalMinutes' | 'targetCount'
+>): number | null {
   if (task.quotaIntervalMinutes == null) return task.targetCount;
   const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
   const span = quotaRunSpan({
