@@ -148,7 +148,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
   pillActive: { backgroundColor: colors.accent },
-  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  pillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   pillBadge: {
     position: 'absolute', top: -4, right: -4,

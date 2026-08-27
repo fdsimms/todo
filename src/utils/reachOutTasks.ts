@@ -55,7 +55,14 @@ export function declinedRecently(
   return since < declineHoldDays(person.cadenceDays);
 }
 
-/** The person a reach-out task speaks for, or null for any other task. */
+/**
+ * The id a reach-out task speaks for, or null for any other task — a
+ * personId for a solo nudge, or a `PersonGroup` id once
+ * `collapseGroupedReachOuts` has folded several people into one row. The name
+ * predates groups; callers that need to tell the two apart resolve the id
+ * against `usePersonGroupStore` first, the same resolve-or-shrug every other
+ * cross-entity pointer in this layer uses.
+ */
 export function reachOutPersonId(
   task: Pick<Task, 'generatedKind' | 'generatedSourceId'>
 ): string | null {
@@ -194,6 +201,75 @@ export function staleReachOutTasks<
     const personId = reachOutPersonId(task);
     return !personId || !stillDue.has(personId);
   });
+}
+
+/**
+ * A `ReachOutWant` that may speak for more than one person — see
+ * `collapseGroupedReachOuts`. `sourceId` is what gets written as the
+ * generated task's `generatedSourceId`: a lone want's own `personId`, or the
+ * shared group's id once collapsed.
+ */
+export interface GroupedReachOutWant extends ReachOutWant {
+  sourceId: string;
+}
+
+/**
+ * Folds simultaneous wants naming people in the same `PersonGroup` into one
+ * row — a couple due for a nudge at once gets "Catch up with the Ortegas"
+ * once, not "Catch up with Sam" and "Catch up with Jamie" back to back. See
+ * the "Groups" section of `docs/arch/people.md`.
+ *
+ * Deliberately a pass over `wantedReachOuts`' own output rather than a change
+ * to that function: `wantedReachOuts` is what the existing tests pin down —
+ * the cadence gate, the decline hold, the sortOrder tie-break — and none of
+ * that changes for a solo want or for a group with only one member currently
+ * due. This only ever *merges* rows that function already decided were each
+ * independently due.
+ *
+ * **Order is preserved from `wants`**, so pass the uncapped, already
+ * `sortOrder`-sorted list (`wantedReachOuts(candidates, today, handled,
+ * candidates.length)`) and cap the result of this instead — capping first
+ * would cut a couple's second member out of the set before they had a chance
+ * to collapse, silently defeating the whole point on a day both happen to be
+ * due. A collapsed entry lands at its earliest-ranked member's position, so
+ * the cap's own tie-break still runs on hand-order, never on who asked first.
+ */
+export function collapseGroupedReachOuts(
+  wants: readonly ReachOutWant[],
+  groupIdOf: (personId: string) => string | null,
+  groupNameOf: (groupId: string) => string | null
+): GroupedReachOutWant[] {
+  const seen = new Set<string>();
+  const collapsed: GroupedReachOutWant[] = [];
+  for (const want of wants) {
+    if (seen.has(want.personId)) continue;
+    const groupId = groupIdOf(want.personId);
+    if (!groupId) {
+      seen.add(want.personId);
+      collapsed.push({ ...want, sourceId: want.personId });
+      continue;
+    }
+    const groupMates = wants.filter(w => !seen.has(w.personId) && groupIdOf(w.personId) === groupId);
+    groupMates.forEach(w => seen.add(w.personId));
+    if (groupMates.length === 1) {
+      collapsed.push({ ...want, sourceId: want.personId });
+      continue;
+    }
+    const name = groupNameOf(groupId);
+    // personId and phoneNumber have to name the same person, or the row's
+    // link button (built from personId) and its call/text buttons (built
+    // from phoneNumber) would point at two different members of the group.
+    const representative = groupMates.find(w => w.phoneNumber) ?? groupMates[0];
+    collapsed.push({
+      // Kept for readers that still expect a single person, not written
+      // anywhere as this want's identity — `sourceId` is that.
+      personId: representative.personId,
+      title: name ? `Catch up with ${name}` : want.title,
+      phoneNumber: representative.phoneNumber,
+      sourceId: groupId,
+    });
+  }
+  return collapsed;
 }
 
 /**

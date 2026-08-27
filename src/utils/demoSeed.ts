@@ -4,7 +4,9 @@ import { setHours } from 'date-fns/setHours';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -29,6 +31,7 @@ import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
 import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
+import { weatherSourceId, defaultWeatherRules } from './weatherTasks';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -67,9 +70,15 @@ export function seedDemoData(): void {
     archiveTask,
     pinGroup,
     completeProject,
+    archiveProject,
   } = useTaskStore.getState();
   const { addCategory, setCategoryEmoji } = useCategoryStore.getState();
   const { createProject, updateProject, removeProjectRow, restoreProject } = useProjectStore.getState();
+  // Projects have their own category pool, separate from the task categories
+  // above — the Projects screen is built entirely around the sections it
+  // produces, so with every demo project uncategorized the screen rendered as
+  // a flat list and the grouping read as a feature the app hasn't got.
+  const { addCategory: addProjectCategory } = useProjectCategoryStore.getState();
   const { createGroup } = useTaskGroupStore.getState();
 
   const today = getCurrentDayStart();
@@ -332,6 +341,31 @@ export function seedDemoData(): void {
   // Part-done, so the meter on the row reads as a meter rather than an empty bar.
   updateTask(water.id, { progressCount: 2 });
 
+  // The other kind of daily target: one whose cadence is the point and whose
+  // count is arithmetic. Invisible as a capability without a row using it —
+  // the interval, the nudges and the window all read as ordinary quota fields
+  // until something is actually spacing itself out across a working day.
+  const eyes = addTask({
+    title: 'Look 20 feet away',
+    notes: 'Rest your eyes for 20 seconds. Every 20 minutes while you are working.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    // Eight hours at 20 minutes. Stored as the interval, so the count follows
+    // the window rather than the other way round.
+    quotaIntervalMinutes: 20,
+    quotaReminders: true,
+    targetCount: 24,
+    targetUnit: 'breaks',
+    windowStart: '09:00',
+    windowEnd: '17:00',
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+  });
+  // Behind, so the row is actually on Today rather than paced into hiding —
+  // and short of its count, which is the state this kind spends its whole day
+  // in and closes out in without it counting as a miss.
+  updateTask(eyes.id, { progressCount: 7 });
+
   // An extra-task rule. Invisible until it fires, so the seed carries a tally
   // partway through the cycle: the editor's caption then reads as a rule in
   // progress rather than one nobody has started.
@@ -556,12 +590,20 @@ export function seedDemoData(): void {
   addTask({ title: 'Invoice the workshop day' });
   addTask({ title: 'Invoice the Ferndale rebrand' });
 
-  // --- A project -----------------------------------------------------------
-  const kitchen = createProject(
-    'Kitchen refresh',
-    today.toISOString(),
-    addDays(today, 45).toISOString(),
-  );
+  // --- Projects ------------------------------------------------------------
+  // Two named sections and a couple of projects left in neither, so the list
+  // shows both halves of groupProjectsByCategory: the uncategorized run that
+  // renders first with no header, and the named sections under theirs.
+  addProjectCategory('Around the house');
+  addProjectCategory('Ideas');
+
+  const kitchen = createProject('Kitchen refresh', addDays(today, 45).toISOString());
+  // Notes are collapsed to one line at the top of the project screen and
+  // expand on tap — with no project carrying any, that row never rendered.
+  updateProject(kitchen.id, {
+    category: 'Around the house',
+    notes: 'Budget is for materials only. The installer quoted separately, and the counters need templating before anything is ordered.',
+  });
   // Two of these are decisions — they completed by recording an answer, and
   // the project's Decisions block reads those answers back above the tasks.
   // Without a project holding one, that block never appears in demo mode and
@@ -597,14 +639,41 @@ export function seedDemoData(): void {
     if (done) completeTask(t.id, answer !== undefined ? { deliverableValue: answer } : undefined);
   });
 
+  // A stack built inside the project, the way the project screen's own
+  // "Stack" FAB item does it — each member gets both a groupId and this
+  // project's id, so it counts toward the project's own task list and stays
+  // grouped everywhere else a stack renders (Today, the Stacks screen,
+  // Search). Without one seeded, that combination reads as untested.
+  const quotes = createGroup('Contractor quotes', 'Home');
+  const abcQuote = addNewGroupedTask(quotes.id, 'Call ABC Contractors');
+  const sunriseQuote = addNewGroupedTask(quotes.id, 'Call Sunrise Builders');
+  updateTask(abcQuote.id, { dueDate: addDays(today, 2).toISOString() });
+  updateTask(sunriseQuote.id, { dueDate: addDays(today, 2).toISOString() });
+  addExistingToProject(abcQuote.id, kitchen.id);
+  addExistingToProject(sunriseQuote.id, kitchen.id);
+
   // A reference list, not a to-do list: nothing here ever gets a date, and
   // nudgeOptIn defaults to false, so it never trips the gone-quiet nudge or
   // shows up in "Pull from projects" the way an ordinary undated project
   // would. See Project.nudgeOptIn.
-  const giftIdeas = createProject('Gift ideas', null, null);
+  const giftIdeas = createProject('Gift ideas', null);
+  updateProject(giftIdeas.id, { category: 'Ideas' });
   ['Something for Mom\'s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);
+  });
+
+  // A project whose order is mandatory: only the top step is open, the rest
+  // wear a padlock and stay off Today and Later until it's done (see
+  // Project.sequential and utils/projectOrder). Its own project rather than a
+  // flag on one of the others — sequential hides every step but the first, and
+  // turning it on for the kitchen would have taken "Book the installer" out of
+  // Later, which is where that row is seeded to be seen.
+  const passport = createProject('Renew my passport', null);
+  updateProject(passport.id, { sequential: true });
+  ['Fill in the application form', 'Get new photos taken', 'Post it, recorded delivery'].forEach(title => {
+    const t = addTask({ title, category: 'Errands' });
+    addExistingToProject(t.id, passport.id);
   });
 
   // A project that has gone quiet, and the task the app writes about it.
@@ -620,8 +689,14 @@ export function seedDemoData(): void {
   // the project read as quiet — quiet is measured from the last completion, so
   // a project created seconds ago with no history would render "Quiet 0 days"
   // and demonstrate nothing.
-  const garage = createProject('Garage shelving', null, null);
-  updateProject(garage.id, { nudgeOptIn: true, nudgeCadenceDays: 14 });
+  //
+  // `autoSchedule` is the one Project field deliberately left unseeded. A
+  // project on the drip has its next task dated by the first foreground after
+  // the seed runs, so the row a screenshot shows wouldn't be the row this file
+  // wrote — and the same foreground would delete the review task below, since
+  // the two layers coordinate by excluding each other (see wantedProjectReviews).
+  const garage = createProject('Garage shelving', null);
+  updateProject(garage.id, { nudgeOptIn: true, nudgeCadenceDays: 14, category: 'Around the house' });
   // Quiet is measured from the project's own creation until something in it
   // is completed, so a project minted seconds ago is never quiet however long
   // its members have sat there — the seeded task would be swept away by the
@@ -630,7 +705,16 @@ export function seedDemoData(): void {
   // the row was made), so the back-date goes through the delete/undo pair,
   // which is a real store action writing a real Project.
   removeProjectRow(garage.id);
-  restoreProject({ ...garage, nudgeOptIn: true, nudgeCadenceDays: 14, createdAt: subDays(today, 28).toISOString() });
+  // The fields set by the updateProject above are restated here, not just
+  // spread: `garage` is the row createProject returned, so it predates that
+  // patch and spreading it alone would put the project back at its defaults.
+  restoreProject({
+    ...garage,
+    nudgeOptIn: true,
+    nudgeCadenceDays: 14,
+    category: 'Around the house',
+    createdAt: subDays(today, 28).toISOString(),
+  });
   const measured = addTask({ title: 'Measure the wall', category: 'Home' });
   addExistingToProject(measured.id, garage.id);
   completeTask(measured.id);
@@ -672,10 +756,32 @@ export function seedDemoData(): void {
     ...generatedBy('calendarReview', dayKeyOf(addDays(today, 1))),
   });
 
+  // A weather task — off by default, same reasoning as the two generators
+  // above: seeded directly rather than left to checkWeatherTasks, which reads
+  // the real device location and network, neither of which this fictional
+  // day should touch (see isDemoModeActive in checkWeatherTasks). The rule
+  // itself is still written to settings, alongside the two it ships with but
+  // doesn't fire today, so the sheet that lists them isn't empty either.
+  addCategory('Weather');
+  setCategoryEmoji('Weather', '☀️');
+  useSettingsStore.getState().setWeatherTaskCategory('Weather');
+  const [sunscreenRule, ...otherWeatherRules] = defaultWeatherRules();
+  useSettingsStore.getState().setWeatherRules([
+    { ...sunscreenRule, lastFiredDayKey: dayKeyOf(today) },
+    ...otherWeatherRules,
+  ]);
+  addTask({
+    title: sunscreenRule.title,
+    dueDate: today.toISOString(),
+    category: 'Weather',
+    ...generatedBy('weather', weatherSourceId(dayKeyOf(today), sunscreenRule.id)),
+  });
+
   // Marked complete rather than archived — demonstrates Project.completed,
   // which has its own Completed list (see ProjectEditor's Mark complete row)
   // instead of disappearing into Archived the way finishing a project used to.
-  const hallway = createProject('Repaint the hallway', null, null);
+  const hallway = createProject('Repaint the hallway', null);
+  updateProject(hallway.id, { category: 'Around the house' });
   ['Buy paint and tape', 'Tape the trim', 'Two coats, let dry between'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
     addExistingToProject(t.id, hallway.id);
@@ -683,12 +789,25 @@ export function seedDemoData(): void {
   });
   completeProject(hallway.id, { archiveRemaining: false });
 
+  // Archived rather than completed: the Projects screen's third list had
+  // nothing in it, so the Archived filter demonstrated only its empty state.
+  // Abandoned rather than finished, which is what archiving without completing
+  // says — its two members stay live and unfiled the same way they would for a
+  // real archive.
+  const basement = createProject('Basement declutter', null);
+  updateProject(basement.id, { category: 'Around the house' });
+  ['Hire a skip', 'Sort the boxes by the stairs'].forEach(title => {
+    const t = addTask({ title, category: 'Home' });
+    addExistingToProject(t.id, basement.id);
+  });
+  archiveProject(basement.id);
+
   // Every task done but the project itself left active — the state the
   // "Mark complete" affordance on the Projects list and the project detail
   // screen exists for. Left uncompleted on purpose, unlike the hallway
   // above: that one demonstrates Project.completed, this one demonstrates
   // the nudge to reach it.
-  const gate = createProject('Fix the back gate', null, null);
+  const gate = createProject('Fix the back gate', null);
   ['Buy a new hinge', 'Sand and repaint'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
     addExistingToProject(t.id, gate.id);
@@ -850,6 +969,7 @@ export function seedDemoData(): void {
  */
 function seedPeople(today: Date): void {
   const { createPerson, updatePerson } = usePersonStore.getState();
+  const { createGroup } = usePersonGroupStore.getState();
   const { addTask, updateTask, completeTask } = useTaskStore.getState();
 
   // One birthday inside the lead window so the generated task is genuinely on
@@ -879,6 +999,17 @@ function seedPeople(today: Date): void {
     phoneNumber: '555 0172',
   });
 
+  // A group, so a fresh install of demo mode actually shows the capability
+  // rather than reading as a feature the app doesn't have. Named single-word
+  // on purpose: the "@" mention grammar only ever matches one word at a time
+  // (see matchPersonMentions), so a group meant to be taggable needs a name
+  // that's tag-friendly, the same way a person's own name already is. Dustin
+  // and Ansley already share a task below, which is exactly the kind of pair
+  // this feature exists for.
+  const household = createGroup('Household');
+  updatePerson(dustin.id, { groupId: household.id });
+  updatePerson(ansley.id, { groupId: household.id });
+
   // No birthday at all, which is the state most people are added in: a name is
   // enough and everything else is optional. She is the one person opted into a
   // reminder, because the generator is invisible until somebody is — and she
@@ -896,7 +1027,11 @@ function seedPeople(today: Date): void {
   // Tasks that name people, which is what a shared history is made of (#2045).
   // One planned and one already done, so the link reads both ways rather than
   // only as something upcoming.
-  const beach = addTask({ title: 'Beach day', dueDate: addDays(today, 5).toISOString() });
+  // The title carries the "@" tag itself, same as a real quick-add would have
+  // resolved it — proof the tag renders as a tinted token in place rather than
+  // getting stripped out, and that tagging the group set personIds for both
+  // members at once instead of needing "@dustin @ansley" written out.
+  const beach = addTask({ title: 'Beach day with @Household', dueDate: addDays(today, 5).toISOString() });
   updateTask(beach.id, { personIds: [dustin.id, ansley.id] });
 
   const coffee = addTask({ title: 'Coffee with Mom' });
@@ -1157,7 +1292,6 @@ function seedRecipes(): DemoRecipes {
     setEstimatedMinutes,
     setPrepMinutes,
     setLeftoverKeepDays,
-    toggleFavorite,
     markCooked,
     startCookTimer,
     addStep,
@@ -1237,7 +1371,7 @@ function seedRecipes(): DemoRecipes {
   setNotes(oats.id, 'Assembles in about five minutes the night before. Keeps three days in a jar.');
   setServings(oats.id, 2);
   setPrepMinutes(oats.id, 10);
-  toggleFavorite(oats.id);
+  setVote(oats.id, 'liked');
 
   const sandwich = newRecipe('Turkey and avocado sandwich');
   addIngredientsFromText(
@@ -1408,11 +1542,11 @@ function seedRecipes(): DemoRecipes {
   const defrost = addPrepTask(salmon.id, 'Move the salmon to the fridge to defrost');
   if (defrost) updatePrepTask(salmon.id, defrost.id, { offsetDays: -1, reminderOffsetMinutes: 120 });
   [0, 1].forEach(() => markCooked(salmon.id));
-  // Cooked it twice and decided against a third — the down side of the vote,
-  // set the same way the post-cook sheet's "How was it?" section sets it. The
-  // stir-fry below is deliberately left unrated, so cooking tonight's dinner in
-  // the demo is what shows that section being asked.
-  setVote(salmon.id, 'down');
+  // Cooked it twice and decided against a third — the never-again side of the
+  // vote, set the same way the post-cook sheet's "How was it?" section sets
+  // it. The stir-fry below is deliberately left unrated, so cooking tonight's
+  // dinner in the demo is what shows that section being asked.
+  setVote(salmon.id, 'never');
   // The shared component — the same mash inside two different dinners, which
   // is the whole point of a reference rather than a copy.
   addComponent(salmon.id, mash.id);
@@ -1447,8 +1581,7 @@ function seedRecipes(): DemoRecipes {
   const rest = addPrepTask(steak.id, 'Take the steak out of the fridge');
   if (rest) updatePrepTask(steak.id, rest.id, { offsetDays: 0, reminderOffsetMinutes: 45 });
   markCooked(steak.id);
-  toggleFavorite(steak.id);
-  setVote(steak.id, 'up');
+  setVote(steak.id, 'loved');
 
   // A recipe page saved from another app's share sheet, still waiting to be
   // imported — the banner at the top of Recipes. Seeded because the share

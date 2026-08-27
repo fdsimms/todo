@@ -27,6 +27,7 @@ const basePerson: Person = {
   reachOutDeclinedAt: null,
   askAbout: '',
   backfillDismissedFields: [],
+  groupId: null,
 };
 
 describe('isPersonFieldMissing', () => {

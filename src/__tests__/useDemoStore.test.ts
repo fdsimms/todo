@@ -14,7 +14,11 @@ import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
+import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
+import { liveProjectSteps } from '../utils/projectOrder';
+import { isHeldBack } from '../utils/visibilityUtils';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
@@ -175,6 +179,8 @@ jest.mock('expo-sqlite', () => {
 jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn(),
   cancelTaskReminder: jest.fn(),
+  scheduleQuotaNudges: jest.fn(),
+  cancelQuotaNudges: jest.fn(),
   rescheduleAllReminders: jest.fn(),
   // Reached through useTaskStore.initialize, which fans out to useFocusStore.
   scheduleFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
@@ -203,6 +209,13 @@ jest.mock('../utils/deadlineCalendarSync', () => ({
 // AppState directly.
 jest.mock('../store/useCalendarStore', () => ({
   useCalendarStore: { getState: () => ({ events: [], loaded: false }) },
+}));
+// And the same again for the weather store, which also imports AppState
+// directly — checkWeatherTasks reads its snapshot but demo mode seeds its
+// weather task by hand (see demoSeed.ts), so an empty snapshot here is never
+// actually read.
+jest.mock('../store/useWeatherStore', () => ({
+  useWeatherStore: { getState: () => ({ snapshot: null, snapshotDayKey: null, refreshing: false }) },
 }));
 
 // ---------------------------------------------------------------------------
@@ -243,7 +256,7 @@ describe('demo mode', () => {
   it('hides real categories, tags, projects and stacks too, not just tasks', () => {
     useTaskStore.getState().addCategory('Therapy');
     useTaskStore.getState().addTag('confidential');
-    useProjectStore.getState().createProject('Divorce paperwork', null, null);
+    useProjectStore.getState().createProject('Divorce paperwork', null);
     useTaskGroupStore.getState().createGroup('Medications', null);
 
     useDemoStore.getState().enterDemoMode();
@@ -558,6 +571,25 @@ describe('demo mode', () => {
     expect(target.recurrenceType).not.toBe('none');
   });
 
+  it('seeds a daily target paced by an interval, nudges and all', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const paced = tasks.find(t => t.quotaIntervalMinutes !== null);
+    expect(paced).toBeDefined();
+    // The window is what the interval divides, so a seeded cadence without one
+    // would be spacing itself across whatever active hours happened to be set.
+    expect(paced!.windowStart).not.toBeNull();
+    expect(paced!.windowEnd).not.toBeNull();
+    // The nudge is the whole reason this kind exists — a cadence you have to
+    // keep checking the app for is the thing it's meant to replace.
+    expect(paced!.quotaReminders).toBe(true);
+    // Behind and short of its count: the state it spends the day in, and the
+    // one it closes out in without that being a miss.
+    expect(paced!.progressCount).toBeGreaterThan(0);
+    expect(paced!.progressCount).toBeLessThan(paced!.targetCount!);
+  });
+
   // A timed task can hand its countdown out to its subtasks, and one that
   // hasn't reads exactly like every timed task did before that was possible.
   it('seeds a timed task with its countdown split across its subtasks', () => {
@@ -823,6 +855,24 @@ describe('demo mode', () => {
     expect(open.some(t => t.deferUntil !== null)).toBe(true);
   });
 
+  // The project screen's "Stack" FAB item builds a stack whose members carry
+  // both a groupId and the project's id — otherwise that combination ships
+  // untested. Without a row like this, a stack member reads as an ordinary
+  // project task with no stack header anywhere else in the app.
+  it('seeds a stack whose members also belong to a project', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    expect(kitchen).toBeDefined();
+
+    const quotes = useTaskGroupStore.getState().groups.find(g => g.title === 'Contractor quotes');
+    expect(quotes).toBeDefined();
+
+    const members = useTaskStore.getState().tasks.filter(t => t.groupId === quotes!.id);
+    expect(members.length).toBeGreaterThan(0);
+    expect(members.every(t => t.projectId === kitchen!.id)).toBe(true);
+  });
+
   it('seeds a reference-list project excluded from every nudge', () => {
     // A checklist project like Gift ideas has nothing but undated tasks —
     // exactly what would otherwise read as "gone quiet" — so the seed only
@@ -855,6 +905,60 @@ describe('demo mode', () => {
     const progress = projectProgress(gate!.id, useTaskStore.getState().tasks);
     expect(progress.total).toBeGreaterThan(0);
     expect(progress.done).toBe(progress.total);
+  });
+
+  it('seeds project categories, with projects filed under them and outside them', () => {
+    // The Projects screen is built around category sections, so a board where
+    // every project is uncategorized renders as a flat list and the grouping
+    // reads as a feature the app hasn't got. Both branches of
+    // groupProjectsByCategory need something in them: the uncategorized run
+    // that leads with no header, and the named sections under theirs.
+    useDemoStore.getState().enterDemoMode();
+
+    const categories = useProjectCategoryStore.getState().categories.map(c => c.name);
+    expect(categories.length).toBeGreaterThan(1);
+
+    const projects = useProjectStore.getState().projects;
+    expect(projects.some(p => p.category !== null)).toBe(true);
+    expect(projects.some(p => p.category === null)).toBe(true);
+    // Every category a project claims is one that exists in the pool — a
+    // dangling name renders a section header for a category the picker can't
+    // offer.
+    projects.forEach(p => {
+      if (p.category !== null) expect(categories).toContain(p.category);
+    });
+  });
+
+  it('seeds a sequential project, with its later steps actually held back', () => {
+    // Project.sequential is invisible on a project of one live step: the
+    // padlock, the step numbers and the "In order" caption all need a second
+    // step that is genuinely blocked, not merely further down the list.
+    useDemoStore.getState().enterDemoMode();
+
+    const passport = useProjectStore.getState().projects.find(p => p.title === 'Renew my passport');
+    expect(passport?.sequential).toBe(true);
+
+    const steps = liveProjectSteps(passport!.id, useTaskStore.getState().tasks);
+    expect(steps.length).toBeGreaterThan(1);
+    expect(isHeldBack(steps[0])).toBe(false);
+    expect(steps.slice(1).every(t => isHeldBack(t))).toBe(true);
+  });
+
+  it('seeds a project carrying a deadline', () => {
+    // The one date a project has, and the "By Oct 10" line on its card. With
+    // none seeded that line never renders and the field reads as absent.
+    useDemoStore.getState().enterDemoMode();
+    expect(useProjectStore.getState().projects.some(p => p.deadline !== null)).toBe(true);
+  });
+
+  it('seeds an archived project and a project carrying notes', () => {
+    // Two empty surfaces otherwise: the Projects screen's Archived filter, and
+    // the notes row that heads a project's own screen.
+    useDemoStore.getState().enterDemoMode();
+
+    const projects = useProjectStore.getState().projects;
+    expect(projects.some(p => p.archived)).toBe(true);
+    expect(projects.some(p => p.notes.trim() !== '')).toBe(true);
   });
 
   it('seeds a task that has been pushed enough times to trip the postpone check', () => {
@@ -941,6 +1045,22 @@ describe('demo seed — people', () => {
   it('an opted-in person has a real cadence behind the opt-in', () => {
     const optedIn = usePersonStore.getState().people.find(p => p.nudgeOptIn)!;
     expect(optedIn.cadenceDays).toBeGreaterThan(0);
+  });
+
+  // A PersonGroup with no seeded row reads as a feature the app doesn't
+  // have, the same reasoning every other row in this file exists for.
+  it('seeds a group with a couple of people in it, sharing one name', () => {
+    const groups = usePersonGroupStore.getState().groups;
+    expect(groups.length).toBeGreaterThan(0);
+    const people = usePersonStore.getState().people;
+    const members = people.filter(p => p.groupId === groups[0].id);
+    expect(members.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('seeds a task tagging the group by name instead of naming each member', () => {
+    const groups = usePersonGroupStore.getState().groups;
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.some(t => t.title.includes(`@${groups[0].name}`))).toBe(true);
   });
 
   // The Backfill screen's People pool has nothing to walk unless somebody in
@@ -1693,7 +1813,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   it('seeds recipe duration, cook history, attribution and a live timer', () => {
     const { recipes } = useRecipeStore.getState();
 
-    expect(recipes.some(r => r.favorite)).toBe(true);
     expect(recipes.some(r => r.tags.length > 1)).toBe(true);
     // A real dietary tag, not just a cooking-style one — the excluded-tags
     // picker (#1693) needs something a household would actually exclude on.
@@ -1708,10 +1827,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.leftoverKeepDays === null)).toBe(true);
     expect(recipes.some(r => r.prepTasks.some(p => p.reminderOffsetMinutes !== null))).toBe(true);
     expect(recipes.some(r => r.cookCount > 1 && r.lastCookedAt)).toBe(true);
-    // Both sides of the vote — a loved, favorited dish and a cooked-twice one
-    // decided against, so the box's "Loved first" sort has something to show.
-    expect(recipes.some(r => r.vote === 'up')).toBe(true);
-    expect(recipes.some(r => r.vote === 'down')).toBe(true);
+    // Two sides of the vote — a loved dish and a cooked-twice one decided
+    // against — so the box's "Loved first" sort has something to show.
+    expect(recipes.some(r => r.vote === 'loved')).toBe(true);
+    expect(recipes.some(r => r.vote === 'never')).toBe(true);
     expect(recipes.some(r => r.timerStartedAt)).toBe(true);
     // All three attribution shapes — a URL, a byline, and a cookbook page.
     expect(recipes.some(r => r.sourceUrl)).toBe(true);
@@ -2000,6 +2119,29 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(review!.category).toBe('Calendar Events');
     expect(useSettingsStore.getState().calendarEventCategory).toBe('Calendar Events');
     expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+  });
+
+  it('seeds a weather task and the rules alongside it', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const rules = settings.weatherRules;
+    expect(rules.length).toBe(3);
+    const sunscreenRule = rules.find(r => r.condition === 'sunny');
+    expect(sunscreenRule).toBeDefined();
+
+    const weatherTask = tasks.find(t => t.generatedKind === 'weather');
+    expect(weatherTask).toBeDefined();
+    expect(weatherTask!.title).toBe(sunscreenRule!.title);
+    expect(weatherTask!.category).toBe('Weather');
+    expect(settings.weatherTaskCategory).toBe('Weather');
+    expect(weatherTask!.generatedSourceId).toBe(`${dayKeyOf(getCurrentDayStart())}#${sunscreenRule!.id}`);
+    // Only the rule that fired is marked considered for today — the other two
+    // are still askable on whatever day their own condition shows up.
+    expect(sunscreenRule!.lastFiredDayKey).toBe(dayKeyOf(getCurrentDayStart()));
+    rules.filter(r => r.id !== sunscreenRule!.id).forEach(r => {
+      expect(r.lastFiredDayKey).toBeNull();
+    });
   });
 
   it('leaves that item free of a use-by date, so it carries one task and not two', () => {

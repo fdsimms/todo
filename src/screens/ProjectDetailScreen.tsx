@@ -23,6 +23,8 @@ import { PaintSelectionProvider } from '../components/PaintSelection';
 import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
+import { TaskGroupEditor } from '../components/TaskGroupEditor';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
@@ -39,7 +41,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import type { Task, Project, TaskTemplate } from '../types';
+import type { Task, Project, TaskGroup, TaskTemplate } from '../types';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
 import { SearchField } from '../components/SearchField';
 import { DetailHeader } from '../components/DetailHeader';
@@ -55,6 +57,7 @@ const NO_SUBTASKS: Task[] = [];
 // Bottom-up: "New task" ends up closest to the button.
 const ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
+  { key: 'stack', label: 'Stack', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
   { key: 'new', label: 'New task', icon: 'checkbox' },
 ];
@@ -74,6 +77,7 @@ export function ProjectDetailScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
+  const bulkRemoveFromProject = useTaskStore(s => s.bulkRemoveFromProject);
   const reorderProjectTasks = useTaskStore(s => s.reorderProjectTasks);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
@@ -83,10 +87,18 @@ export function ProjectDetailScreen() {
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const setDeliverableValue = useTaskStore(s => s.setDeliverableValue);
   const completeProject = useTaskStore(s => s.completeProject);
+  const createTaskGroup = useTaskGroupStore(s => s.createGroup);
+  const removeGroupRow = useTaskGroupStore(s => s.removeGroupRow);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
+  const [groupEditorVisible, setGroupEditorVisible] = useState(false);
+  // Set while editingGroup is a stack freshly created from the add menu —
+  // an untitled one is garbage-collected on close rather than left behind
+  // as a nameless stack (see TodayScreen's own newStackIdRef).
+  const newStackIdRef = React.useRef<string | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   // True while a subtask inside the expanded row is mid-drag; the list has to
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
@@ -161,8 +173,13 @@ export function ProjectDetailScreen() {
     .filter(t => t.completed)
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
   // Same identity-grouped count the Projects list badges its quick-complete
-  // action with — a recurring member never reads done here either.
-  const progress = project ? projectProgress(project.id, allTasks) : { done: 0, total: 0 };
+  // action with — a recurring member never reads done here either. Memoized
+  // because it filters the whole task list and walks a previousOccurrenceId
+  // chain per member, and this screen re-renders on every row tap.
+  const progress = useMemo(
+    () => (project ? projectProgress(project.id, allTasks) : { done: 0, total: 0 }),
+    [project?.id, allTasks],
+  );
   const allDone = progress.total > 0 && progress.done === progress.total && !project?.completed;
 
   const handleMarkComplete = () => {
@@ -262,6 +279,13 @@ export function ProjectDetailScreen() {
     }
     if (key === 'template') {
       setTemplatePickerVisible(true);
+      return;
+    }
+    if (key === 'stack') {
+      const group = createTaskGroup('', null);
+      newStackIdRef.current = group.id;
+      setEditingGroup(group);
+      setGroupEditorVisible(true);
       return;
     }
     setExistingSearch('');
@@ -518,6 +542,14 @@ export function ProjectDetailScreen() {
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
             onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
+            // The other half of "Add existing task", which this screen has had
+            // its own picker for since the start while taking one back out was
+            // reachable from nowhere on it (see BulkActionBar's own note).
+            onRemoveFromProject={() => {
+              animateLayout();
+              bulkRemoveFromProject(Array.from(selectedIds));
+              exitSelection();
+            }}
             onSelectAll={() => selectAll(selectableTasks.map(t => t.id))}
             onDeselectAll={deselectAll}
             onCancel={exitSelection}
@@ -589,6 +621,23 @@ export function ProjectDetailScreen() {
           onSelect={handleAddMenuSelect}
           bottom={insets.bottom + spacing.xl}
           accessibilityLabel="Add task to project"
+        />
+
+        <TaskGroupEditor
+          visible={groupEditorVisible}
+          group={editingGroup}
+          isNew={newStackIdRef.current !== null}
+          projectId={project?.id}
+          onClose={() => {
+            setGroupEditorVisible(false);
+            if (newStackIdRef.current) {
+              const id = newStackIdRef.current;
+              newStackIdRef.current = null;
+              const current = useTaskGroupStore.getState().getGroupById(id);
+              if (current && current.title.trim() === '') removeGroupRow(id);
+            }
+            setEditingGroup(null);
+          }}
         />
 
         <QuickAddModal

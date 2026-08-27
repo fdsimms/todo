@@ -29,6 +29,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { useTitleSelection } from '../hooks/useTitleSelection';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -73,6 +74,8 @@ import { findArchivedMatch } from '../utils/archiveMatch';
 import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, matchPersonMentions, findAmbiguousMention, applyMentionOverrides, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { usePersonStore } from '../store/usePersonStore';
+import { usePersonGroupStore } from '../store/usePersonGroupStore';
+import { groupMentionTokens } from '../utils/peopleRegistry';
 import { clampSupplyCount, formatSupplyLeft, MAX_SUPPLY_COUNT } from '../utils/supply';
 import { describeTitleRuleTargets, resolveTitleRules } from '../utils/titleRules';
 import { KNOWN_LINK_APPS, linkAppsFor } from '../constants/linkApps';
@@ -206,6 +209,7 @@ export function QuickAddModal({
   // Archived people are out of the picker but never stripped off a task that
   // already names them, the same call TaskEditor makes.
   const people = usePersonStore(useShallow(s => s.people.filter(p => !p.archived)));
+  const groups = usePersonGroupStore(useShallow(s => s.groups));
   // Read only to name a project a title rule files into — quick add has no
   // project picker; see the projectId state below.
   const projects = useProjectStore(useShallow(s => s.projects));
@@ -311,9 +315,10 @@ export function QuickAddModal({
 
   // ==== the draft: every field this sheet can set ====
   const [title, setTitle] = useState('');
-  // Tracked only so TitleTokenAccessory's # / @ buttons know where to splice
-  // in a token — the input itself doesn't need this to render.
-  const [titleSelection, setTitleSelection] = useState<{ start: number; end: number }>({ start: 0, end: 0 });
+  // The caret is tracked so TitleTokenAccessory's # / @ buttons know where to
+  // splice in a token, and deliberately not rendered — see the hook's note on
+  // why feeding it back through `selection` breaks ordinary typing.
+  const titleCaret = useTitleSelection(title);
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
@@ -388,7 +393,7 @@ export function QuickAddModal({
   useEffect(() => {
     if (visible) {
       setTitle(initialTitle ?? '');
-      setTitleSelection({ start: (initialTitle ?? '').length, end: (initialTitle ?? '').length });
+      titleCaret.resetCaret(initialTitle ?? '');
       setPriority(newTaskDefaults.priority ?? 0);
       setEffort(newTaskDefaults.effort ?? 0);
       setEstimatedMinutes(null);
@@ -682,10 +687,11 @@ export function QuickAddModal({
   // what's typed next (see ambiguousMention above), so a pick made from that
   // tooltip is layered on top here instead of changing the title text — see
   // applyMentionOverrides' doc comment for why.
+  const groupTokens = useMemo(() => groupMentionTokens(), [people, groups]);
   const personMentions = useMemo(() => {
-    const matched = matchPersonMentions(title, people);
+    const matched = matchPersonMentions(title, people, groupTokens);
     return applyMentionOverrides(title, matched, personOverrides);
-  }, [title, people, personOverrides]);
+  }, [title, people, groupTokens, personOverrides]);
   const personIds = useMemo(
     () => [...new Set(personMentions.map(m => m.personId))],
     [personMentions]
@@ -710,7 +716,7 @@ export function QuickAddModal({
   const applySuggestion = (suggestion: string) => {
     haptics.tap();
     setTitle(suggestion);
-    setTitleSelection({ start: suggestion.length, end: suggestion.length });
+    titleCaret.moveCaret(suggestion);
     inputRef.current?.focus();
   };
 
@@ -718,11 +724,7 @@ export function QuickAddModal({
   // keypress would, rather than always appending to the end.
   const insertTitleToken = (token: string) => {
     haptics.tap();
-    const { start, end } = titleSelection;
-    const next = title.slice(0, start) + token + title.slice(end);
-    setTitle(next);
-    const cursor = start + token.length;
-    setTitleSelection({ start: cursor, end: cursor });
+    setTitle(titleCaret.insertToken(token));
   };
 
   // Pop the tooltip in when a phrase is first detected (not on every keystroke
@@ -756,7 +758,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(parsed.cleanTitle);
-    setTitleSelection({ start: parsed.cleanTitle.length, end: parsed.cleanTitle.length });
+    titleCaret.moveCaret(parsed.cleanTitle);
     setDueDate(parsed.schedule.dueDate);
     setDeadline(parsed.schedule.deadline ?? null);
     setTimeSegments(parsed.schedule.timeSegments);
@@ -776,7 +778,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(categoryTagsParsed.cleanTitle);
-    setTitleSelection({ start: categoryTagsParsed.cleanTitle.length, end: categoryTagsParsed.cleanTitle.length });
+    titleCaret.moveCaret(categoryTagsParsed.cleanTitle);
     if (categoryTagsParsed.category) setCategory(categoryTagsParsed.category);
     if (categoryTagsParsed.tags.length > 0) {
       setTags(prev => [...new Set([...prev, ...categoryTagsParsed.tags])]);
@@ -803,7 +805,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(linkParsed.cleanTitle);
-    setTitleSelection({ start: linkParsed.cleanTitle.length, end: linkParsed.cleanTitle.length });
+    titleCaret.moveCaret(linkParsed.cleanTitle);
     setLinkUrl(linkParsed.url);
   };
 
@@ -813,7 +815,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(phoneParsed.cleanTitle);
-    setTitleSelection({ start: phoneParsed.cleanTitle.length, end: phoneParsed.cleanTitle.length });
+    titleCaret.moveCaret(phoneParsed.cleanTitle);
     setPhoneNumber(phoneParsed.number);
   };
 
@@ -823,7 +825,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(emailParsed.cleanTitle);
-    setTitleSelection({ start: emailParsed.cleanTitle.length, end: emailParsed.cleanTitle.length });
+    titleCaret.moveCaret(emailParsed.cleanTitle);
     setEmailAddress(emailParsed.address);
   };
 
@@ -836,7 +838,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(durationParsed.cleanTitle);
-    setTitleSelection({ start: durationParsed.cleanTitle.length, end: durationParsed.cleanTitle.length });
+    titleCaret.moveCaret(durationParsed.cleanTitle);
     setType('timed');
     setTimedMinutes(durationParsed.minutes);
     setCustomTimedText('');
@@ -847,7 +849,7 @@ export function QuickAddModal({
     haptics.success();
     animateLayout();
     setTitle(supplyParsed.cleanTitle);
-    setTitleSelection({ start: supplyParsed.cleanTitle.length, end: supplyParsed.cleanTitle.length });
+    titleCaret.moveCaret(supplyParsed.cleanTitle);
     setSupplyCount(clampSupplyCount(supplyParsed.count));
     setSupplyUnit(supplyParsed.unit ?? '');
   };
@@ -1377,8 +1379,8 @@ export function QuickAddModal({
                 blurOnSubmit={false}
                 onLayout={e => setInputW(e.nativeEvent.layout.width)}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
-                selection={titleSelection}
-                onSelectionChange={e => setTitleSelection(e.nativeEvent.selection)}
+                selection={titleCaret.selection}
+                onSelectionChange={titleCaret.onSelectionChange}
                 inputAccessoryViewID={Platform.OS === 'ios' ? TITLE_TOKEN_ACCESSORY_ID : undefined}
               />
               {/* Invisible mirrors of the input text — their widths locate the

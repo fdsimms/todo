@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -490,6 +491,21 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     ? Object.keys(pairing).length
     : accepted.size + addAsBought.size;
 
+  // A read receipt or an unread photo are both real work — a swipe-down
+  // would otherwise drop either with no dialog.
+  const handleCancel = () => {
+    const dirty = !!receipt || !!photo;
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   /**
    * Why a row is worth a second look, in the app's own words.
    *
@@ -878,10 +894,10 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
 
   return (
     <>
-      <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
         <View style={styles.root}>
           <View style={styles.header}>
-            <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={64} />
+            <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={64} />
             <Text style={styles.headerTitle}>
               {pantry ? 'Receipt into pantry' : 'Scan a receipt'}
             </Text>

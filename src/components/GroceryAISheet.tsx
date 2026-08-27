@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -217,6 +218,25 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const rowCount = mode === 'tidy' ? tidyRows.length : recipeRows.length;
   const canApply = !loading && accepted.size > 0;
 
+  // A reviewed batch (tidy moves or recipe rows) is expensive to get back,
+  // and typed/pasted/photographed recipe input hasn't been run yet — either
+  // way a swipe-down would otherwise drop it with no dialog.
+  const handleCancel = () => {
+    const dirty = rowCount > 0
+      || !!recipeInput.text.trim()
+      || !!recipeInput.url.trim()
+      || !!recipeInput.photo;
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
 
   // A deterministic failure — a mistyped address, a site that refuses us, a page
   // that builds its recipe in the browser — fails identically however many times
@@ -336,10 +356,10 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
             <Text style={styles.headerTitle}>

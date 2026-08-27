@@ -105,8 +105,8 @@ beforeEach(() => {
   mockCreateGroup.mockImplementation((title: string, category: string | null) => ({
     id: `group-${title}`, title, category,
   }));
-  mockCreateProject.mockImplementation((title: string, targetStartDate: string | null, targetEndDate: string | null) => ({
-    id: `project-${title}`, title, targetStartDate, targetEndDate,
+  mockCreateProject.mockImplementation((title: string, deadline: string | null) => ({
+    id: `project-${title}`, title, deadline,
   }));
   useTemplateStore.setState({ templates: [], initialized: false });
 });
@@ -591,12 +591,15 @@ describe('applyTemplate — naming the run', () => {
     expect(mockCreateGroup).toHaveBeenCalledWith('Camping', null);
   });
 
-  it('creates a project dated by the two anchors when the template asks for one', () => {
+  // The run's *end* anchor becomes the project's deadline; its start anchor
+  // still places the items, which is the half that was ever load-bearing. See
+  // Project.deadline for why a project no longer carries a range.
+  it('gives the project the run\'s end anchor as its deadline', () => {
     const start = new Date('2026-09-12T12:00:00');
     const end = new Date('2026-09-14T12:00:00');
     useTemplateStore.setState({ templates: [makeTemplate({ applyContainer: 'project', items: [makeItem({ id: 'a' })] })] });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end }, { runName: 'Denver' });
-    expect(mockCreateProject).toHaveBeenCalledWith('Denver', start.toISOString(), end.toISOString());
+    expect(mockCreateProject).toHaveBeenCalledWith('Denver', end.toISOString());
     expect(mockAddTask.mock.calls[0][0].projectId).toBe('project-Denver');
     expect(mockCreateGroup).not.toHaveBeenCalled();
   });
@@ -604,7 +607,7 @@ describe('applyTemplate — naming the run', () => {
   it('leaves a project undated when the run picked no anchors', () => {
     useTemplateStore.setState({ templates: [makeTemplate({ applyContainer: 'project', items: [makeItem({ id: 'a' })] })] });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
-    expect(mockCreateProject).toHaveBeenCalledWith('Denver', null, null);
+    expect(mockCreateProject).toHaveBeenCalledWith('Denver', null);
   });
 
   it('honors a template that opts out of containers entirely', () => {
@@ -627,7 +630,7 @@ describe('applyTemplate — naming the run', () => {
     });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
     // The run becomes the project; the item group still becomes its own stack inside it.
-    expect(mockCreateProject).toHaveBeenCalledWith('Denver', null, null);
+    expect(mockCreateProject).toHaveBeenCalledWith('Denver', null);
     expect(mockCreateGroup).not.toHaveBeenCalled();
     expect(mockGroupTasks).toHaveBeenCalledWith(['task-Book'], 'Flights', null);
     expect(mockAddTask.mock.calls[0][0].projectId).toBe('project-Denver');

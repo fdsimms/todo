@@ -39,7 +39,6 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     components: [],
     prepTasks: [],
     steps: [],
-    favorite: false,
     sortOrder: seq,
     createdAt: '2026-01-01T00:00:00.000Z',
     cookCount: 0,
@@ -275,11 +274,14 @@ describe('field setters', () => {
     const r = makeRecipe('Ragu');
     seed([r]);
 
-    useRecipeStore.getState().setVote(r.id, 'up');
-    expect(useRecipeStore.getState().recipeById(r.id)!.vote).toBe('up');
+    useRecipeStore.getState().setVote(r.id, 'loved');
+    expect(useRecipeStore.getState().recipeById(r.id)!.vote).toBe('loved');
 
-    useRecipeStore.getState().setVote(r.id, 'down');
-    expect(useRecipeStore.getState().recipeById(r.id)!.vote).toBe('down');
+    useRecipeStore.getState().setVote(r.id, 'liked');
+    expect(useRecipeStore.getState().recipeById(r.id)!.vote).toBe('liked');
+
+    useRecipeStore.getState().setVote(r.id, 'never');
+    expect(useRecipeStore.getState().recipeById(r.id)!.vote).toBe('never');
 
     useRecipeStore.getState().setVote(r.id, null);
     expect(useRecipeStore.getState().recipeById(r.id)!.vote).toBeNull();
@@ -315,16 +317,6 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setTags(r.id, ['thai', 'weeknight']);
     expect(useRecipeStore.getState().recipeById(r.id)!.tags).toEqual(['thai', 'weeknight']);
-  });
-
-  it('toggles favourite', () => {
-    const r = makeRecipe('Ragu');
-    seed([r]);
-
-    useRecipeStore.getState().toggleFavorite(r.id);
-    expect(useRecipeStore.getState().recipeById(r.id)!.favorite).toBe(true);
-    useRecipeStore.getState().toggleFavorite(r.id);
-    expect(useRecipeStore.getState().recipeById(r.id)!.favorite).toBe(false);
   });
 
   it('ignores an id that no longer resolves', () => {
@@ -1140,37 +1132,37 @@ describe('bulkDeleteRecipes', () => {
   });
 });
 
-describe('bulkSetFavorite', () => {
-  it('favorites every named recipe and leaves the rest alone', () => {
+describe('bulkSetVote', () => {
+  it('sets the vote on every named recipe and leaves the rest alone', () => {
     const a = makeRecipe('Ragu');
-    const b = makeRecipe('Soup', { favorite: true });
+    const b = makeRecipe('Soup', { vote: 'loved' });
     const c = makeRecipe('Stew');
     seed([a, b, c]);
 
-    useRecipeStore.getState().bulkSetFavorite([a.id, c.id], true);
+    useRecipeStore.getState().bulkSetVote([a.id, c.id], 'loved');
 
-    expect(useRecipeStore.getState().recipeById(a.id)!.favorite).toBe(true);
-    expect(useRecipeStore.getState().recipeById(b.id)!.favorite).toBe(true);
-    expect(useRecipeStore.getState().recipeById(c.id)!.favorite).toBe(true);
+    expect(useRecipeStore.getState().recipeById(a.id)!.vote).toBe('loved');
+    expect(useRecipeStore.getState().recipeById(b.id)!.vote).toBe('loved');
+    expect(useRecipeStore.getState().recipeById(c.id)!.vote).toBe('loved');
     expect(dbUpdateRecipe).toHaveBeenCalledTimes(2);
   });
 
-  it('unfavorites every named recipe', () => {
-    const a = makeRecipe('Ragu', { favorite: true });
-    const b = makeRecipe('Soup', { favorite: true });
+  it('clears the vote on every named recipe', () => {
+    const a = makeRecipe('Ragu', { vote: 'loved' });
+    const b = makeRecipe('Soup', { vote: 'loved' });
     seed([a, b]);
 
-    useRecipeStore.getState().bulkSetFavorite([a.id, b.id], false);
+    useRecipeStore.getState().bulkSetVote([a.id, b.id], null);
 
-    expect(useRecipeStore.getState().recipeById(a.id)!.favorite).toBe(false);
-    expect(useRecipeStore.getState().recipeById(b.id)!.favorite).toBe(false);
+    expect(useRecipeStore.getState().recipeById(a.id)!.vote).toBeNull();
+    expect(useRecipeStore.getState().recipeById(b.id)!.vote).toBeNull();
   });
 
   it('writes nothing when every named recipe already matches', () => {
-    const r = makeRecipe('Ragu', { favorite: true });
+    const r = makeRecipe('Ragu', { vote: 'loved' });
     seed([r]);
 
-    useRecipeStore.getState().bulkSetFavorite([r.id], true);
+    useRecipeStore.getState().bulkSetVote([r.id], 'loved');
 
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
   });
