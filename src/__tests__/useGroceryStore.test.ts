@@ -99,6 +99,10 @@ jest.mock('../db/database', () => ({
   // Reached only through useRecipeStore, which renameItem calls to keep
   // ingredient keys in step.
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
+  dbGetAllCookbooks: jest.fn().mockReturnValue([]),
+  dbInsertCookbook: jest.fn(),
+  dbUpdateCookbook: jest.fn(),
+  dbDeleteCookbook: jest.fn(),
   dbInsertRecipe: jest.fn(),
   dbUpdateRecipe: jest.fn(),
   dbDeleteRecipe: jest.fn(),

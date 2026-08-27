@@ -41,6 +41,7 @@ import { CollapsibleField } from './CollapsibleField';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl } from './SegmentedControl';
 import { distinctRecipeValues, filterRecipeSuggestions, formatServingsRange, totalMinutes } from '../utils/recipeUtils';
+import { cookbookEditIntent, type CookbookEditIntent } from '../utils/recipeProvenance';
 import { EditorRow } from './EditorRow';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorSheet } from './EditorSheet';
@@ -86,6 +87,9 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   const setSource = useRecipeStore(s => s.setSource);
   const setSourceType = useRecipeStore(s => s.setSourceType);
   const setSourcePage = useRecipeStore(s => s.setSourcePage);
+  const linkNewCookbook = useRecipeStore(s => s.linkNewCookbook);
+  const renameCookbook = useRecipeStore(s => s.renameCookbook);
+  const cookbooks = useRecipeStore(useShallow(s => s.cookbooks));
   const setServings = useRecipeStore(s => s.setServings);
   const setRecipeYield = useRecipeStore(s => s.setRecipeYield);
   const setLeftoverKeepDays = useRecipeStore(s => s.setLeftoverKeepDays);
@@ -131,9 +135,15 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
   // availableTags, computed from the data that's actually there rather than
   // a fixed list. Shared helper (distinctRecipeValues/filterRecipeSuggestions
   // in recipeUtils) since Source and Author want the identical derivation.
+  // On a cookbook the suggestions come off the shelf rather than off other
+  // recipes' free text — that's the whole point of the shelf. Tapping one links
+  // the book, so it fills the author in as well; anywhere else they're still
+  // the vocabulary the box has built up on its own.
   const existingSources = useMemo(
-    () => distinctRecipeValues(recipes, recipe?.id, r => r.source),
-    [recipes, recipe?.id]
+    () => (sourceType === 'cookbook'
+      ? cookbooks.map(c => c.title)
+      : distinctRecipeValues(recipes, recipe?.id, r => r.source)),
+    [sourceType, cookbooks, recipes, recipe?.id]
   );
   const sourceSuggestions = useMemo(
     () => filterRecipeSuggestions(existingSources, source),
@@ -234,11 +244,46 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
       Alert.alert('That name is taken', 'Another recipe already goes by that name.');
       return;
     }
+    const book = cookbooks.find(c => c.id === recipe.cookbookId);
+    const intent = sourceType === 'cookbook' && source.trim()
+      ? cookbookEditIntent(book, source, author, recipes.filter(r => r.cookbookId === book?.id).length)
+      : 'refile';
+    if (intent === 'ask') {
+      const others = recipes.filter(r => r.cookbookId === book!.id && r.id !== recipe.id).length;
+      Alert.alert(
+        'Rename this cookbook?',
+        `${others === 1 ? '1 other recipe is' : `${others} other recipes are`} from “${book!.title}”. `
+        + 'Renaming updates the book for all of them.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Just this recipe', onPress: () => commit('refile') },
+          { text: 'Rename everywhere', onPress: () => commit('rename') },
+        ],
+      );
+      return;
+    }
+    commit(intent);
+  };
+
+  const commit = (cookbookIntent: CookbookEditIntent) => {
+    if (!recipe) return;
     setNotes(recipe.id, notes);
     setSourceUrl(recipe.id, url);
-    setAuthor(recipe.id, author);
-    setSource(recipe.id, source);
-    setSourceType(recipe.id, sourceType);
+    // A cookbook with a title goes on the shelf and is linked. Everything else
+    // is free text, and so is a cookbook nobody has named yet.
+    if (sourceType === 'cookbook' && source.trim()) {
+      // A rename that collides falls back to linking the book already using
+      // that title — the user typed the name of a book on the shelf, and
+      // joining it is the only reading of that; the other recipes keep theirs.
+      const renamed = cookbookIntent === 'rename' && recipe.cookbookId
+        && renameCookbook(recipe.cookbookId, source, author);
+      if (!renamed) linkNewCookbook(recipe.id, source, author);
+    } else {
+      setAuthor(recipe.id, author);
+      setSource(recipe.id, source);
+      setSourceType(recipe.id, sourceType);
+    }
+    // After the type either way — it clears the page for anything but a book.
     setSourcePage(recipe.id, sourcePage);
     setServings(recipe.id, servings, servingsMax);
     setRecipeYield(recipe.id, recipeYield);
@@ -704,7 +749,15 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
                 key={value}
                 style={styles.suggestionChip}
                 activeOpacity={interaction.activeOpacity}
-                onPress={() => { setSourceDraft(value); confirmField(setSourceOpen); }}
+                onPress={() => {
+                  setSourceDraft(value);
+                  // A book brings its author with it — picking "Sweet" and then
+                  // being asked who wrote it is the retyping the shelf exists
+                  // to stop.
+                  const book = cookbooks.find(c => c.title === value);
+                  if (sourceType === 'cookbook' && book) setAuthorDraft(book.author ?? '');
+                  confirmField(setSourceOpen);
+                }}
                 accessibilityRole="button"
                 accessibilityLabel={`Use source ${value}`}
               >

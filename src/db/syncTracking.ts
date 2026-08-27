@@ -90,6 +90,7 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // because every other key here is base36 from generateId(). This one is a
   // receipt's printed text and can contain anything, '|' included.
   { name: 'grocery_store_aliases', key: ['id'] },
+  { name: 'cookbooks', key: ['id'] },
   { name: 'recipes', key: ['id'] },
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },

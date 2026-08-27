@@ -1,0 +1,4 @@
+{
+  "message": "Photographing a recipe now reads the cookbook title, author and page number off the page, instead of ignoring them. Books are saved in their own right, so two recipes from the same cookbook share one record: fix a title or fill in an author once and every recipe from that book follows.",
+  "date": "2026-08-27"
+}
