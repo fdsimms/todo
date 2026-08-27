@@ -1,0 +1,4 @@
+{
+  "message": "Turned autocorrect back on when typing a task name, both in Quick Add and the task editor. It still switches off automatically while a date or repeat phrase is highlighted, so that suggestion doesn't overlap the highlight.",
+  "date": "2026-08-27"
+}
