@@ -308,6 +308,18 @@ export function seedDemoData(): void {
     effort: 1,
   });
 
+  // A place on a task is what the Location row in the editor is for — same
+  // reasoning as the phone number above, and the kind of task the "Import
+  // event" add-menu entry exists to create without retyping any of this.
+  addTask({
+    title: 'Dentist appointment',
+    notes: '646-962-3681',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    location: '156 William Street, 11th Floor',
+    effort: 1,
+  });
+
   // The other two kinds the editor's Kind picker offers. Without a row apiece
   // the picker names two features demo mode can't show you.
   const piano = addTask({

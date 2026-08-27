@@ -1176,6 +1176,8 @@ export function initDatabase(): void {
     // as "never declined", the only state that could be true before this
     // column existed.
     'ALTER TABLE people ADD COLUMN reach_out_offer_declined_at TEXT',
+    // A physical place the task is about — see Task.location in types/index.ts.
+    'ALTER TABLE tasks ADD COLUMN location TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2056,6 +2058,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     calendarEventId: (row.calendar_event_id as string | null) ?? null,
     timeBlockEventId: (row.time_block_event_id as string | null) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
+    location: (row.location as string) ?? null,
   };
 }
 
@@ -2085,8 +2088,8 @@ export function dbInsertTask(task: Task): void {
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
-      quota_interval_minutes, quota_reminders, quota_started_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      quota_interval_minutes, quota_reminders, quota_started_at, location
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2151,6 +2154,7 @@ export function dbInsertTask(task: Task): void {
       task.quotaIntervalMinutes ?? null,
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
+      task.location ?? null,
     ]
   );
 }
@@ -2176,7 +2180,7 @@ export function dbUpdateTask(task: Task): void {
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
-      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?
+      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, location=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2242,6 +2246,7 @@ export function dbUpdateTask(task: Task): void {
       task.quotaIntervalMinutes ?? null,
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
+      task.location ?? null,
       task.id,
     ]
   );

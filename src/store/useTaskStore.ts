@@ -203,7 +203,7 @@ interface UndoableAction {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress',
+  'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress', 'location',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.
@@ -489,6 +489,7 @@ function newTaskFromDraft(
     linkUrl: draft.linkUrl ?? null,
     phoneNumber: draft.phoneNumber ?? null,
     emailAddress: draft.emailAddress ?? null,
+    location: draft.location ?? null,
     blockedById: draft.blockedById ?? null,
     waitingOnPersonId: null,
     deliverableKind: draft.deliverableKind ?? null,
@@ -5515,6 +5516,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       linkUrl: null,
       phoneNumber: null,
       emailAddress: null,
+      location: null,
       blockedById: null,
       waitingOnPersonId: null,
       deliverableKind: null,
@@ -5696,6 +5698,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       linkUrl: null,
       phoneNumber: null,
       emailAddress: null,
+      location: null,
       blockedById: null,
       waitingOnPersonId: null,
       deliverableKind: null,

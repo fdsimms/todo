@@ -52,7 +52,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   excludeFromSuggestions: false, timerStartedAt: null, timedMinutes: null, timerElapsedSeconds: 0,
   actualMinutes: null, previousOccurrenceId: null, seriesId: null, seriesMonthDays: [],
   seriesRepeatMonths: 1, seriesDefaults: null, archived: false, archivedAt: null, linkUrl: null,
-  phoneNumber: null, emailAddress: null, blockedById: null, waitingOnPersonId: null,
+  phoneNumber: null, emailAddress: null, location: null, blockedById: null, waitingOnPersonId: null,
   deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
   deadlineOnCalendar: false, calendarEventId: null, timeBlockEventId: null, pendingImport: null,
   backfillDismissedFields: [], personIds: [],

@@ -1647,3 +1647,170 @@ function parseReceiptLines(raw: unknown): ReceiptLine[] {
   }
   return result.slice(0, MAX_RECEIPT_LINES);
 }
+
+const MAX_CALENDAR_EVENTS = 20;
+// Mirrors MAX_RECIPE_CHARS — a confirmation page is rarely longer than a
+// recipe, and a runaway paste shouldn't balloon the request.
+const MAX_CALENDAR_TEXT_CHARS = 6_000;
+
+export interface ExtractedCalendarEvent {
+  title: string;
+  /** YYYY-MM-DD, or null when no date was legible. */
+  date: string | null;
+  /** 24-hour HH:MM, or null for an all-day event or one with no time given. */
+  time: string | null;
+  /** A physical address or venue name. Empty string when there is none. */
+  location: string;
+  /** A phone number, confirmation number, or prep note. Empty string when there's nothing to add. */
+  notes: string;
+}
+
+/**
+ * Reads a title, date, time, location and any other worthwhile detail out of
+ * pasted confirmation text or a photo of one — a doctor's appointment page,
+ * a restaurant reservation, a leg of a travel itinerary.
+ *
+ * Same split as extractRecipe/extractReceipt: text or a photo resolve to the
+ * same prompt shape and the same tool schema, so a paste and a screenshot of
+ * the same page read identically. Returns an array, unlike either of those
+ * two, because a single page often confirms more than one event — a flight
+ * followed by the hotel booked alongside it — and asking again per leg would
+ * cost a second screenshot of the same page.
+ */
+export async function extractCalendarEvents(source: string | RecipeImage): Promise<ExtractedCalendarEvent[]> {
+  const { apiKey, model } = requireFeature('calendarImport');
+
+  const image = typeof source === 'string' ? null : source;
+  const text = typeof source === 'string' ? source.trim().slice(0, MAX_CALENDAR_TEXT_CHARS) : '';
+  // Same "nothing in, no network call" guard extractRecipe/extractReceipt use.
+  if (image ? !image.base64 : !text) return [];
+
+  const eventFields = [
+    'For each event give: its title, in a few words a person would recognize on their own calendar ("Dentist appointment", "Flight to Chicago", "Dinner at Marea") — not the page\'s own heading verbatim when that heading is generic ("Appointment Details", "Booking Confirmed").',
+    'Its date, as YYYY-MM-DD, and its time as 24-hour HH:MM — only when a specific time is actually stated. Leave the time empty for an all-day event or a date given with no time.',
+    'Its location: a physical address or venue name, exactly as given. Empty string when the event has no physical location (a phone call, a virtual meeting) or none is stated.',
+    'Anything else worth keeping, in one short line: a phone number, a confirmation or reservation number, what to bring or do to prepare. Empty string if there is nothing beyond what the other fields already capture.',
+  ];
+  const prompt = image
+    ? [
+        'This is a photo of an appointment confirmation, a booking, a ticket, or a travel itinerary. Read it and extract every distinct event it confirms — a single appointment is one event; an itinerary naming a flight and a hotel is two.',
+        ...eventFields,
+        'If the photo is too blurry, too dark, cut off, or isn\'t a confirmation of anything, return an empty list rather than guessing.',
+      ].join('\n\n')
+    : [
+        'Read this pasted text and extract every distinct event it confirms — a single appointment is one event; an itinerary naming a flight and a hotel is two.',
+        ...eventFields,
+        'If nothing here confirms an event, return an empty list rather than guessing.',
+        `Text:\n${text}`,
+      ].join('\n\n');
+
+  const content = image
+    ? [
+        { type: 'image', source: { type: 'base64', media_type: image.mediaType, data: image.base64 } },
+        { type: 'text', text: prompt },
+      ]
+    : prompt;
+
+  const data = await callAnthropic({
+    max_tokens: 2000,
+    tools: [{
+      name: 'extract_calendar_events',
+      description: 'Extract every event confirmed by this appointment, booking, or itinerary',
+      input_schema: {
+        type: 'object',
+        properties: {
+          events: {
+            type: 'array',
+            description: 'Every distinct event found, in the order they appear.',
+            items: {
+              type: 'object',
+              properties: {
+                title: {
+                  type: 'string',
+                  description: `A short recognizable title for the event. Under ${TITLE_MAX_LENGTH} characters.`,
+                },
+                date: {
+                  type: 'string',
+                  description: 'The event\'s date, as YYYY-MM-DD. Empty string if no date is legible.',
+                },
+                time: {
+                  type: 'string',
+                  description: 'The event\'s time, as 24-hour HH:MM. Empty string for an all-day event or when no specific time is given.',
+                },
+                location: {
+                  type: 'string',
+                  description: 'A physical address or venue name, exactly as given. Empty string if there is none.',
+                },
+                notes: {
+                  type: 'string',
+                  description: 'A phone number, confirmation number, or prep instructions, in one short line. Empty string if there is nothing beyond the other fields.',
+                },
+              },
+              required: ['title', 'date', 'time', 'location', 'notes'],
+            },
+          },
+        },
+        required: ['events'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'extract_calendar_events' },
+    messages: [{ role: 'user', content }],
+  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { events?: unknown } | undefined;
+  if (!input) throw new Error('No suggestions returned');
+
+  return parseExtractedCalendarEvents(input.events);
+}
+
+/**
+ * Validates the model's date string into a real `YYYY-MM-DD`, or null — same
+ * check parseReceiptDate makes above, and for the same reason: a model can
+ * return well-formed-looking nonsense ("2026-13-40").
+ */
+function parseExtractedEventDate(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return null;
+  const parsed = new Date(`${trimmed}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : trimmed;
+}
+
+/** Validates the model's time string into a real 24-hour `HH:MM`, or null. */
+function parseExtractedEventTime(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const match = /^(\d{1,2}):(\d{2})$/.exec(raw.trim());
+  if (!match) return null;
+  const hh = Number(match[1]);
+  const mm = Number(match[2]);
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return null;
+  return `${String(hh).padStart(2, '0')}:${match[2]}`;
+}
+
+/**
+ * Validates the model's event array into `ExtractedCalendarEvent`s.
+ *
+ * A title is the one thing every kept event must have — a row with a date
+ * and a location but nothing a person recognizes as "what is this" isn't
+ * worth showing. Date, time, location and notes are all independently
+ * optional; a page that gives a place but never states a time is common
+ * (many all-day or "sometime that day" bookings) and shouldn't be dropped
+ * for it.
+ */
+function parseExtractedCalendarEvents(raw: unknown): ExtractedCalendarEvent[] {
+  if (!Array.isArray(raw)) return [];
+  const result: ExtractedCalendarEvent[] = [];
+  for (const event of raw) {
+    const title = typeof event?.title === 'string' ? event.title.trim().slice(0, TITLE_MAX_LENGTH) : '';
+    if (!title) continue;
+    result.push({
+      title,
+      date: parseExtractedEventDate(event.date),
+      time: parseExtractedEventTime(event.time),
+      location: typeof event.location === 'string' ? event.location.trim() : '',
+      notes: typeof event.notes === 'string' ? event.notes.trim() : '',
+    });
+  }
+  return result.slice(0, MAX_CALENDAR_EVENTS);
+}

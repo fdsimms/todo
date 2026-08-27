@@ -757,6 +757,15 @@ describe('demo mode', () => {
     expect(withPhone.length).toBeGreaterThan(0);
   });
 
+  // Same reasoning: no location on any task means the editor's Location row
+  // always reads empty in the demo.
+  it('seeds a task carrying a location', () => {
+    useDemoStore.getState().enterDemoMode();
+    const withLocation = useTaskStore.getState().tasks.filter(t => !!t.location);
+
+    expect(withLocation.length).toBeGreaterThan(0);
+  });
+
   it('seeds a reminder that keeps ringing until the task is completed', () => {
     useDemoStore.getState().enterDemoMode();
     const persistent = useTaskStore.getState().tasks.filter(t => t.reminderKind === 'persistent');

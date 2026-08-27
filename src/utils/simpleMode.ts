@@ -64,6 +64,7 @@ export type SimpleFeatureId =
   | 'streakOptions'
   | 'vacationPause'
   | 'effortRating'
+  | 'calendarImport'
   // Screens behind the menu.
   | 'templates'
   | 'calendarScreen'
@@ -146,6 +147,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'streakOptions', label: 'Streak options', area: 'tasks' },
   { id: 'vacationPause', label: 'Vacation pause', area: 'tasks' },
   { id: 'effortRating', label: 'Effort', area: 'tasks' },
+  { id: 'calendarImport', label: 'Import event from photo or text', area: 'tasks' },
 
   { id: 'templates', label: 'Templates', area: 'screens', screen: 'Templates', contentScreen: true },
   // A content screen like Stacks and Templates: it holds Person rows that live
@@ -340,6 +342,7 @@ export const SIMPLE_ADD_MENU_FEATURES: Readonly<Record<string, SimpleFeatureId>>
   chain: 'chains',
   stack: 'stacks',
   template: 'templates',
+  import: 'calendarImport',
 };
 
 /** Does an add-button menu item render? */
