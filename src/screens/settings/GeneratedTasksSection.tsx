@@ -23,6 +23,7 @@ import {
   MEAL_SHORTFALL_LEAD_DAYS_MIN,
   USE_UP_TASK_CAP_MAX,
   USE_UP_TASK_CAP_MIN,
+  type TimeOfDay,
 } from '../../types';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
@@ -78,6 +79,18 @@ import { makeSettingsStyles } from './settingsStyles';
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 const WEEKDAY_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+
+// The calendar review task's own "Time of day" choice — pinned "Any time"
+// alongside the same four segments a task's own Time of day field offers, in
+// the same order. Pills, not a SegmentedControl, matching the app's rule for
+// time-of-day segments generally, even though only one is ever chosen here.
+const timeSegmentChoices: { value: TimeOfDay | null; label: string }[] = [
+  { value: null, label: 'Any time' },
+  { value: 'morning', label: 'Morning' },
+  { value: 'afternoon', label: 'Afternoon' },
+  { value: 'evening', label: 'Evening' },
+  { value: 'night', label: 'Night' },
+];
 
 /** Weekday segments rotated to start at weekStartsOn, matching the calendar's header order. */
 function weekdayOptions(weekStartsOn: WeekStart): SegmentOption<number>[] {
@@ -256,6 +269,9 @@ export function GeneratedTasksSection() {
     if (!enabledOf(spec.kind)) return spec.offHint;
     if (spec.kind === 'mealPlanNudge') {
       return `A task appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)} to plan that week`;
+    }
+    if (spec.kind === 'calendarReview' && s.calendarReviewTimeSegment) {
+      return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow's events`;
     }
     return spec.onHint;
   };
@@ -483,6 +499,37 @@ export function GeneratedTasksSection() {
               onConfirm={confirmTime}
             />
           )}
+        </>
+      );
+    }
+
+    if (kind === 'calendarReview') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="calendarReviewTimeSegment"
+            icon="time-outline"
+            label="Show the task"
+            hint="Held back until this part of the day arrives, same as a task's own Time of day field."
+            value={
+              timeSegmentChoices.find(o => o.value === s.calendarReviewTimeSegment)?.label ?? 'Any time'
+            }
+            tight
+          />
+          <View style={styles.pillGroupRow}>
+            <PillGroup
+              noun="time of day"
+              options={timeSegmentChoices.map(o => ({
+                key: String(o.value),
+                label: o.label,
+                selected: o.value === s.calendarReviewTimeSegment,
+                pinned: o.value === null,
+                accessibilityLabel: `Show the task ${o.value === null ? 'any time of day' : `in the ${o.label.toLowerCase()}`}`,
+                onPress: () => { haptics.tap(); s.setCalendarReviewTimeSegment(o.value); },
+              }))}
+            />
+          </View>
         </>
       );
     }

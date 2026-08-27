@@ -847,6 +847,12 @@ interface SettingsStore {
   // source row to stamp a decline onto (see writeGeneratedOptOut), so this is
   // the only thing standing between a delete and an immediate recreate.
   calendarReviewLastDayKey: string | null;
+  // Which part of the day the task is held back until, or null to show it as
+  // soon as it's due (the behavior before this setting existed). Single value
+  // rather than TimeOfDay[] like Task.timeSegments carries — the picker is a
+  // choice between parts of the day, the same shape NewTaskDefaults.timeSegment
+  // already uses, not a set several can be true in at once.
+  calendarReviewTimeSegment: TimeOfDay | null;
   // Whether a weather rule that matches today gets its task (see
   // src/utils/weatherTasks.ts). Defaults OFF for the same reason
   // calendarReviewTasks does: it adds a surface nobody had before, and it's
@@ -1051,6 +1057,7 @@ interface SettingsStore {
   setSupplyReorderTasks: (on: boolean) => void;
   setCalendarReviewTasks: (on: boolean) => void;
   setCalendarReviewLastDayKey: (dayKey: string | null) => void;
+  setCalendarReviewTimeSegment: (segment: TimeOfDay | null) => void;
   setWeatherTasks: (on: boolean) => void;
   setWeatherTaskCategory: (category: string | null) => void;
   setWeatherRules: (rules: WeatherRule[]) => void;
@@ -1519,6 +1526,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   supplyReorderTasks: true,
   calendarReviewTasks: false,
   calendarReviewLastDayKey: null,
+  calendarReviewTimeSegment: null,
   weatherTasks: false,
   weatherTaskCategory: null,
   weatherRules: [],
@@ -1790,6 +1798,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // same reason: this adds a surface rather than replacing one.
     const calendarReviewTasks = dbGetSetting('calendarReviewTasks') === 'true';
     const calendarReviewLastDayKey = dbGetSetting('calendarReviewLastDayKey') || null;
+    const storedCalendarReviewTimeSegment = dbGetSetting('calendarReviewTimeSegment');
+    const calendarReviewTimeSegment =
+      storedCalendarReviewTimeSegment && NEW_TASK_TIME_SEGMENTS.includes(storedCalendarReviewTimeSegment as TimeOfDay)
+        ? (storedCalendarReviewTimeSegment as TimeOfDay)
+        : null;
     const weatherTasks = dbGetSetting('weatherTasks') === 'true';
     const weatherTaskCategory = dbGetSetting('weatherTaskCategory') || null;
     // Falls back to the shipped defaults rather than an empty list, unlike
@@ -1878,7 +1891,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, weatherTasks, weatherTaskCategory, weatherRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2220,6 +2233,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setCalendarReviewLastDayKey(dayKey: string | null) {
     dbSetSetting('calendarReviewLastDayKey', dayKey ?? '');
     set({ calendarReviewLastDayKey: dayKey });
+  },
+
+  setCalendarReviewTimeSegment(segment: TimeOfDay | null) {
+    dbSetSetting('calendarReviewTimeSegment', segment ?? '');
+    set({ calendarReviewTimeSegment: segment });
   },
 
   setWeatherTasks(on: boolean) {
