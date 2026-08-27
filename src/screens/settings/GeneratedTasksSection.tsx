@@ -409,8 +409,8 @@ export function GeneratedTasksSection() {
             label="Meals you eat"
             hint={
               s.mealSlotsEnabled.length === 0
-                ? 'No meals picked, so no tasks are added'
-                : 'A task each day for each of these, whether or not a meal is planned'
+                ? "No meals picked, so no tasks are added. A planned meal can still show as a plain row, with Show the day's meals under Groceries & meals"
+                : "A task each day for each of these, whether or not a meal is planned. Any other planned meal can still show as a plain row, with Show the day's meals under Groceries & meals"
             }
             tight
           />
