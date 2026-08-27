@@ -160,8 +160,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
   },
   pillBadgeActive: {
-    backgroundColor: colors.bgSecondary,
+    backgroundColor: colors.orange,
   },
   pillBadgeText: { color: colors.onAccent, fontSize: 9, fontWeight: fontWeight.bold },
-  pillBadgeTextActive: { color: colors.accent },
+  pillBadgeTextActive: { color: colors.onAccent },
 });
