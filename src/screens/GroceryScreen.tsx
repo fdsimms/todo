@@ -1071,7 +1071,6 @@ export function GroceryScreen() {
     if (recipes.length > 0 || anthropicApiKey) {
       list.push({ key: 'recipe', label: 'From a recipe', icon: 'restaurant-outline' });
     }
-    list.push({ key: 'catalog', label: 'Browse catalog', icon: 'basket-outline' });
     // In the add menu rather than the header. The header is already five
     // actions wide, and this is an add: it's the one entry point that has to
     // work with an empty list, since unpacking a shop you never wrote down is
@@ -1092,7 +1091,6 @@ export function GroceryScreen() {
       else if (recipes.length === 1 && !anthropicApiKey) setRecipeToAdd(recipes[0]);
       else setRecipeSourceOpen(true);
     }
-    else if (key === 'catalog') setCatalogOpen(true);
     else if (key === 'scan') setScanOpen(true);
     else setAddOpen(true);
   }, [recipes, anthropicApiKey]);
