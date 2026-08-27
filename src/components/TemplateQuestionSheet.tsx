@@ -21,6 +21,7 @@ import { EditorSheet } from './EditorSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 import { InlineAction } from './InlineAction';
+import { TemplateQuestionItemsSheet } from './TemplateQuestionItemsSheet';
 
 interface Props {
   visible: boolean;
@@ -82,6 +83,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
   const [options, setOptions] = useState<string[]>([]);
   const [defaultValue, setDefaultValue] = useState('');
   const [fromDates, setFromDates] = useState<TemplateQuestionSource>('none');
+  const [itemsSheetVisible, setItemsSheetVisible] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -91,6 +93,7 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
     setOptions(question?.options ?? ['', '']);
     setDefaultValue(question?.defaultValue ?? '');
     setFromDates(question?.fromDates ?? 'none');
+    setItemsSheetVisible(false);
   }, [visible, question]);
 
   const setOption = (index: number, value: string) =>
@@ -224,6 +227,25 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
         </View>
       )}
 
+      {/* Which items are checked by default for which answer, all in one
+          place instead of opening every item to tick its own pill. Only for
+          a question that's already saved — there's no id yet to condition an
+          item on until this question exists. */}
+      {kind === 'choice' && question && (
+        <View style={styles.sectionCard}>
+          <Text style={styles.fieldLabel}>ITEMS</Text>
+          <Text style={styles.note}>
+            Which items are checked by default for each answer, without opening them one at a time.
+          </Text>
+          <InlineAction
+            icon="checkbox-outline"
+            label="Set items for each answer"
+            variant="neutral"
+            onPress={() => { haptics.tap(); setItemsSheetVisible(true); }}
+          />
+        </View>
+      )}
+
       {kind === 'number' && (
         <View style={styles.sectionCard}>
           <Text style={styles.fieldLabel}>STARTS AT</Text>
@@ -291,6 +313,19 @@ export function TemplateQuestionSheet({ visible, templateId, question, onClose }
           <Ionicons name="trash-outline" size={18} color={colors.red} />
           <Text style={styles.deleteLabel}>Delete question</Text>
         </TouchableOpacity>
+      )}
+
+      {/* Nested inside this sheet rather than beside it — a sibling Modal
+          would ask this screen's view controller to present a second sheet
+          while this one is already up (same reason TemplateEditor nests this
+          sheet, and GroceryCatalogSheet nests its own). */}
+      {question && (
+        <TemplateQuestionItemsSheet
+          visible={itemsSheetVisible}
+          templateId={templateId}
+          question={question}
+          onClose={() => setItemsSheetVisible(false)}
+        />
       )}
     </EditorSheet>
   );

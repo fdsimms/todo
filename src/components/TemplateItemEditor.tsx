@@ -27,7 +27,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTemplateStore } from '../store/useTemplateStore';
-import { describeConditions, questionLabel } from '../utils/templateQuestions';
+import { describeConditions, questionLabel, toggleItemCondition } from '../utils/templateQuestions';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import {
@@ -219,16 +219,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
    */
   const toggleCondition = (questionId: string, option: string) => {
     haptics.tap();
-    setConditions(prev => {
-      const existing = prev.find(c => c.questionId === questionId);
-      const values = existing
-        ? existing.values.includes(option)
-          ? existing.values.filter(v => v !== option)
-          : [...existing.values, option]
-        : [option];
-      const rest = prev.filter(c => c.questionId !== questionId);
-      return values.length > 0 ? [...rest, { questionId, values }] : rest;
-    });
+    setConditions(prev => toggleItemCondition(prev, questionId, option));
   };
 
   const fieldOpen = (key: FieldKey, fallback = false) => openFields[key] ?? fallback;
