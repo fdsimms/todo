@@ -33,9 +33,11 @@ import { SheetScrim } from './SheetScrim';
  * always shows some concrete year — there is no "blank" wheel position — so
  * without an explicit "Include year" switch there would be no way to tell
  * "this person's year is 1992" apart from "the wheel happened to be sitting
- * on 1992 when Save was tapped". Off by default: a year-less birthday is the
- * common case (see `docs/arch/people.md`), and this is the one field on this
- * sheet where silence is the honest answer, not a gap.
+ * on 1992 when Save was tapped". On by default for a new birthday, since
+ * capturing the year is the common intent and the toggle is easy to miss on
+ * the way to Save; editing an existing birthday still reflects whatever was
+ * actually saved (see `docs/arch/people.md`), so an entry someone
+ * deliberately left year-less doesn't grow one just from being reopened.
  *
  * **The year is never used to compute an age.** It went through a whole
  * removal (#2083) for exactly that reason — it existed solely to back a
@@ -87,7 +89,7 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
     }
     const hasMonthDay = month !== null && day !== null;
     setDate(hasMonthDay ? new Date(year ?? PLACEHOLDER_YEAR, month! - 1, day!, 12) : new Date());
-    setYearKnown(year !== null);
+    setYearKnown(hasMonthDay ? year !== null : true);
     cardScale.setValue(0.92);
     enterAnim.setValue(0);
     Animated.parallel([
@@ -160,6 +162,9 @@ export function BirthdayPicker({ visible, month, day, year, onConfirm, onClear, 
           </TouchableOpacity>
 
           <View style={styles.sectionGap} />
+          <TouchableOpacity style={styles.saveBtn} onPress={confirm} activeOpacity={interaction.activeOpacity}>
+            <Text style={styles.saveLabel}>Save</Text>
+          </TouchableOpacity>
           <TouchableOpacity style={styles.clearBtn} onPress={onClear} activeOpacity={interaction.activeOpacity}>
             <Text style={styles.clearLabel}>Clear</Text>
           </TouchableOpacity>
@@ -235,6 +240,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   toggleKnobOn: { alignSelf: 'flex-end' },
   sectionGap: {
     height: spacing.sm,
+  },
+  saveBtn: {
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  saveLabel: {
+    color: colors.onAccent,
+    fontSize: font.md,
+    fontWeight: fontWeight.semibold,
   },
   clearBtn: {
     marginHorizontal: spacing.md,
