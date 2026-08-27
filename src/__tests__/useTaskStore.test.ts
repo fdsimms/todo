@@ -55,6 +55,7 @@ import type { GroceryItem, Person, Project, Task, TaskGroup, TitleRule } from '.
 jest.mock('../db/database', () => ({
   initDatabase: jest.fn(),
   dbGetSetting: jest.fn().mockReturnValue(null),
+  dbSetSetting: jest.fn(),
   dbGetAllTasks: jest.fn().mockReturnValue([]),
   dbGetTagRegistry: jest.fn().mockReturnValue([]),
   dbGetCategoryRegistry: jest.fn().mockReturnValue([]),
@@ -442,7 +443,8 @@ describe('initialize', () => {
     useTaskStore.getState().initialize();
     expect(rescheduleAllReminders).toHaveBeenCalledWith(
       tasks,
-      { shopId: null, startedAt: null, shops: [] }
+      { shopId: null, startedAt: null, shops: [] },
+      []
     );
   });
 });

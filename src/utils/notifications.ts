@@ -21,6 +21,8 @@ import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, stepTimerAlarmUuid, ta
 import { isDemoModeActive } from './demoState';
 import { resolveActiveTrip } from './activeTrip';
 import type { Shop } from '../types';
+import type { EventReminder } from './eventReminders';
+import { reminderTriggerDate } from './eventReminders';
 
 export { isAlarmKitAvailable, requestAlarmAuthorization };
 
@@ -323,7 +325,10 @@ export async function rescheduleAllReminders(
   // import useGroceryStore. Omitted entirely, every existing caller (and
   // every test) still gets the right behavior — no active trip, so the
   // reminder is simply left cancelled.
-  trip?: { shopId: string | null; startedAt: string | null; shops: readonly Shop[] }
+  trip?: { shopId: string | null; startedAt: string | null; shops: readonly Shop[] },
+  // Same reasoning, same shape: raw reminders rather than a useEventReminderStore
+  // read, so this file never has to import that store either.
+  eventReminders?: readonly EventReminder[]
 ): Promise<void> {
   const now = new Date();
   await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
@@ -350,13 +355,14 @@ export async function rescheduleAllReminders(
   // agenda would simply stop happening, and a trip left running would lose
   // its two-hour backstop.
   //
-  // Three is the signal the original version of this note called out: the
-  // next one to arrive should give each kind its own id prefix and cancel by
-  // prefix instead — the blanket cancel is only tenable while the put-it-back
-  // list is short enough to read.
+  // Four now, and calendar-event reminders are exactly the "own id prefix,
+  // cancel by prefix" case the note above called out — each one is cancelled
+  // and rescheduled by its own `event-reminder:<key>` id, independent of this
+  // blanket cancel.
   await rescheduleAllTimerAlarms(tasks);
   await scheduleDailyAgenda(tasks);
   await rescheduleTripReminder(trip?.shopId ?? null, trip?.startedAt ?? null, trip?.shops ?? []);
+  await rescheduleAllEventReminders(eventReminders ?? []);
 }
 
 // ─── Daily agenda ────────────────────────────────────────────────────────────
@@ -683,4 +689,67 @@ export async function rescheduleTripReminder(
     return;
   }
   await scheduleTripReminder(shop.name, startedAt);
+}
+
+// ─── Calendar-event reminders ────────────────────────────────────────────────
+
+// Namespaced rather than a bare `reminder.key`: a BusyEvent id is just an
+// EventKit string with no relation to this app's own id space, so nothing
+// stops one from coinciding with a task id or another reminder's key.
+function eventReminderNotificationId(key: string): string {
+  return `event-reminder:${key}`;
+}
+
+/**
+ * Schedules (or replaces) the one notification for a calendar-event reminder
+ * (`useEventReminderStore`). Cancel-then-reschedule, like every other
+ * reminder in this file — there is no check-if-already-scheduled path.
+ */
+export async function scheduleEventReminder(reminder: EventReminder): Promise<void> {
+  // Same reasoning as scheduleTaskReminder: a real notification is a device
+  // side effect, and must never fire for an event a demo session rendered.
+  if (isDemoModeActive()) return;
+  const id = eventReminderNotificationId(reminder.key);
+  await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+
+  const triggerDate = reminderTriggerDate(reminder);
+  if (triggerDate <= new Date()) return;
+
+  // Suppressed rather than deferred, like the timer and trip alarms: "starts
+  // in 15 minutes" shown after the event has already started is actively
+  // wrong, not just late, and a same-day meeting reminder landing inside
+  // quiet hours is the common case this guards.
+  const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return;
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: id,
+    content: {
+      title: reminder.eventTitle,
+      body: reminder.offsetMinutes === 0
+        ? 'Starting now'
+        : `Starts in ${reminder.offsetMinutes < 60 ? `${reminder.offsetMinutes} min` : `${reminder.offsetMinutes / 60} hr`}`,
+      sound: true,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+    },
+  });
+}
+
+export async function cancelEventReminder(key: string): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(eventReminderNotificationId(key)).catch(() => {});
+}
+
+/**
+ * Puts every pending event reminder back after a blanket cancel — the same
+ * job `rescheduleAllTimerAlarms`/`rescheduleTripReminder` do, folded into
+ * `rescheduleAllReminders` above. The caller (`useEventReminderStore.initialize`)
+ * is expected to have already pruned reminders for events that have started.
+ */
+export async function rescheduleAllEventReminders(reminders: readonly EventReminder[]): Promise<void> {
+  for (const reminder of reminders) {
+    await scheduleEventReminder(reminder);
+  }
 }

@@ -63,6 +63,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/email.ts` — mailtoUrl, isEmailable
 - `src/utils/emojiCatalog.ts` — EmojiEntry, EmojiGroup, EMOJI_GROUPS, ALL_EMOJI, searchEmoji
 - `src/utils/emojiInput.ts` — firstEmoji, isSingleEmoji
+- `src/utils/eventReminders.ts` — EventReminder, EVENT_REMINDER_OFFSETS, eventReminderKey, reminderFromEvent, reminderTriggerDate, isReminderStale, pruneStaleReminders, describeEventReminderOffset
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
 - `src/utils/extraTask.ts` — MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N, ExtraTaskRule, extraTaskRule, advanceExtraTaskTally, completionsUntilExtraTask, extraTaskSummary, describeExtraTaskRule, emptyExtraTaskDraft, parseExtraTaskDraft, +2 more
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
@@ -111,7 +112,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/missed.ts` — isMissed, isRealCompletion, MostMissedGroup, mostMissed
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
-- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +18 more
+- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +21 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, CADENCE_UNIT_MAX, CadenceParts, toCadenceParts, fromCadenceParts, withCadenceUnit, describeCadence, cadenceUnitLabel
 - `src/utils/ordinal.ts` — ordinal
@@ -231,6 +232,7 @@ render, so listing them adds lines without adding answers.
 - `src/store/useCalendarStore.ts` — CALENDAR_WINDOW_DAYS, useCalendarStore, useCalendarSync
 - `src/store/useCategoryStore.ts` — useCategoryStore, CALENDAR_EVENTS_CATEGORY, ensureCalendarEventCategory, ensureGeneratedTaskCategory, ensureGeneratedTaskCategories
 - `src/store/useDemoStore.ts` — useDemoStore
+- `src/store/useEventReminderStore.ts` — useEventReminderStore
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useGroceryStore.ts` — PlannedRow, PlanAddResult, useGroceryStore
 - `src/store/useLeftoverStore.ts` — LeftoverDraft, useLeftoverStore
