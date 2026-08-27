@@ -725,8 +725,13 @@ describe('parseCategoryAndTagsInput', () => {
     expect(parseCategoryAndTagsInput('just a normal title', categories, tags)).toBeNull();
   });
 
-  it('returns null when the entire input is the token', () => {
-    expect(parseCategoryAndTagsInput('#home', categories, tags)).toBeNull();
+  it('fires even when the entire input is the token, leaving an empty cleanTitle', () => {
+    // Typing the category first ("#home", nothing else yet) is exactly this
+    // state, and the tooltip should still offer it — the title can't be saved
+    // blank, but that's handleAdd's guard, not this function's.
+    const result = parseCategoryAndTagsInput('#home', categories, tags);
+    expect(result?.category).toBe('Home');
+    expect(result?.cleanTitle).toBe('');
   });
 
   it('returns null when there are no categories or tags registered', () => {

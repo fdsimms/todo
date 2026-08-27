@@ -864,6 +864,11 @@ const MIN_CATEGORY_PREFIX_LENGTH = 3;
  * Deliberately doesn't create a category or tag from an unrecognized token —
  * a typo or an unrelated "#" in the title (e.g. a hashtag someone's pasting)
  * is left as literal text rather than silently minting something new.
+ *
+ * Fires even when stripping the token leaves an empty `cleanTitle` — typing
+ * the category first ("#home", nothing else yet) is exactly that state, and
+ * the tooltip should still offer it. The title itself still can't be saved
+ * blank; that's `handleAdd`'s `!title.trim()` guard, not this function's.
  */
 export function parseCategoryAndTagsInput(
   input: string,
@@ -916,7 +921,6 @@ export function parseCategoryAndTagsInput(
     cleanTitle = cleanTitle.slice(0, consumed[i].start) + cleanTitle.slice(consumed[i].end);
   }
   cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
-  if (!cleanTitle) return null; // a bare "#home" alone is a literal title, not a tag
 
   return {
     category,
