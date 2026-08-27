@@ -1,11 +1,13 @@
-import type { Effort } from '../types';
+import type { Effort, RecipeSourceType } from '../types';
 import {
   TITLE_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
   RECIPE_NAME_MAX_LENGTH,
+  RECIPE_PAGE_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
+  RECIPE_SOURCE_TYPES,
   SHOP_NAME_MAX_LENGTH,
   PREP_MAX_LENGTH,
 } from '../types';
@@ -729,6 +731,23 @@ export interface ExtractedRecipe {
   recipeYield: string | null;
   ingredients: RecipeGroceryItem[];
   /**
+   * Where the source says it's from — the four fields that map onto `Recipe`'s
+   * `source`/`author`/`sourcePage`/`sourceType`. All null for the overwhelming
+   * majority of pastes, and that's the point: this is provenance the source
+   * *states*, never a guess. A cookbook page carries its title on the running
+   * head and its number in the corner, which is exactly the same class of fact
+   * as a link import's `siteName` and is taken on the same terms (see
+   * `referencePageNumber`'s note in `recipeImportComponents.ts`).
+   *
+   * A link import still prefers the page's own structured metadata over these
+   * — markup is a statement, a model's read of body text is an inference — so
+   * the sheets fall back to them rather than leading with them.
+   */
+  sourceTitle: string | null;
+  sourceAuthor: string | null;
+  sourcePage: string | null;
+  sourceType: RecipeSourceType | null;
+  /**
    * Other recipes this one tells you to go and make, printed elsewhere in the
    * same book or on the same site. Empty for the overwhelming majority of
    * sources; see `ExtractedRecipeReference`.
@@ -764,6 +783,24 @@ function sharedRecipeInstructions(availableAisles: string[]): string[] {
 function referenceInstructions(): string[] {
   return [
     'A recipe often calls for another recipe printed elsewhere and points you to it: "1 cup salsa verde (page 45)", "serve with the herb oil on p. 12", "uses the pizza dough from page 210". List each of those in "referencedRecipes", with the dish\'s own name and the source\'s own words for where to find it. Two rules: only list one when the source actually points somewhere else for it — "serve with rice" names no recipe and belongs nowhere near this list — and never list a part of this recipe\'s own ingredient list. "For the frosting" is the "component" field above; these are separate recipes with their own pages.',
+  ];
+}
+
+/**
+ * The paragraph asking where the recipe is from. Shared by both sources: a
+ * pasted recipe carries a byline as often as a photographed page carries a
+ * running head, and neither is any more of a guess than the other.
+ *
+ * The whole paragraph is about *refusing* to infer. A model asked where a
+ * recipe came from will happily answer from taste — it knows which cookbook a
+ * dish sounds like — and a plausible book title written into an attribution
+ * field is worse than a blank one, because nothing downstream can tell it from
+ * a title actually read off the page. Same standard `referencePageNumber`
+ * holds a locator to: the source's own words, or nothing.
+ */
+function sourceInstructions(): string[] {
+  return [
+    'Separately from the recipe itself, record where it came from — but only from what the source actually shows you. A cookbook or magazine title printed on the running head, the title page, or the masthead goes in "sourceTitle"; a byline naming whose recipe it is goes in "sourceAuthor"; a page number printed on the page goes in "sourcePage"; and "sourceKind" says which kind of thing it is. Leave a field empty rather than working it out: a dish that sounds like a famous cook\'s is not a byline, a book you recognise from its typesetting is still a guess, and the recipe\'s own title is never the book\'s title. Most sources state none of these, and empty is the right answer for every one they don\'t.',
   ];
 }
 
@@ -814,13 +851,14 @@ function methodInstructions(): string[] {
 export async function extractRecipe(
   source: RecipeSource,
   availableAisles: string[],
-  options: { includeMethod?: boolean; includeReferences?: boolean } = {},
+  options: { includeMethod?: boolean; includeReferences?: boolean; includeSource?: boolean } = {},
 ): Promise<ExtractedRecipe> {
-  const { includeMethod = true, includeReferences = true } = options;
+  const { includeMethod = true, includeReferences = true, includeSource = true } = options;
   const { apiKey, model } = requireFeature('recipeExtraction');
 
   const empty: ExtractedRecipe = {
     name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
+    sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
     references: [], steps: [], prepTasks: [],
   };
   const image = typeof source === 'string' ? null : source;
@@ -829,11 +867,19 @@ export async function extractRecipe(
   if (image ? !image.base64 : !text) return empty;
 
   const foundLine = `its shopping list${includeMethod ? ', and its method' : ''}`;
+  // Page furniture is junk to the recipe and provenance to the book, so which
+  // of the two this asks for depends on whether anyone is collecting the
+  // second. Both versions keep it out of the name, ingredients and method —
+  // that half was never in question.
+  const pageFurniture = includeSource
+    ? 'Keep anything that is not part of this recipe out of the recipe: headnotes and stories, photo captions, and text bleeding in from a facing page. Page numbers, running heads and chapter titles are not part of the recipe either, and must never appear in its name, ingredients or method — but they are what says where it came from, so read them into the source fields described below rather than discarding them.'
+    : 'Ignore anything on the page that is not part of this recipe: page numbers, running heads, chapter titles, headnotes and stories, photo captions, and text bleeding in from a facing page.';
   const prompt = image
     ? [
         `This is a photo of a recipe — a cookbook page, a recipe card, a handwritten note, or a screen. Read it and extract the recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
-        'Ignore anything on the page that is not part of this recipe: page numbers, running heads, chapter titles, headnotes and stories, photo captions, and text bleeding in from a facing page. If the page shows more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.',
+        `${pageFurniture} If the page shows more than one recipe, extract only the most prominent one — the one whose title and ingredient list are most complete — and never merge ingredients across recipes. Ingredient lists are often set in two columns; read down each column rather than across.`,
         ...sharedRecipeInstructions(availableAisles),
+        ...(includeSource ? sourceInstructions() : []),
         ...(includeReferences ? referenceInstructions() : []),
         ...(includeMethod ? methodInstructions() : []),
         'If the photo is too blurry, too dark, cut off, or otherwise unreadable, return an empty name and an empty item list rather than guessing. Never invent an ingredient, step, or prep task you cannot actually read.',
@@ -841,6 +887,7 @@ export async function extractRecipe(
     : [
         `Extract this recipe: its name, how many it serves (or what it makes, if that's how the source states it — "2 loaves", "3 cups", "2 dozen cookies"), its total prep/cook time, and ${foundLine}.`,
         ...sharedRecipeInstructions(availableAisles),
+        ...(includeSource ? sourceInstructions() : []),
         ...(includeReferences ? referenceInstructions() : []),
         ...(includeMethod ? methodInstructions() : []),
         `Recipe:\n${text}`,
@@ -890,6 +937,25 @@ export async function extractRecipe(
             availableAisles,
             'The things a shopper needs to buy for this recipe.',
           ),
+          ...(includeSource ? {
+            sourceTitle: {
+              type: 'string',
+              description: `The cookbook, magazine or site this recipe is printed in, exactly as the source gives it — "Nothing Fancy", "Bon Appétit", "NYT Cooking". Under ${RECIPE_SOURCE_MAX_LENGTH} characters. This is the book's title, never the recipe's own. Empty string unless the source actually shows it.`,
+            },
+            sourceAuthor: {
+              type: 'string',
+              description: `The person credited with the recipe, as the source bylines them — "Alison Roman". Under ${RECIPE_SOURCE_MAX_LENGTH} characters. Empty string unless the source actually names someone; never infer an author from the style of the food.`,
+            },
+            sourcePage: {
+              type: 'string',
+              description: `The page number printed on the page — "142", or "112-115" when the recipe runs across a spread. Digits only, no "p." prefix. Under ${RECIPE_PAGE_MAX_LENGTH} characters. Empty string when no page number is visible, and for anything that isn't a printed page.`,
+            },
+            sourceKind: {
+              type: 'string',
+              enum: [...RECIPE_SOURCE_TYPES],
+              description: 'What kind of source this is, from how it looks and reads: "cookbook" for a book page, "magazine" for a magazine or newspaper spread, "website" for a printed or screenshotted web page, "homeRecipe" for a handwritten card or note, "other" for anything else. Empty string if you genuinely cannot tell.',
+            },
+          } : {}),
           ...(includeReferences ? {
             referencedRecipes: {
               type: 'array',
@@ -946,6 +1012,7 @@ export async function extractRecipe(
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {
     name?: unknown; servings?: unknown; servingsMax?: unknown; prepMinutes?: unknown; recipeYield?: unknown; items?: unknown;
+    sourceTitle?: unknown; sourceAuthor?: unknown; sourcePage?: unknown; sourceKind?: unknown;
     referencedRecipes?: unknown; steps?: unknown; prepTasks?: unknown;
   } | undefined;
   if (!input) throw new Error('No suggestions returned');
@@ -967,13 +1034,60 @@ export async function extractRecipe(
     ? input.recipeYield.trim().slice(0, RECIPE_SOURCE_MAX_LENGTH)
     : null;
 
+  const sourceTitle = includeSource ? parseExtractedSourceTitle(input.sourceTitle, name) : null;
+  const sourceAuthor = includeSource ? sourceField(input.sourceAuthor) : null;
+  const sourcePage = includeSource ? parseExtractedSourcePage(input.sourcePage) : null;
+  const sourceType = includeSource && RECIPE_SOURCE_TYPES.includes(input.sourceKind as RecipeSourceType)
+    ? (input.sourceKind as RecipeSourceType)
+    : null;
+
   return {
     name, servings, servingsMax, prepMinutes, recipeYield,
+    sourceTitle, sourceAuthor, sourcePage, sourceType,
     ingredients: parseExtractedItems(input.items, availableAisles),
     references: includeReferences ? parseExtractedReferences(input.referencedRecipes) : [],
     steps: includeMethod ? parseExtractedSteps(input.steps) : [],
     prepTasks: includeMethod ? parseExtractedPrepTasks(input.prepTasks) : [],
   };
+}
+
+/** An attribution string as the store would keep it, or null for "not stated". */
+function sourceField(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return value.trim().slice(0, RECIPE_SOURCE_MAX_LENGTH) || null;
+}
+
+/**
+ * The book's title, refused when it's just the recipe's own title read twice.
+ *
+ * A page whose running head is the chapter rather than the book ("Weeknight
+ * Dinners") gives the model nothing to put here, and the most available string
+ * on the page is the dish's own name — so "Chocolate cake, from Chocolate
+ * cake" is the shape this fails in. The prompt says not to; this makes it not
+ * matter, because an attribution that merely repeats the recipe is worth
+ * strictly less than a blank one the user can fill in.
+ */
+function parseExtractedSourceTitle(value: unknown, recipeName: string): string | null {
+  const title = sourceField(value);
+  if (!title || !recipeName) return title;
+  return groceryNameKey(title) === groceryNameKey(recipeName) ? null : title;
+}
+
+/**
+ * A printed page number. Kept only when it actually looks like one: a number,
+ * a range across a spread, or the roman numerals a front-matter page carries.
+ *
+ * `Recipe.sourcePage` is free text because some books print "xii", so nothing
+ * downstream will reject a bad value — it just renders as "p. see overleaf" in
+ * the byline. Same refusal `referencePageNumber` makes for a locator that
+ * names no page, applied at the other end of the same pipe.
+ */
+function parseExtractedSourcePage(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  // Some models restore the "p." the schema asked them to leave off.
+  const bare = value.trim().replace(/^(?:pages?|pgs?|p)\.?\s*/i, '').trim();
+  if (!/^[0-9ivxlcdm]+(?:\s*[-–—]\s*[0-9ivxlcdm]+)?$/i.test(bare)) return null;
+  return bare.replace(/\s*[-–—]\s*/, '-').slice(0, RECIPE_PAGE_MAX_LENGTH);
 }
 
 /**
@@ -988,6 +1102,8 @@ export async function suggestRecipeGroceries(
   const extracted = await extractRecipe(source, availableAisles, {
     includeMethod: false,
     includeReferences: false,
+    // Nowhere to put an attribution either — same reason the method is off.
+    includeSource: false,
   });
   return extracted.ingredients;
 }

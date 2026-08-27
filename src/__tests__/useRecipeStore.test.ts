@@ -11,6 +11,10 @@ import { groceryNameKey } from '../utils/groceryParse';
 
 jest.mock('../db/database', () => ({
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
+  dbGetAllCookbooks: jest.fn().mockReturnValue([]),
+  dbInsertCookbook: jest.fn(),
+  dbUpdateCookbook: jest.fn(),
+  dbDeleteCookbook: jest.fn(),
   dbInsertRecipe: jest.fn(),
   dbUpdateRecipe: jest.fn(),
   dbDeleteRecipe: jest.fn(),
@@ -52,6 +56,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
     totalCookMinutes: 0,
     sourceType: null,
     sourcePage: null,
+    cookbookId: null,
     prepMinutes: null,
     prepTimerStartedAt: null,
     prepTimerElapsedSeconds: 0,

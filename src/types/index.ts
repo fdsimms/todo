@@ -3156,6 +3156,42 @@ export const RECIPE_VOTE_LABELS: Record<RecipeVote, string> = {
   never: 'Never again',
 };
 
+// A book recipes come out of, saved once and pointed at by every recipe read
+// from it — so correcting a title or filling in an author later is one edit
+// rather than one per recipe.
+//
+// It exists because `Recipe.source` + `Recipe.author` are free text, and a
+// shelf of books entered a page at a time drifts: "Nothing Fancy" and "Nothing
+// Fancy " and "Nothing fancy" are three books to everything that groups by
+// them, and the author typed on the first import is missing from the next four.
+// A row with an id is the same fix `Shop` got for store names, for the same
+// reason.
+//
+// **A linked recipe still carries `source`/`author` as a mirror**, written by
+// the store whenever the link or the book changes and never edited directly
+// (see `useRecipeStore.linkCookbook`/`renameCookbook`). That's deliberate:
+// every existing reader of an attribution — `describeAttribution`, the search
+// tier in `rankRecipes`, `shareText`, `recipeHasAttribution` — goes on reading
+// a plain string and needs to know nothing about cookbooks, and there is still
+// exactly one writer, which is all the drift fix ever needed. The mirror is
+// also what survives `deleteCookbook`: losing the book must not lose the fact
+// that the recipe came from it.
+export interface Cookbook {
+  id: string;
+  // As typed — the label. "Nothing Fancy", not "nothing fancy".
+  title: string;
+  // Normalised identity, from `cookbookKey()`. UNIQUE in SQLite, same guarantee
+  // Shop.nameKey and Recipe.nameKey get. Keyed on **title and author together**,
+  // because two different books really are called "Dinner" and a shelf that
+  // can't hold both is worse than one that holds a near-duplicate.
+  titleKey: string;
+  // null until someone fills it in, which is the common state on an import: a
+  // running head gives the title far more often than it gives the author.
+  author: string | null;
+  sortOrder: number;
+  createdAt: string;
+}
+
 // A dish you cook, with what it takes to shop for it.
 //
 // Its own table rather than a TaskTemplate variant: applyTemplate materialises
@@ -3197,6 +3233,15 @@ export interface Recipe {
   // clears this the moment the type stops being a cookbook, the same rule
   // `servingsMax` follows for `servings`.
   sourcePage: string | null;
+  // The book on the shelf this came out of — see `Cookbook`. Null for the
+  // overwhelming majority of recipes, which is every one that isn't from a
+  // book: a link import, a paste, something you cook from memory.
+  //
+  // Set implies `sourceType === 'cookbook'`, and `source`/`author` mirror the
+  // book's own. The page stays here rather than on the book, because it's the
+  // one part of a cookbook attribution that belongs to the recipe: a book has
+  // many pages and this recipe is on one of them.
+  cookbookId: string | null;
   // The low end of the servings count, or the whole count when the recipe
   // doesn't give a range ("serves 4"). null means no serving count at all.
   servings: number | null;

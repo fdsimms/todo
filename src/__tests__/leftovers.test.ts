@@ -100,6 +100,7 @@ function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): 
     totalCookMinutes: 0,
     sourceType: null,
     sourcePage: null,
+    cookbookId: null,
     prepMinutes: null,
     prepTimerStartedAt: null,
     prepTimerElapsedSeconds: 0,

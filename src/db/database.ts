@@ -1,12 +1,12 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { Cookbook, DeliverableKind, GeneratedKind, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
 import { parseChainItems } from '../utils/chain';
 import { parseExtraTaskDraft } from '../utils/extraTask';
-import { parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
+import { cookbookKey, parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
 import { parseRecipeTags } from '../utils/recipeTags';
 import { parseRecipeChoices, parseRecipeComponents } from '../utils/recipeComponents';
 import { parseEmptySections } from '../utils/recipeSections';
@@ -418,6 +418,19 @@ export function initDatabase(): void {
       quantity TEXT,
       source TEXT NOT NULL DEFAULT '',
       fetched_at TEXT NOT NULL
+    );
+
+    -- A book recipes come out of, so a shelf entered a page at a time doesn't
+    -- drift into three spellings of one title. Recipes point at it by id via
+    -- recipes.cookbook_id, and keep their own mirrored source/author — see
+    -- Cookbook in types for why the mirror is deliberate.
+    CREATE TABLE IF NOT EXISTS cookbooks (
+      id TEXT PRIMARY KEY NOT NULL,
+      title TEXT NOT NULL,
+      title_key TEXT NOT NULL,
+      author TEXT,
+      sort_order REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
     );
 
     -- A dish, and what it takes to shop for it. The ingredients column is a
@@ -1143,6 +1156,15 @@ export function initDatabase(): void {
     // since — the same treatment in_catalog gets, because dropping a column
     // isn't this schema's migration style. See GroceryListEntry.
     'ALTER TABLE grocery_items ADD COLUMN list_id TEXT',
+    // Which book on the shelf a recipe came out of — see Recipe.cookbookId.
+    // Null on every existing row, and the one-time backfill below gathers the
+    // ones that already carry a cookbook attribution as free text.
+    'ALTER TABLE recipes ADD COLUMN cookbook_id TEXT',
+    // Same reasoning as idx_grocery_shops_name_key: the no-two-spellings-of-one
+    // -book guarantee belongs in SQLite, not in a store method a future call
+    // site could go around. Keyed on title *and* author, so a shelf can hold
+    // two different books called "Dinner" — see Cookbook.titleKey.
+    'CREATE UNIQUE INDEX IF NOT EXISTS idx_cookbooks_title_key ON cookbooks(title_key)',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1399,6 +1421,50 @@ export function initDatabase(): void {
     } catch (_) {}
     dbSetSetting('recipe_rating_expansion_backfill_done', '1');
   }
+
+  // One-time migration: gather the cookbook attributions that were already
+  // there as free text into real Cookbook rows (see Cookbook in types). Every
+  // recipe classified as a cookbook and carrying a title gets grouped with the
+  // others that name the same book, one row per distinct title+author.
+  //
+  // The recipes keep their own source/author untouched — those are the mirror
+  // the link maintains from here on, and they already hold exactly what the
+  // book says. So this writes cookbooks and cookbook_id, and nothing else: a
+  // backfill that also rewrote the strings could only make them worse.
+  //
+  // An author disagreeing across two recipes of one title is treated as two
+  // books rather than reconciled, because that is what the key says and
+  // guessing which typing is right is how a backfill loses data. They merge
+  // the moment someone corrects one of them by hand.
+  if (dbGetSetting('recipe_cookbook_backfill_done') !== '1') {
+    try {
+      const rows = db.getAllSync<Record<string, unknown>>(
+        `SELECT id, source, author FROM recipes
+         WHERE source_type = 'cookbook' AND source IS NOT NULL AND TRIM(source) != ''
+         ORDER BY created_at ASC`
+      );
+      const byKey = new Map<string, string>();
+      const now = new Date().toISOString();
+      let order = 1;
+      for (const row of rows) {
+        const title = ((row.source as string) ?? '').trim();
+        if (!title) continue;
+        const author = ((row.author as string) ?? '').trim() || null;
+        const key = cookbookKey(title, author);
+        let cookbookId = byKey.get(key);
+        if (!cookbookId) {
+          cookbookId = generateId();
+          db.runSync(
+            'INSERT INTO cookbooks (id, title, title_key, author, sort_order, created_at) VALUES (?,?,?,?,?,?)',
+            [cookbookId, title, key, author, order++, now]
+          );
+          byKey.set(key, cookbookId);
+        }
+        db.runSync('UPDATE recipes SET cookbook_id = ? WHERE id = ?', [cookbookId, row.id as string]);
+      }
+    } catch (_) {}
+    dbSetSetting('recipe_cookbook_backfill_done', '1');
+  }
 }
 
 // ─── Backup / restore ────────────────────────────────────────────────────────
@@ -1450,6 +1516,8 @@ export const BACKUP_TABLES = [
   'grocery_item_subs',
   'grocery_item_products',
   'grocery_store_aliases',
+  // Before recipes: a recipe can point at a cookbook.
+  'cookbooks',
   'recipes',
   // Before meal_plan_entries: an entry can point at a leftover.
   'leftovers',
@@ -3802,6 +3870,53 @@ export function dbDeleteItemSubLink(itemId: string, subItemId: string): void {
   ]);
 }
 
+// ─── Cookbooks ──────────────────────────────────────────────────────────────
+
+function rowToCookbook(row: Record<string, unknown>): Cookbook {
+  return {
+    id: row.id as string,
+    title: row.title as string,
+    titleKey: row.title_key as string,
+    author: (row.author as string) ?? null,
+    sortOrder: (row.sort_order as number) ?? 0,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllCookbooks(): Cookbook[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM cookbooks ORDER BY sort_order ASC, created_at ASC'
+  );
+  return rows.map(rowToCookbook);
+}
+
+export function dbInsertCookbook(cookbook: Cookbook): void {
+  db.runSync(
+    'INSERT INTO cookbooks (id, title, title_key, author, sort_order, created_at) VALUES (?,?,?,?,?,?)',
+    [cookbook.id, cookbook.title, cookbook.titleKey, cookbook.author ?? null, cookbook.sortOrder, cookbook.createdAt]
+  );
+}
+
+export function dbUpdateCookbook(cookbook: Cookbook): void {
+  db.runSync(
+    'UPDATE cookbooks SET title=?, title_key=?, author=?, sort_order=? WHERE id=?',
+    [cookbook.title, cookbook.titleKey, cookbook.author ?? null, cookbook.sortOrder, cookbook.id]
+  );
+}
+
+/**
+ * Unlinks the recipes rather than taking them with it — the opposite of
+ * `dbDeleteGroceryShop`'s cascade, and for the opposite reason. A purchase
+ * record naming a store that doesn't exist is unreadable, but a recipe naming
+ * a book that doesn't exist is just a recipe: its mirrored source/author still
+ * say where it came from, which is precisely what they're kept for. Same
+ * unfile-don't-erase rule `deleteGroup` follows for a stack's history.
+ */
+export function dbDeleteCookbook(id: string): void {
+  db.runSync('UPDATE recipes SET cookbook_id = NULL WHERE cookbook_id = ?', [id]);
+  db.runSync('DELETE FROM cookbooks WHERE id = ?', [id]);
+}
+
 // ─── Recipes ────────────────────────────────────────────────────────────────
 
 function rowToRecipe(row: Record<string, unknown>): Recipe {
@@ -3818,6 +3933,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
       ? (row.source_type as RecipeSourceType)
       : null,
     sourcePage: (row.source_page as string) ?? null,
+    cookbookId: (row.cookbook_id as string) ?? null,
     servings: (row.servings as number) ?? null,
     servingsMax: (row.servings_max as number) ?? null,
     recipeYield: (row.recipe_yield as string) ?? null,
@@ -3865,14 +3981,14 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, servings, servings_max, recipe_yield, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, sort_order, created_at, cook_count, last_cooked_at, vote,
+      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, sort_order, created_at, cook_count, last_cooked_at, vote,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
        prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.sourceType ?? null, recipe.sourcePage ?? null,
+      recipe.sourceType ?? null, recipe.sourcePage ?? null, recipe.cookbookId ?? null,
       recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
       recipe.leftoverKeepDays ?? null,
       recipe.imagePath ?? null, recipe.mealType ?? null,
@@ -3893,7 +4009,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
 export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
-       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, servings=?, servings_max=?, recipe_yield=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
+       name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, cookbook_id=?, servings=?, servings_max=?, recipe_yield=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
        sort_order=?, cook_count=?, last_cooked_at=?, vote=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
        prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?
@@ -3901,7 +4017,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
-      recipe.sourceType ?? null, recipe.sourcePage ?? null,
+      recipe.sourceType ?? null, recipe.sourcePage ?? null, recipe.cookbookId ?? null,
       recipe.servings ?? null, recipe.servingsMax ?? null, recipe.recipeYield ?? null,
       recipe.leftoverKeepDays ?? null,
       recipe.imagePath ?? null, recipe.mealType ?? null,

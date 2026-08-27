@@ -609,6 +609,23 @@ export function cleanRecipeSource(raw: string, maxLength: number = RECIPE_SOURCE
 }
 
 /**
+ * A cookbook's normalised identity, from its title *and* its author.
+ *
+ * Title alone would be wrong: "Dinner" is a Melissa Clark book and also a Meera
+ * Sodha one, and a shelf that can only hold one of them is a worse bug than the
+ * near-duplicate a compound key lets through. Author alone is obviously wrong,
+ * since a cook writes more than one book.
+ *
+ * Falls back to lowercased raw text per part for the reason `addShop` does: a
+ * title with no letters or digits normalises to empty, and two of those would
+ * collide on the UNIQUE index and throw out of whatever called this.
+ */
+export function cookbookKey(title: string, author: string | null): string {
+  const part = (raw: string) => groceryNameKey(raw) || raw.trim().toLowerCase();
+  return `${part(title)}|${part(author ?? '')}`;
+}
+
+/**
  * Distinct, alpha-sorted values of a text field across every *other* recipe —
  * the same "derive suggestions from the data that's actually there" idea as
  * groceryAisles/grocerySuggest, shared by both Source's and Author's

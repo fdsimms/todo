@@ -617,6 +617,10 @@ describe('extractRecipe', () => {
       prepMinutes: 45,
       recipeYield: null,
       ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null }],
+      sourceTitle: null,
+      sourceAuthor: null,
+      sourcePage: null,
+      sourceType: null,
       references: [],
       steps: [],
       prepTasks: [],
@@ -837,6 +841,7 @@ describe('extractRecipe', () => {
     const spy = jest.spyOn(global, 'fetch');
     await expect(extractRecipe('   ', AISLES)).resolves.toEqual({
       name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
+      sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
       references: [], steps: [], prepTasks: [],
     });
     expect(spy).not.toHaveBeenCalled();
@@ -1026,6 +1031,10 @@ describe('extractRecipe', () => {
         prepMinutes: 45,
         recipeYield: null,
         ingredients: [{ name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null }],
+        sourceTitle: null,
+        sourceAuthor: null,
+        sourcePage: null,
+        sourceType: null,
         references: [],
         steps: [],
         prepTasks: [],
@@ -1052,6 +1061,7 @@ describe('extractRecipe', () => {
       const spy = jest.spyOn(global, 'fetch');
       await expect(extractRecipe({ base64: '', mediaType: 'image/jpeg' }, AISLES)).resolves.toEqual({
         name: '', servings: null, servingsMax: null, prepMinutes: null, recipeYield: null, ingredients: [],
+        sourceTitle: null, sourceAuthor: null, sourcePage: null, sourceType: null,
         references: [], steps: [], prepTasks: [],
       });
       expect(spy).not.toHaveBeenCalled();

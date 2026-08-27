@@ -48,6 +48,7 @@ function recipe(name: string, tags: string[] = []): Recipe {
     totalCookMinutes: 0,
     sourceType: null,
     sourcePage: null,
+    cookbookId: null,
     prepMinutes: null,
     prepTimerStartedAt: null,
     prepTimerElapsedSeconds: 0,

@@ -125,6 +125,10 @@ jest.mock('../db/database', () => ({
   // Reached only via the initialize() fan-out — groceries and recipes are
   // otherwise untouched by this file's subject.
   dbGetAllRecipes: jest.fn().mockReturnValue([]),
+  dbGetAllCookbooks: jest.fn().mockReturnValue([]),
+  dbInsertCookbook: jest.fn(),
+  dbUpdateCookbook: jest.fn(),
+  dbDeleteCookbook: jest.fn(),
   dbGetAllGroceryItems: jest.fn().mockReturnValue([]),
   dbGetGroceryAisleOrder: jest.fn().mockReturnValue(null),
   dbGetGroceryHiddenAisles: jest.fn().mockReturnValue([]),
@@ -4704,7 +4708,7 @@ describe('checkMealSlotTasks', () => {
       emptySections: [], components: [], prepTasks: [], steps: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
       estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
-      cookTimeCount: 0, totalCookMinutes: 0, sourceType: null, sourcePage: null, prepMinutes: null,
+      cookTimeCount: 0, totalCookMinutes: 0, sourceType: null, sourcePage: null, cookbookId: null, prepMinutes: null,
       prepTimerStartedAt: null, prepTimerElapsedSeconds: 0, lastPrepMinutes: null, prepTimeCount: 0,
       totalPrepMinutes: 0,
       ...over,
@@ -5030,7 +5034,7 @@ describe('checkMealShortfallTasks', () => {
       emptySections: [], components: [], prepTasks: [], steps: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
       estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
-      cookTimeCount: 0, totalCookMinutes: 0, sourceType: null, sourcePage: null, prepMinutes: null,
+      cookTimeCount: 0, totalCookMinutes: 0, sourceType: null, sourcePage: null, cookbookId: null, prepMinutes: null,
       prepTimerStartedAt: null, prepTimerElapsedSeconds: 0, lastPrepMinutes: null, prepTimeCount: 0,
       totalPrepMinutes: 0,
     };
