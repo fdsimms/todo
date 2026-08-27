@@ -18,6 +18,7 @@ import { generateId } from './id';
 import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 import { substitutesOnHand } from './itemSubs';
+import { varietyIndex } from './itemVarieties';
 import { standingSwapMap } from './standingSwaps';
 import { formatDuration } from './effort';
 import {
@@ -1181,6 +1182,31 @@ const MIN_SUGGESTION_COVERAGE = 0.5;
 // when the substitute genuinely beats that.
 const SUBSTITUTE_RECENCY_CREDIT = 0.75;
 
+/**
+ * The freshest of a generic's declared varieties, or null for none.
+ *
+ * Freshest rather than `itemVarieties.coveringVariety`'s ladder, because the
+ * two answer different questions: that one picks what a *shopping* read should
+ * file a line under, where this feeds a recency average and wants the family's
+ * best evidence that the line is coverable tonight. Ties keep the first in
+ * catalog order, the same first-wins every other reader here uses.
+ */
+function bestByRecency(
+  candidates: readonly GroceryItem[] | undefined,
+  now: Date
+): GroceryItem | null {
+  let best: GroceryItem | null = null;
+  let bestScore = -1;
+  for (const candidate of candidates ?? []) {
+    const score = purchaseRecency(candidate, now);
+    if (score > bestScore) {
+      best = candidate;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 function catalogCoverage(
   recipe: Recipe,
   items: readonly GroceryItem[],
@@ -1204,10 +1230,26 @@ function catalogCoverage(
   ).map(f => f.ingredient);
   if (ingredients.length === 0) return { matched: 0, total: 0, coverage: 0, avgRecency: 0 };
   const byKey = new Map(items.map(i => [i.nameKey, i]));
+  // Built on the first line that misses, not up front: this runs once per
+  // recipe over the whole catalog, and an install where nobody has declared a
+  // variety would otherwise pay a second full pass per recipe to learn there
+  // are none. Once built it costs the same single pass `byKey` already does.
+  let varieties: ReadonlyMap<string, GroceryItem[]> | null = null;
   let matched = 0;
   let recencySum = 0;
   for (const ingredient of ingredients) {
-    const item = byKey.get(ingredient.nameKey);
+    // A generic line the catalog only stocks varieties of is covered — "onion"
+    // against a White onion declaring `varietyOfKey: 'onion'`. Unlike the
+    // substitute credit below this is *full* credit, and the asymmetry is the
+    // whole point of the relation: a substitute is a different thing you would
+    // tolerate, where a variety **is** the thing the recipe named, more
+    // precisely. Discounting it would rank a kitchen that stocks white onions
+    // below one holding a row called plain "Onion", for the same dish.
+    let item = byKey.get(ingredient.nameKey);
+    if (!item && ingredient.nameKey) {
+      varieties ??= varietyIndex(items);
+      item = bestByRecency(varieties.get(ingredient.nameKey), now) ?? undefined;
+    }
     if (!item) continue;
     matched += 1;
     // `matched` (hence `coverage`) is existence-only and unaffected by

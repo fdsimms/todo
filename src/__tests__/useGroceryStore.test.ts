@@ -219,6 +219,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
+    varietyOfKey: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -1055,6 +1056,30 @@ describe('renameItem', () => {
     const milk = makeItem({ name: 'Milk' });
     seed([milk]);
     expect(useGroceryStore.getState().renameItem(milk.id, '   ')).toBe(false);
+  });
+
+  it('re-points variety declarations aimed at the old key', () => {
+    // The declaration is keyed by nameKey, so it strands on a rename exactly
+    // as the remembered aisle and the recipe keys do.
+    const onion = makeItem({ name: 'Onion' });
+    const white = makeItem({ name: 'White onion', varietyOfKey: 'onion' });
+    seed([onion, white]);
+
+    expect(useGroceryStore.getState().renameItem(onion.id, 'Onions')).toBe(true);
+
+    const after = useGroceryStore.getState().items.find(i => i.id === white.id)!;
+    expect(after.varietyOfKey).toBe('onions');
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: white.id, varietyOfKey: 'onions' })
+    );
+  });
+
+  it('clears a declaration a rename lands on its own generic', () => {
+    const white = makeItem({ name: 'White onion', varietyOfKey: 'onion' });
+    seed([white]);
+
+    expect(useGroceryStore.getState().renameItem(white.id, 'Onion')).toBe(true);
+    expect(useGroceryStore.getState().items[0].varietyOfKey).toBeNull();
   });
 });
 
@@ -2690,6 +2715,38 @@ describe('mergeItems', () => {
     expect(survivor.lastPurchasedAt).toBe('2026-08-10T00:00:00.000Z');
   });
 
+  it("adopts the loser's variety declaration only into a silence, never onto itself", () => {
+    // Survivor wins, loser fills a gap — the rating/gtin rule again.
+    const white = makeItem({ name: 'White onion', varietyOfKey: 'onion' });
+    const pearl = makeItem({ name: 'Pearl onion' });
+    seed([white, pearl]);
+    useGroceryStore.getState().mergeItems(white.id, pearl.id);
+    expect(useGroceryStore.getState().itemById(pearl.id)!.varietyOfKey).toBe('onion');
+
+    // And merging a variety into its own generic drops the declaration rather
+    // than leaving the merged row a variety of itself.
+    const onion = makeItem({ name: 'Onion' });
+    const red = makeItem({ name: 'Red onion', varietyOfKey: 'onion' });
+    seed([onion, red]);
+    useGroceryStore.getState().mergeItems(red.id, onion.id);
+    expect(useGroceryStore.getState().itemById(onion.id)!.varietyOfKey).toBeNull();
+  });
+
+  it("re-points other items' declarations aimed at the loser's key", () => {
+    const onions = makeItem({ name: 'Onions' });
+    const onion = makeItem({ name: 'Onion' });
+    const white = makeItem({ name: 'White onion', varietyOfKey: 'onion' });
+    seed([onions, onion, white]);
+
+    useGroceryStore.getState().mergeItems(onion.id, onions.id);
+
+    const after = useGroceryStore.getState().itemById(white.id)!;
+    expect(after.varietyOfKey).toBe('onions');
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: white.id, varietyOfKey: 'onions' })
+    );
+  });
+
   // A rating is the one thing on a product that can't be retyped from memory,
   // so it is exactly what a merge must not throw away. Before this, the loser's
   // products were cascaded out of SQLite by dbDeleteGroceryItem and left behind
@@ -4071,6 +4128,38 @@ describe('setStaple', () => {
   it('shrugs at an id it does not hold', () => {
     seed([]);
     useGroceryStore.getState().setStaple('gone', true);
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('setVarietyOfKey', () => {
+  it('normalises a typed name to a key and persists it', () => {
+    const white = makeItem({ name: 'White onion' });
+    seed([white]);
+
+    useGroceryStore.getState().setVarietyOfKey(white.id, 'Onion');
+
+    expect(useGroceryStore.getState().items[0].varietyOfKey).toBe('onion');
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: white.id, varietyOfKey: 'onion' })
+    );
+  });
+
+  it('clears with null, and reads the item’s own key as a clear too', () => {
+    const white = makeItem({ name: 'White onion', varietyOfKey: 'onion' });
+    seed([white]);
+
+    useGroceryStore.getState().setVarietyOfKey(white.id, 'white onion');
+    expect(useGroceryStore.getState().items[0].varietyOfKey).toBeNull();
+
+    useGroceryStore.getState().setVarietyOfKey(white.id, 'onion');
+    useGroceryStore.getState().setVarietyOfKey(white.id, null);
+    expect(useGroceryStore.getState().items[0].varietyOfKey).toBeNull();
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    useGroceryStore.getState().setVarietyOfKey('gone', 'onion');
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
   });
 });

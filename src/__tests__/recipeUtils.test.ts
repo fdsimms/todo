@@ -1343,6 +1343,48 @@ describe('scoreRecipeAgainstCatalog', () => {
       .toBeGreaterThan(scoreRecipeAgainstCatalog(partial, items, now));
   });
 
+  // Varieties (GroceryItem.varietyOfKey) — a generic line the catalog only
+  // stocks varieties of is covered, at full credit. See catalogCoverage.
+  it('counts a declared variety as covering a generic line', () => {
+    const r = recipe('Ragù', { ingredients: [ing('Onion', { nameKey: 'onion' })] });
+    const declared = [item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion' })];
+    const undeclared = [item('White onion', { nameKey: 'white onion' })];
+
+    expect(scoreRecipeAgainstCatalog(r, declared, now)).toBeGreaterThan(0);
+    expect(scoreRecipeAgainstCatalog(r, undeclared, now)).toBe(0);
+  });
+
+  it('gives a variety full credit, unlike a substitute', () => {
+    // A substitute is a different thing you would tolerate; a variety *is* the
+    // thing the recipe named. A kitchen stocking white onions must not rank
+    // below one holding a row called plain "Onion" for the same dish.
+    const r = recipe('Ragù', { ingredients: [ing('Onion', { nameKey: 'onion' })] });
+    const bought = new Date(2026, 7, 10).toISOString();
+    const direct = [item('Onion', { nameKey: 'onion', lastPurchasedAt: bought })];
+    const variety = [item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion', lastPurchasedAt: bought })];
+
+    expect(scoreRecipeAgainstCatalog(r, variety, now)).toBe(scoreRecipeAgainstCatalog(r, direct, now));
+  });
+
+  it('reads the freshest of several declared varieties', () => {
+    const r = recipe('Ragù', { ingredients: [ing('Onion', { nameKey: 'onion' })] });
+    const stale = item('Red onion', { nameKey: 'red onion', varietyOfKey: 'onion', lastPurchasedAt: new Date(2026, 0, 1).toISOString() });
+    const fresh = item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion', lastPurchasedAt: new Date(2026, 7, 10).toISOString() });
+
+    expect(scoreRecipeAgainstCatalog(r, [stale, fresh], now))
+      .toBe(scoreRecipeAgainstCatalog(r, [fresh], now));
+  });
+
+  it('still prefers a direct row over a variety of the same key', () => {
+    // An exact match always wins outright, the same rule classifyPlanned keeps.
+    const r = recipe('Ragù', { ingredients: [ing('Onion', { nameKey: 'onion' })] });
+    const direct = item('Onion', { nameKey: 'onion', lastPurchasedAt: new Date(2026, 7, 10).toISOString() });
+    const variety = item('White onion', { nameKey: 'white onion', varietyOfKey: 'onion', lastPurchasedAt: new Date(2026, 0, 1).toISOString() });
+
+    expect(scoreRecipeAgainstCatalog(r, [direct, variety], now))
+      .toBe(scoreRecipeAgainstCatalog(r, [direct], now));
+  });
+
   it('nudges a recently bought match above a stale one at equal coverage', () => {
     const r = recipe('Ragù', { ingredients: [ing('Onions', { nameKey: 'onions' })] });
     const fresh = [item('Onions', { nameKey: 'onions', lastPurchasedAt: new Date(2026, 7, 10).toISOString() })];

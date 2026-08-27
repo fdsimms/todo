@@ -1165,6 +1165,10 @@ export function initDatabase(): void {
     // site could go around. Keyed on title *and* author, so a shelf can hold
     // two different books called "Dinner" — see Cookbook.titleKey.
     'CREATE UNIQUE INDEX IF NOT EXISTS idx_cookbooks_title_key ON cookbooks(title_key)',
+    // NULL on every existing row — nothing was a variety of anything before
+    // varieties existed, so every item keeps matching recipe lines by its own
+    // exact key alone. See GroceryItem.varietyOfKey.
+    'ALTER TABLE grocery_items ADD COLUMN variety_of_key TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2754,6 +2758,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     usedUpCount: (row.used_up_count as number) ?? 0,
     spoiledCount: (row.spoiled_count as number) ?? 0,
     lastSpoiledAt: (row.last_spoiled_at as string) ?? null,
+    varietyOfKey: (row.variety_of_key as string) ?? null,
     priceHistory: parsePriceHistory(row.price_history as string | null),
   };
 }
@@ -2772,8 +2777,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        pantry_check_declined_at, used_up_count, spoiled_count, last_spoiled_at,
-       last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -2787,7 +2792,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.pantryCheckDeclinedAt ?? null,
       item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
-      item.preferredProductId ?? null, item.productStrict ? 1 : 0,
+      item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,
     ]
   );
 }
@@ -2801,7 +2806,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        pantry_check_declined_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
-       preferred_product_id=?, brand_strict=?
+       preferred_product_id=?, brand_strict=?, variety_of_key=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -2816,7 +2821,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.pantryCheckDeclinedAt ?? null,
       item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
-      item.preferredProductId ?? null, item.productStrict ? 1 : 0,
+      item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,
       item.id,
     ]
   );

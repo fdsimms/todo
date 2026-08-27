@@ -17,6 +17,7 @@ import {
   isQuotaTask,
   quotaExpectedByNow,
   quotaUnitsToPace,
+  quotaPaceFraction,
   isQuotaOnPace,
   quotaRidesOutTheDay,
   quotaLeavesTodayAfterLog,
@@ -1471,6 +1472,22 @@ describe('quota tasks', () => {
 
     it('is zero for a task that is not a quota', () => {
       expect(quotaUnitsToPace(baseTask)).toBe(0);
+    });
+  });
+
+  describe('quotaPaceFraction', () => {
+    it('reads expected-by-now on the same 0-1 scale as quotaFraction', () => {
+      // 10:00, two of the eight owed.
+      expect(quotaPaceFraction(quotaTask)).toBe(2 / 8);
+    });
+
+    it('reaches 1 once the span has closed', () => {
+      jest.setSystemTime(new Date(2025, 5, 10, 23, 0, 0));
+      expect(quotaPaceFraction(quotaTask)).toBe(1);
+    });
+
+    it('is zero for a task that is not a quota', () => {
+      expect(quotaPaceFraction(baseTask)).toBe(0);
     });
   });
 

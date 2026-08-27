@@ -307,6 +307,10 @@ export const SIMPLE_GROCERY_ROW_FEATURES: Readonly<Record<string, SimpleFeatureI
   pantry: 'pantryTracking',
   useBy: 'pantryTracking',
   substitutes: 'substitutes',
+  // Rides the substitutes switch rather than earning its own: both are the
+  // "this item can stand in for that name" half of the catalog, and a mode
+  // picker with one toggle per field is the complexity the mode exists to cut.
+  varietyOf: 'substitutes',
 };
 
 /** Does a grocery item sheet field render? Same `set` rule as the editor's. */

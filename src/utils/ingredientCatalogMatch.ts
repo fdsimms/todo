@@ -1,6 +1,7 @@
 import type { GroceryItem } from '../types';
 import { groceryNameKey, suggestShorterCatalogName } from './groceryParse';
 import { rankGrocerySuggestions } from './grocerySuggest';
+import { varietyIndex } from './itemVarieties';
 
 /**
  * What a recipe ingredient line resolves to in the grocery catalog, and — when
@@ -46,10 +47,19 @@ export type IngredientMatchReason =
   /** The autocomplete's own ranking, which is also where plural tolerance lives. */
   | 'ranked'
   /** One character out — "skir" → "Skyr". The only tier that tolerates a misspelling. */
-  | 'similar';
+  | 'similar'
+  /**
+   * The line names a generic the catalog holds declared varieties of — "onion"
+   * against a white onion carrying `varietyOfKey: 'onion'`. The one reason
+   * that rides on `linked` rather than `suggested`: the line has crossed the
+   * bridge (every shopping read resolves it through `itemVarieties.ts`), so
+   * there is nothing to offer and nothing to rename — renaming it to the
+   * variety is exactly the over-specifying this relation exists to avoid.
+   */
+  | 'variety';
 
 export type IngredientMatchKind =
-  /** Exact `nameKey` hit: this line already *is* that catalog row. */
+  /** Exact `nameKey` hit, or a generic covered by its declared varieties (`reason: 'variety'`). */
   | 'linked'
   /** No exact hit, but something close enough to offer. */
   | 'suggested'
@@ -191,6 +201,7 @@ function matchOne(
   name: string,
   items: readonly GroceryItem[],
   byKey: ReadonlyMap<string, GroceryItem>,
+  varieties: ReadonlyMap<string, GroceryItem[]>,
   now: Date
 ): IngredientCatalogMatch {
   const key = groceryNameKey(name);
@@ -198,6 +209,14 @@ function matchOne(
 
   const exact = byKey.get(key);
   if (exact) return { kind: 'linked', item: exact, suggestedName: null, reason: null };
+
+  // Identity, not pantry state: whether any variety is actually on hand is the
+  // shopping reads' question, asked at shop time. Here a declaration alone
+  // means the line resolves, so the badge and the "did you mean" both stand
+  // down. First declared variety in catalog order, the same first-wins rule
+  // `indexByKey` uses.
+  const covered = varieties.get(key)?.[0];
+  if (covered) return { kind: 'linked', item: covered, suggestedName: null, reason: 'variety' };
 
   const suggest = (item: GroceryItem, reason: IngredientMatchReason): IngredientCatalogMatch => ({
     kind: 'suggested',
@@ -215,8 +234,17 @@ function matchOne(
   const prefix = longestPrefixItem(key, items);
   if (prefix) return suggest(prefix, 'prefix');
 
-  const ranked = rankGrocerySuggestions(name, items, now, 1)[0];
-  if (ranked) return suggest(ranked.item, 'ranked');
+  // Two, so a tie can be *seen*. The autocomplete's sort falls through to name
+  // length and then the alphabet once the scores agree, which is a fine order
+  // for a picker showing every match and no basis at all for a correction
+  // offered as the answer: a catalog holding White onion and Red onion scores
+  // both identically for "onion" and would badge one of them, silently, with
+  // nothing saying the other exists. Same refusal `uniqueSimilarItem` makes one
+  // tier down, for the same reason — and the tiers below still get their turn,
+  // which is the point of refusing rather than returning NO_MATCH here.
+  const ranked = rankGrocerySuggestions(name, items, now, 2);
+  const decisive = ranked.length > 0 && (ranked.length === 1 || ranked[0].score > ranked[1].score);
+  if (decisive) return suggest(ranked[0].item, 'ranked');
 
   const similar = uniqueSimilarItem(key, items);
   if (similar) return suggest(similar, 'similar');
@@ -230,7 +258,7 @@ export function matchIngredientToCatalog(
   items: readonly GroceryItem[],
   now: Date
 ): IngredientCatalogMatch {
-  return matchOne(name, items, indexByKey(items), now);
+  return matchOne(name, items, indexByKey(items), varietyIndex(items), now);
 }
 
 function indexByKey(items: readonly GroceryItem[]): Map<string, GroceryItem> {
@@ -254,7 +282,8 @@ export function matchIngredientsToCatalog(
   now: Date
 ): IngredientCatalogMatch[] {
   const byKey = indexByKey(items);
-  return names.map(name => matchOne(name, items, byKey, now));
+  const varieties = varietyIndex(items);
+  return names.map(name => matchOne(name, items, byKey, varieties, now));
 }
 
 export interface CatalogMatchSummary {
@@ -265,7 +294,7 @@ export interface CatalogMatchSummary {
 }
 
 /**
- * The counts a header line reads out ("12 ingredients · 9 in your groceries").
+ * The counts a header line reads out ("12 ingredients · 9 in your grocery catalog").
  *
  * Separate from the matches themselves because the summary is what makes the
  * bridge visible *without* a glyph on every row: the per-line badge is reserved

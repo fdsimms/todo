@@ -44,6 +44,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
+    varietyOfKey: null,
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],

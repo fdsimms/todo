@@ -14,6 +14,18 @@ export interface GrocerySuggestion {
   item: GroceryItem;
   /** Already on the list. The row still adds (it's a no-op-plus-refresh), but it says so. */
   onList: boolean;
+  /**
+   * What the ranking actually scored — `matchWeight` × familiarity.
+   *
+   * Exposed for the one caller that has to know whether the ranking *decided*
+   * anything: `ingredientCatalogMatch`'s ranked tier turns its top result into
+   * a "did you mean" correction, and two candidates on an identical score mean
+   * the sort fell through to name length and then the alphabet. Offering one of
+   * those is the coin flip `uniqueSimilarItem` already refuses. Nothing renders
+   * it, and the autocomplete itself ignores it — a picker showing every match
+   * is right to take an arbitrary order.
+   */
+  score: number;
 }
 
 export interface GrocerySection {
@@ -117,7 +129,7 @@ export function rankGrocerySuggestions(
       a.item.name.localeCompare(b.item.name)
     )
     .slice(0, limit)
-    .map(x => ({ item: x.item, onList: onListIn(x.item, inTrolley) }));
+    .map(x => ({ item: x.item, onList: onListIn(x.item, inTrolley), score: x.score }));
 }
 
 /**

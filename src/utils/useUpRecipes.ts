@@ -1,5 +1,5 @@
 import type { KitchenEntry } from './kitchenInventory';
-import type { Recipe } from '../types';
+import type { GroceryItem, Recipe } from '../types';
 import { freshnessRank } from './freshness';
 
 /**
@@ -19,6 +19,13 @@ import { freshnessRank } from './freshness';
  * "ice cream" is the kind of thing that gets a feature switched off — and the
  * app already refuses this class of guess for a wrong shelf life
  * (`shelfLifeDaysFor`) for the same reason.
+ *
+ * The one widening is not a guess: a dying item that *declares itself a
+ * variety* of a generic name (`GroceryItem.varietyOfKey`, user-authored) also
+ * answers for that name, so a recipe calling for "onion" counts as using up
+ * the white onion that's about to turn. Still exact keys on both hops, still
+ * one hop, and still specific-satisfies-generic only — dying generic "onion"
+ * never claims a line that asked for red onion in particular.
  *
  * **Groceries only.** A `KitchenEntry` can be a container of leftover chilli,
  * and a leftover's `matchKey` comes from its own free-typed title rather than
@@ -72,7 +79,13 @@ export interface UseUpRecipe {
  */
 export function useUpRecipes(
   entries: readonly KitchenEntry[],
-  recipes: readonly Recipe[]
+  recipes: readonly Recipe[],
+  /**
+   * The catalog, for the variety declarations — see the header. Defaulted
+   * empty so the older callers and tests read exactly as before: with no
+   * items there are no declarations, and the join is the bare exact key.
+   */
+  items: readonly GroceryItem[] = []
 ): UseUpRecipe[] {
   const dying = new Map<string, KitchenEntry>();
   for (const entry of entries) {
@@ -83,6 +96,24 @@ export function useUpRecipes(
     dying.set(entry.matchKey, entry);
   }
   if (dying.size === 0) return [];
+
+  // A dying variety answers for its generic name too. Aliases are resolved
+  // before being applied so a real dying entry under the generic key always
+  // wins over an alias, and two dying varieties of one generic settle on the
+  // more urgent — the ranking currency everything else here already uses.
+  const aliases = new Map<string, KitchenEntry>();
+  for (const item of items) {
+    if (!item.varietyOfKey || item.varietyOfKey === item.nameKey) continue;
+    const entry = dying.get(item.nameKey);
+    if (!entry) continue;
+    const current = aliases.get(item.varietyOfKey);
+    if (!current || compareByUrgency(entry, current) < 0) {
+      aliases.set(item.varietyOfKey, entry);
+    }
+  }
+  for (const [key, entry] of aliases) {
+    if (!dying.has(key)) dying.set(key, entry);
+  }
 
   const out: UseUpRecipe[] = [];
   for (const recipe of recipes) {

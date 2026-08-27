@@ -159,7 +159,9 @@ export function ExtractedIngredientRow({
           accessibilityRole="button"
           accessibilityState={{ expanded: linkOpen }}
           accessibilityLabel={
-            linkedItem ? `Linked to ${linkedItem.name} in your groceries` : 'Link to an existing item'
+            linkedItem
+              ? `Linked to ${linkedItem.name} in your grocery catalog`
+              : 'Link to an existing item'
           }
         >
           <Ionicons

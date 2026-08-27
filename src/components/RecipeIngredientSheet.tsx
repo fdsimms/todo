@@ -24,6 +24,7 @@ import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { aisleForName } from '../utils/groceryAisles';
 import { groceryNameKey, splitAlternativeNames } from '../utils/groceryParse';
+import { varietyOfferFor } from '../utils/itemVarieties';
 import { matchIngredientToCatalog } from '../utils/ingredientCatalogMatch';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
@@ -86,6 +87,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const rememberedAisleFor = useGroceryStore(s => s.rememberedAisleFor);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
+  const setVarietyOfKey = useGroceryStore(s => s.setVarietyOfKey);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
@@ -238,6 +240,28 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // opened onto a sheet with nothing to accept would be the worst of both.
   const catalogMatch = matchIngredientToCatalog(name, groceryItems, new Date());
   const catalogSuggestion = catalogMatch.kind === 'suggested' ? catalogMatch.suggestedName : null;
+
+  // The same match read the other way round. When what turned up is a *variety*
+  // of what the line says — "onion" turning up White onion — renaming the line
+  // is the wrong accept: the recipe said "onion" on purpose, and narrowing it
+  // to one variety is a promise about the dish nobody made. Declaring the
+  // relation instead fixes every recipe naming the generic at once and leaves
+  // this line as written. Offered beside the rename rather than replacing it,
+  // since a near-duplicate ("Onions" for "onion") wants the rename and only a
+  // person can tell the two apart.
+  //
+  // Only before a declaration exists: `matchIngredientToCatalog` reads a
+  // covered generic as `linked`, so this whole card is already gone by then.
+  const varietyOffer = catalogMatch.kind === 'suggested'
+    ? varietyOfferFor(groceryNameKey(name), catalogMatch.item)
+    : null;
+
+  const acceptVariety = () => {
+    if (!varietyOffer) return;
+    setVarietyOfKey(varietyOffer.id, groceryNameKey(name));
+    haptics.success();
+    animateLayout();
+  };
 
   // "cheddar or manchego" wants to be two rows in a choice group, not one
   // catalog entry nothing can ever match — see splitAlternativeNames. Offered,
@@ -404,12 +428,34 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             activeOpacity={interaction.activeOpacity}
             onPress={() => { haptics.tap(); setName(catalogSuggestion); }}
             accessibilityRole="button"
-            accessibilityLabel={`Use "${catalogSuggestion}" instead, it's already in your catalog`}
+            accessibilityLabel={`Use "${catalogSuggestion}" instead, it's already in your grocery catalog`}
           >
             <Ionicons name="sparkles-outline" size={iconSize.sm} color={colors.accent} />
             <View style={styles.suggestionBody}>
               <Text style={styles.suggestionTitle}>Did you mean “{catalogSuggestion}”?</Text>
-              <Text style={styles.suggestionDetail}>Already in your catalog.</Text>
+              <Text style={styles.suggestionDetail}>Already in your grocery catalog.</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+        {!!varietyOffer && (
+          <TouchableOpacity
+            style={styles.suggestionRow}
+            activeOpacity={interaction.activeOpacity}
+            onPress={acceptVariety}
+            accessibilityRole="button"
+            accessibilityLabel={
+              `Record that ${varietyOffer.name} is a kind of ${name.trim().toLowerCase()}, `
+              + 'keeping this line as written'
+            }
+          >
+            <Ionicons name="git-branch-outline" size={iconSize.sm} color={colors.accent} />
+            <View style={styles.suggestionBody}>
+              <Text style={styles.suggestionTitle}>
+                Is “{varietyOffer.name}” a kind of {name.trim().toLowerCase()}?
+              </Text>
+              <Text style={styles.suggestionDetail}>
+                Keeps this line as written, and any {name.trim().toLowerCase()} you have counts for it.
+              </Text>
             </View>
           </TouchableOpacity>
         )}
@@ -423,7 +469,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           accessibilityLabel={
             catalogItem
               ? `Choose a different existing item for ${catalogItem.name}`
-              : 'Link this line to an existing item in your groceries'
+              : 'Link this line to an existing item in your grocery catalog'
           }
         />
         {linkOpen && (
@@ -490,7 +536,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       {/* The other half of this line's identity. See the component note: the
           bridge has always existed, this is the first place it's visible. */}
       <View style={styles.sectionCard}>
-        <Text style={styles.groupLabel}>In your groceries</Text>
+        <Text style={styles.groupLabel}>In your grocery catalog</Text>
         {catalogItem ? (
           <TouchableOpacity
             style={styles.catalogRow}
@@ -512,15 +558,15 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
         ) : (
           <>
             <Text style={styles.hint}>
-              Not in your groceries yet. Add it to give it a brand, a store, a price or what
-              you'd accept instead. This doesn't put it on your shopping list.
+              Not in your grocery catalog yet. Add it to give it a brand, a store, a price
+              or what you'd accept instead. This doesn't put it on your shopping list.
             </Text>
             <InlineAction
-              label="Add to groceries"
+              label="Add to catalog"
               icon="basket-outline"
               onPress={addIngredientToCatalog}
               style={styles.addToCatalogButton}
-              accessibilityLabel={`Add ${name.trim() || ingredient.name} to your groceries`}
+              accessibilityLabel={`Add ${name.trim() || ingredient.name} to your grocery catalog`}
             />
           </>
         )}
@@ -620,12 +666,12 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
             beside them made a grid with no ceiling out of a grid that had one,
             and buried the siblings behind an "N more" counting hundreds. */}
         <InlineAction
-          label="Find in your groceries"
+          label="Find in your catalog"
           icon="basket-outline"
           variant="neutral"
           style={styles.linkAction}
           onPress={() => { haptics.tap(); animateLayout(); setAltLinkOpen(v => !v); }}
-          accessibilityLabel="Find an alternative in your groceries"
+          accessibilityLabel="Find an alternative in your grocery catalog"
         />
         {altLinkOpen && (
           <CatalogLinkPicker
@@ -778,8 +824,8 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
         />
         <Text style={styles.hint}>
           Only used the next time this lands on your grocery list, and only if you haven’t
-          already told the app where it goes. If it’s already in your groceries with an aisle
-          set, this doesn’t change it.
+          already told the app where it goes. If it’s already in your grocery catalog with
+          an aisle set, this doesn’t change it.
         </Text>
       </View>
 
