@@ -1,6 +1,7 @@
 import {
   isPersonFieldMissing, isPersonBackfillDismissed, personBackfillCandidates, personBackfillFieldCounts,
   dismissPersonBackfillField, personCadencePatch, PERSON_BACKFILL_FIELDS,
+  groupmatesOf, groupmateCadenceOffer,
 } from '../utils/peopleBackfill';
 import type { Person } from '../types';
 
@@ -152,5 +153,59 @@ describe('personCadencePatch', () => {
   it('hands back the off state whole for a cadence of zero', () => {
     const optedIn = { ...basePerson, nudgeOptIn: true, cadenceDays: 30, cadenceSetAt: '2025-06-01T00:00:00.000Z' };
     expect(personCadencePatch(optedIn, 0)).toEqual({ cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null });
+  });
+});
+
+describe('groupmatesOf', () => {
+  it('is empty for somebody in no group', () => {
+    expect(groupmatesOf(basePerson, [basePerson])).toEqual([]);
+  });
+
+  it('finds the other current members of the same group, excluding self', () => {
+    const a = { ...basePerson, id: 'a', groupId: 'g1', sortOrder: 2 };
+    const b = { ...basePerson, id: 'b', groupId: 'g1', sortOrder: 1 };
+    const c = { ...basePerson, id: 'c', groupId: 'g2' };
+    expect(groupmatesOf(a, [a, b, c]).map(p => p.id)).toEqual(['b']);
+  });
+
+  it('runs the result in sortOrder', () => {
+    const a = { ...basePerson, id: 'a', groupId: 'g1', sortOrder: 3 };
+    const b = { ...basePerson, id: 'b', groupId: 'g1', sortOrder: 1 };
+    const c = { ...basePerson, id: 'c', groupId: 'g1', sortOrder: 2 };
+    expect(groupmatesOf(a, [a, b, c]).map(p => p.id)).toEqual(['b', 'c']);
+  });
+
+  it('excludes an archived groupmate', () => {
+    const a = { ...basePerson, id: 'a', groupId: 'g1' };
+    const b = { ...basePerson, id: 'b', groupId: 'g1', archived: true };
+    expect(groupmatesOf(a, [a, b])).toEqual([]);
+  });
+});
+
+describe('groupmateCadenceOffer', () => {
+  it('is null for somebody in no group', () => {
+    expect(groupmateCadenceOffer(basePerson, [basePerson])).toBeNull();
+  });
+
+  it('is null when no groupmate has opted into a cadence', () => {
+    const a = { ...basePerson, id: 'a', groupId: 'g1' };
+    const b = { ...basePerson, id: 'b', groupId: 'g1' };
+    expect(groupmateCadenceOffer(a, [a, b])).toBeNull();
+  });
+
+  it('offers the first opted-in groupmate\'s cadence', () => {
+    const a = { ...basePerson, id: 'a', groupId: 'g1', sortOrder: 1 };
+    const b = { ...basePerson, id: 'b', groupId: 'g1', sortOrder: 2, nudgeOptIn: true, cadenceDays: 14 };
+    const offer = groupmateCadenceOffer(a, [a, b]);
+    expect(offer?.days).toBe(14);
+    expect(offer?.mate.id).toBe('b');
+  });
+
+  // nudgeOptIn is the gate, same as isPersonFieldMissing's own 'cadence' case —
+  // a stored number with the gate off is not a declared cadence.
+  it('ignores a stored cadenceDays whose nudgeOptIn is off', () => {
+    const a = { ...basePerson, id: 'a', groupId: 'g1' };
+    const b = { ...basePerson, id: 'b', groupId: 'g1', nudgeOptIn: false, cadenceDays: 14 };
+    expect(groupmateCadenceOffer(a, [a, b])).toBeNull();
   });
 });

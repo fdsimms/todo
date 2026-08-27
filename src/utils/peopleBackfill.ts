@@ -213,3 +213,43 @@ export function personCadencePatch(
     cadenceSetAt: person.nudgeOptIn ? person.cadenceSetAt : new Date().toISOString(),
   };
 }
+
+/**
+ * The other current, non-archived members of `person`'s group — see
+ * `docs/arch/people.md`'s "Groups" section. Empty when `person` isn't in one;
+ * ungrouped is not treated as a group of one.
+ *
+ * Scans `people` rather than going through `groupMembers()` in
+ * `peopleRegistry.ts` on purpose: that helper exists so a row renderer can
+ * resolve a group without pulling `usePersonStore` (and therefore
+ * expo-sqlite) into a leaf module, which isn't a constraint here — this
+ * module already takes the live `people` array as a parameter, the same way
+ * `personBackfillCandidates` does.
+ */
+export function groupmatesOf(person: Person, people: Person[]): Person[] {
+  if (!person.groupId) return [];
+  return people
+    .filter(p => p.id !== person.id && p.groupId === person.groupId && !p.archived)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+/**
+ * The cadence a groupmate already has on file, or null — rule 5's offer,
+ * pointed at somebody you're grouped with instead of at your own shared
+ * history. The reach-out nudge already reads a group's *shared history* to
+ * suggest a cadence for either member (`observedCadenceDays` off
+ * `namedIdsFor`, in `PersonEditor` and on this same screen); this is the
+ * other honest source Backfill can offer before that history exists: a
+ * cadence your groupmate already declared, since a couple who share a
+ * reminder in practice usually want the same number.
+ *
+ * Returns the first opted-in groupmate found — groups are small (a couple, a
+ * household), so there's no ranking question here the way there would be at
+ * task or project scale.
+ */
+export function groupmateCadenceOffer(person: Person, people: Person[]): { mate: Person; days: number } | null {
+  for (const mate of groupmatesOf(person, people)) {
+    if (mate.nudgeOptIn && mate.cadenceDays > 0) return { mate, days: mate.cadenceDays };
+  }
+  return null;
+}
