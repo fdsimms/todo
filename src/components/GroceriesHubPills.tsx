@@ -124,10 +124,11 @@ export function GroceriesHubPills({ active }: Props) {
               <View
                 style={[
                   styles.pillBadge,
-                  tab.name === 'MealPlan' && { backgroundColor: freshnessColor(worstFreshness, colors) },
+                  isActive && styles.pillBadgeActive,
+                  tab.name === 'MealPlan' && !isActive && { backgroundColor: freshnessColor(worstFreshness, colors) },
                 ]}
               >
-                <Text style={styles.pillBadgeText}>{badge}</Text>
+                <Text style={[styles.pillBadgeText, isActive && styles.pillBadgeTextActive]}>{badge}</Text>
               </View>
             )}
           </TouchableOpacity>
@@ -158,5 +159,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // freshnessColor since that one *is* reporting something time-sensitive.
     backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
   },
+  pillBadgeActive: {
+    backgroundColor: colors.bgSecondary,
+  },
   pillBadgeText: { color: colors.onAccent, fontSize: 9, fontWeight: fontWeight.bold },
+  pillBadgeTextActive: { color: colors.accent },
 });
