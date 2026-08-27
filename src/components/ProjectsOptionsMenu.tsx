@@ -167,7 +167,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   optionLabel: {
     fontSize: font.md,
     fontWeight: fontWeight.medium,
-    color: colors.textSecondary,
+    color: colors.text,
   },
   optionLabelActive: { color: colors.text, fontWeight: fontWeight.semibold },
   optionHint: { color: colors.textTertiary, fontSize: font.sm, marginTop: 2 },

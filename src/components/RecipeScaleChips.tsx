@@ -164,7 +164,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chipOnBackground: { backgroundColor: colors.bgSecondary },
   chipOnCard: { backgroundColor: colors.bgTertiary },
   chipSelected: { backgroundColor: colors.accent },
-  chipText: { color: colors.textSecondary, fontSize: font.sm },
+  chipText: { color: colors.text, fontSize: font.sm },
   chipTextSelected: { color: colors.onAccent, fontWeight: fontWeight.medium },
   servingsBlock: { gap: 4 },
   servingsRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },

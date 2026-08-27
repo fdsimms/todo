@@ -113,12 +113,12 @@ export function SettingsRow({
           <View style={[styles.toggleKnob, toggle && styles.toggleKnobOn]} />
         </View>
       )}
-      {chevron && <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />}
+      {chevron && <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} />}
       {expanded !== undefined && (
         <Ionicons
           name={expanded ? 'chevron-up' : 'chevron-down'}
           size={16}
-          color={colors.textTertiary}
+          color={colors.textSecondary}
         />
       )}
     </>

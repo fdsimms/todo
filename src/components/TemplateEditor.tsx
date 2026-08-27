@@ -533,7 +533,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent,
   },
   pillText: {
-    color: colors.textSecondary,
+    color: colors.text,
     fontSize: font.sm,
   },
   pillTextActive: {

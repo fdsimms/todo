@@ -337,7 +337,7 @@ const makeStyles = (colors: Colors, surface: Surface) => {
     // "picked" reads as an emphatic selection, which is the wrong half of the
     // meaning. The strike-through on the label is what carries "ruled out".
     pillNegative: { backgroundColor: colors.red + '1A' },
-    pillText: { fontSize: font.sm, color: colors.textSecondary },
+    pillText: { fontSize: font.sm, color: colors.text },
     pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
     pillTextNegative: { color: colors.red, textDecorationLine: 'line-through' },
     morePill: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },

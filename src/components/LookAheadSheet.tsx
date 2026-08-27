@@ -862,7 +862,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: 7,
   },
   dayLabel: {
-    color: colors.textSecondary,
+    color: colors.text,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
     letterSpacing: 0.8,

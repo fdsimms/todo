@@ -46,6 +46,8 @@ const DEFAULT_MOCK_SETTINGS = {
   quietHoursEnd: null,
   calendarReadEnabled: false,
   reminderMeetingNudgeEnabled: true,
+  activeHoursStart: '08:00',
+  activeHoursEnd: '22:00',
 };
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -86,6 +88,10 @@ import {
   cancelEventReminder,
   rescheduleAllEventReminders,
   TASK_REMINDER_CATEGORY,
+  scheduleQuotaNudges,
+  cancelQuotaNudges,
+  quotaNudgeTasks,
+  MAX_QUOTA_NUDGES_AHEAD,
 } from '../utils/notifications';
 import { scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { setDemoModeActive } from '../utils/demoState';
@@ -133,6 +139,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   targetCount: null,
   targetUnit: null,
   allowOvershoot: false,
+  quotaIntervalMinutes: null,
+  quotaReminders: false,
+  quotaStartedAt: null,
   progressCount: 0,
   tags: [],
   sortOrder: 1,
@@ -1403,5 +1412,140 @@ describe('scheduleStepAlarm', () => {
 
   it('gives a step timer and a task the same id different alarm uuids', () => {
     expect(stepTimerAlarmUuid('x')).not.toBe(taskAlarmUuid('x'));
+  });
+});
+
+describe('scheduleQuotaNudges', () => {
+  const paced = (overrides: Partial<Task> = {}): Task =>
+    makeTask({
+      id: 'eyes',
+      title: 'Look 20 feet away',
+      notes: 'Rest your eyes for 20 seconds.',
+      targetCount: 24,
+      quotaIntervalMinutes: 20,
+      quotaReminders: true,
+      windowStart: '09:00',
+      windowEnd: '17:00',
+      recurrenceType: 'daily',
+      ...overrides,
+    });
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 7, 26, 9, 5, 0));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    setDemoModeActive(false);
+  });
+
+  it('lays down the next few instants, not the whole day', () => {
+    // A run at this cadence wants 24 of them and iOS holds 64 requests in
+    // total: handing one task a third of the device budget would silently
+    // starve the reminders on real tasks.
+    return scheduleQuotaNudges(paced()).then(() => {
+      expect(Notifications.scheduleNotificationAsync).toHaveBeenCalledTimes(MAX_QUOTA_NUDGES_AHEAD);
+    });
+  });
+
+  it('fires at the grid the pace ramp owes units at', async () => {
+    await scheduleQuotaNudges(paced());
+    const dates = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(
+      ([arg]) => arg.trigger.date as Date
+    );
+    expect(dates[0]).toEqual(new Date(2026, 7, 26, 9, 20, 0));
+    expect(dates[1]).toEqual(new Date(2026, 7, 26, 9, 40, 0));
+  });
+
+  it('starts from a hand-started run rather than the window', async () => {
+    jest.setSystemTime(new Date(2026, 7, 26, 10, 30, 0));
+    await scheduleQuotaNudges(paced({
+      quotaStartedAt: new Date(2026, 7, 26, 10, 30, 0).toISOString(),
+      targetCount: 19,
+    }));
+    const first = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0].trigger.date;
+    // 6.5 hours over 19 units is 20 minutes and change, so the first lands
+    // roughly one interval past the start rather than back at 09:00.
+    expect(first.getHours()).toBe(10);
+    expect(first.getMinutes()).toBeGreaterThanOrEqual(50);
+  });
+
+  it('carries the notes, which is where the instruction lives', async () => {
+    await scheduleQuotaNudges(paced());
+    const { content } = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(content.title).toBe('Look 20 feet away');
+    expect(content.body).toBe('Rest your eyes for 20 seconds.');
+  });
+
+  it('schedules nothing when the toggle is off', async () => {
+    await scheduleQuotaNudges(paced({ quotaReminders: false }));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('schedules nothing for a completed or archived run', async () => {
+    await scheduleQuotaNudges(paced({ completed: true }));
+    await scheduleQuotaNudges(paced({ archived: true }));
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('schedules nothing once the run is over', async () => {
+    jest.setSystemTime(new Date(2026, 7, 26, 17, 30, 0));
+    await scheduleQuotaNudges(paced());
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('schedules nothing in demo mode', async () => {
+    // A notification is a side effect on the device, not on the scratch
+    // database demo mode swaps back out.
+    setDemoModeActive(true);
+    await scheduleQuotaNudges(paced());
+    expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
+  });
+
+  it('drops instants inside quiet hours rather than deferring them', async () => {
+    // Deferring would stack the rest of the run onto the window's close and
+    // deliver six at once — the same call scheduleTimerAlarm makes.
+    mockSettings.quietHoursStart = '09:30';
+    mockSettings.quietHoursEnd = '10:30';
+    await scheduleQuotaNudges(paced());
+    const dates = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(
+      ([arg]) => arg.trigger.date as Date
+    );
+    expect(dates.every(d => d < new Date(2026, 7, 26, 9, 30, 0) || d >= new Date(2026, 7, 26, 10, 30, 0))).toBe(true);
+    mockSettings.quietHoursStart = null;
+    mockSettings.quietHoursEnd = null;
+  });
+
+  it('cancels what it had before laying down a new set', async () => {
+    await scheduleQuotaNudges(paced());
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('pace:eyes:0');
+  });
+});
+
+describe('cancelQuotaNudges', () => {
+  it('names every id a run could be holding', async () => {
+    await cancelQuotaNudges('eyes');
+    for (let i = 0; i < MAX_QUOTA_NUDGES_AHEAD; i++) {
+      expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(`pace:eyes:${i}`);
+    }
+  });
+});
+
+describe('quotaNudgeTasks', () => {
+  const paced = (overrides: Partial<Task> = {}) =>
+    makeTask({ targetCount: 24, quotaReminders: true, ...overrides });
+
+  it('names the tasks wanting nudges', () => {
+    expect(quotaNudgeTasks([paced({ id: 'a' })]).map(t => t.id)).toEqual(['a']);
+  });
+
+  it('skips tasks with the toggle off, completed, archived, or not a target', () => {
+    expect(quotaNudgeTasks([
+      paced({ id: 'off', quotaReminders: false }),
+      paced({ id: 'done', completed: true }),
+      paced({ id: 'filed', archived: true }),
+      paced({ id: 'plain', targetCount: null }),
+    ])).toEqual([]);
   });
 });
