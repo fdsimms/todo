@@ -275,6 +275,7 @@ render, so listing them adds lines without adding answers.
 - `src/hooks/useBulkBarEntrance.ts` — useBulkBarEntrance
 - `src/hooks/useCopyToClipboard.ts` — COPIED_TICK_MS, useCopyToClipboard
 - `src/hooks/useDebouncedValue.ts` — useDebouncedValue
+- `src/hooks/useDragToDay.ts` — DayDragHandlers, DayDragSource, useDragToDay
 - `src/hooks/useElevatedCellRenderer.tsx` — useElevatedCellRenderer
 - `src/hooks/useFocusSession.ts` — useFocusSession
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, useKeyboardInsetScroll

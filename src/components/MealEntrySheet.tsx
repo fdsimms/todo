@@ -133,11 +133,13 @@ interface Props {
  * What you can do to a planned meal: move it, re-slot it, open its recipe,
  * take it off.
  *
- * **"Move to…" is a chip row, not a drag.** Cross-section drag has needed
- * bespoke math twice in this app (resolveDrop, resolveGroceryDrop), and the one
- * built for Today's category headers never lined up with the finger holding it
- * and was removed along with its helpers. Seven chips need no measurement and
- * show the whole week at once.
+ * **"Move to…" is a chip row, and it is the route even though the row can also
+ * be dragged now.** A meal can be picked up off the week and dropped on another
+ * day (see MealPlanScreen's drag handlers) — both write the same moveEntry —
+ * but a drag reaches only the week on screen and is unreachable with VoiceOver
+ * or a shaky hand. So the chips stay: seven of them need no measurement, show
+ * the whole week at once, and "Another date…" is the only way to reach a day
+ * that isn't on it.
  *
  * Every tap applies immediately and leaves the sheet open, so moving a dinner
  * to Thursday *and* making it lunch is two taps rather than two round trips.

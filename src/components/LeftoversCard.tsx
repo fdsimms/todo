@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Leftover, LeftoverFreshness } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
@@ -7,6 +7,7 @@ import { spacing, radius, font, fontWeight, interaction, iconSize, type Colors }
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useNowTick } from '../hooks/useNowTick';
+import { useDragToDay, type DayDragHandlers } from '../hooks/useDragToDay';
 import { useFabIntentSelector, type FabIntentChannel } from './FabDropZones';
 import { slotLabel } from '../utils/mealPlan';
 import {
@@ -20,45 +21,20 @@ import {
 /** How many rows the card shows before folding the rest behind "+N more". */
 const COLLAPSED_ROWS = 3;
 
-/** All this card needs off a row's view — the same narrowing FabDropZones makes. */
-interface MeasurableRow {
-  measureInWindow?: (
-    callback: (x: number, y: number, width: number, height: number) => void,
-  ) => void;
-}
-
 /**
- * What a row reports while it's being dragged onto the week below it: a lift, a
- * moving finger, and however it ended.
+ * What a row reports while it's being dragged onto the week below it — the
+ * shared shape in useDragToDay, named here for the prop that takes it.
  *
  * **The card reports positions and decides nothing.** Where the week is, which
  * day a given pageY is over and what a release there should write are all the
  * screen's business — it already owns the day drop zones the add button uses,
  * so a fridge row dropping onto one goes through exactly the same registry
  * rather than a second copy of the hit-testing. Same split `FabDragHandlers`
- * draws for the add button, and for the same reason.
- *
- * Positions are window-space: that is the one space a PanResponder's `pageY`
- * and a row's `measureInWindow` already agree on, and it's what
- * `FabDropZoneProvider` measures its bands in.
+ * draws for the add button, and for the same reason. It is also what lets a
+ * planned meal be dragged by the identical gesture (see MealSlotRow): the two
+ * differ only in what the screen writes at the end of one.
  */
-export interface LeftoverDragHandlers {
-  /**
-   * A row has been held long enough to lift. `frame` is its band on screen, so
-   * the floating card can start exactly where the row is rather than jumping
-   * to the finger.
-   */
-  onStart: (leftover: Leftover, frame: { top: number; height: number }) => void;
-  /**
-   * `page` is where the finger is now; `translation` is measured from where it
-   * was when the drag claimed it. Both axes are reported: down the week picks
-   * the day, across a day band picks the meal (see slotAtX in fabDrop.ts).
-   */
-  onMove: (page: { x: number; y: number }, translation: { x: number; y: number }) => void;
-  onEnd: (page: { x: number; y: number }) => void;
-  /** Touch lost, app switched — nothing was dropped. */
-  onCancel: () => void;
-}
+export type LeftoverDragHandlers = DayDragHandlers<Leftover>;
 
 interface Props {
   /** Every leftover the store holds; the card takes the live ones itself. */
@@ -148,97 +124,11 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
 
   const [expanded, setExpanded] = useState(false);
 
-  // Which row is lifted, twice over: state for the dim, a ref for the gesture
-  // handlers, which are created once and would otherwise read a stale closure.
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const draggingIdRef = useRef<string | null>(null);
-  const rowViewsRef = useRef<Map<string, MeasurableRow>>(new Map());
-  // Where the finger was when the responder was granted. Null until then: the
-  // long-press reports no position, so there is no baseline to measure the
-  // floating card's travel against until the first move — same reason
-  // SortableList seeds its own at grant rather than at the lift.
-  const startPageRef = useRef<{ x: number; y: number } | null>(null);
-  // Whether a finger is still down, read by the measurement below.
-  const touchDownRef = useRef(false);
-  const dragRef = useRef(drag);
-  dragRef.current = drag;
-
-  const endDrag = (pageX: number, pageY: number) => {
-    if (draggingIdRef.current === null) return;
-    draggingIdRef.current = null;
-    startPageRef.current = null;
-    setDraggingId(null);
-    dragRef.current?.onEnd({ x: pageX, y: pageY });
-  };
-
-  const cancelDrag = () => {
-    if (draggingIdRef.current === null) return;
-    draggingIdRef.current = null;
-    startPageRef.current = null;
-    setDraggingId(null);
-    dragRef.current?.onCancel();
-  };
-
-  /**
-   * The long-press landed. The row measures itself first — the screen places
-   * the floating card off that band — which costs the frame `measureInWindow`
-   * takes to answer, and so has to re-check that the gesture is still live: a
-   * measurement arriving after the finger has already gone would arm a drag
-   * that nothing can ever end, and an armed drag leaves the week's list
-   * unscrollable (see the screen's `scrollEnabled`).
-   */
-  const startDrag = (leftover: Leftover) => {
-    if (!dragRef.current || draggingIdRef.current !== null) return;
-    const view = rowViewsRef.current.get(leftover.id);
-    if (typeof view?.measureInWindow !== 'function') return;
-    view.measureInWindow((_x, y, _w, h) => {
-      if (!touchDownRef.current || draggingIdRef.current !== null) return;
-      if (!Number.isFinite(y) || !(h > 0)) return;
-      draggingIdRef.current = leftover.id;
-      setDraggingId(leftover.id);
-      // The card lifting off is the only signal the hold worked — nothing has
-      // moved yet. Same pulse SortableList's own lift uses.
-      haptics.impactMedium();
-      dragRef.current?.onStart(leftover, { top: y, height: h });
-    });
-  };
-
-  /**
-   * Claims the touch only once a row has been lifted, which is what keeps the
-   * row's tap and its calendar button intact — before the hold this responder
-   * says no to everything, so nothing about the card behaves differently.
-   *
-   * The enclosing list must be told to hold still for the duration (the screen
-   * does it off `onStart`/`onEnd`): this responder is a *descendant* of that
-   * scroll view, and a native scroll view only stands down for a JS responder
-   * that is one of its ancestors. Without it the scroll wins on the first
-   * finger move and the container is put straight back down — the failure
-   * SortableList.onDragStateChange documents at length.
-   */
-  const panResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onStartShouldSetPanResponder: () => false,
-        onStartShouldSetPanResponderCapture: () => false,
-        onMoveShouldSetPanResponder: () => draggingIdRef.current !== null,
-        onMoveShouldSetPanResponderCapture: () => draggingIdRef.current !== null,
-        onPanResponderTerminationRequest: () => false,
-        onPanResponderGrant: e => {
-          startPageRef.current = { x: e.nativeEvent.pageX, y: e.nativeEvent.pageY };
-        },
-        onPanResponderMove: e => {
-          const start = startPageRef.current;
-          if (draggingIdRef.current === null || !start) return;
-          const { pageX, pageY } = e.nativeEvent;
-          dragRef.current?.onMove({ x: pageX, y: pageY }, { x: pageX - start.x, y: pageY - start.y });
-        },
-        onPanResponderRelease: e => endDrag(e.nativeEvent.pageX, e.nativeEvent.pageY),
-        onPanResponderTerminate: () => cancelDrag(),
-      }),
-    // Every handler reads refs, so one responder for the life of the card.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  // The hold-and-drop gesture itself, shared with the meal rows on the week
+  // below (useDragToDay) — this card owns only what a row looks like while
+  // it's lifted.
+  const { draggingId, panHandlers, containerHandlers, registerRow, startDrag } =
+    useDragToDay<Leftover>(drag);
 
   const live = useMemo(() => liveLeftovers(leftovers), [leftovers]);
   const hasHistory = useMemo(() => leftovers.some(l => !!l.finishedAt), [leftovers]);
@@ -290,16 +180,10 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
       {live.length > 0 && (
       <View
         style={styles.card}
-        {...(drag ? panResponder.panHandlers : {})}
-        // The raw touch, not the responder: a hold that lifts a row and then
-        // releases without travelling never grants the responder at all, so
-        // neither release nor terminate fires and the row would be stranded
-        // mid-drag with the list still switched off. Both are no-ops unless a
-        // drag is actually in flight, and endDrag is idempotent, so the
-        // responder's own release racing this one is harmless.
-        onTouchStart={() => { touchDownRef.current = true; }}
-        onTouchEnd={e => { touchDownRef.current = false; endDrag(e.nativeEvent.pageX, e.nativeEvent.pageY); }}
-        onTouchCancel={() => { touchDownRef.current = false; cancelDrag(); }}
+        {...(drag ? panHandlers : {})}
+        // The raw touch alongside the responder — see containerHandlers in
+        // useDragToDay for why both are needed.
+        {...(drag ? containerHandlers : {})}
       >
         {shown.map((leftover, i) => {
           // liveFreshnessOf, not freshnessOf: a frozen container's stored day
@@ -313,10 +197,7 @@ export function LeftoversCard({ leftovers, onPress, onPlan, onAdd, onHistory, dr
             // its rows instead of reaching into them.
             <View
               key={leftover.id}
-              ref={(view: any) => {
-                if (view) rowViewsRef.current.set(leftover.id, view as MeasurableRow);
-                else rowViewsRef.current.delete(leftover.id);
-              }}
+              ref={registerRow(leftover.id)}
               collapsable={false}
               style={draggingId === leftover.id && styles.rowLifted}
             >
