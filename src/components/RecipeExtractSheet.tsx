@@ -11,7 +11,7 @@ import {
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
-import { RECIPE_SOURCE_MAX_LENGTH, type Recipe } from '../types';
+import { RECIPE_PAGE_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH, type Recipe, type RecipeSourceType } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import {
   spacing,
@@ -30,6 +30,7 @@ import {
   normalizeIngredient, formatServingsRange, parseServingsRange,
   recipeHasMethod, recipeHasPrepTasks, recipeHasAttribution,
 } from '../utils/recipeUtils';
+import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
 import { allSectionsOf, sectionsOf } from '../utils/recipeSections';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -79,11 +80,14 @@ interface Props {
  * (#1618), rather than left un-offered. A count alone was not a review: it
  * said seven steps were coming without showing one of them. A link's own steps
  * are still preferred over the model's read of the same page when both exist.
- * Attribution is offered whichever source it came from too, but with a twist
- * a paste or a photo has no page to pre-fill from — the "Where it's from" row
- * still appears with blank site/author fields, since a home recipe or a
- * cookbook clipping is just as much a source as a web page, it's just one
- * only the person importing it can name.
+ * Attribution is offered whichever source it came from too, and each source
+ * fills it in as far as it honestly can: a link from the page's own markup, a
+ * photo from what's printed on the page (the book's title, the byline, the page
+ * number — see `recipeProvenance.ts`), and a paste from nothing at all, since
+ * pasted text rarely carries either. The row appears regardless, blank fields
+ * included: a home recipe or a cookbook clipping is just as much a source as a
+ * web page, and one nobody can read off the source is still one the person
+ * importing it can name.
  */
 export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const colors = useColors();
@@ -100,6 +104,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const setSource = useRecipeStore(s => s.setSource);
   const setAuthor = useRecipeStore(s => s.setAuthor);
   const setSourceType = useRecipeStore(s => s.setSourceType);
+  const setSourcePage = useRecipeStore(s => s.setSourcePage);
+  const linkNewCookbook = useRecipeStore(s => s.linkNewCookbook);
   const addStep = useRecipeStore(s => s.addStep);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const updatePrepTask = useRecipeStore(s => s.updatePrepTask);
@@ -137,6 +143,10 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
   const [yieldText, setYieldText] = useState('');
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
+  const [sourcePageText, setSourcePageText] = useState('');
+  // What the source *is* — inferred, not picked. A link is a website by
+  // construction; a photo is whatever the page looked like to the model.
+  const [importedSourceType, setImportedSourceType] = useState<RecipeSourceType | null>(null);
   const edits = usePendingEdits();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const input = useRecipeImportSource();
@@ -188,6 +198,8 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
     setYieldText('');
     setSiteName('');
     setSourceAuthor('');
+    setSourcePageText('');
+    setImportedSourceType(null);
     resetInput();
     resetComponents();
   }, [resetInput, resetComponents]);
@@ -210,10 +222,10 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setApplyDetails(result.servings !== null || result.prepMinutes !== null || result.recipeYield !== null);
       // A method is offered whichever source it came from — the page's own
       // steps when it publishes them, otherwise the model's read of the same
-      // source. Attribution is offered whichever source it came from too —
-      // pre-filled from the page when there is one, blank for a paste or a
-      // photo to fill in by hand. All three are offered *ticked* only when
-      // there's nothing of the user's own to land on top of.
+      // source. Attribution likewise: the page's markup when there is one, what
+      // was printed on a photographed page otherwise, and blank for a paste.
+      // All three are offered *ticked* only when there's nothing of the user's
+      // own to land on top of.
       const page = resolved.page;
       const methodStepsFound = (page?.steps.length ?? 0) > 0 ? page!.steps : result.steps;
       setApplyMethod(methodStepsFound.length > 0 && !recipeHasMethod(recipe));
@@ -226,8 +238,11 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
       setServingsText(formatServingsRange(result.servings, result.servingsMax) ?? '');
       setMinutesText(result.prepMinutes !== null ? String(result.prepMinutes) : '');
       setYieldText(result.recipeYield ?? '');
-      setSiteName(page?.siteName ?? '');
-      setSourceAuthor(page?.author ?? '');
+      const source = sourceFieldsFor(page, result);
+      setSiteName(source.source);
+      setSourceAuthor(source.author);
+      setSourcePageText(source.page);
+      setImportedSourceType(source.sourceType);
     } catch (e) {
       setError(describeImportError(e));
       setCanRetry(isRetryableImportError(e));
@@ -359,19 +374,26 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
         }
       });
     }
-    // A link's URL comes from the page and isn't editable; site and author
-    // are, whether they arrived pre-filled from structured markup or were
-    // typed in by hand over a paste or a photo's blank fields.
+    // A link's URL comes from the page and isn't editable; the rest are,
+    // whether they arrived pre-filled from structured markup, were read off a
+    // photographed page, or were typed in by hand over a paste's blank fields.
     const page = input.page;
     if (applySource) {
-      if (page) {
-        setSourceUrl(recipe.id, page.url);
-        setSourceType(recipe.id, 'website');
-      }
-      const site = pendingText('source:site', siteName).trim();
-      const by = pendingText('source:author', sourceAuthor).trim();
-      if (site) setSource(recipe.id, site);
-      if (by) setAuthor(recipe.id, by);
+      const plan = sourcePlanFor(page?.url ?? null, {
+        source: pendingText('source:site', siteName),
+        author: pendingText('source:author', sourceAuthor),
+        page: pendingText('source:page', sourcePageText),
+        sourceType: importedSourceType,
+      });
+      if (plan.url) setSourceUrl(recipe.id, plan.url);
+      // Find-or-create beats setSource here: a book read off a photo is
+      // overwhelmingly one already on the shelf from the last recipe out of it.
+      if (plan.cookbook) linkNewCookbook(recipe.id, plan.cookbook.title, plan.cookbook.author);
+      if (plan.sourceType) setSourceType(recipe.id, plan.sourceType);
+      if (plan.source) setSource(recipe.id, plan.source);
+      if (plan.author) setAuthor(recipe.id, plan.author);
+      // After the type either way, which clears the page for anything but a book.
+      if (plan.page) setSourcePage(recipe.id, plan.page);
     }
     haptics.success();
     onClose();
@@ -679,7 +701,7 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               textStyle={styles.detailValue}
               placeholder="e.g. NYT Cooking"
               accessibilityLabel="source"
-              maxLength={80}
+              maxLength={RECIPE_SOURCE_MAX_LENGTH}
               numberOfLines={1}
             />
             <Text style={styles.detailSep}>·</Text>
@@ -692,9 +714,26 @@ export function RecipeExtractSheet({ visible, recipe, onClose }: Props) {
               textStyle={styles.detailValue}
               placeholder="e.g. Kenji"
               accessibilityLabel="author"
-              maxLength={80}
+              maxLength={RECIPE_SOURCE_MAX_LENGTH}
               numberOfLines={1}
             />
+            {importedSourceType === 'cookbook' && (
+              <>
+                <Text style={styles.detailSep}>·</Text>
+                <InlineEditableText
+                  edits={edits}
+                  editKey="source:page"
+                  value={sourcePageText}
+                  onCommit={setSourcePageText}
+                  allowEmpty
+                  textStyle={styles.detailValue}
+                  placeholder="e.g. 142"
+                  accessibilityLabel="page number"
+                  maxLength={RECIPE_PAGE_MAX_LENGTH}
+                  numberOfLines={1}
+                />
+              </>
+            )}
           </View>
         </ImportApplyRow>
 

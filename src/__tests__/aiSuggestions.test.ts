@@ -998,6 +998,33 @@ describe('extractRecipe', () => {
   describe('from a photo', () => {
     const PHOTO = { base64: 'QUJD', mediaType: 'image/jpeg' as const };
 
+    it('reads the source off the page it was photographed from', async () => {
+      mockFetchOnce(toolUseResponse('extract_recipe', {
+        name: 'Weeknight Chili',
+        items: [],
+        sourceTitle: 'Nothing Fancy',
+        sourceAuthor: 'Alison Roman',
+        sourcePage: '142',
+        sourceKind: 'cookbook',
+      }));
+      const result = await extractRecipe(PHOTO, AISLES);
+      expect(result.sourceTitle).toBe('Nothing Fancy');
+      expect(result.sourceAuthor).toBe('Alison Roman');
+      expect(result.sourcePage).toBe('142');
+      expect(result.sourceType).toBe('cookbook');
+    });
+
+    it('asks for the page furniture rather than telling the model to ignore it', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
+      await extractRecipe(PHOTO, AISLES);
+      const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+      const text = body.messages[0].content[1].text;
+      // It still must not reach the recipe itself — that half was never in
+      // question, and is what the original "ignore page numbers" line was for.
+      expect(text).toContain('must never appear in its name, ingredients or method');
+      expect(text).toContain('read them into the source fields');
+    });
+
     it('sends the image block ahead of the text block', async () => {
       const spy = mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [] }));
       await extractRecipe(PHOTO, AISLES);
@@ -1539,5 +1566,62 @@ describe('suggestSubstitutes', () => {
     expect(content).toContain('Butter');
     expect(content).toContain('Margarine');
     expect(body.tool_choice).toEqual({ type: 'tool', name: 'suggest_substitutes' });
+  });
+});
+
+describe('extractRecipe source provenance', () => {
+  const AISLES2 = ['Produce', 'Pantry'];
+
+  it('refuses a book title that is just the recipe name read twice', async () => {
+    // A page whose running head is the chapter gives the model nothing to put
+    // there, and the most available string on the page is the dish's own name.
+    mockFetchOnce(toolUseResponse('extract_recipe', {
+      name: 'Chocolate cake',
+      items: [],
+      sourceTitle: '  chocolate  cake ',
+    }));
+    const result = await extractRecipe('some recipe', AISLES2);
+    expect(result.sourceTitle).toBeNull();
+  });
+
+  it('strips a "p." the schema asked the model to leave off', async () => {
+    mockFetchOnce(toolUseResponse('extract_recipe', { name: 'Chili', items: [], sourcePage: 'p. 142' }));
+    await expect(extractRecipe('x', AISLES2)).resolves.toMatchObject({ sourcePage: '142' });
+  });
+
+  it('keeps a spread as a range and roman numerals as they are', async () => {
+    mockFetchOnce(toolUseResponse('extract_recipe', { name: 'A', items: [], sourcePage: '112 - 115' }));
+    await expect(extractRecipe('x', AISLES2)).resolves.toMatchObject({ sourcePage: '112-115' });
+    mockFetchOnce(toolUseResponse('extract_recipe', { name: 'B', items: [], sourcePage: 'xii' }));
+    await expect(extractRecipe('x', AISLES2)).resolves.toMatchObject({ sourcePage: 'xii' });
+  });
+
+  it("refuses a locator that isn't a page number", async () => {
+    // Same refusal referencePageNumber makes, at the other end of the pipe.
+    mockFetchOnce(toolUseResponse('extract_recipe', { name: 'A', items: [], sourcePage: 'see overleaf' }));
+    await expect(extractRecipe('x', AISLES2)).resolves.toMatchObject({ sourcePage: null });
+  });
+
+  it('refuses a source kind outside the known set', async () => {
+    mockFetchOnce(toolUseResponse('extract_recipe', { name: 'A', items: [], sourceKind: 'zine' }));
+    await expect(extractRecipe('x', AISLES2)).resolves.toMatchObject({ sourceType: null });
+  });
+
+  it('clamps a long title to a byline’s ceiling', async () => {
+    mockFetchOnce(toolUseResponse('extract_recipe', {
+      name: 'A', items: [], sourceTitle: `  ${'b'.repeat(100)}  `,
+    }));
+    const result = await extractRecipe('x', AISLES2);
+    expect(result.sourceTitle).toHaveLength(60);
+  });
+
+  it('neither asks for nor returns a source when the caller has nowhere to put one', async () => {
+    const spy = mockFetchOnce(toolUseResponse('extract_recipe', {
+      name: 'A', items: [], sourceTitle: 'Nothing Fancy',
+    }));
+    const result = await extractRecipe('x', AISLES2, { includeSource: false });
+    expect(result.sourceTitle).toBeNull();
+    const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.tools[0].input_schema.properties.sourceTitle).toBeUndefined();
   });
 });

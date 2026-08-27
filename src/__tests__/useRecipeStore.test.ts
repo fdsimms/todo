@@ -68,7 +68,7 @@ function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
 }
 
 function seed(recipes: Recipe[]) {
-  useRecipeStore.setState({ recipes, initialized: true });
+  useRecipeStore.setState({ recipes, cookbooks: [], initialized: true });
 }
 
 beforeEach(() => {
@@ -1613,5 +1613,163 @@ describe('logManualPrepTime', () => {
     seed([r]);
     useRecipeStore.getState().logManualPrepTime(r.id, -1);
     expect(dbUpdateRecipe).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// Cookbooks
+// ============================================================================
+
+describe('cookbooks', () => {
+  it('creates a book and mirrors it onto the recipe', () => {
+    const cake = makeRecipe('Carrot cake');
+    seed([cake]);
+
+    const book = useRecipeStore.getState().linkNewCookbook(cake.id, 'Sweet', 'Yotam Ottolenghi');
+
+    expect(book).toBeTruthy();
+    const saved = useRecipeStore.getState().recipeById(cake.id)!;
+    expect(saved.cookbookId).toBe(book!.id);
+    // The mirror is what keeps every existing reader on plain strings.
+    expect(saved.source).toBe('Sweet');
+    expect(saved.author).toBe('Yotam Ottolenghi');
+    expect(saved.sourceType).toBe('cookbook');
+  });
+
+  it('finds the book already on the shelf rather than adding a second one', () => {
+    const cake = makeRecipe('Carrot cake');
+    const shortbread = makeRecipe('Shortbread');
+    seed([cake, shortbread]);
+
+    const first = useRecipeStore.getState().linkNewCookbook(cake.id, 'Sweet', 'Yotam Ottolenghi');
+    const second = useRecipeStore.getState().linkNewCookbook(shortbread.id, ' sweet ', 'Yotam Ottolenghi');
+
+    expect(second!.id).toBe(first!.id);
+    expect(useRecipeStore.getState().cookbooks).toHaveLength(1);
+  });
+
+  it('holds two different books that share a title', () => {
+    const a = makeRecipe('A');
+    const b = makeRecipe('B');
+    seed([a, b]);
+
+    const clark = useRecipeStore.getState().linkNewCookbook(a.id, 'Dinner', 'Melissa Clark');
+    const sodha = useRecipeStore.getState().linkNewCookbook(b.id, 'Dinner', 'Meera Sodha');
+
+    expect(sodha!.id).not.toBe(clark!.id);
+    expect(useRecipeStore.getState().cookbooks).toHaveLength(2);
+  });
+
+  it('refuses a book with no title', () => {
+    const cake = makeRecipe('Carrot cake');
+    seed([cake]);
+    expect(useRecipeStore.getState().linkNewCookbook(cake.id, '   ')).toBeNull();
+    expect(useRecipeStore.getState().cookbooks).toHaveLength(0);
+  });
+
+  it('renames the book everywhere at once — the whole point of the row', () => {
+    const cake = makeRecipe('Carrot cake');
+    const shortbread = makeRecipe('Shortbread');
+    seed([cake, shortbread]);
+    const book = useRecipeStore.getState().linkNewCookbook(cake.id, 'Sweet', null)!;
+    useRecipeStore.getState().linkNewCookbook(shortbread.id, 'Sweet', null);
+
+    expect(useRecipeStore.getState().renameCookbook(book.id, 'Sweet', 'Yotam Ottolenghi')).toBe(true);
+
+    const store = useRecipeStore.getState();
+    expect(store.recipeById(cake.id)!.author).toBe('Yotam Ottolenghi');
+    expect(store.recipeById(shortbread.id)!.author).toBe('Yotam Ottolenghi');
+  });
+
+  it('refuses a rename that collides with another book on the shelf', () => {
+    const a = makeRecipe('A');
+    const b = makeRecipe('B');
+    seed([a, b]);
+    const clark = useRecipeStore.getState().linkNewCookbook(a.id, 'Dinner', 'Melissa Clark')!;
+    useRecipeStore.getState().linkNewCookbook(b.id, 'Sweet', 'Yotam Ottolenghi');
+
+    expect(useRecipeStore.getState().renameCookbook(clark.id, 'Sweet', 'Yotam Ottolenghi')).toBe(false);
+    expect(useRecipeStore.getState().recipeById(a.id)!.source).toBe('Dinner');
+  });
+
+  it('keeps the attribution when the book is deleted', () => {
+    const cake = makeRecipe('Carrot cake');
+    seed([cake]);
+    const book = useRecipeStore.getState().linkNewCookbook(cake.id, 'Sweet', 'Yotam Ottolenghi')!;
+
+    useRecipeStore.getState().deleteCookbook(book.id);
+
+    const saved = useRecipeStore.getState().recipeById(cake.id)!;
+    expect(saved.cookbookId).toBeNull();
+    // Losing the book must not lose the fact that the recipe came from it.
+    expect(saved.source).toBe('Sweet');
+    expect(saved.author).toBe('Yotam Ottolenghi');
+  });
+
+  it('unlinks when an attribution is genuinely retyped over the book', () => {
+    const cake = makeRecipe('Carrot cake');
+    seed([cake]);
+    useRecipeStore.getState().linkNewCookbook(cake.id, 'Sweet', 'Yotam Ottolenghi');
+
+    useRecipeStore.getState().setSource(cake.id, 'Dining In');
+
+    const saved = useRecipeStore.getState().recipeById(cake.id)!;
+    expect(saved.cookbookId).toBeNull();
+    expect(saved.source).toBe('Dining In');
+  });
+
+  it('keeps the link when a setter rewrites the value it already had', () => {
+    // RecipeEditor.save() fires every source setter whether or not the user
+    // touched them, so a no-op rewrite must not quietly break the link.
+    const cake = makeRecipe('Carrot cake');
+    seed([cake]);
+    const book = useRecipeStore.getState().linkNewCookbook(cake.id, 'Sweet', 'Yotam Ottolenghi')!;
+
+    useRecipeStore.getState().setSource(cake.id, 'Sweet');
+    useRecipeStore.getState().setAuthor(cake.id, 'Yotam Ottolenghi');
+    useRecipeStore.getState().setSourceType(cake.id, 'cookbook');
+
+    expect(useRecipeStore.getState().recipeById(cake.id)!.cookbookId).toBe(book.id);
+  });
+
+  it('unlinks when the recipe stops being from a cookbook at all', () => {
+    const cake = makeRecipe('Carrot cake');
+    seed([cake]);
+    useRecipeStore.getState().linkNewCookbook(cake.id, 'Sweet', 'Yotam Ottolenghi');
+
+    useRecipeStore.getState().setSourceType(cake.id, 'website');
+
+    expect(useRecipeStore.getState().recipeById(cake.id)!.cookbookId).toBeNull();
+  });
+
+  it('shrugs at a link naming a book that is gone', () => {
+    seed([makeRecipe('Carrot cake')]);
+    expect(useRecipeStore.getState().cookbookById('missing')).toBeUndefined();
+    expect(useRecipeStore.getState().cookbookById(null)).toBeUndefined();
+  });
+});
+
+describe('setSourcePage', () => {
+  const cases: [string, string | null][] = [
+    ['p. 142', '142'],
+    ['p.142', '142'],
+    ['p 142', '142'],
+    ['page 142', '142'],
+    ['Pages 112-115', '112-115'],
+    ['pp. 112-115', '112-115'],
+    ['142', '142'],
+    // Free text otherwise — some books print roman numerals, and "p" must not
+    // be chewed off the front of a word that merely starts with one.
+    ['xii', 'xii'],
+    ['pie chart', 'pie chart'],
+    ['  ', null],
+  ];
+
+  it.each(cases)('stores %p as %p', (typed, expected) => {
+    const cake = makeRecipe('Carrot cake');
+    seed([cake]);
+    useRecipeStore.getState().setSourcePage(cake.id, typed);
+    // Every reader prefixes "p." itself, so storing one renders "p. p. 142".
+    expect(useRecipeStore.getState().recipeById(cake.id)!.sourcePage).toBe(expected);
   });
 });

@@ -589,7 +589,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   setSourcePage(id, sourcePage) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
-    const clean = cleanRecipeSource(sourcePage ?? '', RECIPE_PAGE_MAX_LENGTH);
+    // A leading "p." comes off, because every reader puts one back:
+    // describeAttribution renders "Sweet, p. 142" and the editor's own row
+    // reads "p. 142", so a stored "p. 142" renders "p. p. 142". Only the
+    // prefix — the rest stays free text, since some books print "xii".
+    const typed = (sourcePage ?? '').replace(/^\s*(?:pages?|pp?)(?:\s*\.\s*|\s+)/i, '');
+    const clean = cleanRecipeSource(typed, RECIPE_PAGE_MAX_LENGTH);
     save(set, { ...recipe, sourcePage: clean || null });
   },
 

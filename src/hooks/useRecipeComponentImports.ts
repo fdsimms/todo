@@ -171,6 +171,12 @@ export function useRecipeComponentImports(
    *   `sourcePage: '45'`, the same provenance-not-a-guess argument a link
    *   import makes for writing the site name. `setSourceType` has to go first,
    *   since it clears the page for any type that isn't a cookbook.
+   * - **And it lands in the parent's own book.** "Page 45" is a page of the
+   *   book the parent came out of, so a component inherits the parent's
+   *   `cookbookId` rather than being filed as a page of nothing. That used to
+   *   be unsayable — a component got a page number and a type but no title,
+   *   because nothing read a book's name off a photo — so the shelf now gets
+   *   the whole citation instead of two thirds of one.
    */
   const commitTo = useCallback((parentRecipeId: string) => {
     const store = useRecipeStore.getState();
@@ -205,10 +211,23 @@ export function useRecipeComponentImports(
         if (extracted.prepMinutes !== null) {
           store.setEstimatedMinutes(target.id, extracted.prepMinutes);
         }
-        if (candidate.page) {
+        // The parent's own book first: the reference said "page 45", which is
+        // page 45 *of this book*, and the parent has usually been linked to it
+        // already by the import that read it. The component's own photo is the
+        // fallback for the case where it hasn't — a running head the parent's
+        // page didn't show.
+        const parent = useRecipeStore.getState().recipeById(parentRecipeId);
+        const parentBook = store.cookbookById(parent?.cookbookId);
+        if (parentBook) {
+          store.linkCookbook(target.id, parentBook.id);
+        } else if (extracted.sourceTitle) {
+          store.linkNewCookbook(target.id, extracted.sourceTitle, extracted.sourceAuthor);
+        } else if (candidate.page) {
           store.setSourceType(target.id, 'cookbook');
-          store.setSourcePage(target.id, candidate.page);
         }
+        // After whichever of those ran — each sets the type, which clears the
+        // page for anything that isn't a cookbook.
+        if (candidate.page) store.setSourcePage(target.id, candidate.page);
         // Same two writes `RecipeCreateSheet` makes for a recipe imported on
         // its own — a component read off a photo is a recipe like any other,
         // and one that arrived with no method would be the odd one out.

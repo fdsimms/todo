@@ -1836,6 +1836,18 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.sourceUrl)).toBe(true);
     expect(recipes.some(r => r.author && r.source)).toBe(true);
     expect(recipes.some(r => r.sourceType === 'cookbook' && r.sourcePage)).toBe(true);
+    // A real book on the shelf, with two recipes out of it on different pages —
+    // one linked recipe is indistinguishable from the free text it replaced, so
+    // the shared row is the part worth seeding.
+    const cookbooks = useRecipeStore.getState().cookbooks;
+    expect(cookbooks.length).toBeGreaterThan(0);
+    const shared = cookbooks.find(c => recipes.filter(r => r.cookbookId === c.id).length > 1);
+    expect(shared).toBeTruthy();
+    const fromBook = recipes.filter(r => r.cookbookId === shared!.id);
+    // Mirrored down onto every recipe, which is what keeps describeAttribution
+    // and the search tier reading plain strings.
+    expect(fromBook.every(r => r.source === shared!.title && r.author === shared!.author)).toBe(true);
+    expect(new Set(fromBook.map(r => r.sourcePage)).size).toBe(fromBook.length);
     // What a link import leaves behind, all on one recipe: the address, the
     // site, the byline, and the method read off the page's own markup.
     expect(recipes.some(r =>

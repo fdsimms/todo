@@ -23,7 +23,7 @@ import {
   interaction,
   type Colors,
 } from '../theme';
-import { RECIPE_NAME_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH } from '../types';
+import { RECIPE_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SOURCE_MAX_LENGTH, type RecipeSourceType } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
@@ -34,6 +34,7 @@ import {
   normalizeIngredient, cleanRecipeName, formatServingsRange, parseServingsRange,
 } from '../utils/recipeUtils';
 import { groceryNameKey } from '../utils/groceryParse';
+import { sourceFieldsFor, sourcePlanFor } from '../utils/recipeProvenance';
 import { aisleForName } from '../utils/groceryAisles';
 import { sectionsOf } from '../utils/recipeSections';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -132,6 +133,8 @@ export function RecipeCreateSheet({
   const setSource = useRecipeStore(s => s.setSource);
   const setAuthor = useRecipeStore(s => s.setAuthor);
   const setSourceType = useRecipeStore(s => s.setSourceType);
+  const setSourcePage = useRecipeStore(s => s.setSourcePage);
+  const linkNewCookbook = useRecipeStore(s => s.linkNewCookbook);
   const addStep = useRecipeStore(s => s.addStep);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const updatePrepTask = useRecipeStore(s => s.updatePrepTask);
@@ -172,6 +175,10 @@ export function RecipeCreateSheet({
   const [yieldText, setYieldText] = useState('');
   const [siteName, setSiteName] = useState('');
   const [sourceAuthor, setSourceAuthor] = useState('');
+  const [sourcePageText, setSourcePageText] = useState('');
+  // What the source *is* — inferred, not picked. A link is a website by
+  // construction; a photo is whatever the page looked like to the model.
+  const [importedSourceType, setImportedSourceType] = useState<RecipeSourceType | null>(null);
   const edits = usePendingEdits();
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   // Whichever add-menu item opened it — "Paste text", "From a link" and "From
@@ -274,10 +281,13 @@ export function RecipeCreateSheet({
       const { page } = resolved;
       // Ticked whatever the source: there's nothing of the user's own here for
       // it to land on top of, whether the fields below arrive pre-filled from
-      // the page or blank for a paste/photo to fill in by hand.
+      // the page's markup, read off a photographed page, or blank for a paste.
       setApplySource(true);
-      setSiteName(page?.siteName ?? '');
-      setSourceAuthor(page?.author ?? '');
+      const source = sourceFieldsFor(page, result);
+      setSiteName(source.source);
+      setSourceAuthor(source.author);
+      setSourcePageText(source.page);
+      setImportedSourceType(source.sourceType);
     } catch (e) {
       setError(describeImportError(e));
       setCanRetry(isRetryableImportError(e));
@@ -410,19 +420,26 @@ export function RecipeCreateSheet({
       const yieldValue = pendingText('details:yield', yieldText).trim();
       if (yieldValue) setRecipeYield(recipe.id, yieldValue);
     }
-    // A link's URL comes from the page and isn't editable; site and author
-    // are, whether they arrived pre-filled from structured markup or were
-    // typed in by hand over a paste or a photo's blank fields.
+    // A link's URL comes from the page and isn't editable; the rest are,
+    // whether they arrived pre-filled from structured markup, were read off a
+    // photographed page, or were typed in by hand over a paste's blank fields.
     const { page } = input;
     if (applySource) {
-      if (page) {
-        setSourceUrl(recipe.id, page.url);
-        setSourceType(recipe.id, 'website');
-      }
-      const site = pendingText('source:site', siteName).trim();
-      const by = pendingText('source:author', sourceAuthor).trim();
-      if (site) setSource(recipe.id, site);
-      if (by) setAuthor(recipe.id, by);
+      const plan = sourcePlanFor(page?.url ?? null, {
+        source: pendingText('source:site', siteName),
+        author: pendingText('source:author', sourceAuthor),
+        page: pendingText('source:page', sourcePageText),
+        sourceType: importedSourceType,
+      });
+      if (plan.url) setSourceUrl(recipe.id, plan.url);
+      // Find-or-create beats setSource here: a book read off a photo is
+      // overwhelmingly one already on the shelf from the last recipe out of it.
+      if (plan.cookbook) linkNewCookbook(recipe.id, plan.cookbook.title, plan.cookbook.author);
+      if (plan.sourceType) setSourceType(recipe.id, plan.sourceType);
+      if (plan.source) setSource(recipe.id, plan.source);
+      if (plan.author) setAuthor(recipe.id, plan.author);
+      // After the type either way, which clears the page for anything but a book.
+      if (plan.page) setSourcePage(recipe.id, plan.page);
     }
     // The page's own steps when it has them (verbatim structured data),
     // otherwise whatever the model read off the source itself. Both of these
@@ -768,7 +785,7 @@ export function RecipeCreateSheet({
               textStyle={styles.detailValue}
               placeholder="e.g. NYT Cooking"
               accessibilityLabel="source"
-              maxLength={80}
+              maxLength={RECIPE_SOURCE_MAX_LENGTH}
               numberOfLines={1}
             />
             <Text style={styles.detailSep}>·</Text>
@@ -781,9 +798,26 @@ export function RecipeCreateSheet({
               textStyle={styles.detailValue}
               placeholder="e.g. Kenji"
               accessibilityLabel="author"
-              maxLength={80}
+              maxLength={RECIPE_SOURCE_MAX_LENGTH}
               numberOfLines={1}
             />
+            {importedSourceType === 'cookbook' && (
+              <>
+                <Text style={styles.detailSep}>·</Text>
+                <InlineEditableText
+                  edits={edits}
+                  editKey="source:page"
+                  value={sourcePageText}
+                  onCommit={setSourcePageText}
+                  allowEmpty
+                  textStyle={styles.detailValue}
+                  placeholder="e.g. 142"
+                  accessibilityLabel="page number"
+                  maxLength={RECIPE_PAGE_MAX_LENGTH}
+                  numberOfLines={1}
+                />
+              </>
+            )}
           </View>
         </ImportApplyRow>
 
