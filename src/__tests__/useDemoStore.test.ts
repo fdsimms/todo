@@ -209,6 +209,13 @@ jest.mock('../utils/deadlineCalendarSync', () => ({
 jest.mock('../store/useCalendarStore', () => ({
   useCalendarStore: { getState: () => ({ events: [], loaded: false }) },
 }));
+// And the same again for the weather store, which also imports AppState
+// directly — checkWeatherTasks reads its snapshot but demo mode seeds its
+// weather task by hand (see demoSeed.ts), so an empty snapshot here is never
+// actually read.
+jest.mock('../store/useWeatherStore', () => ({
+  useWeatherStore: { getState: () => ({ snapshot: null, snapshotDayKey: null, refreshing: false }) },
+}));
 
 // ---------------------------------------------------------------------------
 
@@ -2081,6 +2088,29 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(review!.category).toBe('Calendar Events');
     expect(useSettingsStore.getState().calendarEventCategory).toBe('Calendar Events');
     expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+  });
+
+  it('seeds a weather task and the rules alongside it', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const rules = settings.weatherRules;
+    expect(rules.length).toBe(3);
+    const sunscreenRule = rules.find(r => r.condition === 'sunny');
+    expect(sunscreenRule).toBeDefined();
+
+    const weatherTask = tasks.find(t => t.generatedKind === 'weather');
+    expect(weatherTask).toBeDefined();
+    expect(weatherTask!.title).toBe(sunscreenRule!.title);
+    expect(weatherTask!.category).toBe('Weather');
+    expect(settings.weatherTaskCategory).toBe('Weather');
+    expect(weatherTask!.generatedSourceId).toBe(`${dayKeyOf(getCurrentDayStart())}#${sunscreenRule!.id}`);
+    // Only the rule that fired is marked considered for today — the other two
+    // are still askable on whatever day their own condition shows up.
+    expect(sunscreenRule!.lastFiredDayKey).toBe(dayKeyOf(getCurrentDayStart()));
+    rules.filter(r => r.id !== sunscreenRule!.id).forEach(r => {
+      expect(r.lastFiredDayKey).toBeNull();
+    });
   });
 
   it('leaves that item free of a use-by date, so it carries one task and not two', () => {

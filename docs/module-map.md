@@ -224,6 +224,9 @@ render, so listing them adds lines without adding answers.
 - `src/utils/useSyncOnForeground.ts` — useSyncOnForeground
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
 - `src/utils/visibilityUtils.ts` — isTaskBlocked, isSequenceBlocked, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, sameTimeSegments, hasDayArrived, effectiveWindowEnd, isCompletionOnTime, +31 more
+- `src/utils/weatherCondition.ts` — classifyWeather
+- `src/utils/weatherLocation.ts` — LocationPermission, getLocationPermission, requestLocationPermission, DeviceLocation, getCurrentLocation
+- `src/utils/weatherTasks.ts` — WEATHER_RULE_TITLE_MAX_LENGTH, WEATHER_CONDITIONS, weatherConditionLabel, defaultWeatherRules, parseWeatherRules, weatherSourceId, parseWeatherSourceId, weatherRuleIdOf, ruleMatchesToday
 - `src/utils/weekPlan.ts` — WeekNight, weekNights, decidableNights
 - `src/utils/widgetBridge.ts` — WidgetBridge, widgetBridge
 - `src/utils/widgetSync.ts` — useWidgetSync
@@ -253,6 +256,7 @@ render, so listing them adds lines without adding answers.
 - `src/store/useTaskStore.ts` — CONTENT_FIELDS, useTaskStore
 - `src/store/useTemplateCategoryStore.ts` — useTemplateCategoryStore
 - `src/store/useTemplateStore.ts` — ApplyTemplateOptions, useTemplateStore
+- `src/store/useWeatherStore.ts` — useWeatherStore, useWeatherSync
 - `src/store/useWidgetCompletionStore.ts` — useWidgetCompletionStore
 
 ## `src/hooks`
@@ -289,3 +293,4 @@ render, so listing them adds lines without adding answers.
 - `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, MAX_RECIPE_CHARS, suggestGroceryAisles, RecipeGroceryItem, +15 more
 - `src/services/productLookup.ts` — ProductRecord, ProductLookupError, describeLookupError, lookupGtin
 - `src/services/recipePage.ts` — RecipePageErrorCode, RecipePageError, recipePageError, isRecipePageError, describeImportError, isRetryableImportError, FetchedRecipePage, fetchRecipePage
+- `src/services/weatherLookup.ts` — WeatherSnapshot, fetchWeatherSnapshot

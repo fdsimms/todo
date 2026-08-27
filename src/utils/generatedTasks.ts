@@ -125,6 +125,9 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // subject, not two unrelated rows to read past each other.
   'birthdayGift',
   'reachOut',
+  // The fourteenth, appended rather than paired: nothing else here reads the
+  // weather, so there's no existing generator it belongs beside.
+  'weather',
 ];
 
 /**
@@ -173,7 +176,8 @@ export type GeneratedEnabledKey =
   | 'birthdayTasks'
   | 'birthdayGiftTasks'
   | 'reachOutTasks'
-  | 'pantryReviewTasks';
+  | 'pantryReviewTasks'
+  | 'weatherTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -489,6 +493,22 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // see the field's doc comment above.
     categorized: false,
     defaultCategory: '',
+  },
+  // The fourteenth, and the first whose "source" is a rule the user wrote
+  // rather than something else in the app — see src/utils/weatherTasks.ts.
+  // Its source id is a day key and a rule id, the same "square on the
+  // calendar, not a row" position calendarReview is in.
+  weather: {
+    kind: 'weather',
+    enabledKey: 'weatherTasks',
+    label: 'Weather-based tasks',
+    onHint: "A rule that matches today's weather adds its task, like sunscreen on a sunny day",
+    offHint: 'Weather adds no tasks',
+    icon: 'partly-sunny-outline',
+    sourced: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Weather',
   },
 };
 

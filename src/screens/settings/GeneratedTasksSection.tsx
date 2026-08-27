@@ -38,6 +38,7 @@ import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { InlineTimePicker } from './InlineTimePicker';
+import { WeatherRulesSheet } from '../../components/WeatherRulesSheet';
 import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
@@ -125,6 +126,11 @@ export function GeneratedTasksSection() {
   const listed = useMemo(() => listedGeneratedKinds(s.kitchenEnabled), [s.kitchenEnabled]);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
   const [pickerDate, setPickerDate] = useState<Date>(() => hhmmToDate(s.mealPlanNudgeTime));
+  const [weatherRulesVisible, setWeatherRulesVisible] = useState(false);
+  const activeWeatherRuleCount = useMemo(
+    () => s.weatherRules.filter(r => r.enabled).length,
+    [s.weatherRules],
+  );
 
   const weekdaySegmentOptions = useMemo(() => weekdayOptions(s.weekStartsOn), [s.weekStartsOn]);
 
@@ -156,6 +162,7 @@ export function GeneratedTasksSection() {
       case 'birthday': return s.birthdayTasks;
       case 'birthdayGift': return s.birthdayGiftTasks;
       case 'reachOut': return s.reachOutTasks;
+      case 'weather': return s.weatherTasks;
     }
   };
 
@@ -176,6 +183,7 @@ export function GeneratedTasksSection() {
       case 'birthday': s.setBirthdayTasks(next); break;
       case 'birthdayGift': s.setBirthdayGiftTasks(next); break;
       case 'reachOut': s.setReachOutTasks(next); break;
+      case 'weather': s.setWeatherTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -207,6 +215,7 @@ export function GeneratedTasksSection() {
       case 'birthdayGift': return s.birthdayGiftTaskCategory;
       case 'supplyReorder': return null;
       case 'reachOut': return s.reachOutTaskCategory;
+      case 'weather': return s.weatherTaskCategory;
     }
   };
 
@@ -228,6 +237,8 @@ export function GeneratedTasksSection() {
       // Unreached — see categoryOf above — but a real, honest answer rather
       // than a no-op: this is genuinely how calendarReview's category changes.
       case 'calendarReview': s.setCalendarEventCategory(category); break;
+      case 'reachOut': s.setReachOutTaskCategory(category); break;
+      case 'weather': s.setWeatherTaskCategory(category); break;
     }
   };
 
@@ -476,10 +487,32 @@ export function GeneratedTasksSection() {
       );
     }
 
+    if (kind === 'weather') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="weatherRules"
+            icon="list-outline"
+            iconColor={activeWeatherRuleCount > 0 ? colors.accent : undefined}
+            label="Rules"
+            hint="What weather adds which task, like sunscreen on a sunny day."
+            value={
+              activeWeatherRuleCount === 0
+                ? 'None'
+                : activeWeatherRuleCount === 1 ? '1 rule' : `${activeWeatherRuleCount} rules`
+            }
+            onPress={() => { haptics.tap(); setWeatherRulesVisible(true); }}
+          />
+        </>
+      );
+    }
+
     return null;
   };
 
   return (
+    <>
     <SettingsSection
       // No label: this is the whole of its group, so the screen's own header is
       // already saying "Automatic tasks" directly above it.
@@ -567,6 +600,8 @@ export function GeneratedTasksSection() {
         </>
       )}
     </SettingsSection>
+    <WeatherRulesSheet visible={weatherRulesVisible} onClose={() => setWeatherRulesVisible(false)} />
+    </>
   );
 }
 
