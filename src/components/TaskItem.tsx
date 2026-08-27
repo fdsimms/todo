@@ -44,7 +44,7 @@ import { isDateAnchored } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { asksOnCompletion } from '../utils/deliverables';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish } from '../utils/chain';
@@ -285,6 +285,7 @@ export const TaskItem = React.memo(function TaskItem({
     cancelCompletionAnimation,
     logQuotaUnit,
     unlogQuotaUnit,
+    startQuotaRun,
     holdQuotaOnToday,
     releaseQuotaHold,
     updateTask,
@@ -932,6 +933,12 @@ export const TaskItem = React.memo(function TaskItem({
   // its circle becomes a fill meter and a tap logs one glass/rep/page instead
   // of completing — except the last one, which completes for real.
   const isQuota = isQuotaTask(task) && !task.completed;
+  // Only a cadence has a run to start: a plain "8 glasses" target paces across
+  // the day whether or not you announce yourself to it, and there'd be nothing
+  // for the tap to change. Withdrawn once the run is under way, since starting
+  // it twice would move the start a second time and drop the count again.
+  const canStartQuotaRun =
+    isQuota && task.quotaIntervalMinutes !== null && task.quotaStartedAt === null && !task.archived;
   // A daily target closed out short of its count (rollover, or an explicit
   // miss) is still `completed`, but a plain checkmark would read as the same
   // full finish an on-target row gets — same distinction Logbook's row draws
@@ -1231,11 +1238,14 @@ export const TaskItem = React.memo(function TaskItem({
       await haptics.error();
       return;
     }
-    // allowOvershoot tasks skip the auto-complete at target: logging past it
-    // just keeps incrementing progressCount like any unit below target, and
-    // the task rides out the day for the rollover sweep to complete (see
-    // sweepOvershootQuotas in useTaskStore.ts).
-    if (!task.allowOvershoot && task.progressCount + 1 >= task.targetCount!) {
+    // The kinds that ride the day out skip the auto-complete at target:
+    // logging past it just keeps incrementing progressCount like any unit
+    // below target, and a sweep completes the task later (see
+    // sweepOvershootQuotas and sweepFinishedQuotaRuns in useTaskStore.ts).
+    // Kept in step with logQuotaUnit's own guard through the shared
+    // predicate — the two used to say this separately, and the store's copy
+    // was the one that had lost half of it.
+    if (!quotaRidesOutTheDay(task) && task.progressCount + 1 >= task.targetCount!) {
       handleComplete();
       return;
     }
@@ -2566,6 +2576,26 @@ export const TaskItem = React.memo(function TaskItem({
                       <Ionicons name="timer-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                     )
+                  )}
+                  {/* A run whose window is a default rather than a
+                      commitment: tapping this begins today's from now, so a
+                      day that starts at 10:30 gets its cadence from 10:30
+                      instead of counting the hours you weren't at your desk
+                      as ones you fell behind in. Only offered while the run
+                      hasn't been started and hasn't already been caught up —
+                      once either is true there is nothing left to move. */}
+                  {showActions && canStartQuotaRun && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.impactLight();
+                        startQuotaRun(task.id);
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Start today's run of ${task.title} now`}
+                    >
+                      <Ionicons name="play-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
                   )}
                   {/* A meal-plan task is generated fresh each day by
                       writeMealSlotTasks rather than through recurrenceType,

@@ -51,7 +51,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { formatPhoneInput } from '../utils/phone';
 import {
   bakedFields, taskKindOf, DEFAULT_TARGET_COUNT, DEFAULT_TIMED_MINUTES,
-  MAX_TARGET_COUNT, MIN_TARGET_COUNT, TASK_KIND_META,
+  MAX_TARGET_COUNT, MIN_TARGET_COUNT, MIN_QUOTA_INTERVAL_MINUTES, MAX_QUOTA_INTERVAL_MINUTES, TASK_KIND_META,
   type TaskKind,
 } from '../utils/taskKinds';
 import { featureShown, taskKindsForMode } from '../utils/simpleMode';
@@ -182,6 +182,8 @@ export interface TaskDraft {
   targetCount?: number | null;
   targetUnit?: string | null;
   allowOvershoot?: boolean;
+  quotaIntervalMinutes?: number | null;
+  quotaReminders?: boolean;
   supplyCount?: number | null;
   supplyUnit?: string | null;
   supplyRefillCount?: number | null;
@@ -359,6 +361,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [targetCount, setTargetCount] = useState<number | null>(null);
   const [targetUnit, setTargetUnit] = useState('');
   const [allowOvershoot, setAllowOvershoot] = useState(false);
+  const [quotaIntervalMinutes, setQuotaIntervalMinutes] = useState<number | null>(null);
+  const [quotaReminders, setQuotaReminders] = useState(false);
   const [showTargetCount, setShowTargetCount] = useState(false);
   const [supplyCount, setSupplyCount] = useState<number | null>(null);
   const [supplyUnit, setSupplyUnit] = useState('');
@@ -499,6 +503,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const deadlineCalendarId = useSettingsStore(s => s.deadlineCalendarId);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
+  const activeHoursStart = useSettingsStore(s => s.activeHoursStart);
+  const activeHoursEnd = useSettingsStore(s => s.activeHoursEnd);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
 
@@ -588,6 +594,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setTargetCount(task.targetCount ?? null);
       setTargetUnit(task.targetUnit ?? '');
       setAllowOvershoot(task.allowOvershoot ?? false);
+      setQuotaIntervalMinutes(task.quotaIntervalMinutes ?? null);
+      setQuotaReminders(task.quotaReminders ?? false);
       setSupplyCount(task.supplyCount ?? null);
       setSupplyUnit(task.supplyUnit ?? '');
       setSupplyRefillCount(task.supplyRefillCount ?? null);
@@ -629,7 +637,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -694,6 +702,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       targetCount: task ? (task.targetCount ?? null) : (initialDraft?.targetCount ?? null),
       targetUnit: normalizeTargetUnit(task ? task.targetUnit : initialDraft?.targetUnit),
       allowOvershoot: task ? (task.allowOvershoot ?? false) : (initialDraft?.allowOvershoot ?? false),
+      quotaIntervalMinutes: task ? (task.quotaIntervalMinutes ?? null) : (initialDraft?.quotaIntervalMinutes ?? null),
+      quotaReminders: task ? (task.quotaReminders ?? false) : (initialDraft?.quotaReminders ?? false),
       supplyCount: task ? (task.supplyCount ?? null) : null,
       supplyUnit: task ? (task.supplyUnit ?? '') : '',
       supplyRefillCount: task ? (task.supplyRefillCount ?? null) : null,
@@ -936,6 +946,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // overshoot, and would otherwise silently survive a target being cleared
       // and re-added.
       allowOvershoot: targetCount !== null ? allowOvershoot : false,
+      // Both go the same way and for the same reason: a cadence with nothing
+      // to pace and a nudge with nothing to nudge about are noise, and left
+      // behind they'd come back to life the next time a target was added.
+      quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
+      quotaReminders: targetCount !== null ? quotaReminders : false,
       // A supply counts down by riding onto the successor a completion spawns,
       // so it means nothing on a one-off — cleared with the repeat rather than
       // left to sit at its starting number for ever, the same reset showStreak
@@ -1423,6 +1438,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       targetCount,
       targetUnit: targetCount !== null ? normalizeTargetUnit(targetUnit) : null,
       allowOvershoot: targetCount !== null ? allowOvershoot : false,
+      quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
+      quotaReminders: targetCount !== null ? quotaReminders : false,
       supplyCount, supplyUnit, supplyRefillCount, supplyReorderAt, supplyLeadDays, supplyGroceryItemId,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
@@ -1617,6 +1634,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   // Reads the user's own history for when this task usually gets done, and
   // abstains with a reason when there isn't enough of it. See utils/rhythms.
+
+  // What the cadence actually came out as, in the terms the user set it in.
+  // The count is derived from two fields in two different cards (the interval
+  // here, the window under Schedule), so without this the only way to find out
+  // how many a day you'd asked for would be to save and look at the row.
+  const quotaCadenceCaption = (() => {
+    if (quotaIntervalMinutes === null) return '';
+    const from = windowStart ? formatHHMM(windowStart, use24HourTime) : formatHHMM(activeHoursStart, use24HourTime);
+    const to = windowEnd ? formatHHMM(windowEnd, use24HourTime) : formatHHMM(activeHoursEnd, use24HourTime);
+    const scope = windowStart || windowEnd ? '' : ' (your active hours)';
+    return `${formatQuotaProgress(0, targetCount ?? 0, targetUnit)} a day: one every ${quotaIntervalMinutes} minutes, ${from} to ${to}${scope}.`;
+  })();
 
   const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
   const timeOfDaySummary = timeSegments.length > 0
@@ -2195,7 +2224,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }] : []),
           ...(kind === 'target' ? [{
             key: 'dailyTarget', label: 'Daily target', set: true,
-            keywords: ['quota', 'goal', 'times a day', 'count'],
+            keywords: ['quota', 'goal', 'times a day', 'count', 'interval', 'cadence', 'every', 'minutes', 'nudge', 'notify', 'break', 'pace'],
             node: (<>
               <EditorRow
                 icon="speedometer-outline"
@@ -2209,6 +2238,23 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               {showTargetCount && (
                 <>
                   <View style={styles.targetStepperRow}>
+                    {/* A read-out, not a control, while a cadence owns the
+                        number: with an interval set the count is span ÷
+                        interval, so a stepper here would offer a value the next
+                        save recomputes. The cadence stepper below is the one
+                        that moves it. */}
+                    {quotaIntervalMinutes !== null ? (
+                      <Text
+                        style={styles.targetDerivedCount}
+                        // The number alone, in the stepper's own format: the
+                        // unit field sits right beside it, so spelling the
+                        // unit here would print "24 breaks" next to a box
+                        // holding the word "breaks".
+                        accessibilityLabel={`${targetCount ?? 0} a day, set by the cadence below`}
+                      >
+                        {targetCount ?? 0}×
+                      </Text>
+                    ) : (
                     <CountStepper
                       value={targetCount}
                       onChange={next => {
@@ -2228,6 +2274,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       label="Daily target"
                       describeValue={n => (n === null ? 'off' : `${n} ${normalizeTargetUnit(targetUnit) ?? 'times'} a day`)}
                     />
+                    )}
                     {/* The unit is only ever read next to the count, so it's typed
                         next to it too — and it's hidden while there's no count,
                         since on its own it labels nothing. */}
@@ -2252,9 +2299,63 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   <Text style={styles.targetStepperCaption}>
                     {targetCount === null
                       ? 'Not a daily target'
-                      : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a day`}
+                      : quotaIntervalMinutes !== null
+                        ? quotaCadenceCaption
+                        : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a day`}
                   </Text>
                   {targetCount !== null && (
+                    <>
+                      <View style={styles.sep} />
+                      <View style={styles.targetStepperRow}>
+                        <Text style={styles.stepperSentence}>One every</Text>
+                        <CountStepper
+                          value={quotaIntervalMinutes}
+                          onChange={setQuotaIntervalMinutes}
+                          min={MIN_QUOTA_INTERVAL_MINUTES}
+                          max={MAX_QUOTA_INTERVAL_MINUTES}
+                          // Fives, because nobody means 23 minutes — and at a
+                          // step of 1 the twenty in "every 20 minutes" is
+                          // fifteen presses from the floor.
+                          step={5}
+                          allowNull
+                          emptyLabel="Off"
+                          format={n => `${n} min`}
+                          label="How often one falls due"
+                          describeValue={n => (n === null ? 'off' : `every ${n} minutes`)}
+                        />
+                      </View>
+                      <Text style={styles.targetStepperCaption}>
+                        {quotaIntervalMinutes === null
+                          ? 'Set this to space them evenly instead of picking a number.'
+                          : 'Set a time window under Schedule to say when the day starts and ends.'}
+                      </Text>
+                      <View style={styles.sep} />
+                      <TouchableOpacity
+                        style={styles.optionRow}
+                        onPress={() => { haptics.tap(); setQuotaReminders(v => !v); }}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="switch"
+                        accessibilityLabel="Notify me when each one is due"
+                        accessibilityState={{ checked: quotaReminders }}
+                      >
+                        <Ionicons name="notifications-outline" size={18} color={quotaReminders ? colors.accent : colors.textSecondary} />
+                        <View style={styles.optionContent}>
+                          <Text style={styles.optionLabel}>Notify me when each one is due</Text>
+                          <Text style={styles.optionHint}>Send a notification at each one, instead of only showing the task on Today</Text>
+                        </View>
+                        <View style={[styles.toggle, quotaReminders && styles.toggleOn]}>
+                          <View style={[styles.toggleKnob, quotaReminders && styles.toggleKnobOn]} />
+                        </View>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                  {/* Hidden under a cadence, where it's already implied: an
+                      interval quota rides the day out whatever this says (see
+                      quotaRidesOutTheDay), so the switch would be one that
+                      does nothing — and its hint would be describing a target
+                      as something you can exceed, which is exactly the reading
+                      a cadence is not. */}
+                  {targetCount !== null && quotaIntervalMinutes === null && (
                     <TouchableOpacity
                       style={styles.optionRow}
                       onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}
@@ -4509,6 +4610,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   /** Daily target's unit: one word, so it takes the rest of the stepper's line. */
   targetUnitInput: { flex: 1 },
+  /** The count in its read-out state, where a cadence is deriving it. */
+  targetDerivedCount: { color: colors.text, fontSize: font.md, fontWeight: '500' },
   /**
    * A named number inside the Supply card: label on the left, stepper on the
    * right. The daily target gets away with a bare stepper because the card has

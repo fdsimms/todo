@@ -111,7 +111,9 @@ import {
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
+import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver } from '../utils/quotaSchedule';
+import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from '../utils/taskKinds';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -154,7 +156,7 @@ import { usePersonGroupStore } from './usePersonGroupStore';
 import { usePersonNoteStore } from './usePersonNoteStore';
 import { giftIdeasText } from '../utils/personNotes';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
-import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
+import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import {
   deleteCalendarEvent,
@@ -383,6 +385,12 @@ function newTaskFromDraft(
     progressCount: draft.progressCount ?? 0,
     targetUnit: normalizeTargetUnit(draft.targetUnit),
     allowOvershoot: draft.allowOvershoot ?? false,
+    quotaIntervalMinutes: draft.quotaIntervalMinutes ?? null,
+    quotaReminders: draft.quotaReminders ?? false,
+    // Never seeded from a draft: a run is started by tapping "start now" on a
+    // task that exists, so a row arriving already mid-run would be claiming a
+    // morning nobody had yet.
+    quotaStartedAt: null,
     // Refused outright on a task that can't spend it, rather than trusted from
     // the draft. A supply counts down by riding onto the successor completeTask
     // spawns, so on a one-off it would sit at its starting number for ever
@@ -856,6 +864,39 @@ const SCHEDULE_FIELDS = [
   'recurrenceWeekOrdinal',
   'recurrenceFromCompletion',
 ] as const;
+
+// The fields a run's span is built from. Writing any of them on an interval
+// quota re-derives targetCount, because with an interval stored the count is
+// arithmetic rather than an answer the user gave (see Task.quotaIntervalMinutes)
+// — and arithmetic left stale is worse than arithmetic never done: a window
+// shortened from eight hours to four would keep nudging every 20 minutes but go
+// on expecting 24 of them, so the task would read as behind from the first
+// minute of every day.
+const QUOTA_SPAN_FIELDS = ['windowStart', 'windowEnd', 'quotaIntervalMinutes', 'quotaStartedAt'] as const;
+
+/**
+ * `targetCount` for a task whose cadence is stored as an interval, or the
+ * count it already had when it isn't.
+ *
+ * Reads the same span the pace ramp and the notifier read, so the three can't
+ * disagree about how many units a day holds.
+ */
+function derivedTargetCount(task: Task): number | null {
+  if (task.quotaIntervalMinutes == null) return task.targetCount;
+  const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+  const span = quotaRunSpan({
+    windowStart: task.windowStart,
+    windowEnd: task.windowEnd,
+    quotaStartedAt: task.quotaStartedAt,
+    activeHoursStart,
+    activeHoursEnd,
+    dayStart: getCurrentDayStart(),
+  });
+  return quotaTargetForInterval(span, task.quotaIntervalMinutes, {
+    min: MIN_TARGET_COUNT,
+    max: MAX_TARGET_COUNT,
+  });
+}
 
 // A dated series and a recurrence rule are two schedules for one task, and a
 // series row is deliberately an ordinary one-off (see Task.seriesId) — the set
@@ -1381,6 +1422,22 @@ interface TaskStore {
   rolloverQuotas: () => void;
   /** Opt-in counterpart to rolloverQuotas for allowOvershoot tasks — see its doc comment. */
   sweepOvershootQuotas: () => void;
+  /**
+   * Closes out interval quotas whose run has ended, at whatever count they
+   * reached — see its doc comment. The third quota day-close, and the only one
+   * that fires mid-day, because a run ends when its window shuts rather than
+   * when the logical day turns over.
+   */
+  sweepFinishedQuotaRuns: () => void;
+  /**
+   * Begin today's run now, for a task whose window is a default rather than a
+   * commitment — the "start now" half of an optional fixed schedule.
+   *
+   * Stamps the moment on the occurrence and lets the derived-count rule in
+   * updateTask do the rest: a shorter span holds fewer units at the same
+   * interval, which is what keeping the cadence and losing the count means.
+   */
+  startQuotaRun: (id: string) => void;
   deferTask: (id: string, until: Date) => void;
   // Applies a batch of approved "lighten this day" moves (see
   // utils/deloadPlan) under one undo entry — each move carries its own field
@@ -1793,6 +1850,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
     scheduleTaskReminder(task);
+    scheduleQuotaNudges(task);
     reconcileDeadlineEvent(task);
     return task;
   },
@@ -1883,6 +1941,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         dbDeleteSubtasks(t.id);
         dbDeleteTask(t.id);
         cancelTaskReminder(t.id);
+        cancelQuotaNudges(t.id);
         if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
       });
       unfiled.forEach(dbUpdateTask);
@@ -1975,6 +2034,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dbDeleteSubtasks(t.id);
       dbDeleteTask(t.id);
       cancelTaskReminder(t.id);
+      cancelQuotaNudges(t.id);
       // The row is gone for good, not archived — nothing will ever revisit
       // it to notice a dangling event, so clean it up now, same as deleteTask.
       if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
@@ -2008,6 +2068,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dbDeleteSubtasks(t.id);
       dbDeleteTask(t.id);
       cancelTaskReminder(t.id);
+      cancelQuotaNudges(t.id);
     });
     set(s => ({ tasks: s.tasks.filter(t => !ids.has(t.id) && !(t.parentId && ids.has(t.parentId))) }));
 
@@ -2328,6 +2389,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(!('recurrenceAnchorDate' in updates) && SCHEDULE_FIELDS.some(f => f in updates)
           ? { recurrenceAnchorDate: null }
           : {}),
+        // Same shape as the two rules above, and the same reasoning: a patch
+        // naming targetCount itself wins outright, so a whole-snapshot undo
+        // restores the count it recorded rather than recomputing a new one
+        // against a span that has since moved.
+        ...(!('targetCount' in updates) && QUOTA_SPAN_FIELDS.some(f => f in updates)
+          ? { targetCount: derivedTargetCount({ ...t, ...updates }) }
+          : {}),
       };
 
       // Re-filing a task must not, on its own, make it read as "new".
@@ -2367,6 +2435,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ) {
         cancelTaskReminder(id);
         scheduleTaskReminder(updated);
+      }
+      // The nudge grid is rebuilt whenever anything it's derived from moves —
+      // the span fields, the count that divides it, the toggle itself — plus
+      // the two states that mean there is nothing left to nudge about, and the
+      // title/notes the notification is written from. Wider than the reminder
+      // gate above because a nudge is derived from more: a reminder is one
+      // stored instant, a run is a whole schedule.
+      if (
+        QUOTA_SPAN_FIELDS.some(f => f in updates) ||
+        'quotaReminders' in updates ||
+        'targetCount' in updates ||
+        'vacationPause' in updates ||
+        'completed' in updates ||
+        'archived' in updates ||
+        'title' in updates ||
+        'notes' in updates
+      ) {
+        scheduleQuotaNudges(updated);
       }
       if (
         'deadline' in updates ||
@@ -2449,6 +2535,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           patched.forEach(t => {
             dbUpdateTask(t);
             cancelTaskReminder(t.id);
+        cancelQuotaNudges(t.id);
             scheduleTaskReminder(t);
           });
           const byId = new Map(patched.map(t => [t.id, t]));
@@ -2738,10 +2825,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // whatever count it actually reached — that's the record of the day, the
       // same way rolloverQuotas leaves a partial alone.
       //
-      // allowOvershoot is the one exception: its whole point is a tally that
-      // can land over, at, or under target, so clamping it here would erase
-      // the overshoot the sweep exists to preserve (see sweepOvershootQuotas).
-      progressCount: isQuotaTask(task) && !missed && !task.allowOvershoot ? task.targetCount! : task.progressCount,
+      // The kinds that ride the day out are the exception: their whole point
+      // is a tally that can land over, at, or under target, so clamping it
+      // here would erase the record the sweeps exist to preserve — the
+      // overshoot for allowOvershoot (see sweepOvershootQuotas), and for an
+      // interval quota the honest "18 of 24 nudges taken" that the run-ended
+      // sweep closes the day with.
+      progressCount: isQuotaTask(task) && !missed && !quotaRidesOutTheDay(task) ? task.targetCount! : task.progressCount,
       // What was decided, where the caller had somewhere to ask. Omitted means
       // "nobody asked" — every non-interactive path (bulk, cascade, widget,
       // sweep) and every miss — which completes the row exactly as it did
@@ -2899,6 +2989,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           timeSegments: nextTimeSegments,
           pinned: chainStepStaysPinned, // stays pinned through an immediate chain step; resets otherwise
           progressCount: 0, // a quota starts the new day empty
+          // ...and starts it from the window again. A run begun by hand at
+          // 10:30 is a statement about this morning, not about the schedule
+          // (see Task.quotaStartedAt), so it rides no successor.
+          quotaStartedAt: null,
           // The question carries via ...effective, the answer doesn't: this
           // occurrence hasn't been decided yet. Same split actualMinutes makes,
           // and it's what turns a recurring decision task's Logbook into the
@@ -3534,7 +3628,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // The unit that reaches the target isn't a count bump, it's a completion —
     // hand off so recurrence, streaks, reminders and the Logbook all run
     // exactly as they do for any other task.
-    if (task.progressCount + 1 >= task.targetCount!) {
+    //
+    // Unless the task is one of the two kinds that ride the day out instead.
+    // allowOvershoot says so outright ("a 13th glass against a target of 12"),
+    // and this guard was missing: isQuotaOnPace deliberately keeps such a task
+    // on Today past its target so the extra can be logged, and the very next
+    // tap completed it — the feature's whole point, undone one line from where
+    // it was declared. An interval quota is the second: its count is span ÷
+    // interval rather than a goal, so "reaching" it is the clock running out,
+    // which the run-ended sweep owns and a tap does not.
+    if (!quotaRidesOutTheDay(task) && task.progressCount + 1 >= task.targetCount!) {
       get().completeTask(id);
       return;
     }
@@ -3609,7 +3712,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // manual close always writes progressCount as-is but forces
       // streakCount to 0, which is right for a shortfall but wrong for a
       // task that actually met or beat its target.
-      !t.allowOvershoot &&
+      //
+      // An interval quota is excluded for a stronger version of the same
+      // reason: it has no shortfall to record. Its target is span ÷ interval,
+      // so falling "short" of it means nothing more than not having tapped
+      // every nudge, and closing the day with streakCount: 0 for that would
+      // break the streak on essentially every day the feature works. See
+      // sweepFinishedQuotaRuns, which closes it at the end of its run instead.
+      !quotaRidesOutTheDay(t) &&
       t.dueDate !== null &&
       getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
     );
@@ -3705,6 +3815,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const todayStart = getCurrentDayStart();
     const stale = get().tasks.filter(t =>
       t.allowOvershoot &&
+      // An interval quota closes at the end of its own run rather than at day
+      // rollover, and does it whatever the count — sweepFinishedQuotaRuns
+      // owns it even when it also carries allowOvershoot, or a run that ended
+      // at 17:00 would sit unclosed until the small hours.
+      t.quotaIntervalMinutes === null &&
       isQuotaTask(t) &&
       !t.completed &&
       !t.archived &&
@@ -3714,6 +3829,62 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
     );
     stale.forEach(t => get().completeTask(t.id));
+  },
+
+  startQuotaRun(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.completed || task.archived || !isQuotaTask(task)) return;
+    // Through updateTask rather than a direct write, so QUOTA_SPAN_FIELDS
+    // re-derives targetCount against the span that just shrank, and the undo
+    // entry below restores the count with the stamp it belonged to.
+    const before = { quotaStartedAt: task.quotaStartedAt, targetCount: task.targetCount };
+    get().updateTask(id, { quotaStartedAt: new Date().toISOString() });
+    get().setLastAction({
+      label: 'Started',
+      undo: () => get().updateTask(id, before),
+    });
+  },
+
+  sweepFinishedQuotaRuns() {
+    const { dayResetTime, activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+    const todayStart = getCurrentDayStart();
+    const now = new Date();
+    const finished = get().tasks.filter(t => {
+      if (t.quotaIntervalMinutes === null || !isQuotaTask(t)) return false;
+      if (t.completed || t.archived) return false;
+      // Same protection from streak loss vacation gives everywhere else, and
+      // it matters more here: a paused task is one whose run was never
+      // supposed to happen.
+      if (isHiddenForVacation(t)) return false;
+      if (t.dueDate === null) return false;
+      const taskDay = getTaskDayStart(new Date(t.dueDate), dayResetTime);
+      // A run from an earlier day is over by definition, whatever the clock
+      // says now — the app may simply have been closed since. Today's run is
+      // over once its own span has closed.
+      if (taskDay < todayStart) return true;
+      if (taskDay > todayStart) return false;
+      return isQuotaRunOver(
+        quotaRunSpan({
+          windowStart: t.windowStart,
+          windowEnd: t.windowEnd,
+          quotaStartedAt: t.quotaStartedAt,
+          activeHoursStart,
+          activeHoursEnd,
+          dayStart: todayStart,
+        }),
+        now,
+      );
+    });
+    // Through completeTask, at whatever count was reached — including zero.
+    //
+    // Zero is the case sweepOvershootQuotas deliberately leaves alone, on the
+    // reading that a tally nobody touched is a day the task was abandoned. An
+    // interval quota inverts that: the nudges fired whether or not any was
+    // tapped, so the run *did* happen, and leaving it incomplete would stack
+    // an overdue row per day for the one routine most likely to go untapped.
+    // A completion here is what it says — the run finished — and the count
+    // beside it is the record of how much of it you took.
+    finished.forEach(t => get().completeTask(t.id));
   },
 
   deferTask(id, until) {
@@ -5191,6 +5362,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       progressCount: 0,
       targetUnit: null,
       allowOvershoot: false,
+      quotaIntervalMinutes: null,
+      quotaReminders: false,
+      quotaStartedAt: null,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
@@ -5369,6 +5543,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       progressCount: 0,
       targetUnit: null,
       allowOvershoot: false,
+      quotaIntervalMinutes: null,
+      quotaReminders: false,
+      quotaStartedAt: null,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
@@ -6009,6 +6186,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // see the same predicate in rescheduleAllReminders.
     deleted.forEach(t => {
       if (idSet.has(t.id) && t.reminderTime) cancelTaskReminder(t.id);
+      if (idSet.has(t.id) && t.quotaReminders) cancelQuotaNudges(t.id);
       if (idSet.has(t.id) && t.timerStartedAt !== null) cancelTimerAlarm(t.id);
     });
     set(s => ({
