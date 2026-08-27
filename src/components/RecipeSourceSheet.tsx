@@ -5,7 +5,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, interaction, type Colors } from '../theme';
 import { useRecipeStore } from '../store/useRecipeStore';
-import { rankRecipes, describeRecipe } from '../utils/recipeUtils';
+import { rankRecipes, describeRecipe, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { haptics } from '../utils/haptics';
@@ -47,7 +47,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
   const matches = useMemo(() => {
     const ranked = query.trim()
       ? rankRecipes(query, recipes)
-      : [...recipes].sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder);
+      : sortRecipesForDisplay(recipes);
     return ranked.slice(0, MAX_ROWS);
   }, [query, recipes]);
 
@@ -150,7 +150,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
                       <Text style={styles.rowName} numberOfLines={1}>{recipe.name}</Text>
                       <Text style={styles.rowHint} numberOfLines={1}>{describeRecipe(recipe)}</Text>
                     </View>
-                    {recipe.favorite && <Ionicons name="star" size={13} color={colors.orange} />}
+                    {recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orange} />}
                   </TouchableOpacity>
                 </React.Fragment>
               ))

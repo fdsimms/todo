@@ -114,6 +114,20 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
     onClose();
   };
 
+  // Same guard TemplateSuggestionsSheet makes: a generated batch of steps is
+  // expensive to get back, so a swipe-down with one on screen asks first.
+  const handleCancel = () => {
+    if (suggestions.length === 0) { onClose(); return; }
+    Alert.alert(
+      'Discard steps?',
+      'The suggested steps will be lost.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   const acceptedCount = accepted.size;
   const canAdd = !loading && acceptedCount > 0;
 
@@ -122,11 +136,11 @@ export function TaskBreakdownSheet({ visible, taskId, onClose }: Props) {
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={handleCancel}
     >
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
             <Text style={styles.headerTitle}>Break it up</Text>

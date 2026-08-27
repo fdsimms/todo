@@ -1,8 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, View, Text, ScrollView, StyleSheet } from 'react-native';
+import { Modal, View, Text, ScrollView, StyleSheet, Linking } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { formatTimeOfDay } from '../utils/dateUtils';
+import { directionsUrl } from '../utils/maps';
+import { haptics } from '../utils/haptics';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, type Colors } from '../theme';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -42,10 +44,11 @@ interface Props {
  * `CategoryOrderSheet` — a header and rows, nothing else on screen — because
  * that's all the question "what else is on today" needs answered. Each row
  * shows the time (or "All day"), the title, and location when EventKit has
- * one. The event itself is still read-only (see `calendarSync.ts`); the one
- * thing a row can do is carry a lightweight local reminder, via the bell —
- * see `src/utils/eventReminders.ts` for why that's a small standalone
- * mechanism rather than a `Task`.
+ * one. The event itself is still read-only (see `calendarSync.ts`); a
+ * location gets a directions button (opening the system Maps app isn't a
+ * write to the event, so it doesn't break that rule), and the bell lets a
+ * row carry a lightweight local reminder — see `src/utils/eventReminders.ts`
+ * for why that's a small standalone mechanism rather than a `Task`.
  *
  * **All-day events don't get the bell.** "N minutes before start" means
  * "before local midnight" for an all-day event, which isn't a useful
@@ -63,6 +66,19 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
   const toggleExpanded = (key: string) => {
     animateLayout();
     setExpandedKey(current => (current === key ? null : key));
+  };
+
+  // Same no-canOpenURL, silently-ignore-failure pattern as TaskItem's
+  // link/call/text/email buttons — see maps.ts for why https: needs no check.
+  const openDirections = async (location: string) => {
+    const url = directionsUrl(location);
+    if (!url) return;
+    haptics.tap();
+    try {
+      await Linking.openURL(url);
+    } catch {
+      // silently ignore — no toast infra for this row-level action
+    }
   };
 
   return (
@@ -103,7 +119,16 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
                       )}
                     </View>
                     {!!event.location && (
-                      <Text style={styles.rowLocation} numberOfLines={1}>{event.location}</Text>
+                      <View style={styles.locationRow}>
+                        <Text style={styles.rowLocation} numberOfLines={1}>{event.location}</Text>
+                        <PressableScale
+                          onPress={() => openDirections(event.location!)}
+                          hitSlop={8}
+                          accessibilityLabel={`Get directions to ${event.location}`}
+                        >
+                          <Ionicons name="navigate-outline" size={iconSize.sm} color={colors.accent} />
+                        </PressableScale>
+                      </View>
                     )}
                   </View>
                   {!event.allDay && (
@@ -195,7 +220,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowTime: { color: colors.textSecondary, fontSize: font.sm },
   rowCalendarTag: { flexDirection: 'row', alignItems: 'center', gap: 4, flexShrink: 1 },
   calendarDot: { width: 6, height: 6, borderRadius: radius.full },
-  rowLocation: { color: colors.textTertiary, fontSize: font.xs },
+  locationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  rowLocation: { flexShrink: 1, color: colors.textTertiary, fontSize: font.xs },
   bellButton: {
     width: 32,
     height: 32,

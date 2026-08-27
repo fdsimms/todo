@@ -1,4 +1,5 @@
-import type { Person, Task } from '../types';
+import type { Person, PersonGroup, Task } from '../types';
+import type { GroupMentionToken } from './parseTaskInput';
 
 /**
  * How a row resolves the people a task names, and how a person finds the tasks
@@ -32,11 +33,22 @@ let taskSource: (() => Task[]) | null = null;
 let cachedTasks: Task[] | null = null;
 let cachedByPerson: Map<string, Task[]> | null = null;
 
+let personGroupSource: (() => PersonGroup[]) | null = null;
+let cachedGroups: PersonGroup[] | null = null;
+let cachedGroupById: Map<string, PersonGroup> | null = null;
+
 /** Called once by usePersonStore at module load. Tests can point it at a fixture. */
 export function registerPersonSource(fn: (() => Person[]) | null): void {
   personSource = fn;
   cachedPeople = null;
   cachedById = null;
+}
+
+/** Called once by usePersonGroupStore at module load. Tests can point it at a fixture. */
+export function registerPersonGroupSource(fn: (() => PersonGroup[]) | null): void {
+  personGroupSource = fn;
+  cachedGroups = null;
+  cachedGroupById = null;
 }
 
 /** Called once by useTaskStore at module load, for the reverse direction. */
@@ -101,4 +113,47 @@ export function tasksNaming(personId: string): Task[] {
     cachedByPerson = index;
   }
   return cachedByPerson!.get(personId) ?? [];
+}
+
+/** Resolves a group id, or undefined — the same resolve-or-shrug rule `resolvePerson` follows. */
+export function resolvePersonGroup(id: string): PersonGroup | undefined {
+  const groups = personGroupSource?.();
+  if (!groups) return undefined;
+  if (groups !== cachedGroups) {
+    cachedGroups = groups;
+    cachedGroupById = new Map(groups.map(g => [g.id, g]));
+  }
+  return cachedGroupById!.get(id);
+}
+
+/** Every person currently filed under this group, in their own hand-drag order. */
+export function groupMembers(groupId: string): Person[] {
+  const people = personSource?.() ?? [];
+  return people.filter(p => p.groupId === groupId).sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+/**
+ * Every group with at least one member, as a mention-matching token — the
+ * same shape `matchPersonMentions` already takes for individual people, so an
+ * "@name" naming a group expands to a mention for each of its members rather
+ * than needing a shape of its own.
+ *
+ * `restrictToPersonIds`, when given, keeps only the groups whose *entire*
+ * current membership is already in that set — the same restriction
+ * `TaskItem`/`LogbookScreen`/etc. already apply to individual people by
+ * matching only against `peopleOn(task)`, never the whole roster. Without it
+ * a group mention would relight on a saved task even after the group grew a
+ * new member the task never named.
+ */
+export function groupMentionTokens(restrictToPersonIds?: readonly string[]): GroupMentionToken[] {
+  const groups = personGroupSource?.() ?? [];
+  const restrict = restrictToPersonIds ? new Set(restrictToPersonIds) : null;
+  const tokens: GroupMentionToken[] = [];
+  for (const group of groups) {
+    const memberIds = groupMembers(group.id).map(p => p.id);
+    if (memberIds.length === 0) continue;
+    if (restrict && !memberIds.every(id => restrict.has(id))) continue;
+    tokens.push({ id: group.id, name: group.name, memberIds });
+  }
+  return tokens;
 }

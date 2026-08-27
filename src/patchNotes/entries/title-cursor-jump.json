@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the cursor jumping backwards while typing a task title, which swallowed characters mid-word",
+  "date": "2026-08-26"
+}

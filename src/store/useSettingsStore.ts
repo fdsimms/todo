@@ -211,11 +211,11 @@ interface SettingsStore {
   // Recipes' own sort & filter, same persisted-view-state reasoning as
   // sortOption/filterPriorities/filterEfforts above — RecipeSortFilterSheet is
   // the recipe box's counterpart to Today's SortFilterSheet. 'default' keeps
-  // the box's original favorites-first order, and favoritesOnly off keeps
+  // the box's original loved-first order, and lovedOnly off keeps
   // every recipe visible, so an install that predates this reads unchanged.
   recipeSortOption: RecipeSortOption;
-  recipeFavoritesOnly: boolean;
-  // A standing preference, not a browse filter — unlike recipeFavoritesOnly
+  recipeLovedOnly: boolean;
+  // A standing preference, not a browse filter — unlike recipeLovedOnly
   // above, this reaches every suggestion path (offline ranking, AI meal
   // ideas, the meal-plan recipe picker), not just the Recipes screen's own
   // list. Tag-based and nothing else: see excludeRecipesByTags in
@@ -939,7 +939,7 @@ interface SettingsStore {
   setFilterEfforts: (efforts: Effort[]) => void;
   setFilterHasReminder: (on: boolean) => void;
   setRecipeSortOption: (sort: RecipeSortOption) => void;
-  setRecipeFavoritesOnly: (favoritesOnly: boolean) => void;
+  setRecipeLovedOnly: (lovedOnly: boolean) => void;
   setExcludedRecipeTags: (tags: string[]) => void;
   setAnthropicApiKey: (key: string) => void;
   setFdcApiKey: (key: string) => void;
@@ -1163,7 +1163,7 @@ const DEFAULT_SETTINGS = {
 
 const SORT_OPTIONS: SortOption[] = ['default', 'priority', 'effort-asc', 'effort-desc', 'due-date', 'streak'];
 const RECIPE_SORT_OPTIONS: RecipeSortOption[] =
-  ['default', 'name', 'cooked-recent', 'cooked-oldest', 'ingredients-asc', 'ingredients-desc', 'voted'];
+  ['default', 'name', 'cooked-recent', 'cooked-oldest', 'ingredients-asc', 'ingredients-desc'];
 
 /** The Settings row's preset pills for defaultReminderLeadMinutes. */
 export const DEFAULT_REMINDER_LEAD_OPTIONS: { value: number | null; label: string }[] = [
@@ -1391,7 +1391,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   filterEfforts: [],
   filterHasReminder: false,
   recipeSortOption: 'default',
-  recipeFavoritesOnly: false,
+  recipeLovedOnly: false,
   excludedRecipeTags: [],
   titleRules: [],
   dailyAgendaEnabled: false,
@@ -1545,7 +1545,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const storedRecipeSort = dbGetSetting('recipeSortOption') as RecipeSortOption | null;
     const recipeSortOption: RecipeSortOption =
       storedRecipeSort && RECIPE_SORT_OPTIONS.includes(storedRecipeSort) ? storedRecipeSort : 'default';
-    const recipeFavoritesOnly = dbGetSetting('recipeFavoritesOnly') === 'true';
+    const recipeLovedOnly = dbGetSetting('recipeLovedOnly') === 'true';
     const excludedRecipeTags = parseRecipeTagList(dbGetSetting('excludedRecipeTags'));
     const dailyAgendaEnabled = dbGetSetting('dailyAgendaEnabled') === 'true';
     const dailyAgendaTime = dbGetSetting('dailyAgendaTime') ?? '08:00';
@@ -1830,7 +1830,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeFavoritesOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoArchiveProjectsOnComplete, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -1986,9 +1986,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ recipeSortOption: sort });
   },
 
-  setRecipeFavoritesOnly(favoritesOnly: boolean) {
-    dbSetSetting('recipeFavoritesOnly', favoritesOnly ? 'true' : 'false');
-    set({ recipeFavoritesOnly: favoritesOnly });
+  setRecipeLovedOnly(lovedOnly: boolean) {
+    dbSetSetting('recipeLovedOnly', lovedOnly ? 'true' : 'false');
+    set({ recipeLovedOnly: lovedOnly });
   },
 
   setExcludedRecipeTags(tags: string[]) {

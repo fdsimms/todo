@@ -9,7 +9,7 @@ import { InlineAction } from './InlineAction';
 import { TAB_BAR_HEIGHT } from './DemoBanner';
 import { FAB_SIZE } from './Fab';
 import { useTheme } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 
 // How long the bar stays up before it dismisses itself. Short enough that it
@@ -121,8 +121,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.sm,
-    backgroundColor: colors.bgSunken,
+    backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,
+    borderWidth: border.md,
+    borderColor: colors.separator,
     paddingVertical: spacing.sm,
     paddingLeft: spacing.md,
     paddingRight: spacing.sm,

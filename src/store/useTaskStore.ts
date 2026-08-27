@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -145,10 +145,13 @@ import {
   reachOutsHandledRecently,
   staleReachOutTasks,
   wantedReachOuts,
+  collapseGroupedReachOuts,
+  MAX_REACH_OUT_TASKS,
   type ReachOutCandidate,
 } from '../utils/reachOutTasks';
 import { lastTogether, personHistory } from '../utils/personHistory';
 import { usePersonStore } from './usePersonStore';
+import { usePersonGroupStore } from './usePersonGroupStore';
 import { usePersonNoteStore } from './usePersonNoteStore';
 import { giftIdeasText } from '../utils/personNotes';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
@@ -679,10 +682,23 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     // wrote: a stamp already sitting there predated this decline (a more
     // recent one would have suppressed the task in the first place), so
     // clearing it changes nothing the reader can see.
-    case 'reachOut':
-      usePersonStore.getState()
-        .updatePerson(sourceId, { reachOutDeclinedAt: value === false ? new Date().toISOString() : null });
+    case 'reachOut': {
+      const stamp = value === false ? new Date().toISOString() : null;
+      // A collapsed group task's sourceId is a PersonGroup id rather than a
+      // personId (see collapseGroupedReachOuts) — decline it for every
+      // current member, or the other half of the couple would pop right back
+      // up on the next sweep having never been told "not now" at all.
+      const group = usePersonGroupStore.getState().getGroupById(sourceId);
+      if (group) {
+        const { people, updatePerson } = usePersonStore.getState();
+        people.filter(p => p.groupId === sourceId).forEach(p =>
+          updatePerson(p.id, { reachOutDeclinedAt: stamp })
+        );
+      } else {
+        usePersonStore.getState().updatePerson(sourceId, { reachOutDeclinedAt: stamp });
+      }
       return;
+    }
     case 'supplyReorder': {
       const source = useTaskStore.getState().tasks.find(t => t.id === sourceId);
       if (!source || source.supplyCount === null) return;
@@ -1584,7 +1600,8 @@ interface TaskStore {
   bulkCompleteTasks: (ids: string[]) => void;
   bulkUncompleteTasks: (ids: string[]) => void;
   bulkMarkMissed: (ids: string[]) => void;
-  bulkDeleteTasks: (ids: string[]) => void;
+  /** `skipGeneratedOptOut` has the same meaning as `deleteTask`'s — see its doc comment. */
+  bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean }) => void;
   clearLogbook: () => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkTogglePin: (ids: string[]) => void;
@@ -1665,6 +1682,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // database-swap reason: notes left pointed at the previous database would
     // render real facts about real people under demo names.
     usePersonNoteStore.getState().initialize();
+    // Also immediately after the people, for the identical reason: a group
+    // left pointed at the previous database would name people who don't
+    // exist in the new one.
+    usePersonGroupStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
@@ -1736,7 +1757,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const doomed = expired.filter(t => !isLiveRecurring(t));
 
     rolled.forEach(t => get().skipNextRecurrence(t.id));
-    if (doomed.length > 0) get().bulkDeleteTasks(doomed.map(t => t.id));
+    // skipGeneratedOptOut: this runs unattended at startup — a window closing
+    // on its own is the app tidying up, not the user declining the source.
+    if (doomed.length > 0) get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true });
   },
 
   // Enforces the "keep completed tasks for" window — the only thing that has
@@ -2514,9 +2537,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // back — weekly, for a staple. The one deliberate exception to "the source
     // is the master": a delete here is an instruction to it, not drift from it.
     //
-    // Only this path, not bulkDeleteTasks: the sweeps and purges that route
-    // through the bulk form aren't the user saying anything, and a generated
-    // task they reach has been completed for months anyway.
+    // bulkDeleteTasks writes the same opt-out for the same reason — a
+    // selection-bar delete of a live "Catch up with Sarah" is exactly as much
+    // an instruction to the source as this single-row path is. It defaults to
+    // skipping only for the sweeps that route through it on the app's own
+    // behalf (see sweepExpiredTasks), which is the case this comment used to
+    // describe as "not user-initiated" for the whole function.
     //
     // And not when the app is the one deleting: a reconcile clearing a task
     // whose reason has gone is tidying up, not the source changing its mind
@@ -4197,6 +4223,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const people = usePersonStore.getState().people;
     const today = getCurrentDayStart();
 
+    // A grouped person's "together" history folds in every current member of
+    // their PersonGroup, not just their own personIds — hanging out with one
+    // half of a couple is time spent with the pair, and reading only their
+    // own id would have the app ask to "catch up" with someone seen an hour
+    // ago under their partner's name. See docs/arch/people.md's "Groups"
+    // section.
+    const namedIdsFor = (person: Person): string[] =>
+      person.groupId
+        ? people.filter(p => p.groupId === person.groupId).map(p => p.id)
+        : [person.id];
+
     // The history is derived per person from the rows that name them, which is
     // the same read the person's own screen does — there is no stored "last
     // contacted" anywhere, by design.
@@ -4206,19 +4243,40 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // foreground.
       .filter(p => p.nudgeOptIn && p.cadenceDays > 0 && !p.archived)
       .map(person => {
-        const theirs = tasks.filter(t => t.personIds.includes(person.id));
+        const namedIds = namedIdsFor(person);
+        const theirs = tasks.filter(t => t.personIds.some(id => namedIds.includes(id)));
         return { person, lastTogether: lastTogether(personHistory(theirs)) };
       });
 
-    const handled = reachOutsHandledRecently(tasks, today);
-    const wanted = wantedReachOuts(candidates, today, handled);
+    // A generated task's sourceId reads back as either a personId or a
+    // PersonGroup id (see collapseGroupedReachOuts below) — resolve-or-shrug,
+    // the same pattern every other cross-entity pointer in this layer uses.
+    const groupIdOf = (personId: string) => people.find(p => p.id === personId)?.groupId ?? null;
+    const groupNameOf = (groupId: string) => usePersonGroupStore.getState().getGroupById(groupId)?.name ?? null;
+
+    const handledRaw = reachOutsHandledRecently(tasks, today);
+    // A "handled" id can itself be a group id — expand it back to every
+    // current member so wantedReachOuts' own per-person check (which only
+    // ever reads a personId) suppresses both, not only whichever member's id
+    // happens to equal the collapsed row's own sourceId.
+    const handled = new Set<string>(handledRaw);
+    for (const id of handledRaw) {
+      if (usePersonGroupStore.getState().getGroupById(id)) {
+        people.filter(p => p.groupId === id).forEach(p => handled.add(p.id));
+      }
+    }
+
+    // Uncapped and still in the user's own sortOrder — collapsing runs before
+    // the cap so a couple due at once merges into one row instead of one of
+    // them losing the contest for a slot.
+    const allWanted = wantedReachOuts(candidates, today, handled, candidates.length);
+    const collapsedWanted = collapseGroupedReachOuts(allWanted, groupIdOf, groupNameOf);
+    const wanted = collapsedWanted.slice(0, MAX_REACH_OUT_TASKS);
 
     // Everybody still due, uncapped — a row that lost the contest for a slot is
     // not stale, and deleting one the user deferred to Saturday would be the
     // app taking back an offer it already made.
-    const stillDue = new Set(
-      wantedReachOuts(candidates, today, handled, candidates.length).map(w => w.personId)
-    );
+    const stillDue = new Set(collapsedWanted.map(w => w.sourceId));
     // dropGeneratedTask rather than deleteGeneratedTaskQuietly: the latter
     // routes through deleteTask, which stamps the source's opt-out. Here that
     // would record a decline the user never made and silence the person for a
@@ -4237,7 +4295,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     wanted.forEach(want => {
       reconcileGeneratedTask({
         kind: 'reachOut',
-        sourceId: want.personId,
+        sourceId: want.sourceId,
         wanted: true,
         // Chases the title only, and only when it has actually changed — a
         // renamed person, or an "ask about" note added or answered since the
@@ -4256,7 +4314,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // naming somebody is the record that something happened with them,
           // and ticking this off would otherwise reset the very clock that
           // wrote it without you having actually reached out.
-          ...generatedBy('reachOut', want.personId),
+          ...generatedBy('reachOut', want.sourceId),
         }),
       });
     });
@@ -5943,10 +6001,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  bulkDeleteTasks(ids) {
+  bulkDeleteTasks(ids, opts = {}) {
     if (ids.length === 0) return;
     const idSet = new Set(ids);
     const deleted = get().tasks.filter(t => idSet.has(t.id) || (t.parentId !== null && idSet.has(t.parentId)));
+    // Subtasks never carry a generatedKind of their own, but filtering to the
+    // requested ids rather than to `deleted` keeps that explicit instead of
+    // relying on it.
+    const deletedTopLevel = deleted.filter(t => idSet.has(t.id));
 
     dbBulkDeleteTasks(ids);
     // Only ids that actually had a reminder are worth a native cancel call —
@@ -5959,6 +6021,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tasks: s.tasks.filter(t => !idSet.has(t.id) && (t.parentId === null || !idSet.has(t.parentId))),
     }));
 
+    // See deleteTask's matching call for why this exists at all.
+    if (!opts.skipGeneratedOptOut) deletedTopLevel.forEach(t => writeGeneratedOptOut(t, false));
+
     get().setLastAction({
       label: `${ids.length} task${ids.length === 1 ? '' : 's'} deleted`,
       destructive: true,
@@ -5968,6 +6033,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           scheduleTaskReminder(t);
         });
         set(s => ({ tasks: [...s.tasks, ...deleted] }));
+        if (!opts.skipGeneratedOptOut) deletedTopLevel.forEach(t => writeGeneratedOptOut(t, null));
       },
     });
   },
