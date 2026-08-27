@@ -224,6 +224,30 @@ export function mealPlanUrlPickSlot(url: string): MealSlot | null {
   return (MEAL_SLOTS as readonly string[]).includes(slot) ? (slot as MealSlot) : null;
 }
 
+/**
+ * The meal plan entry a shopping task's link asks to open the add-to-list
+ * sheet for, or null when it doesn't ask for one.
+ *
+ * `dundundun://mealplan?date=2026-08-22&shop=<entryId>` — carried by a
+ * `mealShortfall` task's own link (see `mealShortfallTasks.mealShortfallLinkUrl`),
+ * so tapping "Shop for Tue ragù" opens straight on the sheet that answers it
+ * rather than the day it happens to fall on.
+ *
+ * Opaque like `projectsUrlPullId`: this is whatever id the task was generated
+ * from, matched against the live entry list, and it may no longer resolve —
+ * the meal can be re-planned, cooked or removed between the task being
+ * written and the row being tapped. That's resolve-or-shrug, same as every
+ * other cross-row pointer here: the Meal Plan screen falls back to the dated
+ * link's own behavior (land on the day) rather than erroring.
+ */
+export function mealPlanUrlShopEntryId(url: string): string | null {
+  if (typeof url !== 'string') return null;
+  const match = MEAL_PLAN_RE.exec(url.trim());
+  if (!match) return null;
+  const id = (parseQuery(match[1] ?? '').shop ?? '').trim();
+  return id || null;
+}
+
 // `dundundun://kitchen[?item=…]` — what the grocery and leftover "Use up X"
 // tasks carry (see kitchenInventory.kitchenLinkUrl), so tapping one opens the
 // pantry/fridge view rather than the bare grocery list the groceries link
@@ -452,7 +476,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (isMealPlanUrl(url)) {
-    resetToMealPlan(mealPlanUrlDayKey(url), mealPlanUrlPickSlot(url));
+    resetToMealPlan(mealPlanUrlDayKey(url), mealPlanUrlPickSlot(url), mealPlanUrlShopEntryId(url));
     return true;
   }
   if (isKitchenUrl(url)) {

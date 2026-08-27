@@ -90,17 +90,19 @@ export function mealShortfallEntryId(
 }
 
 /**
- * Where the row goes: the Meal Plan screen, opened on the meal's own day.
+ * Where the row goes: the Meal Plan screen, opened straight on the sheet the
+ * row is asking about.
  *
- * The same dated link the weekly nudge carries, because it's the same
- * instruction ("take me to that day") and the day header already holds the cart
- * button that opens the add-to-list sheet over exactly this meal's ingredients.
- * Deliberately not a new `&shop=` parameter opening that sheet directly: the
- * sheet is one tap from where this lands, and a third meal-plan link form is
- * more deep-link surface than the tap it saves is worth.
+ * The same dated link the weekly nudge carries, plus a `&shop=` parameter
+ * naming the entry — the third meal-plan link form, mirroring `&pick=` on an
+ * unanswered meal task's own link (`mealSlotTasks.mealSlotLinkUrl`). Opaque
+ * like `projectsUrlPullId`: `mealPlanUrlShopEntryId` resolves it against the
+ * live entry list and shrugs (falling back to the dated link's own behavior —
+ * land on the day) rather than erroring if the meal has since been moved,
+ * cooked, or removed.
  */
-export function mealShortfallLinkUrl(dayKey: string): string {
-  return mealPlanNudgeLinkUrl(dayKey);
+export function mealShortfallLinkUrl(dayKey: string, entryId: string): string {
+  return `${mealPlanNudgeLinkUrl(dayKey)}&shop=${encodeURIComponent(entryId)}`;
 }
 
 /**

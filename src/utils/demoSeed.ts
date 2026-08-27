@@ -2675,7 +2675,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     useTaskStore.getState().addTask({
       title: mealShortfallTitle(salmonNight.date, 'Lemon garlic salmon'),
       dueDate: today.toISOString(),
-      linkUrl: mealShortfallLinkUrl(salmonNight.date),
+      linkUrl: mealShortfallLinkUrl(salmonNight.date, salmonNight.id),
       category: 'Meal Plan',
       ...generatedBy('mealShortfall', salmonNight.id),
     });

@@ -36,7 +36,7 @@ import { AddMealsToListSheet } from '../components/AddMealsToListSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { PrepTasksReviewSheet } from '../components/PrepTasksReviewSheet';
 import { SuggestMealsSheet } from '../components/SuggestMealsSheet';
-import { CalendarPicker } from '../components/CalendarPicker';
+import { WhenPicker } from '../components/WhenPicker';
 import { MealReplaceItemSheet, type MealReplacement } from '../components/MealReplaceItemSheet';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
@@ -695,6 +695,7 @@ export function MealPlanScreen() {
   const focusDay: string | undefined = route.params?.focusDay;
   const focusStamp: number | undefined = route.params?.focusStamp;
   const pickSlot: MealSlot | undefined = route.params?.pickSlot;
+  const shopEntryId: string | undefined = route.params?.shopEntryId;
   const [handledFocus, setHandledFocus] = useState<number | null>(null);
   const pendingFocusRef = useRef<string | null>(null);
 
@@ -720,7 +721,21 @@ export function MealPlanScreen() {
       setPlanningDay(focusDay);
       setPlanningSlot(pickSlot);
     }
-  }, [focusDay, focusStamp, handledFocus, pickSlot]);
+    // The third form: a mealShortfall task's link opens straight on the
+    // add-to-list sheet for the meal it names, one tap saved over landing on
+    // the day and finding the header's own cart button. Resolve-or-shrug,
+    // the same eligibility mealShortfallRows applies (a resolvable recipe,
+    // not yet cooked) — an entry that's since moved, been cooked or removed
+    // just leaves the day open, which is what the dated link alone did.
+    if (shopEntryId) {
+      const entry = entries.find(e => e.id === shopEntryId);
+      const recipe = entry && !entry.cookedAt && entry.recipeId ? recipesById.get(entry.recipeId) : undefined;
+      if (entry && recipe) {
+        setMealShop({ recipe, choices: entry.recipeChoices, scale: entry.recipeScale });
+        setMealShopVisible(true);
+      }
+    }
+  }, [focusDay, focusStamp, handledFocus, pickSlot, shopEntryId, entries, recipesById]);
 
   // Runs after `days` has been rebuilt around the new anchor, which is what
   // makes the index findable — scrolling in the effect above would search the
@@ -1731,13 +1746,22 @@ export function MealPlanScreen() {
         />
       )}
 
-      <CalendarPicker
+      {/*
+        This and the "Move to" picker below were CalendarPicker, kept only for
+        nlEnabled — the rule in CLAUDE.md otherwise reserves it for a datetime
+        timestamp or a multiple-date set, neither of which applies here. Now
+        that WhenPicker carries the same natural-language field (#1955), it's
+        the one CLAUDE.md's rule actually names. Time of day and Suggest are
+        off: neither date is a task's own schedule.
+      */}
+      <WhenPicker
         visible={bulkMoveVisible}
         value={null}
-        mode="date"
         title={`Move ${selectedIds.size} meal${selectedIds.size === 1 ? '' : 's'}`}
+        showTimeOfDay={false}
+        showSuggest={false}
         nlEnabled
-        onConfirm={handleBulkMove}
+        onConfirm={date => { if (date) handleBulkMove(date); }}
         onCancel={() => setBulkMoveVisible(false)}
       />
 
@@ -1770,16 +1794,17 @@ export function MealPlanScreen() {
       {/*
         The way past the sheet's seven day chips. It opens after that sheet has
         gone — two modals can't be up at once — and lands on the same
-        CalendarPicker the bulk move uses, natural language included.
+        WhenPicker the bulk move uses, natural language included.
       */}
-      <CalendarPicker
+      <WhenPicker
         visible={movingFurtherId !== null}
         value={null}
-        mode="date"
         title="Move to"
+        showTimeOfDay={false}
+        showSuggest={false}
         nlEnabled
         onConfirm={date => {
-          if (movingFurtherId) {
+          if (movingFurtherId && date) {
             animateLayout();
             moveEntry(movingFurtherId, { date: dayKeyOf(date) });
           }
