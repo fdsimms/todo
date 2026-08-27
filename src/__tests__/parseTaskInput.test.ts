@@ -467,8 +467,10 @@ describe('parseLinkInput', () => {
     expect(parseLinkInput('just a normal title')).toBeNull();
   });
 
-  it('returns null when the entire input is the URL', () => {
-    expect(parseLinkInput('https://example.com/foo')).toBeNull();
+  it('fires even when the entire input is the URL, leaving an empty cleanTitle', () => {
+    const result = parseLinkInput('https://example.com/foo');
+    expect(result?.url).toBe('https://example.com/foo');
+    expect(result?.cleanTitle).toBe('');
   });
 
   it('returns null for empty input', () => {
@@ -503,8 +505,10 @@ describe('parsePhoneInput', () => {
     expect(parsePhoneInput('walk 10000 steps')).toBeNull();
   });
 
-  it('returns null when the entire input is the number', () => {
-    expect(parsePhoneInput('555-123-4567')).toBeNull();
+  it('fires even when the entire input is the number, leaving an empty cleanTitle', () => {
+    const result = parsePhoneInput('555-123-4567');
+    expect(result?.number).toBe('555-123-4567');
+    expect(result?.cleanTitle).toBe('');
   });
 
   it('returns null when there is no number', () => {
@@ -538,8 +542,10 @@ describe('parseEmailInput', () => {
     expect(result?.address).toBe('jane@example.com');
   });
 
-  it('returns null when the entire input is the address', () => {
-    expect(parseEmailInput('jane@example.com')).toBeNull();
+  it('fires even when the entire input is the address, leaving an empty cleanTitle', () => {
+    const result = parseEmailInput('jane@example.com');
+    expect(result?.address).toBe('jane@example.com');
+    expect(result?.cleanTitle).toBe('');
   });
 
   it('returns null when there is no address', () => {
@@ -631,8 +637,10 @@ describe('parseDurationInput', () => {
     expect(parseDurationInput('call mum 15 min')).toBeNull();
   });
 
-  it('does not fire without a title left over', () => {
-    expect(parseDurationInput('for 15 minutes')).toBeNull();
+  it('fires even without a title left over', () => {
+    const result = parseDurationInput('for 15 minutes');
+    expect(result?.minutes).toBe(15);
+    expect(result?.cleanTitle).toBe('');
   });
 
   it('rejects a zero, sub-minute, or absurd duration', () => {
@@ -858,8 +866,10 @@ describe('parseSupplyInput', () => {
     expect(input.slice(r.matchStart, r.matchEnd)).toBe('6 filters left');
   });
 
-  it('does not fire without a title left over', () => {
-    expect(parseSupplyInput('6 filters left')).toBeNull();
+  it('fires even without a title left over', () => {
+    const result = parseSupplyInput('6 filters left');
+    expect(result?.count).toBe(6);
+    expect(result?.cleanTitle).toBe('');
   });
 
   it('rejects a zero, which is a sentence rather than a stock being set up', () => {
