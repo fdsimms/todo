@@ -2044,8 +2044,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           // iOS's own inline predictive-text completion draws its candidate
           // directly into the field, on top of (and misaligned with) the
           // schedule-phrase overlay above — it reads as our highlight
-          // glitching. Autocorrect off suppresses that native suggestion.
-          autoCorrect={false}
+          // glitching. Only suppress it while that overlay is actually
+          // showing; autocorrect stays on for ordinary typing.
+          autoCorrect={!hasTitleOverlay}
           multiline blurOnSubmit
           selection={titleCaret.selection}
           onSelectionChange={titleCaret.onSelectionChange}
