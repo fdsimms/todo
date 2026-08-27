@@ -56,6 +56,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
     reachOutDeclinedAt: null,
     askAbout: '',
     backfillDismissedFields: [],
+    groupId: null,
   };
 }
 
@@ -74,6 +75,7 @@ export type PersonPatch = Partial<Pick<Person,
   // patch path everything else uses — the project side does the same with
   // `updateProject`, and there is nothing about it worth a setter of its own.
   | 'backfillDismissedFields'
+  | 'groupId'
 >>;
 
 interface PersonStore {
@@ -89,6 +91,12 @@ interface PersonStore {
   applyPersonArchived: (id: string, archived: boolean, archivedAt?: string | null) => void;
   removePersonRow: (id: string) => void;
   restorePerson: (person: Person) => void;
+  /**
+   * Frees every member of a deleted `PersonGroup` — called by
+   * `usePersonGroupStore.removeGroupRow` rather than the other way around, so
+   * a person store change never has to import the group store back.
+   */
+  clearGroupMembership: (groupId: string) => void;
 }
 
 export const usePersonStore = create<PersonStore>((set, get) => ({
@@ -168,6 +176,15 @@ export const usePersonStore = create<PersonStore>((set, get) => ({
   restorePerson(person) {
     dbInsertPerson(person);
     set({ people: [...get().people, person].sort((a, b) => a.sortOrder - b.sortOrder) });
+  },
+
+  clearGroupMembership(groupId) {
+    const members = get().people.filter(p => p.groupId === groupId);
+    if (members.length === 0) return;
+    members.forEach(p => dbUpdatePerson({ ...p, groupId: null }));
+    set({
+      people: get().people.map(p => (p.groupId === groupId ? { ...p, groupId: null } : p)),
+    });
   },
 }));
 

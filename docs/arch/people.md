@@ -902,3 +902,96 @@ it lives and what it asks.
   rows reading "set for everyone" over an empty list. Same rule the meal guest
   picker and the template `'people'` question follow, for the same reason: an
   empty people surface is a prompt to start filing your friends.
+
+## Groups: a couple counted once
+
+`PersonGroup`, `Person.groupId`, `usePersonGroupStore`. The feature request
+this answers is plain: two people you never think to catch up with apart
+shouldn't cost two separate nudges, or need "@dustin @ansley" spelled out
+every time you mean the pair. A group is a lightweight, renameable label —
+the `TaskGroup` ("Stacks") shape, one shelf over — that changes exactly two
+things: how the reach-out nudge batches people, and how an "@" mention
+resolves. It carries no cadence, no history and no nudge settings of its own;
+those stay on each `Person`, so nothing here becomes a second place to score
+or rank anybody.
+
+- **`Person.groupId`, not a member array on the group.** The same argument
+  this doc already makes for `Task.groupId` over a join table: a person row
+  is simple to query by group (there are never more than a handful of
+  people, unlike tasks), and a single-valued pointer makes "which group is
+  Dustin in" unambiguous by construction rather than a rule to enforce.
+  Membership is looked up by scanning `people` for a matching `groupId`
+  (`groupMembers` in `peopleRegistry.ts`), which is fine at this scale the
+  same way `groupChildrenOf` would be expensive at task scale and this
+  never is.
+- **A group is deleted, never a person.** `removeGroupRow` frees every
+  current member's `groupId` back to null before dropping the row — the
+  same shrug-not-cascade instinct that leaves `Task.personIds` pointing at a
+  deleted person; a group disappearing must not take anybody with it.
+
+### The reach-out nudge treats a group as one candidate, twice over
+
+Two separate mechanisms, because the pain point has two shapes:
+
+- **Shared history first.** A grouped person's `lastTogether` is read from
+  every task naming *any* current member of their group, not just their own
+  `personId` (`namedIdsFor` in `checkReachOutTasks`). Most of the time this
+  alone keeps two independently-opted-in members' cadences from drifting
+  apart at all — a couple tagged together on every shared plan already
+  shares a "last together" date, since both of their ids show up on the same
+  completed rows.
+- **Collapsing the wants that still coincide.** Cadences are still per-person
+  (`Person.cadenceDays`/`nudgeOptIn`), so two members can genuinely become
+  due on the same day for different reasons. `collapseGroupedReachOuts`
+  (`reachOutTasks.ts`) folds any wants sharing a group into one row —
+  "Catch up with {group name}" — **after** `wantedReachOuts` runs uncapped
+  and **before** the `MAX_REACH_OUT_TASKS` cap is applied, so a couple due at
+  once merges into a single row instead of one of them losing the contest
+  for a capped slot. Order is preserved from the already-sorted want list, so
+  the cap's own tie-break still runs on the user's hand-order
+  (`Person.sortOrder`), never on who happened to come due first.
+- **A collapsed task's `generatedSourceId` is the group's id, not either
+  member's.** `reachOutPersonId` now resolves to either shape; every reader
+  that needs to tell them apart checks `usePersonGroupStore` first, the same
+  resolve-or-shrug every other cross-entity pointer in this file uses. Both
+  the "handled recently" set and a swipe-away decline expand a group id back
+  into every current member's own id — completing or declining a collapsed
+  task must silence the *whole* group, or the member whose id wasn't the
+  sourceId would pop right back up on the next sweep having never been told
+  "not now" at all.
+- **Still no `personIds` on the row**, for the reason a solo reach-out task
+  carries none: ticking it off would otherwise reset the very clock the
+  shared history above reads.
+
+### An "@" mention can name a group, and expand into several people
+
+`matchPersonMentions` (`parseTaskInput.ts`) tries `groups` only for a token
+no person answers to at all — never as a second opinion once a person has,
+so a group whose name happens to share a member's own first word can never
+shadow that person's own mention. A resolved group expands into one
+`PersonMention` per member, all sharing the token's span: "@household"
+naming two people renders and saves exactly as "@dustin @ansley" would have,
+which is what lets every downstream reader (the tinted-token rendering,
+`personIds`) stay ignorant that groups exist at all — the same "stays in the
+title, resolves live, no lift-out" mention design the section above
+describes, reused rather than duplicated.
+
+One real limitation, inherited rather than introduced: the "@" grammar only
+ever matches a single word (`PERSON_TOKEN_PATTERN`), the same ceiling that
+already keeps two people who share a full name from ever being one-word
+mentionable. A group named "Dustin & Ansley" is not typeable as one token at
+all, and a group named "The Ortegas" resolves only by its first word, "The"
+— generic enough to collide with any other group starting the same way. A
+group meant to be tagged wants a single tag-friendly word for a name, the
+same as a person's own name already needs to be; the demo seed's "Household"
+is exactly that.
+
+**Display re-tinting stays honest the same way an individual mention
+already is.** `TaskItem`/`LogbookScreen`/`SearchScreen`/`QuickSearchModal`
+match only against `peopleOn(task)`, never the whole roster — and the group
+tokens they pass alongside it are restricted to groups whose *entire*
+current membership is already in that task's `personIds`
+(`groupMentionTokens(task.personIds)` in `peopleRegistry.ts`). A group that
+grew a third member after a task was tagged doesn't relight for someone the
+task never named; it simply stops resolving as that group at all, the same
+"only what the row still supports" rule the single-person case follows.

@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -179,6 +180,20 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
     onClose();
   };
 
+  // Picks made here aren't written anywhere until Add — a swipe-down with a
+  // selection on screen would otherwise throw it away with no way back.
+  const handleCancel = () => {
+    if (selected.size === 0) { onClose(); return; }
+    Alert.alert(
+      'Discard selection?',
+      `The ${selected.size} ${selected.size === 1 ? 'item' : 'items'} you picked won’t be added to your list.`,
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   /**
    * The catalog's only per-item delete. The pruner beside it is a heuristic
    * sweep — never bought, months stale — and it can't reach the thing you
@@ -278,10 +293,10 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
           <Text style={styles.headerTitle}>Grocery catalog</Text>
           <SheetHeaderButton
             label={selected.size > 0 ? `Add ${selected.size}` : 'Add'}

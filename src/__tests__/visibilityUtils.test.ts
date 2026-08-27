@@ -1719,6 +1719,7 @@ describe('blocking', () => {
       phoneNumber: null, email: null, linkUrl: null,
       cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, askAbout: '',
       backfillDismissedFields: [],
+      groupId: null,
     };
     const chasing = {
       ...baseTask,
@@ -1848,6 +1849,7 @@ describe('isSequenceBlocked', () => {
       nudgeOptIn: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
+      groupId: null,
       personIds: [],
     }]);
     registerTaskSource(() => tasks);

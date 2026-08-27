@@ -71,7 +71,7 @@ import {
   projectReviewProjectId,
 } from '../utils/projectReviewTasks';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
-import { resolvePerson, peopleOn } from '../utils/peopleRegistry';
+import { resolvePerson, peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { displayNameOf } from '../store/usePersonStore';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from './HighlightedText';
@@ -1035,7 +1035,8 @@ export const TaskItem = React.memo(function TaskItem({
   // the whole roster, so a stray "@word" that isn't one of this task's own
   // personIds is never relit as though it were.
   const titleMentionRanges: [number, number][] = useMemo(
-    () => matchPersonMentions(displayTitle, peopleOn(task)).map((m): [number, number] => [m.start, m.end]),
+    () => matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds))
+      .map((m): [number, number] => [m.start, m.end]),
     [displayTitle, task.personIds]
   );
 

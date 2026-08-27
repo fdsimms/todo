@@ -23,6 +23,11 @@ import SwiftUI
 // for a task, `dundundun://stopTimer?key=<key>` for a recipe's cook/prep
 // timer, both handled in src/utils/deepLinks.ts.
 //
+// Done means done, not "stop the clock": for a cook timer the JS side records
+// the cooking as well as the time, so the meal is ticked off the plan and the
+// recipe's counters move, exactly as they would from the plan itself. The
+// button said Done and carried a checkmark long before it did any of that.
+//
 // Interactive controls only work in the Lock Screen presentation and the
 // *expanded* Dynamic Island regions — compactLeading/compactTrailing/minimal
 // are non-interactive, so this button only ever appears in those two places.

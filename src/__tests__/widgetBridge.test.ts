@@ -20,6 +20,7 @@ jest.mock('../utils/demoState', () => ({ isDemoModeActive: () => mockDemoMode })
 const mockNativeBridge = {
   writeWidgetSnapshot: jest.fn(),
   drainPendingWidgetCompletions: jest.fn(),
+  drainPendingAddTasks: jest.fn(),
   drainSharedLinks: jest.fn(),
   syncTimerLiveActivities: jest.fn(),
   syncTripLiveActivity: jest.fn(),
@@ -78,6 +79,7 @@ describe('widgetBridge', () => {
     for (const name of [
       'writeWidgetSnapshot',
       'drainPendingWidgetCompletions',
+      'drainPendingAddTasks',
       'drainSharedLinks',
       'syncTimerLiveActivities',
       'syncTripLiveActivity',
