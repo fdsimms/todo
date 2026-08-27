@@ -1,5 +1,8 @@
 import { create } from 'zustand';
+import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { Project, Task } from '../types';
+import { getCurrentDayStart } from '../utils/dateUtils';
+import { nudgeFieldsFor } from '../utils/nudgeCadence';
 import { isRealCompletion } from '../utils/missed';
 import { useSettingsStore } from './useSettingsStore';
 import {
@@ -52,6 +55,22 @@ function memberKey(task: Task, byId: Map<string, Task>): string {
 // TaskGroup — groupId doesn't exclude a task from a project's progress.
 // Individually-archived tasks are excluded from both sides of the ratio so
 // an archived-but-incomplete task can't permanently cap a project below 100%.
+//
+// **A project holding a recurring member never reads 100%, and that has a
+// consequence nothing else states.** memberKey (above) is right that a habit is
+// one member with an always-outstanding row, so `done === total` is false for
+// such a project for ever. Three affordances are gated on exactly that
+// expression and therefore never appear for one: the detail screen's "Mark
+// Complete" offer banner, the green quick-complete check on the Projects row,
+// and the autoCompleteProjectsOnDone path in completeTask. The editor's own
+// Mark complete row is the only way to finish such a project, and it's the one
+// that has to ask "it still has N open tasks".
+//
+// Whether that is right is an open question, deliberately not settled here:
+// arguably a project with a live habit in it is never "done" and the current
+// behaviour is correct. What is not defensible is it being invisible, which is
+// what this paragraph fixes. Don't loosen the gate without deciding the
+// question first.
 export function projectProgress(projectId: string, tasks: Task[]): { done: number; total: number } {
   const members = tasks.filter(t => t.projectId === projectId && t.parentId === null && !t.archived);
   const byId = new Map(members.map(t => [t.id, t]));
@@ -125,21 +144,36 @@ function answeredAt(task: Task): string {
   return task.completedAt ?? '';
 }
 
-// A project is only flagged "past its window" when it missed its target end
-// date while still incomplete and not archived — nothing automatic happens,
-// this is purely a visual cue so the user can decide what to do about it.
+/**
+ * A project is only flagged "past its deadline" while still incomplete and not
+ * archived — nothing automatic happens, this is purely a visual cue so the user
+ * can decide what to do about it.
+ *
+ * **Calendar days against the logical today, never a raw instant comparison.**
+ * `Date.now()` was wrong twice over. `WhenPicker` stores every date it confirms
+ * at noon (`noonOf`), so `deadline < Date.now()` went true at 12:00 on the
+ * deadline day itself — half a day early, in orange, on the day it was still due.
+ * And it ignored `dayResetTime`, which every other placement comparison in the
+ * app respects.
+ *
+ * This is deliberately the same two lines `formatDeadlineDate` runs, because
+ * the two render side by side on the project card: with the old comparison the
+ * card read "Past window · Today" from noon onwards, one field giving two
+ * answers. Matching the formatter is what makes that impossible rather than
+ * merely unlikely.
+ */
 export function isProjectPastWindow(project: Project, progress: { done: number; total: number }): boolean {
-  if (!project.targetEndDate || project.archived || project.completed) return false;
+  if (!project.deadline || project.archived || project.completed) return false;
   if (progress.total > 0 && progress.done === progress.total) return false;
-  return new Date(project.targetEndDate).getTime() < Date.now();
+  return differenceInCalendarDays(new Date(project.deadline), getCurrentDayStart()) < 0;
 }
 
 interface ProjectStore {
   projects: Project[];
   initialized: boolean;
   initialize: () => void;
-  createProject: (title: string, targetStartDate: string | null, targetEndDate: string | null) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'targetStartDate' | 'targetEndDate' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'sequential' | 'nudgeOptIn' | 'reviewDeclinedAt' | 'backfillDismissedFields'>>) => void;
+  createProject: (title: string, deadline: string | null) => Project;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'sequential' | 'nudgeOptIn' | 'reviewDeclinedAt' | 'backfillDismissedFields'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -171,14 +205,24 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ projects, initialized: true });
   },
 
-  createProject(title, targetStartDate, targetEndDate) {
+  createProject(title, deadline) {
     const maxOrder = get().projects.reduce((m, p) => Math.max(m, p.sortOrder), 0);
+    // Settings' "Default review cadence" decides both fields, not just the
+    // number. It used to seed the cadence beside a hardcoded `nudgeOptIn:
+    // false`, and `classifyProject` refuses on that flag *before* it ever reads
+    // a cadence — so setting the default to "Every 2 weeks" changed nothing and
+    // every new project was still silent. The two are one control now (see
+    // nudgeFieldsFor), and the default answers it whole.
+    //
+    // A default of Never is still the default, and still means what it did:
+    // being asked about a project you never decided you wanted chasing is the
+    // annoying half of this feature.
+    const defaultCadenceDays = useSettingsStore.getState().defaultProjectNudgeCadenceDays;
     const project: Project = {
       id: generateId(),
       title,
       notes: '',
-      targetStartDate,
-      targetEndDate,
+      deadline,
       category: null,
       sortOrder: maxOrder + 1,
       archived: false,
@@ -188,10 +232,9 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       createdAt: new Date().toISOString(),
       // Seeded from the global default at creation time only — changing the
       // default in Settings later never touches a project already created.
-      nudgeCadenceDays: useSettingsStore.getState().defaultProjectNudgeCadenceDays,
+      ...nudgeFieldsFor(defaultCadenceDays > 0 ? 'scheduled' : 'never', defaultCadenceDays),
       autoSchedule: false,
       sequential: false,
-      nudgeOptIn: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
     };

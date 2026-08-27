@@ -24,6 +24,9 @@ import { spacing, font, fontWeight, radius, animation, type Colors } from '../th
 import { useReduceMotion } from '../utils/useReduceMotion';
 import { getRepeatedInstances, normalizeTitle } from '../utils/taskInstances';
 import { onTimeSummary } from '../utils/stats';
+import { useShallow } from 'zustand/react/shallow';
+import { projectStats } from '../utils/projectStats';
+import { useProjectStore } from '../store/useProjectStore';
 import { isRealCompletion, mostMissed } from '../utils/missed';
 import { formatDuration } from '../utils/effort';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -281,6 +284,14 @@ export function StatsScreen() {
 
   const onTime = useMemo(() => onTimeSummary(tasks), [tasks]);
 
+  // --- Projects -------------------------------------------------------------
+  // Retrospective, like everything else here. "Which project has gone quiet" is
+  // a real question and deliberately not this one's: it arrives as a task you
+  // can defer (see projectReviewTasks.ts), and repeating it as a statistic
+  // would be the banner that feature deleted, wearing a chart.
+  const projects = useProjectStore(useShallow(s => s.projects));
+  const projectSummary = useMemo(() => projectStats(projects, tasks), [projects, tasks]);
+
   // --- Cooking (#1367) ------------------------------------------------------
   // Three sets, read three different ways. Recipes and leftovers are both held
   // wholesale in memory, so those are plain memos; the meal plan is a window
@@ -362,16 +373,20 @@ export function StatsScreen() {
   // whose history is all kitchen, every task section above is gone, and a fixed
   // index 9 would hold the whole screen blank for half a second.
   const cookingStagger = hasTaskData ? 9 : 0;
+  // The same argument the cooking gate above already makes, one area further
+  // out: someone tracking a project with nothing completed in it yet has data
+  // here, and telling them the screen is empty is the bug that note describes.
+  const hasProjectData = projectSummary.active > 0 || projectSummary.finished > 0;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Stats" subtitle={hasTaskData ? `${done.length} completed` : undefined} />
 
-      {!hasTaskData && !hasCooking ? (
+      {!hasTaskData && !hasCooking && !hasProjectData ? (
         <EmptyState
           icon="bar-chart-outline"
           title="No data yet"
-          subtitle="Complete tasks or cook a meal to see your stats here"
+          subtitle="Complete tasks, start a project or cook a meal to see your stats here"
           bottomOffset={tabBarHeight}
         />
       ) : (
@@ -737,6 +752,68 @@ export function StatsScreen() {
                     <Text style={styles.rowText}>{mealsTogetherText}</Text>
                   </View>
                 )}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/*
+            The one area of the app with a progress bar was the one the stats
+            screen couldn't describe at all — every input existed, nothing read
+            them. Gated on there being any project: a board of none should show
+            nothing rather than a card of zeroes.
+          */}
+          {hasProjectData && (
+            <StaggerIn index={cookingStagger + 3}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>PROJECTS</Text>
+              <View style={styles.card}>
+                {projectSummary.activeTotal > 0 && (
+                  <View style={[styles.row, styles.rowBorder]}>
+                    <Text style={styles.rowText}>
+                      {projectSummary.activeDone}/{projectSummary.activeTotal} tasks done across{' '}
+                      {projectSummary.active} active {projectSummary.active === 1 ? 'project' : 'projects'}
+                    </Text>
+                  </View>
+                )}
+                {projectSummary.finished > 0 && (
+                  <View style={[styles.row, projectSummary.typicalDays !== null && styles.rowBorder]}>
+                    <Text style={styles.rowText}>
+                      {projectSummary.finished} finished{projectSummary.finishedThisYear > 0
+                        ? `, ${projectSummary.finishedThisYear} of them this year`
+                        : ''}
+                    </Text>
+                  </View>
+                )}
+                {projectSummary.typicalDays !== null && (
+                  <View style={styles.row}>
+                    <Text style={styles.rowText}>
+                      Half take under {projectSummary.typicalDays}{' '}
+                      {projectSummary.typicalDays === 1 ? 'day' : 'days'} from start to finish
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {projectSummary.recentlyFinished.length > 0 && (
+            <StaggerIn index={cookingStagger + 4}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>RECENTLY FINISHED</Text>
+              <View style={styles.card}>
+                {projectSummary.recentlyFinished.map((f, i) => (
+                  <View
+                    key={f.project.id}
+                    style={[styles.row, i < projectSummary.recentlyFinished.length - 1 && styles.rowBorder]}
+                  >
+                    <Text style={styles.rowText} numberOfLines={1}>{f.project.title}</Text>
+                    <Text style={styles.badgeText}>
+                      {f.days === 0 ? 'same day' : `${f.days} ${f.days === 1 ? 'day' : 'days'}`}
+                    </Text>
+                  </View>
+                ))}
               </View>
             </View>
             </StaggerIn>

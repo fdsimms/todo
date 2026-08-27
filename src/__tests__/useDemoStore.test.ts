@@ -16,6 +16,9 @@ import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
+import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
+import { liveProjectSteps } from '../utils/projectOrder';
+import { isHeldBack } from '../utils/visibilityUtils';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
@@ -245,7 +248,7 @@ describe('demo mode', () => {
   it('hides real categories, tags, projects and stacks too, not just tasks', () => {
     useTaskStore.getState().addCategory('Therapy');
     useTaskStore.getState().addTag('confidential');
-    useProjectStore.getState().createProject('Divorce paperwork', null, null);
+    useProjectStore.getState().createProject('Divorce paperwork', null);
     useTaskGroupStore.getState().createGroup('Medications', null);
 
     useDemoStore.getState().enterDemoMode();
@@ -894,6 +897,60 @@ describe('demo mode', () => {
     const progress = projectProgress(gate!.id, useTaskStore.getState().tasks);
     expect(progress.total).toBeGreaterThan(0);
     expect(progress.done).toBe(progress.total);
+  });
+
+  it('seeds project categories, with projects filed under them and outside them', () => {
+    // The Projects screen is built around category sections, so a board where
+    // every project is uncategorized renders as a flat list and the grouping
+    // reads as a feature the app hasn't got. Both branches of
+    // groupProjectsByCategory need something in them: the uncategorized run
+    // that leads with no header, and the named sections under theirs.
+    useDemoStore.getState().enterDemoMode();
+
+    const categories = useProjectCategoryStore.getState().categories.map(c => c.name);
+    expect(categories.length).toBeGreaterThan(1);
+
+    const projects = useProjectStore.getState().projects;
+    expect(projects.some(p => p.category !== null)).toBe(true);
+    expect(projects.some(p => p.category === null)).toBe(true);
+    // Every category a project claims is one that exists in the pool — a
+    // dangling name renders a section header for a category the picker can't
+    // offer.
+    projects.forEach(p => {
+      if (p.category !== null) expect(categories).toContain(p.category);
+    });
+  });
+
+  it('seeds a sequential project, with its later steps actually held back', () => {
+    // Project.sequential is invisible on a project of one live step: the
+    // padlock, the step numbers and the "In order" caption all need a second
+    // step that is genuinely blocked, not merely further down the list.
+    useDemoStore.getState().enterDemoMode();
+
+    const passport = useProjectStore.getState().projects.find(p => p.title === 'Renew my passport');
+    expect(passport?.sequential).toBe(true);
+
+    const steps = liveProjectSteps(passport!.id, useTaskStore.getState().tasks);
+    expect(steps.length).toBeGreaterThan(1);
+    expect(isHeldBack(steps[0])).toBe(false);
+    expect(steps.slice(1).every(t => isHeldBack(t))).toBe(true);
+  });
+
+  it('seeds a project carrying a deadline', () => {
+    // The one date a project has, and the "By Oct 10" line on its card. With
+    // none seeded that line never renders and the field reads as absent.
+    useDemoStore.getState().enterDemoMode();
+    expect(useProjectStore.getState().projects.some(p => p.deadline !== null)).toBe(true);
+  });
+
+  it('seeds an archived project and a project carrying notes', () => {
+    // Two empty surfaces otherwise: the Projects screen's Archived filter, and
+    // the notes row that heads a project's own screen.
+    useDemoStore.getState().enterDemoMode();
+
+    const projects = useProjectStore.getState().projects;
+    expect(projects.some(p => p.archived)).toBe(true);
+    expect(projects.some(p => p.notes.trim() !== '')).toBe(true);
   });
 
   it('seeds a task that has been pushed enough times to trip the postpone check', () => {

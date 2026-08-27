@@ -1630,7 +1630,13 @@ interface TaskStore {
   bulkSetGroupCategory: (groupIds: string[], category: string | null) => void;
 
   addExistingToProject: (taskId: string, projectId: string) => void;
+  // Deleting a project category unfiles the projects in it; the undo entry is
+  // registered here with every other undoable action, same split as
+  // deleteCategory above.
+  deleteProjectCategory: (name: string) => void;
   removeFromProject: (taskId: string) => void;
+  /** Unfiles a selection from whatever project each is in, as one undo entry. */
+  bulkRemoveFromProject: (taskIds: string[]) => void;
   deleteProject: (projectId: string, opts: { cascade: boolean }) => void;
   // Archive/restore a project through here rather than through useProjectStore
   // directly — these are the ones that register an undo entry.
@@ -3270,22 +3276,31 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaHoldIds: s.quotaHoldIds.filter(x => x !== id),
     }));
 
-    // Opt-in convenience only (autoArchiveProjectsOnComplete, default off) —
+    // Opt-in convenience only (autoCompleteProjectsOnDone, default off) —
     // finishing a project never happens automatically otherwise; the user
-    // decides when a 100%-complete project actually gets archived. It rides on
+    // decides when a 100%-complete project is actually called done. It rides on
     // the completion's own undo instead of setting its own entry: it wasn't a
     // separate action the user took, so undoing the tick has to take it back.
-    // Never on a miss: the setting archives a project whose work is *finished*,
+    // Never on a miss: the setting finishes a project whose work is *finished*,
     // and projectProgress agrees (a group of nothing but missed rows isn't
-    // done). Filing a project away because its last task went undone would be
+    // done). Calling a project done because its last task went undone would be
     // the opposite of what the toggle promises.
-    let autoArchivedProjectId: string | null = null;
-    if (!missed && task.projectId && useSettingsStore.getState().autoArchiveProjectsOnComplete) {
+    //
+    // **Completes the project, never archives it.** The setting used to archive,
+    // which put it at odds with every affordance a person taps for the same
+    // moment: the detail screen's offer banner, the green check on the Projects
+    // row and the editor's Mark complete row all set `completed`. With the
+    // setting on, a project that finished never reached the Completed list that
+    // exists for exactly this, because the automatic path filed it somewhere
+    // else. Archiving is still available afterwards, and is still a separate
+    // decision (see Project.completed).
+    let autoCompletedProjectId: string | null = null;
+    if (!missed && task.projectId && useSettingsStore.getState().autoCompleteProjectsOnDone) {
       const progress = projectProgress(task.projectId, get().tasks);
       const project = useProjectStore.getState().getProjectById(task.projectId);
-      if (progress.total > 0 && progress.done === progress.total && project && !project.archived) {
-        useProjectStore.getState().applyProjectArchived(task.projectId, true);
-        autoArchivedProjectId = task.projectId;
+      if (progress.total > 0 && progress.done === progress.total && project && !project.completed && !project.archived) {
+        useProjectStore.getState().applyProjectCompleted(task.projectId, true);
+        autoCompletedProjectId = task.projectId;
       }
     }
 
@@ -3480,8 +3495,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           ? 'Last one, this won\'t repeat again'
           : 'Task completed',
       undo: () => {
-        if (autoArchivedProjectId) {
-          useProjectStore.getState().applyProjectArchived(autoArchivedProjectId, false);
+        if (autoCompletedProjectId) {
+          useProjectStore.getState().applyProjectCompleted(autoCompletedProjectId, false);
         }
         // Before uncompleteTask, which would otherwise un-cook the meal on its
         // own and leave the recipe's counters bumped — this closure puts both
@@ -5868,12 +5883,63 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  /**
+   * Delete a project category and unfile the projects in it, undoably.
+   *
+   * Far smaller than its task-category counterpart above, and that asymmetry is
+   * the model rather than an omission: a project category groups projects on
+   * the Projects page and never reaches the tasks inside them (see
+   * Project.category), so there are no tasks to re-seen, no stacks to unfile,
+   * and no generated-task setting that files *into* it by name. The projects
+   * are the whole blast radius.
+   */
+  deleteProjectCategory(name) {
+    const category = useProjectCategoryStore.getState().getCategoryByName(name);
+    if (!category) return;
+    const filedIds = useProjectStore.getState().projects.filter(p => p.category === name).map(p => p.id);
+    useProjectCategoryStore.getState().removeCategoryRow(name);
+    useProjectStore.setState(s => ({
+      projects: s.projects.map(p => (p.category === name ? { ...p, category: null } : p)),
+    }));
+    get().setLastAction({
+      label: `Category "${name}" deleted`,
+      destructive: true,
+      undo: () => {
+        // The row first, so the projects are re-filed into a category that
+        // exists — the picker reads the pool, not the names on the rows.
+        useProjectCategoryStore.getState().restoreCategory(category);
+        useProjectStore.getState().bulkSetProjectCategory(filedIds, name);
+      },
+    });
+  },
+
   addExistingToProject(taskId, projectId) {
     get().updateTask(taskId, { projectId });
   },
 
   removeFromProject(taskId) {
     get().updateTask(taskId, { projectId: null });
+  },
+
+  // One entry for the batch, same rule as every other bulk action: each call
+  // to updateTask leaves its own, and the queue holds one, so the last task
+  // unfiled would be the only one a shake brings back. Each task's *own*
+  // previous projectId is snapshotted rather than one shared value — the
+  // action is scoped to a project's screen today, but a selection spanning two
+  // of them must not all come back into whichever was read first.
+  bulkRemoveFromProject(taskIds) {
+    const idSet = new Set(taskIds);
+    const previous = get().tasks
+      .filter(t => idSet.has(t.id) && t.projectId !== null)
+      .map(t => ({ id: t.id, projectId: t.projectId }));
+    if (previous.length === 0) return;
+    dbTransaction(() => {
+      previous.forEach(p => get().updateTask(p.id, { projectId: null }));
+    });
+    get().setLastAction({
+      label: `${previous.length} task${previous.length === 1 ? '' : 's'} removed from project`,
+      undo: () => previous.forEach(p => get().updateTask(p.id, { projectId: p.projectId })),
+    });
   },
 
   // Archiving a project lives here rather than in useProjectStore for the same

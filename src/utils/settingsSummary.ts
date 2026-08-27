@@ -56,7 +56,7 @@ export interface SettingsSummaryInput {
   unitSystemLabel: string | null;
   vacationMode: boolean;
   autoRemoveExpiredTasks: ExpiredTaskGraceDays;
-  autoArchiveProjectsOnComplete: boolean;
+  autoCompleteProjectsOnDone: boolean;
   appLockEnabled: boolean;
   hasApiKey: boolean;
   /**
@@ -125,8 +125,8 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
           ? 'Expired tasks removed immediately'
           : `Expired tasks removed after ${expiredTaskGraceLabel(s.autoRemoveExpiredTasks).toLowerCase()}`
       ),
-      s.autoArchiveProjectsOnComplete && 'Projects auto-archive',
-    ) || 'Vacation, expiry, auto-archive',
+      s.autoCompleteProjectsOnDone && 'Projects auto-complete',
+    ) || 'Vacation, expiry, auto-complete',
 
     // A count rather than a list of names: twelve generators won't fit on a
     // line, and "how much of this is the app writing for me" is the question

@@ -302,17 +302,41 @@ export interface FocusSession {
 // and picks off over time (e.g. "Summer Bucket List") — independent of
 // TaskGroup (same-day cohorts), Category, and Tags, so a task can belong to
 // all four at once. Unlike TaskGroup, a Project has its own optional
-// targetStartDate/targetEndDate and can be browsed on its own even when
-// nothing inside it is due today. It has no persisted "completed" state —
-// completion is always derived from its tasks (see projectProgress in
-// useProjectStore) — only an explicit archived flag the user (or, if the
-// autoArchiveProjectsOnComplete setting is on, completeTask) sets.
+// deadline and can be browsed on its own even when nothing inside it is due
+// today.
+//
+// It carries *two* end states, and they are independent: `completed` (finished,
+// listed under Completed) and `archived` (filed away, out of the active list).
+// Both are explicit flags the user sets, or that completeTask sets on their
+// behalf when the autoCompleteProjectsOnDone setting is on. Neither is derived
+// from the tasks — `projectProgress` answers "how far along", which is a
+// different question, and deliberately never reaches 100% for a project holding
+// a recurring member.
 export interface Project {
   id: string;
   title: string;
   notes: string;
-  targetStartDate: string | null;
-  targetEndDate: string | null;
+  /**
+   * A target date to finish by. Informational, exactly like `Task.deadline`:
+   * it is shown on the project's card, flagged once it passes (see
+   * isProjectPastWindow) and affects nothing about scheduling or when any task
+   * appears. It shares that field's name because it is the same idea one
+   * container out, and shares its formatter (`formatDeadlineDate`).
+   *
+   * It replaced a `targetStartDate`/`targetEndDate` pair. The start half had
+   * exactly one reader in its whole life — the "From Jun 1" side of the label
+   * on the project card — so it gated nothing, sorted nothing, and reached
+   * neither search, stats nor the widget. Two fields where one was decoration
+   * read as a schedule the project did not have, which is what #1740 had to
+   * add a paragraph of footer copy to deny.
+   *
+   * Still persisted in the `target_end_date` column, which is not renamed for
+   * the same reason `cycle_items` and `exclude_from_pin_suggestions` aren't:
+   * renaming one costs a data migration for every install and buys nothing a
+   * comment can't say. `target_start_date` stays on the table too, unread and
+   * never written, the way `task_groups.completed_at` does.
+   */
+  deadline: string | null;
   // Name of a ProjectCategory, purely for grouping projects on the Projects
   // page. Independent of task Category — never affects the tasks inside the
   // project (their own categories, visibility, etc. are untouched).
@@ -1607,7 +1631,7 @@ export interface TemplateItemGroup {
 //   'none'    — loose tasks, the original behavior
 //   'stack'   — one TaskGroup named after the run
 //   'project' — one Project named after the run, the apply's two anchor dates
-//               becoming its targetStartDate/targetEndDate
+//               becoming its deadline
 //   'task'    — one real Task named after the run, every item becoming a
 //               subtask of it instead of a top-level task of its own. Takes
 //               no dates of its own, same as a stack — there's no Task field

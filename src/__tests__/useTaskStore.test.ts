@@ -8,6 +8,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useProjectStore } from '../store/useProjectStore';
+import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { MAX_PROJECT_REVIEW_TASKS } from '../utils/projectReviewTasks';
 import { MAX_PANTRY_CHECK_TASKS } from '../utils/pantryCheckTasks';
 import { MAX_MEAL_SHORTFALL_TASKS } from '../utils/mealShortfallTasks';
@@ -90,6 +91,10 @@ jest.mock('../db/database', () => ({
   dbDeletePersonGroup: jest.fn(),
   dbGetAllProjectCategories: jest.fn().mockReturnValue([]),
   dbInsertProjectCategory: jest.fn(),
+  dbInsertProjectCategoryRow: jest.fn(),
+  dbDeleteProjectCategory: jest.fn(),
+  dbRenameProjectCategory: jest.fn(),
+  dbBatchUpdateProjectCategorySortOrders: jest.fn(),
   dbGetAllTemplateCategories: jest.fn().mockReturnValue([]),
   dbInsertTemplateCategory: jest.fn(),
   dbInsertTask: jest.fn(),
@@ -183,7 +188,7 @@ jest.mock('../store/useCategoryStore', () => ({
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: jest.fn(() => ({
-      dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
       newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
       // The settings that name a category — renaming or deleting one has to
       // carry them with it (see renameCategory/deleteCategory).
@@ -365,8 +370,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   id: 'project-1',
   title: 'Test Project',
   notes: '',
-  targetStartDate: null,
-  targetEndDate: null,
+  deadline: null,
   category: null,
   sortOrder: 1,
   archived: false,
@@ -410,7 +414,7 @@ beforeEach(() => {
   useTemplateStore.setState({ templates: [], initialized: false });
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
   useSettingsStore.getState.mockReturnValue({
-    dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+    dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
     mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
     calendarEventCategory: null, collapsedCategories: [], titleRules: [],
@@ -899,7 +903,7 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
 
   const withDefaults = (newTaskDefaults: Record<string, unknown>) => {
     useSettingsStore.getState.mockReturnValue({
-      dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
       newTaskDefaults,
     });
   };
@@ -7957,7 +7961,7 @@ describe('sweepExpiredTasks', () => {
   it('leaves expired tasks in place when the setting is Never', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: null,
       vacationMode: false,
     });
@@ -7970,7 +7974,7 @@ describe('sweepExpiredTasks', () => {
   it('deletes expired tasks when the setting is Immediately, leaving active ones', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 0,
       vacationMode: false,
     });
@@ -7991,7 +7995,7 @@ describe('sweepExpiredTasks', () => {
   it('rolls an expired recurring task forward instead of deleting it', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 0,
       vacationMode: false,
     });
@@ -8018,7 +8022,7 @@ describe('sweepExpiredTasks', () => {
   it('still deletes a recurring task whose schedule has already run out', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 0,
       vacationMode: false,
     });
@@ -8042,7 +8046,7 @@ describe('sweepExpiredTasks', () => {
   it('spares a vacation-paused expired task while vacation mode is on', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 0,
       vacationMode: true,
     });
@@ -8059,7 +8063,7 @@ describe('sweepExpiredTasks', () => {
   it('leaves a just-expired task alone while its grace period has not elapsed', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 7, // 7-day grace period
       vacationMode: false,
     });
@@ -8075,7 +8079,7 @@ describe('sweepExpiredTasks', () => {
   it('deletes a task once its grace period has elapsed past the window close', () => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: 7, // 7-day grace period
       vacationMode: false,
     });
@@ -8113,7 +8117,7 @@ describe('purgeOldCompletedTasks', () => {
   const withRetention = (completedRetentionDays: number | null) => {
     settingsStoreMock().getState.mockReturnValue({
       dayResetTime: '00:00',
-      autoArchiveProjectsOnComplete: false,
+      autoCompleteProjectsOnDone: false,
       autoRemoveExpiredTasks: false,
       vacationMode: false,
       completedRetentionDays,
@@ -8884,7 +8888,7 @@ describe('deleteCategory', () => {
     const setLeftoverUseUpTaskCategory = jest.fn();
     const setCalendarEventCategory = jest.fn();
     useSettingsStore.getState.mockReturnValue({
-      dayResetTime: '00:00', autoArchiveProjectsOnComplete: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
       newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
       mealCookTaskCategory: 'Kitchen', groceryUseUpTaskCategory: 'Kitchen', leftoverUseUpTaskCategory: 'Kitchen',
       calendarEventCategory: 'Kitchen', collapsedCategories: [], titleRules: [],
@@ -9079,40 +9083,46 @@ describe('uncompleteProject', () => {
 
 // ─── completeTask: project auto-archive ────────────────────────────────────────
 
-describe('completeTask auto-archiving a finished project', () => {
+describe('completeTask auto-completing a finished project', () => {
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
 
-  it('does nothing when autoArchiveProjectsOnComplete is off (default)', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: false });
+  it('does nothing when autoCompleteProjectsOnDone is off (default)', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: false });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().completeTask('a');
-    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.completed).toBe(false);
   });
 
-  it('archives the project when the last task completes and the setting is on', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+  // Completed, and *only* completed. The setting used to archive instead, which
+  // sent a finished project past the Completed list every manual affordance
+  // puts it in — so "not archived" is half of what this test is for.
+  it('completes the project when the last task completes and the setting is on', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().completeTask('a');
-    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(true);
+    const project = useProjectStore.getState().projects.find(p => p.id === 'p1');
+    expect(project?.completed).toBe(true);
+    expect(project?.completedAt).not.toBeNull();
+    expect(project?.archived).toBe(false);
   });
 
-  it('does not archive the project while other tasks in it are still incomplete', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+  it('does not complete the project while other tasks in it are still incomplete', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({
       tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p1', completed: false })],
     });
     useTaskStore.getState().completeTask('a');
-    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.completed).toBe(false);
   });
 
   // The fresh occurrence a recurring completion spawns is real outstanding
-  // work, so ticking tonight's habit must not archive the project out from
+  // work, so ticking tonight's habit must not call the project done out from
   // under tomorrow's.
-  it('does not archive a project whose only member is a recurring task', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+  it('does not complete a project whose only member is a recurring task', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({
       tasks: [makeTask({
@@ -9124,35 +9134,35 @@ describe('completeTask auto-archiving a finished project', () => {
       })],
     });
     useTaskStore.getState().completeTask('habit');
-    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.archived).toBe(false);
+    expect(useProjectStore.getState().projects.find(p => p.id === 'p1')?.completed).toBe(false);
   });
 
   it('ignores tasks with no projectId', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: null })] });
     expect(() => useTaskStore.getState().completeTask('a')).not.toThrow();
   });
 
-  it('unarchives the project again when the completion is undone', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+  it('uncompletes the project again when the completion is undone', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().completeTask('a');
     useTaskStore.getState().undoLastAction();
-    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(false);
+    expect(useProjectStore.getState().getProjectById('p1')!.completed).toBe(false);
     expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.completed).toBe(false);
   });
 
-  it('leaves a project the user had already archived alone when the completion is undone', () => {
-    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoArchiveProjectsOnComplete: true });
+  it('leaves a project the user had already completed alone when the completion is undone', () => {
+    useSettingsStore.getState.mockReturnValue({ dayResetTime: '00:00', autoCompleteProjectsOnDone: true });
     useProjectStore.setState({
-      projects: [makeProject({ id: 'p1', archived: true, archivedAt: '2025-01-01T00:00:00.000Z' })],
+      projects: [makeProject({ id: 'p1', completed: true, completedAt: '2025-01-01T00:00:00.000Z' })],
     });
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
     useTaskStore.getState().completeTask('a');
     useTaskStore.getState().undoLastAction();
-    expect(useProjectStore.getState().getProjectById('p1')!.archived).toBe(true);
+    expect(useProjectStore.getState().getProjectById('p1')!.completed).toBe(true);
   });
 });
 
@@ -12156,5 +12166,131 @@ describe('updateTask: the extra task draft', () => {
 
     useTaskStore.getState().updateTask('practice', { extraTaskDraft: null });
     expect(useTaskStore.getState().tasks[0].extraTaskDraft).toBeNull();
+  });
+});
+
+// ─── deleteProjectCategory ──────────────────────────────────────────────────
+
+describe('deleteProjectCategory', () => {
+  beforeEach(() => {
+    useProjectCategoryStore.setState({
+      categories: [{ id: 'pc1', name: 'Travel', sortOrder: 1 }],
+      initialized: true,
+    });
+  });
+
+  it('unfiles the projects in it and leaves everything else alone', () => {
+    useProjectStore.setState({
+      projects: [
+        makeProject({ id: 'p1', category: 'Travel' }),
+        makeProject({ id: 'p2', category: 'Home' }),
+        makeProject({ id: 'p3', category: null }),
+      ],
+    });
+    useTaskStore.getState().deleteProjectCategory('Travel');
+
+    expect(useProjectCategoryStore.getState().categories).toHaveLength(0);
+    const byId = (id: string) => useProjectStore.getState().projects.find(p => p.id === id);
+    expect(byId('p1')?.category).toBeNull();
+    expect(byId('p2')?.category).toBe('Home');
+    expect(byId('p3')?.category).toBeNull();
+  });
+
+  // A project category never reaches the tasks inside its projects — it groups
+  // the Projects page and nothing else (see Project.category). Deleting one
+  // must not touch a task's own category, which is a different vocabulary.
+  it('does not touch the task categories of the projects it unfiles', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', category: 'Travel' })] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1', category: 'Travel' })] });
+    useTaskStore.getState().deleteProjectCategory('Travel');
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')?.category).toBe('Travel');
+  });
+
+  it('restores the category and re-files its projects on undo', () => {
+    useProjectStore.setState({
+      projects: [
+        makeProject({ id: 'p1', category: 'Travel' }),
+        makeProject({ id: 'p2', category: 'Travel' }),
+        makeProject({ id: 'p3', category: 'Home' }),
+      ],
+    });
+    useTaskStore.getState().deleteProjectCategory('Travel');
+    useTaskStore.getState().undoLastAction();
+
+    expect(useProjectCategoryStore.getState().categories.map(c => c.name)).toEqual(['Travel']);
+    const byId = (id: string) => useProjectStore.getState().projects.find(p => p.id === id);
+    expect(byId('p1')?.category).toBe('Travel');
+    expect(byId('p2')?.category).toBe('Travel');
+    // Never in it, so never re-filed into it.
+    expect(byId('p3')?.category).toBe('Home');
+  });
+
+  it('is a no-op on a category that is not there', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', category: 'Home' })] });
+    useTaskStore.getState().deleteProjectCategory('Missing');
+    expect(useProjectStore.getState().projects[0].category).toBe('Home');
+    expect(useProjectCategoryStore.getState().categories).toHaveLength(1);
+  });
+});
+
+// ─── bulkRemoveFromProject ──────────────────────────────────────────────────
+
+describe('bulkRemoveFromProject', () => {
+  it('unfiles every selected task that was in a project', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1' }),
+        makeTask({ id: 'b', projectId: 'p1' }),
+        makeTask({ id: 'c', projectId: 'p1' }),
+      ],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'b']);
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.projectId).toBeNull();
+    expect(byId('b')?.projectId).toBeNull();
+    expect(byId('c')?.projectId).toBe('p1');
+  });
+
+  it('leaves the tasks otherwise untouched', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1', category: 'Home', priority: 2, dueDate: '2026-06-01T12:00:00.000Z' })],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a']);
+    const task = useTaskStore.getState().tasks.find(t => t.id === 'a');
+    expect(task?.category).toBe('Home');
+    expect(task?.priority).toBe(2);
+    expect(task?.dueDate).toBe('2026-06-01T12:00:00.000Z');
+  });
+
+  // One entry for the batch: each updateTask leaves its own, and the queue
+  // holds one, so without this the last task unfiled would be the only one a
+  // shake brings back.
+  it('brings the whole batch back on a single undo', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p1' })],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'b']);
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.every(t => t.projectId === 'p1')).toBe(true);
+  });
+
+  // Scoped to one project's screen today, but a selection spanning two must
+  // not all come back into whichever was read first.
+  it('returns each task to its own project on undo', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1' }), makeTask({ id: 'b', projectId: 'p2' })],
+    });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'b']);
+    useTaskStore.getState().undoLastAction();
+    const byId = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id);
+    expect(byId('a')?.projectId).toBe('p1');
+    expect(byId('b')?.projectId).toBe('p2');
+  });
+
+  it('does nothing, and registers no undo, when nothing selected is in a project', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: null })] });
+    useTaskStore.setState({ lastAction: null });
+    useTaskStore.getState().bulkRemoveFromProject(['a', 'missing']);
+    expect(useTaskStore.getState().lastAction).toBeNull();
   });
 });
