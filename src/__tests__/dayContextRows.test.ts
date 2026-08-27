@@ -138,6 +138,19 @@ describe('eventContextRows', () => {
     });
     expect(row.calendarTag).toBeNull();
   });
+
+  it('drops an event the caller reports as hidden', () => {
+    const rows = eventContextRows(
+      [ev(at(16), at(17), { id: 'hide-me' }), ev(at(18), at(19), { id: 'keep-me' })],
+      { ...eventOpts, isHidden: e => e.id === 'hide-me' },
+    );
+    expect(rows.map(r => r.sourceId)).toEqual(['keep-me']);
+  });
+
+  it('keeps every event when no isHidden predicate is given', () => {
+    const rows = eventContextRows([ev(at(16), at(17)), ev(at(18), at(19))], eventOpts);
+    expect(rows).toHaveLength(2);
+  });
 });
 
 describe('mealContextRows', () => {
