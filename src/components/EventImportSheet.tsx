@@ -18,9 +18,13 @@ import { spacing, radius, font, fontWeight, border, iconSize, interaction, type 
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
 import { EmptyState } from './EmptyState';
+import { InlineAction } from './InlineAction';
 import { extractCalendarEvents, describeAIError, type ExtractedCalendarEvent } from '../services/aiSuggestions';
 import { pickRecipePhoto, type RecipePhoto, type RecipePhotoSource } from '../utils/recipePhoto';
 import { alertPhotoAccessDenied } from '../hooks/useRecipeImportSource';
+import { parseEventText } from '../utils/eventTextParse';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { getLogicalToday } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 
 type InputMode = 'paste' | 'photo';
@@ -52,11 +56,26 @@ interface Props {
  * step for here, and the confirmation pages this is aimed at (a MyChart
  * appointment, an airline itinerary) are exactly the ones a person already has
  * open and would rather screenshot or copy from than hand over a URL to.
+ *
+ * **A paste still works with the AI feature switched off** (`parseEventText`,
+ * offline regexes). That path is worse and says so — one event at a time, a
+ * guessed title, no photos — but a confirmation's date and address are shaped
+ * rather than meant, so refusing to read them at all when there's no key
+ * would be a refusal on principle rather than on capability. Which path runs
+ * is decided by `aiAvailable` alone; the sheet never quietly substitutes one
+ * for the other, and the offline path's own limits are shown where they
+ * apply (see the `moreDatesFound` caution below).
  */
 export function EventImportSheet({ visible, onClose, onImported }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const calendarImportEnabled = useSettingsStore(s => s.aiFeatureConfig.calendarImport.enabled);
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
+  // Both halves, because either one missing means `extractCalendarEvents`
+  // throws rather than reads — see `requireFeature`.
+  const aiAvailable = !!anthropicApiKey && calendarImportEnabled;
 
   const [mode, setMode] = useState<InputMode>('paste');
   const [text, setText] = useState('');
@@ -68,6 +87,18 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
   // Set once a run comes back with nothing — distinguishes "hasn't tried yet"
   // from "tried and found nothing" without a third loading-ish state.
   const [triedEmpty, setTriedEmpty] = useState(false);
+  /**
+   * An offline read that found other dates it couldn't do anything with,
+   * held back for one tap of acknowledgement.
+   *
+   * The only thing standing between the two paths and one code path, and it
+   * earns that: an offline read of an itinerary keeps the flight and drops
+   * the hotel, and closing straight into the editor with one task would let
+   * that pass as the whole answer. A successful read with nothing to warn
+   * about still goes straight through — the extra step appears only when
+   * there's something to say.
+   */
+  const [pendingOffline, setPendingOffline] = useState<ExtractedCalendarEvent | null>(null);
 
   const reset = useCallback(() => {
     setMode('paste');
@@ -78,6 +109,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
     setLoading(false);
     setError(null);
     setTriedEmpty(false);
+    setPendingOffline(null);
   }, []);
 
   // Reset on close rather than on open, so a sheet left mounted doesn't hand
@@ -107,8 +139,42 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
 
   const ready = mode === 'photo' ? !!photo : !!text.trim();
 
+  const finish = useCallback((events: ExtractedCalendarEvent[]) => {
+    haptics.success();
+    onImported(events);
+    onClose();
+  }, [onImported, onClose]);
+
+  /**
+   * The offline read. Also reachable with the AI feature on, from the error
+   * state below — a request that timed out on a train is the case where
+   * "read it here instead" is the whole answer, and offering it beats a
+   * retry that will fail the same way.
+   */
+  const runOffline = useCallback(() => {
+    setError(null);
+    setTriedEmpty(false);
+    // Never a bare `new Date()`: this decides the year for a date that didn't
+    // state one, which is a scheduling decision. See CLAUDE.md's grace window.
+    const { event, moreDatesFound } = parseEventText(text, getLogicalToday(dayResetTime));
+    if (!event) {
+      setTriedEmpty(true);
+      return;
+    }
+    if (moreDatesFound) {
+      haptics.warning();
+      setPendingOffline(event);
+      return;
+    }
+    finish([event]);
+  }, [text, dayResetTime, finish]);
+
   const run = useCallback(async () => {
     if (!ready) return;
+    if (!aiAvailable) {
+      runOffline();
+      return;
+    }
     setLoading(true);
     setError(null);
     setTriedEmpty(false);
@@ -118,15 +184,13 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
         setTriedEmpty(true);
         return;
       }
-      haptics.success();
-      onImported(events);
-      onClose();
+      finish(events);
     } catch (e) {
       setError(describeAIError(e));
     } finally {
       setLoading(false);
     }
-  }, [ready, mode, photo, text, onImported, onClose]);
+  }, [ready, aiAvailable, runOffline, mode, photo, text, finish]);
 
   // A paste or an attached photo not yet read is real work — a swipe-down
   // would otherwise drop it with no dialog.
@@ -181,9 +245,28 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
             title="Nothing found"
             subtitle={mode === 'photo'
               ? 'Nothing that looked like an event turned up in that photo. Try again in better light, or paste the text instead.'
-              : 'Nothing that looked like an event turned up in that text.'}
+              : aiAvailable
+                ? 'Nothing that looked like an event turned up in that text.'
+                : 'No date turned up in that text. Reading a paste without Claude needs a date it can recognize, like "September 28, 2026" or "9/28/2026".'}
             actionLabel={mode === 'photo' ? 'Try another photo' : undefined}
             onAction={mode === 'photo' ? () => { setTriedEmpty(false); setPhoto(null); } : undefined}
+          />
+        </View>
+      );
+    }
+
+    // One event read, other dates left behind. See `pendingOffline`.
+    if (pendingOffline) {
+      return (
+        <View style={styles.centered}>
+          <EmptyState
+            icon="calendar-outline"
+            title="Other dates in that text"
+            subtitle={'Only the first event was read: “'
+              + (pendingOffline.title || 'the first date')
+              + '”. Turn on “Import event from photo or text” in Settings for Claude to read all of them.'}
+            actionLabel="Add this one"
+            onAction={() => finish([pendingOffline])}
           />
         </View>
       );
@@ -192,10 +275,12 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
     return (
       <>
         <Text style={styles.intro}>
-          Paste a confirmation, or photograph one, and dundundun will read out the title, date,
-          time, and location for you to review before it's added.
+          {aiAvailable
+            ? 'Paste a confirmation, or photograph one, and dundundun will read out the title, date, time, and location for you to review before it\'s added.'
+            : 'Paste a confirmation and dundundun will read out the date, time, and location for you to review before it\'s added. This reads one event at a time. Turn on “Import event from photo or text” in Settings to read photos too.'}
         </Text>
 
+        {aiAvailable && (
         <SegmentedControl
           label="How to add the event"
           value={mode}
@@ -206,6 +291,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
           ]}
           surface="page"
         />
+        )}
 
         {mode === 'paste' ? (
           <TextInput
@@ -248,7 +334,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
                 {renderPhotoButton('camera', 'Take a photo', 'camera-outline')}
                 {renderPhotoButton('library', 'Choose a photo', 'images-outline')}
                 <Text style={styles.photoHint}>
-                  Works on an appointment page, a booking confirmation, a ticket — anything with
+                  Works on an appointment page, a booking confirmation, or a ticket: anything with
                   the details readable.
                 </Text>
               </>
@@ -258,6 +344,19 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
 
         {!!photoError && <Text style={styles.error}>{photoError}</Text>}
         {!!error && <Text style={styles.error}>{error}</Text>}
+        {/* A request that failed on a bad connection is exactly where the
+            offline read is the answer, so it's offered instead of a retry
+            that would fail the same way. Paste only: nothing here can read a
+            photo without the network. */}
+        {!!error && mode === 'paste' && !!text.trim() && (
+          <InlineAction
+            label="Read it without Claude"
+            icon="flash-off-outline"
+            variant="neutral"
+            onPress={runOffline}
+            accessibilityLabel="Read this text without Claude"
+          />
+        )}
 
         <TouchableOpacity
           style={[styles.runBtn, !ready && styles.runBtnOff]}
