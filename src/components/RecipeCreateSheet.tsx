@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -451,6 +452,26 @@ export function RecipeCreateSheet({
 
   const canCreate = !loading && !!extracted && !!cleaned && !duplicate;
 
+  // Any progress past a blank input screen — extracted content, a typed
+  // name, or unrun paste/link/photo input — is real work a swipe-down would
+  // otherwise drop with no dialog.
+  const handleCancel = () => {
+    const dirty = !!extracted
+      || !!name.trim()
+      || !!input.text.trim()
+      || !!input.url.trim()
+      || !!input.photo;
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   // One checkbox applying up to three facts has to name all it has, and it
   // reads out exactly what the row shows rather than a second phrasing of it.
   // Reads the boxes, not `extracted`, so it stays true once they're edited.
@@ -799,10 +820,10 @@ export function RecipeCreateSheet({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
           <View style={styles.headerTitleWrap}>
             <Ionicons name="sparkles" size={14} color={colors.purple} />
             <Text style={styles.headerTitle}>Import a recipe</Text>
