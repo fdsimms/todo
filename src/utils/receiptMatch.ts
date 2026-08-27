@@ -1,7 +1,6 @@
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import type { GroceryItem, ItemShopLink, Shop } from '../types';
 import { groceryNameKey } from './groceryParse';
-import { matchWeight } from './grocerySuggest';
 import { typicalPriceFor } from './groceryPrice';
 import { measureQuantity } from './unitConvert';
 import type { ReceiptLine } from '../services/aiSuggestions';
@@ -72,7 +71,13 @@ export type ReceiptMatchConfidence =
   | 'remembered'
   /** The names agree once keyed, plurals apart. Pre-checked. */
   | 'exact'
-  /** One name starts or contains the other at a word boundary. Pre-checked. */
+  /**
+   * One name starts or contains the other at a word boundary. Shown, flagged,
+   * NOT pre-checked — a shared prefix ("water" inside "watermelon candies")
+   * reads as a real word only once the boundary is checked at both ends, and
+   * even then it's a guess about which row a somewhat-similar name belongs to,
+   * not the app being told so the way `'exact'` effectively is.
+   */
   | 'likely'
   /** They share a significant word and nothing more. Shown, flagged, NOT pre-checked. */
   | 'weak';
@@ -150,13 +155,33 @@ function sharesSignificantWord(a: string, b: string): boolean {
 }
 
 /**
+ * Whether `a` starts with `b` ending on a word boundary — `b` is the whole of
+ * `a`, or `a` continues only after a space.
+ *
+ * Deliberately not `matchWeight`, which answers a different question:
+ * `matchWeight` is built for autocomplete, where the query is a partial word
+ * on purpose ("ch" ought to find "cheese"). Reusing that prefix test for two
+ * *complete* names read "water" as validly starting "watermelon" — a
+ * substring collision, not a word. The 'likely' tier's own contract ("one name
+ * starts or contains the other at a word boundary") already promised the
+ * boundary; this is what actually keeps that promise.
+ */
+function startsWithWord(a: string, b: string): boolean {
+  return a === b || a.startsWith(`${b} `);
+}
+
+/** Whether `b` appears in `a` as a whole word — leading, trailing, or between two spaces. */
+function containsWord(a: string, b: string): boolean {
+  return startsWithWord(a, b) || a.endsWith(` ${b}`) || a.includes(` ${b} `);
+}
+
+/**
  * How well one receipt line matches one list row, or null for not at all.
  *
- * Both directions of `matchWeight` are consulted because neither name is a
- * query here: the list says "chicken" and the receipt says "chicken breast" as
- * readily as the reverse, and a one-way test would answer only half of those.
- * That reuse is also what buys the plural tolerance for free rather than
- * restating it.
+ * Both directions are consulted because neither name is a query here: the
+ * list says "chicken" and the receipt says "chicken breast" as readily as the
+ * reverse, and a one-way test would answer only half of those. That reuse is
+ * also what buys the plural tolerance for free rather than restating it.
  */
 export function receiptMatchConfidence(
   itemKey: string,
@@ -164,10 +189,7 @@ export function receiptMatchConfidence(
 ): ReceiptMatchConfidence | null {
   if (!itemKey || !lineKey) return null;
   if (itemKey === lineKey || singular(itemKey) === singular(lineKey)) return 'exact';
-  // Weight 2 is `matchWeight`'s word-start tier — "chicken breast" for a
-  // "chicken" query. Weight 3 is a bare prefix. Either way round is a real
-  // reading of the same shelf item.
-  if (matchWeight(itemKey, lineKey) >= 2 || matchWeight(lineKey, itemKey) >= 2) return 'likely';
+  if (containsWord(itemKey, lineKey) || containsWord(lineKey, itemKey)) return 'likely';
   if (sharesSignificantWord(itemKey, lineKey)) return 'weak';
   return null;
 }
@@ -571,16 +593,16 @@ function quantitiesDisagree(a: string, b: string): boolean {
  * row, whereas a price four times off is the app's best evidence that the line
  * was read onto the wrong one.
  *
- * **A weak match onto a row already in the trolley is ticked anyway**, which is
- * the one place the trolley overrules the reading rather than merely breaking
- * its ties. The rule a weak match is normally held to is that an unchecked row
- * is a question and a checked one is an assertion — but the assertion has
- * already been made here, by the user, when they ticked the row into the
- * trolley in the shop. All the receipt adds is what it cost, and refusing to
- * carry the price across because two names only half agree leaves the user
- * re-typing a number off paper they are holding, for a row nobody is in any
- * doubt about. The price caution below still applies to it, so a weak match
- * whose price is wildly off the row's own is still demoted.
+ * **A weak or likely match onto a row already in the trolley is ticked
+ * anyway**, which is the one place the trolley overrules the reading rather
+ * than merely breaking its ties. The rule either tier is normally held to is
+ * that an unchecked row is a question and a checked one is an assertion — but
+ * the assertion has already been made here, by the user, when they ticked the
+ * row into the trolley in the shop. All the receipt adds is what it cost, and
+ * refusing to carry the price across because two names only half agree leaves
+ * the user re-typing a number off paper they are holding, for a row nobody is
+ * in any doubt about. The price caution below still applies to it, so a weak
+ * or likely match whose price is wildly off the row's own is still demoted.
  */
 export function acceptedByDefault(
   matches: readonly ReceiptMatch[],
@@ -589,7 +611,7 @@ export function acceptedByDefault(
   links: readonly ItemShopLink[],
 ): string[] {
   return matches
-    .filter(m => m.itemId !== null && (m.confidence !== 'weak' || m.inTrolley))
+    .filter(m => m.itemId !== null && (m.confidence === 'remembered' || m.confidence === 'exact' || m.inTrolley))
     // A price caution demotes a *guess*, not a rule. The check exists because a
     // 4x move is better evidence of a misread than of a real price, and that
     // reasoning only holds while the match is the app's own reading of two
