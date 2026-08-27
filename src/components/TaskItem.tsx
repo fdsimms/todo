@@ -44,7 +44,7 @@ import { isDateAnchored } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { asksOnCompletion } from '../utils/deliverables';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish } from '../utils/chain';
@@ -982,6 +982,12 @@ export const TaskItem = React.memo(function TaskItem({
   // says what it always said, and the selection lives on its own control at the
   // trailing edge (see SelectionDot).
   const showQuotaMeter = isQuota && (!completing || quotaCompleting);
+  // The pace mark: a line on the gauge at "expected by now," so the gap above
+  // the fill is legible as "how far behind" without reading a number. Hidden
+  // once the last unit is tapped (quotaCompleting) — that read is already
+  // stale, and the fill is about to rise past it anyway.
+  const showPaceMark = showQuotaMeter && !quotaCompleting && quotaUnitsToPace(task) > 0;
+  const quotaPaceLevel = showPaceMark ? quotaPaceFraction(task) : 0;
   // Shown but no longer a meter to tap: once the run-up starts, the control
   // does what a completing row's checkbox does — undo. Nor while selecting,
   // where every tap on the row means "pick this one".
@@ -1558,6 +1564,12 @@ export const TaskItem = React.memo(function TaskItem({
                   }),
                 },
               ]}
+              pointerEvents="none"
+            />
+          )}
+          {showPaceMark && (
+            <View
+              style={[styles.quotaPaceMark, { bottom: `${quotaPaceLevel * 100}%` }]}
               pointerEvents="none"
             />
           )}
@@ -3143,6 +3155,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: -border.md,
     bottom: 0,
     borderRadius: 0,
+  },
+  // The pace line: same full-width, edge-to-edge treatment as quotaFill so it
+  // reads as a mark on the same gauge rather than a shape floating inside it.
+  // `bottom` is set at the call site from quotaPaceLevel; centering it on that
+  // level (rather than sitting above it) is what makes the gap to the fill
+  // read as "how far behind" instead of "how far until the next tick". Grey
+  // rather than an alert colour — it's a ruler mark, not a warning, and the
+  // gap it sets up to read is the signal, not the line itself.
+  quotaPaceMark: {
+    position: 'absolute',
+    left: -border.md,
+    right: -border.md,
+    height: 2,
+    marginBottom: -1,
+    backgroundColor: colors.textSecondary,
   },
   content: {
     flex: 1,
