@@ -21,6 +21,7 @@ import { InlineAction } from './InlineAction';
 import { convertQuantity } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
 import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
+import { haptics } from '../utils/haptics';
 
 // Matches GroceryItemSheet's own price field — "10000.00" is the longest a
 // price this app allows (GROCERY_PRICE_MINOR_MAX) ever renders as.
@@ -249,7 +250,11 @@ export const GroceryRow = React.memo(function GroceryRow({
     // Empty or unchanged is a no-op, not a rename — nothing to write, and
     // reverting silently is friendlier than an error for "changed my mind".
     if (!trimmed || trimmed === item.name) return;
-    renameItem(item.id, trimmed);
+    // A collision reverts to the old name the same way a no-op does — there's
+    // no room on the row for GroceryItemSheet's persistent nameError — but it
+    // still needs to say something happened, or a real rename attempt looks
+    // identical to changing your mind.
+    if (!renameItem(item.id, trimmed)) haptics.error();
   };
 
   const rowBody = (

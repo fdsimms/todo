@@ -139,8 +139,10 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
     if (!editingShopId) return;
     const trimmed = editingName.trim();
     // A no-op or a collision just closes the field rather than trapping the
-    // user in it — the old name is still there and still correct.
-    if (trimmed) renameShop(editingShopId, trimmed);
+    // user in it — the old name is still there and still correct. A collision
+    // still needs a haptic, or a real rename attempt looks identical to
+    // changing your mind (see GroceryRow's own commitRename).
+    if (trimmed && !renameShop(editingShopId, trimmed)) haptics.error();
     setEditingShopId(null);
   };
 

@@ -1,0 +1,4 @@
+{
+  "message": "Renaming a grocery or pantry item to a name another item already has now gives you a heads up instead of silently reverting your edit. Same fix for renaming a store.",
+  "date": "2026-08-27"
+}
