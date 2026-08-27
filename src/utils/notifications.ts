@@ -339,13 +339,12 @@ export async function rescheduleAllReminders(
   eventReminders?: readonly EventReminder[]
 ): Promise<void> {
   const now = new Date();
-  await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
 
   const upcoming = upcomingReminders(tasks, now);
 
-  // AlarmKit alarms are untouched by cancelAllScheduledNotificationsAsync
-  // above (it only reaches UNUserNotificationCenter) and have no equivalent
-  // pending-request cap, so every one of them reschedules from the full,
+  // AlarmKit is a separate subsystem from the UNUserNotificationCenter every
+  // other kind in this file schedules against, with no equivalent
+  // pending-request cap, so every AlarmKit task reschedules from the full,
   // uncapped list rather than sharing the 64-slot budget below.
   for (const task of upcoming) {
     if (usesAlarmKit(task)) await scheduleTaskReminder(task);
@@ -365,25 +364,17 @@ export async function rescheduleAllReminders(
     await scheduleTaskReminder(task);
   }
 
-  // cancelAllScheduledNotificationsAsync above is indiscriminate — it clears
-  // every notification this app owns, not just the reminders this function
-  // rebuilt. Anything else the app schedules has to be put back here, and
-  // there are now three such things: a timer that was running when the app
-  // was last closed would otherwise lose its alarm on cold start, the daily
-  // agenda would simply stop happening, and a trip left running would lose
-  // its two-hour backstop.
-  //
-  // Three is the signal the original version of this note called out: the
-  // next one to arrive should give each kind its own id prefix and cancel by
-  // prefix instead — the blanket cancel is only tenable while the put-it-back
-  // list is short enough to read. Pace nudges and calendar-event reminders
-  // are that fourth and fifth kind: nudges are scheduled above under a
-  // `pace:` prefix and cancelled by it (cancelQuotaNudges), and event
-  // reminders are cancelled and rescheduled by their own
-  // `event-reminder:<key>` id (rescheduleAllEventReminders below) — neither
-  // depends on this blanket cancel. The blanket cancel stays for now because
-  // the remaining three (timer alarms, the daily agenda, the trip reminder)
-  // still depend on it; those are what's left to convert.
+  // Every kind this function schedules is now namespaced and cancelled on its
+  // own terms rather than through a blanket `cancelAllScheduledNotificationsAsync`
+  // up top: AlarmKit and budgeted reminders just above rebuild by identifier
+  // (the bare task id, self-replacing), pace nudges under a `pace:` prefix
+  // (cancelQuotaNudges), timer alarms under a `timer:` prefix (swept below —
+  // see cancelAllTimerAlarms), the daily agenda and trip reminder under their
+  // own fixed ids (cancelled inside scheduleDailyAgenda/rescheduleTripReminder
+  // themselves), and calendar-event reminders under an `event-reminder:<key>`
+  // id (rescheduleAllEventReminders below). Nothing here depends on any other
+  // kind's cancel, which is the point: a sixth kind is one more function, not
+  // an edit to a shared teardown no test would catch omitting.
   await rescheduleAllTimerAlarms(tasks);
   await scheduleDailyAgenda(tasks);
   await rescheduleTripReminder(trip?.shopId ?? null, trip?.startedAt ?? null, trip?.shops ?? []);
@@ -482,6 +473,23 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
 
 export async function cancelTimerAlarm(taskId: string): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(timerAlarmId(taskId)).catch(() => {});
+}
+
+/**
+ * Every `timer:`-prefixed alarm actually pending, cancelled outright.
+ *
+ * `cancelTimerAlarm` above already runs at every point a task's timer stops
+ * (pause, complete, delete, archive — see the call sites in useTaskStore), so
+ * in the ordinary course of a session nothing here is ever stale. This exists
+ * for `rescheduleAllTimerAlarms`'s one caller, the full-rebuild that runs once
+ * at launch: it has to account for whatever the OS still holds from the
+ * previous session, and unlike a per-task id there's no fixed identifier to
+ * cancel by, so the prefix has to be swept rather than named.
+ */
+async function cancelAllTimerAlarms(): Promise<void> {
+  const pending = await Notifications.getAllScheduledNotificationsAsync().catch(() => []);
+  const ids = pending.map(n => n.identifier).filter(id => id.startsWith('timer:'));
+  await Promise.all(ids.map(id => Notifications.cancelScheduledNotificationAsync(id).catch(() => {})));
 }
 
 // ─── Focus session steps ─────────────────────────────────────────────────────
@@ -737,6 +745,7 @@ export async function cancelStepAlarm(timerId: string): Promise<void> {
 }
 
 export async function rescheduleAllTimerAlarms(tasks: Task[]): Promise<void> {
+  await cancelAllTimerAlarms();
   for (const task of tasks) {
     if (isTimedTask(task) && isTimerRunning(task) && !task.completed && !task.archived) {
       await scheduleTimerAlarm(task);
@@ -798,12 +807,11 @@ export async function cancelTripReminder(): Promise<void> {
 }
 
 /**
- * Puts the trip reminder back after a blanket cancel — the same job
- * `rescheduleAllTimerAlarms` does for timer alarms, and folded into
- * `rescheduleAllReminders` below for the same reason. Takes the trip's raw
- * fields rather than reading `useGroceryStore` directly, so this file never
- * has to import the grocery store — `rescheduleAllReminders`'s one caller
- * already has both stores in hand.
+ * Rebuilds the trip reminder as part of `rescheduleAllReminders`'s full
+ * resync, the same job `rescheduleAllTimerAlarms` does for timer alarms.
+ * Takes the trip's raw fields rather than reading `useGroceryStore` directly,
+ * so this file never has to import the grocery store — `rescheduleAllReminders`'s
+ * one caller already has both stores in hand.
  */
 export async function rescheduleTripReminder(
   shopId: string | null,
@@ -870,10 +878,10 @@ export async function cancelEventReminder(key: string): Promise<void> {
 }
 
 /**
- * Puts every pending event reminder back after a blanket cancel — the same
- * job `rescheduleAllTimerAlarms`/`rescheduleTripReminder` do, folded into
- * `rescheduleAllReminders` above. The caller (`useEventReminderStore.initialize`)
- * is expected to have already pruned reminders for events that have started.
+ * Rebuilds every pending event reminder as part of `rescheduleAllReminders`'s
+ * full resync, the same job `rescheduleAllTimerAlarms`/`rescheduleTripReminder`
+ * do. The caller (`useEventReminderStore.initialize`) is expected to have
+ * already pruned reminders for events that have started.
  */
 export async function rescheduleAllEventReminders(reminders: readonly EventReminder[]): Promise<void> {
   for (const reminder of reminders) {
