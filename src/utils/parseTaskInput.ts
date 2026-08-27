@@ -575,7 +575,6 @@ export function parseLinkInput(input: string): ParsedLink | null {
   // title either — strip it from the leftover text too.
   const rawEnd = matchStart + match[0].length;
   const cleanTitle = (input.slice(0, matchStart) + input.slice(rawEnd)).replace(/\s+/g, ' ').trim();
-  if (!cleanTitle) return null; // a bare pasted link keeps the input as a literal title
 
   return { url, cleanTitle, matchStart, matchEnd };
 }
@@ -598,9 +597,9 @@ const PHONE_PATTERN = /[+(]?\d[\d\s().-]{5,}\d/;
 /**
  * Finds a phone number pasted or dictated into a quick-add title — "call the
  * surgery 020 7946 0018" — and splits it out, exactly as parseLinkInput does
- * for a URL. Same "anywhere in the text, not suffix-anchored" rule, and the
- * same refusal to fire when the number *is* the whole input: a title of
- * nothing but digits is what someone typing a number as a task looks like.
+ * for a URL. Same "anywhere in the text, not suffix-anchored" rule — and
+ * fires even when the number is the whole input so far (nothing else typed
+ * yet), same as parseLinkInput.
  */
 export function parsePhoneInput(input: string): ParsedPhone | null {
   const match = input.match(PHONE_PATTERN);
@@ -611,7 +610,6 @@ export function parsePhoneInput(input: string): ParsedPhone | null {
   const matchStart = match.index;
   const matchEnd = matchStart + number.length;
   const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
-  if (!cleanTitle) return null;
 
   return { number, cleanTitle, matchStart, matchEnd };
 }
@@ -635,8 +633,8 @@ const EMAIL_PATTERN = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
  * Finds an email address pasted or dictated into a quick-add title — "email
  * jane@example.com about the invoice" — and splits it out, exactly as
  * parsePhoneInput does for a number. Same "anywhere in the text, not
- * suffix-anchored" rule, and the same refusal to fire when the address *is*
- * the whole input.
+ * suffix-anchored" rule, and fires even when the address is the whole input
+ * so far.
  */
 export function parseEmailInput(input: string): ParsedEmail | null {
   const match = input.match(EMAIL_PATTERN);
@@ -646,7 +644,6 @@ export function parseEmailInput(input: string): ParsedEmail | null {
   const matchStart = match.index;
   const matchEnd = matchStart + address.length;
   const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
-  if (!cleanTitle) return null;
 
   return { address, cleanTitle, matchStart, matchEnd };
 }
@@ -712,7 +709,6 @@ export function parseDurationInput(input: string): ParsedDuration | null {
   const matchStart = match.index;
   const matchEnd = matchStart + match[0].length;
   const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd)).replace(/\s+/g, ' ').trim();
-  if (!cleanTitle) return null; // "for 15 minutes" alone is a literal title, not a timer
 
   return { minutes, cleanTitle, matchStart, matchEnd };
 }
@@ -804,7 +800,6 @@ export function parseSupplyInput(input: string): ParsedSupply | null {
     .replace(/\s+/g, ' ')
     .replace(/^[,\s]+|[,\s]+$/g, '')
     .trim();
-  if (!cleanTitle) return null; // "6 filters left" alone is a literal title
 
   return { count, unit: rawUnit ? rawUnit.toLowerCase() : null, cleanTitle, matchStart, matchEnd };
 }
@@ -864,6 +859,11 @@ const MIN_CATEGORY_PREFIX_LENGTH = 3;
  * Deliberately doesn't create a category or tag from an unrecognized token —
  * a typo or an unrelated "#" in the title (e.g. a hashtag someone's pasting)
  * is left as literal text rather than silently minting something new.
+ *
+ * Fires even when stripping the token leaves an empty `cleanTitle` — typing
+ * the category first ("#home", nothing else yet) is exactly that state, and
+ * the tooltip should still offer it. The title itself still can't be saved
+ * blank; that's `handleAdd`'s `!title.trim()` guard, not this function's.
  */
 export function parseCategoryAndTagsInput(
   input: string,
@@ -916,7 +916,6 @@ export function parseCategoryAndTagsInput(
     cleanTitle = cleanTitle.slice(0, consumed[i].start) + cleanTitle.slice(consumed[i].end);
   }
   cleanTitle = cleanTitle.replace(/\s+/g, ' ').trim();
-  if (!cleanTitle) return null; // a bare "#home" alone is a literal title, not a tag
 
   return {
     category,
