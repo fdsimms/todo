@@ -8,6 +8,7 @@ import {
   itemMatchesAnswers,
   initialLeafSelection,
   reselectForAnswers,
+  toggleItemCondition,
   questionLabel,
   describeQuestion,
   describeConditions,
@@ -234,6 +235,35 @@ describe('conditions', () => {
     });
     expect(itemMatchesAnswers(item, questions, { 'q-type': 'Work', 'q-nights': '7' })).toBe(true);
     expect(itemMatchesAnswers(item, questions, { 'q-type': 'Work', 'q-nights': '2' })).toBe(false);
+  });
+});
+
+describe('toggleItemCondition', () => {
+  it('starts a new condition for the question', () => {
+    expect(toggleItemCondition([], 'q-type', 'Work')).toEqual([{ questionId: 'q-type', values: ['Work'] }]);
+  });
+
+  it('adds a second value onto an existing condition', () => {
+    const conditions = [{ questionId: 'q-type', values: ['Work'] }];
+    expect(toggleItemCondition(conditions, 'q-type', 'Vacation')).toEqual([
+      { questionId: 'q-type', values: ['Work', 'Vacation'] },
+    ]);
+  });
+
+  it('unticking the last value drops the condition entirely, not an empty one', () => {
+    const conditions = [{ questionId: 'q-type', values: ['Work'] }];
+    expect(toggleItemCondition(conditions, 'q-type', 'Work')).toEqual([]);
+  });
+
+  it('leaves conditions on other questions untouched', () => {
+    const conditions = [
+      { questionId: 'q-type', values: ['Work'] },
+      { questionId: 'q-nights', values: ['7'] },
+    ];
+    expect(toggleItemCondition(conditions, 'q-type', 'Vacation')).toEqual([
+      { questionId: 'q-nights', values: ['7'] },
+      { questionId: 'q-type', values: ['Work', 'Vacation'] },
+    ]);
   });
 });
 

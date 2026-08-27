@@ -326,6 +326,30 @@ export function describeQuestion(question: TemplateQuestion): string {
 }
 
 /**
+ * Tick one answer on or off in an item's condition for a question. A question
+ * left with no answers ticked drops its condition entirely rather than being
+ * kept as an empty one — "included for none of the answers" is a state
+ * nothing could act on, and it's how this says "every run" again.
+ *
+ * Shared by the item editor's own "Only when" pills and the per-question
+ * items sheet — same write, reached from either an item or a question.
+ */
+export function toggleItemCondition(
+  conditions: readonly TemplateItemCondition[],
+  questionId: string,
+  option: string,
+): TemplateItemCondition[] {
+  const existing = conditions.find(c => c.questionId === questionId);
+  const values = existing
+    ? existing.values.includes(option)
+      ? existing.values.filter(v => v !== option)
+      : [...existing.values, option]
+    : [option];
+  const rest = conditions.filter(c => c.questionId !== questionId);
+  return values.length > 0 ? [...rest, { questionId, values }] : rest;
+}
+
+/**
  * The item editor's one-line summary of what an item is conditioned on —
  * "Trip type: Work", "Trip type: Work, Long trip: Yes". Null when nothing is.
  *
