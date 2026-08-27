@@ -34,7 +34,7 @@ import Reanimated, {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns';
 import { PinIcon } from './PinIcon';
-import type { Task } from '../types';
+import type { Task, GroceryItem, ItemSubLink, Recipe } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -67,6 +67,11 @@ import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
+import { useGroceryStore } from '../store/useGroceryStore';
+import { useRecipeStore } from '../store/useRecipeStore';
+import { recipeMap } from '../utils/recipeComponents';
+import { standingSwapMap } from '../utils/standingSwaps';
+import { mealShortfallEntryId, mealShortfallRows } from '../utils/mealShortfallTasks';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import {
   describeProjectQuiet,
@@ -120,6 +125,12 @@ const QUOTA_LINGER_MS = 4000;
 // nothing to say about — see the reviewProject/quietDays comment further down
 // for the same shape.
 const EMPTY_BUSY_EVENTS: BusyEvent[] = [];
+// Same shape, for the mealShortfall row's own missing-count chip further
+// down: every row that isn't one shares these stable references instead of
+// subscribing to the live grocery/recipe arrays for nothing.
+const EMPTY_GROCERY_ITEMS: GroceryItem[] = [];
+const EMPTY_ITEM_SUBS: ItemSubLink[] = [];
+const EMPTY_RECIPES: Recipe[] = [];
 
 interface Props {
   task: Task;
@@ -311,6 +322,7 @@ export const TaskItem = React.memo(function TaskItem({
     toggleSubtask,
     deleteSubtask,
     reorderSubtasks,
+    addSubtask,
     duplicateTask,
   } = useTaskStore.getState();
   // ==== the row's outward actions: link, call, text, contact, email ====
@@ -441,6 +453,7 @@ export const TaskItem = React.memo(function TaskItem({
   const [titleEdit, setTitleEdit] = useState('');
   const [editingSubtaskId, setEditingSubtaskId] = useState<string | null>(null);
   const [subtaskTitleEdit, setSubtaskTitleEdit] = useState('');
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   // Correcting the time the stopwatch recorded. The draft is separate from the
   // stored value so an abandoned edit leaves it alone, and separate from the
   // open flag because clearing the field is a real state (null = nothing to
@@ -829,6 +842,37 @@ export const TaskItem = React.memo(function TaskItem({
     [task, calendarReviewRawEvents]
   );
 
+  // A "Shop for Tue ragù" row's own answer: how many lines are still to buy,
+  // right now — never stored on the task, since the number moves as the
+  // list and the plan do (see mealShortfallTasks.ts). Same gate shape as
+  // reviewProjectId/quietDays above: every row that isn't a shortfall task
+  // shares the stable EMPTY_* references, so it re-renders no more often
+  // than it did.
+  const shortfallEntryId = mealShortfallEntryId(task);
+  const shortfallEntry = useMealPlanStore(s =>
+    shortfallEntryId ? s.entries.find(e => e.id === shortfallEntryId) ?? null : null
+  );
+  const shortfallGroceryItems = useGroceryStore(s => (shortfallEntry ? s.items : EMPTY_GROCERY_ITEMS));
+  const shortfallItemSubs = useGroceryStore(s => (shortfallEntry ? s.itemSubs : EMPTY_ITEM_SUBS));
+  const shortfallRecipes = useRecipeStore(s => (shortfallEntry ? s.recipes : EMPTY_RECIPES));
+  const missingCount = useMemo(() => {
+    if (!shortfallEntry) return null;
+    const rows = mealShortfallRows(
+      shortfallEntry,
+      recipeMap(shortfallRecipes),
+      shortfallGroceryItems,
+      shortfallItemSubs,
+      standingSwapMap(shortfallItemSubs, shortfallGroceryItems),
+      new Date()
+    );
+    // No chip rather than "0 to buy" — a shortfall task can outlive its own
+    // reason by up to one sweep (the item got bought some other way, the
+    // meal's ingredients changed), and naming a shortfall of zero would be
+    // the app stating something false. Covers both null ("not shoppable any
+    // more" — cooked, unlinked, deleted recipe) and an empty row list.
+    return rows && rows.length > 0 ? rows.length : null;
+  }, [shortfallEntry, shortfallRecipes, shortfallGroceryItems, shortfallItemSubs]);
+
   // The stretches the subtasks split the countdown into, and which one the
   // clock is in. Empty for a timed task nobody apportioned, which is what keeps
   // every existing one rendering exactly as before.
@@ -1077,10 +1121,6 @@ export const TaskItem = React.memo(function TaskItem({
       .map((m): [number, number] => [m.start, m.end]),
     [displayTitle, task.personIds]
   );
-
-  const hasExpandContent =
-    task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null ||
-    otherSeriesDates !== '' || calendarReviewEvents.length > 0;
 
   // The stamp outlives the date it explains — that's what lets the drip read a
   // cleared one as "not today" (see Task.autoScheduledAt) — so the chip asks
@@ -1493,6 +1533,18 @@ export const TaskItem = React.memo(function TaskItem({
     }
   };
 
+  // Mirrors the editor's own always-visible "Add subtask" field — appends,
+  // clears, and leaves the keyboard up so a burst of entries doesn't drop it
+  // between taps. Fires from both submit and blur, so a title typed then
+  // dismissed without pressing return isn't lost; the trimmed-empty guard
+  // makes the inevitable double-fire (submit blurs the field too) a no-op.
+  const commitNewSubtask = () => {
+    const trimmed = newSubtaskTitle.trim();
+    setNewSubtaskTitle('');
+    if (!trimmed) return;
+    addSubtask(task.id, trimmed);
+  };
+
   const rowBody = (
     <View style={[styles.row, isActive && styles.rowActive]}>
       {task.priority > 0 && (
@@ -1752,7 +1804,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -1978,6 +2030,20 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.quietLabel} numberOfLines={1}>
                   {describeProjectQuiet(quietDays)}
+                </Text>
+              </View>
+            )}
+            {/* A "Shop for Tue ragù" row's own size — one missing onion and a
+                twelve-line curry otherwise read identically. Filled the same
+                way the quiet-project chip is, per that chip's own finding
+                that tertiary weight here reads as one more attribute rather
+                than the app's own offer. Plain and literal per CLAUDE.md:
+                a count, not a figure of speech. */}
+            {missingCount !== null && (
+              <View style={[styles.metaChip, styles.quietChip]}>
+                <Ionicons name="cart-outline" size={iconSize.xs} color={colors.accent} />
+                <Text style={styles.quietLabel} numberOfLines={1}>
+                  {missingCount} to buy
                 </Text>
               </View>
             )}
@@ -2232,12 +2298,16 @@ export const TaskItem = React.memo(function TaskItem({
               <Text style={styles.expandNotes}>{task.notes}</Text>
             )}
 
-            {subtasks.length > 0 && (
-              <View style={[
-                styles.expandSection,
-                styles.subtaskSection,
-                task.notes.length > 0 && styles.sectionDivider,
-              ]}>
+            {/* Unconditional now — the always-visible "Add subtask" field
+                below needs somewhere to live even when the list is empty, so
+                this can't stay gated on subtasks.length like the rows below
+                it still are. */}
+            <View style={[
+              styles.expandSection,
+              styles.subtaskSection,
+              task.notes.length > 0 && styles.sectionDivider,
+            ]}>
+              {subtasks.length > 0 && (
                 <SortableList
                   onDragStateChange={onSubtaskDragStateChange}
                   data={subtasks}
@@ -2249,10 +2319,9 @@ export const TaskItem = React.memo(function TaskItem({
                     const segment = segments.find(s => s.id === sub.id) ?? null;
                     const phase = segment ? segmentPhase(segment, timerElapsedNow) : null;
                     return (
-                    <View style={[
-                      styles.subtaskRow,
-                      i === subtasks.length - 1 && styles.subtaskRowLast,
-                    ]}>
+                    // No more "last row has no border" — the add-subtask field
+                    // pinned below the list is always the true last row now.
+                    <View style={styles.subtaskRow}>
                       <TouchableOpacity
                         onPress={() => {
                           haptics.tap();
@@ -2340,13 +2409,34 @@ export const TaskItem = React.memo(function TaskItem({
                     );
                   }}
                 />
+              )}
+              {/* Always here, mirroring the editor's own always-visible field
+                  — adding a subtask from the row shouldn't need a trip into
+                  the full editor (see commitNewSubtask). */}
+              <View style={[styles.subtaskRow, styles.subtaskRowLast]}>
+                <View style={styles.subtaskCheck} />
+                <TextInput
+                  style={styles.subtaskTitleInput}
+                  value={newSubtaskTitle}
+                  onChangeText={setNewSubtaskTitle}
+                  placeholder="Add subtask"
+                  placeholderTextColor={colors.textTertiary}
+                  maxLength={TITLE_MAX_LENGTH}
+                  returnKeyType="done"
+                  blurOnSubmit={false}
+                  onSubmitEditing={commitNewSubtask}
+                  onBlur={commitNewSubtask}
+                />
               </View>
-            )}
+            </View>
 
             {task.recurrenceType !== 'none' && (
               <View style={[
                 styles.recurrenceRow,
-                (task.notes.length > 0 || subtasks.length > 0) && styles.sectionDivider,
+                // The subtask section above always renders now (it always
+                // carries the add-subtask field), so there's always
+                // something above this row to divide from.
+                styles.sectionDivider,
               ]}>
                 <Ionicons name="repeat" size={12} color={colors.textSecondary} />
                 <Text style={styles.expandMeta}>{describeTaskRecurrence(task)}</Text>
@@ -2365,7 +2455,9 @@ export const TaskItem = React.memo(function TaskItem({
             {otherSeriesDates !== '' && (
               <View style={[
                 styles.recurrenceRow,
-                (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
+                // The subtask section always renders now (see above), so this
+                // always has something above it.
+                styles.sectionDivider,
               ]}>
                 <Ionicons name="calendar-number-outline" size={12} color={colors.textSecondary} />
                 <Text style={styles.expandMeta}>Also on {otherSeriesDates}</Text>
@@ -2376,7 +2468,7 @@ export const TaskItem = React.memo(function TaskItem({
               <TouchableOpacity
                 style={[
                   styles.recurrenceRow,
-                  (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
+                  styles.sectionDivider,
                 ]}
                 onPress={() => { haptics.tap(); setChainStepsExpanded(v => !v); }}
                 activeOpacity={interaction.activeOpacity}
@@ -2446,16 +2538,13 @@ export const TaskItem = React.memo(function TaskItem({
             )}
 
             {/* The task's own answer, read live off the calendar store — see
-                the calendarReviewEvents comment above. Whatever the row above
-                this one rendered (there normally is none) gets the divider;
-                this one never needs its own top divider from anything below
-                it, since it's built off hasExpandContent before this
-                condition folds itself in. */}
+                the calendarReviewEvents comment above. The subtask section
+                above always renders now, so this always has something above
+                it to divide from. */}
             {task.generatedKind === 'calendarReview' && calendarReviewEvents.length > 0 && (
               <View style={[
                 styles.expandSection,
-                (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' ||
-                  otherSeriesDates !== '' || !!chainStepPreview) && styles.sectionDivider,
+                styles.sectionDivider,
               ]}>
                 {calendarReviewEvents.map(event => (
                   <View key={event.id} style={styles.calendarReviewEventRow}>
@@ -2473,7 +2562,8 @@ export const TaskItem = React.memo(function TaskItem({
             {timed && (
               <View style={[
                 styles.countdownRow,
-                hasExpandContent && styles.sectionDivider,
+                // The subtask section always renders above now.
+                styles.sectionDivider,
               ]}>
                 <View style={styles.countdownHeader}>
                   <Ionicons
@@ -2501,7 +2591,8 @@ export const TaskItem = React.memo(function TaskItem({
             {task.actualMinutes != null && (
               <View style={[
                 styles.recurrenceRow,
-                (hasExpandContent || timed) && styles.sectionDivider,
+                // The subtask section always renders above now.
+                styles.sectionDivider,
               ]}>
                 <Ionicons name="timer-outline" size={12} color={colors.textSecondary} />
                 {editingTimed ? (
@@ -2566,7 +2657,8 @@ export const TaskItem = React.memo(function TaskItem({
             {onEdit && (
               <View style={[
                 styles.editSection,
-                (hasExpandContent || timed || task.actualMinutes != null) && styles.sectionDivider,
+                // The subtask section always renders above now.
+                styles.sectionDivider,
               ]}>
                 <View style={styles.editSectionLeft}>
                   {showActions && timed && (

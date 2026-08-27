@@ -350,15 +350,15 @@ exports.
 **Read narrowly.** 49 files are over 1,000 lines, 31 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (6.8k), `components/TaskEditor.tsx` (4.9k), `db/database.ts` (4.8k),
-`store/useGroceryStore.ts` (4.7k), `screens/TodayScreen.tsx` (4.2k), `types/index.ts` (4.0k),
-`components/TaskItem.tsx` (3.8k), `components/QuickAddModal.tsx` (2.9k),
+`store/useTaskStore.ts` (6.8k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (4.8k),
+`store/useGroceryStore.ts` (4.7k), `screens/TodayScreen.tsx` (4.2k), `types/index.ts` (4.1k),
+`components/TaskItem.tsx` (3.9k), `components/QuickAddModal.tsx` (2.9k),
 `store/useSettingsStore.ts` (2.8k), `utils/demoSeed.ts` (2.7k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **232 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **236 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -389,6 +389,13 @@ stores; that's where a new test goes. Only pure logic is tested (`src/utils`, `s
 no React renderer installed, so there are no component or screen tests. Don't add a renderer to
 cover a UI change — verify those by reasoning about the code (and by mocking it, see **Mock a
 visual change** below), and say so plainly rather than implying you ran them.
+
+The 1:1 rule holds for every file in `src/utils`, `src/db`, and the task/grocery stores. Two
+stores are the deliberate exception and carry no test file: `useTemplateCategoryStore` and
+`useWidgetCompletionStore` are thin wrappers over a db read/write or a queue with no branching
+logic of their own to pin down — same reasoning as skipping a component test, just for a store
+instead of a screen. Don't read their absence as a gap to fill; add one only if the store grows
+real logic beyond passing values through.
 
 ## Working style
 

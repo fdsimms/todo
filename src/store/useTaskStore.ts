@@ -393,6 +393,7 @@ function newTaskFromDraft(
     allowOvershoot: draft.allowOvershoot ?? false,
     quotaIntervalMinutes: draft.quotaIntervalMinutes ?? null,
     quotaReminders: draft.quotaReminders ?? false,
+    quotaAlwaysVisible: draft.quotaAlwaysVisible ?? false,
     // Never seeded from a draft: a run is started by tapping "start now" on a
     // task that exists, so a row arriving already mid-run would be claiming a
     // morning nobody had yet.
@@ -4875,10 +4876,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         draft: () => ({
           title: want.title,
           dueDate: dueDate.toISOString(),
-          // Opens the Meal Plan screen on the meal's own day, where the day
-          // header's cart button holds the sheet this row is asking for. See
-          // mealShortfallLinkUrl.
-          linkUrl: mealShortfallLinkUrl(want.dayKey),
+          // Opens the Meal Plan screen straight on the add-to-list sheet for
+          // this meal. See mealShortfallLinkUrl.
+          linkUrl: mealShortfallLinkUrl(want.dayKey, want.entryId),
           category,
           ...generatedBy('mealShortfall', want.entryId),
         }),
@@ -5488,6 +5488,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaIntervalMinutes: null,
       quotaReminders: false,
       quotaStartedAt: null,
+      quotaAlwaysVisible: false,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
@@ -5670,6 +5671,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaIntervalMinutes: null,
       quotaReminders: false,
       quotaStartedAt: null,
+      quotaAlwaysVisible: false,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,

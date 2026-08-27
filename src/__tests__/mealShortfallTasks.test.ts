@@ -141,7 +141,7 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null,
+    varietyOfKey: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null,
@@ -206,8 +206,12 @@ describe('mealShortfallEntryId', () => {
 });
 
 describe('mealShortfallLinkUrl', () => {
-  it('opens the meal plan on the day the meal is on', () => {
-    expect(mealShortfallLinkUrl('2026-08-25')).toBe('dundundun://mealplan?date=2026-08-25');
+  it('opens the meal plan on the day the meal is on, and asks for its sheet by entry id', () => {
+    expect(mealShortfallLinkUrl('2026-08-25', 'entry-1')).toBe('dundundun://mealplan?date=2026-08-25&shop=entry-1');
+  });
+
+  it('encodes an id that could otherwise be read as another query param', () => {
+    expect(mealShortfallLinkUrl('2026-08-25', 'a&b=c')).toBe('dundundun://mealplan?date=2026-08-25&shop=a%26b%3Dc');
   });
 });
 

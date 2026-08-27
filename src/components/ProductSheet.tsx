@@ -285,6 +285,7 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
             placeholder="e.g. Arnold’s"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
+            spellCheck={false}
             maxLength={GROCERY_BRAND_MAX_LENGTH}
             accessibilityLabel="Brand"
           />

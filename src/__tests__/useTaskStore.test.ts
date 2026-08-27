@@ -299,7 +299,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null,
+  quotaStartedAt: null, quotaAlwaysVisible: false,
   tags: [],
   category: null,
   sortOrder: 1,
@@ -3553,7 +3553,7 @@ describe('checkPantryCheckTasks', () => {
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
     shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null,
-    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null,
+    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   });
@@ -3790,7 +3790,7 @@ describe('checkPantryReviewTasks', () => {
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
     shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null,
-    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null,
+    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   });
@@ -5107,9 +5107,8 @@ describe('checkMealShortfallTasks', () => {
     const [row] = shopRows();
     expect(row.title).toBe('Shop for Sun Ragu');
     expect(row.generatedSourceId).toBe('m-2026-08-23-dinner');
-    // The meal plan, opened on the night in question — where the day header's
-    // cart button holds the sheet this row is asking for.
-    expect(row.linkUrl).toBe('dundundun://mealplan?date=2026-08-23');
+    // The meal plan, opened straight on the add-to-list sheet for this meal.
+    expect(row.linkUrl).toBe('dundundun://mealplan?date=2026-08-23&shop=m-2026-08-23-dinner');
     expect(row.category).toBe('Meal Plan');
   });
 
@@ -5132,7 +5131,7 @@ describe('checkMealShortfallTasks', () => {
         onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
         isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
         shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null,
-        usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null,
+        usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, backfillDismissedFields: [],
         lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
       }],
     });
@@ -9686,7 +9685,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null,
+          quotaStartedAt: null, quotaAlwaysVisible: false,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9706,7 +9705,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null,
+          quotaStartedAt: null, quotaAlwaysVisible: false,
           progressCount: 5,
           streakCount: 3,
           streakDate: new Date(2025, 5, 9).toISOString(),
@@ -9730,7 +9729,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null,
+          quotaStartedAt: null, quotaAlwaysVisible: false,
           progressCount: 13, // past the target of 8
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9748,7 +9747,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null,
+          quotaStartedAt: null, quotaAlwaysVisible: false,
           progressCount: 0,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9780,7 +9779,7 @@ describe('quota tasks', () => {
           allowOvershoot: true,
           quotaIntervalMinutes: null,
           quotaReminders: false,
-          quotaStartedAt: null,
+          quotaStartedAt: null, quotaAlwaysVisible: false,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -11114,7 +11113,7 @@ describe('deleting a use-up task', () => {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null,
+    varietyOfKey: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };
 
@@ -11166,7 +11165,7 @@ describe('completing a use-up task', () => {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null,
+    varietyOfKey: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };
   const seedItem = () => {

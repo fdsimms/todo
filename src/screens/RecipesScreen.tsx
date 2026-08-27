@@ -666,6 +666,7 @@ export function RecipesScreen() {
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="none"
               autoCorrect={false}
+              spellCheck={false}
               returnKeyType="search"
               clearButtonMode="while-editing"
               accessibilityLabel="Search recipes"

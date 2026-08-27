@@ -1178,6 +1178,15 @@ export function initDatabase(): void {
     'ALTER TABLE people ADD COLUMN reach_out_offer_declined_at TEXT',
     // A physical place the task is about — see Task.location in types/index.ts.
     'ALTER TABLE tasks ADD COLUMN location TEXT',
+    // Same mechanism as tasks/categories/projects/people.backfill_dismissed_fields
+    // above, for the Backfill screen's item pool (variety, substitutes). Empty
+    // on every existing row, which reads as "nothing dismissed yet" — the only
+    // honest state before this column existed. See GroceryItem.backfillDismissedFields.
+    "ALTER TABLE grocery_items ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
+    // Opts a daily target out of hiding on Today while it's on pace — see
+    // Task.quotaAlwaysVisible. 0 on every existing row: a quota task has
+    // always hidden while on pace, and this column only ever turns that off.
+    'ALTER TABLE tasks ADD COLUMN quota_always_visible INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1986,6 +1995,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     quotaIntervalMinutes: (row.quota_interval_minutes as number | null) ?? null,
     quotaReminders: Boolean(row.quota_reminders),
     quotaStartedAt: (row.quota_started_at as string | null) ?? null,
+    quotaAlwaysVisible: Boolean(row.quota_always_visible),
     supplyCount: (row.supply_count as number | null) ?? null,
     supplyUnit: (row.supply_unit as string | null) ?? null,
     supplyRefillCount: (row.supply_refill_count as number | null) ?? null,
@@ -2088,8 +2098,8 @@ export function dbInsertTask(task: Task): void {
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
-      quota_interval_minutes, quota_reminders, quota_started_at, location
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, location
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2154,6 +2164,7 @@ export function dbInsertTask(task: Task): void {
       task.quotaIntervalMinutes ?? null,
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
+      task.quotaAlwaysVisible ? 1 : 0,
       task.location ?? null,
     ]
   );
@@ -2180,7 +2191,7 @@ export function dbUpdateTask(task: Task): void {
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
-      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, location=?
+      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, location=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2246,6 +2257,7 @@ export function dbUpdateTask(task: Task): void {
       task.quotaIntervalMinutes ?? null,
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
+      task.quotaAlwaysVisible ? 1 : 0,
       task.location ?? null,
       task.id,
     ]
@@ -2772,6 +2784,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     lastSpoiledAt: (row.last_spoiled_at as string) ?? null,
     varietyOfKey: (row.variety_of_key as string) ?? null,
     priceHistory: parsePriceHistory(row.price_history as string | null),
+    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
 
@@ -2789,8 +2802,9 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        pantry_check_declined_at, used_up_count, spoiled_count, last_spoiled_at,
-       last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key,
+       backfill_dismissed_fields)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -2805,6 +2819,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,
+      JSON.stringify(item.backfillDismissedFields),
     ]
   );
 }
@@ -2818,7 +2833,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        pantry_check_declined_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
-       preferred_product_id=?, brand_strict=?, variety_of_key=?
+       preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -2834,6 +2849,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,
+      JSON.stringify(item.backfillDismissedFields),
       item.id,
     ]
   );

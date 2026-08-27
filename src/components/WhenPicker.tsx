@@ -4,6 +4,7 @@ import {
   Modal,
   View,
   Text,
+  TextInput,
   TouchableOpacity,
   StyleSheet,
   Dimensions,
@@ -23,7 +24,8 @@ import {
   buildCalendarGrid, weekdayHeaders,
   canPageToPreviousMonth, clampMonthToEarliest, isDayBefore,
 } from '../utils/calendarGrid';
-import { dayKeyOf, getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
+import { dayKeyOf, getLogicalNow, getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
+import { parseNaturalDate } from '../utils/parseNaturalDate';
 import { generateId } from '../utils/id';
 import type { TimeOfDay, Effort, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
@@ -69,7 +71,7 @@ const BLANK_SNOOZE_TASK: Task = {
   previousOccurrenceId: null,
   seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1, seriesDefaults: null,
   postponeCount: 0, postponeMuted: false, driftingSince: null,
-  quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null,
+  quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false,
 };
 
 interface Props {
@@ -126,6 +128,22 @@ interface Props {
    * absent, so a host with nowhere to send the user doesn't offer it.
    */
   onBreakUp?: () => void;
+  /**
+   * Shows a "next tuesday" / "in 3 days" text field above the quick buttons,
+   * parsed by `parseNaturalDate` — the same parser quick add and the task
+   * editor already use. Submitting it commits exactly like tapping the day it
+   * resolves to (same pop, same haptic, same `allowPast` floor), so it's a
+   * faster way to reach a day the grid already offers rather than a second
+   * path into the picker.
+   *
+   * Opt-in rather than always on: most hosts hand this picker a task whose
+   * title is right there to read, so a "next tuesday" the user already typed
+   * once — as "walk the dog next tuesday" — is rarely worth typing a second
+   * time. The two call sites that carried this on `CalendarPicker`
+   * (`MealPlanScreen`'s bulk move and "Move to") have no such text to lean
+   * on, which is the case this earns its keep.
+   */
+  nlEnabled?: boolean;
 }
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -155,7 +173,7 @@ export function WhenPicker({
   taskId, taskTitle, taskNotes, taskTags, taskCategory, taskPriority, taskEffort, taskEstimatedMinutes,
   onConfirm, onClear, onCancel,
   title = 'When?', showTimeOfDay = true, showSuggest = true, allowPast = true,
-  postponeTaskId, onBreakUp,
+  postponeTaskId, onBreakUp, nlEnabled,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -171,6 +189,7 @@ export function WhenPicker({
 
   const [displayMonth, setDisplayMonth] = useState(() => new Date());
   const [segments, setSegments] = useState<TimeOfDay[]>([]);
+  const [nlText, setNlText] = useState('');
   // Day currently being confirmed — drives the brief "you picked it" feedback.
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [suggestion, setSuggestion] = useState<{ key: string; reason: string } | null>(null);
@@ -201,6 +220,7 @@ export function WhenPicker({
       // on a month whose every cell is refused and whose back chevron is off.
       setDisplayMonth(clampMonthToEarliest(value ?? new Date(), earliestDay));
       setSegments(initialSegments ?? []);
+      setNlText('');
       setPendingKey(null);
       setSuggestion(null);
       setSuggestError(null);
@@ -298,6 +318,27 @@ export function WhenPicker({
 
   const handleToday = () => confirmWithFeedback(noonOf(today), 'today');
   const handleTomorrow = () => { declineReachOutOfferIfShown(); confirmWithFeedback(noonOf(tomorrow), tomorrowKey); };
+
+  // As-you-type: just page the grid to what's been typed so far, the same
+  // preview CalendarPicker's own nlText gives. Nothing commits until Enter —
+  // partial text like "next tu" resolves to a real (wrong) date along the way
+  // and would otherwise close the picker out from under whoever's still typing.
+  const onNlChange = (text: string) => {
+    setNlText(text);
+    const parsed = parseNaturalDate(text, getLogicalNow(dayResetTime));
+    if (parsed) setDisplayMonth(startOfMonth(parsed));
+  };
+
+  // Enter commits exactly like tapping the day it resolved to — same feedback,
+  // same allowPast floor, same reach-out decline. Unparseable or refused text
+  // is left alone rather than cleared, so a typo can be fixed in place.
+  const onNlSubmit = () => {
+    const parsed = parseNaturalDate(nlText, getLogicalNow(dayResetTime));
+    if (!parsed) return;
+    if (earliestDay && isDayBefore(parsed, earliestDay)) return;
+    if (!isSameDay(parsed, today)) declineReachOutOfferIfShown();
+    confirmWithFeedback(noonOf(parsed), isSameDay(parsed, today) ? 'today' : dayKeyOf(parsed));
+  };
 
   // Lets the time-of-day segment be changed on its own, without also
   // having to tap a calendar day just to commit the change.
@@ -460,6 +501,27 @@ export function WhenPicker({
             <Text style={styles.headerTitle}>{title}</Text>
             <SheetHeaderButton label="Save" onPress={handleSave} style={styles.headerSaveText} />
           </View>
+
+          {/* Natural language input */}
+          {nlEnabled && (
+            <>
+              <View style={styles.nlSection}>
+                <TextInput
+                  style={styles.nlInput}
+                  value={nlText}
+                  onChangeText={onNlChange}
+                  onSubmitEditing={onNlSubmit}
+                  placeholder='e.g. "next monday", "in 3 days"'
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                />
+              </View>
+              <View style={styles.sectionGap} />
+            </>
+          )}
 
           {/* Time of day — its own section, distinct from the date shortcuts */}
           {showTimeOfDay && (
@@ -778,6 +840,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: spacing.xs + 2,
+  },
+  nlSection: {
+    marginHorizontal: spacing.md,
+  },
+  nlInput: {
+    color: colors.text,
+    fontSize: font.md,
+    backgroundColor: colors.bgTertiary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 11,
   },
   timeSection: {
     marginHorizontal: spacing.md,

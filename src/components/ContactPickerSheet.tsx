@@ -196,6 +196,7 @@ export function ContactPickerSheet({ visible, onPick, onClose }: Props) {
               placeholderTextColor={colors.textTertiary}
               autoCapitalize="words"
               autoCorrect={false}
+              spellCheck={false}
               autoFocus
               returnKeyType="search"
               accessibilityLabel={scope === 'limited' ? 'Search or browse the contacts you shared' : 'Search your contacts'}

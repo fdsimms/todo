@@ -328,6 +328,7 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
             placeholder="Search your grocery catalog"
             placeholderTextColor={colors.textTertiary}
             autoCorrect={false}
+            spellCheck={false}
             autoCapitalize="none"
             returnKeyType="search"
             accessibilityLabel="Search your grocery catalog"

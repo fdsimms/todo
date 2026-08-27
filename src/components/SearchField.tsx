@@ -60,6 +60,7 @@ export const SearchField = forwardRef<TextInput, Props>(function SearchField(
         onChangeText={onChangeText}
         autoFocus={autoFocus}
         autoCorrect={false}
+        spellCheck={false}
         autoCapitalize="none"
         returnKeyType="search"
         onSubmitEditing={onSubmitEditing}

@@ -18,7 +18,7 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { liveProjectSteps } from '../utils/projectOrder';
-import { isHeldBack } from '../utils/visibilityUtils';
+import { isHeldBack, isQuotaOnPace, isTaskVisible } from '../utils/visibilityUtils';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
@@ -59,6 +59,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
+import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
 import { mealYearRange, taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
 import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -592,6 +593,19 @@ describe('demo mode', () => {
     expect(paced!.progressCount).toBeLessThan(paced!.targetCount!);
   });
 
+  it('seeds a daily target that stays visible on pace, on pace', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const alwaysVisible = tasks.find(t => t.quotaAlwaysVisible);
+    expect(alwaysVisible).toBeDefined();
+    // On pace (fully met, in fact) is the whole point being demonstrated —
+    // an ordinary target in this state would be hidden.
+    expect(alwaysVisible!.progressCount).toBe(alwaysVisible!.targetCount);
+    expect(isQuotaOnPace(alwaysVisible!)).toBe(true);
+    expect(isTaskVisible(alwaysVisible!)).toBe(true);
+  });
+
   // A timed task can hand its countdown out to its subtasks, and one that
   // hasn't reads exactly like every timed task did before that was possible.
   it('seeds a timed task with its countdown split across its subtasks', () => {
@@ -1083,6 +1097,19 @@ describe('demo seed — people', () => {
   it('leaves each backfillable person field with somebody to fill it in for', () => {
     const counts = personBackfillFieldCounts(usePersonStore.getState().people);
     for (const field of PERSON_BACKFILL_FIELDS) {
+      expect(counts[field.id]).toBeGreaterThan(0);
+    }
+  });
+
+  // Same reasoning as the person pool above, for the Items pool: a few items
+  // already declare a variety or a substitute (see demoSeed's own
+  // setVarietyOfKey/linkItemSub calls), but the catalog is large enough that
+  // plenty are still missing either — this pins that rather than seeding
+  // anything new.
+  it('leaves each backfillable item field with something to fill it in for', () => {
+    const { items, itemSubs } = useGroceryStore.getState();
+    const counts = itemBackfillFieldCounts(items, itemSubs);
+    for (const field of ITEM_BACKFILL_FIELDS) {
       expect(counts[field.id]).toBeGreaterThan(0);
     }
   });

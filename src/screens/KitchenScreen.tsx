@@ -869,6 +869,7 @@ function makeStyles(colors: Colors) {
       paddingHorizontal: spacing.md,
       marginHorizontal: spacing.md,
       marginTop: spacing.md,
+      marginBottom: spacing.md,
     },
     search: {
       flex: 1,
@@ -884,13 +885,11 @@ function makeStyles(colors: Colors) {
     addWrap: {
       flexDirection: 'row',
       paddingHorizontal: spacing.md,
-      paddingTop: spacing.md,
     },
     caption: {
       fontSize: font.sm,
       color: colors.textTertiary,
       paddingHorizontal: spacing.md,
-      paddingTop: spacing.md,
     },
     list: { paddingTop: spacing.sm, paddingBottom: spacing.xl },
     emptyContainer: { flexGrow: 1 },

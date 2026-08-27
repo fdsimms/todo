@@ -378,6 +378,23 @@ export function seedDemoData(): void {
   // in and closes out in without it counting as a miss.
   updateTask(eyes.id, { progressCount: 7 });
 
+  // The third kind of daily target: no time-of-day expectation at all, so the
+  // hide-while-on-pace behavior the other two rely on is exactly what this one
+  // opts out of. Seeded on pace (unlike water/eyes) — the point being
+  // demonstrated is that it stays on Today anyway.
+  const stretch = addTask({
+    title: 'Stretch',
+    notes: 'Whenever, no particular time — stays on Today all day instead of hiding while you keep up with it.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    targetCount: 3,
+    targetUnit: 'stretches',
+    quotaAlwaysVisible: true,
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+  });
+  updateTask(stretch.id, { progressCount: 3 });
+
   // An extra-task rule. Invisible until it fires, so the seed carries a tally
   // partway through the cycle: the editor's caption then reads as a rule in
   // progress rather than one nobody has started.
@@ -2687,7 +2704,7 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     useTaskStore.getState().addTask({
       title: mealShortfallTitle(salmonNight.date, 'Lemon garlic salmon'),
       dueDate: today.toISOString(),
-      linkUrl: mealShortfallLinkUrl(salmonNight.date),
+      linkUrl: mealShortfallLinkUrl(salmonNight.date, salmonNight.id),
       category: 'Meal Plan',
       ...generatedBy('mealShortfall', salmonNight.id),
     });

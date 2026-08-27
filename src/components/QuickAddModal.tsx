@@ -1406,6 +1406,11 @@ export function QuickAddModal({
                 // glitching. Only suppress it while that overlay is actually
                 // showing; autocorrect stays on for ordinary typing.
                 autoCorrect={!hasOverlay}
+                // Spell check is a different signal than autocorrect — a red
+                // squiggle, not a rewrite — so it never fights the overlay and
+                // stays on unconditionally: a title is real prose, not one of
+                // the opaque fields (link/phone/email) this pairing is off for.
+                spellCheck
                 blurOnSubmit={false}
                 onLayout={e => setInputW(e.nativeEvent.layout.width)}
                 keyboardAppearance={isDark ? 'dark' : 'light'}
@@ -2102,6 +2107,7 @@ export function QuickAddModal({
                   keyboardType="url"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  spellCheck={false}
                   returnKeyType="done"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />
@@ -2133,6 +2139,7 @@ export function QuickAddModal({
                   placeholderTextColor={colors.textTertiary}
                   keyboardType="phone-pad"
                   autoCorrect={false}
+                  spellCheck={false}
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                   // No return key on the iOS phone pad, and the only other way
                   // to blur this field is a tap outside — which in this sheet
@@ -2177,6 +2184,7 @@ export function QuickAddModal({
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  spellCheck={false}
                   returnKeyType="done"
                   keyboardAppearance={isDark ? 'dark' : 'light'}
                 />

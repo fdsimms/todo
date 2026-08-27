@@ -274,6 +274,27 @@ function matchRecurrenceCore(text: string, now: Date, segments: TimeOfDay[]): Pa
     }
   }
 
+  // A specific annual date, numeric (month-first, matching parseNaturalDate's
+  // own "12/25" grammar): "every 3/10" → every March 10th. Swaps to day/month
+  // only when the first number can't be a month, same rule monthDay's caller
+  // in parseNaturalDate.ts uses for a one-off date.
+  if ((m = text.match(/^every (\d{1,2})\/(\d{1,2})$/))) {
+    let month = parseInt(m[1], 10) - 1;
+    let day = parseInt(m[2], 10);
+    if (month > 11 && day <= 12) {
+      [month, day] = [day - 1, month + 1];
+    }
+    if (month <= 11) {
+      const dp = monthDay(month, day, null, now);
+      if (dp) {
+        return {
+          dueDate: dueAt(dp.date), timeSegments: segments,
+          recurrenceType: 'yearly', recurrenceInterval: 1, recurrenceDays: [],
+        };
+      }
+    }
+  }
+
   // Monthly on a fixed day-of-month: "on the 1st of every month", "every month
   // on the 15th", "monthly on the last day".
   if ((m = text.match(/^on the (.+) of every month$/))

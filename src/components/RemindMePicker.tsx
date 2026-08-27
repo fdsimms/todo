@@ -209,6 +209,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
                 returnKeyType="done"
                 autoCapitalize="none"
                 autoCorrect={false}
+                spellCheck={false}
               />
             </View>
 

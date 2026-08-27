@@ -212,6 +212,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               returnKeyType="done"
               autoCapitalize="none"
               autoCorrect={false}
+              spellCheck={false}
               accessibilityLabel="Add a word this rule looks for"
             />
           </View>
@@ -433,6 +434,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
               keyboardType="url"
               autoCapitalize="none"
               autoCorrect={false}
+              spellCheck={false}
               returnKeyType="done"
               accessibilityLabel="Custom link URL this rule sets"
             />

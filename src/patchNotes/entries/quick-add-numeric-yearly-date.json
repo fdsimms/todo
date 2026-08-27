@@ -1,0 +1,4 @@
+{
+  "message": "Quick add now understands a numeric annual date like \"every 3/10\" as a yearly repeat, the same as spelling out \"every march 10\"",
+  "date": "2026-08-27"
+}
