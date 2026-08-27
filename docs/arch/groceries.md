@@ -1185,6 +1185,18 @@ read side.
   real dying entry under the generic key wins over the alias, and two dying varieties settle on
   the more urgent. The module's no-fuzzy-matching rule stands: a declaration is user-authored,
   not a guess.
+- **`catalogCoverage` credits a variety at *full* weight**, which is the one place the
+  difference from a substitute is a number rather than a rule. `SUBSTITUTE_RECENCY_CREDIT`
+  discounts a substitute on purpose (#1568: a fully-stocked recipe must outrank one stocked
+  only by tolerated stand-ins), and a variety must not be discounted the same way — it *is*
+  the thing the line named, so a kitchen stocking white onions would otherwise rank below one
+  holding a row called plain "Onion" for the same dish. It resolves the freshest of the family
+  rather than `coveringVariety`'s ladder, because this feeds a recency average and wants the
+  best evidence the line is coverable tonight, where that one picks what a shopping read files
+  a row under. The index is built on the first line that misses, so an install with no
+  declarations never allocates it — this runs once per recipe over the whole catalog.
+  `countLikelyInPantry` needed nothing: it reads `classifyPlanned`'s rows, which already carry
+  the variety's own key by the time it counts them.
 - **`ingredientCatalogMatch` reads a declared-covered generic as `linked`** (`reason:
   'variety'`), so the "did you mean White onion?" badge stands down once the relation is
   recorded — renaming the recipe line to the variety is exactly the over-specifying this
