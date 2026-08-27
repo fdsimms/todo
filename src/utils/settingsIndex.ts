@@ -157,6 +157,7 @@ export interface SettingsEntry {
 const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   taskBreakdown: ['claude', 'model', 'subtasks', 'steps', 'split', 'suggestions', 'postpone'],
   templateSuggestions: ['claude', 'model', 'checklist'],
+  projectTaskSuggestions: ['claude', 'model', 'checklist', 'fill', 'generate', 'description'],
   groceryAisles: ['claude', 'model', 'shopping'],
   recipeExtraction: ['claude', 'model', 'ingredients', 'paste', 'photo', 'link'],
   mealIdeas: ['claude', 'model', 'dinner', 'suggest', 'meal plan'],
@@ -211,6 +212,11 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'automatic'],
   reachOut: ['people', 'person', 'friend', 'family', 'catch up', 'cadence', 'nudge', 'reach out',
     'contact', 'generated', 'automatic'],
+  // `swipe` and `deck` earn their place: they are what a person remembers about
+  // this one, and the label can't carry either without describing a gesture
+  // instead of what the setting does.
+  pantryReview: ['cupboard', 'stock', 'take stock', 'swipe', 'deck', 'still have', 'grocery',
+    'kitchen', 'generated', 'automatic'],
 };
 
 /**

@@ -32,7 +32,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
-import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday } from '../utils/visibilityUtils';
+import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { isRealCompletion } from '../utils/missed';
 import { isToday } from 'date-fns/isToday';
 import {
@@ -549,6 +549,7 @@ export function TodayScreen() {
   const removeGroupRow = useTaskGroupStore(s => s.removeGroupRow);
   const completeGroup = useTaskStore(s => s.completeGroup);
   const deferGroup = useTaskStore(s => s.deferGroup);
+  const pinGroup = useTaskStore(s => s.pinGroup);
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const groupTasks = useTaskStore(s => s.groupTasks);
   const applyGroupCategory = useTaskStore(s => s.applyGroupCategory);
@@ -927,6 +928,9 @@ export function TodayScreen() {
       // actually be seen instead. Same move checkTripExpiry makes on focus, and
       // for the same reason: it turns something already true into something
       // visible. A no-op boolean check while the setting is off.
+      // Ahead of the drip at every call site, so the bulk offer gets to
+      // suppress the per-item rows in the same pass rather than one behind it.
+      useTaskStore.getState().checkPantryReviewTasks();
       useTaskStore.getState().checkPantryCheckTasks();
       // On focus as well, for the pantry check's exact reason: a shortfall task
       // is answered somewhere else entirely — its link opens the Meal Plan
@@ -940,7 +944,18 @@ export function TodayScreen() {
       // from the reorder task's own completion prompt, which completeTask
       // already sweeps for. This is the half that catches the clock.
       useTaskStore.getState().checkSupplyReorderTasks();
-      const interval = setInterval(() => forceRefresh(n => n + 1), 30000);
+      const interval = setInterval(() => {
+        // On the tick as well as on foreground, unlike every other maintenance
+        // pass, because this is the one whose trigger can arrive while the
+        // user is looking at the row: a run ends when its window shuts, not at
+        // the day boundary. Without it a run that closed at 17:00 with the app
+        // open would leave the task sitting in the Expired bucket until the
+        // next foreground — expired being precisely the wrong word for a
+        // routine that just finished. Idempotent and self-clearing: the
+        // completion it writes is what stops it matching again.
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+        forceRefresh(n => n + 1);
+      }, 30000);
       // Also refresh the instant the app comes back to the foreground
       // (e.g. reopened the next morning), instead of waiting on the tick.
       const subscription = AppState.addEventListener('change', state => {
@@ -950,6 +965,10 @@ export function TodayScreen() {
           // Opt-in counterpart to rolloverQuotas, for allowOvershoot tasks —
           // see its doc comment in useTaskStore.ts.
           useTaskStore.getState().sweepOvershootQuotas();
+          // The third quota day-close, for interval quotas — see its doc
+          // comment. Here as well as on the tick above, since a phone closed
+          // before its window shut comes back with the run already over.
+          useTaskStore.getState().sweepFinishedQuotaRuns();
           // After rolloverQuotas/sweepOvershootQuotas: either can complete and
           // spawn members, which changes what a project counts as scheduled.
           useTaskStore.getState().dripStalledProjects();
@@ -982,6 +1001,7 @@ export function TodayScreen() {
           // Same shape one shelf over: a pantry guess runs out purely by time
           // passing, and stops needing an answer the moment the user gives one
           // from the sheet this task links to.
+          useTaskStore.getState().checkPantryReviewTasks();
           useTaskStore.getState().checkPantryCheckTasks();
           // A meal comes into shopping range purely by time passing, and stops
           // wanting a shop the moment the plan changes under it — re-planned,
@@ -1347,6 +1367,20 @@ export function TodayScreen() {
     for (const list of map.values()) list.sort((a, b) => a.sortOrder - b.sortOrder);
     return map;
   }, [allTasks]);
+
+  // The same subset pinGroup itself acts on (see its own comment), computed
+  // once per group here rather than inline at each of the four header call
+  // sites — main list, Later Today, Inbox, and the pinned block's own
+  // grouped headers all need the same answer to "is this stack pinned".
+  const groupPinInfo = useMemo(() => {
+    const map = new Map<string, { pinnable: boolean; pinned: boolean }>();
+    for (const group of taskGroups) {
+      const roster = groupRoster(childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN);
+      const eligible = roster.filter(c => !c.completed && isRelevantToGroupToday(c));
+      map.set(group.id, { pinnable: eligible.length > 0, pinned: eligible.length > 0 && eligible.every(c => c.pinned) });
+    }
+    return map;
+  }, [taskGroups, childrenByGroupId]);
 
   // Groups with at least one currently-visible child, each paired with just
   // that visible-and-filtered subset — a group with nothing left to show
@@ -2196,6 +2230,7 @@ export function TodayScreen() {
     });
   }, [completeGroup, requestComplete]);
   const handleGroupDefer = useCallback((groupId: string, date: Date) => deferGroup(groupId, date), [deferGroup]);
+  const handleGroupPin = useCallback((groupId: string) => pinGroup(groupId), [pinGroup]);
   const handleGroupPressEdit = useCallback((groupId: string) => {
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     if (!group) return;
@@ -2214,6 +2249,7 @@ export function TodayScreen() {
     onDefer: handleGroupDefer,
     onSwipeSelect: handleGroupSwipeSelect,
     onPressEdit: handleGroupPressEdit,
+    onPressPin: handleGroupPin,
   };
 
   // Shared by the plain 'task' row case and a group's expanded children —
@@ -2343,6 +2379,8 @@ export function TodayScreen() {
               group={item.group}
               allChildren={allChildren}
               filtered={groupTallyFiltered}
+              pinned={groupPinInfo.get(item.group.id)?.pinned ?? false}
+              pinDisabled={!(groupPinInfo.get(item.group.id)?.pinnable ?? false)}
               onToggleCollapse={() => {
                 if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
                 haptics.tap();
@@ -2479,6 +2517,8 @@ export function TodayScreen() {
           group={group}
           allChildren={allChildren}
           dueTodayOverride={children}
+          pinned={groupPinInfo.get(group.id)?.pinned ?? false}
+          pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
           onToggleCollapse={() => {
             haptics.tap();
             // See the main list's group onToggleCollapse: no animateLayout()
@@ -2544,6 +2584,8 @@ export function TodayScreen() {
           group={group}
           allChildren={allChildren}
           filtered={filterHasReminder}
+          pinned={groupPinInfo.get(group.id)?.pinned ?? false}
+          pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
           onToggleCollapse={() => {
             if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
             haptics.tap();
@@ -2560,6 +2602,94 @@ export function TodayScreen() {
       </TaskGroupTray>
     );
   };
+
+  /**
+   * One row the pinned block's own SortableList can hand back and forth: a
+   * loose pinned task, or a stack that has at least one pinned member. Built
+   * fresh from pinnedTasks below rather than stored anywhere — pinnedTasks
+   * stays the flat, ungrouped list every other reader (focus sessions, the
+   * suggested-pins count) already depends on.
+   */
+  type PinnedListItem =
+    | { id: string; type: 'task'; task: Task }
+    | { id: string; type: 'group'; group: TaskGroup; children: Task[] };
+
+  // Clusters pinnedTasks by groupId without changing pinnedTasks itself. A
+  // stack's header lands at the position of its first (lowest pinnedOrder)
+  // pinned member; later members are folded into that same entry instead of
+  // rendering a second time. Only the tasks that are actually pinned show
+  // under the header (a member due today but not itself pinned stays out of
+  // the block entirely) — same rule an individual pinned task already
+  // follows for its own single row.
+  const pinnedItems = useMemo(() => {
+    const groupById = new Map(taskGroups.map(g => [g.id, g] as const));
+    const childrenByGroup = new Map<string, Task[]>();
+    for (const t of pinnedTasks) {
+      if (!t.groupId || !groupById.has(t.groupId)) continue;
+      const list = childrenByGroup.get(t.groupId);
+      if (list) list.push(t);
+      else childrenByGroup.set(t.groupId, [t]);
+    }
+    const seenGroups = new Set<string>();
+    const items: PinnedListItem[] = [];
+    for (const t of pinnedTasks) {
+      const group = t.groupId ? groupById.get(t.groupId) : undefined;
+      if (!group) {
+        items.push({ id: t.id, type: 'task', task: t });
+        continue;
+      }
+      if (seenGroups.has(group.id)) continue;
+      seenGroups.add(group.id);
+      items.push({ id: group.id, type: 'group', group, children: childrenByGroup.get(group.id) ?? NO_GROUP_CHILDREN });
+    }
+    return items;
+  }, [pinnedTasks, taskGroups]);
+
+  // A dragged group item moves as one block; the pinned order within it is
+  // left exactly as it was (see pinnedItems above) since there's no drag
+  // surface here for reordering a stack's own pinned members.
+  const reorderPinnedItems = (next: PinnedListItem[]) => {
+    const ids = next.flatMap(item => (item.type === 'group' ? item.children.map(c => c.id) : [item.task.id]));
+    reorderPinnedTasks(ids);
+  };
+
+  // A stack's header inside the pinned block. Deliberately plainer than the
+  // main list's 'group' branch: no drag (moving a whole stack's position in
+  // the pinned order isn't wired up — see reorderPinnedItems) and no
+  // GroupDropTargetRow (there's nothing here for a dragged task to join).
+  // filtered is passed unconditionally: the "N/M done today" tally is
+  // computed from the full roster, which would overstate what's actually
+  // shown under a header rendering only its pinned members.
+  const renderPinnedGroup = (group: TaskGroup, children: Task[]) => (
+    <TaskGroupTray>
+      <TaskGroupHeader
+        group={group}
+        allChildren={children}
+        filtered
+        pinned={groupPinInfo.get(group.id)?.pinned ?? false}
+        pinDisabled={!(groupPinInfo.get(group.id)?.pinnable ?? false)}
+        onToggleCollapse={() => {
+          if (expandedTaskId !== null) { setExpandedTaskId(null); return; }
+          haptics.tap();
+          setGroupCollapsed(group.id, !group.collapsed);
+        }}
+        {...groupHeaderProps}
+      />
+      <TaskGroupBody expanded={!group.collapsed} hasChildren={children.length > 0}>
+        {children.map(child => (
+          <React.Fragment key={child.id}>
+            {renderTaskRow(child, {
+              indented: true,
+              showCategory: true,
+              rowKey: `pin-${child.id}`,
+              duplicateRow: true,
+              hidesWhenOnPace: false,
+            })}
+          </React.Fragment>
+        ))}
+      </TaskGroupBody>
+    </TaskGroupTray>
+  );
 
   /**
    * The Pinned block — Today's list header, and deliberately NOT part of the
@@ -2668,25 +2798,27 @@ export function TodayScreen() {
         </View>
         <SpotlightScrim />
       </Pressable>
-      <SortableList
-        data={pinnedTasks}
-        onReorder={next => reorderPinnedTasks(next.map(t => t.id))}
+      <SortableList<PinnedListItem>
+        data={pinnedItems}
+        onReorder={reorderPinnedItems}
         onDragStateChange={setDraggingPin}
         placeholderStyle={styles.stackDropSlot}
         autoscroll={pinnedAndStackAutoscroll}
-        renderItem={(task, _displayIndex, drag, isActive) =>
-          renderTaskRow(task, {
-            drag,
-            isActive,
-            // The section sits above the category headers, so a row in it has
-            // nothing around it to say where the task actually lives.
-            showCategory: true,
-            rowKey: `pin-${task.id}`,
-            duplicateRow: true,
-            // pinnedTasks ignores visibility, so this copy isn't going
-            // anywhere when a quota goes back on pace — only the real row is.
-            hidesWhenOnPace: false,
-          })
+        renderItem={(item, _displayIndex, drag, isActive) =>
+          item.type === 'group'
+            ? renderPinnedGroup(item.group, item.children)
+            : renderTaskRow(item.task, {
+                drag,
+                isActive,
+                // The section sits above the category headers, so a row in it
+                // has nothing around it to say where the task actually lives.
+                showCategory: true,
+                rowKey: `pin-${item.task.id}`,
+                duplicateRow: true,
+                // pinnedTasks ignores visibility, so this copy isn't going
+                // anywhere when a quota goes back on pace — only the real row is.
+                hidesWhenOnPace: false,
+              })
         }
       />
     </FabDropZone>

@@ -4,12 +4,12 @@
 // on grocery-aisle sorting shouldn't have to choose one setting for both.
 
 export type AiFeatureId =
-  | 'taskBreakdown' | 'templateSuggestions' | 'groceryAisles' | 'recipeExtraction' | 'mealIdeas'
-  | 'substitutes' | 'receiptImport';
+  | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
+  | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
-  'taskBreakdown', 'templateSuggestions', 'groceryAisles', 'recipeExtraction', 'mealIdeas',
-  'substitutes', 'receiptImport',
+  'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
+  'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -52,6 +52,11 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     id: 'templateSuggestions',
     label: 'Template drafting',
     hint: 'Suggests checklist items when building a template',
+  },
+  {
+    id: 'projectTaskSuggestions',
+    label: 'Project drafting',
+    hint: 'Suggests tasks for a project from its title and notes',
   },
   {
     id: 'groceryAisles',
@@ -116,6 +121,7 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
   return {
     taskBreakdown: { enabled: true, model: DEFAULT_AI_MODEL },
     templateSuggestions: { enabled: true, model: DEFAULT_AI_MODEL },
+    projectTaskSuggestions: { enabled: true, model: DEFAULT_AI_MODEL },
     groceryAisles: { enabled: true, model: DEFAULT_AI_MODEL },
     recipeExtraction: { enabled: true, model: DEFAULT_AI_MODEL },
     mealIdeas: { enabled: true, model: DEFAULT_AI_MODEL },

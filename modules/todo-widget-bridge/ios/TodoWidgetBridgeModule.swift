@@ -7,6 +7,10 @@ private let snapshotFileName = "widget_data.json"
 // Must match the same literal in TodoWidgetData.swift — a separate Xcode
 // target/compilation unit, so the string can't be shared directly.
 private let pendingCompletionsFileName = "widget_pending_completions.json"
+// Must match the same literal in AddTaskIntent.swift — same target, but
+// Swift top-level `private` is file-scoped, so the two files each keep
+// their own copy.
+private let pendingAddTasksFileName = "widget_pending_add_tasks.json"
 // Likewise, matching SharedRecipeQueue.swift in the share extension target.
 //
 // This module is the app's only App Group accessor, which is why a queue
@@ -120,6 +124,34 @@ public class TodoWidgetBridgeModule: Module {
         try? FileManager.default.removeItem(at: fileURL)
       }
       return ids
+    }
+
+    // Reads and clears the queue of task titles AddTaskIntent (this target,
+    // AddTaskIntent.swift — the Action Button / Siri / Shortcuts entry point)
+    // has queued. Same read-and-delete shape as drainPendingCompletions above
+    // and for the same reason: the intent runs before the RN JS environment
+    // is guaranteed to be up, so it can only stash the dictated title; this is
+    // where addTask() actually runs — see processPendingAddTasks() in
+    // widgetSync.ts, which drains this on every app launch/foreground.
+    AsyncFunction("drainPendingAddTasks") { () -> [String] in
+      var titles: [String] = []
+      TodoWidgetExceptionCatcher.runCatchingExceptions {
+        guard let containerURL = FileManager.default.containerURL(
+          forSecurityApplicationGroupIdentifier: appGroupID
+        ) else {
+          return
+        }
+
+        let fileURL = containerURL
+          .appendingPathComponent("Library/Application Support", isDirectory: true)
+          .appendingPathComponent(pendingAddTasksFileName)
+
+        guard let data = try? Data(contentsOf: fileURL) else { return }
+        guard let decoded = try? JSONDecoder().decode([String].self, from: data) else { return }
+        titles = decoded
+        try? FileManager.default.removeItem(at: fileURL)
+      }
+      return titles
     }
 
     // Reads and clears the queue of recipe page URLs the share extension

@@ -114,13 +114,19 @@ export function openQuickAddFromShortcut(): void {
 // resetToMealPlan — plus, when the link named one row, which entry to open
 // straight to rather than leaving the list open, the same focus/stamp handoff
 // resetToMealPlan's focusDay uses.
-export function resetToKitchen(focusEntryId?: string | null): void {
+export function resetToKitchen(focusEntryId?: string | null, openReview = false): void {
   if (!navigationRef.isReady()) return;
+  // Stamped like the focus param beside it, and for the same reason: an
+  // unstamped flag would make the second tap on the same row do nothing, which
+  // is exactly the case a deferred review task has — tap it, close the deck
+  // without finishing, tap it again.
+  const params: Record<string, unknown> = {};
+  if (focusEntryId) params.focusKitchenEntry = focusEntryId;
+  if (openReview) params.openPantryReview = Date.now();
+  if (focusEntryId) params.focusStamp = Date.now();
   navigationRef.navigate({
     name: 'Kitchen',
-    params: focusEntryId
-      ? { focusKitchenEntry: focusEntryId, focusStamp: Date.now() }
-      : undefined,
+    params: Object.keys(params).length > 0 ? params : undefined,
   });
 }
 

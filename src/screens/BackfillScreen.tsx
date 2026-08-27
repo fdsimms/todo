@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Platform, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, FlatList, StyleSheet, Platform, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -156,6 +156,28 @@ type ActiveField =
   | { kind: 'project'; id: ProjectBackfillFieldId }
   | { kind: 'person'; id: PersonBackfillFieldId };
 
+/**
+ * One line of the compact review shown once a field's queue empties: what got
+ * set, for what, and how to take it back. Keyed by `itemId` and deduped on
+ * that key (`logSession` below) rather than appended freely, so answering the
+ * same item twice in one session (reachable through the Previous button)
+ * updates its one row instead of leaving a stale one behind.
+ *
+ * `undo` is a closure captured at the moment of the write, holding whatever
+ * the field actually needs to put back — the task's own `updateTask` snapshot
+ * for task fields, the specific category setter for a toggle, or the prior
+ * subset of a project/person patch. Firing it and then dropping the item's id
+ * back out of `skippedIds` (see `undoSessionEntry`) is enough: the live
+ * queue's own "is this still missing?" filter puts the item back at the front
+ * on its own, the same mechanism the Previous button already leans on.
+ */
+interface SessionEntry {
+  itemId: string;
+  title: string;
+  valueText: string;
+  undo: () => void;
+}
+
 export function BackfillScreen() {
   const insets = useSafeAreaInsets();
   const tabBarHeight = useBottomTabBarHeight();
@@ -199,6 +221,10 @@ export function BackfillScreen() {
   // takes back over.
   const [manualCurrentId, setManualCurrentId] = useState<string | null>(null);
   const [sessionTotal, setSessionTotal] = useState(0);
+  // What's been set this pass through a field's queue, for the compact review
+  // shown once it empties — reset alongside history/skippedIds every time a
+  // field is (re)chosen. See SessionEntry's doc comment.
+  const [sessionLog, setSessionLog] = useState<SessionEntry[]>([]);
   const [customOpen, setCustomOpen] = useState(false);
   const [customText, setCustomText] = useState('');
   const [customUnit, setCustomUnit] = useState<'min' | 'hr'>('min');
@@ -326,6 +352,7 @@ export function BackfillScreen() {
     setSkippedIds(new Set());
     setHistory([]);
     setManualCurrentId(null);
+    setSessionLog([]);
     setSessionTotal(backfillCandidates(tasks, id, { categories }).length);
   };
 
@@ -336,6 +363,7 @@ export function BackfillScreen() {
     setSkippedIds(new Set());
     setHistory([]);
     setManualCurrentId(null);
+    setSessionLog([]);
     setSessionTotal(categoryBackfillCandidates(categories, id).length);
   };
 
@@ -346,6 +374,7 @@ export function BackfillScreen() {
     setSkippedIds(new Set());
     setHistory([]);
     setManualCurrentId(null);
+    setSessionLog([]);
     setSessionTotal(projectBackfillCandidates(projects, id).length);
   };
 
@@ -356,6 +385,7 @@ export function BackfillScreen() {
     setSkippedIds(new Set());
     setHistory([]);
     setManualCurrentId(null);
+    setSessionLog([]);
     setSessionTotal(personBackfillCandidates(people, id).length);
   };
 
@@ -366,6 +396,7 @@ export function BackfillScreen() {
     setFromScratch(false);
     setHistory([]);
     setManualCurrentId(null);
+    setSessionLog([]);
   };
 
   // Widens the task queue to every live task for the field, including ones
@@ -381,6 +412,7 @@ export function BackfillScreen() {
     setSkippedIds(new Set());
     setHistory([]);
     setManualCurrentId(null);
+    setSessionLog([]);
     setSessionTotal(backfillCandidates(tasks, active.id, { fromScratch: true }).length);
   };
 
@@ -433,13 +465,38 @@ export function BackfillScreen() {
     setManualCurrentId(prevId);
   };
 
+  // Records or replaces this item's row in the session review — replaces
+  // rather than appends so re-answering an item (through Previous) updates
+  // its one line instead of leaving the earlier answer sitting above it.
+  const logSession = (entry: SessionEntry) => {
+    setSessionLog(prev => [...prev.filter(e => e.itemId !== entry.itemId), entry]);
+  };
+
+  // The review step's own Undo: fires the entry's captured undo, drops its
+  // row, and un-skips the item so the live queue's own "still missing?"
+  // filter picks it back up at the front — same mechanism goBack leans on,
+  // just without needing manualCurrentId since the item is genuinely missing
+  // the field again rather than merely being revisited.
+  const undoSessionEntry = (entry: SessionEntry) => {
+    haptics.tap();
+    animateLayout();
+    entry.undo();
+    setSessionLog(prev => prev.filter(e => e.itemId !== entry.itemId));
+    setSkippedIds(prev => {
+      if (!prev.has(entry.itemId)) return prev;
+      const next = new Set(prev);
+      next.delete(entry.itemId);
+      return next;
+    });
+  };
+
   // A tap here commits immediately and advances the queue, with no per-row
   // confirm — registering the snapshot with setLastAction, same as
   // TaskEditor's save, is what makes a mis-tap recoverable via shake-to-undo
   // instead of a trip back into the task editor. Category and project fields
   // don't go through setLastAction/shake-to-undo yet — see applyCategory,
   // applySequential and applyNudge below.
-  const apply = (patch: Partial<Task>) => {
+  const apply = (patch: Partial<Task>, valueText: string) => {
     if (!currentTask || active?.kind !== 'task') return;
     haptics.tap();
     animateLayout();
@@ -458,6 +515,12 @@ export function BackfillScreen() {
       if (stepId) useSettingsStore.getState().setMealSlotStepEstimate(stepId, patch.estimatedMinutes);
     }
     setLastAction({ label: `${fieldLabel} set`, undo: () => updateTask(snapshot.id, snapshot) });
+    logSession({
+      itemId: currentTask.id,
+      title: displayTitleFor(currentTask),
+      valueText,
+      undo: () => updateTask(snapshot.id, snapshot),
+    });
     advance(currentTask.id);
   };
 
@@ -470,11 +533,28 @@ export function BackfillScreen() {
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
-    switch (active.id) {
-      case 'vacation': setCategoryHideOnVacation(currentCategory.name, true); break;
-      case 'suggestions': setCategoryExcludeFromSuggestions(currentCategory.name, true); break;
-      case 'newBanner': setCategoryExcludeFromNewTasksBanner(currentCategory.name, true); break;
+    const categoryName = currentCategory.name;
+    const fieldId = active.id;
+    switch (fieldId) {
+      case 'vacation': setCategoryHideOnVacation(categoryName, true); break;
+      case 'suggestions': setCategoryExcludeFromSuggestions(categoryName, true); break;
+      case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, true); break;
     }
+    // Always off before this fires (that's what made the category a
+    // candidate), so the undo is just the same setter with the value flipped
+    // back — no snapshot needed the way the project/person cases below take.
+    logSession({
+      itemId: currentCategory.id,
+      title: categoryLabel(categoryName, getCategoryByName),
+      valueText: CATEGORY_BACKFILL_FIELDS.find(f => f.id === fieldId)!.label,
+      undo: () => {
+        switch (fieldId) {
+          case 'vacation': setCategoryHideOnVacation(categoryName, false); break;
+          case 'suggestions': setCategoryExcludeFromSuggestions(categoryName, false); break;
+          case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, false); break;
+        }
+      },
+    });
   };
 
   const applySequential = () => {
@@ -483,7 +563,14 @@ export function BackfillScreen() {
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
-    updateProject(currentProject.id, { sequential: true });
+    const projectId = currentProject.id;
+    updateProject(projectId, { sequential: true });
+    logSession({
+      itemId: projectId,
+      title: currentProject.title,
+      valueText: PROJECT_BACKFILL_FIELDS.find(f => f.id === 'sequential')!.label,
+      undo: () => updateProject(projectId, { sequential: false }),
+    });
   };
 
   // The cadence is a value, not a toggle — committing it needs the
@@ -495,7 +582,20 @@ export function BackfillScreen() {
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
-    updateProject(currentProject.id, nudgeFieldsFor('scheduled', fromCadenceParts(nudgeDraft)));
+    const projectId = currentProject.id;
+    const before = { nudgeOptIn: currentProject.nudgeOptIn, nudgeCadenceDays: currentProject.nudgeCadenceDays };
+    // Through nudgeFieldsFor rather than writing the two fields by hand: they
+    // are one control now (see NudgeMode), and it refuses to store a scheduled
+    // project with a cadence that can never fire. The label is read back off
+    // what was actually committed, so the two can't disagree.
+    const fields = nudgeFieldsFor('scheduled', fromCadenceParts(nudgeDraft));
+    updateProject(projectId, fields);
+    logSession({
+      itemId: projectId,
+      title: currentProject.title,
+      valueText: describeCadence(fields.nudgeCadenceDays),
+      undo: () => updateProject(projectId, before),
+    });
   };
 
   // The three person handlers, one per field, for the reason applyNudge above
@@ -509,7 +609,20 @@ export function BackfillScreen() {
     recordVisited();
     setManualCurrentId(null);
     setBirthdayPickerOpen(false);
-    updatePerson(currentPerson.id, { birthdayMonth: month, birthdayDay: day, birthYear: year });
+    const personId = currentPerson.id;
+    const before = {
+      birthdayMonth: currentPerson.birthdayMonth,
+      birthdayDay: currentPerson.birthdayDay,
+      birthYear: currentPerson.birthYear,
+    };
+    updatePerson(personId, { birthdayMonth: month, birthdayDay: day, birthYear: year });
+    const bDate = new Date(year ?? 2000, month - 1, day);
+    logSession({
+      itemId: personId,
+      title: displayNameOf(currentPerson),
+      valueText: year ? format(bDate, 'MMM d, yyyy') : format(bDate, 'MMM d'),
+      undo: () => updatePerson(personId, before),
+    });
   };
 
   // All three together, always: a year with no month and day is not a birthday.
@@ -520,7 +633,12 @@ export function BackfillScreen() {
     if (!currentPerson) return;
     haptics.tap();
     setBirthdayPickerOpen(false);
-    updatePerson(currentPerson.id, { birthdayMonth: null, birthdayDay: null, birthYear: null });
+    const personId = currentPerson.id;
+    updatePerson(personId, { birthdayMonth: null, birthdayDay: null, birthYear: null });
+    // Missing again, so any row this person already has in the review no
+    // longer describes anything real — drop it rather than leave a stale
+    // "set" line for a value that was just taken back off.
+    setSessionLog(prev => prev.filter(e => e.itemId !== personId));
   };
 
   // Never is a real answer to "how long before a reminder", but it is the
@@ -533,7 +651,20 @@ export function BackfillScreen() {
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
-    updatePerson(currentPerson.id, personCadencePatch(currentPerson, fromCadenceParts(personCadenceDraft)));
+    const personId = currentPerson.id;
+    const before = {
+      cadenceDays: currentPerson.cadenceDays,
+      nudgeOptIn: currentPerson.nudgeOptIn,
+      cadenceSetAt: currentPerson.cadenceSetAt,
+    };
+    const days = fromCadenceParts(personCadenceDraft);
+    updatePerson(personId, personCadencePatch(currentPerson, days));
+    logSession({
+      itemId: personId,
+      title: displayNameOf(currentPerson),
+      valueText: describeCadence(days),
+      undo: () => updatePerson(personId, before),
+    });
   };
 
   const applyAskAbout = () => {
@@ -543,7 +674,15 @@ export function BackfillScreen() {
     animateLayout();
     recordVisited();
     setManualCurrentId(null);
-    updatePerson(currentPerson.id, { askAbout: text });
+    const personId = currentPerson.id;
+    const before = { askAbout: currentPerson.askAbout };
+    updatePerson(personId, { askAbout: text });
+    logSession({
+      itemId: personId,
+      title: displayNameOf(currentPerson),
+      valueText: text,
+      undo: () => updatePerson(personId, before),
+    });
   };
 
   const skip = () => {
@@ -571,21 +710,52 @@ export function BackfillScreen() {
       if (!currentTask) return;
       const snapshot = { ...currentTask };
       const fieldLabel = BACKFILL_FIELDS.find(f => f.id === active.id)!.label;
+      const wasMissing = isFieldMissing(currentTask, active.id, categories);
       updateTask(currentTask.id, dismissBackfillField(currentTask, active.id));
       setLastAction({ label: `${fieldLabel} left unset`, undo: () => updateTask(snapshot.id, snapshot) });
+      logSession({
+        itemId: currentTask.id,
+        title: displayTitleFor(currentTask),
+        valueText: wasMissing ? 'Left unset' : "Won't ask again",
+        undo: () => updateTask(snapshot.id, snapshot),
+      });
       advance(currentTask.id);
     } else if (active.kind === 'category') {
       if (!currentCategory) return;
+      const categoryName = currentCategory.name;
+      const beforeDismissed = currentCategory.backfillDismissedFields;
       setCategoryBackfillDismissedFields(
-        currentCategory.name,
+        categoryName,
         dismissCategoryBackfillField(currentCategory, active.id).backfillDismissedFields
       );
+      logSession({
+        itemId: currentCategory.id,
+        title: categoryLabel(categoryName, getCategoryByName),
+        valueText: "Won't ask again",
+        undo: () => setCategoryBackfillDismissedFields(categoryName, beforeDismissed),
+      });
     } else if (active.kind === 'project') {
       if (!currentProject) return;
-      updateProject(currentProject.id, dismissProjectBackfillField(currentProject, active.id));
+      const projectId = currentProject.id;
+      const before = { backfillDismissedFields: currentProject.backfillDismissedFields };
+      updateProject(projectId, dismissProjectBackfillField(currentProject, active.id));
+      logSession({
+        itemId: projectId,
+        title: currentProject.title,
+        valueText: "Won't ask again",
+        undo: () => updateProject(projectId, before),
+      });
     } else {
       if (!currentPerson) return;
-      updatePerson(currentPerson.id, dismissPersonBackfillField(currentPerson, active.id));
+      const personId = currentPerson.id;
+      const before = { backfillDismissedFields: currentPerson.backfillDismissedFields };
+      updatePerson(personId, dismissPersonBackfillField(currentPerson, active.id));
+      logSession({
+        itemId: personId,
+        title: displayNameOf(currentPerson),
+        valueText: "Won't ask again",
+        undo: () => updatePerson(personId, before),
+      });
     }
   };
 
@@ -597,11 +767,14 @@ export function BackfillScreen() {
     const n = parseFloat(customText);
     if (!Number.isFinite(n) || n <= 0) return;
     const minutes = Math.round(customUnit === 'hr' ? n * 60 : n);
-    apply({ effort: minutesToEffort(minutes), estimatedMinutes: minutes });
+    apply({ effort: minutesToEffort(minutes), estimatedMinutes: minutes }, formatDuration(minutes));
   };
 
   const applyReminder = (date: Date, kind: ReminderKind, offsetDays: number | null) => {
-    apply({ reminderTime: date.toISOString(), reminderKind: kind, reminderOffsetDays: offsetDays });
+    apply(
+      { reminderTime: date.toISOString(), reminderKind: kind, reminderOffsetDays: offsetDays },
+      format(date, 'MMM d, h:mm a')
+    );
     setReminderPickerOpen(false);
   };
 
@@ -769,30 +942,40 @@ export function BackfillScreen() {
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
           actions={
-            <View style={styles.headerActions}>
-              {history.length > 0 && (
-                <TouchableOpacity
-                  onPress={goBack}
-                  hitSlop={8}
-                  accessibilityRole="button"
-                  accessibilityLabel="Previous task"
-                >
-                  <Ionicons name="play-skip-back-outline" size={iconSize.md} color={colors.textSecondary} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                onPress={confirmStartOver}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel={`Redo ${field.label.toLowerCase()} from scratch`}
-              >
-                <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity
+              onPress={confirmStartOver}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Redo ${field.label.toLowerCase()} from scratch`}
+            >
+              <Ionicons name="refresh-outline" size={iconSize.md} color={colors.textSecondary} />
+            </TouchableOpacity>
           }
         />
         {sessionTotal > 0 && (
-          <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+          <View style={styles.progressRow}>
+            {history.length > 0 && (
+              <TouchableOpacity
+                onPress={goBack}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Previous task"
+              >
+                <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+            <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+            {!!currentId && (
+              <TouchableOpacity
+                onPress={skip}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this task for now"
+              >
+                <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         {currentTask ? (
@@ -818,13 +1001,13 @@ export function BackfillScreen() {
               field={active.id}
               colors={colors}
               styles={styles}
-              onEstimate={e => apply(estimatePatchFor(e))}
-              onPriority={p => apply({ priority: p })}
-              onCategory={name => apply({ category: name })}
-              onStreak={() => apply({ showStreak: true })}
-              onVacation={() => apply({ vacationPause: true })}
+              onEstimate={e => apply(estimatePatchFor(e), EFFORT_MINUTES[e] != null ? formatDuration(EFFORT_MINUTES[e]!) : EFFORT_LABELS[e])}
+              onPriority={p => apply({ priority: p }, PRIORITY_OPTIONS.find(o => o.value === p)?.label ?? 'Priority set')}
+              onCategory={name => apply({ category: name }, name ? categoryLabel(name, getCategoryByName) : 'No category')}
+              onStreak={() => apply({ showStreak: true }, 'Streak shown')}
+              onVacation={() => apply({ vacationPause: true }, 'Paused on vacation')}
               onReminder={() => { haptics.tap(); setReminderPickerOpen(true); }}
-              onSuggestions={() => apply({ excludeFromSuggestions: true })}
+              onSuggestions={() => apply({ excludeFromSuggestions: true }, 'Excluded from suggestions')}
               customOpen={customOpen}
               customText={customText}
               customUnit={customUnit}
@@ -835,9 +1018,6 @@ export function BackfillScreen() {
             />
 
             <View style={styles.actionRow}>
-              <PressableScale style={styles.skipButton} onPress={skip} accessibilityRole="button" accessibilityLabel="Skip this task for now">
-                <Text style={styles.skipText}>Skip for now</Text>
-              </PressableScale>
               <PressableScale
                 style={styles.skipButton}
                 onPress={dismiss}
@@ -848,6 +1028,17 @@ export function BackfillScreen() {
               </PressableScale>
             </View>
           </ScrollView>
+        ) : sessionLog.length > 0 ? (
+          <SessionReview
+            entries={sessionLog}
+            onUndo={undoSessionEntry}
+            onDone={backToFields}
+            tabBarHeight={tabBarHeight}
+            colors={colors}
+            styles={styles}
+            itemWord="task"
+            itemWordPlural="tasks"
+          />
         ) : (
           <EmptyState
             icon="checkmark-circle-outline"
@@ -884,19 +1075,31 @@ export function BackfillScreen() {
           title={categoryField.label}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
-          actions={history.length > 0 ? (
-            <TouchableOpacity
-              onPress={goBack}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Previous category"
-            >
-              <Ionicons name="play-skip-back-outline" size={iconSize.md} color={colors.textSecondary} />
-            </TouchableOpacity>
-          ) : undefined}
         />
         {sessionTotal > 0 && (
-          <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+          <View style={styles.progressRow}>
+            {history.length > 0 && (
+              <TouchableOpacity
+                onPress={goBack}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Previous category"
+              >
+                <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+            <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+            {!!currentId && (
+              <TouchableOpacity
+                onPress={skip}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this category for now"
+              >
+                <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         {currentCategory ? (
@@ -929,9 +1132,6 @@ export function BackfillScreen() {
             </PressableScale>
 
             <View style={styles.actionRow}>
-              <PressableScale style={styles.skipButton} onPress={skip} accessibilityRole="button" accessibilityLabel="Skip this category for now">
-                <Text style={styles.skipText}>Skip for now</Text>
-              </PressableScale>
               <PressableScale
                 style={styles.skipButton}
                 onPress={dismiss}
@@ -942,6 +1142,17 @@ export function BackfillScreen() {
               </PressableScale>
             </View>
           </ScrollView>
+        ) : sessionLog.length > 0 ? (
+          <SessionReview
+            entries={sessionLog}
+            onUndo={undoSessionEntry}
+            onDone={backToFields}
+            tabBarHeight={tabBarHeight}
+            colors={colors}
+            styles={styles}
+            itemWord="category"
+            itemWordPlural="categories"
+          />
         ) : (
           <EmptyState
             icon="checkmark-circle-outline"
@@ -968,19 +1179,31 @@ export function BackfillScreen() {
           title={personField.shortLabel}
           onBack={backToFields}
           backAccessibilityLabel="Back to fields"
-          actions={history.length > 0 ? (
-            <TouchableOpacity
-              onPress={goBack}
-              hitSlop={8}
-              accessibilityRole="button"
-              accessibilityLabel="Previous person"
-            >
-              <Ionicons name="play-skip-back-outline" size={iconSize.md} color={colors.textSecondary} />
-            </TouchableOpacity>
-          ) : undefined}
         />
         {sessionTotal > 0 && (
-          <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+          <View style={styles.progressRow}>
+            {history.length > 0 && (
+              <TouchableOpacity
+                onPress={goBack}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Previous person"
+              >
+                <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+            <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+            {!!currentId && (
+              <TouchableOpacity
+                onPress={skip}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Skip this person for now"
+              >
+                <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         {currentPerson ? (
@@ -1067,16 +1290,15 @@ export function BackfillScreen() {
                 <PressableScale
                   style={[styles.toggleButton, { backgroundColor: colors.accent }, !cadenceReady && styles.toggleButtonIdle]}
                   onPress={applyPersonCadence}
+                  disabled={!cadenceReady}
                   accessibilityRole="button"
                   accessibilityState={{ disabled: !cadenceReady }}
                   accessibilityLabel={cadenceReady
                     ? `Set a reminder for every ${describeCadence(cadenceDays).toLowerCase()}`
-                    : 'Pick how long first'}
+                    : 'Pick how long before a reminder first'}
                 >
                   <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>
-                    {cadenceReady ? 'Set reminder' : 'Pick how long first'}
-                  </Text>
+                  <Text style={styles.toggleButtonText}>Set reminder</Text>
                 </PressableScale>
               </View>
             )}
@@ -1096,6 +1318,7 @@ export function BackfillScreen() {
                 <PressableScale
                   style={[styles.toggleButton, { backgroundColor: colors.accent }, !askAboutReady && styles.toggleButtonIdle]}
                   onPress={applyAskAbout}
+                  disabled={!askAboutReady}
                   accessibilityRole="button"
                   accessibilityState={{ disabled: !askAboutReady }}
                   accessibilityLabel={`Save something to ask ${displayNameOf(currentPerson)} about`}
@@ -1107,9 +1330,6 @@ export function BackfillScreen() {
             )}
 
             <View style={styles.actionRow}>
-              <PressableScale style={styles.skipButton} onPress={skip} accessibilityRole="button" accessibilityLabel="Skip this person for now">
-                <Text style={styles.skipText}>Skip for now</Text>
-              </PressableScale>
               <PressableScale
                 style={styles.skipButton}
                 onPress={dismiss}
@@ -1120,6 +1340,17 @@ export function BackfillScreen() {
               </PressableScale>
             </View>
           </ScrollView>
+        ) : sessionLog.length > 0 ? (
+          <SessionReview
+            entries={sessionLog}
+            onUndo={undoSessionEntry}
+            onDone={backToFields}
+            tabBarHeight={tabBarHeight}
+            colors={colors}
+            styles={styles}
+            itemWord="person"
+            itemWordPlural="people"
+          />
         ) : (
           <EmptyState
             icon="checkmark-circle-outline"
@@ -1154,19 +1385,31 @@ export function BackfillScreen() {
         title={projectField.label}
         onBack={backToFields}
         backAccessibilityLabel="Back to fields"
-        actions={history.length > 0 ? (
-          <TouchableOpacity
-            onPress={goBack}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Previous project"
-          >
-            <Ionicons name="play-skip-back-outline" size={iconSize.md} color={colors.textSecondary} />
-          </TouchableOpacity>
-        ) : undefined}
       />
       {sessionTotal > 0 && (
-        <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+        <View style={styles.progressRow}>
+          {history.length > 0 && (
+            <TouchableOpacity
+              onPress={goBack}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Previous project"
+            >
+              <Ionicons name="play-skip-back-outline" size={iconSize.sm} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+          <Text style={styles.progress}>{doneCount} of {sessionTotal} done</Text>
+          {!!currentId && (
+            <TouchableOpacity
+              onPress={skip}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel="Skip this project for now"
+            >
+              <Ionicons name="play-skip-forward-outline" size={iconSize.sm} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
+        </View>
       )}
 
       {currentProject ? (
@@ -1237,9 +1480,6 @@ export function BackfillScreen() {
           )}
 
           <View style={styles.actionRow}>
-            <PressableScale style={styles.skipButton} onPress={skip} accessibilityRole="button" accessibilityLabel="Skip this project for now">
-              <Text style={styles.skipText}>Skip for now</Text>
-            </PressableScale>
             <PressableScale
               style={styles.skipButton}
               onPress={dismiss}
@@ -1250,6 +1490,17 @@ export function BackfillScreen() {
             </PressableScale>
           </View>
         </ScrollView>
+      ) : sessionLog.length > 0 ? (
+        <SessionReview
+          entries={sessionLog}
+          onUndo={undoSessionEntry}
+          onDone={backToFields}
+          tabBarHeight={tabBarHeight}
+          colors={colors}
+          styles={styles}
+          itemWord="project"
+          itemWordPlural="projects"
+        />
       ) : (
         <EmptyState
           icon="checkmark-circle-outline"
@@ -1270,6 +1521,76 @@ function categoryLabel(
 ): string {
   const emoji = getCategoryByName(category)?.emoji;
   return emoji ? `${emoji} ${category}` : category;
+}
+
+/**
+ * The compact review shown once a field's queue empties, in place of the
+ * plain "All caught up" empty state — what got set for what, one line per
+ * item, with an Undo that hands the item straight back into the queue (see
+ * `undoSessionEntry`).
+ *
+ * A session can easily run to dozens of items (walking every task missing an
+ * estimate, say), so this is a `FlatList`, not a mapped `ScrollView` the way
+ * the rest of the screen's one-item-at-a-time cards are — the summary header
+ * and the "Choose another field" button are fixed rows around it rather than
+ * scrolling with the list, which is why the whole thing takes `flex: 1`
+ * instead of the `contentContainerStyle`-only padding those cards use.
+ */
+function SessionReview({
+  entries, onUndo, onDone, tabBarHeight, colors, styles, itemWord, itemWordPlural,
+}: {
+  entries: SessionEntry[];
+  onUndo: (entry: SessionEntry) => void;
+  onDone: () => void;
+  tabBarHeight: number;
+  colors: Colors;
+  styles: ReturnType<typeof makeStyles>;
+  itemWord: string;
+  itemWordPlural: string;
+}) {
+  return (
+    <View style={styles.reviewWrap}>
+      <View style={styles.reviewSummary}>
+        <Ionicons name="checkmark-circle" size={iconSize.lg} color={colors.accent} />
+        <Text style={styles.reviewSummaryTitle}>All caught up</Text>
+        <Text style={styles.reviewSummarySubtitle}>
+          {entries.length} {entries.length === 1 ? itemWord : itemWordPlural} set this session
+        </Text>
+      </View>
+      <FlatList
+        style={styles.reviewList}
+        data={entries}
+        keyExtractor={entry => entry.itemId}
+        renderItem={({ item }) => (
+          <View style={styles.reviewRow}>
+            <View style={styles.reviewRowBody}>
+              <Text style={styles.reviewRowTitle} numberOfLines={1}>{item.title}</Text>
+              <Text style={styles.reviewRowValue} numberOfLines={1}>{item.valueText}</Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => onUndo(item)}
+              hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Undo "${item.valueText}" for ${item.title}`}
+            >
+              <Text style={styles.reviewUndoText}>Undo</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        ItemSeparatorComponent={() => <View style={styles.reviewSeparator} />}
+      />
+      <View style={[styles.reviewFooter, { paddingBottom: tabBarHeight + spacing.md }]}>
+        <PressableScale
+          style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+          onPress={onDone}
+          accessibilityRole="button"
+          accessibilityLabel="Choose another field"
+        >
+          <Text style={styles.toggleButtonText}>Choose another field</Text>
+        </PressableScale>
+      </View>
+    </View>
+  );
 }
 
 /**
@@ -1509,7 +1830,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
 
   entitySwitch: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
 
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  // Centered as one tight cluster — icon, text, icon — rather than the
+  // icons pinned to the row's outer edges, which at screen width left them
+  // nowhere near the count they act on.
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
 
   fieldList: { paddingHorizontal: spacing.md, paddingTop: spacing.sm, gap: spacing.sm },
   fieldRow: {
@@ -1539,8 +1870,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
-    textAlign: 'center',
-    paddingTop: spacing.sm,
   },
 
   reviewContent: { paddingHorizontal: spacing.md, paddingTop: spacing.md, gap: spacing.lg },
@@ -1648,6 +1977,29 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // lineHeight does to a TextInput's baseline on iOS.
     height: 48,
   },
+
+  // The compact end-of-queue review — see SessionReview. flex: 1 the whole
+  // way down (wrap and list both) is what lets the FlatList size itself
+  // against the remaining screen height instead of collapsing to zero, the
+  // same requirement any FlatList inside a plain flex column has.
+  reviewWrap: { flex: 1 },
+  reviewSummary: { alignItems: 'center', gap: 4, paddingVertical: spacing.lg },
+  reviewSummaryTitle: { color: colors.text, fontSize: font.lg, fontWeight: fontWeight.semibold },
+  reviewSummarySubtitle: { color: colors.textSecondary, fontSize: font.sm },
+  reviewList: { flex: 1 },
+  reviewRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  reviewRowBody: { flex: 1, minWidth: 0 },
+  reviewRowTitle: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+  reviewRowValue: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
+  reviewUndoText: { color: colors.accent, fontSize: font.sm, fontWeight: fontWeight.medium },
+  reviewSeparator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.separator, marginLeft: spacing.md },
+  reviewFooter: { paddingHorizontal: spacing.md, paddingTop: spacing.sm },
 
   actionRow: { flexDirection: 'row', justifyContent: 'center', gap: spacing.md },
   skipButton: {

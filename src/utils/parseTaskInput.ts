@@ -942,6 +942,18 @@ export interface PersonToken {
 }
 
 /**
+ * A `PersonGroup`, as `matchPersonMentions` needs it: a name to answer to and
+ * the ids it expands into. "@household" produces one `PersonMention` per
+ * `memberIds` entry rather than a mention shape of its own — a group is
+ * several people, not a new kind of thing a title can name.
+ */
+export interface GroupMentionToken {
+  id: string;
+  name: string;
+  memberIds: string[];
+}
+
+/**
  * A "@name" token more than one person answers to, offered so a caller can
  * show a pick-one list instead of just refusing. See `findAmbiguousMention`.
  */
@@ -1004,6 +1016,30 @@ function buildPersonNameIndex(people: PersonToken[]) {
 }
 
 /**
+ * The same index, one shelf over, for group names — exact and first-word,
+ * same as people. Kept separate from `buildPersonNameIndex` rather than
+ * merged into one map: a group resolving to several ids is a deliberate
+ * expansion, not the ambiguity a person-token collision is, and the two need
+ * to stay distinguishable to the caller (see `matchPersonMentions`).
+ */
+function buildGroupNameIndex(groups: GroupMentionToken[]) {
+  const byName = new Map<string, string[]>();
+  const add = (key: string, id: string) => {
+    const k = key.trim().toLowerCase();
+    if (!k) return;
+    const held = byName.get(k);
+    if (held) { if (!held.includes(id)) held.push(id); }
+    else byName.set(k, [id]);
+  };
+  for (const group of groups) {
+    add(group.name, group.id);
+    const first = group.name.trim().split(/\s+/)[0];
+    if (first && first.toLowerCase() !== group.name.trim().toLowerCase()) add(first, group.id);
+  }
+  return byName;
+}
+
+/**
  * Finds every "@name" token in a title and resolves it against the given
  * people, so "beach with @dustin @ansley sat" names both. Returns every match
  * with its position in the string, in order — not just the first — since
@@ -1041,9 +1077,25 @@ function buildPersonNameIndex(people: PersonToken[]) {
  * already-saved task should pass only the people it actually names
  * (`peopleOn(task)`), not the whole roster, so a mention can't relight for
  * someone the task no longer links.
+ *
+ * `groups` is tried only for a token no person answers to at all, never as a
+ * second opinion once a person has — so a group whose name happens to share a
+ * member's own first word (a group literally named after them) can never
+ * shadow the person. A resolved group expands into one `PersonMention` per
+ * member, all sharing the token's span: "@household" naming two people is the
+ * same shape on the page as typing "@dustin @ansley" would have been, which is
+ * what lets every downstream reader (tinting, `personIds`) stay ignorant that
+ * groups exist at all. A group more than one group answers to is left
+ * unresolved, the same refusal an ambiguous person gets.
  */
-export function matchPersonMentions(input: string, people: PersonToken[]): PersonMention[] {
+export function matchPersonMentions(
+  input: string,
+  people: PersonToken[],
+  groups: GroupMentionToken[] = []
+): PersonMention[] {
   const { byName } = buildPersonNameIndex(people);
+  const groupByName = groups.length > 0 ? buildGroupNameIndex(groups) : null;
+  const groupById = groups.length > 0 ? new Map(groups.map(g => [g.id, g])) : null;
   const mentions: PersonMention[] = [];
 
   for (const m of input.matchAll(PERSON_TOKEN_PATTERN)) {
@@ -1061,10 +1113,32 @@ export function matchPersonMentions(input: string, people: PersonToken[]): Perso
       }
       if (prefixIds.size === 1) hits = [...prefixIds];
     }
-    // Exactly one, or nothing: two people answering to one token is left as
-    // literal text rather than resolved to whichever was added first.
-    if (!hits || hits.length !== 1) continue;
-    mentions.push({ start: m.index, end: m.index + m[0].length, personId: hits[0] });
+    if (hits && hits.length === 1) {
+      mentions.push({ start: m.index, end: m.index + m[0].length, personId: hits[0] });
+      continue;
+    }
+    // Two people answering to one token is left as literal text rather than
+    // resolved to whichever was added first — and never falls through to a
+    // group check, so an ambiguous person-name collision can't accidentally
+    // pick up a differently-ambiguous group meaning instead.
+    if (hits) continue;
+
+    if (!groupByName) continue;
+    let groupHits = groupByName.get(token);
+    if (!groupHits && token.length >= MIN_PREFIX_LENGTH) {
+      const prefixIds = new Set<string>();
+      for (const [key, ids] of groupByName) {
+        if (key.startsWith(token)) ids.forEach(id => prefixIds.add(id));
+      }
+      if (prefixIds.size === 1) groupHits = [...prefixIds];
+    }
+    if (!groupHits || groupHits.length !== 1) continue;
+    const group = groupById!.get(groupHits[0]);
+    if (!group) continue;
+    const end = m.index + m[0].length;
+    for (const memberId of group.memberIds) {
+      mentions.push({ start: m.index, end, personId: memberId });
+    }
   }
 
   return mentions;

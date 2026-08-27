@@ -84,6 +84,10 @@ jest.mock('../db/database', () => ({
   dbUpdatePerson: jest.fn(),
   dbDeletePerson: jest.fn(),
   dbBatchUpdatePersonSortOrders: jest.fn(),
+  dbGetAllPersonGroups: jest.fn().mockReturnValue([]),
+  dbInsertPersonGroup: jest.fn(),
+  dbUpdatePersonGroup: jest.fn(),
+  dbDeletePersonGroup: jest.fn(),
   dbGetAllProjectCategories: jest.fn().mockReturnValue([]),
   dbInsertProjectCategory: jest.fn(),
   dbInsertProjectCategoryRow: jest.fn(),
@@ -199,6 +203,8 @@ jest.mock('../store/useSettingsStore', () => ({
 jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn().mockResolvedValue(undefined),
   cancelTaskReminder: jest.fn().mockResolvedValue(undefined),
+  scheduleQuotaNudges: jest.fn().mockResolvedValue(undefined),
+  cancelQuotaNudges: jest.fn().mockResolvedValue(undefined),
   rescheduleAllReminders: jest.fn().mockResolvedValue(undefined),
   scheduleTimerAlarm: jest.fn().mockResolvedValue(undefined),
   cancelTimerAlarm: jest.fn().mockResolvedValue(undefined),
@@ -283,6 +289,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   targetUnit: null,
   progressCount: 0,
   allowOvershoot: false,
+  quotaIntervalMinutes: null,
+  quotaReminders: false,
+  quotaStartedAt: null,
   tags: [],
   category: null,
   sortOrder: 1,
@@ -3120,6 +3129,26 @@ describe('checkProjectReviewTasks', () => {
     expect(reviewTasks()).toHaveLength(1);
   });
 
+  it('a bulk-deleted row is also taken as "not today", same as a single delete', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().bulkDeleteTasks([reviewTasks()[0].id]);
+    expect(useProjectStore.getState().projects[0].reviewDeclinedAt).not.toBeNull();
+  });
+
+  // sweepExpiredTasks is the one bulkDeleteTasks caller that isn't the user
+  // saying anything — see its call site's comment.
+  it('a bulk delete with skipGeneratedOptOut leaves the source untouched', () => {
+    useProjectStore.setState({ projects: [quietProject()] });
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1' })] });
+    useTaskStore.getState().checkProjectReviewTasks();
+
+    useTaskStore.getState().bulkDeleteTasks([reviewTasks()[0].id], { skipGeneratedOptOut: true });
+    expect(useProjectStore.getState().projects[0].reviewDeclinedAt).toBeNull();
+  });
+
   // Ticking it off without pulling anything in is a refusal, and the row going
   // away is what makes it one. Nothing here is live afterwards, so without the
   // day scope the very next foreground would write an identical task.
@@ -3714,6 +3743,192 @@ describe('checkPantryCheckTasks', () => {
   });
 });
 
+// ─── checkPantryReviewTasks ─────────────────────────────────────────────────
+
+describe('checkPantryReviewTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  const setPantryReviewLastDayKey = jest.fn();
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    vacationMode: false,
+    kitchenEnabled: true,
+    pantryReviewTasks: true,
+    pantryReviewTaskCategory: 'Groceries',
+    pantryReviewLastDayKey: null,
+    setPantryReviewLastDayKey,
+    // The drip, on alongside it — the suppression cases below are the whole
+    // reason the two generators have to be tested together.
+    pantryCheckTasks: true,
+    pantryCheckTaskCategory: 'Groceries',
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000).toISOString();
+
+  /** A row still inside its purchase window: a `guessed` card, the common case. */
+  const guessedItem = (i: number, overrides: Partial<GroceryItem> = {}): GroceryItem => ({
+    id: `g-${i}`, name: `Thing ${i}`, nameKey: `thing ${i}`, preferredProductId: null, productStrict: false,
+    aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
+    onList: false, checked: false, sortOrder: i,
+    purchaseCount: 3, lastAddedAt: null, lastPurchasedAt: daysAgo(10), createdAt: daysAgo(366),
+    onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
+    isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
+    shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null,
+    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null,
+    lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
+    ...overrides,
+  });
+
+  const seedItems = (...items: GroceryItem[]) => {
+    useGroceryStore.setState({
+      items, aisleOrder: [], hiddenAisles: [], aisleOverrides: {},
+      shops: [], itemShops: [], lastShopId: null, cartHoldIds: [],
+      pendingUseUpItemId: null, initialized: true,
+    });
+  };
+
+  const doubtfulCupboard = () => seedItems(...Array.from({ length: 6 }, (_, i) => guessedItem(i)));
+
+  const reviewTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'pantryReview' && !t.completed && !t.archived);
+  const checkTasks = () =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === 'pantryCheck' && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    setPantryReviewLastDayKey.mockClear();
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+  });
+
+  it('offers one row when several things are in doubt at once', () => {
+    doubtfulCupboard();
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    const [review] = reviewTasks();
+    expect(review.title).toBe("Review what's in the pantry");
+    expect(review.linkUrl).toBe('dundundun://kitchen?review=1');
+    expect(review.category).toBe('Groceries');
+    expect(review.dueDate).not.toBeNull();
+  });
+
+  // Below the threshold the drip says more: the row names the thing, and one
+  // tap on the item sheet answers it.
+  it('stands down for a cupboard the app is mostly sure about', () => {
+    seedItems(guessedItem(1), guessedItem(2));
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  it('is a no-op while the setting is off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ pantryReviewTasks: false }));
+    doubtfulCupboard();
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  // Same gate the drip takes, for its reason: this fires on time passing, so
+  // without it this would be the one part of a hidden feature still writing.
+  it('is a no-op while the whole grocery area is switched off', () => {
+    useSettingsStore.getState.mockReturnValue(settings({ kitchenEnabled: false }));
+    doubtfulCupboard();
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  // Recorded the moment a day is considered, whatever the outcome — with no
+  // source row this mark is the only thing between a swiped-away row and an
+  // identical one on the very next foreground sweep.
+  it('marks the day even when it decides not to offer anything', () => {
+    seedItems(guessedItem(1));
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(setPantryReviewLastDayKey).toHaveBeenCalledTimes(1);
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  it('holds off for the whole cadence once a day has been considered', () => {
+    useSettingsStore.getState.mockReturnValue(
+      settings({ pantryReviewLastDayKey: new Date().toISOString().slice(0, 10) })
+    );
+    doubtfulCupboard();
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+    expect(setPantryReviewLastDayKey).not.toHaveBeenCalled();
+  });
+
+  it('writes one row rather than a second beside a live one', () => {
+    doubtfulCupboard();
+    useTaskStore.getState().checkPantryReviewTasks();
+    // A fortnight on, with the offer still sitting there unanswered.
+    useSettingsStore.getState.mockReturnValue(settings({ pantryReviewLastDayKey: '2020-01-01' }));
+
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(1);
+  });
+
+  it('clears its row once the deck has nothing left in it', () => {
+    doubtfulCupboard();
+    useTaskStore.getState().checkPantryReviewTasks();
+    expect(reviewTasks()).toHaveLength(1);
+
+    // Every row answered "out of it", which is what emptying the deck looks
+    // like from the store's side.
+    seedItems(...Array.from({ length: 6 }, (_, i) => guessedItem(i, { onHandUntil: OUT_OF_IT_UNTIL })));
+    useTaskStore.getState().checkPantryReviewTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+  });
+
+  // One review row already asks about the whole cupboard; three more questions
+  // about individual shelves of it is the pile-up both caps exist to prevent.
+  it('suppresses the drip while a review row is live', () => {
+    doubtfulCupboard();
+    // Two rows lapsed as well, which is what the drip fires on.
+    useGroceryStore.setState({
+      items: [
+        ...useGroceryStore.getState().items,
+        guessedItem(90, { lastPurchasedAt: daysAgo(125) }),
+        guessedItem(91, { lastPurchasedAt: daysAgo(125) }),
+      ],
+    });
+
+    useTaskStore.getState().checkPantryReviewTasks();
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(reviewTasks()).toHaveLength(1);
+    expect(checkTasks()).toHaveLength(0);
+  });
+
+  it('lets the drip through when no review row is live', () => {
+    seedItems(guessedItem(90, { lastPurchasedAt: daysAgo(125) }));
+
+    useTaskStore.getState().checkPantryReviewTasks();
+    useTaskStore.getState().checkPantryCheckTasks();
+
+    expect(reviewTasks()).toHaveLength(0);
+    expect(checkTasks()).toHaveLength(1);
+  });
+});
+
+
 // ─── checkReachOutTasks ─────────────────────────────────────────────────────
 
 describe('checkReachOutTasks', () => {
@@ -3744,6 +3959,7 @@ describe('checkReachOutTasks', () => {
     cadenceDays: 30, nudgeOptIn: true, cadenceSetAt: daysAgo(45),
     reachOutDeclinedAt: null, askAbout: '',
     backfillDismissedFields: [],
+    groupId: null,
     ...overrides,
   });
 
@@ -3789,6 +4005,32 @@ describe('checkReachOutTasks', () => {
     const taskId = reachOutTasks()[0].id;
 
     useTaskStore.getState().deleteTask(taskId);
+    useTaskStore.getState().lastAction!.undo();
+
+    expect(usePersonStore.getState().people[0].reachOutDeclinedAt).toBeNull();
+    expect(useTaskStore.getState().tasks.find(t => t.id === taskId)).toBeDefined();
+  });
+
+  // The bug the user actually hit: the row's own swipe-to-delete goes through
+  // the selection bar's bulkDeleteTasks, not deleteTask, and that path wrote
+  // no opt-out at all — so a nudge deleted this way came right back on the
+  // next sweep even after the single-row path was fixed.
+  it('also takes a bulk-deleted row as a decline', () => {
+    useTaskStore.getState().checkReachOutTasks();
+    const taskId = reachOutTasks()[0].id;
+
+    useTaskStore.getState().bulkDeleteTasks([taskId]);
+    expect(usePersonStore.getState().people[0].reachOutDeclinedAt).not.toBeNull();
+
+    useTaskStore.getState().checkReachOutTasks();
+    expect(reachOutTasks()).toHaveLength(0);
+  });
+
+  it('undoing a bulk delete clears the decline again', () => {
+    useTaskStore.getState().checkReachOutTasks();
+    const taskId = reachOutTasks()[0].id;
+
+    useTaskStore.getState().bulkDeleteTasks([taskId]);
     useTaskStore.getState().lastAction!.undo();
 
     expect(usePersonStore.getState().people[0].reachOutDeclinedAt).toBeNull();
@@ -4454,7 +4696,7 @@ describe('checkMealSlotTasks', () => {
       id, name: 'Chili', nameKey: 'chili', notes: '', sourceUrl: null, sourceName: null,
       author: null, source: null, servings: null, servingsMax: null, recipeYield: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [], ingredients: [],
-      emptySections: [], components: [], prepTasks: [], steps: [], favorite: false, sortOrder: 1,
+      emptySections: [], components: [], prepTasks: [], steps: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
       estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
       cookTimeCount: 0, totalCookMinutes: 0, sourceType: null, sourcePage: null, prepMinutes: null,
@@ -4780,7 +5022,7 @@ describe('checkMealShortfallTasks', () => {
         id: `${id}-i${i}`, name: n, nameKey: n.toLowerCase(), quantity: '', aisle: null,
         prep: null, purpose: null, section: null, choiceGroup: null,
       })),
-      emptySections: [], components: [], prepTasks: [], steps: [], favorite: false, sortOrder: 1,
+      emptySections: [], components: [], prepTasks: [], steps: [], sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookCount: 0, lastCookedAt: null, vote: null,
       estimatedMinutes: null, timerStartedAt: null, timerElapsedSeconds: 0, lastCookMinutes: null,
       cookTimeCount: 0, totalCookMinutes: 0, sourceType: null, sourcePage: null, prepMinutes: null,
@@ -7437,6 +7679,59 @@ describe('bulkDefer', () => {
     useTaskStore.getState().bulkDefer(['a'], until);
     expect(dbBulkSetDefer).toHaveBeenCalledWith(['a'], until.toISOString());
   });
+
+  it('unpins a pinned task pushed to a different day', () => {
+    const until = new Date(2025, 5, 20);
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', pinned: true, dueDate: new Date(2025, 5, 10).toISOString() })],
+    });
+    useTaskStore.getState().bulkDefer(['a'], until);
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a'], false);
+  });
+
+  it('leaves an unpinned task alone', () => {
+    const until = new Date(2025, 5, 20);
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: false })] });
+    useTaskStore.getState().bulkDefer(['a'], until);
+    expect(dbBulkSetPinned).not.toHaveBeenCalled();
+  });
+});
+
+describe('bulkSetWhen', () => {
+  it('unpins a pinned task moved to a different day', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', pinned: true, dueDate: new Date(2025, 5, 10).toISOString() })],
+    });
+    useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 20), []);
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a'], false);
+  });
+
+  it('unpins a pinned task whose date is cleared', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', pinned: true, dueDate: new Date(2025, 5, 10).toISOString() })],
+    });
+    useTaskStore.getState().bulkSetWhen(['a'], null, []);
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(false);
+    expect(dbBulkSetPinned).toHaveBeenCalledWith(['a'], false);
+  });
+
+  it('leaves a pinned task alone when the day is unchanged', () => {
+    const sameDay = new Date(2025, 5, 10);
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', pinned: true, dueDate: sameDay.toISOString() })],
+    });
+    useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 10, 18), []);
+    expect(useTaskStore.getState().tasks[0].pinned).toBe(true);
+    expect(dbBulkSetPinned).not.toHaveBeenCalled();
+  });
+
+  it('leaves an unpinned task alone', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: false })] });
+    useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 20), []);
+    expect(dbBulkSetPinned).not.toHaveBeenCalled();
+  });
 });
 
 describe('bulkAddTags', () => {
@@ -9361,6 +9656,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9378,6 +9676,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 5,
           streakCount: 3,
           streakDate: new Date(2025, 5, 9).toISOString(),
@@ -9399,6 +9700,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 13, // past the target of 8
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9414,6 +9718,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 0,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9443,6 +9750,9 @@ describe('quota tasks', () => {
       useTaskStore.setState({
         tasks: [quota({
           allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null,
           progressCount: 5,
           dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(),
         })],
@@ -9454,6 +9764,241 @@ describe('quota tasks', () => {
       const next = tasks.find(t => t.id !== 'water')!;
       expect(next.progressCount).toBe(0);
       expect(next.completed).toBe(false);
+    });
+  });
+
+  describe('logging past the target', () => {
+    it('keeps counting on an allowOvershoot task instead of completing it', () => {
+      // isQuotaOnPace deliberately keeps such a task on Today past its target
+      // so the extra can be logged; without the guard in logQuotaUnit the very
+      // next tap completed it, undoing the feature one line from where it was
+      // declared.
+      useTaskStore.setState({ tasks: [quota({ progressCount: 7, allowOvershoot: true })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(8);
+      expect(useTaskStore.getState().tasks).toHaveLength(1); // no successor spawned
+    });
+
+    it('keeps counting past the target on an allowOvershoot task', () => {
+      useTaskStore.setState({ tasks: [quota({ progressCount: 8, allowOvershoot: true })] });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(9);
+    });
+
+    it('keeps counting on an interval quota, whose target is arithmetic', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 7, quotaIntervalMinutes: 20 })],
+      });
+      useTaskStore.getState().logQuotaUnit('water');
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(8);
+    });
+  });
+
+  describe('interval quotas', () => {
+    const run = (overrides: Partial<Task> = {}) =>
+      quota({
+        id: 'eyes',
+        title: 'Look 20 feet away',
+        quotaIntervalMinutes: 20,
+        quotaReminders: true,
+        windowStart: '09:00',
+        windowEnd: '17:00',
+        targetCount: 24,
+        ...overrides,
+      });
+
+    describe('derived target count', () => {
+      it('re-derives the count when the window moves', () => {
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().updateTask('eyes', { windowEnd: '13:00' });
+
+        // Four hours at 20 minutes is 12, not the 24 an eight-hour day held.
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(12);
+      });
+
+      it('re-derives the count when the interval changes', () => {
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().updateTask('eyes', { quotaIntervalMinutes: 30 });
+
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(16);
+      });
+
+      it('leaves a plain quota\'s count alone', () => {
+        useTaskStore.setState({ tasks: [quota({ windowStart: '09:00', windowEnd: '17:00' })] });
+        useTaskStore.getState().updateTask('water', { windowEnd: '13:00' });
+
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(8);
+      });
+
+      it('lets a patch naming targetCount win, so a snapshot undo is faithful', () => {
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().updateTask('eyes', { windowEnd: '13:00', targetCount: 24 });
+
+        expect(useTaskStore.getState().tasks[0].targetCount).toBe(24);
+      });
+    });
+
+    describe('startQuotaRun', () => {
+      it('stamps the run and keeps the interval, losing the count', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 10, 30, 0));
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().startQuotaRun('eyes');
+
+        const task = useTaskStore.getState().tasks[0];
+        expect(task.quotaStartedAt).toBe(new Date(2025, 5, 10, 10, 30, 0).toISOString());
+        // 10:30–17:00 is 6.5 hours: 19 breaks 20 minutes apart, not 24 squeezed in.
+        expect(task.targetCount).toBe(19);
+      });
+
+      it('is undoable back to the count it had', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 10, 30, 0));
+        useTaskStore.setState({ tasks: [run()] });
+        useTaskStore.getState().startQuotaRun('eyes');
+        useTaskStore.getState().undoLastAction();
+
+        const task = useTaskStore.getState().tasks[0];
+        expect(task.quotaStartedAt).toBeNull();
+        expect(task.targetCount).toBe(24);
+      });
+
+      it('ignores a completed task', () => {
+        useTaskStore.setState({ tasks: [run({ completed: true })] });
+        useTaskStore.getState().startQuotaRun('eyes');
+
+        expect(useTaskStore.getState().tasks[0].quotaStartedAt).toBeNull();
+      });
+    });
+
+    describe('sweepFinishedQuotaRuns', () => {
+      it('closes the run when its window shuts, at whatever count', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({ tasks: [run({ progressCount: 18, streakCount: 4 })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.completed).toBe(true);
+        // The record of the day, not clamped up to the target.
+        expect(closed.progressCount).toBe(18);
+      });
+
+      it('closes a run nobody tapped at all, rather than leaving it overdue', () => {
+        // The case sweepOvershootQuotas deliberately skips: there, an untouched
+        // tally means an abandoned day. Here the nudges fired regardless, so
+        // the run happened — and leaving it would stack one overdue row per day
+        // on the routine least likely to be tapped.
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({ tasks: [run({ progressCount: 0 })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.completed).toBe(true);
+        expect(closed.progressCount).toBe(0);
+      });
+
+      it('keeps the streak running on a short day', () => {
+        // The whole reason this doesn't go through rolloverQuotas, which forces
+        // streakCount to 0: falling "short" of arithmetic is not a miss.
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({
+          tasks: [run({
+            progressCount: 3,
+            streakCount: 6,
+            streakDate: new Date(2025, 5, 9, 0, 0, 0).toISOString(),
+          })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.streakCount).toBe(7);
+      });
+
+      it('leaves a run still under way alone', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 14, 0, 0));
+        useTaskStore.setState({ tasks: [run({ progressCount: 9 })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+      });
+
+      it('honours a hand-started run\'s later start but the window\'s own end', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 16, 30, 0));
+        useTaskStore.setState({
+          tasks: [run({ quotaStartedAt: new Date(2025, 5, 10, 10, 30, 0).toISOString() })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        // Starting late moved the start, not the finish — 16:30 is still inside it.
+        expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+      });
+
+      it('closes a run left over from an earlier day whatever the clock says now', () => {
+        jest.setSystemTime(new Date(2025, 5, 11, 9, 30, 0));
+        useTaskStore.setState({
+          tasks: [run({ dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(), progressCount: 5 })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.completed).toBe(true);
+        expect(closed.progressCount).toBe(5);
+      });
+
+      it('leaves a plain quota to rolloverQuotas', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({ tasks: [quota({ windowStart: '09:00', windowEnd: '17:00' })] });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+      });
+
+      it('spawns tomorrow\'s run from the window again', () => {
+        jest.setSystemTime(new Date(2025, 5, 10, 17, 0, 0));
+        useTaskStore.setState({
+          tasks: [run({
+            progressCount: 12,
+            quotaStartedAt: new Date(2025, 5, 10, 10, 30, 0).toISOString(),
+          })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const next = useTaskStore.getState().tasks.find(t => t.id !== 'eyes')!;
+        expect(next.progressCount).toBe(0);
+        // A late start is a statement about one morning, not about the schedule.
+        expect(next.quotaStartedAt).toBeNull();
+      });
+    });
+
+    it('is left alone by rolloverQuotas, which would break its streak', () => {
+      jest.setSystemTime(new Date(2025, 5, 11, 9, 0, 0));
+      useTaskStore.setState({
+        tasks: [run({ dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(), progressCount: 3 })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+    });
+
+    it('is left alone by sweepOvershootQuotas even when it also allows overshoot', () => {
+      jest.setSystemTime(new Date(2025, 5, 11, 9, 0, 0));
+      useTaskStore.setState({
+        tasks: [run({
+          dueDate: new Date(2025, 5, 10, 12, 0, 0).toISOString(),
+          progressCount: 3,
+          allowOvershoot: true,
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      expect(useTaskStore.getState().tasks[0].completed).toBe(false);
     });
   });
 });

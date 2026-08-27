@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the person reminder-cadence button in Fill in the blanks staying tappable and swapping its label to instructions when nothing was picked yet — it's now properly disabled instead",
+  "date": "2026-08-26"
+}

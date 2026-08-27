@@ -139,6 +139,18 @@ export const MIN_TARGET_COUNT = 2;
 export const MAX_TARGET_COUNT = 99;
 
 /**
+ * Bounds for a daily target's cadence, in minutes.
+ *
+ * Five at the floor because that's the shortest gap between two of anything
+ * that still reads as a routine rather than a stopwatch, and four hours at the
+ * ceiling because past that a "cadence" is just a handful of times a day, which
+ * the count already says better. Both are well outside the values anyone
+ * actually picks; they exist because CountStepper needs somewhere to stop.
+ */
+export const MIN_QUOTA_INTERVAL_MINUTES = 5;
+export const MAX_QUOTA_INTERVAL_MINUTES = 240;
+
+/**
  * Chips a type leaves out because picking the type already answered them.
  *
  * Only ever list a chip the type genuinely decides. Hiding one it merely

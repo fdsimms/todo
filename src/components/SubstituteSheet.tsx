@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Modal,
   StyleSheet,
@@ -129,6 +130,17 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   );
   const editingSub = editing ? existing.find(s => s.item.id === activeSubId) ?? null : null;
 
+  // What every field above got seeded to, so the dirty check in handleCancel
+  // can tell real typing apart from the form simply being (re)seeded under it.
+  const baselineRef = useRef({
+    pickedId: null as string | null,
+    note: '',
+    bothWays: false,
+    standing: false,
+    ratioFrom: '',
+    ratioTo: '',
+  });
+
   // Cleared as the sheet goes away rather than as it opens, so the seeding
   // effect below sees a settled value on open instead of running twice.
   useEffect(() => {
@@ -141,11 +153,24 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
     setPickedId(activeSubId);
     // Seeded from the link being reviewed, so the fields say what's recorded
     // rather than presenting a blank form over an answer that already exists.
-    setNote(editingSub?.link.note ?? '');
-    setBothWays(editingSub?.isMutual ?? false);
-    setStanding(editingSub?.link.standing ?? false);
-    setRatioFrom(editingSub?.link.ratioFrom ?? '');
-    setRatioTo(editingSub?.link.ratioTo ?? '');
+    const seededNote = editingSub?.link.note ?? '';
+    const seededBothWays = editingSub?.isMutual ?? false;
+    const seededStanding = editingSub?.link.standing ?? false;
+    const seededRatioFrom = editingSub?.link.ratioFrom ?? '';
+    const seededRatioTo = editingSub?.link.ratioTo ?? '';
+    setNote(seededNote);
+    setBothWays(seededBothWays);
+    setStanding(seededStanding);
+    setRatioFrom(seededRatioFrom);
+    setRatioTo(seededRatioTo);
+    baselineRef.current = {
+      pickedId: activeSubId,
+      note: seededNote,
+      bothWays: seededBothWays,
+      standing: seededStanding,
+      ratioFrom: seededRatioFrom,
+      ratioTo: seededRatioTo,
+    };
     // Seeding is a one-shot on open: re-running it as the store changes would
     // wipe what's being typed the moment the write lands.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -305,6 +330,29 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
     onClose();
   };
 
+  // Nothing here is written until Add/Save, so a swipe-down mid-pick or
+  // mid-edit would otherwise drop it with no dialog. Compared against the
+  // baseline the seeding effect stamped, so reseeding on open/reviewingId
+  // change doesn't itself falsely read as user work about to be lost.
+  const handleCancel = () => {
+    const baseline = baselineRef.current;
+    const dirty = pickedId !== baseline.pickedId
+      || note !== baseline.note
+      || bothWays !== baseline.bothWays
+      || standing !== baseline.standing
+      || ratioFrom !== baseline.ratioFrom
+      || ratioTo !== baseline.ratioTo;
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   // Back out of a substitute opened from the list above, rather than out of
   // the sheet. `pickedId` is cleared alongside because it's what chooses the
   // detail branch over the picker; the seeding effect clears it too, and doing
@@ -351,13 +399,13 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   );
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
           <SheetHeaderButton
             label={reviewingId ? 'Back' : 'Cancel'}
             role="cancel"
-            onPress={reviewingId ? handleBack : onClose}
+            onPress={reviewingId ? handleBack : handleCancel}
             minWidth={64}
           />
           <Text style={styles.headerTitle} numberOfLines={1}>Instead of {item.name}</Text>

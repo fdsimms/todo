@@ -14,6 +14,7 @@ import { useDemoStore } from '../store/useDemoStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { liveProjectSteps } from '../utils/projectOrder';
@@ -82,6 +83,8 @@ import { describeDisposalHistory, wantsShelfLifePrompt } from '../utils/itemDisp
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
 import { wantedPantryChecks } from '../utils/pantryCheckTasks';
+import { buildPantryReviewDeck } from '../utils/pantryReview';
+import { MIN_PANTRY_REVIEW_CARDS, stalePantryReviewTasks } from '../utils/pantryReviewTasks';
 import { mealShortfallRows, staleMealShortfallTasks } from '../utils/mealShortfallTasks';
 import {
   canHoldSupply,
@@ -175,6 +178,8 @@ jest.mock('expo-sqlite', () => {
 jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn(),
   cancelTaskReminder: jest.fn(),
+  scheduleQuotaNudges: jest.fn(),
+  cancelQuotaNudges: jest.fn(),
   rescheduleAllReminders: jest.fn(),
   // Reached through useTaskStore.initialize, which fans out to useFocusStore.
   scheduleFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
@@ -558,6 +563,25 @@ describe('demo mode', () => {
     expect(target.recurrenceType).not.toBe('none');
   });
 
+  it('seeds a daily target paced by an interval, nudges and all', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const paced = tasks.find(t => t.quotaIntervalMinutes !== null);
+    expect(paced).toBeDefined();
+    // The window is what the interval divides, so a seeded cadence without one
+    // would be spacing itself across whatever active hours happened to be set.
+    expect(paced!.windowStart).not.toBeNull();
+    expect(paced!.windowEnd).not.toBeNull();
+    // The nudge is the whole reason this kind exists — a cadence you have to
+    // keep checking the app for is the thing it's meant to replace.
+    expect(paced!.quotaReminders).toBe(true);
+    // Behind and short of its count: the state it spends the day in, and the
+    // one it closes out in without that being a miss.
+    expect(paced!.progressCount).toBeGreaterThan(0);
+    expect(paced!.progressCount).toBeLessThan(paced!.targetCount!);
+  });
+
   // A timed task can hand its countdown out to its subtasks, and one that
   // hasn't reads exactly like every timed task did before that was possible.
   it('seeds a timed task with its countdown split across its subtasks', () => {
@@ -823,6 +847,24 @@ describe('demo mode', () => {
     expect(open.some(t => t.deferUntil !== null)).toBe(true);
   });
 
+  // The project screen's "Stack" FAB item builds a stack whose members carry
+  // both a groupId and the project's id — otherwise that combination ships
+  // untested. Without a row like this, a stack member reads as an ordinary
+  // project task with no stack header anywhere else in the app.
+  it('seeds a stack whose members also belong to a project', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    expect(kitchen).toBeDefined();
+
+    const quotes = useTaskGroupStore.getState().groups.find(g => g.title === 'Contractor quotes');
+    expect(quotes).toBeDefined();
+
+    const members = useTaskStore.getState().tasks.filter(t => t.groupId === quotes!.id);
+    expect(members.length).toBeGreaterThan(0);
+    expect(members.every(t => t.projectId === kitchen!.id)).toBe(true);
+  });
+
   it('seeds a reference-list project excluded from every nudge', () => {
     // A checklist project like Gift ideas has nothing but undated tasks —
     // exactly what would otherwise read as "gone quiet" — so the seed only
@@ -995,6 +1037,22 @@ describe('demo seed — people', () => {
   it('an opted-in person has a real cadence behind the opt-in', () => {
     const optedIn = usePersonStore.getState().people.find(p => p.nudgeOptIn)!;
     expect(optedIn.cadenceDays).toBeGreaterThan(0);
+  });
+
+  // A PersonGroup with no seeded row reads as a feature the app doesn't
+  // have, the same reasoning every other row in this file exists for.
+  it('seeds a group with a couple of people in it, sharing one name', () => {
+    const groups = usePersonGroupStore.getState().groups;
+    expect(groups.length).toBeGreaterThan(0);
+    const people = usePersonStore.getState().people;
+    const members = people.filter(p => p.groupId === groups[0].id);
+    expect(members.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('seeds a task tagging the group by name instead of naming each member', () => {
+    const groups = usePersonGroupStore.getState().groups;
+    const tasks = useTaskStore.getState().tasks;
+    expect(tasks.some(t => t.title.includes(`@${groups[0].name}`))).toBe(true);
   });
 
   // The Backfill screen's People pool has nothing to walk unless somebody in
@@ -1717,7 +1775,6 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   it('seeds recipe duration, cook history, attribution and a live timer', () => {
     const { recipes } = useRecipeStore.getState();
 
-    expect(recipes.some(r => r.favorite)).toBe(true);
     expect(recipes.some(r => r.tags.length > 1)).toBe(true);
     // A real dietary tag, not just a cooking-style one — the excluded-tags
     // picker (#1693) needs something a household would actually exclude on.
@@ -1732,10 +1789,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.leftoverKeepDays === null)).toBe(true);
     expect(recipes.some(r => r.prepTasks.some(p => p.reminderOffsetMinutes !== null))).toBe(true);
     expect(recipes.some(r => r.cookCount > 1 && r.lastCookedAt)).toBe(true);
-    // Both sides of the vote — a loved, favorited dish and a cooked-twice one
-    // decided against, so the box's "Loved first" sort has something to show.
-    expect(recipes.some(r => r.vote === 'up')).toBe(true);
-    expect(recipes.some(r => r.vote === 'down')).toBe(true);
+    // Two sides of the vote — a loved dish and a cooked-twice one decided
+    // against — so the box's "Loved first" sort has something to show.
+    expect(recipes.some(r => r.vote === 'loved')).toBe(true);
+    expect(recipes.some(r => r.vote === 'never')).toBe(true);
     expect(recipes.some(r => r.timerStartedAt)).toBe(true);
     // All three attribution shapes — a URL, a byline, and a cookbook page.
     expect(recipes.some(r => r.sourceUrl)).toBe(true);
@@ -1945,6 +2002,31 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // And the real rule agrees, so the first foreground sweep doesn't clear the
     // seeded row as describing an item that wants nothing.
     expect(wantedPantryChecks(items, tasks, new Date()).map(w => w.itemId)).toContain(oats.id);
+  });
+
+  it('seeds the bulk form of the same question, and a deck with something in it', () => {
+    const { tasks } = useTaskStore.getState();
+    const { items, itemProducts } = useGroceryStore.getState();
+
+    const review = tasks.find(t => t.generatedKind === 'pantryReview');
+    expect(review).toBeDefined();
+    expect(review!.title).toBe("Review what's in the pantry");
+    // Tapping it lands on the Pantry screen with the deck already up.
+    expect(review!.linkUrl).toBe('dundundun://kitchen?review=1');
+    expect(review!.category).toBe('Groceries');
+
+    // The row would be a promise the deck couldn't keep if the demo catalog had
+    // nothing in doubt — and a deck under the threshold is one the generator
+    // itself would never have offered.
+    const deck = buildPantryReviewDeck(items, new Date(), itemProducts);
+    expect(deck.cards.length).toBeGreaterThanOrEqual(MIN_PANTRY_REVIEW_CARDS);
+    // Answering is what the deck is for, so at least one card has to be a row
+    // whose answer would actually change something the app believes.
+    expect(deck.cards.some(c => c.doubt !== 'asserted')).toBe(true);
+
+    // And the stale pass agrees, so the first foreground sweep doesn't clear
+    // the seeded row as describing a cupboard nobody needs to look at.
+    expect(stalePantryReviewTasks(tasks, deck)).toEqual([]);
   });
 
   it('seeds a meal the kitchen cannot make, and the task that says so', () => {

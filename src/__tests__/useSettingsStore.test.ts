@@ -1532,10 +1532,10 @@ describe('persisted filters', () => {
 });
 
 describe('persisted recipe sort & filter', () => {
-  it('defaults to the box\'s original order and no favorites-only filter', () => {
+  it('defaults to the box\'s original order and no loved-only filter', () => {
     useSettingsStore.getState().initialize();
     expect(useSettingsStore.getState().recipeSortOption).toBe('default');
-    expect(useSettingsStore.getState().recipeFavoritesOnly).toBe(false);
+    expect(useSettingsStore.getState().recipeLovedOnly).toBe(false);
   });
 
   it('round-trips a real sort option', () => {
@@ -1556,14 +1556,14 @@ describe('persisted recipe sort & filter', () => {
     expect(useSettingsStore.getState().recipeSortOption).toBe('default');
   });
 
-  it('round-trips favoritesOnly', () => {
-    useSettingsStore.getState().setRecipeFavoritesOnly(true);
-    expect(dbSetSetting).toHaveBeenCalledWith('recipeFavoritesOnly', 'true');
+  it('round-trips lovedOnly', () => {
+    useSettingsStore.getState().setRecipeLovedOnly(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('recipeLovedOnly', 'true');
     (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
-      key === 'recipeFavoritesOnly' ? 'true' : null,
+      key === 'recipeLovedOnly' ? 'true' : null,
     );
     useSettingsStore.getState().initialize();
-    expect(useSettingsStore.getState().recipeFavoritesOnly).toBe(true);
+    expect(useSettingsStore.getState().recipeLovedOnly).toBe(true);
   });
 });
 

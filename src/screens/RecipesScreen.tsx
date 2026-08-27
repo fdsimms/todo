@@ -79,12 +79,12 @@ import { groceryNameKey } from '../utils/groceryParse';
  *
  * Deliberately flat — no recipe categories *table*, which would be the fourth
  * one in this app (task / project / template / recipe) for a list most people
- * will keep in the dozens. Favorites float to the top and the search field
+ * will keep in the dozens. Loved recipes float to the top and the search field
  * ranks by name and by ingredient. Recipe.mealType (breakfast/lunch/dinner/
  * snack/dessert — see RecipeMealType in src/types) is the one closed-set tag
  * that earned a plain column instead: it's shown in each row's subtitle via
  * describeRecipe(), and the header's "Group" toggle switches the list between
- * that flat favorites-first order and RECIPE_MEAL_TYPE_LABELS sections
+ * that flat loved-first order and RECIPE_MEAL_TYPE_LABELS sections
  * (groupRecipesByMealType, src/utils/recipeUtils.ts). Grouping only applies to
  * the unfiltered box: a search is already a specific question, and section
  * headers over a handful of matches would just be noise.
@@ -93,8 +93,8 @@ import { groceryNameKey } from '../utils/groceryParse';
  * re-tag its meal type — same ReorderableList + nearest-header-above rule
  * Today uses for categories (resolveRecipeMealTypeDrop, recipeUtils.ts).
  * Recipes have no manual order of their own within a section (the box stays
- * favorites-first), so a drop that doesn't cross a header boundary is a
- * no-op: the list re-settles to its favorites-first order instead of keeping
+ * loved-first), so a drop that doesn't cross a header boundary is a
+ * no-op: the list re-settles to its loved-first order instead of keeping
  * wherever the row was released.
  *
  * A section header is also tappable, to fold its recipes away — persisted
@@ -114,11 +114,11 @@ import { groceryNameKey } from '../utils/groceryParse';
  * comment above the button's drag handlers, below.
  */
 
-/** "tagged x, y" / "favorited" / "tagged x, y and favorited" — for the empty state. */
-function describeActiveFilters(tagFiltering: boolean, activeTags: string[], favoritesOnly: boolean): string {
+/** "tagged x, y" / "loved" / "tagged x, y and loved" — for the empty state. */
+function describeActiveFilters(tagFiltering: boolean, activeTags: string[], lovedOnly: boolean): string {
   const parts: string[] = [];
   if (tagFiltering) parts.push(`tagged ${formatTagList(activeTags)}`);
-  if (favoritesOnly) parts.push('favorited');
+  if (lovedOnly) parts.push('loved');
   return parts.join(' and ');
 }
 
@@ -164,13 +164,13 @@ export function RecipesScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const bulkDeleteRecipes = useRecipeStore(s => s.bulkDeleteRecipes);
-  const bulkSetFavorite = useRecipeStore(s => s.bulkSetFavorite);
+  const bulkSetVote = useRecipeStore(s => s.bulkSetVote);
   const setMealType = useRecipeStore(s => s.setMealType);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const recipeSort = useSettingsStore(s => s.recipeSortOption);
   const setRecipeSort = useSettingsStore(s => s.setRecipeSortOption);
-  const recipeFavoritesOnly = useSettingsStore(s => s.recipeFavoritesOnly);
-  const setRecipeFavoritesOnly = useSettingsStore(s => s.setRecipeFavoritesOnly);
+  const recipeLovedOnly = useSettingsStore(s => s.recipeLovedOnly);
+  const setRecipeLovedOnly = useSettingsStore(s => s.setRecipeLovedOnly);
   // Which meal-type sections are folded shut — see the doc comment above.
   // Kept as a Set locally, same wrapper shape TodayScreen uses around its own
   // collapsedCategories, so callers can toggle with a Set-updater instead of
@@ -245,21 +245,25 @@ export function RecipesScreen() {
   } = useRowSelection();
 
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
-  // still the one under your thumb.
+  // still the one under your thumb. The three import items sit in the same
+  // order as RecipeSourcePicker's own Paste/Link/Photo tabs, so the menu and
+  // the sheet it opens agree on which one is the "default" way in.
   const addMenuItems = useMemo<FabMenuItem[]>(() => ([
+    { key: 'paste', label: 'Paste text', icon: 'clipboard-outline' },
     { key: 'link', label: 'From a link', icon: 'link-outline' },
     { key: 'import', label: 'From a photo', icon: 'camera-outline' },
     { key: 'name', label: 'New recipe', icon: 'add-circle-outline' },
   ]), []);
 
   const handleAddMenuSelect = useCallback((key: string) => {
-    // Both import items open the one sheet, on their own tab — see
+    // All three import items open the one sheet, on their own tab — see
     // RecipeCreateSheet's initialMode. Either way this is an import the user is
     // starting from scratch, so any page left over from the shared-link banner
     // is cleared rather than turning up pre-filled in a field they came here to
     // type into themselves.
     setImportUrl(null);
-    if (key === 'link') { setImportMode('link'); setImportVisible(true); }
+    if (key === 'paste') { setImportMode('paste'); setImportVisible(true); }
+    else if (key === 'link') { setImportMode('link'); setImportVisible(true); }
     else if (key === 'import') { setImportMode('photo'); setImportVisible(true); }
     else setAddVisible(true);
   }, []);
@@ -305,22 +309,22 @@ export function RecipesScreen() {
     [selectedTags, tagCounts]
   );
   const tagFiltering = activeTags.length > 0;
-  const filtering = tagFiltering || recipeFavoritesOnly;
-  const activeFilterCount = (recipeSort !== 'default' ? 1 : 0) + (recipeFavoritesOnly ? 1 : 0);
+  const filtering = tagFiltering || recipeLovedOnly;
+  const activeFilterCount = (recipeSort !== 'default' ? 1 : 0) + (recipeLovedOnly ? 1 : 0);
 
   const visible = useMemo(() => {
     // Filter, then rank — the same order GroceryCatalogSheet's store filter uses.
     // Ranking a filtered set is the same function over fewer rows; filtering a
     // ranked one would be a second pass over work already done.
     const byTag = filterRecipesByTags(recipes, activeTags);
-    const byFavorite = recipeFavoritesOnly ? byTag.filter(r => r.favorite) : byTag;
-    const matched = rankRecipes(query, byFavorite);
+    const byLoved = recipeLovedOnly ? byTag.filter(r => r.vote === 'loved') : byTag;
+    const matched = rankRecipes(query, byLoved);
     // rankRecipes already orders a search by weight; only the unfiltered list
     // takes RecipeSortFilterSheet's own sort, or a name match would lose its
     // place to a recipe that merely ranks higher under it.
     if (query.trim()) return matched;
     return sortRecipesBy(matched, recipeSort);
-  }, [query, recipes, activeTags, recipeFavoritesOnly, recipeSort]);
+  }, [query, recipes, activeTags, recipeLovedOnly, recipeSort]);
 
   // Grouping is only offered on the unfiltered box — see the doc comment
   // above. Built from `visible` (already sorted) so the flat and grouped
@@ -451,21 +455,21 @@ export function RecipesScreen() {
     return map;
   }, [visible, recipes, groceryItems, itemSubs]);
 
-  // "Favorite"/"Unfavorite" flips direction based on the selection itself, the
+  // "Love"/"Unlove" flips direction based on the selection itself, the
   // same way the grocery bulk bar's Check/Uncheck does — a selection that's
-  // already all starred has nothing left to star.
-  const allSelectedFavorited = useMemo(() => {
+  // already all loved has nothing left to love.
+  const allSelectedLoved = useMemo(() => {
     if (selectedIds.size === 0) return false;
-    return Array.from(selectedIds).every(id => recipes.find(r => r.id === id)?.favorite);
+    return Array.from(selectedIds).every(id => recipes.find(r => r.id === id)?.vote === 'loved');
   }, [selectedIds, recipes]);
 
   // Extra bottom padding so the last rows aren't hidden behind the floating bar.
   const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
 
-  const handleBulkFavorite = () => {
-    const next = !allSelectedFavorited;
+  const handleBulkLove = () => {
+    const next = !allSelectedLoved;
     animateLayout();
-    bulkSetFavorite(Array.from(selectedIds), next);
+    bulkSetVote(Array.from(selectedIds), next ? 'loved' : null);
     haptics[next ? 'success' : 'tap']();
     exitSelection();
   };
@@ -564,8 +568,8 @@ export function RecipesScreen() {
             {[describeRecipe(recipe, pantryCounts.get(recipe.id)), describeCookHistory(recipe)].filter(Boolean).join(' · ')}
           </Text>
         </View>
-        {recipe.favorite && (
-          <Ionicons name="star" size={iconSize.sm} color={colors.orange} />
+        {recipe.vote === 'loved' && (
+          <Ionicons name="thumbs-up" size={iconSize.sm} color={colors.orange} />
         )}
         {!selectionMode && planButton(recipe)}
         {!selectionMode && (
@@ -725,18 +729,18 @@ export function RecipesScreen() {
 
           {visible.length === 0 ? (
             <EmptyState
-              icon={filtering && !query.trim() ? (tagFiltering ? 'pricetags-outline' : 'star-outline') : 'search-outline'}
+              icon={filtering && !query.trim() ? (tagFiltering ? 'pricetags-outline' : 'thumbs-up-outline') : 'search-outline'}
               title="Nothing matched"
-              // Three ways to end up here (tag, favorites-only, search), and
+              // Three ways to end up here (tag, loved-only, search), and
               // they combine: naming every active filter is what tells you
               // which one to lift.
               subtitle={filtering
                 ? query.trim()
-                  ? `No recipe ${describeActiveFilters(tagFiltering, activeTags, recipeFavoritesOnly)} is called “${query.trim()}” or uses it`
-                  : `No recipe here is ${describeActiveFilters(tagFiltering, activeTags, recipeFavoritesOnly)}`
+                  ? `No recipe ${describeActiveFilters(tagFiltering, activeTags, recipeLovedOnly)} is called “${query.trim()}” or uses it`
+                  : `No recipe here is ${describeActiveFilters(tagFiltering, activeTags, recipeLovedOnly)}`
                 : `No recipe here is called “${query.trim()}” or uses it`}
               actionLabel={filtering ? 'Clear filters' : undefined}
-              onAction={filtering ? () => { animateLayout(); setSelectedTags([]); setRecipeFavoritesOnly(false); } : undefined}
+              onAction={filtering ? () => { animateLayout(); setSelectedTags([]); setRecipeLovedOnly(false); } : undefined}
               bottomOffset={tabBarHeight}
             />
           ) : grouped ? (
@@ -850,10 +854,10 @@ export function RecipesScreen() {
           totalCount={visible.length}
           actions={[
             {
-              key: 'favorite',
-              icon: allSelectedFavorited ? 'star-outline' : 'star',
-              label: allSelectedFavorited ? 'Unfavorite' : 'Favorite',
-              onPress: handleBulkFavorite,
+              key: 'love',
+              icon: allSelectedLoved ? 'thumbs-up-outline' : 'thumbs-up',
+              label: allSelectedLoved ? 'Unlove' : 'Love',
+              onPress: handleBulkLove,
             },
             { key: 'delete', icon: 'trash', label: 'Delete', tone: 'destructive', onPress: handleBulkDelete },
           ]}
@@ -895,8 +899,8 @@ export function RecipesScreen() {
         onClose={() => setSortFilterVisible(false)}
         sort={recipeSort}
         onSortChange={s => { animateLayout(); setRecipeSort(s); }}
-        favoritesOnly={recipeFavoritesOnly}
-        onFavoritesOnlyChange={v => { animateLayout(); setRecipeFavoritesOnly(v); }}
+        lovedOnly={recipeLovedOnly}
+        onLovedOnlyChange={v => { animateLayout(); setRecipeLovedOnly(v); }}
       />
 
       <PlanMealSheet

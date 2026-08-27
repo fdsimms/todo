@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Linking } from 'react-native';
 import { useTaskStore } from '../store/useTaskStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useStepTimerStore } from '../store/useStepTimerStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useWidgetCompletionStore } from '../store/useWidgetCompletionStore';
@@ -304,10 +305,12 @@ export function completeTaskUrlId(url: string): string | null {
 
 // `dundundun://stopTimer?key=cook:<id>|prep:<id>|step:<id>` — the peer of
 // completeTask above for the Done button on a recipe's cook/prep Live Activity
-// and on a cooking step timer's. "Stop" means the same thing tapping Stop in
-// the app does, which differs by kind: a cook or prep timer logs its elapsed
-// time (stopCookTimer/stopPrepTimer in useRecipeStore.ts), and a step timer,
-// which measures nothing, is simply dismissed.
+// and on a cooking step timer's. The host is still named for stopping because
+// that is what the *timer* does in all three cases, but what Done means differs
+// by kind, and only one of the three is just a stop: a prep timer logs its
+// elapsed time (stopPrepTimer), a step timer, which measures nothing, is simply
+// dismissed, and a cook timer logs its time *and* records the cooking the way
+// ticking the meal off would (see the dispatch in openInAppUrl).
 const STOP_TIMER_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?stopTimer\\/?(?:\\?(.*))?$`, 'i');
 
 export function isStopTimerUrl(url: string): boolean {
@@ -379,6 +382,25 @@ export function kitchenUrlItemId(url: string): string | null {
 }
 
 /**
+ * Whether a kitchen link is asking for the pantry review deck to open on
+ * arrival — what "Review what's in the pantry" carries (see
+ * `pantryReviewTasks.PANTRY_REVIEW_LINK_URL`).
+ *
+ * A query on the kitchen link rather than a scheme of its own, exactly as
+ * `groceriesUrlFinish` reads `?finish=1`: the destination is a screen this app
+ * already routes to, and all that differs is which sheet it arrives with. Any
+ * other value is a no, for that function's reason — the only thing that ever
+ * writes this link writes `1`, and the bare `dundundun://kitchen` a "Use up X"
+ * task carries must keep landing on the list exactly as it always has.
+ */
+export function kitchenUrlWantsReview(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  const match = KITCHEN_RE.exec(url.trim());
+  if (!match) return false;
+  return (parseQuery(match[1] ?? '').review ?? '').trim() === '1';
+}
+
+/**
  * Which glyph a task row's link button should show — the destination's own
  * icon (the Groceries cart, a picked app's icon, the fork-and-knife a recipe
  * or meal plan link already uses on Today's context rows) rather than one
@@ -434,7 +456,7 @@ export function openInAppUrl(url: string | null | undefined): boolean {
     return true;
   }
   if (isKitchenUrl(url)) {
-    resetToKitchen(kitchenUrlItemId(url));
+    resetToKitchen(kitchenUrlItemId(url), kitchenUrlWantsReview(url));
     return true;
   }
   if (isPeopleUrl(url)) {
@@ -472,13 +494,37 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isStopTimerUrl(url)) {
     const key = stopTimerUrlKey(url);
-    if (key?.startsWith('cook:')) useRecipeStore.getState().stopCookTimer(key.slice('cook:'.length));
-    else if (key?.startsWith('prep:')) useRecipeStore.getState().stopPrepTimer(key.slice('prep:'.length));
+    if (key?.startsWith('cook:')) {
+      const recipeId = key.slice('cook:'.length);
+      // Two writes, because Done on a cook timer is two claims at once. The
+      // first is the timer's own ✓: bank the elapsed minutes against the
+      // recipe's cook-time log. The second is what the button actually says —
+      // the dish is cooked — which this app records on the planned meal and on
+      // the recipe's counters, and which the ✓ alone never did. Stopping first
+      // so the elapsed run is still there to measure.
+      useRecipeStore.getState().stopCookTimer(recipeId);
+      useMealPlanStore.getState().finishCookForRecipe(recipeId);
+      // And land on the dish. Every other link in here opens the thing it acted
+      // on, for the reason the focus link spells out: a Lock Screen tap that
+      // leaves you wherever the app happened to be is a tap that appears to
+      // have done nothing. It's also where the post-cook sheet is answered.
+      resetToRecipeDetail(recipeId);
+    }
+    // Prep is the half hour before a cooking, not a cooking — Done here banks
+    // the prep time and claims nothing about the dish. It opens the recipe all
+    // the same, so the minutes it just logged are visible.
+    else if (key?.startsWith('prep:')) {
+      const recipeId = key.slice('prep:'.length);
+      useRecipeStore.getState().stopPrepTimer(recipeId);
+      resetToRecipeDetail(recipeId);
+    }
     // A cooking step timer's Done means "I've dealt with this pan": there is
     // no elapsed time to log, so the timer just goes, the way the row's own
     // dismiss does. Its alarm goes with it, which is the half that matters
     // from a Lock Screen — Done on a timer still ticking must not leave one
-    // scheduled to ring about a pan that came off the heat.
+    // scheduled to ring about a pan that came off the heat. Nowhere to open:
+    // the key names the timer, and the pan it was set for is as likely to be
+    // one step of a dish somebody is still cooking as the end of anything.
     else if (key?.startsWith('step:')) useStepTimerStore.getState().remove(key.slice('step:'.length));
     return true;
   }

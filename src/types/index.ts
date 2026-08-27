@@ -2,7 +2,7 @@ export type RecurrenceType = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type Priority = 0 | 1 | 2 | 3 | 4;
 export type Effort = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type SortOption = 'default' | 'priority' | 'effort-asc' | 'effort-desc' | 'due-date' | 'streak';
-export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'ingredients-asc' | 'ingredients-desc' | 'voted';
+export type RecipeSortOption = 'default' | 'name' | 'cooked-recent' | 'cooked-oldest' | 'ingredients-asc' | 'ingredients-desc';
 export type TimeOfDay = 'morning' | 'afternoon' | 'evening' | 'night';
 // 'persistent' is 'alarm' that re-rings on an interval until the task is
 // completed, rather than once — see src/utils/alarmChain.ts.
@@ -526,6 +526,34 @@ export interface Person {
    * writes; this one is only about what it asks.
    */
   backfillDismissedFields: string[];
+  /**
+   * The `PersonGroup` this person belongs to, or null. A couple or a
+   * household you always catch up with together, so the reach-out nudge can
+   * fold them into one task instead of asking about each of them apart —
+   * see `docs/arch/people.md`'s "Groups" section. Single-valued, like
+   * `Task.groupId` pointing at a `TaskGroup`: a person is a member of at most
+   * one group at a time.
+   */
+  groupId: string | null;
+}
+
+/**
+ * A couple, a household, anyone you'd never think to catch up with
+ * separately — a lightweight, renameable label a `Person` hangs off of via
+ * `Person.groupId`, the same "label, not a join table" shape `TaskGroup`
+ * uses for stacks. It carries no cadence, no history and no nudge settings
+ * of its own: those stay on each `Person`, and a group only changes how the
+ * reach-out nudge presents people who share one (see
+ * `collapseGroupedReachOuts` in `src/utils/reachOutTasks.ts`) and how an
+ * "@name" mention resolves (see `docs/arch/people.md`).
+ */
+export interface PersonGroup {
+  id: string;
+  name: string;
+  // Hand-ordered, the same independent number space Person.sortOrder is —
+  // never re-ranked by recency or by anything about the people in it.
+  sortOrder: number;
+  createdAt: string;
 }
 
 /**
@@ -618,6 +646,12 @@ export type GeneratedKind =
   | 'mealPlanNudge'
   | 'projectReview'
   | 'pantryCheck'
+  // The offer to go through the whole cupboard at once, rather than one item
+  // at a time the way pantryCheck asks — see src/utils/pantryReviewTasks.ts.
+  // Its source id is the day key the offer was raised on, the same "square on
+  // the calendar, not a row" position calendarReview and mealPlanNudge are in,
+  // and for the same reason writeGeneratedOptOut has nothing to write for it.
+  | 'pantryReview'
   // Once a day, a task to look at tomorrow's calendar — see
   // src/utils/calendarReviewTasks.ts. Its source id is tomorrow's day key, the
   // same "square on the calendar, not a row" position mealPlanNudge is in, and
@@ -791,6 +825,53 @@ export interface Task {
   // under target — a normal completion, not a miss. Off by default, so an
   // existing quota task keeps completing the instant it hits target.
   allowOvershoot: boolean;
+
+  // How often one unit falls due, in minutes. The interval and the count are
+  // the same triangle read from different corners — a span divided by one
+  // gives the other — and which one is *stored* decides what stays fixed when
+  // the span moves. Storing the count keeps "24 a day" and squeezes the
+  // spacing; storing the interval keeps "every 20 minutes" and takes fewer of
+  // them. For anything the user actually thinks of as a cadence (an eye break
+  // every 20 minutes, standing up every half hour) the second is what they
+  // mean, and it's the only one that survives quotaStartedAt moving the start
+  // (see quotaRunSpan in src/utils/quotaSchedule.ts).
+  //
+  // So when this is set, `targetCount` is *derived* from it and the run's
+  // span, recomputed wherever either changes (see QUOTA_SPAN_FIELDS in
+  // useTaskStore) rather than typed. Every existing reader keeps reading
+  // targetCount and needs to know nothing about this column — the same call
+  // recurrenceAnchorDate makes about staying inside the recurrence engine.
+  //
+  // null = the count is the primitive, which is every quota task that predates
+  // this and every one whose target is a real goal ("8 glasses") rather than
+  // arithmetic.
+  quotaIntervalMinutes: number | null;
+  // Send a notification each time a unit falls due, instead of only surfacing
+  // the row on Today.
+  //
+  // A quota has always paced silently, which is right for water (you'll see
+  // the row when you next look at your phone) and useless for anything whose
+  // whole point is to interrupt you — the row can't nudge you off a screen if
+  // looking at the row means looking at a screen. Materialised as N one-shot
+  // notifications for the reason src/utils/alarmChain.ts spells out at length:
+  // the layer underneath only understands one fire at one time.
+  //
+  // Independent of quotaIntervalMinutes on purpose. A cadence you don't want
+  // to be nudged about is a real thing to ask for, and so is being nudged
+  // about a plain count.
+  quotaReminders: boolean;
+  // When today's run was started by hand, if it was — the "start now" that
+  // makes a fixed window optional.
+  //
+  // Deliberately its own per-occurrence timestamp rather than a write to
+  // windowStart: the window is the schedule and holds for every day, while
+  // this is one morning that began at 10:30. It rides no successor
+  // (completeTask clears it beside progressCount), so a run started late
+  // today says nothing about tomorrow.
+  //
+  // Only honoured on its own logical day, so an app left closed over a
+  // weekend doesn't resume Friday's run on Monday. null = the window decides.
+  quotaStartedAt: string | null;
 
   // Supply — how many units of a consumable are left, for a recurring task
   // that spends one every time it's done. Replacing a CPAP filter monthly out
@@ -2917,15 +2998,17 @@ export const RECIPE_SOURCE_TYPE_LABELS: Record<RecipeSourceType, string> = {
   other: 'Other',
 };
 
-// Whether you'd cook it again. Two poles and null (no opinion, the common
-// state — nothing infers one, cooking a recipe isn't liking it), the same
-// shape ProductRating uses for a grocery product and for the same reason: the
-// question is "would I make this again", not a score to keep consistent.
-export type RecipeVote = 'up' | 'down';
+// Whether you'd cook it again, and how much. Three rungs and null (no
+// opinion, the common state — nothing infers one, cooking a recipe isn't
+// liking it). This is also the recipe box's one "is this any good" signal —
+// it replaced a separate favorite star, so the top rung is what floats a
+// recipe to the top of the box and what a favorite used to mean.
+export type RecipeVote = 'loved' | 'liked' | 'never';
 
 export const RECIPE_VOTE_LABELS: Record<RecipeVote, string> = {
-  up: 'Loved it',
-  down: 'Not for me',
+  loved: 'Loved it',
+  liked: 'Liked it',
+  never: 'Never again',
 };
 
 // A dish you cook, with what it takes to shop for it.
@@ -3051,7 +3134,6 @@ export interface Recipe {
   // second list to keep in step with this one, worth adding only once
   // something actually reads them (#1695).
   steps: RecipeStep[];
-  favorite: boolean;
   sortOrder: number;
   createdAt: string;
   /**
@@ -3067,7 +3149,9 @@ export interface Recipe {
   /**
    * Set from the edit page, or offered the first time the recipe is marked
    * cooked (see useRecipeStore.setVote, MealPlanScreen.setCooked). Null is
-   * "no opinion yet", not "fine" — see RecipeVote.
+   * "no opinion yet", not "fine" — see RecipeVote. This is the recipe box's
+   * one rating: there is no separate favorite flag any more, and 'loved' is
+   * what a starred recipe used to mean.
    */
   vote: RecipeVote | null;
 

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -56,6 +56,15 @@ import {
   stalePantryCheckTasks,
   wantedPantryChecks,
 } from '../utils/pantryCheckTasks';
+import { buildPantryReviewDeck } from '../utils/pantryReview';
+import {
+  PANTRY_REVIEW_LINK_URL,
+  PANTRY_REVIEW_TITLE,
+  pantryReviewCadenceElapsed,
+  pantryReviewDayKey,
+  stalePantryReviewTasks,
+  wantsPantryReview,
+} from '../utils/pantryReviewTasks';
 import {
   mealShortfallEntryId,
   mealShortfallLinkUrl,
@@ -99,10 +108,12 @@ import {
   supplyReorderSourceId,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
+import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver } from '../utils/quotaSchedule';
+import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from '../utils/taskKinds';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -135,14 +146,17 @@ import {
   reachOutsHandledRecently,
   staleReachOutTasks,
   wantedReachOuts,
+  collapseGroupedReachOuts,
+  MAX_REACH_OUT_TASKS,
   type ReachOutCandidate,
 } from '../utils/reachOutTasks';
 import { lastTogether, personHistory } from '../utils/personHistory';
 import { usePersonStore } from './usePersonStore';
+import { usePersonGroupStore } from './usePersonGroupStore';
 import { usePersonNoteStore } from './usePersonNoteStore';
 import { giftIdeasText } from '../utils/personNotes';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
-import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm } from '../utils/notifications';
+import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import {
   deleteCalendarEvent,
@@ -371,6 +385,12 @@ function newTaskFromDraft(
     progressCount: draft.progressCount ?? 0,
     targetUnit: normalizeTargetUnit(draft.targetUnit),
     allowOvershoot: draft.allowOvershoot ?? false,
+    quotaIntervalMinutes: draft.quotaIntervalMinutes ?? null,
+    quotaReminders: draft.quotaReminders ?? false,
+    // Never seeded from a draft: a run is started by tapping "start now" on a
+    // task that exists, so a row arriving already mid-run would be claiming a
+    // morning nobody had yet.
+    quotaStartedAt: null,
     // Refused outright on a task that can't spend it, rather than trusted from
     // the draft. A supply counts down by riding onto the successor completeTask
     // spawns, so on a one-off it would sit at its starting number for ever
@@ -568,6 +588,11 @@ function reconcileDeadlineEvent(task: Task): void {
  *   `calendarReviewLastDayKey`, set unconditionally by `checkCalendarReviewTasks`
  *   the moment a day is considered, whatever the outcome, so a swiped-away task
  *   isn't re-diagnosed on the very next sweep.
+ * - **`pantryReview` is the third of these** — its source id is the day the
+ *   offer was raised on, and there is no one item it is about to write a "no"
+ *   onto. `pantryReviewLastDayKey` does the same job, and carries the cadence
+ *   as well, so a swiped-away offer stays gone for a fortnight rather than
+ *   until tomorrow.
  */
 function writeGeneratedOptOut(task: Task, value: false | null): void {
   const sourceId = task.generatedSourceId;
@@ -577,6 +602,8 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'mealPlanNudge':
       return;
     case 'calendarReview':
+      return;
+    case 'pantryReview':
       return;
     // Nothing to write, for the nudge's reason: a day and a slot name a square
     // on the calendar, not a row. Swiping today's lunch task away is honoured
@@ -662,10 +689,23 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     // wrote: a stamp already sitting there predated this decline (a more
     // recent one would have suppressed the task in the first place), so
     // clearing it changes nothing the reader can see.
-    case 'reachOut':
-      usePersonStore.getState()
-        .updatePerson(sourceId, { reachOutDeclinedAt: value === false ? new Date().toISOString() : null });
+    case 'reachOut': {
+      const stamp = value === false ? new Date().toISOString() : null;
+      // A collapsed group task's sourceId is a PersonGroup id rather than a
+      // personId (see collapseGroupedReachOuts) — decline it for every
+      // current member, or the other half of the couple would pop right back
+      // up on the next sweep having never been told "not now" at all.
+      const group = usePersonGroupStore.getState().getGroupById(sourceId);
+      if (group) {
+        const { people, updatePerson } = usePersonStore.getState();
+        people.filter(p => p.groupId === sourceId).forEach(p =>
+          updatePerson(p.id, { reachOutDeclinedAt: stamp })
+        );
+      } else {
+        usePersonStore.getState().updatePerson(sourceId, { reachOutDeclinedAt: stamp });
+      }
       return;
+    }
     case 'supplyReorder': {
       const source = useTaskStore.getState().tasks.find(t => t.id === sourceId);
       if (!source || source.supplyCount === null) return;
@@ -824,6 +864,39 @@ const SCHEDULE_FIELDS = [
   'recurrenceWeekOrdinal',
   'recurrenceFromCompletion',
 ] as const;
+
+// The fields a run's span is built from. Writing any of them on an interval
+// quota re-derives targetCount, because with an interval stored the count is
+// arithmetic rather than an answer the user gave (see Task.quotaIntervalMinutes)
+// — and arithmetic left stale is worse than arithmetic never done: a window
+// shortened from eight hours to four would keep nudging every 20 minutes but go
+// on expecting 24 of them, so the task would read as behind from the first
+// minute of every day.
+const QUOTA_SPAN_FIELDS = ['windowStart', 'windowEnd', 'quotaIntervalMinutes', 'quotaStartedAt'] as const;
+
+/**
+ * `targetCount` for a task whose cadence is stored as an interval, or the
+ * count it already had when it isn't.
+ *
+ * Reads the same span the pace ramp and the notifier read, so the three can't
+ * disagree about how many units a day holds.
+ */
+function derivedTargetCount(task: Task): number | null {
+  if (task.quotaIntervalMinutes == null) return task.targetCount;
+  const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+  const span = quotaRunSpan({
+    windowStart: task.windowStart,
+    windowEnd: task.windowEnd,
+    quotaStartedAt: task.quotaStartedAt,
+    activeHoursStart,
+    activeHoursEnd,
+    dayStart: getCurrentDayStart(),
+  });
+  return quotaTargetForInterval(span, task.quotaIntervalMinutes, {
+    min: MIN_TARGET_COUNT,
+    max: MAX_TARGET_COUNT,
+  });
+}
 
 // A dated series and a recurrence rule are two schedules for one task, and a
 // series row is deliberately an ordinary one-off (see Task.seriesId) — the set
@@ -1349,6 +1422,22 @@ interface TaskStore {
   rolloverQuotas: () => void;
   /** Opt-in counterpart to rolloverQuotas for allowOvershoot tasks — see its doc comment. */
   sweepOvershootQuotas: () => void;
+  /**
+   * Closes out interval quotas whose run has ended, at whatever count they
+   * reached — see its doc comment. The third quota day-close, and the only one
+   * that fires mid-day, because a run ends when its window shuts rather than
+   * when the logical day turns over.
+   */
+  sweepFinishedQuotaRuns: () => void;
+  /**
+   * Begin today's run now, for a task whose window is a default rather than a
+   * commitment — the "start now" half of an optional fixed schedule.
+   *
+   * Stamps the moment on the occurrence and lets the derived-count rule in
+   * updateTask do the rest: a shorter span holds fewer units at the same
+   * interval, which is what keeping the cadence and losing the count means.
+   */
+  startQuotaRun: (id: string) => void;
   deferTask: (id: string, until: Date) => void;
   // Applies a batch of approved "lighten this day" moves (see
   // utils/deloadPlan) under one undo entry — each move carries its own field
@@ -1419,6 +1508,12 @@ interface TaskStore {
    * restocked or put back on the list. See src/utils/pantryCheckTasks.ts.
    */
   checkPantryCheckTasks: () => void;
+  /**
+   * Once every couple of weeks, and only when several things are in doubt at
+   * once, a single task to go through the whole cupboard on the swipe deck.
+   * See src/utils/pantryReviewTasks.ts.
+   */
+  checkPantryReviewTasks: () => void;
   /**
    * Give every planned meal the kitchen can't currently make a "Shop for X"
    * task, and clear the ones whose meal has since been re-planned, moved,
@@ -1567,7 +1662,8 @@ interface TaskStore {
   bulkCompleteTasks: (ids: string[]) => void;
   bulkUncompleteTasks: (ids: string[]) => void;
   bulkMarkMissed: (ids: string[]) => void;
-  bulkDeleteTasks: (ids: string[]) => void;
+  /** `skipGeneratedOptOut` has the same meaning as `deleteTask`'s — see its doc comment. */
+  bulkDeleteTasks: (ids: string[], opts?: { skipGeneratedOptOut?: boolean }) => void;
   clearLogbook: () => void;
   bulkSetPriority: (ids: string[], priority: Priority) => void;
   bulkTogglePin: (ids: string[]) => void;
@@ -1648,6 +1744,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // database-swap reason: notes left pointed at the previous database would
     // render real facts about real people under demo names.
     usePersonNoteStore.getState().initialize();
+    // Also immediately after the people, for the identical reason: a group
+    // left pointed at the previous database would name people who don't
+    // exist in the new one.
+    usePersonGroupStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
@@ -1714,7 +1814,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const doomed = expired.filter(t => !isLiveRecurring(t));
 
     rolled.forEach(t => get().skipNextRecurrence(t.id));
-    if (doomed.length > 0) get().bulkDeleteTasks(doomed.map(t => t.id));
+    // skipGeneratedOptOut: this runs unattended at startup — a window closing
+    // on its own is the app tidying up, not the user declining the source.
+    if (doomed.length > 0) get().bulkDeleteTasks(doomed.map(t => t.id), { skipGeneratedOptOut: true });
   },
 
   // Enforces the "keep completed tasks for" window — the only thing that has
@@ -1754,6 +1856,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbInsertTask(task);
     set(s => ({ tasks: [...s.tasks, task] }));
     scheduleTaskReminder(task);
+    scheduleQuotaNudges(task);
     reconcileDeadlineEvent(task);
     return task;
   },
@@ -1844,6 +1947,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         dbDeleteSubtasks(t.id);
         dbDeleteTask(t.id);
         cancelTaskReminder(t.id);
+        cancelQuotaNudges(t.id);
         if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
       });
       unfiled.forEach(dbUpdateTask);
@@ -1936,6 +2040,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dbDeleteSubtasks(t.id);
       dbDeleteTask(t.id);
       cancelTaskReminder(t.id);
+      cancelQuotaNudges(t.id);
       // The row is gone for good, not archived — nothing will ever revisit
       // it to notice a dangling event, so clean it up now, same as deleteTask.
       if (t.calendarEventId) deleteCalendarEvent(t.calendarEventId);
@@ -1969,6 +2074,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dbDeleteSubtasks(t.id);
       dbDeleteTask(t.id);
       cancelTaskReminder(t.id);
+      cancelQuotaNudges(t.id);
     });
     set(s => ({ tasks: s.tasks.filter(t => !ids.has(t.id) && !(t.parentId && ids.has(t.parentId))) }));
 
@@ -2289,6 +2395,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(!('recurrenceAnchorDate' in updates) && SCHEDULE_FIELDS.some(f => f in updates)
           ? { recurrenceAnchorDate: null }
           : {}),
+        // Same shape as the two rules above, and the same reasoning: a patch
+        // naming targetCount itself wins outright, so a whole-snapshot undo
+        // restores the count it recorded rather than recomputing a new one
+        // against a span that has since moved.
+        ...(!('targetCount' in updates) && QUOTA_SPAN_FIELDS.some(f => f in updates)
+          ? { targetCount: derivedTargetCount({ ...t, ...updates }) }
+          : {}),
       };
 
       // Re-filing a task must not, on its own, make it read as "new".
@@ -2328,6 +2441,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       ) {
         cancelTaskReminder(id);
         scheduleTaskReminder(updated);
+      }
+      // The nudge grid is rebuilt whenever anything it's derived from moves —
+      // the span fields, the count that divides it, the toggle itself — plus
+      // the two states that mean there is nothing left to nudge about, and the
+      // title/notes the notification is written from. Wider than the reminder
+      // gate above because a nudge is derived from more: a reminder is one
+      // stored instant, a run is a whole schedule.
+      if (
+        QUOTA_SPAN_FIELDS.some(f => f in updates) ||
+        'quotaReminders' in updates ||
+        'targetCount' in updates ||
+        'vacationPause' in updates ||
+        'completed' in updates ||
+        'archived' in updates ||
+        'title' in updates ||
+        'notes' in updates
+      ) {
+        scheduleQuotaNudges(updated);
       }
       if (
         'deadline' in updates ||
@@ -2410,6 +2541,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           patched.forEach(t => {
             dbUpdateTask(t);
             cancelTaskReminder(t.id);
+        cancelQuotaNudges(t.id);
             scheduleTaskReminder(t);
           });
           const byId = new Map(patched.map(t => [t.id, t]));
@@ -2492,9 +2624,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // back — weekly, for a staple. The one deliberate exception to "the source
     // is the master": a delete here is an instruction to it, not drift from it.
     //
-    // Only this path, not bulkDeleteTasks: the sweeps and purges that route
-    // through the bulk form aren't the user saying anything, and a generated
-    // task they reach has been completed for months anyway.
+    // bulkDeleteTasks writes the same opt-out for the same reason — a
+    // selection-bar delete of a live "Catch up with Sarah" is exactly as much
+    // an instruction to the source as this single-row path is. It defaults to
+    // skipping only for the sweeps that route through it on the app's own
+    // behalf (see sweepExpiredTasks), which is the case this comment used to
+    // describe as "not user-initiated" for the whole function.
     //
     // And not when the app is the one deleting: a reconcile clearing a task
     // whose reason has gone is tidying up, not the source changing its mind
@@ -2696,10 +2831,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // whatever count it actually reached — that's the record of the day, the
       // same way rolloverQuotas leaves a partial alone.
       //
-      // allowOvershoot is the one exception: its whole point is a tally that
-      // can land over, at, or under target, so clamping it here would erase
-      // the overshoot the sweep exists to preserve (see sweepOvershootQuotas).
-      progressCount: isQuotaTask(task) && !missed && !task.allowOvershoot ? task.targetCount! : task.progressCount,
+      // The kinds that ride the day out are the exception: their whole point
+      // is a tally that can land over, at, or under target, so clamping it
+      // here would erase the record the sweeps exist to preserve — the
+      // overshoot for allowOvershoot (see sweepOvershootQuotas), and for an
+      // interval quota the honest "18 of 24 nudges taken" that the run-ended
+      // sweep closes the day with.
+      progressCount: isQuotaTask(task) && !missed && !quotaRidesOutTheDay(task) ? task.targetCount! : task.progressCount,
       // What was decided, where the caller had somewhere to ask. Omitted means
       // "nobody asked" — every non-interactive path (bulk, cascade, widget,
       // sweep) and every miss — which completes the row exactly as it did
@@ -2857,6 +2995,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           timeSegments: nextTimeSegments,
           pinned: chainStepStaysPinned, // stays pinned through an immediate chain step; resets otherwise
           progressCount: 0, // a quota starts the new day empty
+          // ...and starts it from the window again. A run begun by hand at
+          // 10:30 is a statement about this morning, not about the schedule
+          // (see Task.quotaStartedAt), so it rides no successor.
+          quotaStartedAt: null,
           // The question carries via ...effective, the answer doesn't: this
           // occurrence hasn't been decided yet. Same split actualMinutes makes,
           // and it's what turns a recurring decision task's Logbook into the
@@ -3501,7 +3643,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // The unit that reaches the target isn't a count bump, it's a completion —
     // hand off so recurrence, streaks, reminders and the Logbook all run
     // exactly as they do for any other task.
-    if (task.progressCount + 1 >= task.targetCount!) {
+    //
+    // Unless the task is one of the two kinds that ride the day out instead.
+    // allowOvershoot says so outright ("a 13th glass against a target of 12"),
+    // and this guard was missing: isQuotaOnPace deliberately keeps such a task
+    // on Today past its target so the extra can be logged, and the very next
+    // tap completed it — the feature's whole point, undone one line from where
+    // it was declared. An interval quota is the second: its count is span ÷
+    // interval rather than a goal, so "reaching" it is the clock running out,
+    // which the run-ended sweep owns and a tap does not.
+    if (!quotaRidesOutTheDay(task) && task.progressCount + 1 >= task.targetCount!) {
       get().completeTask(id);
       return;
     }
@@ -3576,7 +3727,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // manual close always writes progressCount as-is but forces
       // streakCount to 0, which is right for a shortfall but wrong for a
       // task that actually met or beat its target.
-      !t.allowOvershoot &&
+      //
+      // An interval quota is excluded for a stronger version of the same
+      // reason: it has no shortfall to record. Its target is span ÷ interval,
+      // so falling "short" of it means nothing more than not having tapped
+      // every nudge, and closing the day with streakCount: 0 for that would
+      // break the streak on essentially every day the feature works. See
+      // sweepFinishedQuotaRuns, which closes it at the end of its run instead.
+      !quotaRidesOutTheDay(t) &&
       t.dueDate !== null &&
       getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
     );
@@ -3672,6 +3830,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const todayStart = getCurrentDayStart();
     const stale = get().tasks.filter(t =>
       t.allowOvershoot &&
+      // An interval quota closes at the end of its own run rather than at day
+      // rollover, and does it whatever the count — sweepFinishedQuotaRuns
+      // owns it even when it also carries allowOvershoot, or a run that ended
+      // at 17:00 would sit unclosed until the small hours.
+      t.quotaIntervalMinutes === null &&
       isQuotaTask(t) &&
       !t.completed &&
       !t.archived &&
@@ -3681,6 +3844,62 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
     );
     stale.forEach(t => get().completeTask(t.id));
+  },
+
+  startQuotaRun(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || task.completed || task.archived || !isQuotaTask(task)) return;
+    // Through updateTask rather than a direct write, so QUOTA_SPAN_FIELDS
+    // re-derives targetCount against the span that just shrank, and the undo
+    // entry below restores the count with the stamp it belonged to.
+    const before = { quotaStartedAt: task.quotaStartedAt, targetCount: task.targetCount };
+    get().updateTask(id, { quotaStartedAt: new Date().toISOString() });
+    get().setLastAction({
+      label: 'Started',
+      undo: () => get().updateTask(id, before),
+    });
+  },
+
+  sweepFinishedQuotaRuns() {
+    const { dayResetTime, activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+    const todayStart = getCurrentDayStart();
+    const now = new Date();
+    const finished = get().tasks.filter(t => {
+      if (t.quotaIntervalMinutes === null || !isQuotaTask(t)) return false;
+      if (t.completed || t.archived) return false;
+      // Same protection from streak loss vacation gives everywhere else, and
+      // it matters more here: a paused task is one whose run was never
+      // supposed to happen.
+      if (isHiddenForVacation(t)) return false;
+      if (t.dueDate === null) return false;
+      const taskDay = getTaskDayStart(new Date(t.dueDate), dayResetTime);
+      // A run from an earlier day is over by definition, whatever the clock
+      // says now — the app may simply have been closed since. Today's run is
+      // over once its own span has closed.
+      if (taskDay < todayStart) return true;
+      if (taskDay > todayStart) return false;
+      return isQuotaRunOver(
+        quotaRunSpan({
+          windowStart: t.windowStart,
+          windowEnd: t.windowEnd,
+          quotaStartedAt: t.quotaStartedAt,
+          activeHoursStart,
+          activeHoursEnd,
+          dayStart: todayStart,
+        }),
+        now,
+      );
+    });
+    // Through completeTask, at whatever count was reached — including zero.
+    //
+    // Zero is the case sweepOvershootQuotas deliberately leaves alone, on the
+    // reading that a tally nobody touched is a day the task was abandoned. An
+    // interval quota inverts that: the nudges fired whether or not any was
+    // tapped, so the run *did* happen, and leaving it incomplete would stack
+    // an overdue row per day for the one routine most likely to go untapped.
+    // A completion here is what it says — the run finished — and the count
+    // beside it is the record of how much of it you took.
+    finished.forEach(t => get().completeTask(t.id));
   },
 
   deferTask(id, until) {
@@ -4184,6 +4403,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const people = usePersonStore.getState().people;
     const today = getCurrentDayStart();
 
+    // A grouped person's "together" history folds in every current member of
+    // their PersonGroup, not just their own personIds — hanging out with one
+    // half of a couple is time spent with the pair, and reading only their
+    // own id would have the app ask to "catch up" with someone seen an hour
+    // ago under their partner's name. See docs/arch/people.md's "Groups"
+    // section.
+    const namedIdsFor = (person: Person): string[] =>
+      person.groupId
+        ? people.filter(p => p.groupId === person.groupId).map(p => p.id)
+        : [person.id];
+
     // The history is derived per person from the rows that name them, which is
     // the same read the person's own screen does — there is no stored "last
     // contacted" anywhere, by design.
@@ -4193,19 +4423,40 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // foreground.
       .filter(p => p.nudgeOptIn && p.cadenceDays > 0 && !p.archived)
       .map(person => {
-        const theirs = tasks.filter(t => t.personIds.includes(person.id));
+        const namedIds = namedIdsFor(person);
+        const theirs = tasks.filter(t => t.personIds.some(id => namedIds.includes(id)));
         return { person, lastTogether: lastTogether(personHistory(theirs)) };
       });
 
-    const handled = reachOutsHandledRecently(tasks, today);
-    const wanted = wantedReachOuts(candidates, today, handled);
+    // A generated task's sourceId reads back as either a personId or a
+    // PersonGroup id (see collapseGroupedReachOuts below) — resolve-or-shrug,
+    // the same pattern every other cross-entity pointer in this layer uses.
+    const groupIdOf = (personId: string) => people.find(p => p.id === personId)?.groupId ?? null;
+    const groupNameOf = (groupId: string) => usePersonGroupStore.getState().getGroupById(groupId)?.name ?? null;
+
+    const handledRaw = reachOutsHandledRecently(tasks, today);
+    // A "handled" id can itself be a group id — expand it back to every
+    // current member so wantedReachOuts' own per-person check (which only
+    // ever reads a personId) suppresses both, not only whichever member's id
+    // happens to equal the collapsed row's own sourceId.
+    const handled = new Set<string>(handledRaw);
+    for (const id of handledRaw) {
+      if (usePersonGroupStore.getState().getGroupById(id)) {
+        people.filter(p => p.groupId === id).forEach(p => handled.add(p.id));
+      }
+    }
+
+    // Uncapped and still in the user's own sortOrder — collapsing runs before
+    // the cap so a couple due at once merges into one row instead of one of
+    // them losing the contest for a slot.
+    const allWanted = wantedReachOuts(candidates, today, handled, candidates.length);
+    const collapsedWanted = collapseGroupedReachOuts(allWanted, groupIdOf, groupNameOf);
+    const wanted = collapsedWanted.slice(0, MAX_REACH_OUT_TASKS);
 
     // Everybody still due, uncapped — a row that lost the contest for a slot is
     // not stale, and deleting one the user deferred to Saturday would be the
     // app taking back an offer it already made.
-    const stillDue = new Set(
-      wantedReachOuts(candidates, today, handled, candidates.length).map(w => w.personId)
-    );
+    const stillDue = new Set(collapsedWanted.map(w => w.sourceId));
     // dropGeneratedTask rather than deleteGeneratedTaskQuietly: the latter
     // routes through deleteTask, which stamps the source's opt-out. Here that
     // would record a decline the user never made and silence the person for a
@@ -4224,7 +4475,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     wanted.forEach(want => {
       reconcileGeneratedTask({
         kind: 'reachOut',
-        sourceId: want.personId,
+        sourceId: want.sourceId,
         wanted: true,
         // Chases the title only, and only when it has actually changed — a
         // renamed person, or an "ask about" note added or answered since the
@@ -4243,7 +4494,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // naming somebody is the record that something happened with them,
           // and ticking this off would otherwise reset the very clock that
           // wrote it without you having actually reached out.
-          ...generatedBy('reachOut', want.personId),
+          ...generatedBy('reachOut', want.sourceId),
         }),
       });
     });
@@ -4368,6 +4619,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const stale = stalePantryCheckTasks(tasks, items, now);
     stale.forEach(task => dropGeneratedTask('pantryCheck', pantryCheckItemId(task)));
 
+    // One review row already asks about the whole cupboard, so the drip stands
+    // down rather than adding three more questions about individual shelves of
+    // it (see pantryReviewTasks.ts for the split). Deliberately only the
+    // *create* half: rows raised before the review appeared are left alone,
+    // since a deferred one is the user's, and answering them from the deck
+    // clears them through the stale pass above for free — a card answered makes
+    // its item's lapse null, which is exactly what that pass tests.
+    if (liveGeneratedTasksOfKind(tasks, 'pantryReview').length > 0) return;
+
     const wanted = wantedPantryChecks(items, tasks, now);
     if (wanted.length === 0) return;
 
@@ -4402,6 +4662,81 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           ...generatedBy('pantryCheck', want.itemId),
         }),
       });
+    });
+    // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  checkPantryReviewTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.pantryReviewTasks) return;
+    // The same kitchenEnabled gate checkPantryCheckTasks takes directly above,
+    // for the same reason: this fires on time passing rather than on a purchase
+    // or an edit, so without it this would be the one part of a switched-off
+    // feature still writing rows onto Today.
+    if (!settings.kitchenEnabled) return;
+
+    const tasks = get().tasks;
+    const grocery = useGroceryStore.getState();
+    // Bare `new Date()` on purpose, the call checkPantryCheckTasks makes and
+    // for its reason: a pantry window is real elapsed days from a till receipt
+    // rather than logical days (see the dayResetTime note in CLAUDE.md).
+    const deck = buildPantryReviewDeck(grocery.items, new Date(), grocery.itemProducts);
+
+    // Clear first, create second, the ordering every generator here runs on.
+    // dropGeneratedTask rather than deleteGeneratedTaskQuietly for the reason
+    // checkPantryCheckTasks gives — except that here there is nothing to stamp
+    // at all (no source row), so the two would agree; it stays the honest call
+    // for what this is, which is the app tidying up rather than the user
+    // declining.
+    stalePantryReviewTasks(tasks, deck).forEach(task =>
+      dropGeneratedTask('pantryReview', pantryReviewDayKey(task))
+    );
+
+    // The day boundary is the user's own here, unlike the deck's window above:
+    // this is "have I offered this today", which is a question about their
+    // calendar rather than about a shelf.
+    const todayStart = getCurrentDayStart();
+    const todayKey = dayKeyOf(todayStart);
+    if (!pantryReviewCadenceElapsed(settings.pantryReviewLastDayKey, todayStart)) return;
+    // Recorded before the deck is judged, and unconditionally: a day already
+    // considered — offered, or found not doubtful enough — must not be
+    // re-diagnosed on every later sweep, and with no source row this mark is
+    // the only thing standing between a swiped-away row and an identical one on
+    // the very next foreground (see writeGeneratedOptOut's pantryReview case).
+    // Same idempotency calendarReviewLastDayKey gives, carrying the cadence too.
+    settings.setPantryReviewLastDayKey(todayKey);
+
+    // One at a time. A row raised a fortnight ago and still sitting there means
+    // the offer has been ignored or deferred, and a second one is the pile-up
+    // every generator here has a rule against — the mark above has just been
+    // refreshed, so the next offer is another cadence out.
+    if (liveGeneratedTasksOfKind(tasks, 'pantryReview').length > 0) return;
+    if (!wantsPantryReview(deck)) return;
+
+    ensureGeneratedTaskCategory('pantryReview');
+    const category = useSettingsStore.getState().pantryReviewTaskCategory;
+    // Noon today, the landing every other unattended writer picks.
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    reconcileGeneratedTask({
+      kind: 'pantryReview',
+      sourceId: todayKey,
+      // Never false: the not-wanted half is the stale pass above.
+      wanted: true,
+      // The title never varies, so there is nothing to chase — and the due date
+      // deliberately isn't chased either, for checkPantryCheckTasks' reason: by
+      // the time a second sweep runs the user may have deferred this row.
+      drift: () => null,
+      draft: () => ({
+        title: PANTRY_REVIEW_TITLE,
+        dueDate: dueDate.toISOString(),
+        // Opens the Pantry screen with the deck already up. See
+        // PANTRY_REVIEW_LINK_URL.
+        linkUrl: PANTRY_REVIEW_LINK_URL,
+        category,
+        ...generatedBy('pantryReview', todayKey),
+      }),
     });
     // No setLastAction, same reasoning as checkMealPlanNudge above.
   },
@@ -5042,6 +5377,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       progressCount: 0,
       targetUnit: null,
       allowOvershoot: false,
+      quotaIntervalMinutes: null,
+      quotaReminders: false,
+      quotaStartedAt: null,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
@@ -5220,6 +5558,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       progressCount: 0,
       targetUnit: null,
       allowOvershoot: false,
+      quotaIntervalMinutes: null,
+      quotaReminders: false,
+      quotaStartedAt: null,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
@@ -5897,21 +6238,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
-  bulkDeleteTasks(ids) {
+  bulkDeleteTasks(ids, opts = {}) {
     if (ids.length === 0) return;
     const idSet = new Set(ids);
     const deleted = get().tasks.filter(t => idSet.has(t.id) || (t.parentId !== null && idSet.has(t.parentId)));
+    // Subtasks never carry a generatedKind of their own, but filtering to the
+    // requested ids rather than to `deleted` keeps that explicit instead of
+    // relying on it.
+    const deletedTopLevel = deleted.filter(t => idSet.has(t.id));
 
     dbBulkDeleteTasks(ids);
     // Only ids that actually had a reminder are worth a native cancel call —
     // see the same predicate in rescheduleAllReminders.
     deleted.forEach(t => {
       if (idSet.has(t.id) && t.reminderTime) cancelTaskReminder(t.id);
+      if (idSet.has(t.id) && t.quotaReminders) cancelQuotaNudges(t.id);
       if (idSet.has(t.id) && t.timerStartedAt !== null) cancelTimerAlarm(t.id);
     });
     set(s => ({
       tasks: s.tasks.filter(t => !idSet.has(t.id) && (t.parentId === null || !idSet.has(t.parentId))),
     }));
+
+    // See deleteTask's matching call for why this exists at all.
+    if (!opts.skipGeneratedOptOut) deletedTopLevel.forEach(t => writeGeneratedOptOut(t, false));
 
     get().setLastAction({
       label: `${ids.length} task${ids.length === 1 ? '' : 's'} deleted`,
@@ -5922,6 +6271,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           scheduleTaskReminder(t);
         });
         set(s => ({ tasks: [...s.tasks, ...deleted] }));
+        if (!opts.skipGeneratedOptOut) deletedTopLevel.forEach(t => writeGeneratedOptOut(t, null));
       },
     });
   },
@@ -5966,20 +6316,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   bulkDefer(ids, until) {
     if (ids.length === 0) return;
     const deferUntil = until.toISOString();
+    const dayResetTime = useSettingsStore.getState().dayResetTime;
     const snapshots = ids
       .map(id => get().tasks.find(t => t.id === id))
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
     const counts = bulkPostponeCounts(
-      get().tasks, ids, { deferUntil }, useSettingsStore.getState().dayResetTime,
+      get().tasks, ids, { deferUntil }, dayResetTime,
     );
+    // Pinning is for today's block specifically — a task actually moving to a
+    // different day no longer belongs there (see the row's own reschedule in
+    // TaskItem, which does the same check).
+    const untilDay = getTaskDayStart(until, dayResetTime).getTime();
+    const unpinIds = snapshots
+      .filter(t => t.pinned)
+      .filter(t => {
+        const prev = getEffectiveTaskDate(t, dayResetTime);
+        const prevDay = prev ? getTaskDayStart(new Date(prev), dayResetTime).getTime() : null;
+        return prevDay !== untilDay;
+      })
+      .map(t => t.id);
     dbBulkSetDefer(ids, deferUntil);
+    if (unpinIds.length > 0) dbBulkSetPinned(unpinIds, false);
     if (counts.size > 0) {
       dbBatchUpdatePostponeCounts([...counts].map(([id, moved]) => ({ id, ...moved })));
     }
     set(s => ({
       tasks: patchTasks(s.tasks, ids, t => ({
         deferUntil,
+        ...(unpinIds.includes(t.id) ? { pinned: false } : {}),
         ...(counts.get(t.id) ?? {}),
       })),
     }));
@@ -5994,14 +6359,27 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   bulkSetWhen(ids, date, timeSegments) {
     if (ids.length === 0) return;
     const dueDate = date ? date.toISOString() : null;
+    const dayResetTime = useSettingsStore.getState().dayResetTime;
     const snapshots = ids
       .map(id => get().tasks.find(t => t.id === id))
       .filter((t): t is Task => t !== undefined)
       .map(t => ({ ...t }));
     const counts = bulkPostponeCounts(
-      get().tasks, ids, { dueDate }, useSettingsStore.getState().dayResetTime,
+      get().tasks, ids, { dueDate }, dayResetTime,
     );
+    // Same reasoning as bulkDefer above: moving a pinned task to a different
+    // day (or clearing its date entirely) drops the pin.
+    const newDay = date ? getTaskDayStart(date, dayResetTime).getTime() : null;
+    const unpinIds = snapshots
+      .filter(t => t.pinned)
+      .filter(t => {
+        const prev = getEffectiveTaskDate(t, dayResetTime);
+        const prevDay = prev ? getTaskDayStart(new Date(prev), dayResetTime).getTime() : null;
+        return prevDay !== newDay;
+      })
+      .map(t => t.id);
     dbBulkSetWhen(ids, dueDate, timeSegments);
+    if (unpinIds.length > 0) dbBulkSetPinned(unpinIds, false);
     if (counts.size > 0) {
       dbBatchUpdatePostponeCounts([...counts].map(([id, moved]) => ({ id, ...moved })));
     }
@@ -6009,6 +6387,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       tasks: patchTasks(s.tasks, ids, t => ({
         dueDate,
         timeSegments,
+        ...(unpinIds.includes(t.id) ? { pinned: false } : {}),
         ...(counts.get(t.id) ?? {}),
       })),
     }));

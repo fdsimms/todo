@@ -896,7 +896,7 @@ export function MealPlanScreen() {
   const selectedIdList = useMemo(() => Array.from(selectedIds), [selectedIds]);
 
   // "Cooked"/"Uncooked" flips direction based on the selection itself, same
-  // as Recipes' bulk Favorite/Unfavorite and the task bar's Pin/Unpin — a
+  // as Recipes' bulk Love/Unlove and the task bar's Pin/Unpin — a
   // selection that's already all cooked has nothing left to mark.
   const allSelectedCooked = useMemo(() => {
     if (selectedIds.size === 0) return false;

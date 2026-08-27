@@ -23,11 +23,14 @@ import { PaintSelectionProvider } from '../components/PaintSelection';
 import { TaskItem } from '../components/TaskItem';
 import { SpotlightProvider, useSpotlightProgress } from '../components/SpotlightOverlay';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
+import { TaskGroupEditor } from '../components/TaskGroupEditor';
+import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
+import { ProjectTaskSuggestionsSheet } from '../components/ProjectTaskSuggestionsSheet';
 import { EmptyState } from '../components/EmptyState';
 import { ProjectDecisions } from '../components/ProjectDecisions';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
@@ -38,7 +41,7 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
-import type { Task, Project, TaskTemplate } from '../types';
+import type { Task, Project, TaskGroup, TaskTemplate } from '../types';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
 import { SearchField } from '../components/SearchField';
 import { DetailHeader } from '../components/DetailHeader';
@@ -54,6 +57,7 @@ const NO_SUBTASKS: Task[] = [];
 // Bottom-up: "New task" ends up closest to the button.
 const ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
+  { key: 'stack', label: 'Stack', icon: 'layers' },
   { key: 'template', label: 'Template', icon: 'copy' },
   { key: 'new', label: 'New task', icon: 'checkbox' },
 ];
@@ -67,6 +71,7 @@ export function ProjectDetailScreen() {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const simpleMode = useSettingsStore(s => s.simpleMode);
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
 
   const projects = useProjectStore(useShallow(s => s.projects));
   const allTasks = useTaskStore(s => s.tasks);
@@ -82,16 +87,25 @@ export function ProjectDetailScreen() {
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
   const setDeliverableValue = useTaskStore(s => s.setDeliverableValue);
   const completeProject = useTaskStore(s => s.completeProject);
+  const createTaskGroup = useTaskGroupStore(s => s.createGroup);
+  const removeGroupRow = useTaskGroupStore(s => s.removeGroupRow);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [editingGroup, setEditingGroup] = useState<TaskGroup | null>(null);
+  const [groupEditorVisible, setGroupEditorVisible] = useState(false);
+  // Set while editingGroup is a stack freshly created from the add menu —
+  // an untitled one is garbage-collected on close rather than left behind
+  // as a nameless stack (see TodayScreen's own newStackIdRef).
+  const newStackIdRef = React.useRef<string | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   // True while a subtask inside the expanded row is mid-drag; the list has to
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
+  const [suggestionsVisible, setSuggestionsVisible] = useState(false);
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
   const [editorInitialDraft, setEditorInitialDraft] = useState<Partial<TaskDraft> | null>(null);
   const [showExistingPicker, setShowExistingPicker] = useState(false);
@@ -267,6 +281,13 @@ export function ProjectDetailScreen() {
       setTemplatePickerVisible(true);
       return;
     }
+    if (key === 'stack') {
+      const group = createTaskGroup('', null);
+      newStackIdRef.current = group.id;
+      setEditingGroup(group);
+      setGroupEditorVisible(true);
+      return;
+    }
     setExistingSearch('');
     setShowExistingPicker(true);
   };
@@ -312,13 +333,25 @@ export function ProjectDetailScreen() {
           title={project?.title ?? ''}
           onBack={onClose}
           actions={
-            <TouchableOpacity
-              onPress={() => project && setEditingProject(project)}
-              accessibilityRole="button"
-              accessibilityLabel="Edit project"
-            >
-              <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
+            <View style={styles.detailHeaderActions}>
+              {!!anthropicApiKey && (
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); setSuggestionsVisible(true); }}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Suggest tasks with AI"
+                >
+                  <Ionicons name="sparkles-outline" size={20} color={colors.purple} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={() => project && setEditingProject(project)}
+                accessibilityRole="button"
+                accessibilityLabel="Edit project"
+              >
+                <Ionicons name="ellipsis-horizontal" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
           }
         />
 
@@ -379,7 +412,11 @@ export function ProjectDetailScreen() {
             // the row has to be lifted over its neighbours — see
             // ReorderableList's own note on why this can't live on the card.
             rowElevated={t => t.id === expandedTaskId}
-            contentContainerStyle={[{ flexGrow: 1, paddingTop: spacing.sm }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
+            // paddingTop only applies once there's a first row to clear — with
+            // none, it's top-only padding inside the flexGrow:1 box the empty
+            // state centers in, which pushes that centering down off true
+            // middle. Same reasoning as ListFooterComponent below.
+            contentContainerStyle={[{ flexGrow: 1 }, incompleteProjectTasks.length > 0 && { paddingTop: spacing.sm }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             onHoverChange={haptics.dragTick}
             onReorder={reordered => reorderProjectTasks(projectId, reordered.map(t => t.id))}
             // Inside the scroll content, not pinned above the list: it's
@@ -586,6 +623,23 @@ export function ProjectDetailScreen() {
           accessibilityLabel="Add task to project"
         />
 
+        <TaskGroupEditor
+          visible={groupEditorVisible}
+          group={editingGroup}
+          isNew={newStackIdRef.current !== null}
+          projectId={project?.id}
+          onClose={() => {
+            setGroupEditorVisible(false);
+            if (newStackIdRef.current) {
+              const id = newStackIdRef.current;
+              newStackIdRef.current = null;
+              const current = useTaskGroupStore.getState().getGroupById(id);
+              if (current && current.title.trim() === '') removeGroupRow(id);
+            }
+            setEditingGroup(null);
+          }}
+        />
+
         <QuickAddModal
           visible={quickAddVisible}
           onClose={() => setQuickAddVisible(false)}
@@ -636,6 +690,15 @@ export function ProjectDetailScreen() {
           onClose={() => setEditingProject(null)}
         />
 
+        <ProjectTaskSuggestionsSheet
+          visible={suggestionsVisible}
+          projectId={project?.id ?? null}
+          projectTitle={project?.title ?? ''}
+          projectNotes={project?.notes ?? ''}
+          existingTitles={projectTasks.map(t => t.title)}
+          onClose={() => setSuggestionsVisible(false)}
+        />
+
         <DeliverablePromptQueue {...queueProps} />
 
         <TaskEditor
@@ -672,6 +735,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomColor: colors.separator,
   },
   headerSpacer: { width: 48 },
+  detailHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
   detailTitleText: {
     flex: 1,
     textAlign: 'center',

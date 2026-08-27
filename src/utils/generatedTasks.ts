@@ -102,6 +102,12 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // appending after `projectReview` would not: it would leave the four kitchen
   // generators split around a project one.
   'pantryCheck',
+  // Directly after the drip it supersedes, for the reason pantryCheck itself
+  // sits beside groceryUseUp: the two are one subject from the list's side.
+  // They ask the same question at two different sizes, they file under one
+  // category by default, and reading them apart would leave a person turning
+  // one on without ever meeting the other.
+  'pantryReview',
   'leftoverUseUp',
   'mealPlanNudge',
   // Beside the nudge rather than appended at the end, for the reason
@@ -166,7 +172,8 @@ export type GeneratedEnabledKey =
   | 'calendarReviewTasks'
   | 'birthdayTasks'
   | 'birthdayGiftTasks'
-  | 'reachOutTasks';
+  | 'reachOutTasks'
+  | 'pantryReviewTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -355,6 +362,38 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     icon: 'help-circle-outline',
     sourced: true,
     kitchen: true,
+    categorized: true,
+    defaultCategory: 'Groceries',
+  },
+  // Ships off, like pantryCheck above it and for the same reason: it adds a
+  // surface rather than replacing one that was already on screen. Its own gate
+  // is larger than the drip's, too — MIN_PANTRY_REVIEW_CARDS means a cupboard
+  // the app is mostly sure about never raises it at all.
+  pantryReview: {
+    kind: 'pantryReview',
+    enabledKey: 'pantryReviewTasks',
+    label: 'Pantry reviews',
+    onHint: 'Adds a task to go through the pantry when several things are in doubt at once',
+    offHint: 'No task to go through the pantry',
+    icon: 'albums-outline',
+    // Its source id is the day key the offer was raised on, which names a
+    // square on the calendar rather than a row anything could be written back
+    // to — the position calendarReview and mealPlanNudge are already in, and
+    // the reason writeGeneratedOptOut has nothing to write for this kind. What
+    // stops a swiped-away row coming straight back is pantryReviewLastDayKey.
+    sourced: false,
+    // The deck reads the grocery catalog and checkPantryReviewTasks refuses to
+    // run with the area off, so the row has to go with it — the `true` half of
+    // this flag's contract.
+    kitchen: true,
+    // A category of its own, unlike calendarReview, even though it defaults to
+    // the same place pantryCheck files under. calendarReview shares a key
+    // because the events it describes are already filed by that setting, so a
+    // second one could only agree or contradict; here there is no such prior
+    // owner, and sharing pantryCheck's key would mean turning this generator on
+    // while the drip is off leaves it with nowhere to file — an uncategorized
+    // task renders loose at the very top of Today, which is exactly where these
+    // must not go.
     categorized: true,
     defaultCategory: 'Groceries',
   },
