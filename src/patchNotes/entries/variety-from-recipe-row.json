@@ -1,0 +1,4 @@
+{
+  "message": "When a recipe line names something general and your groceries hold a more specific version of it, the ingredient sheet now offers to record that instead of renaming the line: tap \"Is white onion a kind of onion?\" and the recipe keeps saying onion while any onion you have counts for it. And when two items match a line equally well, the \"Did you mean\" suggestion stays quiet rather than picking one of them for you",
+  "date": "2026-08-26"
+}

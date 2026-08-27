@@ -52,6 +52,8 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { editorSearchTerms, matchesEditorQuery, filterEditorRows, type EditorSearchable } from '../utils/editorSearch';
 import { describeShops, shopsForItem, unavailableShopsFor } from '../utils/groceryShops';
 import { describeSubstituteLink, describeSubstitutes, substitutesFor } from '../utils/itemSubs';
+import { genericNameSuggestions } from '../utils/itemVarieties';
+import { groceryNameKey } from '../utils/groceryParse';
 import { SubstituteSheet } from './SubstituteSheet';
 import { featureHidden, groceryRowShown } from '../utils/simpleMode';
 import { ProductSheet } from './ProductSheet';
@@ -101,8 +103,8 @@ const PRICE_INPUT_MAX_LENGTH = 8;
  */
 const ITEM_PRICE_KEY = 'item';
 
-/** The five collapsible fields in the "More" card, in the order they render. */
-export type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'usedIn';
+/** The collapsible fields in the "More" card, in the order they render. */
+export type CollapsibleFieldKey = 'products' | 'aisle' | 'stores' | 'pantry' | 'useBy' | 'substitutes' | 'varietyOf' | 'usedIn';
 
 interface Props {
   visible: boolean;
@@ -177,6 +179,7 @@ export function GroceryItemSheet({
   const setRunningLow = useGroceryStore(s => s.setRunningLow);
   const setExpiresAt = useGroceryStore(s => s.setExpiresAt);
   const setShelfLifeDays = useGroceryStore(s => s.setShelfLifeDays);
+  const setVarietyOfKey = useGroceryStore(s => s.setVarietyOfKey);
   const setUseUpTask = useGroceryStore(s => s.setUseUpTask);
   const setItemPrice = useGroceryStore(s => s.setItemPrice);
   const clearItemShopPrice = useGroceryStore(s => s.clearItemShopPrice);
@@ -665,6 +668,45 @@ export function GroceryItemSheet({
       closeField();
     },
   }));
+
+  // "White onion is a kind of onion" — see GroceryItem.varietyOfKey. Options
+  // are the item's own trailing words plus every generic already declared
+  // (genericNameSuggestions), and the clearing pill is pinned so it's never
+  // buried behind the cap.
+  const varietySummary = item.varietyOfKey
+    ? items.find(i => i.nameKey === item.varietyOfKey)?.name ?? item.varietyOfKey
+    : undefined;
+  const varietyOptions: PillGroupOption[] = [
+    {
+      key: '__not-a-variety__',
+      label: 'Not a variety',
+      selected: !item.varietyOfKey,
+      pinned: true,
+      onPress: () => {
+        haptics.tap();
+        setVarietyOfKey(item.id, null);
+        closeField();
+      },
+    },
+    ...genericNameSuggestions(item, items).map(({ key, label }) => ({
+      key,
+      label,
+      selected: key === item.varietyOfKey,
+      onPress: () => {
+        haptics.tap();
+        setVarietyOfKey(item.id, key);
+        closeField();
+      },
+    })),
+  ];
+  const handleCreateVariety = (name: string) => {
+    const key = groceryNameKey(name);
+    if (!key) return 'That isn’t a usable name.';
+    if (key === item.nameKey) return 'An item can’t be a variety of itself.';
+    haptics.success();
+    setVarietyOfKey(item.id, key);
+    closeField();
+  };
 
   const shopOptions: PillGroupOption[] = shops.map(shop => {
     const count = linkedCounts.get(shop.id);
@@ -1237,6 +1279,37 @@ export function GroceryItemSheet({
       ),
     },
     {
+      key: 'varietyOf',
+      label: 'Variety of',
+      keywords: ['kind', 'type', 'generic', 'general', 'counts as'],
+      node: (
+        <View onLayout={(e: LayoutChangeEvent) => {
+          fieldYRefs.current.varietyOf = e.nativeEvent.layout.y;
+          maybeScrollToInitialField();
+        }}>
+          {/* The one vertical relation in the catalog — a substitute is a
+              different thing you'd tolerate, this says the item *is* the
+              thing, more precisely named. See GroceryItem.varietyOfKey. */}
+          <CollapsibleField
+            label="Variety of"
+            summary={varietySummary}
+            emptySummary="Not a variety"
+            hint={`The general ingredient this item counts as, like white onion for onion. A recipe line naming the general ingredient accepts ${item.name.toLowerCase()}.`}
+            expanded={openField === 'varietyOf'}
+            onToggle={() => toggleField('varietyOf')}
+          >
+            <PillGroup
+              options={varietyOptions}
+              noun="name"
+              onCreate={handleCreateVariety}
+              createMaxLength={GROCERY_NAME_MAX_LENGTH}
+              filterPlaceholder="Find or type a general name…"
+            />
+          </CollapsibleField>
+        </View>
+      ),
+    },
+    {
       key: 'usedIn',
       label: 'Used in',
       keywords: ['recipes', 'recipe', 'meal'],
@@ -1295,6 +1368,7 @@ export function GroceryItemSheet({
     pantry: item.isStaple || onHandFuture || frozen || opened || runningLow,
     useBy: !!item.expiresAt || frozen,
     substitutes: substitutes.length > 0,
+    varietyOf: !!item.varietyOfKey,
   };
   const shownRows = simpleMode
     ? collapsibleRows.filter(r => groceryRowShown(r.key, true, !!simpleRowSet[r.key]))

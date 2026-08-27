@@ -29,6 +29,7 @@ import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUt
 import { pantryEntries } from '../utils/grocerySuggest';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { standingSwapMap } from '../utils/standingSwaps';
+import { coveringVariety, varietyIndex } from '../utils/itemVarieties';
 import { normalizeGtin } from '../utils/gtin';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
 import { flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
@@ -1513,6 +1514,32 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const mashLines = flattenRecipeIngredients(mash, recipesById, undefined, swaps);
     expect(mashLines.some(f => f.ingredient.nameKey === 'milk')).toBe(true);
     expect(mashLines.every(f => f.swappedFrom === null)).toBe(true);
+  });
+
+  it('seeds a variety declaration, covering the generic name end to end', () => {
+    // The one vertical relation in the catalog, invisible until something
+    // declares one — and on hand, so a line naming plain "onion" actually
+    // reads as covered rather than the declaration sitting inert.
+    const { items } = useGroceryStore.getState();
+    const white = items.find(i => i.nameKey === 'white onion');
+    expect(white).toBeTruthy();
+    expect(white!.varietyOfKey).toBe('onion');
+
+    // The declaration and the on-hand claim are user facts, so the row
+    // survives the seed's own clearList on the way past.
+    const covering = coveringVariety(varietyIndex(items).get('onion'), new Date());
+    expect(covering?.id).toBe(white!.id);
+
+    // And a generic ask resolves to it: classifyPlanned re-files the line
+    // under the variety's own row, provenance noted.
+    const row = classifyPlanned(
+      [{ name: 'onion', nameKey: 'onion', quantity: '1', aisle: null, source: 'Tue Ragù' }],
+      items,
+      new Date()
+    )[0];
+    expect(row.nameKey).toBe('white onion');
+    expect(row.category).toBe('probablyHave');
+    expect(row.swappedFrom).toBe('onion');
   });
 
   it('seeds cilantro and coriander as two catalog rows, ready to merge (#1570)', () => {

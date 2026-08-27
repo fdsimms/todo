@@ -4,6 +4,7 @@ import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
 import { describeSubstitutesOnHand, substitutesOnHand } from './itemSubs';
+import { coveringVariety, describeFamilyOnHand, familyOnHand, varietyIndex } from './itemVarieties';
 import { choiceGroupKey, flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 import {
@@ -368,13 +369,19 @@ export interface ClassifiedIngredient {
    *   last on Jul 12", the pantry opinion that put the row in that category.
    * - `needToBuy` — `itemSubs.describeSubstitutesOnHand`'s "you have
    *   margarine": a substitute the user linked to this item is one the app
-   *   thinks is in the cupboard.
+   *   thinks is in the cupboard. When no substitute has anything to say, the
+   *   item's own variety family answers in the identical sentence ("you have
+   *   white onion" on a red onion row — `itemVarieties.describeFamilyOnHand`),
+   *   which is one phrasing on purpose: both land in the same subtitle and
+   *   mean the same "worth a second look before you go".
    *
    * The second one deliberately **does not move the row**. A `probablyHave`
    * row arrives pre-unticked in both add-to-list sheets, so folding a
    * substitute into that category is how you come home without butter because
    * the app decided margarine counted. The row is offered exactly as before;
-   * it just says what else is already there.
+   * it just says what else is already there. (A *generic* line covered by a
+   * declared variety is the one case that does move — see classifyPlanned —
+   * and it moves by becoming the variety's own row, not by a caption.)
    */
   reason: string | null;
   /**
@@ -437,6 +444,12 @@ export interface ClassifiedIngredient {
  * wins — that's what the user themselves typed, and addByName already holds
  * the line that the typed name wins over anything else. Failing that, the
  * shortest source name.
+ *
+ * A line naming a *generic* the user only stocks varieties of ("onion",
+ * against a catalog whose white onion declares `varietyOfKey: 'onion'`) is
+ * re-filed under the answering variety's own key before any of the above —
+ * see the pass below and `itemVarieties.ts`. That's what stops a shortfall
+ * task being written over an onion in the drawer.
  */
 export function classifyPlanned(
   planned: readonly PlannedIngredient[],
@@ -467,6 +480,7 @@ export function classifyPlanned(
 ): ClassifiedIngredient[] {
   const byKey = new Map<string, GroceryItem>();
   for (const item of items) byKey.set(item.nameKey, item);
+  const varieties = varietyIndex(items);
 
   const groups = new Map<string, PlannedIngredient[]>();
   for (const p of planned) {
@@ -474,6 +488,36 @@ export function classifyPlanned(
     const group = groups.get(key);
     if (group) group.push(p);
     else groups.set(key, [p]);
+  }
+
+  // A generic line covered by a declared variety *becomes* that variety's row
+  // — re-filed under its key before classification, so everything downstream
+  // (the category, the display name, and above all what a cook-recap answer or
+  // a restock actually writes to) lands on the real catalog row rather than on
+  // a name that only exists in the recipe. `swappedFrom` carries the recipe's
+  // own word, same as a standing swap, so the row still says "instead of
+  // onion". Only when the line's own key has nothing to say (no row on the
+  // list, no staple, no pantry opinion) and a variety answers — an exact match
+  // always wins outright, and a family nobody has anything of changes nothing.
+  //
+  // Both halves read the trolley the same way the classification below does.
+  // Reading `onList` bare here would consult the *home* list while the rows are
+  // being classified against a rental's, so a generic line whose own row sits
+  // on the home list would refuse to re-file and then classify as needToBuy —
+  // the "silently drops shopping" direction `inTrolley` exists to close.
+  if (varieties.size > 0) {
+    for (const [key, group] of [...groups]) {
+      const match = byKey.get(key);
+      const matchListed = match ? (inTrolley ? inTrolley.has(match.id) : match.onList) : false;
+      if (match && (matchListed || match.isStaple || probablyHaveReason(match, now) !== null)) continue;
+      const covering = coveringVariety(varieties.get(key), now, inTrolley);
+      if (!covering) continue;
+      groups.delete(key);
+      const refiled = group.map(g => ({ ...g, swappedFrom: g.swappedFrom ?? g.name }));
+      const target = groups.get(covering.nameKey);
+      if (target) target.push(...refiled);
+      else groups.set(covering.nameKey, refiled);
+    }
   }
 
   const rows: ClassifiedIngredient[] = [];
@@ -504,9 +548,12 @@ export function classifyPlanned(
       // Says what's in the cupboard; does not decide anything. A name with no
       // catalog row can carry no links, so this is only ever asked of a known
       // row — and it stays ticked to buy either way, which is the whole safety
-      // argument (see ClassifiedIngredient.reason).
+      // argument (see ClassifiedIngredient.reason). The family caption is the
+      // fallback, not a third voice: a substitute the user linked by hand
+      // outranks a caption the family structure merely implies.
       if (match) {
-        reason = describeSubstitutesOnHand(substitutesOnHand(match.id, itemSubs, items, now));
+        reason = describeSubstitutesOnHand(substitutesOnHand(match.id, itemSubs, items, now))
+          ?? describeFamilyOnHand(familyOnHand(match, byKey, varieties, now));
       }
     }
 

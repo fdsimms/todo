@@ -832,6 +832,15 @@ interface GroceryStore {
   setStaple: (id: string, isStaple: boolean) => void;
 
   /**
+   * Declares (or clears) the generic name this item is a variety of — the
+   * "white onion is a kind of onion" write, GroceryItemSheet's Variety of
+   * field. See GroceryItem.varietyOfKey for the semantics. Takes a name or a
+   * key and normalises through groceryNameKey itself, refusing the item's own
+   * key (a thing is not a variety of itself) and an empty result.
+   */
+  setVarietyOfKey: (id: string, key: string | null) => void;
+
+  /**
    * Picks this row at the shelf: it stays (no longer an either/or) and every
    * other option in its group comes off the list. Registers one undo that puts
    * them all back exactly as they were, group included.
@@ -1303,6 +1312,9 @@ function newItemRow(fields: {
     // No one has corrected the lexicon guess for this row yet.
     shelfLifeDays: null,
     useUpTask: null,
+    // Nothing infers a variety declaration — the user says so, on the item
+    // sheet. See GroceryItem.varietyOfKey.
+    varietyOfKey: null,
     // Nobody has been asked about a row that didn't exist a moment ago, and a
     // brand-new row can't have a lapsed purchase reading to be asked about.
     pantryCheckDeclinedAt: null,
@@ -2163,8 +2175,28 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (!key) return false;
     if (key !== item.nameKey && get().items.some(i => i.nameKey === key)) return false;
 
-    const updated = { ...item, name: trimmed, nameKey: key };
+    const updated = {
+      ...item,
+      name: trimmed,
+      nameKey: key,
+      // A rename that lands the row on its own declared generic clears the
+      // declaration — a thing is not a variety of itself.
+      varietyOfKey: item.varietyOfKey === key ? null : item.varietyOfKey,
+    };
     dbUpdateGroceryItem(updated);
+    // Variety declarations point at the generic's key, so ones aimed at this
+    // row's old spelling follow the rename — the same stranding the remembered
+    // aisle and the recipe keys below would otherwise suffer, and silent the
+    // same way: a stranded declaration just stops covering anything.
+    const repointedVarieties = new Map<string, GroceryItem>();
+    if (key !== item.nameKey) {
+      for (const other of get().items) {
+        if (other.id === id || other.varietyOfKey !== item.nameKey) continue;
+        const next = { ...other, varietyOfKey: key };
+        dbUpdateGroceryItem(next);
+        repointedVarieties.set(other.id, next);
+      }
+    }
     // The remembered aisle is keyed by name, so it has to follow the rename or
     // it stays stranded under the old spelling — which is usually a typo the
     // rename exists to fix.
@@ -2178,7 +2210,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // referenced the old spelling.
     useRecipeStore.getState().remapIngredientKey(item.nameKey, key);
     set(s => ({
-      items: s.items.map(i => (i.id === id ? updated : i)),
+      items: s.items.map(i => (i.id === id ? updated : repointedVarieties.get(i.id) ?? i)),
       aisleOverrides: remembered ?? s.aisleOverrides,
     }));
     return true;
@@ -2296,6 +2328,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       intoItem.preferredProductId ?? fromItem.preferredProductId
     );
 
+    // Survivor wins, loser fills a silence — the rating/gtin rule again. And a
+    // declaration that would leave the merged row a variety of itself is
+    // dropped: merging White onion into Onion makes the loser's "kind of
+    // onion" a statement about the row now carrying it.
+    const inheritedVarietyOf = intoItem.varietyOfKey ?? fromItem.varietyOfKey;
+    const mergedVarietyOfKey =
+      inheritedVarietyOf === intoItem.nameKey || inheritedVarietyOf === fromItem.nameKey
+        ? null
+        : inheritedVarietyOf;
+
     const merged: GroceryItem = {
       ...intoItem,
       purchaseCount: intoItem.purchaseCount + fromItem.purchaseCount,
@@ -2309,8 +2351,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       quantityFromRecipe,
       choiceGroup,
       preferredProductId: mergedPreferredProductId,
+      varietyOfKey: mergedVarietyOfKey,
       ...pickPriceFields(intoItem, fromItem),
     };
+
+    // Variety declarations aimed at the loser's key follow the merge onto the
+    // survivor's — the same stranding the remembered aisle and the recipe keys
+    // below would otherwise suffer, and the same re-point the product ids get.
+    const repointedVarieties = new Map<string, GroceryItem>();
+    for (const other of items) {
+      if (other.id === fromId || other.id === intoId) continue;
+      if (other.varietyOfKey !== fromItem.nameKey) continue;
+      repointedVarieties.set(other.id, { ...other, varietyOfKey: intoItem.nameKey });
+    }
 
     // Shop links: one row per shop either side has a link at. A shop only
     // one side has just moves over; a shop both do combines into one row.
@@ -2392,6 +2445,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     dbTransaction(() => {
       dbUpdateGroceryItem(merged);
+      for (const other of repointedVarieties.values()) dbUpdateGroceryItem(other);
       // Before the cascade below, which deletes every product still keyed to
       // fromId — re-parenting first is what makes the survivor's copy the one
       // that survives it.
@@ -2424,7 +2478,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     useRecipeStore.getState().remapIngredientKey(fromItem.nameKey, intoItem.nameKey);
 
     set(s => ({
-      items: [merged, ...s.items.filter(i => i.id !== fromId && i.id !== intoId)],
+      items: [
+        merged,
+        ...s.items
+          .filter(i => i.id !== fromId && i.id !== intoId)
+          .map(i => repointedVarieties.get(i.id) ?? i),
+      ],
       itemShops: [
         ...mergedShopLinks,
         ...s.itemShops.filter(l => l.itemId !== fromId && l.itemId !== intoId),
@@ -3069,6 +3128,21 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const item = get().items.find(i => i.id === id);
     if (!item || item.shelfLifeDays === days) return;
     const updated = { ...item, shelfLifeDays: days };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setVarietyOfKey(id, key) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    // Normalised here so callers can hand over a name or a key alike; an
+    // empty result and the item's own key both read as "clear it" rather than
+    // erroring — a thing is not a variety of itself, and the field's None
+    // option comes through this same path as null.
+    const normalized = key === null ? null : groceryNameKey(key) || null;
+    const next = normalized === item.nameKey ? null : normalized;
+    if (item.varietyOfKey === next) return;
+    const updated = { ...item, varietyOfKey: next };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
