@@ -393,6 +393,7 @@ function newTaskFromDraft(
     allowOvershoot: draft.allowOvershoot ?? false,
     quotaIntervalMinutes: draft.quotaIntervalMinutes ?? null,
     quotaReminders: draft.quotaReminders ?? false,
+    quotaAlwaysVisible: draft.quotaAlwaysVisible ?? false,
     // Never seeded from a draft: a run is started by tapping "start now" on a
     // task that exists, so a row arriving already mid-run would be claiming a
     // morning nobody had yet.
@@ -5486,6 +5487,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaIntervalMinutes: null,
       quotaReminders: false,
       quotaStartedAt: null,
+      quotaAlwaysVisible: false,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
@@ -5667,6 +5669,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaIntervalMinutes: null,
       quotaReminders: false,
       quotaStartedAt: null,
+      quotaAlwaysVisible: false,
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,

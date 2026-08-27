@@ -18,7 +18,7 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { liveProjectSteps } from '../utils/projectOrder';
-import { isHeldBack } from '../utils/visibilityUtils';
+import { isHeldBack, isQuotaOnPace, isTaskVisible } from '../utils/visibilityUtils';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
@@ -591,6 +591,19 @@ describe('demo mode', () => {
     // one it closes out in without that being a miss.
     expect(paced!.progressCount).toBeGreaterThan(0);
     expect(paced!.progressCount).toBeLessThan(paced!.targetCount!);
+  });
+
+  it('seeds a daily target that stays visible on pace, on pace', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const alwaysVisible = tasks.find(t => t.quotaAlwaysVisible);
+    expect(alwaysVisible).toBeDefined();
+    // On pace (fully met, in fact) is the whole point being demonstrated —
+    // an ordinary target in this state would be hidden.
+    expect(alwaysVisible!.progressCount).toBe(alwaysVisible!.targetCount);
+    expect(isQuotaOnPace(alwaysVisible!)).toBe(true);
+    expect(isTaskVisible(alwaysVisible!)).toBe(true);
   });
 
   // A timed task can hand its countdown out to its subtasks, and one that

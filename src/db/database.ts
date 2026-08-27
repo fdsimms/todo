@@ -1181,6 +1181,10 @@ export function initDatabase(): void {
     // on every existing row, which reads as "nothing dismissed yet" — the only
     // honest state before this column existed. See GroceryItem.backfillDismissedFields.
     "ALTER TABLE grocery_items ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
+    // Opts a daily target out of hiding on Today while it's on pace — see
+    // Task.quotaAlwaysVisible. 0 on every existing row: a quota task has
+    // always hidden while on pace, and this column only ever turns that off.
+    'ALTER TABLE tasks ADD COLUMN quota_always_visible INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1989,6 +1993,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     quotaIntervalMinutes: (row.quota_interval_minutes as number | null) ?? null,
     quotaReminders: Boolean(row.quota_reminders),
     quotaStartedAt: (row.quota_started_at as string | null) ?? null,
+    quotaAlwaysVisible: Boolean(row.quota_always_visible),
     supplyCount: (row.supply_count as number | null) ?? null,
     supplyUnit: (row.supply_unit as string | null) ?? null,
     supplyRefillCount: (row.supply_refill_count as number | null) ?? null,
@@ -2090,8 +2095,8 @@ export function dbInsertTask(task: Task): void {
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
-      quota_interval_minutes, quota_reminders, quota_started_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2156,6 +2161,7 @@ export function dbInsertTask(task: Task): void {
       task.quotaIntervalMinutes ?? null,
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
+      task.quotaAlwaysVisible ? 1 : 0,
     ]
   );
 }
@@ -2181,7 +2187,7 @@ export function dbUpdateTask(task: Task): void {
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
-      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?
+      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2247,6 +2253,7 @@ export function dbUpdateTask(task: Task): void {
       task.quotaIntervalMinutes ?? null,
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
+      task.quotaAlwaysVisible ? 1 : 0,
       task.id,
     ]
   );

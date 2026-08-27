@@ -92,7 +92,7 @@ const baseTask: Task = {
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null,
+  quotaStartedAt: null, quotaAlwaysVisible: false,
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',

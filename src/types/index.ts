@@ -859,7 +859,8 @@ export interface Task {
   // once. Deliberately not N tasks, N subtasks, or N taps on an ever-present
   // row: a quota task is *hidden from Today while you're on pace* (see
   // isQuotaOnPace in visibilityUtils) and only surfaces when you fall behind,
-  // so a day you keep up with produces no feed rows at all. Reaching
+  // so a day you keep up with produces no feed rows at all — unless
+  // quotaAlwaysVisible opts it out of that hide. Reaching
   // targetCount calls completeTask like any other task, so recurrence, streaks,
   // Logbook and Stats need no special cases; the per-day reset is free because
   // each new occurrence starts at progressCount 0. Requires daily recurrence to
@@ -929,6 +930,14 @@ export interface Task {
   // Only honoured on its own logical day, so an app left closed over a
   // weekend doesn't resume Friday's run on Monday. null = the window decides.
   quotaStartedAt: string | null;
+  // Opt-in: keeps the row on Today all day instead of hiding it while
+  // isQuotaOnPace says you're keeping up. Right for a target with no
+  // time-of-day expectation at all ("do this N times today, whenever") —
+  // the pace ramp still runs and still gates isOnPaceQuota (see there), so
+  // logging behaves exactly as before; only the disappear-while-ahead
+  // behavior is switched off. Off by default, so an existing quota task
+  // keeps hiding on pace exactly as it always has.
+  quotaAlwaysVisible: boolean;
 
   // Supply — how many units of a consumable are left, for a recurring task
   // that spends one every time it's done. Replacing a CPAP filter monthly out
