@@ -272,6 +272,155 @@ export function RecipeDetailScreen() {
   // guard.
   const stepTimers = useStepTimers(recipe?.id);
 
+  // Every hook below also has to run above the "row is gone" guard further
+  // down, for the same reason the two timers and stepTimers above do: React
+  // requires the same hooks in the same order on every render, and the guard
+  // returns early on a render where recipe is undefined. Each one falls back
+  // to an empty/default value when recipe is undefined, same as
+  // components/shoppableCount/costEstimate above.
+
+  // The ingredients alone, as the plain lines another app's paste box wants
+  // — built here rather than at press time so the copy and share actions can
+  // both gate themselves on it being non-empty (see shareText.ts).
+  const ingredientsText = useMemo(
+    () => (recipe ? buildIngredientsText(recipe, recipesById, { scale, unitSystem }) : ''),
+    [recipe, recipesById, scale, unitSystem]
+  );
+
+  const { copied: copiedIngredients, copy: copyIngredients } = useCopyToClipboard();
+
+  // The ingredients list, plus one marker per heading it has — populated ones
+  // where a row's section first differs from the row before it, and every
+  // declared-but-empty one (Recipe.emptySections) trailing at the end. This is
+  // what SortableList actually drags over: a heading is a row in this list,
+  // not a caption inferred from a row's own label, which is what makes an
+  // empty heading a real drop target and not just static text. See
+  // sectionsFromMergedOrder for how a drag commit turns back into
+  // per-ingredient `section` values.
+  const mergedIngredientRows = useMemo(() => {
+    const rows: MergedIngredientRow[] = [];
+    let prevSection: string | null = null;
+    for (const ing of recipe?.ingredients ?? []) {
+      if (ing.section && ing.section !== prevSection) {
+        rows.push({ kind: 'heading', id: `heading:${ing.section}`, name: ing.section, empty: false });
+      }
+      rows.push({ kind: 'ingredient', id: ing.id, ingredient: ing });
+      prevSection = ing.section;
+    }
+    for (const name of recipe?.emptySections ?? []) {
+      rows.push({ kind: 'heading', id: `heading:${name}`, name, empty: true });
+    }
+    return rows;
+  }, [recipe]);
+
+  // The row currently under the drag, by id — set from SortableList's
+  // onHoverChange so an empty heading can light up as a live drop target the
+  // same way row-shifting already signals a target among populated ones. Only
+  // empty headings read it (see renderHeadingRow): a populated one already
+  // gets that feedback for free from the rows around it visibly opening a gap.
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+
+  // Every heading this recipe already has, real or declared — what "New
+  // section" checks the typed name against so it can't redeclare one that
+  // already exists.
+  const allSections = useMemo(
+    () => allSectionsOf(recipe?.ingredients ?? [], recipe?.emptySections ?? []),
+    [recipe]
+  );
+
+  // The same display-only treatment for choice groups: the *first* row of each
+  // group opens a heading, and is also the group's default (see
+  // RecipeComponent.choiceGroup), so one pass over stored order answers both.
+  // Unlike the ingredient sections above, a group's options need not be
+  // adjacent — the heading opens at the first one and the rest keep their
+  // places, because the list order is what the recipe reads like and reordering
+  // it here would be editing the recipe to draw it.
+  const choiceHeadersOf = (rows: readonly { id: string; choiceGroup: string | null }[]) => {
+    const headers = new Map<string, string>();
+    const defaults = new Set<string>();
+    const seen = new Set<string>();
+    for (const row of rows) {
+      if (!row.choiceGroup || seen.has(row.choiceGroup)) continue;
+      seen.add(row.choiceGroup);
+      headers.set(row.id, row.choiceGroup);
+      defaults.add(row.id);
+    }
+    return { headers, defaults };
+  };
+
+  const componentGroups = useMemo(() => choiceHeadersOf(recipe?.components ?? []), [recipe]);
+  const ingredientGroups = useMemo(() => choiceHeadersOf(recipe?.ingredients ?? []), [recipe]);
+
+  // The header above only opens at a group's *first* option, so on its own every
+  // other option reads as an ordinary line — and a list you read as ordinary is
+  // a list you buy all of. Each option carries its own "or manchego" instead.
+  // Built off the *resolved* components, not the stored links: the row shows the
+  // referenced recipe's live name, and a caption naming the captured one would
+  // go stale the moment that recipe is renamed.
+  const componentAlternatives = useMemo(
+    () => alternativeCaptions(components.map(c => ({
+      id: c.component.id,
+      choiceGroup: c.component.choiceGroup,
+      name: c.name || 'Deleted recipe',
+    }))),
+    [components],
+  );
+  const ingredientAlternatives = useMemo(
+    () => alternativeCaptions(recipe?.ingredients ?? []),
+    [recipe],
+  );
+
+  // Lines the app can see wanting to be two — "corn tortillas or flour
+  // tortillas" — so the row can say so. Without this the suggestion existed
+  // only inside RecipeIngredientSheet, which is to say only for someone who
+  // already suspected it was there.
+  //
+  // A row already filed under a choice group is skipped: it sits under a
+  // "choose one" header, so nudging it to become a choice reads as the app
+  // not having noticed what the user just did. Which is also why this and the
+  // "or manchego" caption above can never appear on the same row — one names
+  // a choice that exists, the other offers to make one.
+  const splittableCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const ing of recipe?.ingredients ?? []) {
+      if (ing.choiceGroup) continue;
+      const parts = splitAlternativeNames(ing.name);
+      if (parts) counts.set(ing.id, parts.length);
+    }
+    return counts;
+  }, [recipe]);
+
+  // What each line resolves to in the grocery catalog — see
+  // ingredientCatalogMatch.ts. `nameKey` has always been that bridge, but
+  // nothing on this screen ever said whether a line had crossed it, so a line
+  // one character or one leading word off read exactly like a line naming
+  // something genuinely new.
+  //
+  // Keyed on the ingredients and the catalog together, because either moving
+  // changes the answer: renaming a line relinks it, and so does the catalog
+  // gaining the row it was looking for.
+  const catalogMatches = useMemo(
+    () => {
+      const now = new Date();
+      const ingredients = recipe?.ingredients ?? [];
+      const matches = matchIngredientsToCatalog(ingredients.map(i => i.name), groceryItems, now);
+      return new Map(ingredients.map((ing, i) => [ing.id, matches[i]]));
+    },
+    [recipe, groceryItems],
+  );
+  const catalogSummary = useMemo(
+    () => catalogMatchSummary([...catalogMatches.values()]),
+    [catalogMatches],
+  );
+
+  // Session-only "not now" for the two signpost pills below: dismissing one
+  // doesn't touch the ingredient, so it's keyed on what the pill was
+  // offering rather than a boolean, and clears itself the moment that offer
+  // changes (a rename, a different catalog match) rather than hiding a pill
+  // that's now suggesting something new.
+  const [dismissedMatchPills, setDismissedMatchPills] = useState<Map<string, string>>(new Map());
+  const [dismissedSplitPills, setDismissedSplitPills] = useState<Map<string, string>>(new Map());
+
   // The row can be gone while the screen is still mounted (deleted from the
   // editor), so this renders rather than crashing on the next read.
   if (!recipe) {
@@ -380,16 +529,6 @@ export function RecipeDetailScreen() {
     removePrepTask(recipe.id, prepTask.id);
     haptics.tap();
   };
-
-  // The ingredients alone, as the plain lines another app's paste box wants
-  // — built here rather than at press time so the copy and share actions can
-  // both gate themselves on it being non-empty (see shareText.ts).
-  const ingredientsText = useMemo(
-    () => (recipe ? buildIngredientsText(recipe, recipesById, { scale, unitSystem }) : ''),
-    [recipe, recipesById, scale, unitSystem]
-  );
-
-  const { copied: copiedIngredients, copy: copyIngredients } = useCopyToClipboard();
 
   const handleShareIngredients = () => {
     if (!ingredientsText) return;
@@ -509,141 +648,15 @@ export function RecipeDetailScreen() {
     options.push({ text: 'Cancel', style: 'cancel' });
     Alert.alert('Recipe photo', undefined, options);
   };
-  // The ingredients list, plus one marker per heading it has — populated ones
-  // where a row's section first differs from the row before it, and every
-  // declared-but-empty one (Recipe.emptySections) trailing at the end. This is
-  // what SortableList actually drags over: a heading is a row in this list,
-  // not a caption inferred from a row's own label, which is what makes an
-  // empty heading a real drop target and not just static text. See
-  // sectionsFromMergedOrder for how a drag commit turns back into
-  // per-ingredient `section` values.
-  const mergedIngredientRows = useMemo(() => {
-    const rows: MergedIngredientRow[] = [];
-    let prevSection: string | null = null;
-    for (const ing of recipe.ingredients) {
-      if (ing.section && ing.section !== prevSection) {
-        rows.push({ kind: 'heading', id: `heading:${ing.section}`, name: ing.section, empty: false });
-      }
-      rows.push({ kind: 'ingredient', id: ing.id, ingredient: ing });
-      prevSection = ing.section;
-    }
-    for (const name of recipe.emptySections) {
-      rows.push({ kind: 'heading', id: `heading:${name}`, name, empty: true });
-    }
-    return rows;
-  }, [recipe.ingredients, recipe.emptySections]);
-
   // The row currently under the drag, by id — set from SortableList's
   // onHoverChange so an empty heading can light up as a live drop target the
   // same way row-shifting already signals a target among populated ones. Only
   // empty headings read it (see renderHeadingRow): a populated one already
   // gets that feedback for free from the rows around it visibly opening a gap.
-  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const handleIngredientHoverChange = (index: number | null) => {
     setHoveredRowId(index === null ? null : mergedIngredientRows[index]?.id ?? null);
   };
 
-  // Every heading this recipe already has, real or declared — what "New
-  // section" checks the typed name against so it can't redeclare one that
-  // already exists.
-  const allSections = useMemo(
-    () => allSectionsOf(recipe.ingredients, recipe.emptySections),
-    [recipe.ingredients, recipe.emptySections]
-  );
-
-  // The same display-only treatment for choice groups: the *first* row of each
-  // group opens a heading, and is also the group's default (see
-  // RecipeComponent.choiceGroup), so one pass over stored order answers both.
-  // Unlike the ingredient sections above, a group's options need not be
-  // adjacent — the heading opens at the first one and the rest keep their
-  // places, because the list order is what the recipe reads like and reordering
-  // it here would be editing the recipe to draw it.
-  const choiceHeadersOf = (rows: readonly { id: string; choiceGroup: string | null }[]) => {
-    const headers = new Map<string, string>();
-    const defaults = new Set<string>();
-    const seen = new Set<string>();
-    for (const row of rows) {
-      if (!row.choiceGroup || seen.has(row.choiceGroup)) continue;
-      seen.add(row.choiceGroup);
-      headers.set(row.id, row.choiceGroup);
-      defaults.add(row.id);
-    }
-    return { headers, defaults };
-  };
-
-  const componentGroups = useMemo(() => choiceHeadersOf(recipe.components), [recipe.components]);
-  const ingredientGroups = useMemo(() => choiceHeadersOf(recipe.ingredients), [recipe.ingredients]);
-
-  // The header above only opens at a group's *first* option, so on its own every
-  // other option reads as an ordinary line — and a list you read as ordinary is
-  // a list you buy all of. Each option carries its own "or manchego" instead.
-  // Built off the *resolved* components, not the stored links: the row shows the
-  // referenced recipe's live name, and a caption naming the captured one would
-  // go stale the moment that recipe is renamed.
-  const componentAlternatives = useMemo(
-    () => alternativeCaptions(components.map(c => ({
-      id: c.component.id,
-      choiceGroup: c.component.choiceGroup,
-      name: c.name || 'Deleted recipe',
-    }))),
-    [components],
-  );
-  const ingredientAlternatives = useMemo(
-    () => alternativeCaptions(recipe.ingredients),
-    [recipe.ingredients],
-  );
-
-  // Lines the app can see wanting to be two — "corn tortillas or flour
-  // tortillas" — so the row can say so. Without this the suggestion existed
-  // only inside RecipeIngredientSheet, which is to say only for someone who
-  // already suspected it was there.
-  //
-  // A row already filed under a choice group is skipped: it sits under a
-  // "choose one" header, so nudging it to become a choice reads as the app
-  // not having noticed what the user just did. Which is also why this and the
-  // "or manchego" caption above can never appear on the same row — one names
-  // a choice that exists, the other offers to make one.
-  const splittableCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const ing of recipe.ingredients) {
-      if (ing.choiceGroup) continue;
-      const parts = splitAlternativeNames(ing.name);
-      if (parts) counts.set(ing.id, parts.length);
-    }
-    return counts;
-  }, [recipe.ingredients]);
-
-  // What each line resolves to in the grocery catalog — see
-  // ingredientCatalogMatch.ts. `nameKey` has always been that bridge, but
-  // nothing on this screen ever said whether a line had crossed it, so a line
-  // one character or one leading word off read exactly like a line naming
-  // something genuinely new.
-  //
-  // Keyed on the ingredients and the catalog together, because either moving
-  // changes the answer: renaming a line relinks it, and so does the catalog
-  // gaining the row it was looking for.
-  const catalogMatches = useMemo(
-    () => {
-      const now = new Date();
-      const matches = matchIngredientsToCatalog(
-        recipe.ingredients.map(i => i.name), groceryItems, now
-      );
-      return new Map(recipe.ingredients.map((ing, i) => [ing.id, matches[i]]));
-    },
-    [recipe.ingredients, groceryItems],
-  );
-  const catalogSummary = useMemo(
-    () => catalogMatchSummary([...catalogMatches.values()]),
-    [catalogMatches],
-  );
-
-  // Session-only "not now" for the two signpost pills below: dismissing one
-  // doesn't touch the ingredient, so it's keyed on what the pill was
-  // offering rather than a boolean, and clears itself the moment that offer
-  // changes (a rename, a different catalog match) rather than hiding a pill
-  // that's now suggesting something new.
-  const [dismissedMatchPills, setDismissedMatchPills] = useState<Map<string, string>>(new Map());
-  const [dismissedSplitPills, setDismissedSplitPills] = useState<Map<string, string>>(new Map());
   const dismissMatchPill = (ingredientId: string, suggestedName: string) => {
     haptics.tap();
     animateLayout();

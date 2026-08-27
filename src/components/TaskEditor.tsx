@@ -62,7 +62,7 @@ import {
 } from '../utils/extraTask';
 import { ordinal } from '../utils/ordinal';
 import { tagColor } from '../utils/tagColor';
-import { useTaskStore, CONTENT_FIELDS } from '../store/useTaskStore';
+import { useTaskStore, CONTENT_FIELDS, derivedTargetCount } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { nudgeReminderPastMeeting } from '../utils/reminderNudge';
@@ -1311,13 +1311,37 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPickerMode('none');
   };
 
+  // Keeps the on-screen count in step with the cadence as the user dials in
+  // the interval or the window it runs across — otherwise the "N×" read-out
+  // (and whatever gets saved) is whatever was last typed into the stepper
+  // before a cadence took over, not what "every N minutes" actually implies.
+  // `next` overrides the field that just changed; state for the others hasn't
+  // committed yet at the point this is called.
+  const applyDerivedTargetCount = (next: {
+    quotaIntervalMinutes?: number | null;
+    windowStart?: string | null;
+    windowEnd?: string | null;
+  }) => {
+    const interval = next.quotaIntervalMinutes !== undefined ? next.quotaIntervalMinutes : quotaIntervalMinutes;
+    if (interval === null) return;
+    setTargetCount(derivedTargetCount({
+      windowStart: next.windowStart !== undefined ? next.windowStart : windowStart,
+      windowEnd: next.windowEnd !== undefined ? next.windowEnd : windowEnd,
+      quotaStartedAt: task?.quotaStartedAt ?? null,
+      quotaIntervalMinutes: interval,
+      targetCount,
+    }));
+  };
+
   const commitWindowValue = (which: 'start' | 'end', date: Date) => {
     const hhmm = dateToHHMM(date);
     if (which === 'start') {
       setWindowStart(hhmm);
       applyDefaultReminderLead(hhmm);
+      applyDerivedTargetCount({ windowStart: hhmm });
     } else {
       setWindowEnd(hhmm);
+      applyDerivedTargetCount({ windowEnd: hhmm });
     }
   };
 
@@ -2310,7 +2334,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                         <Text style={styles.stepperSentence}>One every</Text>
                         <CountStepper
                           value={quotaIntervalMinutes}
-                          onChange={setQuotaIntervalMinutes}
+                          onChange={next => { setQuotaIntervalMinutes(next); applyDerivedTargetCount({ quotaIntervalMinutes: next }); }}
                           min={MIN_QUOTA_INTERVAL_MINUTES}
                           max={MAX_QUOTA_INTERVAL_MINUTES}
                           // Fives, because nobody means 23 minutes — and at a
@@ -2936,7 +2960,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               expanded={showTimeWindow}
               onPress={() => { animateLayout(); setShowTimeWindow(v => !v); }}
               onClear={(windowStart || windowEnd)
-                ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); }
+                ? () => { setWindowStart(null); setWindowEnd(null); setWindowPickerMode('none'); applyDerivedTargetCount({ windowStart: null, windowEnd: null }); }
                 : undefined}
             />
             {showTimeWindow && (

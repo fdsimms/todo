@@ -2734,6 +2734,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     for (const u of updates) dbUpdateGroceryItem(u);
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+    // Marking a row out of it answers the same question a live "Use up X"
+    // task exists to ask — without this the task survives the mark and
+    // resurfaces on its own schedule, reading as a fresh nag for something
+    // already resolved here.
+    for (const u of updates) dropUseUpTask(u.id);
 
     // One row, and nobody has said how it went: that's the question worth
     // asking, and the only shape it can be asked in. A batch gets no offer —
@@ -2752,6 +2757,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // pantry, and undoing that is the answer "it didn't" — leaving it up
         // would ask how something went that is, as of now, still there.
         set(s => ({ items: s.items.map(i => originalById.get(i.id) ?? i), disposalOffer: null }));
+        // Restores whatever use-up task the mark just dropped, same as the
+        // rest of the row's state.
+        for (const b of before) reconcileUseUpTask(b);
       },
     });
     return updates.length;
@@ -3103,6 +3111,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const updated: GroceryItem = { ...item, onHandUntil: until };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === itemId ? updated : i)) }));
+    // Answering "out of it" resolves the same question a live "Use up X"
+    // task was asking — leaving the task standing is what had it come back
+    // the morning after it was already answered here.
+    if (answer === 'out') dropUseUpTask(itemId);
   },
 
   revertPantryAnswer(item, entry) {
@@ -3112,6 +3124,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (!get().items.some(i => i.id === item.id)) return;
     dbUpdateGroceryItem(item);
     set(s => ({ items: s.items.map(i => (i.id === item.id ? item : i)) }));
+    // The snapshot can restore an "out of it" answer's dropped use-up task
+    // along with everything else it undoes; reconciling off the restored
+    // item is a no-op for the other two answers, which never touched it.
+    reconcileUseUpTask(item);
     // "Running low" is the one answer that reaches into a list (see
     // setRunningLow), so it's the one Undo has membership to put back. The
     // entry snapshot is what says whether the row was in this trolley before

@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the app crashing when opening a recipe (including from Suggest meals' \"View full recipe\") if that recipe had just been deleted elsewhere",
+  "date": "2026-08-27"
+}

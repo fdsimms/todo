@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a daily target with a cadence (\"one every 20 minutes\") saving with the wrong count instead of the number the cadence actually implies, which made the nudges far sparser than the interval you set",
+  "date": "2026-08-27"
+}

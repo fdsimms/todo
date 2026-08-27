@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a live \"Use up X\" task surviving after you marked the item used up or spoiled, or answered a pantry check with \"out of it\" — it now clears along with the item, and comes back if you undo",
+  "date": "2026-08-27"
+}
