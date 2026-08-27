@@ -27,6 +27,7 @@ import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
+import { InventRecipeSheet } from '../components/InventRecipeSheet';
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
 import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
@@ -213,6 +214,7 @@ export function RecipesScreen() {
   const [addVisible, setAddVisible] = useState(false);
   const [importVisible, setImportVisible] = useState(false);
   const [importMode, setImportMode] = useState<RecipeInputMode>('photo');
+  const [inventVisible, setInventVisible] = useState(false);
   // The shared page the import sheet was opened for, if it was opened from the
   // banner rather than the add menu. Deliberately not cleared when the sheet
   // closes: `RecipeCreateSheet` calls `onClose` before `onCreated`, so clearing
@@ -239,13 +241,16 @@ export function RecipesScreen() {
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
   // still the one under your thumb. The three import items sit in the same
   // order as RecipeSourcePicker's own Paste/Link/Photo tabs, so the menu and
-  // the sheet it opens agree on which one is the "default" way in. All three
-  // funnel into the same AI extraction (RecipeCreateSheet -> extractRecipe),
-  // so all three drop out together without a key, leaving "New recipe" —
-  // which needs no AI — as the menu's one remaining, and therefore only,
-  // item. FabMenu performs a lone item on the tap instead of opening, so this
-  // is also what makes the plain-Fab variant this used to need removable.
+  // the sheet it opens agree on which one is the "default" way in. All four AI
+  // items — the three imports plus Invent — need a key, so they all drop out
+  // together without one, leaving "New recipe" — which needs no AI — as the
+  // menu's one remaining, and therefore only, item. FabMenu performs a lone
+  // item on the tap instead of opening, so this is also what makes the
+  // plain-Fab variant this used to need removable. Invent sits furthest from
+  // the thumb: unlike the three imports it has nothing to read from, so it's
+  // the one most likely to need a moment's thought before tapping.
   const addMenuItems = useMemo<FabMenuItem[]>(() => (anthropicApiKey ? [
+    { key: 'invent', label: 'Invent a recipe', icon: 'sparkles-outline' },
     { key: 'paste', label: 'Paste text', icon: 'clipboard-outline' },
     { key: 'link', label: 'From a link', icon: 'link-outline' },
     { key: 'import', label: 'From a photo', icon: 'camera-outline' },
@@ -264,6 +269,7 @@ export function RecipesScreen() {
     if (key === 'paste') { setImportMode('paste'); setImportVisible(true); }
     else if (key === 'link') { setImportMode('link'); setImportVisible(true); }
     else if (key === 'import') { setImportMode('photo'); setImportVisible(true); }
+    else if (key === 'invent') { setInventVisible(true); }
     else setAddVisible(true);
   }, []);
 
@@ -874,6 +880,12 @@ export function RecipesScreen() {
         initialUrl={importUrl}
         onClose={() => setImportVisible(false)}
         onCreated={handleCreated}
+      />
+
+      <InventRecipeSheet
+        visible={inventVisible}
+        onClose={() => setInventVisible(false)}
+        onCreated={recipeId => handleCreated(recipeId, null)}
       />
 
       <RecipeTagFilterSheet
