@@ -869,11 +869,38 @@ it lives and what it asks.
   built from the same two calls, with the same sample floor and the same silence
   below it. Below the floor the field is an honest question with no suggestion
   attached, which is what it already was in the editor.
-- **The person card shows a name and their `notes`, and nothing else.** Its
-  three sibling cards carry meta chips — a due date, a task count — and every
-  number available here is one this doc rules out: a task count under somebody's
-  name reads as a tally against them, and a last-together date or a day count
-  belongs on their own screen. Sparse is correct.
+- **The person card shows a name, their group if they're in one, and their
+  `notes` — and nothing else.** Its three sibling cards carry meta chips — a
+  due date, a task count — and every *number* available here is one this doc
+  rules out: a task count under somebody's name reads as a tally against
+  them, and a last-together date or a day count belongs on their own screen.
+  A group is a fact rather than a count, the same standing a birthday
+  already has, and it's the context the cadence field's own group offer and
+  toggle (below) refer to by name — so it's shown on all three cards, not
+  only the cadence one, the same way `notes` is. Otherwise sparse is correct.
+
+- **The cadence field also reads the current person's group, two ways —
+  `groupmateCadenceOffer` and `groupmatesOf` in `peopleBackfill.ts`.** A
+  couple who already share a reminder in practice usually want the same
+  number, so:
+  - **If a groupmate already has a cadence on file, it's offered** the same
+    way the observed-history offer is — same shape, same "tap to use it",
+    just a different honest source. It sits below the observed offer rather
+    than replacing it: a groupmate's stated cadence and this person's own
+    history are two different reasons to suggest a number, and either can be
+    the one worth showing.
+  - **Setting a cadence can also be applied to the rest of the group in the
+    same tap**, via a checkbox that defaults off and resets every time the
+    card changes — opt-in every time, never remembered across cards, because
+    applying a value to somebody you weren't asked about yet is a bigger
+    assumption than applying it to the one person the card is about.
+    `personCadencePatch` is still called once per person, so an
+    already-opted-in groupmate keeps their own `cadenceSetAt` anchor rather
+    than having it silently restamped — the same rule the field already
+    holds for the Previous button landing on somebody already answered.
+    Whichever groupmates get set this way simply stop being missing, so they
+    never come up again in the same pass — no extra bookkeeping needed
+    beyond the ordinary "still missing?" filter every field already runs.
 - **The field-picker counts are about the field, not about anybody.** "Not set
   for 6 people" rather than "6 people need one": the first is a fact about your
   own data entry, the second reads as a list of ways you are behind on your
@@ -909,11 +936,12 @@ it lives and what it asks.
 this answers is plain: two people you never think to catch up with apart
 shouldn't cost two separate nudges, or need "@dustin @ansley" spelled out
 every time you mean the pair. A group is a lightweight, renameable label —
-the `TaskGroup` ("Stacks") shape, one shelf over — that changes exactly two
-things: how the reach-out nudge batches people, and how an "@" mention
-resolves. It carries no cadence, no history and no nudge settings of its own;
-those stay on each `Person`, so nothing here becomes a second place to score
-or rank anybody.
+the `TaskGroup` ("Stacks") shape, one shelf over — that changes three
+things: how the reach-out nudge batches people, how an "@" mention resolves,
+and how the Backfill screen offers and applies a cadence (see "Filling in
+the gaps" below). It carries no cadence, no history and no nudge settings of
+its own; those stay on each `Person`, so nothing here becomes a second place
+to score or rank anybody.
 
 - **`Person.groupId`, not a member array on the group.** The same argument
   this doc already makes for `Task.groupId` over a join table: a person row

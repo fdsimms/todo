@@ -10,6 +10,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
+import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
@@ -43,7 +44,7 @@ import {
 } from '../utils/projectBackfill';
 import {
   PERSON_BACKFILL_FIELDS, personBackfillCandidates, personBackfillFieldCounts, dismissPersonBackfillField,
-  personCadencePatch, type PersonBackfillFieldId,
+  personCadencePatch, groupmatesOf, groupmateCadenceOffer, type PersonBackfillFieldId,
 } from '../utils/peopleBackfill';
 import {
   CADENCE_UNITS, CADENCE_UNIT_MAX, toCadenceParts, fromCadenceParts, withCadenceUnit, describeCadence, cadenceUnitLabel,
@@ -53,7 +54,7 @@ import {
 } from '../utils/nudgeCadence';
 import { personHistory } from '../utils/personHistory';
 import { observedCadenceDays, describeObservedCadence } from '../utils/reachOutTasks';
-import { EFFORT_LABELS, type Effort, type ReminderKind, type Task } from '../types';
+import { EFFORT_LABELS, type Effort, type Person, type ReminderKind, type Task } from '../types';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -198,6 +199,7 @@ export function BackfillScreen() {
   const projectNamesById = useMemo(() => new Map(projects.map(p => [p.id, p.title])), [projects]);
   const people = usePersonStore(useShallow(s => s.people));
   const updatePerson = usePersonStore(s => s.updatePerson);
+  const personGroups = usePersonGroupStore(useShallow(s => s.groups));
 
   const [entityKind, setEntityKind] = useState<EntityKind>('task');
   const [active, setActive] = useState<ActiveField | null>(null);
@@ -237,6 +239,13 @@ export function BackfillScreen() {
   const [personCadenceDraft, setPersonCadenceDraft] = useState<CadenceParts>({ count: null, unit: 'days' });
   const [askAboutText, setAskAboutText] = useState('');
   const [birthdayPickerOpen, setBirthdayPickerOpen] = useState(false);
+  // Whether the cadence about to be set should also go to the current
+  // person's groupmates — off by default and reset per card, same as every
+  // other per-card draft below: applying a value to somebody you weren't
+  // asked about yet is a bigger assumption than applying it to the one
+  // person the card is about, so this is opt-in every time rather than
+  // remembered across cards.
+  const [applyCadenceToGroup, setApplyCadenceToGroup] = useState(false);
 
   const taskCounts = useMemo(() => backfillFieldCounts(tasks, categories), [tasks, categories]);
   const categoryCounts = useMemo(() => categoryBackfillFieldCounts(categories), [categories]);
@@ -295,6 +304,27 @@ export function BackfillScreen() {
     return observedCadenceDays(personHistory(theirs));
   }, [tasks, currentPerson?.id]);
 
+  // The group the current person belongs to, if any — shown as plain context
+  // on the card (a group is a fact about somebody, the same standing a
+  // birthday or a note has) and consulted below for the cadence-only offer
+  // and the "also set for the group" toggle. See docs/arch/people.md's
+  // "Groups" section.
+  const currentPersonGroup = useMemo(
+    () => currentPerson?.groupId ? personGroups.find(g => g.id === currentPerson.groupId) ?? null : null,
+    [currentPerson?.groupId, personGroups]
+  );
+  const currentGroupmates = useMemo(
+    () => currentPerson ? groupmatesOf(currentPerson, people) : [],
+    [currentPerson, people]
+  );
+  // Rule 5 pointed at a groupmate instead of at history: a couple who share a
+  // reminder in practice usually want the same number, so a groupmate's own
+  // cadence is offered the same way an observed one is, below.
+  const groupmateOffer = useMemo(
+    () => currentPerson ? groupmateCadenceOffer(currentPerson, people) : null,
+    [currentPerson, people]
+  );
+
   // The custom-estimate entry is per-card: once the card advances (a value
   // was applied, or the item was skipped), a half-typed number from the
   // previous card has no business surviving onto this one.
@@ -304,6 +334,7 @@ export function BackfillScreen() {
     setCustomUnit('min');
     setReminderPickerOpen(false);
     setBirthdayPickerOpen(false);
+    setApplyCadenceToGroup(false);
   }, [currentId]);
 
   // Whatever is already on file, so the field shows what's actually there
@@ -659,11 +690,31 @@ export function BackfillScreen() {
     };
     const days = fromCadenceParts(personCadenceDraft);
     updatePerson(personId, personCadencePatch(currentPerson, days));
+    // "Also set for the group" — each groupmate gets the same off→on rule
+    // personCadencePatch already applies to the person the card is about, so
+    // a groupmate already opted in keeps their own anchor rather than having
+    // it silently restamped.
+    const includeGroup = applyCadenceToGroup && currentGroupmates.length > 0;
+    const mateUndo: Array<{ id: string; before: Pick<Person, 'cadenceDays' | 'nudgeOptIn' | 'cadenceSetAt'> }> = [];
+    if (includeGroup) {
+      for (const mate of currentGroupmates) {
+        mateUndo.push({
+          id: mate.id,
+          before: { cadenceDays: mate.cadenceDays, nudgeOptIn: mate.nudgeOptIn, cadenceSetAt: mate.cadenceSetAt },
+        });
+        updatePerson(mate.id, personCadencePatch(mate, days));
+      }
+    }
     logSession({
       itemId: personId,
       title: displayNameOf(currentPerson),
-      valueText: describeCadence(days),
-      undo: () => updatePerson(personId, before),
+      valueText: includeGroup
+        ? `${describeCadence(days)} (and ${currentGroupmates.map(displayNameOf).join(', ')})`
+        : describeCadence(days),
+      undo: () => {
+        updatePerson(personId, before);
+        mateUndo.forEach(m => updatePerson(m.id, m.before));
+      },
     });
   };
 
@@ -1211,15 +1262,26 @@ export function BackfillScreen() {
             contentContainerStyle={[styles.reviewContent, { paddingBottom: tabBarHeight + spacing.lg }]}
             keyboardShouldPersistTaps="handled"
           >
-            {/* The name and whatever you wrote about them, and deliberately
-                nothing else — no meta chips the way the task, category and
-                project cards carry. Every number available here is one
-                docs/arch/people.md rules out under somebody's name: a task
-                count reads as a tally against them, and a last-together date
-                or a day count belongs on their own screen, which is the one
-                place you go on purpose to be told. */}
+            {/* The name, their group if they're in one, and whatever you wrote
+                about them — deliberately no other meta chips the way the
+                task, category and project cards carry. Every *number*
+                available here is one docs/arch/people.md rules out under
+                somebody's name: a task count reads as a tally against them,
+                and a last-together date or a day count belongs on their own
+                screen, which is the one place you go on purpose to be told.
+                A group is a fact rather than a count, the same standing a
+                birthday or a note already has, and it's what the cadence
+                offer and toggle below refer to by name. */}
             <View style={[styles.itemCard, shadows.card]}>
               <Text style={styles.itemTitle} numberOfLines={2}>{displayNameOf(currentPerson)}</Text>
+              {!!currentPersonGroup && (
+                <View style={styles.metaRow}>
+                  <View style={styles.metaChip}>
+                    <Ionicons name="people-circle-outline" size={iconSize.xs} color={colors.textSecondary} />
+                    <Text style={styles.metaText} numberOfLines={1}>{currentPersonGroup.name}</Text>
+                  </View>
+                </View>
+              )}
               {!!currentPerson.notes.trim() && (
                 <Text style={styles.itemNotes} numberOfLines={2}>{currentPerson.notes.trim()}</Text>
               )}
@@ -1287,6 +1349,47 @@ export function BackfillScreen() {
                     <Text style={styles.offerText}>{describeObservedCadence(observedCadence)}. Use that?</Text>
                   </TouchableOpacity>
                 )}
+                {/* The other honest source rule 5 lets Backfill offer before
+                    there's shared history to read: a groupmate's own cadence,
+                    since a couple who already share a reminder in practice
+                    usually want the same number. See groupmateCadenceOffer. */}
+                {groupmateOffer !== null && cadenceDays !== groupmateOffer.days && (
+                  <TouchableOpacity
+                    style={styles.offerRow}
+                    onPress={() => { haptics.tap(); animateLayout(); setPersonCadenceDraft(toCadenceParts(groupmateOffer.days)); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Use every ${describeCadence(groupmateOffer.days).toLowerCase()}, the same as ${displayNameOf(groupmateOffer.mate)}`}
+                  >
+                    <Ionicons name="people-circle-outline" size={14} color={colors.accent} />
+                    <Text style={styles.offerText}>
+                      {displayNameOf(groupmateOffer.mate)} is set for every {describeCadence(groupmateOffer.days).toLowerCase()}. Use that too?
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {/* Opt-in every time (see applyCadenceToGroup's own note):
+                    setting a cadence for somebody you weren't asked about
+                    yet is a bigger assumption than setting it for the one
+                    person this card is about. */}
+                {currentGroupmates.length > 0 && (
+                  <TouchableOpacity
+                    style={styles.groupToggleRow}
+                    onPress={() => { haptics.tap(); setApplyCadenceToGroup(v => !v); }}
+                    activeOpacity={interaction.activeOpacity}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: applyCadenceToGroup }}
+                    accessibilityLabel={`Also set this reminder for ${currentGroupmates.map(displayNameOf).join(' and ')}`}
+                  >
+                    <Ionicons
+                      name={applyCadenceToGroup ? 'checkbox' : 'square-outline'}
+                      size={18}
+                      color={applyCadenceToGroup ? colors.accent : colors.textSecondary}
+                    />
+                    <Text style={styles.groupToggleText}>
+                      Also set for {currentGroupmates.map(displayNameOf).join(', ')}
+                    </Text>
+                  </TouchableOpacity>
+                )}
                 <PressableScale
                   style={[styles.toggleButton, { backgroundColor: colors.accent }, !cadenceReady && styles.toggleButtonIdle]}
                   onPress={applyPersonCadence}
@@ -1294,7 +1397,9 @@ export function BackfillScreen() {
                   accessibilityRole="button"
                   accessibilityState={{ disabled: !cadenceReady }}
                   accessibilityLabel={cadenceReady
-                    ? `Set a reminder for every ${describeCadence(cadenceDays).toLowerCase()}`
+                    ? `Set a reminder for every ${describeCadence(cadenceDays).toLowerCase()}${applyCadenceToGroup && currentGroupmates.length > 0
+                      ? `, also for ${currentGroupmates.map(displayNameOf).join(' and ')}`
+                      : ''}`
                     : 'Pick how long before a reminder first'}
                 >
                   <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
@@ -1962,6 +2067,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
   },
   offerText: { flex: 1, color: colors.accent, fontSize: font.xs, lineHeight: lineHeight.xs },
+
+  groupToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  groupToggleText: { flex: 1, color: colors.text, fontSize: font.sm },
 
   // Stacked rather than side by side: "e.g. the new job" plus a button doesn't
   // fit one line at 390pt, and the input is the field here rather than a
