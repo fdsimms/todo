@@ -2570,6 +2570,9 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     borderLeftColor: 'transparent',
     borderRightColor: 'transparent',
     borderBottomColor: colors.accent,
+    // Overlap the bubble by a hair so independent sub-pixel rounding of this
+    // 0-height triangle and the bubble below it can never leave a seam.
+    marginBottom: -1,
   },
   tooltipBubble: {
     flexDirection: 'row',
