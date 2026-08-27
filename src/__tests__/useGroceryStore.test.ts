@@ -219,7 +219,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null,
+    varietyOfKey: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -4160,6 +4160,26 @@ describe('setVarietyOfKey', () => {
   it('shrugs at an id it does not hold', () => {
     seed([]);
     useGroceryStore.getState().setVarietyOfKey('gone', 'onion');
+    expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
+  });
+});
+
+describe('setItemBackfillDismissedFields', () => {
+  it('writes the given list and persists it', () => {
+    const butter = makeItem({ name: 'Butter' });
+    seed([butter]);
+
+    useGroceryStore.getState().setItemBackfillDismissedFields(butter.id, ['variety']);
+
+    expect(useGroceryStore.getState().items[0].backfillDismissedFields).toEqual(['variety']);
+    expect(dbUpdateGroceryItem).toHaveBeenCalledWith(
+      expect.objectContaining({ id: butter.id, backfillDismissedFields: ['variety'] })
+    );
+  });
+
+  it('shrugs at an id it does not hold', () => {
+    seed([]);
+    useGroceryStore.getState().setItemBackfillDismissedFields('gone', ['variety']);
     expect(dbUpdateGroceryItem).not.toHaveBeenCalled();
   });
 });

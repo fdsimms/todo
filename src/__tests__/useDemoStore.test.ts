@@ -59,6 +59,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
+import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
 import { mealYearRange, taskYearRange, timeTogetherInRange } from '../utils/peopleStats';
 import { PERSON_NOTE_KINDS } from '../types';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -1074,6 +1075,19 @@ describe('demo seed — people', () => {
   it('leaves each backfillable person field with somebody to fill it in for', () => {
     const counts = personBackfillFieldCounts(usePersonStore.getState().people);
     for (const field of PERSON_BACKFILL_FIELDS) {
+      expect(counts[field.id]).toBeGreaterThan(0);
+    }
+  });
+
+  // Same reasoning as the person pool above, for the Items pool: a few items
+  // already declare a variety or a substitute (see demoSeed's own
+  // setVarietyOfKey/linkItemSub calls), but the catalog is large enough that
+  // plenty are still missing either — this pins that rather than seeding
+  // anything new.
+  it('leaves each backfillable item field with something to fill it in for', () => {
+    const { items, itemSubs } = useGroceryStore.getState();
+    const counts = itemBackfillFieldCounts(items, itemSubs);
+    for (const field of ITEM_BACKFILL_FIELDS) {
       expect(counts[field.id]).toBeGreaterThan(0);
     }
   });

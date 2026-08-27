@@ -841,6 +841,14 @@ interface GroceryStore {
   setVarietyOfKey: (id: string, key: string | null) => void;
 
   /**
+   * Persists the Backfill screen's "don't ask again" list for one item —
+   * same mechanism as `setCategoryBackfillDismissedFields`, just through the
+   * generic `dbUpdateGroceryItem` rather than a dedicated column setter,
+   * since items already have one.
+   */
+  setItemBackfillDismissedFields: (id: string, fields: string[]) => void;
+
+  /**
    * Picks this row at the shelf: it stays (no longer an either/or) and every
    * other option in its group comes off the list. Registers one undo that puts
    * them all back exactly as they were, group included.
@@ -1330,6 +1338,9 @@ function newItemRow(fields: {
     lastPricedAt: null,
     lastPriceQuantity: null,
     priceHistory: [],
+    // Nobody has dismissed a Backfill screen field on a row that didn't exist
+    // a moment ago.
+    backfillDismissedFields: [],
   };
 }
 
@@ -3159,6 +3170,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const next = normalized === item.nameKey ? null : normalized;
     if (item.varietyOfKey === next) return;
     const updated = { ...item, varietyOfKey: next };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setItemBackfillDismissedFields(id, fields) {
+    const item = get().items.find(i => i.id === id);
+    if (!item) return;
+    const updated = { ...item, backfillDismissedFields: fields };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
