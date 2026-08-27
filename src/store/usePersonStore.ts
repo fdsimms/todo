@@ -54,6 +54,7 @@ export function blankPerson(name: string, sortOrder: number): Person {
     nudgeOptIn: false,
     cadenceSetAt: null,
     reachOutDeclinedAt: null,
+    reachOutOfferDeclinedAt: null,
     askAbout: '',
     backfillDismissedFields: [],
     groupId: null,
@@ -70,7 +71,7 @@ export type PersonPatch = Partial<Pick<Person,
   | 'name' | 'nickname' | 'notes'
   | 'birthdayMonth' | 'birthdayDay' | 'birthYear' | 'birthdayTaskOptOut' | 'birthdayGiftTaskOptOut'
   | 'phoneNumber' | 'email' | 'linkUrl'
-  | 'cadenceDays' | 'nudgeOptIn' | 'cadenceSetAt' | 'reachOutDeclinedAt' | 'askAbout'
+  | 'cadenceDays' | 'nudgeOptIn' | 'cadenceSetAt' | 'reachOutDeclinedAt' | 'reachOutOfferDeclinedAt' | 'askAbout'
   // Written by the Backfill screen rather than by the editor, through the same
   // patch path everything else uses — the project side does the same with
   // `updateProject`, and there is nothing about it worth a setter of its own.

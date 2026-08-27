@@ -3,6 +3,7 @@ import type { HistoryEntry } from '../utils/personHistory';
 import {
   declineHoldDays,
   declinedRecently,
+  offerDeclinedRecently,
   describeObservedCadence,
   observedCadenceDays,
   reachOutTitle,
@@ -24,7 +25,7 @@ const person = (o: Partial<Person> = {}): Person => ({
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
-  cadenceDays: 30, nudgeOptIn: true, cadenceSetAt: daysAgo(45).toISOString(), reachOutDeclinedAt: null, askAbout: '',
+  cadenceDays: 30, nudgeOptIn: true, cadenceSetAt: daysAgo(45).toISOString(), reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
   backfillDismissedFields: [], groupId: null,
   ...o,
 });
@@ -87,6 +88,33 @@ describe('a swipe-away', () => {
 
   it('is nothing at all when never declined', () => {
     expect(declinedRecently(person(), TODAY)).toBe(false);
+  });
+});
+
+// The "turn off reminders for X" offer's own decline — same hold window as
+// the row's own swipe-away, kept as its own stamp (WhenPicker's reach-out
+// variant of the postpone-check banner) rather than reusing reachOutDeclinedAt,
+// since declining the offer is not the same event as swiping the row.
+describe('the reach-out offer', () => {
+  it('still holds inside the window', () => {
+    expect(offerDeclinedRecently(person({ reachOutOfferDeclinedAt: daysAgo(3).toISOString() }), TODAY)).toBe(true);
+  });
+
+  it('has lapsed past it', () => {
+    expect(offerDeclinedRecently(person({ reachOutOfferDeclinedAt: daysAgo(9).toISOString() }), TODAY)).toBe(false);
+  });
+
+  it('is nothing at all when never declined', () => {
+    expect(offerDeclinedRecently(person(), TODAY)).toBe(false);
+  });
+
+  // The two stamps are independent: declining the offer must not read as
+  // swiping the row away, or vice versa.
+  it('does not share state with the row\'s own swipe-away', () => {
+    const declinedRow = person({ reachOutDeclinedAt: daysAgo(1).toISOString() });
+    expect(offerDeclinedRecently(declinedRow, TODAY)).toBe(false);
+    const declinedOffer = person({ reachOutOfferDeclinedAt: daysAgo(1).toISOString() });
+    expect(declinedRecently(declinedOffer, TODAY)).toBe(false);
   });
 });
 

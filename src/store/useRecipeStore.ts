@@ -117,6 +117,19 @@ interface RecipeStore {
    */
   deleteCookbook: (id: string) => void;
   /**
+   * "These are the same book" — repoints every recipe linked to `loserId`
+   * onto `survivorId`, re-mirroring `source`/`author` the same way
+   * `linkCookbook` does, then deletes the loser (unlinking, not cascading,
+   * same as `deleteCookbook` — moot here since every one of its recipes was
+   * just repointed, but the underlying delete is the same call).
+   *
+   * False when either id doesn't resolve, or they're the same book;
+   * otherwise true. There's no titleKey collision to fail on the way
+   * `renameCookbook` can: two rows sharing this call's destination is exactly
+   * what it exists to fix.
+   */
+  mergeCookbooks: (survivorId: string, loserId: string) => boolean;
+  /**
    * `servingsMax` is the top of a range ("serves 4-6") and is optional — omit
    * it (or pass null) for a plain count. A max at or below `servings` isn't a
    * range, so it's dropped rather than stored as one.
@@ -584,6 +597,21 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       cookbooks: s.cookbooks.filter(c => c.id !== id),
       recipes: s.recipes.map(r => (r.cookbookId === id ? { ...r, cookbookId: null } : r)),
     }));
+  },
+
+  mergeCookbooks(survivorId, loserId) {
+    if (survivorId === loserId) return false;
+    const survivor = get().cookbooks.find(c => c.id === survivorId);
+    const loser = get().cookbooks.find(c => c.id === loserId);
+    if (!survivor || !loser) return false;
+    // Same write-through loop renameCookbook uses, aimed at the survivor's
+    // fields instead of the same row's own new ones.
+    for (const recipe of get().recipes) {
+      if (recipe.cookbookId === loserId) save(set, { ...recipe, ...mirrorOf(survivor) });
+    }
+    dbDeleteCookbook(loserId);
+    set(s => ({ cookbooks: s.cookbooks.filter(c => c.id !== loserId) }));
+    return true;
   },
 
   setSourcePage(id, sourcePage) {

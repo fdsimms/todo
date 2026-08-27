@@ -1753,7 +1753,7 @@ describe('blocking', () => {
       archived: false, archivedAt: null, createdAt: NOW.toISOString(),
       birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
       phoneNumber: null, email: null, linkUrl: null,
-      cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, askAbout: '',
+      cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
       backfillDismissedFields: [],
       groupId: null,
     };

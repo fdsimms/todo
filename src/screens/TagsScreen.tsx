@@ -17,6 +17,7 @@ import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
@@ -101,6 +102,11 @@ export function TagsScreen() {
     });
   };
   const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  // Lifts the expanded row's cell above the row below it — this list is a
+  // genuine FlatList, unlike Today/Later/a project's own list, so the row
+  // itself can't just carry a zIndex style the way ReorderableList's
+  // rowElevated does (see useElevatedCellRenderer).
+  const elevatedCell = useElevatedCellRenderer<Task>(t => t.id, expandedTaskId);
   // Extra bottom padding so the last rows aren't hidden behind the floating BulkActionBar.
   const selectionListPadding = selectionMode ? tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm : undefined;
 
@@ -314,6 +320,7 @@ export function TagsScreen() {
                 scrollEnabled={!painting && !draggingSubtask}
                 data={tagTasks}
                 keyExtractor={t => t.id}
+                CellRendererComponent={elevatedCell}
                 {...keyboardScroll.props}
                 contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
                 renderItem={({ item }) => {

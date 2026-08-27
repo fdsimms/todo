@@ -153,7 +153,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/quotaSchedule.ts` — QuotaSpan, QuotaSpanInput, quotaRunSpan, quotaTargetForInterval, quotaDueTimes, quotaDueTimesAfter, isQuotaRunOver
 - `src/utils/quotaUnit.ts` — MAX_TARGET_UNIT_LENGTH, normalizeTargetUnit, formatQuotaProgress, formatQuotaCatchUp, formatQuotaTarget
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring
-- `src/utils/reachOutTasks.ts` — MAX_REACH_OUT_TASKS, REACH_OUT_DECLINE_DAYS, declineHoldDays, declinedRecently, reachOutPersonId, reachOutTitle, reachOutsHandledRecently, ReachOutWant, ReachOutCandidate, wantedReachOuts, +6 more
+- `src/utils/reachOutTasks.ts` — MAX_REACH_OUT_TASKS, REACH_OUT_DECLINE_DAYS, declineHoldDays, declinedRecently, offerDeclinedRecently, reachOutPersonId, reachOutTitle, reachOutsHandledRecently, ReachOutWant, ReachOutCandidate, +7 more
 - `src/utils/receiptMatch.ts` — ReceiptMatchConfidence, ReceiptMatch, receiptMatchConfidence, AliasResolver, ReceiptScope, matchReceiptLines, matchReceiptShop, ReceiptCaution, receiptCautionsFor, acceptedByDefault, +1 more
 - `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, parseRecipeChoices, makeComponent, ChoiceResolution, choiceGroupKey, activeComponents, activeIngredients, recipeMap, ResolvedComponent, +19 more
 - `src/utils/recipeCost.ts` — CostEstimate, estimateRecipeCost, estimateWeekCost, describeRecipeCost, describeWeekCost
@@ -272,6 +272,7 @@ render, so listing them adds lines without adding answers.
 - `src/hooks/useBulkBarEntrance.ts` — useBulkBarEntrance
 - `src/hooks/useCopyToClipboard.ts` — COPIED_TICK_MS, useCopyToClipboard
 - `src/hooks/useDebouncedValue.ts` — useDebouncedValue
+- `src/hooks/useElevatedCellRenderer.tsx` — useElevatedCellRenderer
 - `src/hooks/useFocusSession.ts` — useFocusSession
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, useKeyboardInsetScroll
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress

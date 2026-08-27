@@ -3966,7 +3966,7 @@ describe('checkReachOutTasks', () => {
     birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
     phoneNumber: null, email: null, linkUrl: null,
     cadenceDays: 30, nudgeOptIn: true, cadenceSetAt: daysAgo(45),
-    reachOutDeclinedAt: null, askAbout: '',
+    reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
     backfillDismissedFields: [],
     groupId: null,
     ...overrides,

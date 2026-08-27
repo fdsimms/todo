@@ -25,7 +25,7 @@ const basePerson: Person = {
   cadenceDays: 0,
   nudgeOptIn: false,
   cadenceSetAt: null,
-  reachOutDeclinedAt: null,
+  reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null,
   askAbout: '',
   backfillDismissedFields: [],
   groupId: null,

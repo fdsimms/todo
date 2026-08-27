@@ -1,0 +1,4 @@
+{
+  "message": "Fixed an expanded task's shadow getting clipped by the row below it on Unscheduled, Inbox, Tags, Calendar, and a category's own screen",
+  "date": "2026-08-27"
+}

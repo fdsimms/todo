@@ -16,6 +16,7 @@ import { DeliverablePromptQueue } from '../components/DeliverablePromptQueue';
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskSelection } from '../hooks/useTaskSelection';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { useElevatedCellRenderer } from '../hooks/useElevatedCellRenderer';
 import { PaintSelectionProvider } from '../components/PaintSelection';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
@@ -95,6 +96,10 @@ export function CategoryDetailScreen() {
     });
   };
   const keyboardScroll = useKeyboardInsetScroll<FlatList>();
+  // Lifts the expanded row's cell above the row below it — see
+  // useElevatedCellRenderer for why a genuine FlatList needs this and
+  // ReorderableList's own lists don't.
+  const elevatedCell = useElevatedCellRenderer<Task>(t => t.id, expandedTaskId);
   // This screen is a RootStack card, not a tab screen — it covers the tab bar
   // entirely, so the bulk bar sits above the home indicator, not above a tab
   // bar. (Asking for useBottomTabBarHeight() here throws outright.)
@@ -229,6 +234,7 @@ export function CategoryDetailScreen() {
             scrollEnabled={!painting && !draggingSubtask}
             data={categoryTasks}
             keyExtractor={t => t.id}
+            CellRendererComponent={elevatedCell}
             {...keyboardScroll.props}
             contentContainerStyle={[{ flexGrow: 1 }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             renderItem={({ item }) => {

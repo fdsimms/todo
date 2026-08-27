@@ -29,10 +29,12 @@ import type { TimeOfDay, Effort, Priority, Task } from '../types';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 import { buildDayBuckets } from '../utils/calendarMonth';
 import { buildDayLoads, describeDayWeight, weightFor, type DayLoad } from '../utils/dayLoad';
 import { shouldNudgePostpone } from '../utils/postpone';
+import { reachOutPersonId, offerDeclinedRecently } from '../utils/reachOutTasks';
 import { PostponeCheckBanner, type PostponeCheckAction } from './PostponeCheckBanner';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
@@ -288,11 +290,14 @@ export function WhenPicker({
   const handleDayPress = (day: Date) => {
     // The cell is already disabled; this is the belt to that pair of braces.
     if (earliestDay && isDayBefore(day, earliestDay)) return;
+    // Picking today resolves the task, same as the quick button — only a day
+    // after it is a deferral the reach-out offer needs to hear about.
+    if (!isSameDay(day, today)) declineReachOutOfferIfShown();
     confirmWithFeedback(noonOf(day), isSameDay(day, today) ? 'today' : dayKeyOf(day));
   };
 
   const handleToday = () => confirmWithFeedback(noonOf(today), 'today');
-  const handleTomorrow = () => confirmWithFeedback(noonOf(tomorrow), tomorrowKey);
+  const handleTomorrow = () => { declineReachOutOfferIfShown(); confirmWithFeedback(noonOf(tomorrow), tomorrowKey); };
 
   // Lets the time-of-day segment be changed on its own, without also
   // having to tap a calendar day just to commit the change.
@@ -335,16 +340,39 @@ export function WhenPicker({
   const postponeCheckThreshold = useSettingsStore(s => s.postponeCheckThreshold);
   const updateTask = useTaskStore(s => s.updateTask);
   const archiveTask = useTaskStore(s => s.archiveTask);
+  const people = usePersonStore(s => s.people);
+  const updatePersonRecord = usePersonStore(s => s.updatePerson);
   // Session-only: silencing the banner for the rest of *this* visit is what the
   // three non-mute actions want (the task is being dealt with, so the prompt
   // has done its job and shouldn't sit there restating the count).
   const [checkDismissed, setCheckDismissed] = useState(false);
 
   const postponeTask = postponeTaskId ? tasks.find(t => t.id === postponeTaskId) : undefined;
+  // Resolves only for a solo reach-out task — a group-sourced one
+  // (reachOutPersonId can return a PersonGroup id) has no single person to
+  // turn reminders off for, so it falls back to the generic "Stop asking"
+  // below rather than guessing which member to touch.
+  const reachOutPerson = postponeTask
+    ? people.find(p => p.id === reachOutPersonId(postponeTask))
+    : undefined;
+  // Whether the reach-out-specific offer is the one to show right now, rather
+  // than the generic mute — false during the hold window after it was last
+  // declined by deferring past it (see offerDeclinedRecently).
+  const reachOutOfferActive = !!reachOutPerson && !offerDeclinedRecently(reachOutPerson, new Date());
   const showPostponeCheck =
     !!postponeTask &&
     !checkDismissed &&
     shouldNudgePostpone(postponeTask, postponeCheckEnabled, postponeCheckThreshold);
+
+  // Deferring the task again while the reach-out offer is showing, instead of
+  // accepting it, is the decline — same "the very next deferral" the offer
+  // must not immediately re-ask after. Called from the commit paths that
+  // actually push the date out, never from "Do it today".
+  const declineReachOutOfferIfShown = () => {
+    if (showPostponeCheck && reachOutOfferActive && reachOutPerson) {
+      updatePersonRecord(reachOutPerson.id, { reachOutOfferDeclinedAt: new Date().toISOString() });
+    }
+  };
 
   const postponeActions = useMemo<PostponeCheckAction[]>(() => {
     if (!postponeTask) return [];
@@ -377,19 +405,36 @@ export function WhenPicker({
         );
       },
     });
-    actions.push({
-      key: 'mute',
-      label: 'Stop asking',
-      onPress: () => {
-        haptics.tap();
-        // Commits straight away in both hosts: a mute isn't a scheduling field,
-        // so it has no reason to wait for the editor's Save.
-        updateTask(postponeTask.id, { postponeMuted: true });
-        setCheckDismissed(true);
-      },
-    });
+    // A reach-out task gets its own way out instead of the generic mute:
+    // muting only this one task instance would leave the underlying cadence
+    // running, so a fresh reach-out task would just replace it next cycle.
+    // Naming the reminder, never the friendship — see docs/arch/people.md.
+    if (reachOutOfferActive && reachOutPerson) {
+      const name = displayNameOf(reachOutPerson);
+      actions.push({
+        key: 'reachOutOff',
+        label: `Turn off reminders for ${name}`,
+        onPress: () => {
+          haptics.tap();
+          updatePersonRecord(reachOutPerson.id, { cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null });
+          setCheckDismissed(true);
+        },
+      });
+    } else {
+      actions.push({
+        key: 'mute',
+        label: 'Stop asking',
+        onPress: () => {
+          haptics.tap();
+          // Commits straight away in both hosts: a mute isn't a scheduling field,
+          // so it has no reason to wait for the editor's Save.
+          updateTask(postponeTask.id, { postponeMuted: true });
+          setCheckDismissed(true);
+        },
+      });
+    }
     return actions;
-  }, [postponeTask, onBreakUp, archiveTask, updateTask, onCancel]);
+  }, [postponeTask, onBreakUp, archiveTask, updateTask, onCancel, reachOutOfferActive, reachOutPerson, updatePersonRecord]);
 
   const suggestionLabel = suggestion
     ? `${format(new Date(`${suggestion.key}T12:00:00`), 'EEE, MMM d')} — ${suggestion.reason}`

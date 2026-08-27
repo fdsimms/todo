@@ -1706,6 +1706,43 @@ describe('cookbooks', () => {
     expect(saved.author).toBe('Yotam Ottolenghi');
   });
 
+  it('merges: repoints every recipe onto the survivor and drops the loser', () => {
+    const clarkRecipe = makeRecipe('Chocolate cake');
+    const sodhaRecipe = makeRecipe('Chocolate cake, take two');
+    seed([clarkRecipe, sodhaRecipe]);
+    const clark = useRecipeStore.getState().linkNewCookbook(clarkRecipe.id, 'Dinner', 'Melissa Clark')!;
+    const sodha = useRecipeStore.getState().linkNewCookbook(sodhaRecipe.id, 'Dinner', 'Meera Sodha')!;
+
+    expect(useRecipeStore.getState().mergeCookbooks(clark.id, sodha.id)).toBe(true);
+
+    const store = useRecipeStore.getState();
+    expect(store.cookbooks).toHaveLength(1);
+    expect(store.cookbooks[0].id).toBe(clark.id);
+    // The loser's recipe now mirrors the survivor, not what it used to say.
+    const saved = store.recipeById(sodhaRecipe.id)!;
+    expect(saved.cookbookId).toBe(clark.id);
+    expect(saved.author).toBe('Melissa Clark');
+    expect(store.recipeById(clarkRecipe.id)!.cookbookId).toBe(clark.id);
+  });
+
+  it('refuses to merge a book into itself', () => {
+    const cake = makeRecipe('Carrot cake');
+    seed([cake]);
+    const book = useRecipeStore.getState().linkNewCookbook(cake.id, 'Sweet', null)!;
+
+    expect(useRecipeStore.getState().mergeCookbooks(book.id, book.id)).toBe(false);
+    expect(useRecipeStore.getState().cookbooks).toHaveLength(1);
+  });
+
+  it('shrugs at a merge naming a book that does not exist', () => {
+    const cake = makeRecipe('Carrot cake');
+    seed([cake]);
+    const book = useRecipeStore.getState().linkNewCookbook(cake.id, 'Sweet', null)!;
+
+    expect(useRecipeStore.getState().mergeCookbooks(book.id, 'missing')).toBe(false);
+    expect(useRecipeStore.getState().mergeCookbooks('missing', book.id)).toBe(false);
+  });
+
   it('unlinks when an attribution is genuinely retyped over the book', () => {
     const cake = makeRecipe('Carrot cake');
     seed([cake]);
