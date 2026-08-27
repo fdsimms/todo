@@ -172,16 +172,20 @@ interface Props {
  * **What's already in the cart is taken as read.** A row ticked into the
  * trolley is the user having already said they bought it, so a line landing on
  * one is corroboration: it breaks ties between two equally good readings and it
- * lets a weak match arrive checked, since the only thing the line is adding is
- * the price. The row says so, because a pre-checked weak match with no
+ * lets a weak or likely match arrive checked, since the only thing the line is
+ * adding is the price. The row says so, because a pre-checked guess with no
  * explanation is exactly the "chicken thighs for chicken breast" mistake this
  * sheet is otherwise careful about. The rules are in `receiptMatch.ts`.
  *
- * **A weak match is shown but never pre-checked.** The tiers come from
- * `receiptMatch.ts`; what this sheet adds is that the difference is *visible* —
- * an unchecked row with "Is this…?" on it is a question, and a pre-checked one
- * is an assertion. Getting that backwards is how someone ends up having marked
- * chicken thighs bought because the receipt said breast.
+ * **A weak or likely match is shown but never pre-checked.** The tiers come
+ * from `receiptMatch.ts`; what this sheet adds is that the difference is
+ * *visible* — an unchecked row with "Is this…?" on it is a question, and a
+ * pre-checked one is an assertion. Getting that backwards is how someone ends
+ * up having marked chicken thighs bought because the receipt said breast.
+ * `'likely'` reads as a real word in common ("chicken" in "chicken breast"),
+ * not a coincidental one, but a shared word is still a guess about which row a
+ * name belongs to, not the app being told — see the same tier's own contract
+ * in `receiptMatch.ts`.
  *
  * **What the receipt doesn't mention is not a claim about anything.** Lines
  * that match nothing are listed and ignored by default; list rows the receipt
@@ -507,7 +511,10 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
 
   const renderMatch = (match: ReceiptMatch & { itemId: string }, index: number) => {
     const on = accepted.has(match.itemId);
-    const weak = match.confidence === 'weak';
+    // Neither tier is pre-checked (`acceptedByDefault`), so both need the same
+    // "you decide" caveat — a 'likely' row sitting unchecked with no
+    // explanation reads as a bug, not as the app being careful.
+    const uncertain = match.confidence === 'weak' || match.confidence === 'likely';
     const name = nameFor(match.itemId);
     const cautions = receiptCautionsFor(match, items, shopId, itemShops);
     return (
@@ -531,17 +538,17 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
             {match.line.label}
             {!!match.line.quantity && ` · ${match.line.quantity}`}
           </Text>
-          {/* First, because on a weak match it's the reason the row arrived
-              ticked at all, and a caveat reads better after the thing it's a
-              caveat about. Confirmation rather than caution, so the quiet grey
-              and not the orange below it. */}
+          {/* First, because on an uncertain match it's the reason the row
+              arrived ticked at all, and a caveat reads better after the thing
+              it's a caveat about. Confirmation rather than caution, so the
+              quiet grey and not the orange below it. */}
           {match.inTrolley && !pantry && (
             <Text style={styles.rowRemembered}>Already in your cart</Text>
           )}
-          {weak && (
+          {uncertain && (
             <Text style={styles.rowWeak}>
               {match.inTrolley
-                // Ticked into the cart *and* only a half-match by name: the
+                // Ticked into the cart *and* only a guessed match by name: the
                 // row is going through either way, so the question worth
                 // asking is about the number, not about whether it came home.
                 ? 'Not sure this is the same thing. Check the price is for this row.'
