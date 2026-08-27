@@ -16,6 +16,7 @@ const mockEnqueueWidgetCompletion = jest.fn();
 const mockStopCookTimer = jest.fn();
 const mockRemoveStepTimer = jest.fn();
 const mockStopPrepTimer = jest.fn();
+const mockFinishCookForRecipe = jest.fn();
 const mockResetToFocusSession = jest.fn();
 const mockFocusAdvance = jest.fn();
 const mockFocusPause = jest.fn();
@@ -35,6 +36,9 @@ jest.mock('../store/useWidgetCompletionStore', () => ({
 }));
 jest.mock('../store/useRecipeStore', () => ({
   useRecipeStore: { getState: () => ({ stopCookTimer: mockStopCookTimer, stopPrepTimer: mockStopPrepTimer }) },
+}));
+jest.mock('../store/useMealPlanStore', () => ({
+  useMealPlanStore: { getState: () => ({ finishCookForRecipe: mockFinishCookForRecipe }) },
 }));
 jest.mock('../store/useStepTimerStore', () => ({
   useStepTimerStore: { getState: () => ({ remove: mockRemoveStepTimer }) },
@@ -502,6 +506,8 @@ describe('openInAppUrl', () => {
     mockEnqueueWidgetCompletion.mockClear();
     mockStopCookTimer.mockClear();
     mockStopPrepTimer.mockClear();
+    mockFinishCookForRecipe.mockClear();
+    mockRemoveStepTimer.mockClear();
     mockResetToFocusSession.mockClear();
     mockFocusAdvance.mockClear();
     mockFocusPause.mockClear();
@@ -554,25 +560,38 @@ describe('openInAppUrl', () => {
   });
 
   // A recipe's cook/prep timer Live Activity Done button.
-  it('stops a cook timer for a cook: key', () => {
+  //
+  // Done on a cook timer is two claims, not one: the minutes are banked *and*
+  // the cooking is recorded. Logging the time alone is what the button used to
+  // do, and it left a dish that was plainly cooked showing as un-cooked on the
+  // plan.
+  it('logs the time, records the cooking and opens the recipe for a cook: key', () => {
     expect(openInAppUrl('dundundun://stopTimer?key=cook:r1')).toBe(true);
     expect(mockStopCookTimer).toHaveBeenCalledWith('r1');
+    expect(mockFinishCookForRecipe).toHaveBeenCalledWith('r1');
+    expect(mockResetToRecipeDetail).toHaveBeenCalledWith('r1');
     expect(mockStopPrepTimer).not.toHaveBeenCalled();
   });
 
-  it('stops a prep timer for a prep: key', () => {
+  // Prep is the half hour before a cooking, not a cooking.
+  it('logs a prep timer and opens the recipe, claiming nothing about the dish', () => {
     expect(openInAppUrl('dundundun://stopTimer?key=prep:r1')).toBe(true);
     expect(mockStopPrepTimer).toHaveBeenCalledWith('r1');
+    expect(mockResetToRecipeDetail).toHaveBeenCalledWith('r1');
+    expect(mockFinishCookForRecipe).not.toHaveBeenCalled();
     expect(mockStopCookTimer).not.toHaveBeenCalled();
   });
 
   it('dismisses a cooking step timer for a step: key, cancelling its alarm with it', () => {
     // Nothing to log — a step timer measures no elapsed time — so Done means
-    // the same thing the row's own dismiss does.
+    // the same thing the row's own dismiss does, and there is nothing to open:
+    // the pan may well be one step of a dish still being cooked.
     expect(openInAppUrl('dundundun://stopTimer?key=step:st1')).toBe(true);
     expect(mockRemoveStepTimer).toHaveBeenCalledWith('st1');
     expect(mockStopCookTimer).not.toHaveBeenCalled();
     expect(mockStopPrepTimer).not.toHaveBeenCalled();
+    expect(mockFinishCookForRecipe).not.toHaveBeenCalled();
+    expect(mockResetToRecipeDetail).not.toHaveBeenCalled();
   });
 
   it('navigates to the week plan and claims the URL', () => {

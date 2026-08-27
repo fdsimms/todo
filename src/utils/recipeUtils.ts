@@ -657,8 +657,9 @@ export function cleanChoiceGroup(raw: string | null | undefined): string | null 
 /**
  * Ranks recipes for the library's search field, mirroring
  * rankGrocerySuggestions' 3/2/1 prefix / word-start / substring weighting so
- * searching here behaves the way searching the catalog already does. Favorites
- * break ties; nothing else does, because Phase 1 has no cook history to rank on.
+ * searching here behaves the way searching the catalog already does. The vote
+ * breaks ties, loved first; nothing else does, because Phase 1 has no cook
+ * history to rank on.
  *
  * Below the name, the ladder runs tag (0.75) → ingredient (0.5) → attribution
  * (0.4) → notes (0.25), ordered by how deliberate the match is: a tag is a label
@@ -730,7 +731,7 @@ export function rankRecipes(query: string, recipes: readonly Recipe[]): Recipe[]
   return scored
     .sort((a, b) =>
       b.weight - a.weight ||
-      Number(b.recipe.favorite) - Number(a.recipe.favorite) ||
+      voteRank(a.recipe.vote) - voteRank(b.recipe.vote) ||
       a.recipe.name.localeCompare(b.recipe.name)
     )
     .map(s => s.recipe);
@@ -855,28 +856,40 @@ export function describePrepTime(recipe: Recipe): string {
 }
 
 /**
- * Favorites-first ordering for the unfiltered recipe box — the same sort
+ * Loved-first ordering for the unfiltered recipe box — the same sort
  * RecipesScreen has always applied to its flat list, pulled out so
  * groupRecipesByMealType can give each of its sections the identical order
  * instead of inventing a second one. A search ranking (rankRecipes) is a
  * different question — "what matches this text" — so it's never routed
  * through here.
+ *
+ * Ranked by `vote` rather than a separate favorite flag — loved
+ * first, then liked, then no opinion, then never-again last — with
+ * `sortOrder` breaking ties within a rung. Most recipes carry no vote at
+ * all, so for them this is exactly the plain `sortOrder` list it always was;
+ * only an explicitly rated recipe moves.
  */
 export function sortRecipesForDisplay(recipes: readonly Recipe[]): Recipe[] {
   return [...recipes].sort((a, b) =>
-    Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder
+    voteRank(a.vote) - voteRank(b.vote) || a.sortOrder - b.sortOrder
   );
 }
 
-// Up first, then no opinion, then down — the same order productsForItem
-// ranks ProductRating in (groceryProduct.ts), minus that list's "preferred"
-// rung, which a recipe has no equivalent of.
+// Loved first, then liked, then no opinion, then never-again last — the same
+// order productsForItem ranks ProductRating in (groceryProduct.ts), minus
+// that list's "preferred" rung, which a recipe has no equivalent of. No
+// opinion sits above never-again for the same reason it always did: cooking
+// something you never explicitly rejected isn't the same as having decided
+// against it.
 function voteRank(vote: RecipeVote | null): number {
-  return vote === 'up' ? 0 : vote === 'down' ? 2 : 1;
+  if (vote === 'loved') return 0;
+  if (vote === 'liked') return 1;
+  if (vote === 'never') return 3;
+  return 2;
 }
 
 /**
- * The box's sort options beyond the default favorites-first order — driven by
+ * The box's sort options beyond the default loved-first order — driven by
  * RecipeSortFilterSheet, mirroring SortFilterSheet's `sort` for tasks. Kept as
  * one switch over RecipeSortOption (rather than a comparator per screen)
  * because it's the one place `describeCookHistory`'s underlying fields
@@ -891,8 +904,6 @@ export function sortRecipesBy(recipes: readonly Recipe[], sort: RecipeSortOption
   switch (sort) {
     case 'name':
       return [...recipes].sort((a, b) => a.name.localeCompare(b.name));
-    case 'voted':
-      return [...recipes].sort((a, b) => voteRank(a.vote) - voteRank(b.vote));
     case 'cooked-recent':
       return [...recipes].sort((a, b) => {
         if (!a.lastCookedAt && !b.lastCookedAt) return 0;
@@ -938,7 +949,7 @@ export interface RecipeMealTypeSection {
  * A meal type with no recipes is omitted entirely rather than rendered empty,
  * same as makeCategoryGroups omitting empty categories.
  *
- * `sort` orders each section independently, defaulting to the favorites-first
+ * `sort` orders each section independently, defaulting to the loved-first
  * order every section used before RecipeSortFilterSheet existed — a caller
  * that never asked for a different sort keeps exactly the layout it had.
  */
@@ -1015,7 +1026,7 @@ export function recipeListItemKey(item: RecipeListItem): string {
  * is left exactly as it was — they were never in reach of the drop.
  *
  * `settled` is the regrouped layout (rebuilt with groupRecipesByMealType, so
- * favorites-first order within a section is preserved) to render immediately,
+ * loved-first order within a section is preserved) to render immediately,
  * matching what the store-derived list will recompute to once the writes land.
  */
 export function resolveRecipeMealTypeDrop(

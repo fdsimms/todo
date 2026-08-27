@@ -112,8 +112,13 @@ See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where 
   A grocery item and a leftover are rows that come round again — reading the wide set there would
   mean a staple got exactly one use-up task, ever.
 - **The per-source opt-out stays on the source row** (`MealPlanEntry.cookTask`,
-  `GroceryItem.useUpTask`, `Leftover.useUpTask`), written by `deleteTask` and dispatched in one
-  `writeGeneratedOptOut` switch. **Don't hoist it into a generic suppression record** keyed by
+  `GroceryItem.useUpTask`, `Leftover.useUpTask`), written by `deleteTask` and `bulkDeleteTasks` and
+  dispatched in one `writeGeneratedOptOut` switch — both take a `skipGeneratedOptOut` option for the
+  app's own housekeeping deletes (`dropGeneratedTask`, `sweepExpiredTasks`), which aren't the user
+  declining anything. A selection-bar delete of a live nudge is exactly as much an instruction to
+  the source as the single-row path, and for a while only the latter wrote it: bulk-deleting a
+  "Catch up with Sarah" task removed the row but handed back an identical one on the next sweep.
+  **Don't hoist it into a generic suppression record** keyed by
   `(kind, sourceId)`: that grows without bound, the same disease `remindersImportHandled` has and
   survives only by pruning to what the Reminders list still holds on every drain. A generic record
   has no equivalent pruning pass unless each generator supplies one, at which point it isn't

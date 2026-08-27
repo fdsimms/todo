@@ -116,7 +116,7 @@ export function RecipeDetailScreen() {
   const bulkSetIngredientAisle = useRecipeStore(s => s.bulkSetIngredientAisle);
   const addEmptySection = useRecipeStore(s => s.addEmptySection);
   const removeEmptySection = useRecipeStore(s => s.removeEmptySection);
-  const toggleFavorite = useRecipeStore(s => s.toggleFavorite);
+  const setVote = useRecipeStore(s => s.setVote);
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const removePrepTask = useRecipeStore(s => s.removePrepTask);
   const addStep = useRecipeStore(s => s.addStep);
@@ -1155,15 +1155,18 @@ export function RecipeDetailScreen() {
             )}
             {!selectionMode && (
               <TouchableOpacity
-                onPress={() => { haptics.tap(); toggleFavorite(recipe.id); }}
+                onPress={() => {
+                  haptics.tap();
+                  setVote(recipe.id, recipe.vote === 'loved' ? null : 'loved');
+                }}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel={recipe.favorite ? 'Unstar this recipe' : 'Star this recipe'}
+                accessibilityLabel={recipe.vote === 'loved' ? 'Unmark loved' : 'Mark loved'}
               >
                 <Ionicons
-                  name={recipe.favorite ? 'star' : 'star-outline'}
+                  name={recipe.vote === 'loved' ? 'thumbs-up' : 'thumbs-up-outline'}
                   size={iconSize.md}
-                  color={recipe.favorite ? colors.orange : colors.textSecondary}
+                  color={recipe.vote === 'loved' ? colors.orange : colors.textSecondary}
                 />
               </TouchableOpacity>
             )}

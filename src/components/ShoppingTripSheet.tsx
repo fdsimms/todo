@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Modal, View, Text, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -123,6 +123,9 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   planRef.current = plan;
   const lastShopRef = useRef(lastShopId);
   lastShopRef.current = lastShopId;
+  // What `selected` got seeded to on open, so handleCancel can tell a real
+  // pick apart from the default the sheet arrived with.
+  const selectedBaselineRef = useRef<string[]>([]);
 
   useEffect(() => {
     if (!visible) return;
@@ -134,7 +137,9 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
     const last = lastShopRef.current;
     const fallback = last && current.coverage.some(c => c.shop.id === last) ? last : null;
     const initial = best ?? fallback;
-    setSelected(initial ? [initial] : []);
+    const seeded = initial ? [initial] : [];
+    setSelected(seeded);
+    selectedBaselineRef.current = seeded;
     setCorrecting(null);
   }, [visible]);
 
@@ -228,6 +233,27 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
     setCorrecting(null);
   };
 
+  // Every candidate starts pre-ticked (see startCorrection), so the baseline
+  // to compare against is the same set recomputed from the store's current
+  // record — not an empty one, or every open of this mode would read as
+  // dirty before a single tap.
+  const correctionBaseline = useMemo(
+    () => candidates.filter(id => !correctingAbsent.has(id)),
+    [candidates, correctingAbsent]
+  );
+  const cancelCorrection = () => {
+    const dirty = JSON.stringify([...ticked].sort()) !== JSON.stringify([...correctionBaseline].sort());
+    if (!dirty) { setCorrecting(null); return; }
+    Alert.alert(
+      'Discard changes?',
+      'What you checked off for this store will be lost.',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: () => setCorrecting(null) },
+      ],
+    );
+  };
+
   // The one store a correction could be about. With several picked there's no
   // answer to "which of them has it", and guessing is the thing this sheet is
   // for not doing.
@@ -251,6 +277,23 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
 
   const addLabel = selected.length > 1 ? `Add ${selected.length}` : 'Add';
 
+  // Nothing here is written until Add/Start, so a swipe-down after changing
+  // the store pick would otherwise drop it with no dialog. Compared against
+  // the default the sheet opened with, not an empty selection.
+  const handleCancel = () => {
+    const dirty = JSON.stringify([...selected].sort())
+      !== JSON.stringify([...selectedBaselineRef.current].sort());
+    if (!dirty) { onClose(); return; }
+    Alert.alert(
+      'Discard changes?',
+      'You have unsaved changes. Are you sure you want to discard them?',
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
+  };
+
   if (correctingShop) {
     const known = correctingEntry?.itemIds.length ?? 0;
     return (
@@ -258,14 +301,14 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
         visible={visible}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setCorrecting(null)}
+        onRequestClose={cancelCorrection}
       >
         <View style={styles.root}>
           <View style={styles.header}>
             <SheetHeaderButton
               label="Back"
               role="cancel"
-              onPress={() => setCorrecting(null)}
+              onPress={cancelCorrection}
               minWidth={72}
             />
             <Text style={styles.headerTitle} numberOfLines={1}>
@@ -320,10 +363,10 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   }
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
           <Text style={styles.headerTitle}>{startNow ? 'Start shopping' : 'Shopping trip'}</Text>
           <SheetHeaderButton
             label={startNow ? 'Start' : addLabel}

@@ -62,6 +62,13 @@ interface Props {
 const DURATION_STEP_MINUTES = 5;
 const DURATION_MAX_MINUTES = 360;
 
+// An EditorRow pads itself by spacing.md, draws an 18pt icon, then leaves
+// another spacing.md gap before its label — so anything unfolded underneath one
+// has to clear all three to sit under the label rather than under the card's
+// own edge. A field whose input starts further left than the name of the field
+// doesn't read as belonging to it.
+const ROW_CONTENT_INDENT = spacing.md + 18 + spacing.md;
+
 /**
  * Everything about a recipe that isn't its ingredient list: the name, what it
  * serves, where it came from, and the notes. Same progressive-disclosure shape
@@ -159,6 +166,31 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
     setNewTag('');
     setAddingTag(false);
   };
+
+  /**
+   * Confirming an inline text field closes the row that opened it, so the
+   * value lands back on the row as its summary. Leaving the field open just
+   * puts the text back in a box that looks exactly like it did before the
+   * return key was pressed, which reads as nothing having happened.
+   */
+  const confirmField = (setOpen: (open: boolean) => void) => {
+    Keyboard.dismiss();
+    animateLayout();
+    setOpen(false);
+  };
+
+  // What the collapsed Source row reads as. Confirming closes the row, which
+  // takes the type pills and the page box with it, so the row itself has to
+  // carry what they were set to — otherwise entering "Cookbook, p. 142" looks
+  // like only the name stuck. A type with no name is a complete answer on its
+  // own ("Home recipe"), so it stands in as the value rather than sitting in a
+  // caption that only renders alongside one.
+  const sourceTypeLabel = sourceType ? RECIPE_SOURCE_TYPE_LABELS[sourceType] : '';
+  const sourceValue = source.trim() || sourceTypeLabel;
+  const sourceDetail = [
+    source.trim() ? sourceTypeLabel : '',
+    sourceType === 'cookbook' && sourcePage.trim() ? `p. ${sourcePage.trim()}` : '',
+  ].filter(Boolean).join(' · ');
 
   useEffect(() => {
     if (!recipe) return;
@@ -354,7 +386,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             style={styles.urlInput}
             value={recipeYield}
             onChangeText={setRecipeYieldDraft}
-            onSubmitEditing={() => Keyboard.dismiss()}
+            onSubmitEditing={() => confirmField(setYieldOpen)}
             placeholder="e.g. 3 cups, or 2 dozen cookies"
             placeholderTextColor={colors.textTertiary}
             maxLength={RECIPE_SOURCE_MAX_LENGTH}
@@ -434,9 +466,10 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         >
           <SegmentedControl<RecipeVote | null>
             options={[
-              { value: 'up', label: 'Loved it', icon: 'thumbs-up-outline' },
+              { value: 'loved', label: 'Loved it', icon: 'thumbs-up' },
+              { value: 'liked', label: 'Liked it', icon: 'thumbs-up-outline' },
               { value: null, label: 'No opinion' },
-              { value: 'down', label: 'Not for me', icon: 'thumbs-down-outline' },
+              { value: 'never', label: 'Never again', icon: 'thumbs-down-outline' },
             ]}
             value={vote}
             onChange={next => { setVoteDraft(next); setVoteOpen(false); }}
@@ -575,7 +608,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             style={styles.urlInput}
             value={author}
             onChangeText={setAuthorDraft}
-            onSubmitEditing={() => Keyboard.dismiss()}
+            onSubmitEditing={() => confirmField(setAuthorOpen)}
             placeholder="e.g. Alison Roman"
             placeholderTextColor={colors.textTertiary}
             maxLength={RECIPE_SOURCE_MAX_LENGTH}
@@ -590,7 +623,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
                 key={value}
                 style={styles.suggestionChip}
                 activeOpacity={interaction.activeOpacity}
-                onPress={() => setAuthorDraft(value)}
+                onPress={() => { setAuthorDraft(value); confirmField(setAuthorOpen); }}
                 accessibilityRole="button"
                 accessibilityLabel={`Use author ${value}`}
               >
@@ -602,11 +635,16 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
         <EditorRow
           icon="newspaper-outline"
           label="Source"
-          value={sourceOpen ? undefined : (source.trim() || undefined)}
+          value={sourceOpen ? undefined : (sourceValue || undefined)}
+          caption={sourceDetail || undefined}
           hint="Where it's from: a site, a magazine, a cookbook."
           expanded={sourceOpen}
           onPress={() => { animateLayout(); setSourceOpen(v => !v); }}
-          onClear={source.trim() ? () => { setSourceDraft(''); setSourceOpen(false); } : undefined}
+          // Clears all three, since all three are what the row now reads as —
+          // dropping the name alone would leave it saying "Cookbook".
+          onClear={sourceValue
+            ? () => { setSourceDraft(''); setSourceTypeDraft(null); setSourcePageDraft(''); setSourceOpen(false); }
+            : undefined}
         />
         {sourceOpen && (
           <View style={[styles.pillRow, styles.pillRowSpaced]}>
@@ -635,7 +673,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             style={styles.urlInput}
             value={source}
             onChangeText={setSourceDraft}
-            onSubmitEditing={() => Keyboard.dismiss()}
+            onSubmitEditing={() => confirmField(setSourceOpen)}
             placeholder="e.g. NYT Cooking"
             placeholderTextColor={colors.textTertiary}
             maxLength={RECIPE_SOURCE_MAX_LENGTH}
@@ -650,7 +688,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
               style={styles.pageInput}
               value={sourcePage}
               onChangeText={setSourcePageDraft}
-              onSubmitEditing={() => Keyboard.dismiss()}
+              onSubmitEditing={() => confirmField(setSourceOpen)}
               placeholder="e.g. 142"
               placeholderTextColor={colors.textTertiary}
               maxLength={RECIPE_PAGE_MAX_LENGTH}
@@ -666,7 +704,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
                 key={value}
                 style={styles.suggestionChip}
                 activeOpacity={interaction.activeOpacity}
-                onPress={() => setSourceDraft(value)}
+                onPress={() => { setSourceDraft(value); confirmField(setSourceOpen); }}
                 accessibilityRole="button"
                 accessibilityLabel={`Use source ${value}`}
               >
@@ -688,7 +726,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             style={styles.urlInput}
             value={url}
             onChangeText={setUrl}
-            onSubmitEditing={() => Keyboard.dismiss()}
+            onSubmitEditing={() => confirmField(setLinkOpen)}
             placeholder="e.g. example.com/chili-recipe"
             placeholderTextColor={colors.textTertiary}
             autoCapitalize="none"
@@ -814,7 +852,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingBottom: spacing.sm },
   // Only for Source, which sits directly under its EditorRow — Meal type's
   // use is inside a CollapsibleField, which already spaces its own children.
-  pillRowSpaced: { paddingTop: spacing.sm },
+  pillRowSpaced: { paddingTop: spacing.sm, paddingLeft: ROW_CONTENT_INDENT },
   pill: {
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -825,10 +863,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
+  // Every one of these sits under an EditorRow, so they all take the indent.
   urlInput: {
     color: colors.text,
     fontSize: font.md,
     paddingVertical: spacing.sm,
+    paddingLeft: ROW_CONTENT_INDENT,
+    paddingRight: spacing.md,
     minHeight: 40,
   },
   notesInput: {
@@ -844,6 +885,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexWrap: 'wrap',
     gap: spacing.xs,
     paddingBottom: spacing.sm,
+    paddingLeft: ROW_CONTENT_INDENT,
+    paddingRight: spacing.md,
   },
   suggestionChip: {
     backgroundColor: colors.bgSunken,
@@ -868,6 +911,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     gap: spacing.sm,
     paddingBottom: spacing.sm,
+    paddingLeft: ROW_CONTENT_INDENT,
+    paddingRight: spacing.md,
   },
   pageLabel: {
     color: colors.textSecondary,

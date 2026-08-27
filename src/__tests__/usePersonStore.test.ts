@@ -43,6 +43,10 @@ describe('a new person', () => {
     expect(blankPerson('  Ansley  ', 1).name).toBe('Ansley');
   });
 
+  it('belongs to no group', () => {
+    expect(blankPerson('Dustin', 1).groupId).toBeNull();
+  });
+
   it('is written to the database and put in the store', () => {
     const person = usePersonStore.getState().createPerson('Dustin');
     expect(dbInsertPerson).toHaveBeenCalledWith(expect.objectContaining({ name: 'Dustin' }));
@@ -149,5 +153,28 @@ describe('deleting', () => {
     usePersonStore.getState().removePersonRow(a.id);
     usePersonStore.getState().restorePerson(a as Person);
     expect(usePersonStore.getState().people.map(p => p.id)).toEqual([a.id, b.id]);
+  });
+});
+
+describe('freeing a deleted group\'s members', () => {
+  it('clears groupId on everybody who was in it', () => {
+    const a = usePersonStore.getState().createPerson('A');
+    const b = usePersonStore.getState().createPerson('B');
+    const c = usePersonStore.getState().createPerson('C');
+    usePersonStore.getState().updatePerson(a.id, { groupId: 'g1' });
+    usePersonStore.getState().updatePerson(b.id, { groupId: 'g1' });
+
+    usePersonStore.getState().clearGroupMembership('g1');
+
+    expect(usePersonStore.getState().getPersonById(a.id)?.groupId).toBeNull();
+    expect(usePersonStore.getState().getPersonById(b.id)?.groupId).toBeNull();
+    expect(usePersonStore.getState().getPersonById(c.id)?.groupId).toBeNull();
+  });
+
+  it('does nothing when nobody was in that group', () => {
+    usePersonStore.getState().createPerson('A');
+    jest.clearAllMocks();
+    usePersonStore.getState().clearGroupMembership('nonexistent');
+    expect(dbUpdatePerson).not.toHaveBeenCalled();
   });
 });

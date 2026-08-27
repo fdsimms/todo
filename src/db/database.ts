@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { DeliverableKind, GeneratedKind, Person, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { DeliverableKind, GeneratedKind, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -249,6 +249,16 @@ export function initDatabase(): void {
       nudge_opt_in INTEGER NOT NULL DEFAULT 0,
       reach_out_declined_at TEXT,
       ask_about TEXT NOT NULL DEFAULT ''
+    );
+
+    -- A couple or household, hand-named and hand-ordered — see PersonGroup in
+    -- types/index.ts. No archived flag: a group with no members left in it is
+    -- simply an empty label, same as a stack with no live children.
+    CREATE TABLE IF NOT EXISTS person_groups (
+      id TEXT PRIMARY KEY NOT NULL,
+      name TEXT NOT NULL DEFAULT '',
+      sort_order REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS person_notes (
@@ -958,7 +968,9 @@ export function initDatabase(): void {
     // backfilled — see GtinLookup.category.
     'ALTER TABLE gtin_lookups ADD COLUMN category TEXT',
     // NULL for every existing recipe — no opinion is exactly what a recipe
-    // written before this shipped has. See Recipe.vote.
+    // written before this shipped has. See Recipe.vote. Originally 'up'/
+    // 'down'; the one-time backfill below rewrites those (and the old
+    // favorite column) into the three-rung 'loved'/'liked'/'never' domain.
     'ALTER TABLE recipes ADD COLUMN vote TEXT',
     // NULL on every existing row — nobody has turned down a pantry check for a
     // generator that didn't exist, and NULL is what "never asked" means for
@@ -1076,6 +1088,11 @@ export function initDatabase(): void {
     // as "nothing has been declined yet" and is what every person was already
     // in before the screen could walk them.
     "ALTER TABLE people ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
+    // Which PersonGroup this person belongs to — see Person.groupId. Null on
+    // every existing row, which is exactly right: nobody was in a group
+    // before this column existed, and a null reads the same as "ungrouped"
+    // does anywhere else in the app.
+    'ALTER TABLE people ADD COLUMN group_id TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1287,6 +1304,22 @@ export function initDatabase(): void {
     } catch (_) {}
     dbSetSetting('stack_category_ownership_backfill_done', '1');
   }
+
+  // One-time migration: the recipe box's separate favorite star was folded
+  // into the vote/rating scale, which grew from two rungs to three (see
+  // Recipe.vote, RecipeVote). An explicit vote wins outright — 'up' becomes
+  // 'loved' and 'down' becomes 'never', regardless of favorite — and a
+  // favorite with no vote at all becomes 'liked', the closest reading of a
+  // plain star. The old favorite column is left in place, unused, rather
+  // than dropped, same as the focused→pinned migration above.
+  if (dbGetSetting('recipe_rating_expansion_backfill_done') !== '1') {
+    try {
+      db.runSync("UPDATE recipes SET vote = 'loved' WHERE vote = 'up'");
+      db.runSync("UPDATE recipes SET vote = 'never' WHERE vote = 'down'");
+      db.runSync("UPDATE recipes SET vote = 'liked' WHERE vote IS NULL AND favorite = 1");
+    } catch (_) {}
+    dbSetSetting('recipe_rating_expansion_backfill_done', '1');
+  }
 }
 
 // ─── Backup / restore ────────────────────────────────────────────────────────
@@ -1316,6 +1349,10 @@ export const BACKUP_TABLES = [
   'project_categories',
   'template_categories',
   'projects',
+  // Before people: a person's group_id points at one of these, so restoring
+  // groups first means a restored person never names a group that isn't
+  // there yet.
+  'person_groups',
   // Before tasks: a task's personIds point at these, so restoring the people
   // first means a restored task never names somebody who isn't there yet.
   'people',
@@ -3449,12 +3486,11 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     components: parseRecipeComponents(row.components),
     prepTasks: parsePrepTasks(row.prep_tasks),
     steps: parseSteps(row.steps),
-    favorite: Boolean(row.favorite),
     sortOrder: (row.sort_order as number) ?? 0,
     createdAt: row.created_at as string,
     cookCount: (row.cook_count as number) ?? 0,
     lastCookedAt: (row.last_cooked_at as string) ?? null,
-    vote: row.vote === 'up' || row.vote === 'down' ? (row.vote as RecipeVote) : null,
+    vote: row.vote === 'loved' || row.vote === 'liked' || row.vote === 'never' ? (row.vote as RecipeVote) : null,
     estimatedMinutes: (row.estimated_minutes as number) ?? null,
     timerStartedAt: (row.timer_started_at as string) ?? null,
     timerElapsedSeconds: (row.timer_elapsed_seconds as number) ?? 0,
@@ -3480,10 +3516,10 @@ export function dbGetAllRecipes(): Recipe[] {
 export function dbInsertRecipe(recipe: Recipe): void {
   db.runSync(
     `INSERT INTO recipes
-      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, servings, servings_max, recipe_yield, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, favorite, sort_order, created_at, cook_count, last_cooked_at, vote,
+      (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, servings, servings_max, recipe_yield, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, sort_order, created_at, cook_count, last_cooked_at, vote,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
        prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
@@ -3495,7 +3531,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
-      recipe.favorite ? 1 : 0, recipe.sortOrder, recipe.createdAt,
+      recipe.sortOrder, recipe.createdAt,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
       recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
@@ -3509,7 +3545,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
   db.runSync(
     `UPDATE recipes SET
        name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, servings=?, servings_max=?, recipe_yield=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
-       favorite=?, sort_order=?, cook_count=?, last_cooked_at=?, vote=?,
+       sort_order=?, cook_count=?, last_cooked_at=?, vote=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
        prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?
      WHERE id=?`,
@@ -3524,7 +3560,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       JSON.stringify(recipe.ingredients),
       JSON.stringify(recipe.emptySections),
       JSON.stringify(recipe.components), JSON.stringify(recipe.prepTasks), JSON.stringify(recipe.steps),
-      recipe.favorite ? 1 : 0, recipe.sortOrder,
+      recipe.sortOrder,
       recipe.cookCount, recipe.lastCookedAt ?? null, recipe.vote ?? null,
       recipe.estimatedMinutes ?? null, recipe.timerStartedAt ?? null, recipe.timerElapsedSeconds,
       recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
@@ -4010,6 +4046,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     reachOutDeclinedAt: (row.reach_out_declined_at as string) ?? null,
     askAbout: (row.ask_about as string) ?? '',
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
+    groupId: (row.group_id as string) ?? null,
   };
 }
 
@@ -4024,8 +4061,8 @@ export function dbInsertPerson(person: Person): void {
       id, name, nickname, notes, sort_order, archived, archived_at, created_at,
       birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
       phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at, ask_about,
-      backfill_dismissed_fields
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      backfill_dismissed_fields, group_id
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
@@ -4035,6 +4072,7 @@ export function dbInsertPerson(person: Person): void {
       person.phoneNumber, person.email, person.linkUrl,
       person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
       JSON.stringify(person.backfillDismissedFields),
+      person.groupId,
     ]
   );
 }
@@ -4045,7 +4083,7 @@ export function dbUpdatePerson(person: Person): void {
       name=?, nickname=?, notes=?, sort_order=?, archived=?, archived_at=?,
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
       phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?, ask_about=?,
-      backfill_dismissed_fields=?
+      backfill_dismissed_fields=?, group_id=?
     WHERE id=?`,
     [
       person.name, person.nickname, person.notes, person.sortOrder,
@@ -4056,6 +4094,7 @@ export function dbUpdatePerson(person: Person): void {
       person.phoneNumber, person.email, person.linkUrl,
       person.cadenceDays, person.nudgeOptIn ? 1 : 0, person.cadenceSetAt, person.reachOutDeclinedAt, person.askAbout,
       JSON.stringify(person.backfillDismissedFields),
+      person.groupId,
       person.id,
     ]
   );
@@ -4069,6 +4108,48 @@ export function dbBatchUpdatePersonSortOrders(updates: { id: string; sortOrder: 
   db.withTransactionSync(() => {
     for (const { id, sortOrder } of updates) {
       db.runSync('UPDATE people SET sort_order = ? WHERE id = ?', [sortOrder, id]);
+    }
+  });
+}
+
+// ─── Person groups ───────────────────────────────────────────────────────────
+
+function rowToPersonGroup(row: Record<string, unknown>): PersonGroup {
+  return {
+    id: row.id as string,
+    name: row.name as string,
+    sortOrder: row.sort_order as number,
+    createdAt: row.created_at as string,
+  };
+}
+
+export function dbGetAllPersonGroups(): PersonGroup[] {
+  const rows = db.getAllSync<Record<string, unknown>>('SELECT * FROM person_groups ORDER BY sort_order ASC');
+  return rows.map(rowToPersonGroup);
+}
+
+export function dbInsertPersonGroup(group: PersonGroup): void {
+  db.runSync(
+    'INSERT INTO person_groups (id, name, sort_order, created_at) VALUES (?,?,?,?)',
+    [group.id, group.name, group.sortOrder, group.createdAt]
+  );
+}
+
+export function dbUpdatePersonGroup(group: PersonGroup): void {
+  db.runSync(
+    'UPDATE person_groups SET name=?, sort_order=? WHERE id=?',
+    [group.name, group.sortOrder, group.id]
+  );
+}
+
+export function dbDeletePersonGroup(id: string): void {
+  db.runSync('DELETE FROM person_groups WHERE id = ?', [id]);
+}
+
+export function dbBatchUpdatePersonGroupSortOrders(updates: { id: string; sortOrder: number }[]): void {
+  db.withTransactionSync(() => {
+    for (const { id, sortOrder } of updates) {
+      db.runSync('UPDATE person_groups SET sort_order = ? WHERE id = ?', [sortOrder, id]);
     }
   });
 }

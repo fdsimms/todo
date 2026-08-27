@@ -962,6 +962,55 @@ describe('matchPersonMentions', () => {
   it('finds nobody in a title with no tokens at all', () => {
     expect(matchPersonMentions('buy milk', PEOPLE)).toEqual([]);
   });
+
+  describe('naming a group', () => {
+    const GROUPS = [{ id: 'g1', name: 'Household', memberIds: ['p1', 'p2'] }];
+
+    it('expands into one mention per current member, sharing the token\'s span', () => {
+      const r = matchPersonMentions('beach with @household', PEOPLE, GROUPS);
+      expect(r).toEqual([
+        { start: 11, end: 21, personId: 'p1' },
+        { start: 11, end: 21, personId: 'p2' },
+      ]);
+    });
+
+    it('is tried only once no person answers to the token at all', () => {
+      // "Mom" is a real person here, so the group check never runs for it.
+      const groups = [{ id: 'g2', name: 'Mom', memberIds: ['p1'] }];
+      expect(matchPersonMentions('call @mom', PEOPLE, groups).map(m => m.personId)).toEqual(['p3']);
+    });
+
+    it('never runs for a token two people already answer to', () => {
+      const twoSams = [
+        { id: 'a', name: 'Sam Riley', nickname: '' },
+        { id: 'b', name: 'Sam Okafor', nickname: '' },
+      ];
+      const groups = [{ id: 'g3', name: 'Sam', memberIds: ['a'] }];
+      expect(matchPersonMentions('lunch @sam', twoSams, groups)).toEqual([]);
+    });
+
+    it('resolves by a unique prefix of the group\'s name too', () => {
+      const r = matchPersonMentions('dinner @house tonight', PEOPLE, GROUPS);
+      expect(r.map(m => m.personId)).toEqual(['p1', 'p2']);
+    });
+
+    it('leaves a group with nobody in it unresolved', () => {
+      const empty = [{ id: 'g4', name: 'Empty', memberIds: [] }];
+      expect(matchPersonMentions('call @empty', PEOPLE, empty)).toEqual([]);
+    });
+
+    it('leaves a token two groups answer to unmatched', () => {
+      const groups = [
+        { id: 'g1', name: 'Household', memberIds: ['p1'] },
+        { id: 'g2', name: 'Household', memberIds: ['p2'] },
+      ];
+      expect(matchPersonMentions('call @household', PEOPLE, groups)).toEqual([]);
+    });
+
+    it('does nothing when no groups are passed at all', () => {
+      expect(matchPersonMentions('call @household', PEOPLE)).toEqual([]);
+    });
+  });
 });
 
 describe('findAmbiguousMention', () => {

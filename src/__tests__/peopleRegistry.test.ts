@@ -1,19 +1,27 @@
-import type { Person, Task } from '../types';
+import type { Person, PersonGroup, Task } from '../types';
 import {
   peopleOn,
   registerPersonSource,
   registerPersonTaskSource,
+  registerPersonGroupSource,
   resolvePerson,
+  resolvePersonGroup,
+  groupMembers,
+  groupMentionTokens,
   tasksNaming,
 } from '../utils/peopleRegistry';
 
-const person = (id: string, name: string): Person => ({
+const person = (id: string, name: string, groupId: string | null = null): Person => ({
   id, name, nickname: '', notes: '', sortOrder: 1,
   archived: false, archivedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
   cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, askAbout: '',
-  backfillDismissedFields: [],
+  backfillDismissedFields: [], groupId,
+});
+
+const group = (id: string, name: string): PersonGroup => ({
+  id, name, sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z',
 });
 
 const task = (id: string, personIds: string[]) => ({ id, personIds }) as unknown as Task;
@@ -21,6 +29,7 @@ const task = (id: string, personIds: string[]) => ({ id, personIds }) as unknown
 afterEach(() => {
   registerPersonSource(null);
   registerPersonTaskSource(null);
+  registerPersonGroupSource(null);
 });
 
 describe('resolving a person', () => {
@@ -107,5 +116,60 @@ describe('the tasks naming a person', () => {
     // Called once per lookup to check identity, but the index is built once.
     expect(source).toHaveBeenCalledTimes(3);
     expect(tasksNaming('a')).toHaveLength(1);
+  });
+});
+
+describe('resolving a group', () => {
+  it('finds one the store knows about', () => {
+    registerPersonGroupSource(() => [group('g1', 'Household')]);
+    expect(resolvePersonGroup('g1')?.name).toBe('Household');
+  });
+
+  it('shrugs at an id whose group has gone', () => {
+    registerPersonGroupSource(() => [group('g1', 'Household')]);
+    expect(resolvePersonGroup('gone')).toBeUndefined();
+  });
+
+  it('shrugs when no source is registered at all', () => {
+    expect(resolvePersonGroup('g1')).toBeUndefined();
+  });
+});
+
+describe('a group\'s members', () => {
+  it('is everyone currently filed under it, in their own order', () => {
+    registerPersonSource(() => [
+      { ...person('a', 'Ansley', 'g1'), sortOrder: 2 },
+      { ...person('b', 'Dustin', 'g1'), sortOrder: 1 },
+      person('c', 'Mom', null),
+    ]);
+    expect(groupMembers('g1').map(p => p.name)).toEqual(['Dustin', 'Ansley']);
+  });
+
+  it('is empty for a group nobody is in', () => {
+    registerPersonSource(() => [person('a', 'Ansley', null)]);
+    expect(groupMembers('g1')).toEqual([]);
+  });
+});
+
+describe('group mention tokens', () => {
+  beforeEach(() => {
+    registerPersonSource(() => [person('a', 'Ansley', 'g1'), person('b', 'Dustin', 'g1'), person('c', 'Mom', null)]);
+    registerPersonGroupSource(() => [group('g1', 'Household'), group('g2', 'Empty')]);
+  });
+
+  it('carries every current member\'s id', () => {
+    const tokens = groupMentionTokens();
+    expect(tokens).toEqual([{ id: 'g1', name: 'Household', memberIds: ['a', 'b'] }]);
+  });
+
+  it('omits a group with nobody currently in it', () => {
+    expect(groupMentionTokens().some(t => t.id === 'g2')).toBe(false);
+  });
+
+  it('restricted to a set of ids, keeps only a group whose entire membership is inside it', () => {
+    expect(groupMentionTokens(['a', 'b', 'c']).map(t => t.id)).toEqual(['g1']);
+    // Missing one current member — the group can't have named this exact
+    // task, whatever it was tagged with when it was written.
+    expect(groupMentionTokens(['a'])).toEqual([]);
   });
 });
