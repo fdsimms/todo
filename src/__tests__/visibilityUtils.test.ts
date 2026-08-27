@@ -19,6 +19,7 @@ import {
   quotaUnitsToPace,
   quotaPaceFraction,
   isQuotaOnPace,
+  quotaRidesOutTheDay,
   quotaLeavesTodayAfterLog,
   quotaNextDueAt,
   isQuotaPartial,
@@ -140,6 +141,9 @@ const baseTask: Task = {
   targetCount: null,
   targetUnit: null,
   allowOvershoot: false,
+  quotaIntervalMinutes: null,
+  quotaReminders: false,
+  quotaStartedAt: null,
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
@@ -1519,6 +1523,21 @@ describe('quota tasks', () => {
       expect(isTaskVisible(tomorrow)).toBe(false);
     });
 
+    it('an interval quota stays visible past target too — its count is arithmetic', () => {
+      // Same treatment allowOvershoot gets, through the shared predicate: a
+      // cadence has no finish line to have crossed, so reading as permanently
+      // on pace the moment span ÷ interval is reached would take it off Today
+      // for the rest of a run that is still running.
+      const paced = { ...quotaTask, quotaIntervalMinutes: 20, progressCount: 8 };
+      expect(isQuotaOnPace(paced)).toBe(false);
+      expect(isTaskVisible(paced)).toBe(true);
+      expect(quotaRidesOutTheDay(paced)).toBe(true);
+    });
+
+    it('a plain quota does not ride the day out', () => {
+      expect(quotaRidesOutTheDay(quotaTask)).toBe(false);
+    });
+
     it('allowOvershoot: stays visible/loggable past target, unlike a plain quota', () => {
       const atTarget = { ...quotaTask, allowOvershoot: true, progressCount: 8 };
       expect(isQuotaOnPace(atTarget)).toBe(false);
@@ -1736,6 +1755,7 @@ describe('blocking', () => {
       phoneNumber: null, email: null, linkUrl: null,
       cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, askAbout: '',
       backfillDismissedFields: [],
+      groupId: null,
     };
     const chasing = {
       ...baseTask,
@@ -1850,8 +1870,7 @@ describe('isSequenceBlocked', () => {
       id: 'p1',
       title: 'Repaint the hallway',
       notes: '',
-      targetStartDate: null,
-      targetEndDate: null,
+      deadline: null,
       category: null,
       sortOrder: 1,
       archived: false,
@@ -1865,6 +1884,7 @@ describe('isSequenceBlocked', () => {
       nudgeOptIn: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
+      groupId: null,
       personIds: [],
     }]);
     registerTaskSource(() => tasks);

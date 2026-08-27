@@ -44,7 +44,7 @@ import { isDateAnchored } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
-import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
+import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { asksOnCompletion } from '../utils/deliverables';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
 import { chainPreview, isChainFinish } from '../utils/chain';
@@ -71,7 +71,7 @@ import {
   projectReviewProjectId,
 } from '../utils/projectReviewTasks';
 import { resolveBlocker, waitingCountFor } from '../utils/blockerRegistry';
-import { resolvePerson, peopleOn } from '../utils/peopleRegistry';
+import { resolvePerson, peopleOn, groupMentionTokens } from '../utils/peopleRegistry';
 import { displayNameOf } from '../store/usePersonStore';
 import { matchPersonMentions } from '../utils/parseTaskInput';
 import { HighlightedText } from './HighlightedText';
@@ -285,6 +285,7 @@ export const TaskItem = React.memo(function TaskItem({
     cancelCompletionAnimation,
     logQuotaUnit,
     unlogQuotaUnit,
+    startQuotaRun,
     holdQuotaOnToday,
     releaseQuotaHold,
     updateTask,
@@ -902,10 +903,10 @@ export const TaskItem = React.memo(function TaskItem({
   const windowEnd = effectiveWindowEnd(task);
   const deadlineDays = task.deadline ? getDeadlineCountdown(task.deadline) : null;
   const deadlineColor =
-    deadlineDays === null ? colors.textTertiary
+    deadlineDays === null ? colors.textSecondary
     : deadlineDays < 0 ? colors.red
     : deadlineDays <= 2 ? colors.orange
-    : colors.textTertiary;
+    : colors.textSecondary;
   const isNew = isTaskNew(task);
 
   const handleContentPress = () => {
@@ -932,6 +933,12 @@ export const TaskItem = React.memo(function TaskItem({
   // its circle becomes a fill meter and a tap logs one glass/rep/page instead
   // of completing — except the last one, which completes for real.
   const isQuota = isQuotaTask(task) && !task.completed;
+  // Only a cadence has a run to start: a plain "8 glasses" target paces across
+  // the day whether or not you announce yourself to it, and there'd be nothing
+  // for the tap to change. Withdrawn once the run is under way, since starting
+  // it twice would move the start a second time and drop the count again.
+  const canStartQuotaRun =
+    isQuota && task.quotaIntervalMinutes !== null && task.quotaStartedAt === null && !task.archived;
   // A daily target closed out short of its count (rollover, or an explicit
   // miss) is still `completed`, but a plain checkmark would read as the same
   // full finish an on-target row gets — same distinction Logbook's row draws
@@ -1041,7 +1048,8 @@ export const TaskItem = React.memo(function TaskItem({
   // the whole roster, so a stray "@word" that isn't one of this task's own
   // personIds is never relit as though it were.
   const titleMentionRanges: [number, number][] = useMemo(
-    () => matchPersonMentions(displayTitle, peopleOn(task)).map((m): [number, number] => [m.start, m.end]),
+    () => matchPersonMentions(displayTitle, peopleOn(task), groupMentionTokens(task.personIds))
+      .map((m): [number, number] => [m.start, m.end]),
     [displayTitle, task.personIds]
   );
 
@@ -1236,11 +1244,14 @@ export const TaskItem = React.memo(function TaskItem({
       await haptics.error();
       return;
     }
-    // allowOvershoot tasks skip the auto-complete at target: logging past it
-    // just keeps incrementing progressCount like any unit below target, and
-    // the task rides out the day for the rollover sweep to complete (see
-    // sweepOvershootQuotas in useTaskStore.ts).
-    if (!task.allowOvershoot && task.progressCount + 1 >= task.targetCount!) {
+    // The kinds that ride the day out skip the auto-complete at target:
+    // logging past it just keeps incrementing progressCount like any unit
+    // below target, and a sweep completes the task later (see
+    // sweepOvershootQuotas and sweepFinishedQuotaRuns in useTaskStore.ts).
+    // Kept in step with logQuotaUnit's own guard through the shared
+    // predicate — the two used to say this separately, and the store's copy
+    // was the one that had lost half of it.
+    if (!quotaRidesOutTheDay(task) && task.progressCount + 1 >= task.targetCount!) {
       handleComplete();
       return;
     }
@@ -1605,10 +1616,10 @@ export const TaskItem = React.memo(function TaskItem({
             </Animated.View>
           )}
           {!completing && recurrenceNotYetDue && (
-            <Ionicons name="repeat" size={iconSize.sm} color={colors.textTertiary} />
+            <Ionicons name="repeat" size={iconSize.sm} color={colors.textSecondary} />
           )}
           {!completing && !recurrenceNotYetDue && locked && (
-            <Ionicons name="lock-closed" size={iconSize.xs} color={colors.textTertiary} />
+            <Ionicons name="lock-closed" size={iconSize.xs} color={colors.textSecondary} />
           )}
           {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource) && (
             // xs like the lock, not sm like the repeat: a "?" is tall where
@@ -1616,7 +1627,7 @@ export const TaskItem = React.memo(function TaskItem({
             // fills far more of a 20pt box and reads as crowded. Shared with
             // asksOnComplete: both mean "this tap asks something before it
             // completes anything," which is exactly what happens here too.
-            <Ionicons name="help" size={iconSize.xs} color={colors.textTertiary} />
+            <Ionicons name="help" size={iconSize.xs} color={colors.textSecondary} />
           )}
         </View>
       </TouchableOpacity>
@@ -1733,7 +1744,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons
                   name={scheduledHidden ? 'eye-off-outline' : 'calendar-outline'}
                   size={iconSize.xs}
-                  color={colors.textTertiary}
+                  color={colors.textSecondary}
                 />
                 <Text style={styles.scheduledLabel} numberOfLines={1}>
                   {formatScheduledDate(scheduledIso)}
@@ -1751,7 +1762,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons
                   name={MEAL_SLOT_ICONS[mealSlot] as keyof typeof Ionicons.glyphMap}
                   size={iconSize.xs}
-                  color={colors.textTertiary}
+                  color={colors.textSecondary}
                 />
                 <Text style={styles.mealSlotLabel} numberOfLines={1}>
                   {MEAL_SLOT_LABELS[mealSlot]}
@@ -1765,7 +1776,7 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.metaChip}
                 accessibilityLabel={`${waitingCount} ${waitingCount === 1 ? 'task is' : 'tasks are'} waiting on this`}
               >
-                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.blockingLabel} numberOfLines={1}>
                   {waitingCount} waiting
                 </Text>
@@ -1775,7 +1786,7 @@ export const TaskItem = React.memo(function TaskItem({
                 blocked task is still listed — Search, and a project's own screen. */}
             {!!blockerTitle && (
               <View style={styles.metaChip} accessibilityLabel={`Waiting on ${blockerTitle}`}>
-                <Ionicons name="hourglass" size={iconSize.xs} color={colors.textTertiary} />
+                <Ionicons name="hourglass" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.blockingLabel} numberOfLines={1}>
                   After {blockerTitle}
                 </Text>
@@ -1794,7 +1805,7 @@ export const TaskItem = React.memo(function TaskItem({
                 accessibilityRole="button"
                 accessibilityLabel={`Waiting on ${waitingPersonName}. Double tap to stop waiting.`}
               >
-                <Ionicons name="hourglass" size={iconSize.xs} color={colors.textTertiary} />
+                <Ionicons name="hourglass" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.blockingLabel} numberOfLines={1}>
                   Waiting on {waitingPersonName}
                 </Text>
@@ -1803,7 +1814,7 @@ export const TaskItem = React.memo(function TaskItem({
                     is pixel-identical to the blocker chip beside it, which is
                     not a button, and the one way out of a wait nothing else
                     ends would be undiscoverable. */}
-                <Ionicons name="close" size={iconSize.xs} color={colors.textTertiary} />
+                <Ionicons name="close" size={iconSize.xs} color={colors.textSecondary} />
               </TouchableOpacity>
             )}
             {showStreakChip && (
@@ -1818,7 +1829,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons
                   name={task.streakCount > 0 ? 'flame' : 'flame-outline'}
                   size={iconSize.xs}
-                  color={task.streakCount > 0 ? colors.orange : colors.textTertiary}
+                  color={task.streakCount > 0 ? colors.orange : colors.textSecondary}
                 />
                 <Text style={[styles.streakChipText, task.streakCount > 0 && styles.streakChipTextActive]} numberOfLines={1}>
                   {task.streakCount}
@@ -1841,7 +1852,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons
                   name={supplyOut ? 'cube' : 'cube-outline'}
                   size={iconSize.xs}
-                  color={supplyOut ? colors.red : supplyLow ? colors.orange : colors.textTertiary}
+                  color={supplyOut ? colors.red : supplyLow ? colors.orange : colors.textSecondary}
                 />
                 <Text
                   style={[
@@ -1871,7 +1882,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons
                   name={timerReady ? 'checkmark-circle' : timerPaused ? 'pause' : timerRunning ? 'timer' : 'timer-outline'}
                   size={iconSize.xs}
-                  color={timerReady ? colors.green : timerRunning ? colors.accent : colors.textTertiary}
+                  color={timerReady ? colors.green : timerRunning ? colors.accent : colors.textSecondary}
                 />
                 <Text
                   style={[
@@ -1914,7 +1925,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons
                   name={mealPlanReady ? 'checkmark-circle' : 'restaurant-outline'}
                   size={iconSize.xs}
-                  color={mealPlanReady ? colors.green : colors.textTertiary}
+                  color={mealPlanReady ? colors.green : colors.textSecondary}
                 />
                 <Text
                   style={[styles.plannedMealsLabel, mealPlanReady && styles.plannedMealsLabelReady]}
@@ -1955,7 +1966,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
             {!windowActive && windowExpired && (
               <View style={styles.metaChip}>
-                <Ionicons name="time-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Ionicons name="time-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.windowLabelExpired} numberOfLines={1}>
                   Expired at {formatHHMM(task.windowEnd!)}
                 </Text>
@@ -1963,7 +1974,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
             {showGroup && groupTitle && (
               <View style={styles.metaChip}>
-                <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Ionicons name="layers-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.groupLabel} numberOfLines={1}>{groupTitle}</Text>
               </View>
             )}
@@ -1989,13 +2000,13 @@ export const TaskItem = React.memo(function TaskItem({
             )}
             {showProject && projectTitle && (
               <View style={styles.metaChip}>
-                <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Ionicons name="briefcase-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.projectLabel} numberOfLines={1}>{projectTitle}</Text>
               </View>
             )}
             {showCategory && task.category && (
               <View style={styles.metaChip}>
-                <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Ionicons name="folder-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.categoryLabel} numberOfLines={1}>
                   {categoryEmoji ? `${categoryEmoji} ${task.category}` : task.category}
                 </Text>
@@ -2006,7 +2017,7 @@ export const TaskItem = React.memo(function TaskItem({
                 style={styles.metaChip}
                 accessibilityLabel={`${subtaskDoneCount} of ${subtaskCount} subtasks done`}
               >
-                <Ionicons name="list-outline" size={9} color={colors.textTertiary} />
+                <Ionicons name="list-outline" size={9} color={colors.textSecondary} />
                 <Text style={styles.subtaskBadgeText} numberOfLines={1}>{subtaskDoneCount}/{subtaskCount}</Text>
               </View>
             )}
@@ -2018,7 +2029,7 @@ export const TaskItem = React.memo(function TaskItem({
                 note. */}
             {task.notes.length > 0 && (
               <View style={styles.metaChip} accessibilityLabel="Has notes">
-                <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textTertiary} />
+                <Ionicons name="document-text-outline" size={iconSize.xs} color={colors.textSecondary} />
               </View>
             )}
           </View>
@@ -2057,7 +2068,7 @@ export const TaskItem = React.memo(function TaskItem({
               hitSlop={8}
               accessibilityLabel={`Dismiss the suggested ${importSuggestion} for ${displayTitle}`}
             >
-              <Ionicons name="close" size={iconSize.xs} color={colors.textTertiary} />
+              <Ionicons name="close" size={iconSize.xs} color={colors.textSecondary} />
             </PressableScale>
           </View>
         )}
@@ -2153,7 +2164,7 @@ export const TaskItem = React.memo(function TaskItem({
           <PinIcon
             filled={task.pinned}
             size={iconSize.sm}
-            color={task.pinned ? colors.orange : colors.textTertiary}
+            color={task.pinned ? colors.orange : colors.textSecondary}
           />
         </TouchableOpacity>
       )}
@@ -2298,7 +2309,7 @@ export const TaskItem = React.memo(function TaskItem({
                         accessibilityRole="button"
                         accessibilityLabel={`Delete ${sub.title}`}
                       >
-                        <Ionicons name="close" size={14} color={colors.textTertiary} />
+                        <Ionicons name="close" size={14} color={colors.textSecondary} />
                       </TouchableOpacity>
                     </View>
                     );
@@ -2312,7 +2323,7 @@ export const TaskItem = React.memo(function TaskItem({
                 styles.recurrenceRow,
                 (task.notes.length > 0 || subtasks.length > 0) && styles.sectionDivider,
               ]}>
-                <Ionicons name="repeat" size={12} color={colors.textTertiary} />
+                <Ionicons name="repeat" size={12} color={colors.textSecondary} />
                 <Text style={styles.expandMeta}>{describeTaskRecurrence(task)}</Text>
                 {task.streakCount > 0 && (
                   <>
@@ -2331,7 +2342,7 @@ export const TaskItem = React.memo(function TaskItem({
                 styles.recurrenceRow,
                 (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none') && styles.sectionDivider,
               ]}>
-                <Ionicons name="calendar-number-outline" size={12} color={colors.textTertiary} />
+                <Ionicons name="calendar-number-outline" size={12} color={colors.textSecondary} />
                 <Text style={styles.expandMeta}>Also on {otherSeriesDates}</Text>
               </View>
             )}
@@ -2352,7 +2363,7 @@ export const TaskItem = React.memo(function TaskItem({
                     : `Show all ${chainStepPreview.total} steps of the chain, currently on ${chainStepPreview.currentTitle}`
                 }
               >
-                <Ionicons name="git-commit" size={12} color={colors.textTertiary} />
+                <Ionicons name="git-commit" size={12} color={colors.textSecondary} />
                 {chainStepsExpanded ? (
                   <Text style={styles.expandMeta}>
                     Chain · {chainStepPreview.total} steps
@@ -2368,7 +2379,7 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons
                   name={chainStepsExpanded ? 'chevron-up' : 'chevron-down'}
                   size={12}
-                  color={colors.textTertiary}
+                  color={colors.textSecondary}
                 />
               </TouchableOpacity>
             )}
@@ -2418,7 +2429,7 @@ export const TaskItem = React.memo(function TaskItem({
                   <Ionicons
                     name={timerReady ? 'checkmark-circle' : 'timer-outline'}
                     size={12}
-                    color={timerReady ? colors.green : colors.textTertiary}
+                    color={timerReady ? colors.green : colors.textSecondary}
                   />
                   <Text style={styles.expandMeta}>
                     {timerReady
@@ -2441,7 +2452,7 @@ export const TaskItem = React.memo(function TaskItem({
                 styles.recurrenceRow,
                 (hasExpandContent || timed) && styles.sectionDivider,
               ]}>
-                <Ionicons name="timer-outline" size={12} color={colors.textTertiary} />
+                <Ionicons name="timer-outline" size={12} color={colors.textSecondary} />
                 {editingTimed ? (
                   <>
                     <Text style={styles.expandMeta}>Timed ·</Text>
@@ -2536,7 +2547,7 @@ export const TaskItem = React.memo(function TaskItem({
                           accessibilityRole="button"
                           accessibilityLabel={`Reset timer for ${task.title}`}
                         >
-                          <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textTertiary} />
+                          <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textSecondary} />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -2564,7 +2575,7 @@ export const TaskItem = React.memo(function TaskItem({
                         accessibilityRole="button"
                         accessibilityLabel={`Discard timer for ${task.title}`}
                       >
-                        <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textTertiary} />
+                        <Ionicons name="trash-outline" size={iconSize.xs} color={colors.textSecondary} />
                       </TouchableOpacity>
                     </View>
                     ) : (
@@ -2577,6 +2588,26 @@ export const TaskItem = React.memo(function TaskItem({
                       <Ionicons name="timer-outline" size={iconSize.sm} color={colors.textSecondary} />
                     </PressableScale>
                     )
+                  )}
+                  {/* A run whose window is a default rather than a
+                      commitment: tapping this begins today's from now, so a
+                      day that starts at 10:30 gets its cadence from 10:30
+                      instead of counting the hours you weren't at your desk
+                      as ones you fell behind in. Only offered while the run
+                      hasn't been started and hasn't already been caught up —
+                      once either is true there is nothing left to move. */}
+                  {showActions && canStartQuotaRun && (
+                    <PressableScale
+                      style={styles.iconActionBtn}
+                      onPress={async () => {
+                        await haptics.impactLight();
+                        startQuotaRun(task.id);
+                      }}
+                      hitSlop={8}
+                      accessibilityLabel={`Start today's run of ${task.title} now`}
+                    >
+                      <Ionicons name="play-circle-outline" size={iconSize.sm} color={colors.textSecondary} />
+                    </PressableScale>
                   )}
                   {/* A meal-plan task is generated fresh each day by
                       writeMealSlotTasks rather than through recurrenceType,
@@ -3180,7 +3211,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // start at the same x.
   stepNumber: {
     minWidth: 14,
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.sm,
     lineHeight: lineHeight.md,
     fontWeight: fontWeight.semibold,
@@ -3251,12 +3282,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   categoryLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     lineHeight: lineHeight.xs,
   },
   projectLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
   },
   // The one meta chip that isn't textTertiary. The rest describe the task and
@@ -3268,21 +3299,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontSize: font.xs,
   },
   groupLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
   },
   // "Dinner" on an auto-generated meal task — plain tertiary like the chips
   // around it, since it describes the row rather than asking anything of it.
   mealSlotLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
   },
   scheduledLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
   },
   blockingLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
   },
   quotaLabel: {
@@ -3296,14 +3327,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
    * only takes a colour once the app is actually asking for more.
    */
   supplyLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
   supplyLabelLow: { color: colors.orange },
   supplyLabelOut: { color: colors.red },
   streakChipText: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
   },
@@ -3316,7 +3347,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   windowLabelExpired: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
   },
   linkBtn: {
@@ -3471,7 +3502,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // are, and quiet by default — most subtasks of most tasks carry no stretch,
   // and the ones that do are only worth reading while the timer is going.
   subtaskSegment: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: 11,
     fontVariant: ['tabular-nums'],
     flexShrink: 0,
@@ -3497,7 +3528,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.xs,
   },
   expandMeta: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
   },
   timedEditAction: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
@@ -3546,7 +3577,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent,
   },
   chainStepListDotText: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: 9,
     fontWeight: fontWeight.semibold,
   },
@@ -3581,12 +3612,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   subtaskBadgeText: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: 11,
     fontWeight: fontWeight.semibold,
   },
   countdownLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: 11,
     fontWeight: fontWeight.semibold,
     // The digits change every second — without tabular figures the chip's
@@ -3605,7 +3636,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // when the day is full, which is the only colour this row lets a chip use to
   // mean ready.
   plannedMealsLabel: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: 11,
     fontWeight: fontWeight.semibold,
   },
@@ -3638,7 +3669,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // Trails the countdown in the chip, so the number stays the thing the eye
   // lands on and a long subtask title truncates instead of pushing it out.
   countdownSegment: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: 11,
     flexShrink: 1,
   },

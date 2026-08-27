@@ -14,6 +14,18 @@ export interface GrocerySuggestion {
   item: GroceryItem;
   /** Already on the list. The row still adds (it's a no-op-plus-refresh), but it says so. */
   onList: boolean;
+  /**
+   * What the ranking actually scored — `matchWeight` × familiarity.
+   *
+   * Exposed for the one caller that has to know whether the ranking *decided*
+   * anything: `ingredientCatalogMatch`'s ranked tier turns its top result into
+   * a "did you mean" correction, and two candidates on an identical score mean
+   * the sort fell through to name length and then the alphabet. Offering one of
+   * those is the coin flip `uniqueSimilarItem` already refuses. Nothing renders
+   * it, and the autocomplete itself ignores it — a picker showing every match
+   * is right to take an arbitrary order.
+   */
+  score: number;
 }
 
 export interface GrocerySection {
@@ -94,7 +106,15 @@ export function rankGrocerySuggestions(
   query: string,
   items: readonly GroceryItem[],
   now: Date,
-  limit = 5
+  limit = 5,
+  /**
+   * The trolley the `onList` flag is about — see `onListIn`. Last, and
+   * optional, because two of the four callers rank the catalog without ever
+   * reading the flag (`CatalogLinkPicker`, `ingredientCatalogMatch`), and "in
+   * some trolley" is the honest answer for them rather than a list they'd have
+   * to invent. `trolleyStateFor` (`groceryLists.ts`) builds one.
+   */
+  inTrolley?: ReadonlySet<string> | ReadonlyMap<string, unknown>
 ): GrocerySuggestion[] {
   const queryKey = groceryNameKey(query);
   if (!queryKey) return [];
@@ -109,16 +129,43 @@ export function rankGrocerySuggestions(
       a.item.name.localeCompare(b.item.name)
     )
     .slice(0, limit)
-    .map(x => ({ item: x.item, onList: x.item.onList }));
+    .map(x => ({ item: x.item, onList: onListIn(x.item, inTrolley), score: x.score }));
+}
+
+/**
+ * Whether a row is in the trolley the caller means.
+ *
+ * `undefined` is "any list at all", which is the right reading for a caller
+ * with no list in mind — and it falls back to `item.onList`, which since
+ * separate lists is the *home* list rather than all of them (see
+ * `GroceryItem.onList`). That is the honest answer here: the two callers that
+ * pass nothing never read the flag.
+ */
+function onListIn(
+  item: GroceryItem,
+  inTrolley: ReadonlySet<string> | ReadonlyMap<string, unknown> | undefined
+): boolean {
+  if (inTrolley === undefined) return item.onList;
+  return inTrolley.has(item.id);
 }
 
 /**
  * The "you buy this every week" shelf. Only things not currently on the list —
  * offering to add what's already there is the one thing this sheet must not do.
+ *
+ * `inTrolley` says which list "already there" is about, and passing it matters
+ * more here than in the ranker above: a staple sitting on your list at home is
+ * exactly what you want offered while you're stocking a rental kitchen, and
+ * reading `onList` bare would hide it. Omitted, this stays the home list.
  */
-export function rankedCatalogItems(items: readonly GroceryItem[], now: Date, limit = 40): GroceryItem[] {
+export function rankedCatalogItems(
+  items: readonly GroceryItem[],
+  now: Date,
+  limit = 40,
+  inTrolley?: ReadonlySet<string> | ReadonlyMap<string, unknown>
+): GroceryItem[] {
   return items
-    .filter(i => !i.onList)
+    .filter(i => !onListIn(i, inTrolley))
     .map(item => ({ item, score: familiarity(item, now) }))
     .sort((a, b) =>
       b.score - a.score ||
@@ -272,11 +319,23 @@ export function catalogPruneCandidates(
   items: readonly GroceryItem[],
   linked: ReadonlyMap<string, number>,
   now: Date,
-  staleDays = 60
+  staleDays = 60,
+  /**
+   * The ids in *any* trolley (`listedAnywhere` in `groceryLists.ts`) — what the
+   * real caller passes, because this is an unrecoverable delete and a row you
+   * are about to buy for the rental is not an unused catalog row.
+   *
+   * Null falls back to `item.onList`, which since separate lists answers for
+   * the home list alone (see `GroceryItem.onList`). That is the narrower
+   * reading and so the wrong default in principle — but it is exactly what this
+   * did before lists existed, and the alternative default (an empty set) would
+   * silently offer to prune the whole list at home.
+   */
+  listed: ReadonlySet<string> | null = null
 ): GroceryItem[] {
   return items
     .filter(i =>
-      !i.onList &&
+      !(listed ? listed.has(i.id) : i.onList) &&
       !hasUserFacts(i, linked) &&
       daysBetween(now, i.lastAddedAt ?? i.createdAt) >= staleDays
     )

@@ -223,7 +223,7 @@ function makeStyles(colors: Colors) {
     // Lit only while something is waiting for a price, so the chips read as
     // inert until tapping one would actually do something.
     chipLive: { backgroundColor: colors.accent },
-    chipText: { color: colors.textSecondary, fontSize: font.md, fontVariant: ['tabular-nums'] },
+    chipText: { color: colors.text, fontSize: font.md, fontVariant: ['tabular-nums'] },
     chipTextLive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
     done: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm },
     doneText: { color: colors.textSecondary, fontSize: font.sm },

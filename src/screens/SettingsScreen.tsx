@@ -89,6 +89,7 @@ export function SettingsScreen() {
       birthdayTasks: settings.birthdayTasks,
       birthdayGiftTasks: settings.birthdayGiftTasks,
       reachOutTasks: settings.reachOutTasks,
+      weatherTasks: settings.weatherTasks,
     }, settings.kitchenEnabled),
     [settings]
   );
@@ -113,7 +114,7 @@ export function SettingsScreen() {
     unitSystemLabel: UNIT_SYSTEM_SUMMARY[settings.unitSystem] ?? null,
     vacationMode: settings.vacationMode,
     autoRemoveExpiredTasks: settings.autoRemoveExpiredTasks,
-    autoArchiveProjectsOnComplete: settings.autoArchiveProjectsOnComplete,
+    autoCompleteProjectsOnDone: settings.autoCompleteProjectsOnDone,
     appLockEnabled: settings.appLockEnabled,
     hasApiKey: !!settings.anthropicApiKey,
     retentionLabel: settings.completedRetentionDays === null

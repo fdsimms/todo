@@ -32,8 +32,8 @@ export interface ProjectBackfillFieldDef {
 export const PROJECT_BACKFILL_FIELDS: ProjectBackfillFieldDef[] = [
   {
     id: 'nudge',
-    label: 'Nudge cadence',
-    hint: 'How long a project can sit with nothing scheduled before the gone-quiet nudge picks it up.',
+    label: 'Bring this up',
+    hint: 'How long a project can sit with nothing scheduled before it gets a review task.',
   },
   {
     id: 'sequential',

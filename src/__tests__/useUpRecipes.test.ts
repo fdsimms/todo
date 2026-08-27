@@ -1,7 +1,7 @@
 import { describeUseUpRecipe, useUpRecipes } from '../utils/useUpRecipes';
 import { kitchenEntryId } from '../utils/kitchenInventory';
 import type { KitchenEntry } from '../utils/kitchenInventory';
-import type { LeftoverFreshness, Recipe, RecipeIngredient } from '../types';
+import type { GroceryItem, LeftoverFreshness, Recipe, RecipeIngredient } from '../types';
 
 // Pure key matching and ranking: nothing here reads a clock, since freshness
 // arrives on the entries already resolved. The stub is only because the import
@@ -143,6 +143,61 @@ describe('useUpRecipes', () => {
     const blank = entry('???', 'due', { matchKey: '' });
 
     expect(useUpRecipes([blank], [recipe('Mystery', [''])])).toEqual([]);
+  });
+
+  // Varieties (GroceryItem.varietyOfKey) — a dying variety answers for its
+  // generic name too. Still exact keys, one hop, specific-satisfies-generic
+  // only; see the module header.
+  describe('varieties', () => {
+    const catalogRow = (name: string, varietyOfKey: string | null) => {
+      seq += 1;
+      return {
+        id: `gi-v-${seq}`,
+        name,
+        nameKey: name.toLowerCase(),
+        varietyOfKey,
+      } as GroceryItem;
+    };
+
+    it('matches a generic line to a dying declared variety', () => {
+      const white = entry('White onion', 'due');
+      const items = [catalogRow('White onion', 'onion')];
+      const suggestions = useUpRecipes([white], [recipe('Ragù', ['onion'])], items);
+
+      expect(suggestions).toHaveLength(1);
+      expect(suggestions[0].uses.map(e => e.title)).toEqual(['White onion']);
+    });
+
+    it('never matches a specific line to a dying generic', () => {
+      // A recipe that asked for red onion in particular is not answered by
+      // generic onion going off — the caption side of the feature handles it.
+      const onion = entry('Onion', 'due');
+      const items = [catalogRow('Red onion', 'onion')];
+      expect(useUpRecipes([onion], [recipe('Pickles', ['red onion'])], items)).toEqual([]);
+    });
+
+    it('lets a real dying entry under the generic key win over the alias', () => {
+      const onion = entry('Onion', 'soon');
+      const white = entry('White onion', 'due');
+      const items = [catalogRow('White onion', 'onion')];
+      const suggestions = useUpRecipes([onion, white], [recipe('Ragù', ['onion'])], items);
+
+      expect(suggestions[0].uses.map(e => e.title)).toEqual(['Onion']);
+    });
+
+    it('settles two dying varieties of one generic on the more urgent', () => {
+      const white = entry('White onion', 'soon');
+      const red = entry('Red onion', 'due');
+      const items = [catalogRow('White onion', 'onion'), catalogRow('Red onion', 'onion')];
+      const suggestions = useUpRecipes([white, red], [recipe('Ragù', ['onion'])], items);
+
+      expect(suggestions[0].uses.map(e => e.title)).toEqual(['Red onion']);
+    });
+
+    it('changes nothing when no items are passed, same as before it existed', () => {
+      const white = entry('White onion', 'due');
+      expect(useUpRecipes([white], [recipe('Ragù', ['onion'])])).toEqual([]);
+    });
   });
 });
 

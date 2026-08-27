@@ -303,6 +303,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'birthdayGiftTaskCategory', current: s.birthdayGiftTaskCategory, assign: s.setBirthdayGiftTaskCategory };
     case 'reachOut':
       return { key: 'reachOutTaskCategory', current: s.reachOutTaskCategory, assign: s.setReachOutTaskCategory };
+    case 'weather':
+      return { key: 'weatherTaskCategory', current: s.weatherTaskCategory, assign: s.setWeatherTaskCategory };
   }
 }
 
@@ -324,6 +326,7 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'birthday': return s.birthdayTasks;
     case 'birthdayGift': return s.birthdayGiftTasks;
     case 'reachOut': return s.reachOutTasks;
+    case 'weather': return s.weatherTasks;
   }
 }
 

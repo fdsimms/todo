@@ -306,7 +306,7 @@ export function MealEntrySheet({
               accessibilityHint="Opens a text field to edit this meal's title"
             >
               <Text style={[styles.sheetTitle, styles.sheetTitleEditable]} numberOfLines={2}>{title}</Text>
-              <Ionicons name="pencil-outline" size={iconSize.sm} color={colors.textTertiary} />
+              <Ionicons name="create-outline" size={iconSize.sm} color={colors.textSecondary} />
             </TouchableOpacity>
           ) : (
             <Text style={styles.sheetTitle} numberOfLines={2}>{title}</Text>
@@ -615,6 +615,7 @@ export function MealEntrySheet({
           <SheetActionRow
             icon="trash-outline"
             color={colors.red}
+            destructive
             label="Remove from plan"
             onPress={() => { haptics.warning(); dismiss(onRemove); }}
             accessibilityLabel="Take this off the plan"
@@ -753,7 +754,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   dayChipTop: {
-    color: colors.textTertiary,
+    color: colors.text,
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
   },
@@ -772,7 +773,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent,
   },
   chipText: {
-    color: colors.textSecondary,
+    color: colors.text,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },

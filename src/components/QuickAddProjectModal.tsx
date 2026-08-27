@@ -24,7 +24,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
-import { formatDeadlineDate, formatStartDate } from '../utils/dateUtils';
+import { formatDeadlineDate } from '../utils/dateUtils';
 import { findArchivedMatch } from '../utils/archiveMatch';
 import { TITLE_MAX_LENGTH, type Project } from '../types';
 
@@ -32,8 +32,7 @@ import { TITLE_MAX_LENGTH, type Project } from '../types';
 export interface ProjectDraft {
   title: string;
   category: string | null;
-  targetStartDate: string | null;
-  targetEndDate: string | null;
+  deadline: string | null;
 }
 
 interface Props {
@@ -88,13 +87,11 @@ export function QuickAddProjectModal({
 
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string | null>(null);
-  const [targetStartDate, setTargetStartDate] = useState<Date | null>(null);
-  const [targetEndDate, setTargetEndDate] = useState<Date | null>(null);
+  const [deadline, setDeadline] = useState<Date | null>(null);
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
-  const [startPickerVisible, setStartPickerVisible] = useState(false);
-  const [endPickerVisible, setEndPickerVisible] = useState(false);
+  const [deadlinePickerVisible, setDeadlinePickerVisible] = useState(false);
   const [seedActive, setSeedActive] = useState(false);
   // Read only when the sheet opens: a seed that changes identity mid-edit must
   // not reset the fields under the person typing.
@@ -130,13 +127,11 @@ export function QuickAddProjectModal({
     setTitle('');
     setCategory(seedRef.current?.category ?? null);
     setSeedActive(!!seedRef.current);
-    setTargetStartDate(null);
-    setTargetEndDate(null);
+    setDeadline(null);
     setActivePanel(null);
     setAddingCategory(false);
     setNewCategory('');
-    setStartPickerVisible(false);
-    setEndPickerVisible(false);
+    setDeadlinePickerVisible(false);
     scaleAnim.setValue(0.95);
     translateYAnim.setValue(16);
     sheetOpacity.setValue(0);
@@ -180,11 +175,7 @@ export function QuickAddProjectModal({
     haptics.success();
     animateLayout();
     const resolvedCategory = resolveCategory();
-    const project = createProject(
-      finalTitle,
-      targetStartDate ? targetStartDate.toISOString() : null,
-      targetEndDate ? targetEndDate.toISOString() : null,
-    );
+    const project = createProject(finalTitle, deadline ? deadline.toISOString() : null);
     if (resolvedCategory) updateProject(project.id, { category: resolvedCategory });
     // createProject doesn't take a category, so hand the caller the row as it
     // now stands rather than the one it returned a line ago.
@@ -225,8 +216,7 @@ export function QuickAddProjectModal({
     onOpenFull({
       title: title.trim(),
       category: resolveCategory(),
-      targetStartDate: targetStartDate ? targetStartDate.toISOString() : null,
-      targetEndDate: targetEndDate ? targetEndDate.toISOString() : null,
+      deadline: deadline ? deadline.toISOString() : null,
     });
   };
 
@@ -332,31 +322,16 @@ export function QuickAddProjectModal({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.toolChip, targetStartDate != null && styles.toolChipSet]}
-              onPress={() => setStartPickerVisible(true)}
+              style={[styles.toolChip, deadline != null && styles.toolChipSet]}
+              onPress={() => setDeadlinePickerVisible(true)}
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="button"
-              accessibilityLabel={targetStartDate ? `Start date: ${formatStartDate(targetStartDate.toISOString())}` : 'Set start date'}
+              accessibilityLabel={deadline ? `Deadline: ${formatDeadlineDate(deadline.toISOString())}` : 'Set deadline'}
             >
-              <Ionicons name="play-outline" size={13} color={targetStartDate ? colors.accent : colors.textTertiary} />
-              {targetStartDate != null && (
+              <Ionicons name="flag-outline" size={13} color={deadline ? colors.accent : colors.textTertiary} />
+              {deadline != null && (
                 <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                  {formatStartDate(targetStartDate.toISOString())}
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.toolChip, targetEndDate != null && styles.toolChipSet]}
-              onPress={() => setEndPickerVisible(true)}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="button"
-              accessibilityLabel={targetEndDate ? `Target date: ${formatDeadlineDate(targetEndDate.toISOString())}` : 'Set target date'}
-            >
-              <Ionicons name="flag-outline" size={13} color={targetEndDate ? colors.accent : colors.textTertiary} />
-              {targetEndDate != null && (
-                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                  {formatDeadlineDate(targetEndDate.toISOString())}
+                  {formatDeadlineDate(deadline.toISOString())}
                 </Text>
               )}
             </TouchableOpacity>
@@ -421,24 +396,14 @@ export function QuickAddProjectModal({
         a task's own schedule.
       */}
       <WhenPicker
-        visible={startPickerVisible}
-        value={targetStartDate}
-        title="Start date"
+        visible={deadlinePickerVisible}
+        value={deadline}
+        title="Deadline"
         showTimeOfDay={false}
         showSuggest={false}
-        onConfirm={date => { setTargetStartDate(date); setStartPickerVisible(false); }}
-        onClear={() => { setTargetStartDate(null); setStartPickerVisible(false); }}
-        onCancel={() => setStartPickerVisible(false)}
-      />
-      <WhenPicker
-        visible={endPickerVisible}
-        value={targetEndDate}
-        title="Target date"
-        showTimeOfDay={false}
-        showSuggest={false}
-        onConfirm={date => { setTargetEndDate(date); setEndPickerVisible(false); }}
-        onClear={() => { setTargetEndDate(null); setEndPickerVisible(false); }}
-        onCancel={() => setEndPickerVisible(false)}
+        onConfirm={date => { setDeadline(date); setDeadlinePickerVisible(false); }}
+        onClear={() => { setDeadline(null); setDeadlinePickerVisible(false); }}
+        onCancel={() => setDeadlinePickerVisible(false)}
       />
     </Modal>
   );

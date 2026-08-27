@@ -12,6 +12,7 @@ import type { RecipeGroceryItem } from '../services/aiSuggestions';
 import { InlineEditableText } from './InlineEditableText';
 import { PillGroup } from './PillGroup';
 import { CatalogLinkPicker } from './CatalogLinkPicker';
+import { InlineAction } from './InlineAction';
 import { type PendingEdits } from '../hooks/usePendingEdits';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
@@ -30,6 +31,12 @@ interface Props {
   onEditName: (name: string) => void;
   onEditQuantity: (quantity: string) => void;
   onEditSection: (section: string | null) => void;
+  /**
+   * Mints (or refreshes) a pantry-only catalog row for this ingredient's name
+   * and unticks the row — "I already have this, don't buy it" for a line the
+   * catalog search can't place. See the link panel's own comment below.
+   */
+  onMarkAlreadyHave: () => void;
   /** Every section label already in play — this recipe's own plus this import's — offered as picks before falling back to typing a new one. */
   existingSections: string[];
   /** The grocery catalog, searched by the link picker below — see its own doc comment. */
@@ -69,10 +76,18 @@ interface Props {
  * where a substitute is "use this if that one's unavailable", recorded once on
  * the catalog item and read back through `probablyHaveReason`. Nothing here
  * writes to `grocery_item_subs`.
+ *
+ * The link panel's "Already have it" (`onMarkAlreadyHave`) is the same escape
+ * hatch `RecipeToListSheet`'s pantry icon offers, reached from here because
+ * `CatalogLinkPicker`'s search coming up empty is exactly the moment a line
+ * needs it most — a thing the app has never seen is a thing it can't have
+ * ranked as a probable match yet. It goes through `addToPantry`, so it mints
+ * a catalog row rather than only ticking the box off, and unticks this row the
+ * same way picking a search result does.
  */
 export function ExtractedIngredientRow({
   row, edits, index, checked, onToggle, onEditName, onEditQuantity, onEditSection,
-  existingSections, catalogItems, sectionHeader, note,
+  onMarkAlreadyHave, existingSections, catalogItems, sectionHeader, note,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -93,7 +108,7 @@ export function ExtractedIngredientRow({
   return (
     <>
       {!!sectionHeader && <Text style={styles.sectionHeader}>{sectionHeader}</Text>}
-      <View style={styles.row}>
+      <View style={[styles.row, (linkOpen || sectionOpen) && styles.rowAttached]}>
         <TouchableOpacity
           onPress={() => { haptics.tap(); onToggle(); }}
           hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
@@ -144,7 +159,9 @@ export function ExtractedIngredientRow({
           accessibilityRole="button"
           accessibilityState={{ expanded: linkOpen }}
           accessibilityLabel={
-            linkedItem ? `Linked to ${linkedItem.name} in your groceries` : 'Link to an existing item'
+            linkedItem
+              ? `Linked to ${linkedItem.name} in your grocery catalog`
+              : 'Link to an existing item'
           }
         >
           <Ionicons
@@ -170,7 +187,7 @@ export function ExtractedIngredientRow({
       </View>
 
       {linkOpen && (
-        <View style={styles.expandedCard}>
+        <View style={[styles.expandedCard, styles.expandedCardAttachedAbove, sectionOpen && styles.expandedCardAttachedBelow]}>
           <CatalogLinkPicker
             items={catalogItems}
             initialQuery={row.name}
@@ -181,6 +198,18 @@ export function ExtractedIngredientRow({
               setLinkOpen(false);
             }}
           />
+          <InlineAction
+            label="Already have it"
+            icon="archive-outline"
+            style={styles.alreadyHaveAction}
+            onPress={() => {
+              haptics.tap();
+              onMarkAlreadyHave();
+              animateLayout();
+              setLinkOpen(false);
+            }}
+            accessibilityLabel={`${row.name} is already in your pantry, skip adding it and remember that for next time`}
+          />
           <Text style={styles.expandedHint}>
             Renames this line to match, so it lands on the item you already have instead of a
             new one.
@@ -189,7 +218,7 @@ export function ExtractedIngredientRow({
       )}
 
       {sectionOpen && (
-        <View style={styles.expandedCard}>
+        <View style={[styles.expandedCard, styles.expandedCardAttachedAbove]}>
           <PillGroup
             noun="section"
             surface="card"
@@ -249,10 +278,19 @@ function makeStyles(colors: Colors) {
       gap: spacing.md,
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
-      marginVertical: 2,
+      marginTop: 2,
+      marginBottom: 2,
       borderRadius: radius.md,
       paddingVertical: 12,
       paddingHorizontal: spacing.md,
+    },
+    // Squares off the corners the link/section panel below sits against and
+    // drops the gap between them, so the row and its open panel read as one
+    // continuous card rather than two rounded pieces stacked with a seam.
+    rowAttached: {
+      marginBottom: 0,
+      borderBottomLeftRadius: 0,
+      borderBottomRightRadius: 0,
     },
     checkbox: {
       width: CHECKBOX_SIZE,
@@ -267,11 +305,28 @@ function makeStyles(colors: Colors) {
     expandedCard: {
       backgroundColor: colors.bgSecondary,
       marginHorizontal: spacing.md,
-      marginTop: -2,
+      marginTop: 0,
       marginBottom: spacing.xs,
       borderRadius: radius.md,
       paddingHorizontal: spacing.sm,
       paddingBottom: spacing.sm,
+    },
+    // The element above it (the row, or another open panel) always has its
+    // own bottom corners squared off to match — see rowAttached above.
+    expandedCardAttachedAbove: {
+      borderTopLeftRadius: 0,
+      borderTopRightRadius: 0,
+    },
+    // Only set when a second panel (section) is open right below this one.
+    expandedCardAttachedBelow: {
+      marginBottom: 0,
+      borderBottomLeftRadius: 0,
+      borderBottomRightRadius: 0,
+    },
+    alreadyHaveAction: {
+      alignSelf: 'flex-start',
+      marginTop: spacing.xs,
+      marginHorizontal: spacing.xs,
     },
     expandedHint: {
       fontSize: font.xs,

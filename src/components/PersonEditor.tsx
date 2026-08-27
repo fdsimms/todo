@@ -4,6 +4,8 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Person } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
 import { usePersonStore } from '../store/usePersonStore';
+import { usePersonGroupStore } from '../store/usePersonGroupStore';
+import { PersonGroupEditor } from './PersonGroupEditor';
 import { BirthdayPicker } from './BirthdayPicker';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
@@ -90,6 +92,9 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [cadenceDays, setCadenceDays] = useState(0);
   const [askAbout, setAskAbout] = useState('');
+  const [showGroupEditor, setShowGroupEditor] = useState(false);
+
+  const group = usePersonGroupStore(s => (person?.groupId ? s.groups.find(g => g.id === person.groupId) ?? null : null));
 
   // Read here so the cadence offer can be built from this person's own history
   // — the number in the offer has to come from what actually happened, which is
@@ -194,28 +199,35 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         </>
       }
       footer={
-        <BirthdayPicker
-          visible={showBirthdayPicker}
-          month={birthdayMonth}
-          day={birthdayDay}
-          year={birthYear}
-          onConfirm={(month, day, year) => {
-            setBirthdayMonth(month);
-            setBirthdayDay(day);
-            setBirthYear(year);
-            setShowBirthdayPicker(false);
-          }}
-          onClear={() => {
-            // All three together, always: a year with no month/day has nothing
-            // to attach to, and a month with no day is not a date anything can
-            // be computed from.
-            setBirthdayMonth(null);
-            setBirthdayDay(null);
-            setBirthYear(null);
-            setShowBirthdayPicker(false);
-          }}
-          onCancel={() => setShowBirthdayPicker(false)}
-        />
+        <>
+          <BirthdayPicker
+            visible={showBirthdayPicker}
+            month={birthdayMonth}
+            day={birthdayDay}
+            year={birthYear}
+            onConfirm={(month, day, year) => {
+              setBirthdayMonth(month);
+              setBirthdayDay(day);
+              setBirthYear(year);
+              setShowBirthdayPicker(false);
+            }}
+            onClear={() => {
+              // All three together, always: a year with no month/day has nothing
+              // to attach to, and a month with no day is not a date anything can
+              // be computed from.
+              setBirthdayMonth(null);
+              setBirthdayDay(null);
+              setBirthYear(null);
+              setShowBirthdayPicker(false);
+            }}
+            onCancel={() => setShowBirthdayPicker(false)}
+          />
+          <PersonGroupEditor
+            visible={showGroupEditor}
+            person={person}
+            onClose={() => setShowGroupEditor(false)}
+          />
+        </>
       }
     >
       <TextInput
@@ -361,6 +373,17 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
         </Text>
       </View>
 
+      <Text style={styles.groupLabel}>GROUP</Text>
+      <View style={styles.sectionCard}>
+        <EditorRow
+          icon="people-circle-outline"
+          label="Group"
+          value={group?.name}
+          hint="People you always catch up with together, like a couple or a household, share one reminder and one tag."
+          onPress={() => setShowGroupEditor(true)}
+        />
+      </View>
+
       <Text style={styles.groupLabel}>GETTING HOLD OF THEM</Text>
       <View style={styles.sectionCard}>
         <View style={styles.fieldRow}>
@@ -494,7 +517,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   pillActiveNeutral: { backgroundColor: colors.bgQuaternary },
-  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
   offerRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,

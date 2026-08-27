@@ -16,6 +16,7 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
+import { trolleyStateFor } from '../utils/groceryLists';
 import { useGroceryStore, type PlannedRow } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
@@ -124,6 +125,12 @@ export function AddMealsToListSheet({
   const unitSystem = useSettingsStore(s => s.unitSystem);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const activeListId = useGroceryStore(s => s.activeListId);
+  const inTrolley = useMemo(
+    () => trolleyStateFor(listEntries, activeListId),
+    [listEntries, activeListId]
+  );
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   const addFromPlan = useGroceryStore(s => s.addFromPlan);
   const addToPantry = useGroceryStore(s => s.addToPantry);
@@ -135,7 +142,9 @@ export function AddMealsToListSheet({
 
   const classified = useMemo(() => {
     const planned = collectPlannedIngredients(entries, recipesById, range, swaps);
-    return classifyPlanned(planned, items, new Date(), itemSubs);
+    // Against the list being added to — see classifyPlanned's own note on why
+    // an unscoped read silently drops shopping.
+    return classifyPlanned(planned, items, new Date(), itemSubs, inTrolley);
   }, [entries, recipesById, range, items, itemSubs, swaps]);
 
   const byCategory = useMemo(() => {

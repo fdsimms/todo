@@ -24,7 +24,7 @@ import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { rankRecipes, describeRecipe, cleanRecipeName } from '../utils/recipeUtils';
+import { rankRecipes, describeRecipe, cleanRecipeName, sortRecipesForDisplay } from '../utils/recipeUtils';
 import { excludeRecipesByTags } from '../utils/recipeTags';
 import { slotLabel } from '../utils/mealPlan';
 import { describeLeftover, liveFreshnessOf, liveLeftovers, mealTitleForLeftover } from '../utils/leftovers';
@@ -196,8 +196,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     const trimmed = query.trim();
     const ranked = trimmed
       ? rankRecipes(trimmed, recipes)
-      : [...excludeRecipesByTags(recipes, excludedRecipeTags)]
-        .sort((a, b) => Number(b.favorite) - Number(a.favorite) || a.sortOrder - b.sortOrder);
+      : sortRecipesForDisplay(excludeRecipesByTags(recipes, excludedRecipeTags));
     return ranked.slice(0, MAX_ROWS);
   }, [query, recipes, excludedRecipeTags]);
 
@@ -533,7 +532,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
                       </View>
                       {pickedId
                         ? <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
-                        : recipe.favorite && <Ionicons name="star" size={13} color={colors.orange} />}
+                        : recipe.vote === 'loved' && <Ionicons name="thumbs-up" size={13} color={colors.orange} />}
                     </TouchableOpacity>
                   </React.Fragment>
                 );
@@ -617,7 +616,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent,
   },
   chipText: {
-    color: colors.textSecondary,
+    color: colors.text,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },

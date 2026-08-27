@@ -59,11 +59,35 @@ interface MockGroceryItem {
   name?: string;
   quantity?: string | null;
   checked?: boolean;
+  /** null is the list at home, which is the only list the mirror reads. */
+  listId?: string | null;
 }
 let mockGroceryItems: MockGroceryItem[] = [];
+/**
+ * Membership lives in `grocery_list_items` now (see `GroceryListEntry`), and the
+ * mirror reads the home list's entries rather than the row's own columns.
+ * Derived from the fixtures so each block below can still say "on the list,
+ * ticked" on the row and mean it — the two are a mirror of each other.
+ */
+const mockListEntries = () =>
+  mockGroceryItems
+    .filter(i => i.onList && (i.listId ?? null) === null)
+    .map(i => ({
+      itemId: i.id ?? i.nameKey,
+      listId: null,
+      checked: i.checked ?? false,
+      sortOrder: 1,
+      choiceGroup: null,
+      addedAt: '2026-01-01T00:00:00.000Z',
+    }));
 jest.mock('../store/useGroceryStore', () => ({
   useGroceryStore: {
-    getState: () => ({ addByName: mockAddByName, items: mockGroceryItems, ...mockGrocery }),
+    getState: () => ({
+      addByName: mockAddByName,
+      items: mockGroceryItems,
+      listEntries: mockListEntries(),
+      ...mockGrocery,
+    }),
     subscribe: jest.fn(),
   },
 }));
@@ -991,7 +1015,9 @@ describe('importReminders — the two-way grocery mirror', () => {
 
     const outcome = await freshSync().importReminders();
 
-    expect(mockAddByName).toHaveBeenCalledWith('eggs', undefined, undefined, { registerUndo: false });
+    // `listId: null` pins the import to the list at home whatever list is on
+    // screen — see mirrorItems.
+    expect(mockAddByName).toHaveBeenCalledWith('eggs', undefined, undefined, { registerUndo: false, listId: null });
     expect(outcome.imported).toBe(1);
     expect(mockCalendar.createReminderAsync).not.toHaveBeenCalled();
   });

@@ -17,7 +17,7 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary, borderRadius: radius.md, overflow: 'hidden',
   },
   sectionFooter: {
-    color: colors.textTertiary, fontSize: font.sm,
+    color: colors.textSecondary, fontSize: font.sm,
     paddingHorizontal: spacing.sm, marginTop: spacing.sm, lineHeight: 19,
     marginBottom: spacing.sm,
   },
@@ -34,7 +34,7 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   rowStacked: { alignItems: 'flex-start', paddingVertical: spacing.md },
   rowContent: { flex: 1 },
   rowLabel: { color: colors.text, fontSize: font.md },
-  rowHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  rowHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
   /** Only when the row has its own control under the hint rather than beside it. */
   rowHintSpaced: { marginBottom: spacing.sm },
   rowValue: disclosureValue(colors),
@@ -50,7 +50,7 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase', letterSpacing: 0.8,
   },
   simpleAreaFeatures: {
-    color: colors.textTertiary, fontSize: font.sm, lineHeight: 19, marginTop: 2,
+    color: colors.textSecondary, fontSize: font.sm, lineHeight: 19, marginTop: 2,
   },
 
   // A `SegmentedControl` in the padding a settings card expects — see
@@ -81,7 +81,7 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
   // Border is the cue that survives grayscale accessibility mode — the tinted
   // background alone is barely distinguishable from bgTertiary once hue drops out.
   pillActive: { backgroundColor: colors.accent + '22', borderColor: colors.accent },
-  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  pillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   pillTextActive: { color: colors.accent, fontWeight: fontWeight.semibold },
 
   toggle: {

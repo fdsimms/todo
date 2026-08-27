@@ -8,6 +8,7 @@ import { activeChainStep } from './chain';
 import { isBlocked, isWaitingOnPerson } from './blocking';
 import { isSequenceHeld, resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
+import { quotaRunSpan } from './quotaSchedule';
 
 /**
  * True while this task is waiting on another task that isn't done yet — the
@@ -443,15 +444,41 @@ export function isQuotaTask(task: Task): boolean {
   return task.targetCount !== null && task.targetCount > 1;
 }
 
+/**
+ * True for a quota task that keeps counting past its target and closes out
+ * when the day (or the run) ends, rather than completing on the unit that
+ * meets the target.
+ *
+ * Two ways in and one behaviour, so every caller asks one question rather than
+ * growing a second condition beside an `allowOvershoot` check and drifting
+ * from the others. The kinds are an explicit `allowOvershoot`, and an interval
+ * quota, whose target is span ÷ interval rather than an achievement — nobody
+ * sets out to take exactly 24 eye breaks, so there is nothing there to finish.
+ */
+export function quotaRidesOutTheDay(task: Task): boolean {
+  return task.allowOvershoot || task.quotaIntervalMinutes !== null;
+}
+
 // The span the pace ramps across: the task's own time window when it has one,
-// otherwise the global active hours. Anchored to the current *logical* day via
-// getWindowThreshold, for the reason documented there.
+// otherwise the global active hours, and today's hand-started time in place of
+// either when there is one. Anchored to the current *logical* day, for the
+// reason getWindowThreshold documents.
+//
+// The arithmetic lives in the store-free quotaSchedule module rather than
+// here, because the pace ramp is only one of its three readers — the day-close
+// sweep and the nudge scheduler need the identical span, and a span computed
+// twice is a row on Today that disagrees with the notification that sent you
+// to it.
 function getQuotaSpan(task: Task): { start: Date; end: Date } {
   const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
-  return {
-    start: getWindowThreshold(task.windowStart ?? activeHoursStart),
-    end: getWindowThreshold(task.windowEnd ?? activeHoursEnd),
-  };
+  return quotaRunSpan({
+    windowStart: task.windowStart,
+    windowEnd: task.windowEnd,
+    quotaStartedAt: task.quotaStartedAt,
+    activeHoursStart,
+    activeHoursEnd,
+    dayStart: getCurrentDayStart(),
+  });
 }
 
 // How many units you'd expect to have logged by now. Ceil rather than floor so
@@ -478,7 +505,7 @@ export function isQuotaOnPace(task: Task): boolean {
   // the rest of the day, exactly the behavior overshoot mode exists to avoid.
   // A day-rollover sweep completes it later with whatever progressCount it
   // reached; see sweepOvershootQuotas in useTaskStore.ts.
-  if (task.allowOvershoot && isQuotaTask(task) && task.progressCount >= task.targetCount!) {
+  if (quotaRidesOutTheDay(task) && isQuotaTask(task) && task.progressCount >= task.targetCount!) {
     return false;
   }
   return task.progressCount >= quotaExpectedByNow(task);

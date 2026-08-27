@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
+  Alert,
   Modal,
   View,
   Text,
@@ -22,6 +23,7 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
+import { trolleyStateFor, itemsOnList, listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { rankedCatalogItems, catalogPruneCandidates, rankGrocerySuggestions } from '../utils/grocerySuggest';
@@ -59,6 +61,12 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const activeListId = useGroceryStore(s => s.activeListId);
+  const inTrolley = useMemo(
+    () => trolleyStateFor(listEntries, activeListId),
+    [listEntries, activeListId]
+  );
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   // For the prune offer's hasUserFacts test — an unrecoverable delete must be
@@ -143,12 +151,15 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
 
   const rows = useMemo(() => {
     if (query.trim()) {
-      return rankGrocerySuggestions(query, scoped, now, 50)
+      return rankGrocerySuggestions(query, scoped, now, 50, inTrolley)
         .filter(s => !s.onList)
         .map(s => s.item);
     }
-    return rankedCatalogItems(scoped, now);
-  }, [query, scoped, now]);
+    // Scoped to the active list, not to "on any list": a staple already on the
+    // list at home is exactly what Buy again should offer while you're
+    // stocking a rental kitchen.
+    return rankedCatalogItems(scoped, now, 40, inTrolley);
+  }, [query, scoped, now, inTrolley]);
 
   // Deliberately over `items` and not `scoped`: the prune offer is about the
   // whole catalog, and scoping it to a store would offer to forget a subset
@@ -158,8 +169,11 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
     [itemProducts, itemSubs, itemShops, storeAliases]
   );
   const pruneable = useMemo(
-    () => catalogPruneCandidates(items, linked, now),
-    [items, linked, now]
+    // Against every trolley, not just the one at home: a prune is an
+    // unrecoverable delete, and a row on the Airbnb list is shopping you are
+    // about to do. See catalogPruneCandidates.
+    () => catalogPruneCandidates(items, linked, now, 60, listedAnywhere(listEntries)),
+    [items, linked, now, listEntries]
   );
 
   const toggle = useCallback((id: string) => {
@@ -177,6 +191,20 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
     addExistingMany([...selected]);
     haptics.success();
     onClose();
+  };
+
+  // Picks made here aren't written anywhere until Add — a swipe-down with a
+  // selection on screen would otherwise throw it away with no way back.
+  const handleCancel = () => {
+    if (selected.size === 0) { onClose(); return; }
+    Alert.alert(
+      'Discard selection?',
+      `The ${selected.size} ${selected.size === 1 ? 'item' : 'items'} you picked won’t be added to your list.`,
+      [
+        { text: 'Keep editing', style: 'cancel' },
+        { text: 'Discard', style: 'destructive', onPress: onClose },
+      ],
+    );
   };
 
   /**
@@ -278,10 +306,10 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleCancel}>
       <View style={styles.root}>
         <View style={styles.header}>
-          <SheetHeaderButton label="Cancel" role="cancel" onPress={onClose} minWidth={72} />
+          <SheetHeaderButton label="Cancel" role="cancel" onPress={handleCancel} minWidth={72} />
           <Text style={styles.headerTitle}>Grocery catalog</Text>
           <SheetHeaderButton
             label={selected.size > 0 ? `Add ${selected.size}` : 'Add'}

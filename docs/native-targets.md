@@ -75,3 +75,22 @@ plumbing moved into `lib/nativeTarget.js`.
   `Activity.request` throws at runtime on the very device it's meant to work on; nothing at
   build time catches the omission, because the extension itself doesn't request activities, it
   only renders the ones the app process starts.
+- **An `AppShortcutsProvider` (the Action Button / Siri / Shortcuts entry point) must live in
+  the *main app* target, not an extension.** `targets/todo-widget/CompleteTaskIntent.swift` is
+  the pattern every other `AppIntent` here has followed — an intent living in the widget
+  extension, invoked by a `Button(intent:)` inside that extension's own SwiftUI. That's the
+  wrong home for one meant to show up in the system-wide Shortcuts/Action Button picker: an
+  `AppShortcutsProvider` declared in an extension only donates shortcuts for *that extension's*
+  own intents, not to the app as a whole. `AddTaskIntent` and its `AppShortcutsProvider`
+  (`modules/todo-widget-bridge/ios/AddTaskIntent.swift`) live in the widget-bridge module
+  instead, purely because that module's podspec already globs every `.swift` file there into
+  the main app target (see `TodoWidgetBridge.podspec`'s `s.source_files`) — no target-injection
+  plugin work needed, unlike a widget/share-extension addition. The intent still can't reach
+  the app's SQLite or JS logic any more than `CompleteTaskIntent` can, so it follows the same
+  App-Group-queue-then-`openAppWhenRun`-open-the-app shape.
+- **A spoken Siri phrase for an `AppShortcut` needs the `com.apple.developer.siri` entitlement
+  *and* `NSSiriUsageDescription`, even though App Intents otherwise needs neither.** Without the
+  entitlement (`plugins/withSiriShortcuts.js`, added via `withEntitlementsPlist`), the same
+  shortcut still runs fine from the Shortcuts app, Spotlight, and the Action Button's "Shortcut"
+  picker — voice specifically is the only path that's silently unrouted, which makes this easy
+  to ship half-working and only notice when someone actually says the phrase.

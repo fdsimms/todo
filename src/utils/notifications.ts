@@ -19,8 +19,12 @@ import { nudgeReminderPastMeeting } from './reminderNudge';
 import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, cancelNativeAlarm } from 'todo-alarmkit-bridge';
 import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, stepTimerAlarmUuid, taskAlarmUuid } from './alarmChain';
 import { isDemoModeActive } from './demoState';
+import { quotaRunSpan, quotaDueTimesAfter } from './quotaSchedule';
+import { getCurrentDayStart } from './dateUtils';
 import { resolveActiveTrip } from './activeTrip';
 import type { Shop } from '../types';
+import type { EventReminder } from './eventReminders';
+import { reminderTriggerDate } from './eventReminders';
 
 export { isAlarmKitAvailable, requestAlarmAuthorization };
 
@@ -312,7 +316,13 @@ export function pendingReminderStats(tasks: Task[], now: Date = new Date()): Pen
   // separate subsystem from UNUserNotificationCenter — so they're excluded
   // from the count Settings shows against that cap.
   const wanted = upcomingReminders(tasks, now).filter(t => !usesAlarmKit(t)).length;
-  const scheduled = Math.min(wanted, MAX_PENDING_REMINDERS);
+  // Pace nudges do compete for it, and each running target holds up to
+  // MAX_QUOTA_NUDGES_AHEAD of them. Counted against the cap *before* the
+  // reminders, matching the order rescheduleAllReminders lays them down in, so
+  // the "N reminders won't fire" line in Settings stays true rather than
+  // reporting a budget the nudges have already spent.
+  const nudges = quotaNudgeTasks(tasks).length * MAX_QUOTA_NUDGES_AHEAD;
+  const scheduled = Math.min(wanted, Math.max(0, MAX_PENDING_REMINDERS - nudges));
   return { wanted, scheduled, dropped: wanted - scheduled };
 }
 
@@ -323,7 +333,10 @@ export async function rescheduleAllReminders(
   // import useGroceryStore. Omitted entirely, every existing caller (and
   // every test) still gets the right behavior — no active trip, so the
   // reminder is simply left cancelled.
-  trip?: { shopId: string | null; startedAt: string | null; shops: readonly Shop[] }
+  trip?: { shopId: string | null; startedAt: string | null; shops: readonly Shop[] },
+  // Same reasoning, same shape: raw reminders rather than a useEventReminderStore
+  // read, so this file never has to import that store either.
+  eventReminders?: readonly EventReminder[]
 ): Promise<void> {
   const now = new Date();
   await Notifications.cancelAllScheduledNotificationsAsync().catch(() => {});
@@ -338,7 +351,17 @@ export async function rescheduleAllReminders(
     if (usesAlarmKit(task)) await scheduleTaskReminder(task);
   }
 
-  for (const task of upcoming.filter(t => !usesAlarmKit(t)).slice(0, MAX_PENDING_REMINDERS)) {
+  // Nudges first, then reminders against what's left of the budget. The order
+  // is the priority call and it's deliberate: a nudge is the next twenty
+  // minutes and a reminder further down a 64-deep queue is days out, so the
+  // furthest-out reminders are the right thing to lose. pendingReminderStats
+  // counts them in the same order, so Settings reports the same budget this
+  // spends.
+  const nudging = quotaNudgeTasks(tasks);
+  for (const task of nudging) await scheduleQuotaNudges(task);
+
+  const reminderBudget = Math.max(0, MAX_PENDING_REMINDERS - nudging.length * MAX_QUOTA_NUDGES_AHEAD);
+  for (const task of upcoming.filter(t => !usesAlarmKit(t)).slice(0, reminderBudget)) {
     await scheduleTaskReminder(task);
   }
 
@@ -353,10 +376,18 @@ export async function rescheduleAllReminders(
   // Three is the signal the original version of this note called out: the
   // next one to arrive should give each kind its own id prefix and cancel by
   // prefix instead — the blanket cancel is only tenable while the put-it-back
-  // list is short enough to read.
+  // list is short enough to read. Pace nudges and calendar-event reminders
+  // are that fourth and fifth kind: nudges are scheduled above under a
+  // `pace:` prefix and cancelled by it (cancelQuotaNudges), and event
+  // reminders are cancelled and rescheduled by their own
+  // `event-reminder:<key>` id (rescheduleAllEventReminders below) — neither
+  // depends on this blanket cancel. The blanket cancel stays for now because
+  // the remaining three (timer alarms, the daily agenda, the trip reminder)
+  // still depend on it; those are what's left to convert.
   await rescheduleAllTimerAlarms(tasks);
   await scheduleDailyAgenda(tasks);
   await rescheduleTripReminder(trip?.shopId ?? null, trip?.startedAt ?? null, trip?.shops ?? []);
+  await rescheduleAllEventReminders(eventReminders ?? []);
 }
 
 // ─── Daily agenda ────────────────────────────────────────────────────────────
@@ -514,6 +545,108 @@ export async function scheduleFocusStepAlarm(session: FocusSession | null): Prom
 
 export async function cancelFocusStepAlarm(): Promise<void> {
   await Notifications.cancelScheduledNotificationAsync(FOCUS_STEP_ALARM_ID).catch(() => {});
+}
+
+// ─── Daily-target pace nudges ────────────────────────────────────────────────
+
+// One id per instant, namespaced away from every other kind here. The index is
+// the position in the day's grid rather than a timestamp, so rescheduling the
+// same run overwrites its own pending requests instead of stacking a second
+// set behind them.
+const quotaNudgeId = (taskId: string, index: number): string => `pace:${taskId}:${index}`;
+
+/**
+ * How many of a run's nudges are held pending at once.
+ *
+ * iOS holds 64 local notification requests in total (MAX_PENDING_REMINDERS),
+ * and a run at a 20-minute cadence across a working day wants 24 on its own.
+ * Handing one task a third of the budget would silently starve the reminders
+ * the user actually set on real tasks, so only the next few are ever pending
+ * and the rest are laid down as the app is opened through the day
+ * (rescheduleAllReminders, and the foreground pass that calls it).
+ *
+ * The trade is explicit: a phone that never opens the app for four hours stops
+ * being nudged after the sixth. That is the right way round — the alternative
+ * spends the whole device budget on the one task least likely to be looked at.
+ */
+export const MAX_QUOTA_NUDGES_AHEAD = 6;
+
+/** Every id a run could be holding, for the uninformed cancel below. */
+function quotaNudgeIds(taskId: string): string[] {
+  return Array.from({ length: MAX_QUOTA_NUDGES_AHEAD }, (_, i) => quotaNudgeId(taskId, i));
+}
+
+export async function cancelQuotaNudges(taskId: string): Promise<void> {
+  await Promise.all(
+    quotaNudgeIds(taskId).map(id =>
+      Notifications.cancelScheduledNotificationAsync(id).catch(() => {})
+    )
+  );
+}
+
+/**
+ * Nudge each time a unit of a daily target falls due.
+ *
+ * **N one-shots rather than one repeating trigger**, for the reason
+ * `src/utils/alarmChain.ts` sets out at length: the layer underneath only
+ * understands one fire at one time, and a repeating trigger can't carry a body
+ * that changes between scheduling and firing. The instants come from
+ * `quotaDueTimes`, which is the same grid the pace ramp on the row is built
+ * from — computed once in `quotaSchedule.ts` precisely so the notification and
+ * the row it sends you to can't disagree about when a unit was owed.
+ *
+ * Quiet-hours instants are dropped rather than deferred, the call
+ * `scheduleTimerAlarm` and the alarm chain's repeats both make: deferring them
+ * would stack the rest of the run onto the window's close and deliver six at
+ * once at 7am.
+ */
+export async function scheduleQuotaNudges(task: Task): Promise<void> {
+  await cancelQuotaNudges(task.id);
+  if (isDemoModeActive()) return;
+  if (!task.quotaReminders || task.completed || task.archived) return;
+  if (task.targetCount === null || task.targetCount < 2) return;
+  if (isHiddenForVacation(task)) return;
+
+  const { activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd } =
+    useSettingsStore.getState();
+  const span = quotaRunSpan({
+    windowStart: task.windowStart,
+    windowEnd: task.windowEnd,
+    quotaStartedAt: task.quotaStartedAt,
+    activeHoursStart,
+    activeHoursEnd,
+    dayStart: getCurrentDayStart(),
+  });
+
+  const times = quotaDueTimesAfter(span, task.targetCount, new Date(), MAX_QUOTA_NUDGES_AHEAD);
+  const title = displayTitleFor(task) || 'Daily target';
+  for (let i = 0; i < times.length; i++) {
+    if (isWithinQuietHours(times[i], quietHoursStart, quietHoursEnd)) continue;
+    await Notifications.scheduleNotificationAsync({
+      identifier: quotaNudgeId(task.id, i),
+      content: {
+        title,
+        // The notes carry the instruction where there are any — for a routine
+        // whose whole content is "what do I actually do", that sentence is the
+        // notification, and the title alone would be a nag with no method.
+        body: task.notes || 'One is due now.',
+        data: { taskId: task.id, quotaNudge: true },
+        sound: true,
+        categoryIdentifier: TASK_REMINDER_CATEGORY,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: times[i],
+      },
+    });
+  }
+}
+
+/** Every task currently wanting nudges, for the rebuild below. */
+export function quotaNudgeTasks(tasks: Task[]): Task[] {
+  return tasks.filter(
+    t => t.quotaReminders && !t.completed && !t.archived && t.targetCount !== null && t.targetCount >= 2
+  );
 }
 
 // ─── Cooking step timers ─────────────────────────────────────────────────────
@@ -683,4 +816,67 @@ export async function rescheduleTripReminder(
     return;
   }
   await scheduleTripReminder(shop.name, startedAt);
+}
+
+// ─── Calendar-event reminders ────────────────────────────────────────────────
+
+// Namespaced rather than a bare `reminder.key`: a BusyEvent id is just an
+// EventKit string with no relation to this app's own id space, so nothing
+// stops one from coinciding with a task id or another reminder's key.
+function eventReminderNotificationId(key: string): string {
+  return `event-reminder:${key}`;
+}
+
+/**
+ * Schedules (or replaces) the one notification for a calendar-event reminder
+ * (`useEventReminderStore`). Cancel-then-reschedule, like every other
+ * reminder in this file — there is no check-if-already-scheduled path.
+ */
+export async function scheduleEventReminder(reminder: EventReminder): Promise<void> {
+  // Same reasoning as scheduleTaskReminder: a real notification is a device
+  // side effect, and must never fire for an event a demo session rendered.
+  if (isDemoModeActive()) return;
+  const id = eventReminderNotificationId(reminder.key);
+  await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
+
+  const triggerDate = reminderTriggerDate(reminder);
+  if (triggerDate <= new Date()) return;
+
+  // Suppressed rather than deferred, like the timer and trip alarms: "starts
+  // in 15 minutes" shown after the event has already started is actively
+  // wrong, not just late, and a same-day meeting reminder landing inside
+  // quiet hours is the common case this guards.
+  const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return;
+
+  await Notifications.scheduleNotificationAsync({
+    identifier: id,
+    content: {
+      title: reminder.eventTitle,
+      body: reminder.offsetMinutes === 0
+        ? 'Starting now'
+        : `Starts in ${reminder.offsetMinutes < 60 ? `${reminder.offsetMinutes} min` : `${reminder.offsetMinutes / 60} hr`}`,
+      sound: true,
+    },
+    trigger: {
+      type: Notifications.SchedulableTriggerInputTypes.DATE,
+      date: triggerDate,
+    },
+  });
+}
+
+export async function cancelEventReminder(key: string): Promise<void> {
+  await Notifications.cancelScheduledNotificationAsync(eventReminderNotificationId(key)).catch(() => {});
+}
+
+/**
+ * Puts every pending event reminder back after a blanket cancel — the same
+ * job `rescheduleAllTimerAlarms`/`rescheduleTripReminder` do, folded into
+ * `rescheduleAllReminders` above. The caller (`useEventReminderStore.initialize`)
+ * is expected to have already pruned reminders for events that have started.
+ */
+export async function rescheduleAllEventReminders(reminders: readonly EventReminder[]): Promise<void> {
+  for (const reminder of reminders) {
+    await scheduleEventReminder(reminder);
+  }
 }

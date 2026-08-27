@@ -812,7 +812,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   optionalBadgeText: {
-    color: colors.textTertiary,
+    color: colors.text,
     fontSize: font.xs,
     fontWeight: '600',
   },

@@ -1,0 +1,4 @@
+{
+  "message": "Project categories can be renamed, reordered and deleted now, from \"Project categories\" in the Projects page's ⋯ menu. Before this they could only be added, so a typo was permanent and the sections were stuck in the order you happened to create them. Deleting one ungroups its projects and keeps all their tasks; a shake undoes it.",
+  "date": "2026-08-26"
+}

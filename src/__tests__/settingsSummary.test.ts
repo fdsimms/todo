@@ -21,7 +21,7 @@ const defaults: SettingsSummaryInput = {
   calendarIds: [],
   vacationMode: false,
   autoRemoveExpiredTasks: null,
-  autoArchiveProjectsOnComplete: false,
+  autoCompleteProjectsOnDone: false,
   appLockEnabled: false,
   hasApiKey: false,
   retentionLabel: null,
@@ -85,7 +85,7 @@ describe('settingsSummaries', () => {
     // Eight lines all reading "Off" makes a screen look broken rather than
     // default, so a quiet group says what it covers instead.
     it('says what tasks & projects covers', () => {
-      expect(summarise().tasksProjects).toBe('Vacation, expiry, auto-archive');
+      expect(summarise().tasksProjects).toBe('Vacation, expiry, auto-complete');
     });
 
     it('says what privacy & AI covers', () => {

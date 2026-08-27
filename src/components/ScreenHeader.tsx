@@ -1,8 +1,8 @@
 import React, { useMemo } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, lineHeight, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, iconSize, interaction, type Colors } from '../theme';
 import { PressableScale } from './PressableScale';
 
 export interface ScreenHeaderAction {
@@ -40,13 +40,25 @@ interface Props {
   actions?: ScreenHeaderAction[];
   /** Custom right-side content; rendered after icon actions. */
   right?: React.ReactNode;
+  /**
+   * Makes the title itself a control, with a disclosure chevron after it — for
+   * a screen whose title *is* the thing being picked (the Groceries tab, whose
+   * title is the shopping list you're looking at).
+   *
+   * `TouchableOpacity` rather than `PressableScale`: a large title springing on
+   * every tap reads as the whole screen moving, which is why full-width rows
+   * keep the plain touchable too.
+   */
+  onTitlePress?: () => void;
+  /** Spoken label for the title button. Falls back to the title itself. */
+  titleAccessibilityLabel?: string;
 }
 
 /**
  * The standard large-title header used at the top of every screen, so
  * titles, counts and 34pt icon buttons render identically app-wide.
  */
-export function ScreenHeader({ title, subtitle, overline, actions, right }: Props) {
+export function ScreenHeader({ title, subtitle, overline, actions, right, onTitlePress, titleAccessibilityLabel }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -61,7 +73,20 @@ export function ScreenHeader({ title, subtitle, overline, actions, right }: Prop
           // does on Today (where the date overline pushes it down).
           <Text style={styles.overline} accessibilityElementsHidden importantForAccessibility="no-hide-descendants"> </Text>
         )}
-        <Text style={styles.title}>{title}</Text>
+        {onTitlePress ? (
+          <TouchableOpacity
+            style={styles.titleRow}
+            onPress={onTitlePress}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="button"
+            accessibilityLabel={titleAccessibilityLabel ?? title}
+          >
+            <Text style={styles.title} numberOfLines={1}>{title}</Text>
+            <Ionicons name="chevron-down" size={iconSize.sm} color={colors.textSecondary} style={styles.titleChevron} />
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.title}>{title}</Text>
+        )}
         {subtitle != null ? (
           <Text style={styles.subtitle}>{subtitle}</Text>
         ) : (
@@ -129,7 +154,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   title: {
     color: colors.text, fontSize: font.xxl, fontWeight: fontWeight.bold,
     lineHeight: lineHeight.xxl, letterSpacing: -0.5,
+    flexShrink: 1,
   },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  // Optically centred against the cap height rather than the line box, which
+  // the xxl line height makes noticeably taller than the glyphs.
+  titleChevron: { marginTop: 3 },
   subtitle: {
     color: colors.textTertiary, fontSize: font.sm, fontWeight: fontWeight.medium,
     marginTop: 2,

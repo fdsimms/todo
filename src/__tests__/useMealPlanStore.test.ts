@@ -2121,3 +2121,145 @@ describe('calendar events (#1494)', () => {
     expect(mockDeleteCalendarEvent).not.toHaveBeenCalled();
   });
 });
+
+// ─── finishCookForRecipe — Done on a cook timer's Live Activity ─────────────
+//
+// The recipe-shaped door onto the pairing setCookedPaired is the entry-shaped
+// door onto: the caller knows which dish came off the heat and nothing else.
+describe('finishCookForRecipe', () => {
+  const today = dayKeyOf(new Date());
+  const stats = { cookCount: 3, lastCookedAt: '2026-01-01T00:00:00.000Z' };
+
+  /**
+   * Today's plan as SQLite would answer it. Both reads are stubbed because
+   * both happen for real: this action reads the day, and `setCookedPaired`
+   * re-resolves the row it names — an entry outside the loaded window is the
+   * normal case here, since the plan screen may never have been opened.
+   */
+  function planToday(rows: MealPlanEntry[]) {
+    const byId = new Map(rows.map(r => [r.id, r]));
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue(rows);
+    (dbGetMealPlanEntry as jest.Mock).mockImplementation((id: string) => byId.get(id) ?? null);
+    // Writes land back in the map, so the undo below re-resolves the row as it
+    // now stands rather than as it was — otherwise `setCooked`'s own guard
+    // reads it as already un-ticked and does nothing.
+    (dbUpdateMealPlanEntry as jest.Mock).mockImplementation((row: MealPlanEntry) => {
+      byId.set(row.id, row);
+    });
+  }
+
+  afterEach(() => {
+    (dbUpdateMealPlanEntry as jest.Mock).mockReset();
+  });
+
+  beforeEach(() => {
+    // The pairing looks the recipe up before it bumps anything, so the library
+    // has to hold the dish being cooked in every one of these.
+    mockRecipeState.recipes = [{ ...recipeWith('Ragu', []), id: 'r1' }];
+    mockRecipeState.markCooked.mockReturnValue(stats);
+  });
+
+  it('ticks off today’s planned meal for that recipe', () => {
+    const dinner = entry(today, 'dinner', { recipeId: 'r1', title: 'Ragu' });
+    planToday([dinner]);
+
+    useMealPlanStore.getState().finishCookForRecipe('r1');
+
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dinner.id, cookedAt: expect.any(String) })
+    );
+    expect(mockRecipeState.markCooked).toHaveBeenCalledWith('r1');
+  });
+
+  // The post-cook sheet is the point of preferring the plan: the rating, the
+  // fridge and the used-up ingredients are questions about the cooking, not
+  // about which surface the tap landed on.
+  it('raises the post-cook sheet, same as ticking the row would', () => {
+    mockRecipeState.recipes = [recipeWith('Chili', ['soy sauce', 'cumin'])];
+    useGroceryStore.setState({ items: [onHand('soy sauce')] });
+    planToday([entry(today, 'dinner', { recipeId: 'r-Chili', title: 'Chili' })]);
+
+    useMealPlanStore.getState().finishCookForRecipe('r-Chili');
+
+    expect(useMealPlanStore.getState().cookRecap).toMatchObject({ recipeName: 'Chili' });
+  });
+
+  // The loaded window is whatever the plan screen last asked for, and is empty
+  // until someone opens it — a cook started from the recipe library must still
+  // find the meal it was planned as.
+  it('reads the day straight from SQLite rather than the loaded window', () => {
+    loadWeek();
+    const dinner = entry(today, 'dinner', { recipeId: 'r1', title: 'Ragu' });
+    planToday([dinner]);
+
+    useMealPlanStore.getState().finishCookForRecipe('r1');
+
+    expect(dbGetMealPlanEntries).toHaveBeenLastCalledWith(today, today);
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dinner.id, cookedAt: expect.any(String) })
+    );
+  });
+
+  it('bumps the recipe’s own counters when nothing on the plan matches', () => {
+    planToday([entry(today, 'dinner', { recipeId: 'r2', title: 'Something else' })]);
+
+    useMealPlanStore.getState().finishCookForRecipe('r1');
+
+    expect(mockRecipeState.markCooked).toHaveBeenCalledWith('r1');
+    expect(dbUpdateMealPlanEntry).not.toHaveBeenCalled();
+    // No entry, so no sheet — CookRecap is built around an entry id.
+    expect(useMealPlanStore.getState().cookRecap).toBeNull();
+  });
+
+  it('does nothing at all for a recipe that no longer exists', () => {
+    mockRecipeState.recipes = [];
+
+    useMealPlanStore.getState().finishCookForRecipe('r-gone');
+
+    expect(mockRecipeState.markCooked).not.toHaveBeenCalled();
+    expect(useMealPlanStore.getState().lastAction).toBeNull();
+  });
+
+  // A Done pressed by accident on a Lock Screen is exactly the tap worth being
+  // able to take back: lastCookedAt steers the suggestion ranking for weeks.
+  it('registers an undo that puts the meal and the counters back', () => {
+    const dinner = entry(today, 'dinner', { recipeId: 'r1', title: 'Ragu' });
+    planToday([dinner]);
+
+    useMealPlanStore.getState().finishCookForRecipe('r1');
+    const action = useMealPlanStore.getState().lastAction!;
+    expect(action.label).toBe('Cooked "Ragu"');
+
+    action.undo();
+
+    expect(dbUpdateMealPlanEntry).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: dinner.id, cookedAt: null })
+    );
+    expect(mockRecipeState.restoreCookStats).toHaveBeenCalledWith('r1', stats);
+  });
+
+  it('registers an undo for the off-plan cooking too', () => {
+    useMealPlanStore.getState().finishCookForRecipe('r1');
+    const action = useMealPlanStore.getState().lastAction!;
+    expect(action.label).toBe('Cooked "Ragu"');
+
+    action.undo();
+
+    expect(mockRecipeState.restoreCookStats).toHaveBeenCalledWith('r1', stats);
+  });
+
+  // A dish cooked twice in a day ticks the row that hasn't happened yet.
+  it('skips a row already ticked off and takes the next one', () => {
+    const lunch = entry(today, 'lunch', {
+      recipeId: 'r1', title: 'Ragu', cookedAt: '2026-01-01T12:00:00.000Z',
+    });
+    const dinner = entry(today, 'dinner', { recipeId: 'r1', title: 'Ragu' });
+    planToday([lunch, dinner]);
+
+    useMealPlanStore.getState().finishCookForRecipe('r1');
+
+    expect(dbUpdateMealPlanEntry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: dinner.id, cookedAt: expect.any(String) })
+    );
+  });
+});

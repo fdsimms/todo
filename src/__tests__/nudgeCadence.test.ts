@@ -1,7 +1,12 @@
 import {
   CADENCE_UNIT_MAX,
+  FALLBACK_CADENCE_DAYS,
+  NUDGE_MODES,
   describeCadence,
+  describeNudge,
   fromCadenceParts,
+  nudgeFieldsFor,
+  nudgeModeOf,
   toCadenceParts,
   withCadenceUnit,
 } from '../utils/nudgeCadence';
@@ -68,5 +73,49 @@ describe('describeCadence', () => {
     expect(describeCadence(14)).toBe('2 weeks');
     expect(describeCadence(30)).toBe('1 month');
     expect(describeCadence(90)).toBe('3 months');
+  });
+});
+
+describe('nudgeModeOf', () => {
+  const project = (nudgeOptIn: boolean, nudgeCadenceDays: number) => ({ nudgeOptIn, nudgeCadenceDays });
+
+  it('reads an opted-out project as never, whatever cadence it is carrying', () => {
+    // A project seeded from the Settings default carries a cadence while still
+    // opted out, and that project is out of every surface — which is exactly
+    // the combination the merged control exists to stop anyone reaching.
+    expect(nudgeModeOf(project(false, 0))).toBe('never');
+    expect(nudgeModeOf(project(false, 14))).toBe('never');
+  });
+
+  it('splits the opted-in projects on whether the cadence can fire', () => {
+    expect(nudgeModeOf(project(true, 0))).toBe('on-ask');
+    expect(nudgeModeOf(project(true, 14))).toBe('scheduled');
+  });
+});
+
+describe('nudgeFieldsFor', () => {
+  it('round-trips every mode through the two stored fields', () => {
+    NUDGE_MODES.forEach(mode => {
+      expect(nudgeModeOf(nudgeFieldsFor(mode, 14))).toBe(mode);
+    });
+  });
+
+  it('clears the cadence on the two modes that never fire one', () => {
+    expect(nudgeFieldsFor('never', 14)).toEqual({ nudgeOptIn: false, nudgeCadenceDays: 0 });
+    expect(nudgeFieldsFor('on-ask', 14)).toEqual({ nudgeOptIn: true, nudgeCadenceDays: 0 });
+  });
+
+  it('never stores a scheduled project with a cadence that cannot fire', () => {
+    expect(nudgeFieldsFor('scheduled', 0)).toEqual({ nudgeOptIn: true, nudgeCadenceDays: FALLBACK_CADENCE_DAYS });
+    expect(nudgeFieldsFor('scheduled', -3)).toEqual({ nudgeOptIn: true, nudgeCadenceDays: FALLBACK_CADENCE_DAYS });
+    expect(nudgeFieldsFor('scheduled', 7)).toEqual({ nudgeOptIn: true, nudgeCadenceDays: 7 });
+  });
+});
+
+describe('describeNudge', () => {
+  it('names the answer, spelling out the cadence only when there is one', () => {
+    expect(describeNudge({ nudgeOptIn: false, nudgeCadenceDays: 0 })).toBe('Never');
+    expect(describeNudge({ nudgeOptIn: true, nudgeCadenceDays: 0 })).toBe('When I ask');
+    expect(describeNudge({ nudgeOptIn: true, nudgeCadenceDays: 14 })).toBe('Every 2 weeks');
   });
 });
