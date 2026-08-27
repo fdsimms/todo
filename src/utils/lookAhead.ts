@@ -29,7 +29,7 @@ import { estimatedMinutesFor, formatDuration } from './effort';
  * days of any span; `buildDayLoads` already weighs those days against the
  * calendar. What nobody does is point the pair at a *window* and ask whether
  * the work in it fits before some date the user cares about — a flight, a
- * project's `targetEndDate`, a Friday.
+ * project's `deadline`, a Friday.
  *
  * Nothing here is stored and nothing is written. It's a derivation over rows
  * that already exist, which is why it's a util rather than a store, and why it
