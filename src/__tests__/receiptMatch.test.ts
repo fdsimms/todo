@@ -112,6 +112,14 @@ describe('receiptMatchConfidence', () => {
     // "whole" is exactly the word that would otherwise pair these.
     expect(receiptMatchConfidence('whole milk', 'whole wheat bread')).toBeNull();
   });
+
+  it('does not read a name as a prefix of an unrelated longer word', () => {
+    // "water" is a real substring of "watermelon" but not a real match for it —
+    // the bug this guards is a word-start check with no check for what the
+    // word actually ends with (#watermelon).
+    expect(receiptMatchConfidence('water', 'sour watermelon candies')).toBeNull();
+    expect(receiptMatchConfidence('cheese', 'cheeseburger meal')).toBeNull();
+  });
 });
 
 // ─── matchReceiptLines ───────────────────────────────────────────────────────
@@ -515,6 +523,22 @@ describe('acceptedByDefault', () => {
     const matches = matchReceiptLines([line({ name: 'chicken breast' })], items);
 
     expect(acceptedByDefault(matches, items, null, [])).toEqual([]);
+  });
+
+  it('never checks a likely match onto a row nobody ticked either', () => {
+    const items = [makeItem({ name: 'Chicken' })];
+    const matches = matchReceiptLines([line({ name: 'chicken breast' })], items);
+
+    expect(matches[0].confidence).toBe('likely');
+    expect(acceptedByDefault(matches, items, null, [])).toEqual([]);
+  });
+
+  it('checks a likely match onto a row already in the trolley', () => {
+    const items = [makeItem({ name: 'Chicken', checked: true })];
+    const matches = matchReceiptLines([line({ name: 'chicken breast' })], items);
+
+    expect(matches[0].confidence).toBe('likely');
+    expect(acceptedByDefault(matches, items, null, [])).toEqual([items[0].id]);
   });
 
   it('re-decides when the named store changes', () => {

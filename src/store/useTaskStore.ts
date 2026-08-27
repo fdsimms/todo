@@ -37,7 +37,9 @@ import { useFocusStore } from './useFocusStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
+import { listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from './useGroceryStore';
+import { useEventReminderStore } from './useEventReminderStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
 import { useLeftoverStore } from './useLeftoverStore';
@@ -167,6 +169,9 @@ import {
 } from '../utils/calendarSync';
 import { timeBlockFieldsFor, timeBlockUpdateFor } from '../utils/timeBlock';
 import { useCalendarStore } from './useCalendarStore';
+import { useWeatherStore } from './useWeatherStore';
+import { classifyWeather } from '../utils/weatherCondition';
+import { weatherSourceId, parseWeatherSourceId, ruleMatchesToday } from '../utils/weatherTasks';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
 
@@ -602,6 +607,13 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
     case 'mealPlanNudge':
       return;
     case 'calendarReview':
+      return;
+    case 'weather':
+      // Nothing to write — the source is a rule living in settings, not a
+      // row. The idempotency mark (WeatherRule.lastFiredDayKey) is what
+      // stops a swiped-away task coming straight back, and checkWeatherTasks
+      // writes it unconditionally, the same order calendarReview's own mark
+      // is written in.
       return;
     case 'pantryReview':
       return;
@@ -1531,6 +1543,7 @@ interface TaskStore {
    * actually has something on it. See src/utils/calendarReviewTasks.ts.
    */
   checkCalendarReviewTasks: () => void;
+  checkWeatherTasks: () => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook, streak left exactly as it was.
@@ -1766,6 +1779,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // What's in the fridge — pointed at by the plan the same way recipes are,
     // and on the same swap-the-database hazard.
     useLeftoverStore.getState().initialize();
+    // Read from the settings table the same way, and on the same
+    // swap-the-database hazard: a reminder set in one database (real or
+    // demo) is meaningless once the file underneath has changed.
+    useEventReminderStore.getState().initialize();
     const tasks = dbGetAllTasks();
     backfillRecurrenceAnchors(tasks);
     const tagRegistry = dbGetTagRegistry();
@@ -1777,7 +1794,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     set({ tasks, tagRegistry, initialized: true });
     const { tripShopId, tripStartedAt, shops } = useGroceryStore.getState();
-    rescheduleAllReminders(tasks, { shopId: tripShopId, startedAt: tripStartedAt, shops });
+    const eventReminders = Object.values(useEventReminderStore.getState().remindersByKey);
+    rescheduleAllReminders(tasks, { shopId: tripShopId, startedAt: tripStartedAt, shops }, eventReminders);
     // Deliberately after the set() above, not inside useLeftoverStore's own
     // initialize(): reconciling reads useTaskStore.getState().tasks to find
     // each leftover's live task, and at the point leftovers load (just above)
@@ -4596,7 +4614,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!settings.kitchenEnabled) return;
 
     const tasks = get().tasks;
-    const items = useGroceryStore.getState().items;
+    const { items, listEntries } = useGroceryStore.getState();
+    // Every trolley, not just the one at home: a row already on the Airbnb list
+    // is shopping you are on your way to do, so asking whether you still have it
+    // is asking the wrong question. See pantryCheckLapse.
+    const listed = listedAnywhere(listEntries);
     // One `now` for both passes: the qualifier is a day-count comparison, and
     // two clocks a few milliseconds apart could in principle have the create
     // pass disagree with the drop pass about a lapse landing exactly on the
@@ -4616,7 +4638,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp pantryCheckDeclinedAt on an item the user never turned down, and so
     // suppress the question after the *next* purchase on the strength of the
     // app's own tidying up.
-    const stale = stalePantryCheckTasks(tasks, items, now);
+    const stale = stalePantryCheckTasks(tasks, items, now, listed);
     stale.forEach(task => dropGeneratedTask('pantryCheck', pantryCheckItemId(task)));
 
     // One review row already asks about the whole cupboard, so the drip stands
@@ -4628,7 +4650,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // its item's lapse null, which is exactly what that pass tests.
     if (liveGeneratedTasksOfKind(tasks, 'pantryReview').length > 0) return;
 
-    const wanted = wantedPantryChecks(items, tasks, now);
+    const wanted = wantedPantryChecks(items, tasks, now, undefined, listed);
     if (wanted.length === 0) return;
 
     ensureGeneratedTaskCategory('pantryCheck');
@@ -5028,6 +5050,76 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }),
     });
     // No setLastAction, same reasoning as checkMealPlanNudge above.
+  },
+
+  /**
+   * The fourteenth generator, and the first whose "source" is a rule the
+   * user wrote rather than a row or a square on the calendar alone — see
+   * `src/utils/weatherTasks.ts`. Structurally it's `checkCalendarReviewTasks`
+   * run once per rule instead of once per day: same clear-before-decide
+   * ordering, same "mark the day considered before deciding" idempotency, and
+   * the same refusal to ever pass `wanted: false` into `reconcileGeneratedTask`
+   * (the clear pass above already handles "not wanted").
+   */
+  checkWeatherTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.weatherTasks) return;
+    // Same refusal checkCalendarReviewTasks makes: a task this generator
+    // wrote would persist in the demo database as a fact about the real
+    // weather, long after the demo session that invented it ends.
+    if (isDemoModeActive()) return;
+    if (!settings.weatherTaskCategory) return;
+
+    const weather = useWeatherStore.getState();
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    // Not the same as `snapshot` being unset — a reading from a previous
+    // logical day must not be read as an answer for today (see
+    // WeatherState.snapshotDayKey). useWeatherSync is what keeps this
+    // current; this only ever reads whatever it already fetched.
+    if (!weather.snapshot || weather.snapshotDayKey !== todayKey) return;
+
+    const tasks = get().tasks;
+    const activeRuleIds = new Set(settings.weatherRules.map(r => r.id));
+    // Clear a task whose rule has since been deleted, or whose day has
+    // rolled over, before deciding today's — same ordering
+    // checkCalendarReviewTasks and checkProjectReviewTasks use.
+    liveGeneratedTasksOfKind(tasks, 'weather')
+      .filter(task => {
+        const parsed = parseWeatherSourceId(task.generatedSourceId);
+        return !parsed || parsed.dayKey !== todayKey || !activeRuleIds.has(parsed.ruleId);
+      })
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    const conditions = classifyWeather(weather.snapshot.weatherCode, weather.snapshot.tempF);
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    // Each rule carries its own idempotency mark rather than one shared day
+    // key, since — unlike calendarReview, which asks exactly one question a
+    // day — several rules can each be considered and answered independently.
+    let rulesChanged = false;
+    const nextRules = settings.weatherRules.map(rule => {
+      if (rule.lastFiredDayKey === todayKey) return rule;
+      rulesChanged = true;
+      if (ruleMatchesToday(rule, conditions)) {
+        const sourceId = weatherSourceId(todayKey, rule.id);
+        reconcileGeneratedTask({
+          kind: 'weather',
+          sourceId,
+          wanted: true,
+          // The title is the rule's own and never varies mid-day.
+          drift: () => null,
+          draft: () => ({
+            title: rule.title,
+            dueDate: dueDate.toISOString(),
+            category: settings.weatherTaskCategory,
+            ...generatedBy('weather', sourceId),
+          }),
+        });
+      }
+      return { ...rule, lastFiredDayKey: todayKey };
+    });
+    if (rulesChanged) settings.setWeatherRules(nextRules);
   },
 
   skipNextRecurrence(id) {

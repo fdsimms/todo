@@ -45,6 +45,7 @@ import { SubstituteSheet } from '../components/SubstituteSheet';
 import { GroceryItemSheet } from '../components/GroceryItemSheet';
 import { GroceryAislesSheet } from '../components/GroceryAislesSheet';
 import { FinishShoppingSheet } from '../components/FinishShoppingSheet';
+import { GroceryListSheet } from '../components/GroceryListSheet';
 import { ReceiptImportSheet, type ReceiptAddDraft } from '../components/ReceiptImportSheet';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
 import type { ScannedGtinLink } from '../utils/scanResolve';
@@ -86,6 +87,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { KNOWN_LINK_APPS } from '../constants/linkApps';
 import type { GroceryItem, ItemProduct, Recipe, Shop } from '../types';
 import { preferredProductOf } from '../utils/groceryProduct';
+import { itemsOnList, listNameFor, isAwayList, HOME_LIST_NAME } from '../utils/groceryLists';
 
 // The same scheme a recurring "Grocery run" task already carries in its
 // linkUrl — looked up by name rather than duplicated as a literal, so the two
@@ -144,6 +146,34 @@ export function GroceryScreen() {
   const route = useRoute<any>();
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const lists = useGroceryStore(useShallow(s => s.lists));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
+  const activeListId = useGroceryStore(s => s.activeListId);
+  /**
+   * The trolley this screen is showing — the rows of the active list, and only
+   * those. `items` beside it stays the whole catalog, which is what the sheets
+   * this screen opens want (an item sheet, the catalog browser, the add field's
+   * autocomplete all reason about every row you have ever bought, whatever list
+   * it is or isn't on today).
+   *
+   * Everything below that means "the list" reads this instead. That split is
+   * the one thing to keep right when adding to this screen: a count, a section,
+   * a share, an estimate and a bulk action are all about the trolley in front
+   * of you, and reading `items` for one of them is how the milk you need at
+   * home turns up on the Airbnb list.
+   */
+  const listRows = useMemo(
+    () => itemsOnList(items, listEntries, activeListId),
+    [items, listEntries, activeListId]
+  );
+  const activeListName = useMemo(() => listNameFor(activeListId, lists), [activeListId, lists]);
+  /**
+   * Whether this is a list you're away from home for. Everything it changes on
+   * this screen is about *not recording* the shop — see `GroceryList`. The
+   * store enforces that in `finishShopping`; what the screen owes is saying so,
+   * and not asking questions whose answers would be thrown away.
+   */
+  const away = isAwayList(activeListId);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const groupBy = useGroceryStore(s => s.groceryGroupBy);
   const cartHoldIds = useGroceryStore(useShallow(s => s.cartHoldIds));
@@ -179,6 +209,7 @@ export function GroceryScreen() {
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [aislesOpen, setAislesOpen] = useState(false);
   const [finishOpen, setFinishOpen] = useState(false);
+  const [listSheetOpen, setListSheetOpen] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   // The scan sheet's per-row freezer toggle, held here rather than written
@@ -226,8 +257,8 @@ export function GroceryScreen() {
   // screen's either/or ingredients: it's the same rule, and writing it twice is
   // how the two would drift.
   const alternativeCaptionById = useMemo(
-    () => alternativeCaptions(items.filter(i => i.onList && i.choiceGroup)),
-    [items]
+    () => alternativeCaptions(listRows.filter(i => i.choiceGroup)),
+    [listRows]
   );
   // "For “Change the water filter”", per row — which task's supply keeps this
   // one stocked. Only the screen can reach the task list, the same reason the
@@ -244,13 +275,12 @@ export function GroceryScreen() {
   );
   const stockedForById = useMemo(() => {
     const out = new Map<string, string>();
-    for (const item of items) {
-      if (!item.onList) continue;
+    for (const item of listRows) {
       const caption = describeSupplyStockCaption(suppliesStockedFrom(item.id, supplyTasks));
       if (caption) out.set(item.id, caption);
     }
     return out;
-  }, [items, supplyTasks]);
+  }, [listRows, supplyTasks]);
   const openRecipe = useCallback(
     (recipeId: string) => {
       haptics.tap();
@@ -282,12 +312,12 @@ export function GroceryScreen() {
   // ==== the list: items grouped into aisle sections ====
   const grouped = useMemo(() => {
     if (groupBy === 'recipe') {
-      const r = buildGroceryRecipeSections(items, cartHoldIds);
+      const r = buildGroceryRecipeSections(listRows, cartHoldIds);
       return { kind: 'recipe' as const, sections: r.sections, inCart: r.inCart, remaining: r.remaining };
     }
-    const r = buildGrocerySections(items, aisleOrder, cartHoldIds);
+    const r = buildGrocerySections(listRows, aisleOrder, cartHoldIds);
     return { kind: 'aisle' as const, sections: r.sections, inCart: r.inCart, remaining: r.remaining };
-  }, [items, aisleOrder, cartHoldIds, groupBy]);
+  }, [listRows, aisleOrder, cartHoldIds, groupBy]);
   const { inCart, remaining } = grouped;
 
   // The store you're standing in, if you've said. Everything the trip changes
@@ -346,8 +376,9 @@ export function GroceryScreen() {
   const storeMarkers = useMemo(() => {
     const out = new Map<string, { text: string; substituteId?: string; unavailable: boolean }>();
     if (!activeTripShop) return out;
-    for (const item of items) {
-      if (!item.onList) continue;
+    for (const item of listRows) {
+      // The whole catalog is still what a substitute is looked up in — only the
+      // rows being marked up are the list's.
       const marker = tripMarkerFor(item, itemShops, shops, activeTripShop, itemSubs, items, itemProducts);
       if (!marker) continue;
       const unavailable = marker.kind === 'unavailable';
@@ -358,9 +389,9 @@ export function GroceryScreen() {
       });
     }
     return out;
-  }, [activeTripShop, items, itemShops, shops, itemSubs, itemProducts]);
+  }, [activeTripShop, listRows, items, itemShops, shops, itemSubs, itemProducts]);
 
-  const checkedCount = useMemo(() => items.filter(i => i.onList && i.checked).length, [items]);
+  const checkedCount = useMemo(() => listRows.filter(i => i.checked).length, [listRows]);
 
   /**
    * "Finish the shop" asked for from somewhere that hasn't got the sheet — the
@@ -386,10 +417,10 @@ export function GroceryScreen() {
   }, [openFinishStamp, handledFinishStamp, checkedCount]);
   // Empty for nothing left to buy, which is what the header action's disabled
   // state gates on — see buildGroceryListShareText.
-  const shareText = useMemo(() => buildGroceryListShareText(items), [items]);
+  const shareText = useMemo(() => buildGroceryListShareText(listRows), [listRows]);
   // The same rows without the title line or the bullets, for pasting into
   // another shopping app rather than sending to a person — see shareText.ts.
-  const copyText = useMemo(() => buildGroceryListText(items), [items]);
+  const copyText = useMemo(() => buildGroceryListText(listRows), [listRows]);
   const { copied, copy } = useCopyToClipboard();
   // ==== actions: share, estimate, bulk selection, adding ====
   const handleShare = useCallback(() => {
@@ -423,15 +454,15 @@ export function GroceryScreen() {
   // describeListEstimate owns the wording, including the rule that a partial
   // total may never be rendered without saying how partial it is.
   const estimate = useMemo(
-    () => describeListEstimate(estimateListTotal(items), currencySymbol),
-    [items, currencySymbol]
+    () => describeListEstimate(estimateListTotal(listRows), currencySymbol),
+    [listRows, currencySymbol]
   );
   const listCount = remaining + checkedCount;
   const catalogCount = items.length;
   // Only worth offering when the lexicon actually left a gap.
   const unsortedCount = useMemo(
-    () => items.filter(i => i.onList && i.aisle === OTHER_AISLE).length,
-    [items]
+    () => listRows.filter(i => i.aisle === OTHER_AISLE).length,
+    [listRows]
   );
 
   const rows = useMemo<ListRow[]>(() => {
@@ -1138,7 +1169,13 @@ export function GroceryScreen() {
   const startCard =
     selectionMode || activeTripShop || featureHidden('shoppingTrips', simpleMode) ? null : (
       <StartTripPrompt
-        suggestable={suggestableShops}
+        // No stores offered on an away list, which leaves the card as the
+        // Finish button alone — the shape it already takes for anyone with no
+        // stores on file. Every store you have on record is one near home, so
+        // "Start shopping at Safeway" in a rental kitchen names the wrong
+        // building, and a trip's whole output (which store stocks what, and the
+        // row captions saying so) is a record an away trip doesn't keep.
+        suggestable={away ? [] : suggestableShops}
         onOpenSheet={() => setTripOpen(true)}
         checkedCount={checkedCount}
         onFinish={() => setFinishOpen(true)}
@@ -1149,7 +1186,26 @@ export function GroceryScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader
-        title="Groceries"
+        // The title *is* the list you're looking at, which is why it opens the
+        // picker rather than a header icon doing it: with one list it reads
+        // exactly as it always did ("Groceries"), and with two it is the one
+        // place on screen that answers "which list am I adding to".
+        title={activeListName}
+        onTitlePress={() => { haptics.tap(); setListSheetOpen(true); }}
+        titleAccessibilityLabel={`${activeListName}. Switch shopping list`}
+        // The mode label goes in the overline rather than the subtitle, and
+        // that placement is load-bearing rather than taste: the subtitle is one
+        // reserved line, and "Away list. Purchases aren't recorded." wraps to
+        // two at 390pt — which makes the header a line taller on an away list
+        // than at home and shunts the hub pills down with it, the exact
+        // inconsistency ScreenHeader reserves both lines to prevent. The
+        // overline is already reserved and unused here, so this costs no
+        // height at all, and it keeps the counts on their own line.
+        //
+        // What being on one *means* is said where there's room to say it: the
+        // switcher's hint, and the finish sheet's intro at the moment it
+        // actually matters.
+        overline={away ? 'Away list' : undefined}
         subtitle={
           listCount > 0
             ? [
@@ -1351,11 +1407,14 @@ export function GroceryScreen() {
       />
       <GroceryCatalogSheet visible={catalogOpen} onClose={() => setCatalogOpen(false)} />
       <GroceryAislesSheet visible={aislesOpen} onClose={() => setAislesOpen(false)} />
+      <GroceryListSheet visible={listSheetOpen} onClose={() => setListSheetOpen(false)} />
+
       <FinishShoppingSheet
         visible={finishOpen}
         checkedCount={checkedCount}
         leftover={leftover}
         purchased={purchased}
+        away={away}
         seedShopId={receiptSeed?.shopId}
         seedPriceText={receiptSeed?.priceText}
         seedPurchasedAt={receiptSeed?.purchasedAt}

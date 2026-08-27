@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Modal, View, Text, ScrollView, StyleSheet, Linking } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { BusyEvent } from '../utils/calendarBusy';
@@ -9,6 +9,17 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, iconSize, type Colors } from '../theme';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { PressableScale } from './PressableScale';
+import { SegmentedControl } from './SegmentedControl';
+import { useEventReminderStore } from '../store/useEventReminderStore';
+import {
+  EVENT_REMINDER_OFFSETS,
+  describeEventReminderOffset,
+  eventReminderKey,
+} from '../utils/eventReminders';
+import { animateLayout } from '../utils/layoutAnimation';
+
+/** `null` is the "no reminder" segment — distinct from 0, which is a real offset (at start time). */
+type OffsetChoice = number | null;
 
 interface Props {
   visible: boolean;
@@ -33,13 +44,29 @@ interface Props {
  * `CategoryOrderSheet` — a header and rows, nothing else on screen — because
  * that's all the question "what else is on today" needs answered. Each row
  * shows the time (or "All day"), the title, and location when EventKit has
- * one; nothing here is editable, since this whole feature is read-only (see
- * `calendarSync.ts`). A location gets a directions button — opening the
- * system Maps app isn't a write to the event, so it doesn't break that rule.
+ * one. The event itself is still read-only (see `calendarSync.ts`); a
+ * location gets a directions button (opening the system Maps app isn't a
+ * write to the event, so it doesn't break that rule), and the bell lets a
+ * row carry a lightweight local reminder — see `src/utils/eventReminders.ts`
+ * for why that's a small standalone mechanism rather than a `Task`.
+ *
+ * **All-day events don't get the bell.** "N minutes before start" means
+ * "before local midnight" for an all-day event, which isn't a useful
+ * reminder for anything the way it's used here (a birthday, a holiday) —
+ * the offsets this picker offers only make sense for a timed event.
  */
 export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const remindersByKey = useEventReminderStore(s => s.remindersByKey);
+  const setReminder = useEventReminderStore(s => s.setReminder);
+  const clearReminder = useEventReminderStore(s => s.clearReminder);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  const toggleExpanded = (key: string) => {
+    animateLayout();
+    setExpandedKey(current => (current === key ? null : key));
+  };
 
   // Same no-canOpenURL, silently-ignore-failure pattern as TaskItem's
   // link/call/text/email buttons — see maps.ts for why https: needs no check.
@@ -66,40 +93,84 @@ export function TodayEventsSheet({ visible, onClose, events, calendarsById }: Pr
         <ScrollView contentContainerStyle={styles.list}>
           {events.map(event => {
             const calendar = calendarsById?.[event.calendarId];
+            const key = eventReminderKey(event);
+            const reminder = remindersByKey[key];
+            const expanded = expandedKey === key;
             return (
-              <View key={event.id} style={styles.row}>
-                <View style={styles.rowIcon}>
-                  <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
-                </View>
-                <View style={styles.rowInfo}>
-                  <Text style={styles.rowTitle} numberOfLines={2}>{event.title || 'Event'}</Text>
-                  <View style={styles.rowMetaRow}>
-                    <Text style={styles.rowTime}>
-                      {event.allDay
-                        ? 'All day'
-                        : `${formatTimeOfDay(new Date(event.start))} – ${formatTimeOfDay(new Date(event.end))}`}
-                    </Text>
-                    {/* Which calendar, when it's worth saying — see Props.calendarsById. */}
-                    {calendar && (
-                      <View style={styles.rowCalendarTag}>
-                        <View style={[styles.calendarDot, { backgroundColor: calendar.color }]} />
-                        <Text style={styles.rowTime} numberOfLines={1}>{calendar.title}</Text>
+              <View key={key}>
+                <View style={styles.row}>
+                  <View style={styles.rowIcon}>
+                    <Ionicons name="calendar-outline" size={iconSize.sm} color={colors.accent} />
+                  </View>
+                  <View style={styles.rowInfo}>
+                    <Text style={styles.rowTitle} numberOfLines={2}>{event.title || 'Event'}</Text>
+                    <View style={styles.rowMetaRow}>
+                      <Text style={styles.rowTime}>
+                        {event.allDay
+                          ? 'All day'
+                          : `${formatTimeOfDay(new Date(event.start))} – ${formatTimeOfDay(new Date(event.end))}`}
+                      </Text>
+                      {/* Which calendar, when it's worth saying — see Props.calendarsById. */}
+                      {calendar && (
+                        <View style={styles.rowCalendarTag}>
+                          <View style={[styles.calendarDot, { backgroundColor: calendar.color }]} />
+                          <Text style={styles.rowTime} numberOfLines={1}>{calendar.title}</Text>
+                        </View>
+                      )}
+                    </View>
+                    {!!event.location && (
+                      <View style={styles.locationRow}>
+                        <Text style={styles.rowLocation} numberOfLines={1}>{event.location}</Text>
+                        <PressableScale
+                          onPress={() => openDirections(event.location!)}
+                          hitSlop={8}
+                          accessibilityLabel={`Get directions to ${event.location}`}
+                        >
+                          <Ionicons name="navigate-outline" size={iconSize.sm} color={colors.accent} />
+                        </PressableScale>
                       </View>
                     )}
                   </View>
-                  {!!event.location && (
-                    <View style={styles.locationRow}>
-                      <Text style={styles.rowLocation} numberOfLines={1}>{event.location}</Text>
-                      <PressableScale
-                        onPress={() => openDirections(event.location!)}
-                        hitSlop={8}
-                        accessibilityLabel={`Get directions to ${event.location}`}
-                      >
-                        <Ionicons name="navigate-outline" size={iconSize.sm} color={colors.accent} />
-                      </PressableScale>
-                    </View>
+                  {!event.allDay && (
+                    <PressableScale
+                      style={styles.bellButton}
+                      onPress={() => toggleExpanded(key)}
+                      haptic
+                      accessibilityLabel={
+                        reminder
+                          ? `Reminder set, ${describeEventReminderOffset(reminder.offsetMinutes).toLowerCase()}. Tap to change.`
+                          : `Set a reminder for ${event.title || 'this event'}`
+                      }
+                    >
+                      <Ionicons
+                        name={reminder ? 'notifications' : 'notifications-outline'}
+                        size={iconSize.sm}
+                        color={reminder ? colors.accent : colors.textTertiary}
+                      />
+                    </PressableScale>
                   )}
                 </View>
+
+                {expanded && (
+                  <View style={styles.reminderPanel}>
+                    <SegmentedControl<OffsetChoice>
+                      label="Reminder"
+                      columns={3}
+                      value={reminder ? reminder.offsetMinutes : null}
+                      onChange={value => {
+                        if (value === null) clearReminder(event);
+                        else setReminder(event, value);
+                      }}
+                      options={[
+                        { value: null, label: 'Off' },
+                        ...EVENT_REMINDER_OFFSETS.map(minutes => ({
+                          value: minutes,
+                          label: minutes === 0 ? 'At start' : describeEventReminderOffset(minutes).replace(' before', ''),
+                        })),
+                      ]}
+                    />
+                  </View>
+                )}
               </View>
             );
           })}
@@ -151,4 +222,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   calendarDot: { width: 6, height: 6, borderRadius: radius.full },
   locationRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   rowLocation: { flexShrink: 1, color: colors.textTertiary, fontSize: font.xs },
+  bellButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reminderPanel: {
+    marginHorizontal: spacing.md,
+    marginTop: -2,
+    marginBottom: spacing.sm,
+    backgroundColor: colors.bgSecondary,
+    borderBottomLeftRadius: radius.md,
+    borderBottomRightRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm + 2,
+    paddingTop: spacing.xs,
+  },
 });

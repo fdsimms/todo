@@ -282,7 +282,18 @@ export function kitchenInventory(
    * this had before boxes could carry pantry state, one row per item, which is
    * also what every item with nothing said about its packets still gets.
    */
-  products: readonly ItemProduct[] = []
+  products: readonly ItemProduct[] = [],
+  /**
+   * The ids in *any* trolley (`listedAnywhere` in `groceryLists.ts`), for the
+   * row's "on the list" clause.
+   *
+   * The broad reading rather than `item.onList`, which since separate lists
+   * answers for the home list alone (see `GroceryItem.onList`): a row is on a
+   * list, and a pantry row saying so has no business caring which. Empty — the
+   * default — falls back to the item's own flag, which is what every caller did
+   * before lists existed.
+   */
+  listed: ReadonlySet<string> | null = null
 ): KitchenEntry[] {
   const entries: KitchenEntry[] = [];
 
@@ -372,7 +383,7 @@ export function kitchenInventory(
       reason: fullReason,
       useByCaption,
       caption: captionParts.join(' · '),
-      onList: item.onList,
+      onList: listed ? listed.has(item.id) : item.onList,
       matchKey: item.nameKey,
     });
   }

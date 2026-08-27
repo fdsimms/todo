@@ -461,7 +461,22 @@ export function classifyPlanned(
    * is nothing to say, which is also every caller's behaviour before this
    * existed.
    */
-  itemSubs: readonly ItemSubLink[] = []
+  itemSubs: readonly ItemSubLink[] = [],
+  /**
+   * The trolley "already on the list" is about — the one being added to, as
+   * `itemId → checked` (`trolleyStateFor` in `groceryLists.ts`).
+   *
+   * It has to be scoped or the classification is wrong in the direction that
+   * silently drops shopping: a row sitting on your list at home would come back
+   * as `alreadyOnList` while planning meals for a rental, and the sheet would
+   * leave it unticked on the assumption you were already buying it.
+   *
+   * Null falls back to the row's own `onList`/`checked`, which answer for the
+   * home list (see `GroceryItem.onList`) — what every caller meant before
+   * separate lists, and what the readers that aren't adding to a list (a cook's
+   * recap, a pantry-readiness percentage) still mean.
+   */
+  inTrolley: ReadonlyMap<string, boolean> | null = null
 ): ClassifiedIngredient[] {
   const byKey = new Map<string, GroceryItem>();
   for (const item of items) byKey.set(item.nameKey, item);
@@ -484,11 +499,18 @@ export function classifyPlanned(
   // onion". Only when the line's own key has nothing to say (no row on the
   // list, no staple, no pantry opinion) and a variety answers — an exact match
   // always wins outright, and a family nobody has anything of changes nothing.
+  //
+  // Both halves read the trolley the same way the classification below does.
+  // Reading `onList` bare here would consult the *home* list while the rows are
+  // being classified against a rental's, so a generic line whose own row sits
+  // on the home list would refuse to re-file and then classify as needToBuy —
+  // the "silently drops shopping" direction `inTrolley` exists to close.
   if (varieties.size > 0) {
     for (const [key, group] of [...groups]) {
       const match = byKey.get(key);
-      if (match && (match.onList || match.isStaple || probablyHaveReason(match, now) !== null)) continue;
-      const covering = coveringVariety(varieties.get(key), now);
+      const matchListed = match ? (inTrolley ? inTrolley.has(match.id) : match.onList) : false;
+      if (match && (matchListed || match.isStaple || probablyHaveReason(match, now) !== null)) continue;
+      const covering = coveringVariety(varieties.get(key), now, inTrolley);
       if (!covering) continue;
       groups.delete(key);
       const refiled = group.map(g => ({ ...g, swappedFrom: g.swappedFrom ?? g.name }));
@@ -514,8 +536,9 @@ export function classifyPlanned(
 
     let category: PlanCategory;
     let reason: string | null = null;
-    if (match?.onList) {
-      category = match.checked ? 'inCart' : 'alreadyOnList';
+    const listedHere = match ? (inTrolley ? inTrolley.has(match.id) : match.onList) : false;
+    if (match && listedHere) {
+      category = (inTrolley ? inTrolley.get(match.id) : match.checked) ? 'inCart' : 'alreadyOnList';
     } else if (match?.isStaple) {
       category = 'staple';
     } else if (match && (reason = probablyHaveReason(match, now))) {

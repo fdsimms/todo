@@ -22,6 +22,7 @@ import {
   interaction,
   type Colors,
 } from '../theme';
+import { listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -152,6 +153,7 @@ export function KitchenScreen() {
   const setFrozen = useGroceryStore(s => s.setFrozen);
   const setAisle = useGroceryStore(s => s.setAisle);
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const markProductsOutOf = useGroceryStore(s => s.markProductsOutOf);
   const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -200,8 +202,10 @@ export function KitchenScreen() {
   const now = useMemo(() => new Date(nowMs), [nowMs]);
 
   const entries = useMemo(
-    () => kitchenInventory(items, leftovers, now, itemProducts),
-    [items, leftovers, now, itemProducts]
+    // Every trolley for the "on the list" clause: a pantry row saying so has
+    // no business caring which list. See kitchenInventory.
+    () => kitchenInventory(items, leftovers, now, itemProducts, listedAnywhere(listEntries)),
+    [items, leftovers, now, itemProducts, listEntries]
   );
   const sections = useMemo(
     () => buildKitchenSections(entries, aisleOrder, query),

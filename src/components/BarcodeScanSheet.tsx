@@ -48,6 +48,7 @@ import {
 import { generateId } from '../utils/id';
 import { haptics } from '../utils/haptics';
 import { GROCERY_NAME_MAX_LENGTH } from '../types';
+import type { ReceiptMatchConfidence } from '../utils/receiptMatch';
 
 /** Matches the shopping list's own checkbox, same as the receipt sheet's. */
 const CHECK_SIZE = 22;
@@ -89,6 +90,14 @@ interface ScanRow extends ScannedItem {
    * of the sheet — see `Props.onApply`'s note on when it's actually written.
    */
   frozen: boolean;
+  /**
+   * The catalog row the user tapped "Confirm" on, for a match this session
+   * only *guessed* at. Null until tapped, and compared against the match's own
+   * id rather than treated as a bare yes/no — see `confidentItemId` — so
+   * editing the name away from what was confirmed asks again rather than
+   * carrying a stale yes onto a different row.
+   */
+  confirmedMatchId: string | null;
 }
 
 interface Props {
@@ -245,6 +254,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           pending: true,
           error: null,
           frozen: false,
+          confirmedMatchId: null,
         },
       ]);
       try {
@@ -310,6 +320,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           pending: false,
           error: null,
           frozen: false,
+          confirmedMatchId: null,
         },
       ]);
     } else {
@@ -327,6 +338,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           pending: false,
           error: null,
           frozen: false,
+          confirmedMatchId: null,
         },
       ]);
     }
@@ -360,11 +372,38 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
    * this scan is that row. `acceptedByDefault` already refuses to pre-check
    * one for a receipt; a scan gets no separate confirmation step at all, so
    * it must refuse even harder and treat a weak read as no match.
+   *
+   * A `'likely'` match is a real word in common and nothing more — a guess,
+   * not the app being told. The receipt sheet's checkbox already asks the
+   * user to confirm one of these before it's counted; a scan has no separate
+   * checkbox for "is this the right row", so the row's own `confirmedMatchId`
+   * stands in for it — see the confirm pill in the row's caption.
    */
-  const confidentItemId = (match: ReceiptMatch | undefined): string | null =>
-    match?.itemId && match.confidence !== 'weak' ? match.itemId : null;
-  const confidentOffListMatchId = (match: ReceiptMatch | undefined): string | null =>
-    match?.offListMatchId && match.offListConfidence !== 'weak' ? match.offListMatchId : null;
+  const needsConfirm = (confidence: ReceiptMatchConfidence | null): boolean =>
+    confidence === 'likely';
+
+  const confidentItemId = (row: ScanRow, match: ReceiptMatch | undefined): string | null => {
+    if (!match?.itemId || match.confidence === 'weak') return null;
+    if (needsConfirm(match.confidence) && row.confirmedMatchId !== match.itemId) return null;
+    return match.itemId;
+  };
+  const confidentOffListMatchId = (row: ScanRow, match: ReceiptMatch | undefined): string | null => {
+    if (!match?.offListMatchId || match.offListConfidence === 'weak') return null;
+    if (needsConfirm(match.offListConfidence) && row.confirmedMatchId !== match.offListMatchId) {
+      return null;
+    }
+    return match.offListMatchId;
+  };
+  /** The item a `'likely'` match is offering, while the row hasn't confirmed it yet. */
+  const pendingMatchId = (row: ScanRow, match: ReceiptMatch | undefined): string | null => {
+    const candidate =
+      match?.itemId && needsConfirm(match.confidence)
+        ? match.itemId
+        : !match?.itemId && match?.offListMatchId && needsConfirm(match.offListConfidence)
+          ? match.offListMatchId
+          : null;
+    return candidate && candidate !== row.confirmedMatchId ? candidate : null;
+  };
 
   const handleApply = useCallback(() => {
     const itemIds: string[] = [];
@@ -421,7 +460,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
     rows.forEach((row, index) => {
       if (!row.included || !row.name.trim()) return;
       const match = matches[index];
-      const itemId = confidentItemId(match);
+      const itemId = confidentItemId(row, match);
       if (itemId) {
         itemIds.push(itemId);
         if (row.frozen) frozenItemIds.add(itemId);
@@ -429,7 +468,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         recordGtinLink(itemId, row);
         return;
       }
-      const offListId = confidentOffListMatchId(match);
+      const offListId = confidentOffListMatchId(row, match);
       if (offListId) {
         recordProduct(offListId, row);
         recordGtinLink(offListId, row);
@@ -455,12 +494,12 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
     });
     // Only rows whose label came off a lookup are worth remembering. A typed
     // row's "label" is the name the user just wrote, so an alias from it would
-    // map a phrase to itself and teach nothing. A weak match is excluded for
-    // the same reason `confidentItemId` is: it's a coincidence, not a
-    // confirmed reading worth teaching the alias table.
+    // map a phrase to itself and teach nothing. A weak or unconfirmed likely
+    // match is excluded for the same reason `confidentItemId` is: it's a
+    // guess, not a confirmed reading worth teaching the alias table.
     rememberAliases([
       ...rows
-        .map((row, index) => ({ row, itemId: confidentItemId(matches[index]) }))
+        .map((row, index) => ({ row, itemId: confidentItemId(row, matches[index]) }))
         .filter(({ row, itemId }) => row.included && !!row.label && !!itemId)
         .map(({ row, itemId }) => ({
           shopId: null,
@@ -480,7 +519,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
     if (row.error) return row.error;
     if (!row.name.trim()) return 'Not found. Type what it is.';
     const match = matches[index];
-    const itemId = confidentItemId(match);
+    const itemId = confidentItemId(row, match);
     if (itemId) {
       const item = items.find(i => i.id === itemId);
       if (!item) return null;
@@ -501,11 +540,16 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         ? `On your list as ${item.name}, as you matched it before`
         : `On your list as ${item.name}`;
     }
-    const offListMatchId = confidentOffListMatchId(match);
+    const offListMatchId = confidentOffListMatchId(row, match);
     if (offListMatchId) {
       const item = items.find(i => i.id === offListMatchId);
       if (!item) return null;
       return context === 'pantry' ? `Matches “${item.name}”` : `Back on the list as ${item.name}`;
+    }
+    const pendingId = pendingMatchId(row, match);
+    if (pendingId) {
+      const item = items.find(i => i.id === pendingId);
+      if (item) return `Might match “${item.name}”`;
     }
     return 'New item';
   };
@@ -592,7 +636,9 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           ) : (
             <View style={styles.card}>
               {rows.map((row, index) => {
+                const match = matches[index];
                 const caption = captionFor(row, index);
+                const pendingId = pendingMatchId(row, match);
                 const nameable = !row.pending;
                 return (
                   <View key={row.key} style={[styles.row, index > 0 && styles.rowDivided]}>
@@ -640,7 +686,21 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                         <Text style={styles.rowLabel}>{sourceLabelFor(row.label, row.brand)}</Text>
                       )}
                       {!!caption && (
-                        <Text style={row.error ? styles.rowError : styles.rowCaption}>{caption}</Text>
+                        <View style={styles.captionRow}>
+                          <Text style={row.error ? styles.rowError : styles.rowCaption}>
+                            {caption}
+                          </Text>
+                          {!!pendingId && (
+                            <InlineAction
+                              label="Confirm"
+                              icon="checkmark-circle-outline"
+                              variant="neutral"
+                              onPress={() => patchRow(row.key, { confirmedMatchId: pendingId })}
+                              accessibilityLabel={`Confirm: ${caption}`}
+                              style={styles.confirmPill}
+                            />
+                          )}
+                        </View>
                       )}
                       {/* Only when the label isn't there to identify the row.
                           Once a product name is showing, the digits are a
@@ -800,8 +860,13 @@ function makeStyles(colors: Colors) {
     // compensation, which drops the glyphs below the caret. See CLAUDE.md.
     rowInput: { color: colors.text, fontSize: font.md, paddingVertical: 2 },
     rowLabel: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
-    rowCaption: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
-    rowError: { color: colors.orange, fontSize: font.xs, marginTop: 2 },
+    captionRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, marginTop: 2 },
+    rowCaption: { color: colors.textSecondary, fontSize: font.xs },
+    rowError: { color: colors.orange, fontSize: font.xs },
+    // Tighter than `InlineAction`'s own default so a "Confirm" pill sitting
+    // beside a caption reads as part of the line, not a control from a denser
+    // grid of chips.
+    confirmPill: { paddingVertical: 3, minHeight: 0 },
     rowGtin: {
       color: colors.textTertiary,
       fontSize: font.xs,

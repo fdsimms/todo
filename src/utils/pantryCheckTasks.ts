@@ -142,10 +142,23 @@ export function pantryCheckLinkUrl(itemId: string): string {
  * Deliberately *not* gated on the grace window: this is the predicate a live
  * task is judged against as well as a new one. See `stalePantryCheckTasks`.
  */
-export function pantryCheckLapse(item: GroceryItem, now: Date): number | null {
+export function pantryCheckLapse(
+  item: GroceryItem,
+  now: Date,
+  /**
+   * The ids in *any* trolley (`listedAnywhere` in `groceryLists.ts`).
+   *
+   * The broad reading is the right one here: asking "do you still have olive
+   * oil?" about something already on the Airbnb list is asking about shopping
+   * the user is on their way to do. Null falls back to `item.onList`, which
+   * answers for the home list alone (see `GroceryItem.onList`) — the behaviour
+   * this had before lists existed.
+   */
+  listed: ReadonlySet<string> | null = null
+): number | null {
   if (probablyHaveReason(item, now) !== null) return null;
   if (item.onHandUntil === OUT_OF_IT_UNTIL) return null;
-  if (item.onList) return null;
+  if (listed ? listed.has(item.id) : item.onList) return null;
   return pantryGuessLapsedDays(item, now);
 }
 
@@ -226,12 +239,14 @@ export function wantedPantryChecks(
     'generatedKind' | 'generatedSourceId' | 'completed' | 'completedAt' | 'archived' | 'archivedAt'
   >[],
   now: Date,
-  cap: number = MAX_PANTRY_CHECK_TASKS
+  cap: number = MAX_PANTRY_CHECK_TASKS,
+  /** The ids in any trolley — see `pantryCheckLapse`. */
+  listed: ReadonlySet<string> | null = null
 ): PantryCheckWant[] {
   const answers = pantryCheckAnswers(tasks);
   const wants: { item: GroceryItem; lapsedDays: number }[] = [];
   for (const item of items) {
-    const lapsedDays = pantryCheckLapse(item, now);
+    const lapsedDays = pantryCheckLapse(item, now, listed);
     if (lapsedDays === null || lapsedDays > PANTRY_CHECK_GRACE_DAYS) continue;
     if (answeredSincePurchase(item, answers.get(item.id))) continue;
     wants.push({ item, lapsedDays });
@@ -269,11 +284,17 @@ export function wantedPantryChecks(
  */
 export function stalePantryCheckTasks<
   T extends Pick<Task, 'generatedKind' | 'generatedSourceId' | 'completed' | 'archived'>
->(tasks: readonly T[], items: readonly GroceryItem[], now: Date): T[] {
+>(
+  tasks: readonly T[],
+  items: readonly GroceryItem[],
+  now: Date,
+  /** The ids in any trolley — see `pantryCheckLapse`. */
+  listed: ReadonlySet<string> | null = null
+): T[] {
   const byId = new Map(items.map(item => [item.id, item]));
   return liveGeneratedTasksOfKind(tasks, 'pantryCheck').filter(task => {
     const itemId = pantryCheckItemId(task);
     const item = itemId ? byId.get(itemId) : undefined;
-    return !item || pantryCheckLapse(item, now) === null;
+    return !item || pantryCheckLapse(item, now, listed) === null;
   });
 }

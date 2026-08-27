@@ -22,6 +22,7 @@ import { isHeldBack } from '../utils/visibilityUtils';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
+import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
@@ -209,6 +210,13 @@ jest.mock('../utils/deadlineCalendarSync', () => ({
 // AppState directly.
 jest.mock('../store/useCalendarStore', () => ({
   useCalendarStore: { getState: () => ({ events: [], loaded: false }) },
+}));
+// And the same again for the weather store, which also imports AppState
+// directly — checkWeatherTasks reads its snapshot but demo mode seeds its
+// weather task by hand (see demoSeed.ts), so an empty snapshot here is never
+// actually read.
+jest.mock('../store/useWeatherStore', () => ({
+  useWeatherStore: { getState: () => ({ snapshot: null, snapshotDayKey: null, refreshing: false }) },
 }));
 
 // ---------------------------------------------------------------------------
@@ -1246,9 +1254,37 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(byName.get('lemon')?.suggestedName).toBe('Lemons');
   });
 
+  it('seeds a second shopping list, left inactive', () => {
+    const { items, lists, listEntries, activeListId } = useGroceryStore.getState();
+
+    // Invisible until something uses it: with only "Groceries" on file the
+    // switcher is a chevron beside a title that never changes.
+    const airbnb = lists.find(l => l.name === 'Airbnb');
+    expect(airbnb).toBeDefined();
+    expect(listEntries.filter(e => e.listId === airbnb!.id).length).toBeGreaterThan(0);
+
+    // The demo's own shop is at home, so the screen opens there and the away
+    // list is something you find rather than something you land in.
+    expect(activeListId).toBeNull();
+    expect(listEntries.filter(e => e.listId === null).length).toBeGreaterThan(0);
+
+    // And at least one row is in both trolleys at once, which is the thing a
+    // single list_id column could not express and the reason the join table
+    // exists — see GroceryListEntry.
+    const home = new Set(listEntries.filter(e => e.listId === null).map(e => e.itemId));
+    const away = listEntries.filter(e => e.listId === airbnb!.id).map(e => e.itemId);
+    expect(away.some(id => home.has(id))).toBe(true);
+
+    // And the trip survived being seeded around: setActiveList ends one, so
+    // the away list has to be built before startTrip.
+    expect(useGroceryStore.getState().tripShopId).not.toBeNull();
+  });
+
   it('seeds a grocery catalog bigger than the list, with a trip in progress', () => {
-    const { items, itemShops, itemProducts } = useGroceryStore.getState();
-    const onList = items.filter(i => i.onList);
+    const { items, itemShops, itemProducts, listEntries } = useGroceryStore.getState();
+    // The home list — every count below is about the trolley the demo's own
+    // trip is shopping, not about both lists at once.
+    const onList = itemsOnList(items, listEntries, null);
 
     expect(onList.length).toBeGreaterThan(5);
     // Not on the list right now — which is exactly what the catalog reads.
@@ -1607,7 +1643,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {
-    const { shops, itemShops, aisleOrder, hiddenAisles, items } = useGroceryStore.getState();
+    const { shops, itemShops, aisleOrder, hiddenAisles, items, listEntries } = useGroceryStore.getState();
 
     expect(shops.length).toBeGreaterThanOrEqual(3);
     // "It has everything, but don't send me there".
@@ -1630,7 +1666,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // exactly what it reads off summarizeTrip([], plan).suggestion, and a
     // seed that shopped its whole list clean would read as a feature the app
     // hasn't got.
-    const plan = planTrip(items, itemShops, shops);
+    // The home list only, the same scope ShoppingTripSheet plans over: the
+    // demo's away list holds shopping for a kitchen this trip isn't for.
+    const plan = planTrip(itemsOnList(items, listEntries, null), itemShops, shops);
     expect(plan.coverage.length).toBeGreaterThanOrEqual(2);
     const [head, second] = summarizeTrip([], plan).suggestion;
     expect(head?.shop.name).toBe("Trader Joe's");
@@ -2108,6 +2146,29 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(review!.category).toBe('Calendar Events');
     expect(useSettingsStore.getState().calendarEventCategory).toBe('Calendar Events');
     expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+  });
+
+  it('seeds a weather task and the rules alongside it', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const rules = settings.weatherRules;
+    expect(rules.length).toBe(3);
+    const sunscreenRule = rules.find(r => r.condition === 'sunny');
+    expect(sunscreenRule).toBeDefined();
+
+    const weatherTask = tasks.find(t => t.generatedKind === 'weather');
+    expect(weatherTask).toBeDefined();
+    expect(weatherTask!.title).toBe(sunscreenRule!.title);
+    expect(weatherTask!.category).toBe('Weather');
+    expect(settings.weatherTaskCategory).toBe('Weather');
+    expect(weatherTask!.generatedSourceId).toBe(`${dayKeyOf(getCurrentDayStart())}#${sunscreenRule!.id}`);
+    // Only the rule that fired is marked considered for today — the other two
+    // are still askable on whatever day their own condition shows up.
+    expect(sunscreenRule!.lastFiredDayKey).toBe(dayKeyOf(getCurrentDayStart()));
+    rules.filter(r => r.id !== sunscreenRule!.id).forEach(r => {
+      expect(r.lastFiredDayKey).toBeNull();
+    });
   });
 
   it('leaves that item free of a use-by date, so it carries one task and not two', () => {

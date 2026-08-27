@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a false-positive match where scanning something could get linked to an unrelated item that merely shared a prefix (\"water\" matching \"watermelon candies\"). A scan that only guesses which item it is now shows \"Might match…\" with a Confirm button instead of linking silently — leave it untapped and it's added as a new item.",
+  "date": "2026-08-27"
+}

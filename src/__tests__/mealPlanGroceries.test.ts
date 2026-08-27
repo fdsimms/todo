@@ -910,6 +910,20 @@ describe('classifyPlanned', () => {
       expect(rows[0].quantity).toBe('3');
     });
 
+    it('scopes both halves of the re-file to the trolley being added to', () => {
+      // The row's own key is on the *home* list; the variety is in the rental's
+      // trolley. Reading `onList` bare in the guard would refuse to re-file and
+      // then classify "onion" as needToBuy — buying an onion that's already in
+      // the cart. Both halves have to read the same trolley.
+      const onion = item({ name: 'Onion', onList: true });
+      const white = item({ name: 'White onion', varietyOfKey: 'onion', onList: false });
+      const away = new Map([[white.id, false]]);
+
+      const row = classifyPlanned(plannedOnion, [onion, white], now, [], away)[0];
+      expect(row.nameKey).toBe('white onion');
+      expect(row.category).toBe('alreadyOnList');
+    });
+
     it('captions a specific ask with the on-hand family, without moving it', () => {
       const onion = item({ name: 'Onion', onHandUntil: onHandDate });
       const white = item({ name: 'White onion', varietyOfKey: 'onion', onHandUntil: onHandDate });

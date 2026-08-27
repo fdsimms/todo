@@ -65,18 +65,28 @@ export const NO_VARIETIES: ReadonlyMap<string, GroceryItem[]> = new Map();
  * reason to believe you have answers nothing, and the ask stays an honest
  * needToBuy under its own generic name — which is also the right thing to
  * put in the trolley when any onion will do.
+ *
+ * `inTrolley` scopes the on-list rung to the list being added to, exactly as
+ * `classifyPlanned` scopes its own — and it has to, or the two disagree in the
+ * direction that silently drops shopping: a white onion on your list at *home*
+ * would answer a generic line while you plan for a rental, and the sheet would
+ * leave it unticked. Null falls back to the row's own `onList`/`checked`, the
+ * home list, which is what every reader that isn't adding to a list means.
  */
 export function coveringVariety(
   candidates: readonly GroceryItem[] | undefined,
-  now: Date
+  now: Date,
+  inTrolley: ReadonlyMap<string, boolean> | null = null
 ): GroceryItem | null {
   if (!candidates || candidates.length === 0) return null;
   let staple: GroceryItem | null = null;
   let onHand: GroceryItem | null = null;
   let inCart: GroceryItem | null = null;
   for (const item of candidates) {
-    if (item.onList) {
-      if (!item.checked) return item;
+    const listed = inTrolley ? inTrolley.has(item.id) : item.onList;
+    if (listed) {
+      const checked = inTrolley ? inTrolley.get(item.id) : item.checked;
+      if (!checked) return item;
       inCart = inCart ?? item;
       continue;
     }
