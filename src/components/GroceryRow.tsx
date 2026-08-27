@@ -18,7 +18,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem, type ItemProduct } from '../types';
 import { SwipeableRow } from './SwipeableRow';
 import { convertQuantity } from '../utils/unitConvert';
-import { describeProduct } from '../utils/groceryProduct';
+import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
 
 const CHECKBOX_SIZE = 24;
 // Generous beyond the visual box, matching TaskItem's checkbox hitSlop —
@@ -164,6 +164,8 @@ export const GroceryRow = React.memo(function GroceryRow({
     // at all, since a row whose whole point is "this brand" would otherwise
     // announce identically to one with no preference set.
     product ? `, ${product}` : '',
+    // Right behind the product it rates — see the icon on the same line below.
+    preferredProduct?.rating ? `, ${RATING_LABELS[preferredProduct.rating].toLowerCase()}` : '',
     shownQuantity ? `, ${shownQuantity}` : '',
     item.checked ? ', in cart' : '',
   ].join('');
@@ -270,9 +272,24 @@ export const GroceryRow = React.memo(function GroceryRow({
               afford its own: a branded, varianted, noted row with a store
               marker would be six lines tall. */}
           {!!product && (
-            <Text style={styles.brand} numberOfLines={1}>
-              {product}
-            </Text>
+            <View style={styles.brandRow}>
+              {/* The rating rides on the same line as the box it rates,
+                  rather than a caption of its own — a row is already up to
+                  four lines tall, and this is a mark on the product's name,
+                  not a new fact. "Loved" and "avoid" both get one: an avoid
+                  box stays on the list on purpose (see productsForItem), so
+                  the whole point is seeing it here, right before you'd pick
+                  the same one up again. */}
+              {preferredProduct?.rating === 'loved' && (
+                <Ionicons name="thumbs-up" size={iconSize.xs} color={colors.orange} />
+              )}
+              {preferredProduct?.rating === 'avoid' && (
+                <Ionicons name="thumbs-down" size={iconSize.xs} color={colors.red} />
+              )}
+              <Text style={styles.brand} numberOfLines={1}>
+                {product}
+              </Text>
+            </View>
           )}
           {!!item.note && (
             <Text style={styles.note} numberOfLines={1}>
@@ -496,11 +513,17 @@ function makeStyles(colors: Colors) {
     // this row, so this reads as the row's existing emphasis weight rather than
     // a fifth thing. No accent tint: a coloured caption on every branded row
     // would make a list of preferences look like a list of warnings.
+    brandRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      marginTop: 1,
+    },
     brand: {
       fontSize: font.sm,
       fontWeight: fontWeight.semibold,
       color: colors.textSecondary,
-      marginTop: 1,
+      flexShrink: 1,
     },
     // Upright and a step brighter than the note above it, same treatment the
     // recipe screen gives an either/or ingredient — this is a fact about what
