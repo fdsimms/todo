@@ -167,6 +167,67 @@ already allows two things on one dinner, so ad-hoc pairing needs nothing.
   follow-up to cooking one. The week-level `AddWeekToListSheet` deliberately has no chips of its
   own: it aggregates many recipes, and each entry already carries its own answers.
 
+## Where a recipe is from (`Cookbook`, `recipeProvenance.ts`)
+
+Attribution is four fields on the recipe — `author`, `source`, `sourceType`, `sourcePage` — plus,
+for a book, a `cookbookId` pointing at a real `Cookbook` row holding the title and author once.
+
+- **The book is a row because a shelf entered a page at a time drifts.** "Nothing Fancy",
+  "Nothing Fancy " and "Nothing fancy" are three books to anything that groups by them, and the
+  author typed on the first import is missing from the next four. Same fix `Shop` got for store
+  names, and the payoff is the same: `renameCookbook` is one edit instead of one per recipe.
+- **A linked recipe still carries `source`/`author` as a mirror.** This is the load-bearing
+  decision. Every reader of an attribution — `describeAttribution`, the search tier in
+  `rankRecipes`, `shareText`, `recipeHasAttribution` — goes on reading plain strings and needs to
+  know nothing about cookbooks; the store is the only writer, which is all the drift fix ever
+  needed. Resolving a cookbook at each of those call sites was the obvious shape and would have
+  put a dozen readers in scope to fix one writer.
+- **The mirror is also what survives a delete.** `deleteCookbook` unlinks its recipes and leaves
+  their `source`/`author` alone: losing the book must not lose the fact that the recipe came from
+  it. Unfile-don't-erase, the same call `deleteGroup` makes for a stack's history — and the
+  opposite of `dbDeleteGroceryShop`'s cascade, because a purchase naming a store that's gone is
+  unreadable while a recipe naming a book that's gone is just a recipe.
+- **Writing an attribution by hand unlinks the book, but only if it changed.** Typing a different
+  title is how you say "it isn't that book". `RecipeEditor.save()` fires all five source setters
+  on every save whether or not they were touched, so an unconditional unlink would break the link
+  the moment anyone opened the editor and pressed Save — `unlinkIfChanged` compares against what's
+  stored, which is what tells a deliberate retype from a no-op rewrite.
+- **Editing a linked book's title asks, but only when the answer matters.** One text field is
+  being made to say two different things — "this book is called something else" and "this recipe
+  is from a different book" — and nothing about the typing tells them apart. `cookbookEditIntent`
+  narrows it: no link, or nothing actually changed, re-files; a book only this recipe uses is
+  renamed silently, since "everywhere" and "just this one" are the same place; and only a book
+  other recipes share raises the three-way confirm. A rename that collides with another book on
+  the shelf falls back to joining it, which is the only reading of typing a name already up there.
+- **`titleKey` is keyed on title *and* author.** "Dinner" is a Melissa Clark book and also a Meera
+  Sodha one; a shelf that can hold only one of them is a worse bug than the near-duplicate a
+  compound key lets through.
+- **The page stays on the recipe.** A book has many pages and this recipe is on one of them.
+
+The import side is `sourceFieldsFor`/`sourcePlanFor` (`recipeProvenance.ts`), shared by both
+import sheets rather than hand-copied into each, since they are the same sheet twice over.
+
+- **The model is now asked for provenance, where it used to be told to discard it.** The photo
+  prompt's "ignore page numbers, running heads and chapter titles" was aimed at keeping junk out
+  of the *recipe*, and it did that by throwing away the only thing on the page that says where the
+  page is from. It still must never reach the name, ingredients or method; it now goes to the
+  source fields instead. Same provenance-not-a-guess standard as the page-number bullet below.
+- **Markup beats a model read, per field.** A link import's `siteName`/`author` come from
+  `schema.org`/OpenGraph — the publisher saying so in a machine-readable field — and win. But they
+  win *field by field*: a site that names the author in markup and not the publication used to
+  leave the publication blank purely because the other half arrived first.
+- **A fetched page is a website whatever the model thought it was looking at.** We know how we got
+  there, and a page reproducing a cookbook extract is still a URL we're about to store.
+- **The parser refuses rather than approximates**, because the schema asks and the parser
+  canonicalises: a `sourceTitle` that merely repeats the recipe's own name is dropped (a running
+  head showing the chapter leaves the dish's name as the most available string on the page), and a
+  `sourcePage` that isn't a number, a range or roman numerals is dropped the same way
+  `referencePageNumber` drops "opposite".
+- **An import links find-or-create rather than writing a title string**, because a book read off a
+  photo is overwhelmingly one already on the shelf from the last recipe out of it. A cookbook with
+  no title stays a plain classification — a `Cookbook` row with an empty title is one nobody can
+  pick.
+
 ## Component recipes read off a photo (`recipeImportComponents.ts`)
 
 A cookbook page routinely points at another recipe in the same book: "1 cup salsa verde
@@ -216,6 +277,11 @@ import sheets offer them above the ingredient list.
   `sourcePage` — the same provenance-not-a-guess argument that lets a link import write the
   site name. A locator that names no page ("opposite") leaves both alone rather than writing
   "opposite" into a field rendered as a page number.
+- **And it lands in the parent's own book.** "Page 45" is a page of the book the parent came out
+  of, so the component inherits the parent's `cookbookId` (falling back to a title read off its
+  own photo, for a parent that was never linked). This used to be unsayable: a component got a
+  page number and a type but no title, because nothing read a book's name off a photo — two
+  thirds of a citation. See the Cookbook section above.
 
 ## Sections (`recipeSections.ts`) — the heading an ingredient sits under
 

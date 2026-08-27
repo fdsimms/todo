@@ -1,11 +1,15 @@
 import { create } from 'zustand';
-import type { Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
+import type { Cookbook, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
 import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
   dbInsertRecipe,
   dbUpdateRecipe,
   dbDeleteRecipe,
+  dbGetAllCookbooks,
+  dbInsertCookbook,
+  dbUpdateCookbook,
+  dbDeleteCookbook,
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { MAX_STEP_TIMER_SECONDS, MIN_STEP_TIMER_SECONDS } from '../utils/stepTimers';
@@ -17,6 +21,7 @@ import {
   cleanChoiceGroup,
   cleanRecipeName,
   cleanRecipeSource,
+  cookbookKey,
   ingredientsFromText,
   makeIngredient,
   mergeIngredients,
@@ -50,6 +55,14 @@ export interface CookStats {
 
 interface RecipeStore {
   recipes: Recipe[];
+  /**
+   * The books recipes come out of. They live here rather than in a store of
+   * their own for the reason `shops` live in useGroceryStore: a cookbook is
+   * recipe configuration, read by the same screens, and a `useCookbookStore`
+   * sitting next to `useRecipeStore` is a name nobody would reliably pick
+   * between.
+   */
+  cookbooks: Cookbook[];
   initialized: boolean;
 
   initialize: () => void;
@@ -62,16 +75,47 @@ interface RecipeStore {
   setSourceUrl: (id: string, url: string | null) => void;
   /** @deprecated superseded by setAuthor/setSource (#1266); kept for old callers. */
   setSourceName: (id: string, source: string | null) => void;
+  /**
+   * Both drop any cookbook link, because typing a byline by hand over one is
+   * how you say "it isn't that book". Leaving the link would put the book's
+   * title straight back on the next `renameCookbook`, silently undoing an edit
+   * the user watched land.
+   */
   setAuthor: (id: string, author: string | null) => void;
   setSource: (id: string, source: string | null) => void;
   /**
    * Clears `sourcePage` the moment the type stops being 'cookbook' — the same
    * rule `setServings` follows for a max that no longer beats its min: a page
-   * number only means anything alongside the book it's a page of.
+   * number only means anything alongside the book it's a page of. Drops the
+   * cookbook link on the same terms, since a linked recipe *is* from a book.
    */
   setSourceType: (id: string, sourceType: RecipeSourceType | null) => void;
   /** A cookbook page number ("142", "112-115"). Free text, not validated as numeric — some books print "xii". */
   setSourcePage: (id: string, sourcePage: string | null) => void;
+
+  /**
+   * Finds the book by title+author or creates it, then points the recipe at
+   * it — the one entry point an import uses, since it has a title read off a
+   * page and no idea whether the shelf already holds it.
+   *
+   * Mirrors the book's title/author down onto the recipe and sets
+   * `sourceType: 'cookbook'`, so every existing reader of an attribution keeps
+   * working on plain strings. Null only when the title is empty.
+   */
+  linkNewCookbook: (recipeId: string, title: string, author?: string | null) => Cookbook | null;
+  /** Points a recipe at a book already on the shelf, mirroring it down. Null id unlinks. */
+  linkCookbook: (recipeId: string, cookbookId: string | null) => void;
+  /**
+   * Renames the book everywhere at once — the whole point of the entity. False
+   * on an empty title or a collision with another book on the shelf.
+   */
+  renameCookbook: (id: string, title: string, author: string | null) => boolean;
+  /**
+   * Unlinks its recipes rather than deleting them, and leaves their mirrored
+   * source/author in place: losing the book must not lose the fact that a
+   * recipe came from it.
+   */
+  deleteCookbook: (id: string) => void;
   /**
    * `servingsMax` is the top of a range ("serves 4-6") and is optional — omit
    * it (or pass null) for a plain count. A max at or below `servings` isn't a
@@ -349,14 +393,16 @@ interface RecipeStore {
   remapIngredientKey: (fromKey: string, toKey: string) => void;
 
   recipeById: (id: string) => Recipe | undefined;
+  cookbookById: (id: string | null | undefined) => Cookbook | undefined;
 }
 
 export const useRecipeStore = create<RecipeStore>((set, get) => ({
   recipes: [],
+  cookbooks: [],
   initialized: false,
 
   initialize() {
-    set({ recipes: dbGetAllRecipes(), initialized: true });
+    set({ recipes: dbGetAllRecipes(), cookbooks: dbGetAllCookbooks(), initialized: true });
   },
 
   addRecipe(name) {
@@ -377,6 +423,7 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       source: null,
       sourceType: null,
       sourcePage: null,
+      cookbookId: null,
       servings: null,
       servingsMax: null,
       recipeYield: null,
@@ -448,28 +495,106 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   setAuthor(id, author) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
-    const clean = cleanRecipeSource(author ?? '');
-    save(set, { ...recipe, author: clean || null });
+    const clean = cleanRecipeSource(author ?? '') || null;
+    save(set, { ...recipe, author: clean, ...unlinkIfChanged(recipe, clean !== recipe.author) });
   },
 
   setSource(id, source) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
-    const clean = cleanRecipeSource(source ?? '');
-    save(set, { ...recipe, source: clean || null });
+    const clean = cleanRecipeSource(source ?? '') || null;
+    save(set, { ...recipe, source: clean, ...unlinkIfChanged(recipe, clean !== recipe.source) });
   },
 
   setSourceType(id, sourceType) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
     const sourcePage = sourceType === 'cookbook' ? recipe.sourcePage : null;
-    save(set, { ...recipe, sourceType, sourcePage });
+    save(set, {
+      ...recipe,
+      sourceType,
+      sourcePage,
+      ...unlinkIfChanged(recipe, sourceType !== recipe.sourceType),
+    });
+  },
+
+  linkNewCookbook(recipeId, title, author = null) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return null;
+    const cleanTitle = cleanRecipeSource(title);
+    if (!cleanTitle) return null;
+    const cleanAuthor = cleanRecipeSource(author ?? '') || null;
+
+    const key = cookbookKey(cleanTitle, cleanAuthor);
+    let cookbook = get().cookbooks.find(c => c.titleKey === key);
+    if (!cookbook) {
+      cookbook = {
+        id: generateId(),
+        title: cleanTitle,
+        titleKey: key,
+        author: cleanAuthor,
+        sortOrder: get().cookbooks.reduce((m, c) => Math.max(m, c.sortOrder), 0) + 1,
+        createdAt: new Date().toISOString(),
+      };
+      dbInsertCookbook(cookbook);
+      set(s => ({ cookbooks: [...s.cookbooks, cookbook!] }));
+    }
+    save(set, { ...recipe, ...mirrorOf(cookbook) });
+    return cookbook;
+  },
+
+  linkCookbook(recipeId, cookbookId) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    if (cookbookId === null) {
+      // The mirror stays: an unlinked recipe still came from the book it named.
+      save(set, { ...recipe, cookbookId: null });
+      return;
+    }
+    const cookbook = get().cookbooks.find(c => c.id === cookbookId);
+    if (!cookbook) return;
+    save(set, { ...recipe, ...mirrorOf(cookbook) });
+  },
+
+  renameCookbook(id, title, author) {
+    const cookbook = get().cookbooks.find(c => c.id === id);
+    if (!cookbook) return false;
+    const cleanTitle = cleanRecipeSource(title);
+    if (!cleanTitle) return false;
+    const cleanAuthor = cleanRecipeSource(author ?? '') || null;
+
+    const key = cookbookKey(cleanTitle, cleanAuthor);
+    if (key !== cookbook.titleKey && get().cookbooks.some(c => c.titleKey === key)) return false;
+
+    const updated: Cookbook = { ...cookbook, title: cleanTitle, titleKey: key, author: cleanAuthor };
+    dbUpdateCookbook(updated);
+    set(s => ({ cookbooks: s.cookbooks.map(c => (c.id === id ? updated : c)) }));
+    // The write-through half — the whole reason a book is a row rather than a
+    // string. Every recipe pointed at it takes the new title and author, which
+    // is the one edit that used to be one edit per recipe.
+    for (const recipe of get().recipes) {
+      if (recipe.cookbookId === id) save(set, { ...recipe, ...mirrorOf(updated) });
+    }
+    return true;
+  },
+
+  deleteCookbook(id) {
+    dbDeleteCookbook(id);
+    set(s => ({
+      cookbooks: s.cookbooks.filter(c => c.id !== id),
+      recipes: s.recipes.map(r => (r.cookbookId === id ? { ...r, cookbookId: null } : r)),
+    }));
   },
 
   setSourcePage(id, sourcePage) {
     const recipe = get().recipes.find(r => r.id === id);
     if (!recipe) return;
-    const clean = cleanRecipeSource(sourcePage ?? '', RECIPE_PAGE_MAX_LENGTH);
+    // A leading "p." comes off, because every reader puts one back:
+    // describeAttribution renders "Sweet, p. 142" and the editor's own row
+    // reads "p. 142", so a stored "p. 142" renders "p. p. 142". Only the
+    // prefix — the rest stays free text, since some books print "xii".
+    const typed = (sourcePage ?? '').replace(/^\s*(?:pages?|pp?)(?:\s*\.\s*|\s+)/i, '');
+    const clean = cleanRecipeSource(typed, RECIPE_PAGE_MAX_LENGTH);
     save(set, { ...recipe, sourcePage: clean || null });
   },
 
@@ -1018,9 +1143,43 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   recipeById(id) {
     return get().recipes.find(r => r.id === id);
   },
+
+  // Resolve-or-shrug, the same as every other cross-row pointer here: a link
+  // naming a book that no longer exists reads as no link, not as an error.
+  cookbookById(id) {
+    if (!id) return undefined;
+    return get().cookbooks.find(c => c.id === id);
+  },
 }));
 
 type SetRecipes = (fn: (s: { recipes: Recipe[] }) => { recipes: Recipe[] }) => void;
+
+/**
+ * The fields a linked recipe mirrors from its book — see `Cookbook` in types
+ * for why the mirror exists at all. The page is untouched: it belongs to the
+ * recipe, not the book.
+ */
+function mirrorOf(cookbook: Cookbook): Pick<Recipe, 'cookbookId' | 'source' | 'author' | 'sourceType'> {
+  return {
+    cookbookId: cookbook.id,
+    source: cookbook.title,
+    author: cookbook.author,
+    sourceType: 'cookbook',
+  };
+}
+
+/**
+ * Drops a cookbook link, but only when the write actually changed something.
+ *
+ * `RecipeEditor.save()` fires all five source setters on every save, whether or
+ * not the user touched them, so an unconditional "writing an attribution by
+ * hand unlinks the book" rule would quietly break the link the moment anyone
+ * opened the editor and hit Save. Comparing against what's already stored is
+ * what tells a deliberate retype apart from a no-op rewrite.
+ */
+function unlinkIfChanged(recipe: Recipe, changed: boolean): { cookbookId?: string | null } {
+  return changed && recipe.cookbookId ? { cookbookId: null } : {};
+}
 
 /**
  * Write-then-patch. Every mutation above is a whole-row update — the row holds

@@ -1289,6 +1289,7 @@ function seedRecipes(): DemoRecipes {
     setSource,
     setSourceType,
     setSourcePage,
+    linkNewCookbook,
     setEstimatedMinutes,
     setPrepMinutes,
     setLeftoverKeepDays,
@@ -1434,11 +1435,25 @@ function seedRecipes(): DemoRecipes {
   setServings(cake.id, 12);
   setEstimatedMinutes(cake.id, 45);
   setPrepMinutes(cake.id, 30);
-  // The cookbook attribution shape — the only one a page number means anything for.
-  setAuthor(cake.id, 'Yotam Ottolenghi');
-  setSource(cake.id, 'Sweet');
-  setSourceType(cake.id, 'cookbook');
+  // The cookbook attribution shape — the only one a page number means anything
+  // for. It's a real Cookbook row rather than two strings, which is invisible
+  // on one recipe and the whole point on two: the shortbread below is the same
+  // book, so a shelf with one "Sweet" on it is what the box actually holds.
   setSourcePage(cake.id, '148');
+  linkNewCookbook(cake.id, 'Sweet', 'Yotam Ottolenghi');
+
+  // The second recipe out of that book, which is what makes the shelf legible:
+  // correcting the title or the author here corrects both.
+  const shortbread = newRecipe('Brown sugar shortbread');
+  addIngredientsFromText(
+    shortbread.id,
+    ['250g butter', '100g brown sugar', '300g flour', '1 tsp flaky salt'].join('\n')
+  );
+  setMealType(shortbread.id, 'dessert');
+  setRecipeYield(shortbread.id, '24 pieces');
+  setEstimatedMinutes(shortbread.id, 40);
+  setSourcePage(shortbread.id, '52');
+  linkNewCookbook(shortbread.id, 'Sweet', 'Yotam Ottolenghi');
 
   const tea = newRecipe('Iced mint tea');
   addIngredientsFromText(tea.id, ['4 tea bags', '1 bunch mint', '2 lemons', '1/4 cup honey'].join('\n'));
