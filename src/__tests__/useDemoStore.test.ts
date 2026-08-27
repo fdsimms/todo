@@ -18,6 +18,7 @@ import { useProjectStore, projectDecisions, projectProgress } from '../store/use
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
+import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
@@ -1133,18 +1134,25 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds a second shopping list, left inactive', () => {
-    const { items, lists, activeListId } = useGroceryStore.getState();
+    const { items, lists, listEntries, activeListId } = useGroceryStore.getState();
 
     // Invisible until something uses it: with only "Groceries" on file the
     // switcher is a chevron beside a title that never changes.
     const airbnb = lists.find(l => l.name === 'Airbnb');
     expect(airbnb).toBeDefined();
-    expect(items.filter(i => i.onList && i.listId === airbnb!.id).length).toBeGreaterThan(0);
+    expect(listEntries.filter(e => e.listId === airbnb!.id).length).toBeGreaterThan(0);
 
     // The demo's own shop is at home, so the screen opens there and the away
     // list is something you find rather than something you land in.
     expect(activeListId).toBeNull();
-    expect(items.filter(i => i.onList && i.listId === null).length).toBeGreaterThan(0);
+    expect(listEntries.filter(e => e.listId === null).length).toBeGreaterThan(0);
+
+    // And at least one row is in both trolleys at once, which is the thing a
+    // single list_id column could not express and the reason the join table
+    // exists — see GroceryListEntry.
+    const home = new Set(listEntries.filter(e => e.listId === null).map(e => e.itemId));
+    const away = listEntries.filter(e => e.listId === airbnb!.id).map(e => e.itemId);
+    expect(away.some(id => home.has(id))).toBe(true);
 
     // And the trip survived being seeded around: setActiveList ends one, so
     // the away list has to be built before startTrip.
@@ -1152,10 +1160,10 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds a grocery catalog bigger than the list, with a trip in progress', () => {
-    const { items, itemShops, itemProducts } = useGroceryStore.getState();
+    const { items, itemShops, itemProducts, listEntries } = useGroceryStore.getState();
     // The home list — every count below is about the trolley the demo's own
     // trip is shopping, not about both lists at once.
-    const onList = items.filter(i => i.onList && i.listId === null);
+    const onList = itemsOnList(items, listEntries, null);
 
     expect(onList.length).toBeGreaterThan(5);
     // Not on the list right now — which is exactly what the catalog reads.
@@ -1488,7 +1496,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
   });
 
   it('seeds stores, per-store links and an edited walk order', () => {
-    const { shops, itemShops, aisleOrder, hiddenAisles, items } = useGroceryStore.getState();
+    const { shops, itemShops, aisleOrder, hiddenAisles, items, listEntries } = useGroceryStore.getState();
 
     expect(shops.length).toBeGreaterThanOrEqual(3);
     // "It has everything, but don't send me there".
@@ -1513,7 +1521,7 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // hasn't got.
     // The home list only, the same scope ShoppingTripSheet plans over: the
     // demo's away list holds shopping for a kitchen this trip isn't for.
-    const plan = planTrip(items.filter(i => i.listId === null), itemShops, shops);
+    const plan = planTrip(itemsOnList(items, listEntries, null), itemShops, shops);
     expect(plan.coverage.length).toBeGreaterThanOrEqual(2);
     const [head, second] = summarizeTrip([], plan).suggestion;
     expect(head?.shop.name).toBe("Trader Joe's");

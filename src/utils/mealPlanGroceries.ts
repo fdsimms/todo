@@ -450,16 +450,20 @@ export function classifyPlanned(
    */
   itemSubs: readonly ItemSubLink[] = [],
   /**
-   * Which list "already on the list" is about — the one being added to. Null,
-   * the default, is the list at home, which is what every caller meant before
-   * separate lists existed.
+   * The trolley "already on the list" is about — the one being added to, as
+   * `itemId → checked` (`trolleyStateFor` in `groceryLists.ts`).
    *
    * It has to be scoped or the classification is wrong in the direction that
-   * silently drops shopping: a row sitting on your list at home would come
-   * back as `alreadyOnList` while planning meals for a rental, and the sheet
-   * would leave it unticked on the assumption you were already buying it.
+   * silently drops shopping: a row sitting on your list at home would come back
+   * as `alreadyOnList` while planning meals for a rental, and the sheet would
+   * leave it unticked on the assumption you were already buying it.
+   *
+   * Null falls back to the row's own `onList`/`checked`, which answer for the
+   * home list (see `GroceryItem.onList`) — what every caller meant before
+   * separate lists, and what the readers that aren't adding to a list (a cook's
+   * recap, a pantry-readiness percentage) still mean.
    */
-  listId: string | null = null
+  inTrolley: ReadonlyMap<string, boolean> | null = null
 ): ClassifiedIngredient[] {
   const byKey = new Map<string, GroceryItem>();
   for (const item of items) byKey.set(item.nameKey, item);
@@ -488,8 +492,9 @@ export function classifyPlanned(
 
     let category: PlanCategory;
     let reason: string | null = null;
-    if (match?.onList && match.listId === listId) {
-      category = match.checked ? 'inCart' : 'alreadyOnList';
+    const listedHere = match ? (inTrolley ? inTrolley.has(match.id) : match.onList) : false;
+    if (match && listedHere) {
+      category = (inTrolley ? inTrolley.get(match.id) : match.checked) ? 'inCart' : 'alreadyOnList';
     } else if (match?.isStaple) {
       category = 'staple';
     } else if (match && (reason = probablyHaveReason(match, now))) {

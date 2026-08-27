@@ -21,6 +21,7 @@ import { animation, font, fontWeight, interaction, radius, spacing } from '../th
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
+import { listRemainingCount } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -113,9 +114,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const { isDark } = useTheme();
   // A scalar, so it's referentially stable and needs no useShallow. Counts
   // what's still to buy — items already in the trolley aren't a reason to go.
-  const groceryCount = useGroceryStore(
-    s => s.items.filter(i => i.onList && i.listId === s.activeListId && !i.checked).length
-  );
+  const groceryCount = useGroceryStore(s => listRemainingCount(s.listEntries, s.activeListId));
   // The one row this can remove, so the filter runs on every render rather
   // than being hoisted — it's a ten-item array and the setting is a scalar.
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);

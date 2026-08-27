@@ -99,6 +99,7 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const activeListId = useGroceryStore(s => s.activeListId);
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const shops = useGroceryStore(useShallow(s => s.shops));
@@ -107,7 +108,10 @@ export function ShoppingTripSheet({ visible, onClose, onCreate, onStart, intent 
   // The trolley being shopped, not every trolley you have going: a plan built
   // over both lists would send you to a store for things on a list you aren't
   // shopping today.
-  const listRows = useMemo(() => itemsOnList(items, activeListId), [items, activeListId]);
+  const listRows = useMemo(
+    () => itemsOnList(items, listEntries, activeListId),
+    [items, listEntries, activeListId]
+  );
   const plan = useMemo(() => planTrip(listRows, itemShops, shops), [listRows, itemShops, shops]);
   const total = plan.itemIds.length;
 

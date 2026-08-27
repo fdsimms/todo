@@ -283,7 +283,7 @@ exports.
 | the Face ID app lock | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` — see `docs/arch/app-lock.md` |
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
-| a separate list for a week away, and what an away trip doesn't record | `src/utils/groceryLists.ts` (+ `activeListId` in `useGroceryStore`) — see `docs/arch/groceries.md` |
+| a separate list for a week away, and a row in two trolleys at once | `src/utils/groceryLists.ts` + `GroceryListEntry` — see `docs/arch/groceries.md` |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
 | grocery autocomplete, catalog ranking | `src/utils/grocerySuggest.ts` |
 | which bread — brands, variants, and rating them | `src/utils/groceryProduct.ts` (`ItemProduct`) — see `docs/arch/groceries.md` |
@@ -341,7 +341,7 @@ exports.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (6.4k), `components/TaskEditor.tsx` (4.7k),
-`store/useGroceryStore.ts` (4.4k), `db/database.ts` (4.4k), `screens/TodayScreen.tsx` (4.1k),
+`store/useGroceryStore.ts` (4.6k), `db/database.ts` (4.5k), `screens/TodayScreen.tsx` (4.1k),
 `types/index.ts` (3.8k), `components/TaskItem.tsx` (3.7k),
 `components/QuickAddModal.tsx` (2.9k), `store/useSettingsStore.ts` (2.7k),
 `utils/demoSeed.ts` (2.5k).

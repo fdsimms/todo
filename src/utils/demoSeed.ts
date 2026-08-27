@@ -2131,16 +2131,18 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // changes, which reads as a feature the app hasn't got.
   //
   // Built by switching to it and adding normally rather than by writing
-  // `listId` onto rows — every add path stamps the active list, and going
+  // membership rows — every add path files the active list's entry, and going
   // through the same door is what stops the seed drifting from the store.
   //
-  // **Before `startTrip`, and none of these names is in the home trolley.**
-  // Both constraints are the store being honest rather than the seed being
-  // fussy: `setActiveList` ends any running trip (switching trolleys makes "I'm
-  // standing in this store shopping for *this*" false), and an add moves a row
-  // that is already on another list rather than putting it on both, so seeding
-  // "Milk" here would quietly take it off the home list the demo's own trip is
-  // about to shop.
+  // **Three of the five names are on the list at home too, and that is the
+  // point.** A row can be in two trolleys at once with its own tick in each
+  // (see GroceryListEntry), and the staples you need in both kitchens are the
+  // ordinary case rather than an edge one — a demo whose two lists were
+  // disjoint would show the feature working and hide the thing that makes it
+  // work.
+  //
+  // Before `startTrip`, because setActiveList ends a running trip: switching
+  // trolleys makes "I'm standing in this store shopping for *this*" false.
   //
   // Left as the *inactive* list, with the screen opening on Groceries: the
   // demo's whole shop is at home, so someone handed the phone should find the
@@ -2148,7 +2150,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   const airbnb = addList('Airbnb');
   if (airbnb) {
     setActiveList(airbnb.id);
-    ['Coffee', 'Butter', 'Olive oil', 'Greek yogurt', 'Paper towels'].forEach(name =>
+    ['Coffee', 'Milk', 'Eggs', 'Olive oil', 'Paper towels'].forEach(name =>
       addByName(name, undefined, undefined, { registerUndo: false })
     );
     setActiveList(null);

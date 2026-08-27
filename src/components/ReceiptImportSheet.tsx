@@ -22,6 +22,7 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
+import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -204,6 +205,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const activeListId = useGroceryStore(s => s.activeListId);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
@@ -426,7 +428,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const pairRows = useMemo(
     // The rows a receipt can match are the ones in the trolley it's a receipt
     // for, which is the list being shown.
-    () => items.filter(i => i.onList && i.listId === activeListId).map(i => ({ id: i.id, name: i.name })),
+    () => itemsOnList(items, listEntries, activeListId).map(i => ({ id: i.id, name: i.name })),
     [items]
   );
 

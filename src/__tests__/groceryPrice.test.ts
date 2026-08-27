@@ -31,7 +31,6 @@ function makeItem(overrides: Partial<GroceryItem> = {}): GroceryItem {
     quantityFromRecipe: false,
     note: '',
     onList: true,
-    listId: null,
     checked: false,
     sortOrder: 1,
     purchaseCount: 0,

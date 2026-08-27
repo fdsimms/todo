@@ -1706,6 +1706,51 @@ export interface GroceryList {
   createdAt: string;
 }
 
+/**
+ * One row's place in one list's trolley — the membership record, and the source
+ * of truth for every list including the one at home.
+ *
+ * **A row can be in two trolleys at once, and that is the whole reason this is a
+ * table rather than a column on the item.** The staples you need in both
+ * kitchens are the ordinary case, not an edge one: adding "milk" to the Airbnb
+ * list must not take it off the list at home, which is exactly what a singular
+ * `GroceryItem.listId` did. Everything that has to differ per list is therefore
+ * here rather than on the item:
+ *
+ * - **`checked`** must be, or ticking milk off at the shop near the rental would
+ *   show it as in the cart at home, and the next trip there would buy it.
+ * - **`choiceGroup`** must be, because an either/or is *this* trolley's "apples
+ *   or pears" — see `GroceryItem.choiceGroup`, which says so in as many words.
+ * - **`sortOrder`** must be, because each list is walked in its own order. This
+ *   is the one of the three that would merely have been untidy shared; it comes
+ *   along because the other two settle the shape anyway.
+ *
+ * Everything that is a fact about the *thing you buy* stays on `GroceryItem` and
+ * is emphatically not duplicated here: one aisle, one purchase history, one
+ * pantry state, one set of products, one set of substitutes. A list scopes the
+ * trolley, never the catalog.
+ *
+ * **`listId` is null for the list at home**, which has no `GroceryList` row —
+ * see that type. In SQLite it is stored as `''` instead, because the table is
+ * keyed on (item, list) and SQLite treats NULLs in a key as distinct, so a null
+ * would let one row join one list twice.
+ *
+ * **The item's own `onList`/`checked`/`sortOrder`/`choiceGroup` mirror the home
+ * entry** and are maintained by the single function that writes these. That is
+ * what lets every reader written before separate lists existed keep working
+ * unchanged and keep meaning what it always meant.
+ */
+export interface GroceryListEntry {
+  itemId: string;
+  /** Null is the list at home. Stored as '' — see above. */
+  listId: string | null;
+  checked: boolean;
+  sortOrder: number;
+  choiceGroup: string | null;
+  /** When this row joined this list. The per-list half of `lastAddedAt`. */
+  addedAt: string;
+}
+
 export interface GroceryItem {
   id: string;
   // What the user last typed — the label. "Whole milk" and "milk" reading
@@ -1777,27 +1822,23 @@ export interface GroceryItem {
   // — the user typing an amount by hand — always takes ownership.
   quantityFromRecipe: boolean;
   note: string;
-  onList: boolean;
   /**
-   * Which list this row is on right now — null for the one at home. See
-   * `GroceryList`.
+   * Whether this row is in the trolley of the **list at home** — see
+   * `GroceryListEntry`, which is where every list's membership actually lives.
    *
-   * **A membership field, not a fact about the item**, which puts it in the
-   * same company as `checked`, `sortOrder` and `choiceGroup` rather than
-   * alongside `aisle` or `isStaple`. It is meaningful only while `onList`, and
-   * every path that takes a row off the list clears it in the same breath the
-   * way `choiceGroup` is cleared — `removeFromList`, `removeFromListMany`,
-   * `clearList`, `finishShopping`, `swapForSubstitute` and `resolveChoice`.
-   * Carried off-list it would decide, silently and weeks later, which list a
-   * re-add landed on.
+   * A mirror of that list's entry, maintained on every membership write, and
+   * kept because it is what every reader that predates separate lists means by
+   * "on the list": the home list is the original one and these columns have
+   * always held it. Nothing writes them except the one function that writes an
+   * entry, so the two can't drift.
    *
-   * **Resolve-or-shrug is not enough here**, unlike every other cross-row
-   * pointer in this file: an id naming a deleted list would read as null, which
-   * is the home list, so a deleted "Airbnb" would tip its whole trolley into
-   * the kitchen at home. `deleteList` unlists its rows first, which is the same
-   * statement `clearList` makes about a trip nobody is doing after all.
+   * **It is deliberately not "in some trolley".** The four readers that want
+   * that broader question — `hasUserFacts`, `catalogPruneCandidates`,
+   * `pantryCheckTasks`, and the Pantry row's "on the list" caption — ask
+   * `onListAnywhere` (`src/utils/groceryLists.ts`) instead, because a row on the
+   * Airbnb list must not be swept as unused or asked about as absent.
    */
-  listId: string | null;
+  onList: boolean;
   // Invariant: checked implies onList.
   checked: boolean;
   // There is deliberately no `inCatalog` here any more (#1998). Every row is a

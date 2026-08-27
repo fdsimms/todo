@@ -37,6 +37,7 @@ import { useFocusStore } from './useFocusStore';
 import { useProjectStore, projectProgress } from './useProjectStore';
 import { useProjectCategoryStore } from './useProjectCategoryStore';
 import { useTemplateCategoryStore } from './useTemplateCategoryStore';
+import { listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from './useGroceryStore';
 import { useRecipeStore } from './useRecipeStore';
 import { useMealPlanStore } from './useMealPlanStore';
@@ -4352,7 +4353,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (!settings.kitchenEnabled) return;
 
     const tasks = get().tasks;
-    const items = useGroceryStore.getState().items;
+    const { items, listEntries } = useGroceryStore.getState();
+    // Every trolley, not just the one at home: a row already on the Airbnb list
+    // is shopping you are on your way to do, so asking whether you still have it
+    // is asking the wrong question. See pantryCheckLapse.
+    const listed = listedAnywhere(listEntries);
     // One `now` for both passes: the qualifier is a day-count comparison, and
     // two clocks a few milliseconds apart could in principle have the create
     // pass disagree with the drop pass about a lapse landing exactly on the
@@ -4372,7 +4377,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // stamp pantryCheckDeclinedAt on an item the user never turned down, and so
     // suppress the question after the *next* purchase on the strength of the
     // app's own tidying up.
-    const stale = stalePantryCheckTasks(tasks, items, now);
+    const stale = stalePantryCheckTasks(tasks, items, now, listed);
     stale.forEach(task => dropGeneratedTask('pantryCheck', pantryCheckItemId(task)));
 
     // One review row already asks about the whole cupboard, so the drip stands
@@ -4384,7 +4389,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // its item's lapse null, which is exactly what that pass tests.
     if (liveGeneratedTasksOfKind(tasks, 'pantryReview').length > 0) return;
 
-    const wanted = wantedPantryChecks(items, tasks, now);
+    const wanted = wantedPantryChecks(items, tasks, now, undefined, listed);
     if (wanted.length === 0) return;
 
     ensureGeneratedTaskCategory('pantryCheck');

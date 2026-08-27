@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem, GroceryList, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import type { GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -14,6 +14,10 @@ import {
   dbDeleteGroceryList,
   dbGetGroceryActiveList,
   dbSetGroceryActiveList,
+  dbGetAllGroceryListEntries,
+  dbSetGroceryListEntry,
+  dbDeleteGroceryListEntry,
+  dbClearGroceryListEntries,
   dbGetGroceryAisleOrder,
   dbSetGroceryAisleOrder,
   dbGetAllGroceryShops,
@@ -52,7 +56,14 @@ import { clampSupplyReorderAt, restockedSupplyCount } from '../utils/supply';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { generateId } from '../utils/id';
-import { HOME_LIST_NAME, isAwayList } from '../utils/groceryLists';
+import {
+  HOME_LIST_NAME,
+  isAwayList,
+  entryFor,
+  itemsOnList,
+  withHomeMembership,
+  nextListSortOrder,
+} from '../utils/groceryLists';
 import { appendPriceObservation, mergePriceHistories } from '../utils/priceHistory';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
 import { hasUserFacts, factSignature, linkCounts } from '../utils/groceryFacts';
@@ -253,6 +264,19 @@ interface GroceryStore {
    * which `HOME_LIST_NAME` is for.
    */
   lists: GroceryList[];
+  /**
+   * Which lists every row is in, and its place in each — the membership itself.
+   * See `GroceryListEntry`: a row can be in two trolleys at once, so this is a
+   * flat table rather than a field on the item, read the same way `itemShops`
+   * and `itemSubs` are (filter by `itemId`, resolve-or-shrug on a dangling id).
+   *
+   * **Never read `item.checked`/`item.sortOrder`/`item.choiceGroup` off `items`
+   * to answer a question about a list.** Those four columns mirror the *home*
+   * entry (see `GroceryItem.onList`), which is the right answer only when the
+   * home list is the one you meant. `itemsOnList(items, listEntries, listId)` is
+   * how you get a list's rows, and it writes that list's values over them.
+   */
+  listEntries: GroceryListEntry[];
   /**
    * The list the Groceries screen is showing, or null for the one at home.
    *
@@ -773,8 +797,14 @@ interface GroceryStore {
    * uses internally.
    *
    * A row deleted since the answer is left alone rather than resurrected.
+   *
+   * `entry` is that row's membership of the list being shown as it stood before
+   * the answer, or null for "it wasn't in that trolley". It has to be passed
+   * rather than derived, for the same reason the item snapshot does: "Running
+   * low" puts a row on the list, and only a snapshot taken beforehand knows
+   * whether it was already there. See `GroceryListEntry`.
    */
-  revertPantryAnswer: (item: GroceryItem) => void;
+  revertPantryAnswer: (item: GroceryItem, entry: GroceryListEntry | null) => void;
   /**
    * The remembered shelf life — a dumb setter, unlike setExpiresAt: this
    * never touches expiresAt or the use-up task on its own. See
@@ -1213,13 +1243,6 @@ function newItemRow(fields: {
   sortOrder: number;
   createdAt: string;
   onList: boolean;
-  /**
-   * Which list this row is being added to — null for the one at home, and
-   * ignored entirely when `onList` is false. See GroceryItem.listId: a row
-   * that isn't on a list isn't on a *particular* list either, and letting an
-   * off-list row keep an id would decide where a re-add landed weeks later.
-   */
-  listId?: string | null;
   quantity?: string | null;
   note?: string | null;
   choiceGroup?: string | null;
@@ -1248,8 +1271,11 @@ function newItemRow(fields: {
     // write, which always goes through setQuantity's fromRecipe option instead.
     quantityFromRecipe: false,
     note: fields.note ?? '',
+    // A mirror of the home entry from here on (see GroceryItem.onList), and
+    // true here only because the caller is about to write one. The membership
+    // itself is `joinList`'s job, not this factory's — a row exists in the
+    // catalog whether or not it is in anybody's trolley.
     onList: fields.onList,
-    listId: fields.onList ? fields.listId ?? null : null,
     checked: false,
     sortOrder: fields.sortOrder,
     purchaseCount: 0,
@@ -1447,6 +1473,67 @@ function dropUseUpTask(itemId: string): void {
   dropGeneratedTask('groceryUseUp', itemId);
 }
 
+/** (item, list) as one string, for the set/map keys below. */
+function entryKey(itemId: string, listId: string | null): string {
+  return `${itemId}\u0000${listId ?? ''}`;
+}
+
+/**
+ * **The one write path for list membership**, and every action that puts a row
+ * in a trolley or takes it out goes through it.
+ *
+ * One path because there are two things to keep in step on every such write and
+ * both are easy to forget: the entries themselves, and the four columns on the
+ * item that mirror the home entry (see `GroceryItem.onList`). `withHomeMembership`
+ * does the second in memory and `dbSyncGroceryHomeColumns` does it in SQLite,
+ * called from `dbSetGroceryListEntry`/`dbDeleteGroceryListEntry` — so a caller
+ * here need only say which entries changed.
+ *
+ * Reaches the store through `useGroceryStore` rather than a captured `set`,
+ * because it is declared above the store it writes to. Safe: it is only ever
+ * called from inside an action, long after the module has finished evaluating.
+ */
+function writeMembership(changes: {
+  upsert?: readonly GroceryListEntry[];
+  remove?: ReadonlyArray<{ itemId: string; listId: string | null }>;
+}): void {
+  const upsert = changes.upsert ?? [];
+  const remove = changes.remove ?? [];
+  if (upsert.length === 0 && remove.length === 0) return;
+  for (const entry of upsert) dbSetGroceryListEntry(entry);
+  for (const { itemId, listId } of remove) dbDeleteGroceryListEntry(itemId, listId);
+  useGroceryStore.setState(s => {
+    const dropped = new Set(remove.map(r => entryKey(r.itemId, r.listId)));
+    const replaced = new Set(upsert.map(e => entryKey(e.itemId, e.listId)));
+    const listEntries = [
+      ...s.listEntries.filter(e => {
+        const key = entryKey(e.itemId, e.listId);
+        return !dropped.has(key) && !replaced.has(key);
+      }),
+      ...upsert,
+    ];
+    const touched = new Set([...upsert.map(e => e.itemId), ...remove.map(r => r.itemId)]);
+    return { listEntries, items: withHomeMembership(s.items, listEntries, touched) };
+  });
+}
+
+/** Puts one row in one list's trolley, at the end of that list's walk order. */
+function joinList(itemId: string, listId: string | null, at: string): void {
+  const { listEntries } = useGroceryStore.getState();
+  const existing = entryFor(listEntries, itemId, listId);
+  if (existing) return;
+  writeMembership({
+    upsert: [{
+      itemId,
+      listId,
+      checked: false,
+      sortOrder: nextListSortOrder(listEntries, listId),
+      choiceGroup: null,
+      addedAt: at,
+    }],
+  });
+}
+
 export const useGroceryStore = create<GroceryStore>((set, get) => ({
   items: [],
   aisleOrder: [],
@@ -1463,6 +1550,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   cartHoldIds: [],
   groceryGroupBy: 'aisle',
   lists: [],
+  listEntries: [],
   activeListId: null,
   pendingUseUpItemId: null,
   disposalOffer: null,
@@ -1523,6 +1611,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // another device would otherwise leave the screen showing an empty trolley
     // it can't name. Not written back, like the aisle order and the trip.
     const lists = dbGetAllGroceryLists();
+    const listEntries = dbGetAllGroceryListEntries();
     const storedList = dbGetGroceryActiveList();
     const activeListId = lists.some(l => l.id === storedList) ? storedList : null;
     if (cartHoldTimer) {
@@ -1545,6 +1634,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       cartHoldIds: [],
       groceryGroupBy: dbGetGroceryGroupBy(),
       lists,
+      listEntries,
       activeListId,
       pendingUseUpItemId: null,
       disposalOffer: null,
@@ -1613,13 +1703,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // leaving the rows pointed at a list that no longer exists would tip them
     // into the home trolley instead.
     const cleared = new Set(dbDeleteGroceryList(id));
-    set(s => ({
-      lists: s.lists.filter(l => l.id !== id),
-      items: s.items.map(i => (
-        cleared.has(i.id) ? { ...i, onList: false, checked: false, choiceGroup: null, listId: null } : i
-      )),
-      cartHoldIds: s.activeListId === id ? [] : s.cartHoldIds,
-    }));
+    set(s => {
+      // The entries are already gone in SQLite; this mirrors that and
+      // recomputes each row's four mirror columns from what's left, so a row
+      // still in another trolley goes on saying so.
+      const listEntries = s.listEntries.filter(e => e.listId !== id);
+      return {
+        lists: s.lists.filter(l => l.id !== id),
+        listEntries,
+        items: withHomeMembership(s.items, listEntries, cleared),
+        cartHoldIds: s.activeListId === id ? [] : s.cartHoldIds,
+      };
+    });
     if (get().activeListId === id) get().setActiveList(null);
   },
 
@@ -1685,14 +1780,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         ...existing,
         // The typed name wins — capitalisation and wording are the user's.
         name: name || existing.name,
-        onList: true,
-        // The list you're looking at, unless a caller named one. Every add
-        // lands on the active list — that's the one rule, and it's what makes
-        // the switcher mean what it says. A row already sitting on another
-        // list is *moved* to this one rather than being on both: `listId` is
-        // singular for the reason `checked` is (see GroceryItem.listId).
-        listId: targetListId,
-        checked: false,
+        // Both are the home entry's mirror and are recomputed from the
+        // entries by the `joinList` below — set here only so the row this
+        // returns is already right for a caller that reads it straight back.
+        onList: existing.onList || targetListId === null,
+        checked: targetListId === null ? false : existing.checked,
         // Only overwrite the quantity when this add actually carried one;
         // typing "milk" to re-add shouldn't wipe the "2 gal" set last week.
         quantity: quantity ?? existing.quantity,
@@ -1728,6 +1820,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         itemProducts: ensured?.created ? [...s.itemProducts, ensured.product] : s.itemProducts,
         cartHoldIds: s.cartHoldIds.filter(x => x !== existing.id),
       }));
+      // The membership itself, after the row is patched. **Joins rather than
+      // moves**: a row already in the trolley at home stays there when it is
+      // added to the Airbnb list, which is the whole reason membership is a
+      // table (see GroceryListEntry). Re-adding to a list it is already in is a
+      // no-op on the entry, so the tick and the walk-order slot it already had
+      // survive — typing "milk" twice must not un-tick the milk in your cart.
+      joinList(existing.id, targetListId, now);
+      // An either/or is this trolley's, so a group named by the add is written
+      // onto the entry rather than the row (see GroceryListEntry.choiceGroup).
+      if (choiceGroup) {
+        const entry = entryFor(get().listEntries, existing.id, targetListId);
+        if (entry) writeMembership({ upsert: [{ ...entry, choiceGroup }] });
+      }
       if (opts?.registerUndo !== false && !wasOnList) {
         get().setLastAction({
           label: `Added "${updated.name}"`,
@@ -1758,7 +1863,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       quantity,
       note,
       onList: true,
-      listId: targetListId,
       sortOrder: nextSortOrder(get().items),
       createdAt: now,
       choiceGroup,
@@ -1774,6 +1878,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       items: [...s.items, item],
       itemProducts: ensured?.created ? [...s.itemProducts, ensured.product] : s.itemProducts,
     }));
+    // Same two writes the existing branch above makes, and in the same order:
+    // the row first, then its membership of the list being added to.
+    joinList(item.id, targetListId, now);
+    if (choiceGroup) {
+      const entry = entryFor(get().listEntries, item.id, targetListId);
+      if (entry) writeMembership({ upsert: [{ ...entry, choiceGroup }] });
+    }
     if (opts?.registerUndo !== false) {
       get().setLastAction({
         label: `Added "${item.name}"`,
@@ -1824,19 +1935,28 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const wanted = new Set(ids);
     const now = new Date().toISOString();
     const listId = get().activeListId;
+    // Already in *this* trolley is the no-op, not already in some trolley: a
+    // staple on the list at home is exactly what you want to add to the Airbnb
+    // one. See GroceryListEntry.
     const updates: GroceryItem[] = [];
-    let order = nextSortOrder(get().items);
+    const entries: GroceryListEntry[] = [];
+    let order = nextListSortOrder(get().listEntries, listId);
 
     for (const item of get().items) {
-      if (!wanted.has(item.id) || item.onList) continue;
-      // Onto the active list, same rule as every other add — see addByName.
-      updates.push({ ...item, onList: true, listId, checked: false, lastAddedAt: now, sortOrder: order++ });
+      if (!wanted.has(item.id)) continue;
+      if (entryFor(get().listEntries, item.id, listId)) continue;
+      updates.push({ ...item, lastAddedAt: now });
+      entries.push({
+        itemId: item.id, listId, checked: false, sortOrder: order++,
+        choiceGroup: null, addedAt: now,
+      });
     }
     if (updates.length === 0) return;
 
     for (const u of updates) dbUpdateGroceryItem(u);
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+    writeMembership({ upsert: entries });
 
     const addedIds = updates.map(u => u.id);
     get().setLastAction({
@@ -1937,47 +2057,50 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   },
 
   toggleChecked(id) {
-    const item = get().items.find(i => i.id === id);
-    // The checked ⇒ onList invariant: an off-list row has nothing to check.
-    if (!item || !item.onList) return;
+    // The tick belongs to the trolley you're looking at, not to the row: the
+    // same milk can be in the cart at the shop near the rental and still to buy
+    // at home. See GroceryListEntry.
+    const listId = get().activeListId;
+    const entry = entryFor(get().listEntries, id, listId);
+    // The checked ⇒ in-a-trolley invariant: a row not in this one has nothing
+    // to check here.
+    if (!entry) return;
 
-    const updated = { ...item, checked: !item.checked };
-    dbUpdateGroceryItem(updated);
+    const checked = !entry.checked;
+    writeMembership({ upsert: [{ ...entry, checked }] });
     set(s => ({
-      items: s.items.map(i => (i.id === id ? updated : i)),
-      cartHoldIds: updated.checked
+      cartHoldIds: checked
         ? [...s.cartHoldIds.filter(x => x !== id), id]
         // Un-checking inside the hold window just drops it — the row was
         // never going to sink, so nothing has to animate back.
         : s.cartHoldIds.filter(x => x !== id),
     }));
-    if (updated.checked) armCartHold();
+    if (checked) armCartHold();
     // Ticking one option of an either/or is how the choice gets made — see
     // resolveChoice. Deliberately not mirrored in setCheckedMany: a bulk tick
     // is a sweep over rows the user selected by hand, and silently deleting
     // rows they didn't select out from under it is not what that gesture says.
-    if (updated.checked && updated.choiceGroup) get().resolveChoice(id);
+    if (checked && entry.choiceGroup) get().resolveChoice(id);
   },
 
   setCheckedMany(ids, checked) {
     if (ids.length === 0) return;
     const wanted = new Set(ids);
-    const updates: GroceryItem[] = [];
-    for (const item of get().items) {
-      // Same invariant as toggleChecked: an off-list row has nothing to check.
-      if (!wanted.has(item.id) || !item.onList || item.checked === checked) continue;
-      updates.push({ ...item, checked });
-    }
+    const listId = get().activeListId;
+    // Same invariant as toggleChecked, and the same scope: the ticks belong to
+    // the trolley being shown.
+    const updates = get().listEntries.filter(
+      e => e.listId === listId && wanted.has(e.itemId) && e.checked !== checked
+    );
     if (updates.length === 0) return;
 
-    for (const u of updates) dbUpdateGroceryItem(u);
-    const byId = new Map(updates.map(u => [u.id, u]));
+    writeMembership({ upsert: updates.map(e => ({ ...e, checked })) });
+    const touched = new Set(updates.map(e => e.itemId));
     set(s => ({
-      items: s.items.map(i => byId.get(i.id) ?? i),
       cartHoldIds: checked
-        ? [...s.cartHoldIds.filter(x => !byId.has(x)), ...updates.map(u => u.id)]
+        ? [...s.cartHoldIds.filter(x => !touched.has(x)), ...updates.map(e => e.itemId)]
         // Un-checking inside the hold window just drops it, same as toggleChecked.
-        : s.cartHoldIds.filter(x => !byId.has(x)),
+        : s.cartHoldIds.filter(x => !touched.has(x)),
     }));
     if (checked) armCartHold();
   },
@@ -2872,30 +2995,29 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setRunningLow(id, low, opts = {}) {
     const item = get().items.find(i => i.id === id);
     if (!item || !!item.runningLowAt === low) return;
-    const wasOnList = item.onList;
+    const listId = get().activeListId;
+    // Already in the trolley you're looking at is what makes this a no-op on
+    // the list, not being in some other one — a staple you're nearly out of at
+    // home is worth adding to the Airbnb list too.
+    const wasOnList = entryFor(get().listEntries, id, listId) !== null;
+    const now = new Date().toISOString();
     const updated: GroceryItem = {
       ...item,
-      runningLowAt: low ? new Date().toISOString() : null,
-      // One direction only — see the note on the interface above.
-      onList: low ? true : item.onList,
-      // Onto the list you're looking at, same rule as every other add. A row
-      // already on one keeps the list it was on: this reaches into `onList` in
-      // one direction, and moving somebody else's row between trolleys is more
-      // than "I'm nearly out of this" means.
-      listId: low && !wasOnList ? get().activeListId : item.listId,
-      // A row put on the list by this needs a slot on it; one already there
-      // keeps the slot it had.
-      sortOrder: low && !wasOnList ? nextSortOrder(get().items) : item.sortOrder,
-      lastAddedAt: low && !wasOnList ? new Date().toISOString() : item.lastAddedAt,
+      runningLowAt: low ? now : null,
+      lastAddedAt: low && !wasOnList ? now : item.lastAddedAt,
     };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+    // One direction only — see the note on the interface above. Onto the list
+    // you're looking at, same rule as every other add.
+    if (low && !wasOnList) joinList(id, listId, now);
     if (low && !wasOnList && opts.registerUndo !== false) {
       get().setLastAction({
         label: `Added "${updated.name}" to the list`,
         undo: () => {
           dbUpdateGroceryItem(item);
           set(s => ({ items: s.items.map(i => (i.id === id ? item : i)) }));
+          writeMembership({ remove: [{ itemId: id, listId }] });
         },
       });
     }
@@ -2924,13 +3046,23 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     set(s => ({ items: s.items.map(i => (i.id === itemId ? updated : i)) }));
   },
 
-  revertPantryAnswer(item) {
+  revertPantryAnswer(item, entry) {
     // Guarded on the row still being there: a snapshot written back
     // unconditionally would resurrect an item deleted from another screen
     // while the deck was open.
     if (!get().items.some(i => i.id === item.id)) return;
     dbUpdateGroceryItem(item);
     set(s => ({ items: s.items.map(i => (i.id === item.id ? item : i)) }));
+    // "Running low" is the one answer that reaches into a list (see
+    // setRunningLow), so it's the one Undo has membership to put back. The
+    // entry snapshot is what says whether the row was in this trolley before
+    // the card was answered — the item alone can't, now that membership is a
+    // table.
+    const listId = get().activeListId;
+    if (entry) writeMembership({ upsert: [entry] });
+    else if (entryFor(get().listEntries, item.id, listId)) {
+      writeMembership({ remove: [{ itemId: item.id, listId }] });
+    }
   },
 
   setShelfLifeDays(id, days) {
@@ -2977,71 +3109,78 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
    * ("not this one") without needing to be undone to get it back.
    */
   resolveChoice(id) {
+    // An either/or belongs to one trolley (see GroceryListEntry.choiceGroup),
+    // so the whole of this happens inside the list being shown: the same pair
+    // on another list is a separate choice, still to be made there.
+    const listId = get().activeListId;
+    const entries = get().listEntries;
+    const entry = entryFor(entries, id, listId);
+    if (!entry?.choiceGroup) return;
+    const group = entry.choiceGroup;
     const item = get().items.find(i => i.id === id);
-    if (!item?.choiceGroup) return;
-    const group = item.choiceGroup;
-    // Only what's still on the list is a live option. An off-list catalog row
-    // that once shared the group is history, not a thing to take away.
-    const losers = get().items.filter(i => i.id !== id && i.choiceGroup === group && i.onList);
+    if (!item) return;
+    const losers = entries.filter(
+      e => e.listId === listId && e.itemId !== id && e.choiceGroup === group
+    );
     if (losers.length === 0) {
       get().clearChoice(id);
       return;
     }
 
-    const winner = { ...item, choiceGroup: null };
     // Snapshots taken before anything is written, so undo restores the rows
     // themselves rather than reconstructing what they probably were. The
     // winner goes back *unticked*: the tick is what made the choice (this only
     // ever runs from toggleChecked), so undoing the choice has to undo the tick
     // too, or the group comes back with one option already in the trolley.
-    const before = [{ ...item, checked: false }, ...losers];
+    const beforeEntries = [{ ...entry, checked: false }, ...losers];
+    const loserIds = new Set(losers.map(e => e.itemId));
+    const beforeItems = get().items.filter(i => loserIds.has(i.id));
     // Same park shape removeFromList uses, recipe-owned quantity included: a
     // rejected "2 cups pears" must not hand that amount back on a later manual
-    // re-add. Previously unreachable, because the loser was deleted.
-    const toUnlist = losers.map(i => ({
+    // re-add.
+    const parked = beforeItems.map(i => ({
       ...i,
-      onList: false,
-      listId: null,
-      checked: false,
-      choiceGroup: null,
       quantity: i.quantityFromRecipe ? null : i.quantity,
       quantityFromRecipe: false,
     }));
 
-    dbUpdateGroceryItem(winner);
-    for (const u of toUnlist) dbUpdateGroceryItem(u);
-    const patched = new Map<string, GroceryItem>([[winner.id, winner], ...toUnlist.map(
-      u => [u.id, u] as [string, GroceryItem]
-    )]);
-    set(s => ({ items: s.items.map(i => patched.get(i.id) ?? i) }));
+    for (const u of parked) dbUpdateGroceryItem(u);
+    const byId = new Map(parked.map(u => [u.id, u]));
+    set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+    // The winner keeps its place and stops being an option; every other option
+    // leaves this trolley.
+    writeMembership({
+      upsert: [{ ...entry, choiceGroup: null }],
+      remove: losers.map(e => ({ itemId: e.itemId, listId })),
+    });
 
     get().setLastAction({
       label: `Chose ${item.name}`,
-      // Still bar-worthy, though nothing is deleted any more: one tick takes
-      // every other option off the list at once, and that's the "what just
-      // happened" the bar exists for. See UndoableAction.destructive.
+      // Still bar-worthy, though nothing is deleted: one tick takes every other
+      // option off the list at once, and that's the "what just happened?" a
+      // shake answers.
       destructive: true,
       undo: () => {
-        for (const row of before) dbUpdateGroceryItem(row);
-        const byId = new Map(before.map(i => [i.id, i]));
-        set(s => ({
-          items: s.items.map(i => byId.get(i.id) ?? i),
-          cartHoldIds: s.cartHoldIds.filter(x => x !== id),
-        }));
+        for (const row of beforeItems) dbUpdateGroceryItem(row);
+        const back = new Map(beforeItems.map(i => [i.id, i]));
+        set(s => ({ items: s.items.map(i => back.get(i.id) ?? i) }));
+        writeMembership({ upsert: beforeEntries });
       },
     });
   },
 
   clearChoice(id) {
-    const item = get().items.find(i => i.id === id);
-    if (!item?.choiceGroup) return;
-    const group = item.choiceGroup;
-    const updates = get().items
-      .filter(i => i.choiceGroup === group)
-      .map(i => ({ ...i, choiceGroup: null }));
-    for (const u of updates) dbUpdateGroceryItem(u);
-    const byId = new Map(updates.map(u => [u.id, u]));
-    set(s => ({ items: s.items.map(i => byId.get(i.id) ?? i) }));
+    // Scoped to this trolley, like resolveChoice above and for the same reason.
+    const listId = get().activeListId;
+    const entry = entryFor(get().listEntries, id, listId);
+    if (!entry?.choiceGroup) return;
+    const group = entry.choiceGroup;
+    // Every member of the group, not just this row: one remaining option is not
+    // a choice, so a partial unlink can't be a state.
+    const updates = get().listEntries
+      .filter(e => e.listId === listId && e.choiceGroup === group)
+      .map(e => ({ ...e, choiceGroup: null }));
+    writeMembership({ upsert: updates });
   },
 
   undoForAdds(addedIds, preexisting) {
@@ -3096,12 +3235,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // the label off-list would silently re-form the pair on a later re-add.
     // resolveChoice used to be the only path that cleared it, which was enough
     // only while the alternative was that the row got deleted.
+    // The trolley you're looking at, and only it: taking milk off the Airbnb
+    // list leaves the milk you still need at home exactly where it was. The
+    // entry going *is* the removal, choiceGroup and slot with it, which is why
+    // there is nothing here clearing either — see GroceryListEntry.
+    const listId = get().activeListId;
+    if (!entryFor(get().listEntries, id, listId)) return;
     const updated = {
       ...item,
-      onList: false,
-      listId: null,
-      checked: false,
-      choiceGroup: null,
       quantity: item.quantityFromRecipe ? null : item.quantity,
       quantityFromRecipe: false,
     };
@@ -3110,26 +3251,25 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       items: s.items.map(i => (i.id === id ? updated : i)),
       cartHoldIds: s.cartHoldIds.filter(x => x !== id),
     }));
+    writeMembership({ remove: [{ itemId: id, listId }] });
   },
 
   removeFromListMany(ids) {
     if (ids.length === 0) return;
     const wanted = new Set(ids);
-    const toUpdate: GroceryItem[] = [];
-    for (const item of get().items) {
-      if (!wanted.has(item.id) || !item.onList) continue;
-      // Parks every row, same as removeFromList — choiceGroup included.
-      toUpdate.push({
-        ...item,
-        onList: false,
-        listId: null,
-        checked: false,
-        choiceGroup: null,
-        quantity: item.quantityFromRecipe ? null : item.quantity,
+    const listId = get().activeListId;
+    const leaving = get().listEntries.filter(e => e.listId === listId && wanted.has(e.itemId));
+    if (leaving.length === 0) return;
+    // Parks every row, same as removeFromList: the entry goes, the catalog row
+    // stays, and a recipe-owned quantity ends with the shop it was for.
+    const toUpdate = leaving
+      .map(e => get().items.find(i => i.id === e.itemId))
+      .filter((i): i is GroceryItem => !!i)
+      .map(i => ({
+        ...i,
+        quantity: i.quantityFromRecipe ? null : i.quantity,
         quantityFromRecipe: false,
-      });
-    }
-    if (toUpdate.length === 0) return;
+      }));
 
     for (const u of toUpdate) dbUpdateGroceryItem(u);
     const byId = new Map(toUpdate.map(u => [u.id, u]));
@@ -3137,6 +3277,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       items: s.items.map(i => byId.get(i.id) ?? i),
       cartHoldIds: s.cartHoldIds.filter(x => !byId.has(x)),
     }));
+    writeMembership({ remove: leaving.map(e => ({ itemId: e.itemId, listId })) });
   },
 
   /**
@@ -3160,6 +3301,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     for (const id of ids) dbDeleteGroceryItem(id);
     set(s => ({
       items: s.items.filter(i => !gone.has(i.id)),
+      // Mirrors dbDeleteGroceryItem's own cascade: every trolley loses it, or
+      // a deleted row goes on being counted in a list for the rest of the
+      // session.
+      listEntries: s.listEntries.filter(e => !gone.has(e.itemId)),
       itemShops: s.itemShops.filter(l => !gone.has(l.itemId)),
       itemSubs: s.itemSubs.filter(l => !gone.has(l.itemId) && !gone.has(l.subItemId)),
       itemProducts: s.itemProducts.filter(p => !gone.has(p.itemId)),
@@ -3205,10 +3350,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // and so spawns no use-up tasks: a countdown on the milk in a rented fridge
     // is a chore about food you will not be near when it turns.
     const expiresAtById: Record<string, string> = {};
-    for (const i of get().items) {
-      if (away || !i.checked || !i.onList || i.listId !== listId) continue;
-      const expires = expiresAtForPurchase(i, now);
-      if (expires) expiresAtById[i.id] = expires;
+    if (!away) {
+      // The trolley being finished, with its own ticks projected on — reading
+      // `i.checked` off `items` would answer for the home list. See
+      // GroceryListEntry.
+      for (const i of itemsOnList(get().items, get().listEntries, listId)) {
+        if (!i.checked) continue;
+        const expires = expiresAtForPurchase(i, now);
+        if (expires) expiresAtById[i.id] = expires;
+      }
     }
     // Nothing an away trip cost is recorded, so nothing downstream has to be
     // told twice. Reassigned here rather than guarded at each of the four
@@ -3232,6 +3382,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const beforeItems = get().items;
     const beforeItemShops = get().itemShops;
     const beforeLastShopId = get().lastShopId;
+    // The membership this trip is about to empty, snapshotted whole so the undo
+    // puts each row back in this trolley with the tick and the slot it had.
+    // `dbFinishGroceryShopping` deletes the entries itself, so the patch below
+    // mirrors that rather than writing again.
+    const beforeEntries = get().listEntries.filter(e => e.listId === listId && e.checked);
     const ids = dbFinishGroceryShopping(
       purchasedAt,
       shop?.id ?? null,
@@ -3372,7 +3527,13 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
               .filter((id): id is string => id !== null)
       );
 
+      // The trolley empties by its entries going, and the four mirror columns
+      // on each row are recomputed from what's left — a row still in another
+      // list's trolley keeps saying so. Mirrors the DELETE
+      // dbFinishGroceryShopping just ran.
+      const listEntries = s.listEntries.filter(e => !(e.listId === listId && e.checked));
       return {
+        listEntries,
         itemProducts: s.itemProducts.map(p =>
           boughtProductIds.has(p.id)
             ? {
@@ -3390,9 +3551,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
           done.has(i.id)
             ? {
                 ...i,
-                onList: false,
-                listId: null,
-                checked: false,
                 // Mirrors the db's own CASE: the shop it was for has happened,
                 // so a recipe-owned quantity doesn't outlive it. A hand-set one
                 // survives untouched. Above the split below because it is the
@@ -3454,6 +3612,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         cartHoldIds: [],
       };
     });
+    // After the items patch, so the mirror is computed against the rows as they
+    // now stand rather than as they were.
+    set(s => ({ items: withHomeMembership(s.items, s.listEntries, done) }));
 
     if (shop) get().setLastShopId(shop.id);
     // After the set(), so each reconcile reads the row as it now stands. Only
@@ -3483,6 +3644,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       label: `Bought ${ids.length} ${ids.length === 1 ? 'thing' : 'things'}`,
       destructive: true,
       undo: () => {
+        // Back in the trolley they were in, each with the tick and the slot it
+        // had — the membership half of putting a trip back.
+        writeMembership({ upsert: beforeEntries });
         for (const row of before) dbUpdateGroceryItem(row);
         const byId = new Map(before.map(i => [i.id, i]));
         // The bought boxes go back whole — counters and pantry claims alike —
@@ -3535,10 +3699,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   clearList() {
     const before = get().items;
+    const listId = get().activeListId;
+    // Snapshotted before the db empties it, so the undo puts each row back in
+    // this trolley with the tick and the slot it had.
+    const beforeEntries = get().listEntries.filter(e => e.listId === listId);
     // The list you're looking at, and only it. "I'm not doing this trip after
     // all" is a statement about one trolley — clearing the Airbnb list must
     // leave the shopping you still need at home exactly where it was.
-    const ids = dbClearGroceryList(get().activeListId);
+    const ids = dbClearGroceryList(listId);
     if (ids.length === 0) return 0;
     const cleared = new Set(ids);
     // Deliberately no purchaseCount bump: nothing was bought, and inflating
@@ -3557,19 +3725,38 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       shops: get().itemShops,
       aliases: get().storeAliases,
     });
-    const deleted = before.filter(i => cleared.has(i.id) && !hasUserFacts(i, linked));
+    // A row still in *another* trolley is shopping somebody is about to do, and
+    // sweeping it as a bare line of an abandoned trip would take it off the
+    // list at home. `hasUserFacts` can't see that — it reasons about the row,
+    // and being in a second trolley is a fact about a list.
+    //
+    // Computed by excluding this list rather than by reading state back: the db
+    // has already emptied the trolley but `listEntries` is patched below, so
+    // asking `get()` here would find every cleared row still listed and sweep
+    // nothing at all.
+    const stillListed = new Set(
+      get().listEntries.filter(e => e.listId !== listId).map(e => e.itemId)
+    );
+    const deleted = before.filter(
+      i => cleared.has(i.id) && !stillListed.has(i.id) && !hasUserFacts(i, linked)
+    );
     const deletedIds = new Set(deleted.map(i => i.id));
     // Through deleteItems rather than a dbDeleteGroceryItem loop of its own, so
     // the in-memory mirror of the cascade and the use-up cleanup can't drift
     // from the one place that owns them.
     if (deletedIds.size > 0) get().deleteItems([...deletedIds]);
     const parked = before.filter(i => cleared.has(i.id) && !deletedIds.has(i.id));
-    set(s => ({
-      items: s.items.map(i => (
-        cleared.has(i.id) ? { ...i, onList: false, checked: false, choiceGroup: null, listId: null } : i
-      )),
-      cartHoldIds: [],
-    }));
+    // The entries are already gone in SQLite; this mirrors that and recomputes
+    // the four columns on each row from what's left, so a row still in another
+    // trolley goes on saying so.
+    set(s => {
+      const listEntries = s.listEntries.filter(e => e.listId !== listId);
+      return {
+        listEntries,
+        items: withHomeMembership(s.items, listEntries, cleared),
+        cartHoldIds: [],
+      };
+    });
     // A trip whose list just went away is over. The other terminator is
     // finishing a shop, which lives in the screen's handler rather than in
     // finishShopping — that one early-returns on an empty trolley, and ending
@@ -3587,27 +3774,45 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         set(s => ({
           items: [...s.items.map(i => parkedById.get(i.id) ?? i), ...deleted],
         }));
+        // The rows have to exist again before their membership can point at
+        // them, which is why this follows the insert rather than leading it.
+        writeMembership({ upsert: beforeEntries });
       },
     });
     return ids.length;
   },
 
   applyDrop(placements) {
+    // A drop decides two different things with two different scopes, and this
+    // is the one place that split shows: the **aisle** is a fact about the item
+    // (dragging bread to Frozen means bread is in Frozen, on every list), while
+    // the **rank** is this trolley's walk order and belongs to the entry. See
+    // GroceryListEntry.
+    const listId = get().activeListId;
     const byId = new Map(get().items.map(i => [i.id, i]));
+    const entriesById = new Map(
+      get().listEntries.filter(e => e.listId === listId).map(e => [e.itemId, e])
+    );
     const updates: GroceryItem[] = [];
+    const entryUpdates: GroceryListEntry[] = [];
     // Only the rows that crossed a section header — a drag that merely
     // reordered within an aisle says nothing about where the item lives.
     const moved: Array<{ nameKey: string; aisle: string }> = [];
     for (const p of placements) {
       const item = byId.get(p.id);
       if (!item) continue;
-      if (item.sortOrder === p.sortOrder && item.aisle === p.aisle) continue;
-      if (item.aisle !== p.aisle) moved.push({ nameKey: item.nameKey, aisle: p.aisle });
-      updates.push({ ...item, sortOrder: p.sortOrder, aisle: p.aisle });
+      const entry = entriesById.get(p.id);
+      if (entry && entry.sortOrder !== p.sortOrder) {
+        entryUpdates.push({ ...entry, sortOrder: p.sortOrder });
+      }
+      if (item.aisle === p.aisle) continue;
+      moved.push({ nameKey: item.nameKey, aisle: p.aisle });
+      updates.push({ ...item, aisle: p.aisle });
     }
-    if (updates.length === 0) return;
+    if (updates.length === 0 && entryUpdates.length === 0) return;
 
     for (const u of updates) dbUpdateGroceryItem(u);
+    writeMembership({ upsert: entryUpdates });
     // Dragging a row into another aisle is the same statement the item sheet's
     // picker makes, so it's remembered the same way.
     const remembered = rememberAisles(get().aisleOverrides, moved);
@@ -4140,12 +4345,19 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   swapForSubstitute(itemId, subItemId) {
     const item = get().items.find(i => i.id === itemId);
     const sub = get().items.find(i => i.id === subItemId);
-    if (!item || !sub || !item.onList) return;
+    // A swap happens inside one trolley: it's offered at the shelf, on the list
+    // being shopped, and it's that trolley the substitute takes a place in.
+    const listId = get().activeListId;
+    const swappedEntry = item ? entryFor(get().listEntries, item.id, listId) : null;
+    if (!item || !sub || !swappedEntry) return;
 
     // Snapshots taken before anything is written, so undo restores the rows
     // themselves rather than reconstructing what they probably were — the
     // same discipline resolveChoice uses for a destructive resolution.
     const before = [{ ...item }, { ...sub }];
+    const beforeEntries = get().listEntries.filter(
+      e => e.listId === listId && (e.itemId === item.id || e.itemId === sub.id)
+    );
 
     const link = get().itemSubs.find(l => l.itemId === itemId && l.subItemId === subItemId);
     let quantity = item.quantity;
@@ -4156,12 +4368,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
     const updatedSub: GroceryItem = {
       ...sub,
-      onList: true,
-      // The list the row it's standing in for was on, not the active one: a
-      // swap made at the shelf is a substitution *within* a trolley, and the
-      // screen offering it is showing that trolley anyway.
-      listId: item.listId,
-      checked: false,
       quantity: quantity ?? sub.quantity,
       quantityFromRecipe: quantity ? item.quantityFromRecipe : sub.quantityFromRecipe,
       lastAddedAt: new Date().toISOString(),
@@ -4175,10 +4381,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // the row it was on, same as finishing does.
     const updatedItem: GroceryItem = {
       ...item,
-      onList: false,
-      listId: null,
-      checked: false,
-      choiceGroup: null,
       quantity: item.quantityFromRecipe ? null : item.quantity,
       quantityFromRecipe: false,
     };
@@ -4192,10 +4394,24 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       items: s.items.map(i => patched.get(i.id) ?? i),
       cartHoldIds: s.cartHoldIds.filter(x => x !== item.id && x !== sub.id),
     }));
+    // The substitute takes the swapped row's own place in this trolley — its
+    // slot in the walk order and, if it was one, its side of the either/or —
+    // rather than being appended to the bottom of a list you are walking. The
+    // row it stands in for leaves this trolley and no other.
+    writeMembership({
+      upsert: [{ ...swappedEntry, itemId: sub.id, checked: false, addedAt: new Date().toISOString() }],
+      remove: [{ itemId: item.id, listId }],
+    });
 
     get().setLastAction({
       label: `Swapped for ${sub.name}`,
       undo: () => {
+        writeMembership({
+          upsert: beforeEntries,
+          remove: beforeEntries.some(e => e.itemId === sub.id)
+            ? []
+            : [{ itemId: sub.id, listId }],
+        });
         for (const row of before) dbUpdateGroceryItem(row);
         const byId = new Map(before.map(i => [i.id, i]));
         set(s => ({

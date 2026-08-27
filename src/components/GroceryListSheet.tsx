@@ -53,7 +53,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const { height: windowHeight } = useWindowDimensions();
 
-  const items = useGroceryStore(useShallow(s => s.items));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const lists = useGroceryStore(useShallow(s => s.lists));
   const activeListId = useGroceryStore(s => s.activeListId);
   const setActiveList = useGroceryStore(s => s.setActiveList);
@@ -61,7 +61,7 @@ export function GroceryListSheet({ visible, onClose }: Props) {
   const renameList = useGroceryStore(s => s.renameList);
   const deleteList = useGroceryStore(s => s.deleteList);
 
-  const rows = useMemo(() => listPickerRows(items, lists), [items, lists]);
+  const rows = useMemo(() => listPickerRows(listEntries, lists), [listEntries, lists]);
 
   const [newName, setNewName] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);

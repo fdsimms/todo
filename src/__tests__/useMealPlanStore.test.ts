@@ -210,7 +210,6 @@ function onHand(name: string): GroceryItem {
     name,
     nameKey: groceryNameKey(name),
     onList: false,
-    listId: null,
     checked: false,
     isStaple: false,
     purchaseCount: 0,

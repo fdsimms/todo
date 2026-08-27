@@ -112,7 +112,6 @@ function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
     quantityFromRecipe: false,
     note: '',
     onList: false,
-    listId: null,
     checked: false,
     sortOrder: seq,
     purchaseCount: 0,

@@ -68,11 +68,15 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'templates', key: ['id'] },
   { name: 'grocery_items', key: ['id'] },
   { name: 'grocery_shops', key: ['id'] },
-  // The away lists. It has to travel even though *which* one a device is
-  // looking at doesn't (see `grocery_active_list` in the prose below):
-  // `grocery_items.list_id` syncs, and on a device with no row to resolve it
-  // against the whole Airbnb trolley would read as the home list.
+  // The away lists. They have to travel even though *which* one a device is
+  // looking at doesn't — see `grocery_active_list` in the prose below.
   { name: 'grocery_lists', key: ['id'] },
+  // Which lists a row is in, and its place in each. The membership itself, so
+  // without it a second device sees every trolley empty. Keyed on the pair it
+  // is keyed on in SQLite; both halves are base36 from generateId() (or '' for
+  // the home list), so joining them with KEY_SEPARATOR is safe — the same test
+  // grocery_item_shops beside it passes and grocery_store_aliases fails.
+  { name: 'grocery_list_items', key: ['item_id', 'list_id'] },
   { name: 'grocery_item_shops', key: ['item_id', 'shop_id'] },
   { name: 'grocery_item_subs', key: ['item_id', 'sub_item_id'] },
   // Keyed by id rather than (item_id, product_key) even though that pair is

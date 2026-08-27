@@ -3,6 +3,7 @@ import { AppState, Platform } from 'react-native';
 import type { Calendar as ReminderList, Reminder } from 'expo-calendar/legacy';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import { useTaskStore } from '../store/useTaskStore';
+import { trolleyStateFor } from './groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalNow } from './dateUtils';
@@ -414,13 +415,15 @@ function mirrorTarget(): string | null {
  * discover there was nothing to do.
  */
 function mirrorItems(): MirrorItem[] {
-  return useGroceryStore.getState().items.map(item => ({
+  const { items, listEntries } = useGroceryStore.getState();
+  const home = trolleyStateFor(listEntries, null);
+  return items.map(item => ({
     id: item.id,
     name: item.name,
     nameKey: item.nameKey,
     quantity: item.quantity,
-    onList: item.onList && item.listId === null,
-    checked: item.checked,
+    onList: home.has(item.id),
+    checked: home.get(item.id) ?? false,
   }));
 }
 
@@ -432,13 +435,15 @@ function mirrorItems(): MirrorItem[] {
  */
 export function groceryMirrorSignature(): string {
   const parts: string[] = [];
-  for (const item of useGroceryStore.getState().items) {
+  const { items, listEntries } = useGroceryStore.getState();
+  const home = trolleyStateFor(listEntries, null);
+  for (const item of items) {
     // The home list only, exactly as mirrorItems above reads it.
-    if (!item.onList || item.listId !== null) continue;
+    if (!home.has(item.id)) continue;
     // Separated on every side, because concatenating free text straight onto
     // an id lets two different lists spell the same signature, and a collision
     // here is a change that never syncs.
-    parts.push([item.id, item.checked ? 1 : 0, item.name, item.quantity ?? ''].join('\u0000'));
+    parts.push([item.id, home.get(item.id) ? 1 : 0, item.name, item.quantity ?? ''].join('\u0000'));
   }
   return parts.join('\u0001');
 }

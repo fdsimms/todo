@@ -22,6 +22,7 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
+import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import {
   suggestGroceryAisles,
@@ -69,6 +70,7 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const activeListId = useGroceryStore(s => s.activeListId);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const setAisleMany = useGroceryStore(s => s.setAisleMany);
@@ -91,8 +93,8 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
   // Anything currently sitting in the catch-all and on the list — the exact
   // gap the lexicon left.
   const unsorted = useMemo(
-    () => items.filter(i => i.onList && i.listId === activeListId && i.aisle === OTHER_AISLE),
-    [items, activeListId]
+    () => itemsOnList(items, listEntries, activeListId).filter(i => i.aisle === OTHER_AISLE),
+    [items, listEntries, activeListId]
   );
 
   const reset = useCallback(() => {

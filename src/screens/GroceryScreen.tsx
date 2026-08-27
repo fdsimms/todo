@@ -147,6 +147,7 @@ export function GroceryScreen() {
 
   const items = useGroceryStore(useShallow(s => s.items));
   const lists = useGroceryStore(useShallow(s => s.lists));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const activeListId = useGroceryStore(s => s.activeListId);
   /**
    * The trolley this screen is showing — the rows of the active list, and only
@@ -161,7 +162,10 @@ export function GroceryScreen() {
    * of you, and reading `items` for one of them is how the milk you need at
    * home turns up on the Airbnb list.
    */
-  const listRows = useMemo(() => itemsOnList(items, activeListId), [items, activeListId]);
+  const listRows = useMemo(
+    () => itemsOnList(items, listEntries, activeListId),
+    [items, listEntries, activeListId]
+  );
   const activeListName = useMemo(() => listNameFor(activeListId, lists), [activeListId, lists]);
   /**
    * Whether this is a list you're away from home for. Everything it changes on

@@ -297,20 +297,50 @@ them can be written as a truthiness check.
 
 **A list is a scope on the trolley, not a second catalog.** There is still one `GroceryItem` per
 thing you buy, with one aisle, one purchase history, one pantry state, one set of substitutes and
-one set of products. Only *membership* is per-list, which is why `listId` lives on the item beside
-`onList` rather than in a join table, and why it is cleared by every path that takes a row off the
-list — `removeFromList`, `removeFromListMany`, `clearList`, `finishShopping`, `swapForSubstitute`,
-`resolveChoice` — exactly as `choiceGroup` is. Carried off-list it would decide, silently and weeks
-later, which list a re-add landed on.
+one set of products. Only *membership* is per-list, and it lives in `grocery_list_items` — one row
+per (item, list), carrying `checked`, `sortOrder` and `choiceGroup`.
 
-- **A row can only be on one list at a time**, for the same reason it has one `checked` and one
-  `sortOrder`. So adding a name that is already on another list *moves* it. See "The cost of
-  singular membership" below, which is the one open question here.
+**A row can be in two trolleys at once, and that is what the table is for.** The staples you need
+in both kitchens are the ordinary case, not an edge one: adding "milk" to the Airbnb list must not
+take it off the list at home. A singular `GroceryItem.listId` did exactly that, which is why it
+lasted one commit. Three fields had to move with it:
+
+- **`checked`**, or ticking milk off at the shop near the rental would show it as in the cart at
+  home, and the next trip there would buy it.
+- **`choiceGroup`**, because an either/or is *this* trolley's "apples or pears" — the field's own
+  note has always said so.
+- **`sortOrder`**, because each list is walked in its own order. This is the one that would merely
+  have been untidy shared; it comes along because the other two settle the shape anyway.
+
 - **Every add lands on the active list**, wherever it comes from: the add field, a recipe's
   ingredients, "I'm nearly out of this", the catalog's Add button. That's the one rule the switcher
   rests on, and the alternative — asking which list, per add — is a question nobody wants twelve
   times a trip. `addByName` takes a `listId` option for the single caller that needs to override it
-  (below).
+  (below). **Adding a row to a list it is already in is a no-op on the entry**, so the tick and the
+  slot in the walk order survive: typing "milk" twice must not un-tick the milk in your cart.
+- **`GroceryItem.onList`/`checked`/`sortOrder`/`choiceGroup` are still there, and they mirror the
+  *home* entry.** That is what lets every reader written before separate lists keep working and
+  keep meaning what it meant: the home list is the original one and these columns have always held
+  it. Two functions write them and they are twins — `dbSyncGroceryHomeColumns` in SQLite and
+  `withHomeMembership` in memory — both reached only through the store's single `writeMembership`
+  path, so they cannot drift.
+- **`onList` is the exception: it is the broad "in any trolley" question.** It has to be, because
+  `clearList`'s sweep and the catalog prune both read it to decide whether a row is unused, and a
+  row on the Airbnb list is not unused. The four readers that want that question and don't have the
+  item to hand ask `onListAnywhere`/`listedAnywhere` instead: the sweep, `catalogPruneCandidates`,
+  `pantryCheckTasks`, and the Pantry row's "on the list" caption.
+- **`itemsOnList` projects, it does not just filter.** It returns each row with that list's
+  `checked`/`sortOrder`/`choiceGroup` written over the item's own, which is what keeps
+  `buildGrocerySections`, the drag maths, the share text, the trip planner and the finish sheet
+  taking a plain `GroceryItem[]`. A caller that filtered `items` by entry instead would hand every
+  one of them the home list's ticks — **so never read `item.checked` off `store.items` to answer a
+  question about a list.**
+- **`grocery_items.list_id` is dead.** It was the singular column this replaced, and it survives
+  only as the input to the one-time migration that filled `grocery_list_items`. Written by nothing
+  since, the same treatment `in_catalog` and `task_groups.completed_at` get.
+- **A drop decides two things with two different scopes**, and `applyDrop` is where that shows: the
+  *aisle* is a fact about the item (dragging bread to Frozen means bread is in Frozen, on every
+  list) while the *rank* is this trolley's walk order and belongs to the entry.
 - **`activeListId` is a persisted setting, not a column**, like `grocery_group_by` beside it: it
   says what this device is looking at. It persists because a vacation outlasts an app launch, and
   it is repaired at read time against the lists that exist — the same treatment `lastShopId` and
@@ -321,12 +351,12 @@ later, which list a re-add landed on.
   per-device, so one phone in the rental kitchen doesn't move the other one's screen.
 - **Switching lists ends any running trip.** A trip is "I'm standing in this store shopping for
   this trolley", and switching trolleys makes the second half false.
-- **Deleting a list parks its trolley first**, and that is the one place grocery's usual
-  dangling-pointer tolerance does *not* apply. A `listId` naming a list that no longer exists reads
-  as `null`, and `null` is the home list — so leaving the rows would tip a deleted "Airbnb" trolley
-  straight into the kitchen at home. `dbDeleteGroceryList` owns the unlisting. The rows themselves
-  park, as they do everywhere else here: a list going away is a statement about the trip, not about
-  the coffee.
+- **Deleting a list drops its entries first**, and that is the one place grocery's usual
+  dangling-pointer tolerance does *not* apply. An entry naming a list that no longer exists would
+  keep the row in a deleted list's count for ever, and `listId` reads as `null` — the home list — if
+  anything resolved it. `dbDeleteGroceryList` owns it. The rows themselves stay in the catalog, and
+  a row that is *also* on another list stays on that one: a list going away is a statement about
+  one trip, not about the coffee.
 
 ### An away trip records nothing
 
@@ -384,19 +414,6 @@ unscoped on purpose:
 - **`pantryCheckTasks`** won't ask "do you still have X" about a row on any list.
 - **`KitchenScreen`'s "on the list" caption**, for the same reason: the row is on a list, and which
   one is not what a pantry row is answering.
-
-### The cost of singular membership
-
-One `listId` per row means a name can be in one trolley at a time, so typing "milk" onto the Airbnb
-list while milk is on the list at home **moves it**, and the home list quietly loses it. That is the
-model working as designed rather than a bug in it, but it bites in the most ordinary case — the
-staples you need in both kitchens — and it is worth knowing before extending this.
-
-The alternative is a `grocery_list_items` join table carrying `checked`, `sort_order` and
-`choice_group` per (item, list), with `onList` derived. That is the honest shape for multi-list
-membership and it is a large refactor of `useGroceryStore`; it was not taken here. The demo seed
-works around the same constraint by picking away-list names that aren't in the home trolley, and
-says so.
 
 ## Grocery stores (`Shop`) — which shop has which items
 

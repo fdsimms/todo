@@ -1299,7 +1299,6 @@ function item(name: string, overrides: Partial<GroceryItem> & { nameKey?: string
     quantity: null,
     note: '',
     onList: false,
-    listId: null,
     checked: false,
     sortOrder: seq,
     favorite: false,

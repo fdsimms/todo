@@ -26,7 +26,6 @@ function item(overrides: Partial<GroceryItem> = {}): GroceryItem {
     quantityFromRecipe: false,
     note: '',
     onList: false,
-    listId: null,
     checked: false,
     sortOrder: 0,
     purchaseCount: 0,

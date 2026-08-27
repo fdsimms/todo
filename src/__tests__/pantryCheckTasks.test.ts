@@ -39,7 +39,6 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     quantityFromRecipe: false,
     note: '',
     onList: false,
-    listId: null,
     checked: false,
     sortOrder: seq,
     // Three purchases over a year is a 122-day cadence, which is long enough

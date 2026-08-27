@@ -21,6 +21,7 @@ import {
   interaction,
   type Colors,
 } from '../theme';
+import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { ReorderableList } from './ReorderableList';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -89,6 +90,7 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const renameAisle = useGroceryStore(s => s.renameAisle);
   const deleteAisle = useGroceryStore(s => s.deleteAisle);
   const items = useGroceryStore(useShallow(s => s.items));
+  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const activeListId = useGroceryStore(s => s.activeListId);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
@@ -161,8 +163,11 @@ export function GroceryAislesSheet({ visible, onClose }: Props) {
   const draggable = useMemo(() => aisleOrder.filter(a => a !== OTHER_AISLE), [aisleOrder]);
 
   // On the active list, like every other count the Groceries tab shows.
-  const countFor = (aisle: string) =>
-    items.filter(i => i.aisle === aisle && i.onList && i.listId === activeListId).length;
+  const listRows = useMemo(
+    () => itemsOnList(items, listEntries, activeListId),
+    [items, listEntries, activeListId]
+  );
+  const countFor = (aisle: string) => listRows.filter(i => i.aisle === aisle).length;
 
   const commitAisleRename = () => {
     if (!editingAisle) return;
