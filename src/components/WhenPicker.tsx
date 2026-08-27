@@ -516,6 +516,7 @@ export function WhenPicker({
                   returnKeyType="done"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  spellCheck={false}
                 />
               </View>
               <View style={styles.sectionGap} />

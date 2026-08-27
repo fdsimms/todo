@@ -179,6 +179,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
               placeholder="Search emoji"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}
+              spellCheck={false}
               autoCapitalize="none"
               returnKeyType="search"
               accessibilityLabel="Search emoji"
@@ -282,6 +283,7 @@ export function EmojiPickerSheet({ visible, value, title = 'Choose an emoji', hi
             }}
             caretHidden
             autoCorrect={false}
+            spellCheck={false}
             importantForAccessibility="no-hide-descendants"
           />
         </View>

@@ -784,6 +784,7 @@ export function RecipeEditor({ visible, recipe, onClose, onDeleted }: Props) {
             placeholderTextColor={colors.textTertiary}
             autoCapitalize="none"
             autoCorrect={false}
+            spellCheck={false}
             keyboardType="url"
             returnKeyType="done"
             accessibilityLabel="Recipe link"

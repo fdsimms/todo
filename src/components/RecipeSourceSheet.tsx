@@ -89,6 +89,7 @@ export function RecipeSourceSheet({ visible, allowAIImport, onPickSaved, onImpor
               placeholder="Search your recipes"
               placeholderTextColor={colors.textTertiary}
               autoCorrect={false}
+              spellCheck={false}
               returnKeyType="search"
               accessibilityLabel="Search your recipes"
             />
