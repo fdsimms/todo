@@ -3129,14 +3129,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // reads as a mark on the same gauge rather than a shape floating inside it.
   // `bottom` is set at the call site from quotaPaceLevel; centering it on that
   // level (rather than sitting above it) is what makes the gap to the fill
-  // read as "how far behind" instead of "how far until the next tick".
+  // read as "how far behind" instead of "how far until the next tick". Grey
+  // rather than an alert colour — it's a ruler mark, not a warning, and the
+  // gap it sets up to read is the signal, not the line itself.
   quotaPaceMark: {
     position: 'absolute',
     left: -border.md,
     right: -border.md,
     height: 2,
     marginBottom: -1,
-    backgroundColor: colors.orange,
+    backgroundColor: colors.textSecondary,
   },
   content: {
     flex: 1,
