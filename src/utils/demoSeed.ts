@@ -334,6 +334,31 @@ export function seedDemoData(): void {
   // Part-done, so the meter on the row reads as a meter rather than an empty bar.
   updateTask(water.id, { progressCount: 2 });
 
+  // The other kind of daily target: one whose cadence is the point and whose
+  // count is arithmetic. Invisible as a capability without a row using it —
+  // the interval, the nudges and the window all read as ordinary quota fields
+  // until something is actually spacing itself out across a working day.
+  const eyes = addTask({
+    title: 'Look 20 feet away',
+    notes: 'Rest your eyes for 20 seconds. Every 20 minutes while you are working.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    // Eight hours at 20 minutes. Stored as the interval, so the count follows
+    // the window rather than the other way round.
+    quotaIntervalMinutes: 20,
+    quotaReminders: true,
+    targetCount: 24,
+    targetUnit: 'breaks',
+    windowStart: '09:00',
+    windowEnd: '17:00',
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+  });
+  // Behind, so the row is actually on Today rather than paced into hiding —
+  // and short of its count, which is the state this kind spends its whole day
+  // in and closes out in without it counting as a miss.
+  updateTask(eyes.id, { progressCount: 7 });
+
   // An extra-task rule. Invisible until it fires, so the seed carries a tally
   // partway through the cycle: the editor's caption then reads as a rule in
   // progress rather than one nobody has started.

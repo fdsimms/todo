@@ -434,7 +434,7 @@ export function LeftoverSheet({
                       <Ionicons
                         name={on ? 'checkmark-circle' : 'ellipse-outline'}
                         size={iconSize.md}
-                        color={on ? colors.accent : colors.textTertiary}
+                        color={on ? colors.accent : colors.textSecondary}
                       />
                       <View style={styles.partText}>
                         <Text style={styles.partTitle} numberOfLines={1}>{part.title}</Text>
@@ -627,6 +627,7 @@ export function LeftoverSheet({
               <SheetActionRow
                 icon="close-circle-outline"
                 color={colors.red}
+                destructive
                 label="Delete"
                 onPress={handleDeleteLeftover}
                 accessibilityLabel="Delete this leftover"
@@ -766,13 +767,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   chipOn: { backgroundColor: colors.accent },
   chipText: {
-    color: colors.textSecondary,
+    color: colors.text,
     fontSize: font.sm,
     fontWeight: fontWeight.medium,
   },
   chipTextOn: { color: colors.onAccent },
   hint: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.sm,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
@@ -781,7 +782,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   hintBlock: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
@@ -813,7 +814,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   partCaption: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
   },
   keepRow: {
@@ -831,7 +832,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.medium,
   },
   hintInline: {
-    color: colors.textTertiary,
+    color: colors.textSecondary,
     fontSize: font.xs,
   },
   sep: {

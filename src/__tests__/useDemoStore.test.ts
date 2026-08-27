@@ -175,6 +175,8 @@ jest.mock('expo-sqlite', () => {
 jest.mock('../utils/notifications', () => ({
   scheduleTaskReminder: jest.fn(),
   cancelTaskReminder: jest.fn(),
+  scheduleQuotaNudges: jest.fn(),
+  cancelQuotaNudges: jest.fn(),
   rescheduleAllReminders: jest.fn(),
   // Reached through useTaskStore.initialize, which fans out to useFocusStore.
   scheduleFocusStepAlarm: jest.fn().mockResolvedValue(undefined),
@@ -563,6 +565,25 @@ describe('demo mode', () => {
     expect(target.progressCount).toBeLessThan(target.targetCount!);
     // A target always repeats — it resets by spawning its next occurrence.
     expect(target.recurrenceType).not.toBe('none');
+  });
+
+  it('seeds a daily target paced by an interval, nudges and all', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const paced = tasks.find(t => t.quotaIntervalMinutes !== null);
+    expect(paced).toBeDefined();
+    // The window is what the interval divides, so a seeded cadence without one
+    // would be spacing itself across whatever active hours happened to be set.
+    expect(paced!.windowStart).not.toBeNull();
+    expect(paced!.windowEnd).not.toBeNull();
+    // The nudge is the whole reason this kind exists — a cadence you have to
+    // keep checking the app for is the thing it's meant to replace.
+    expect(paced!.quotaReminders).toBe(true);
+    // Behind and short of its count: the state it spends the day in, and the
+    // one it closes out in without that being a miss.
+    expect(paced!.progressCount).toBeGreaterThan(0);
+    expect(paced!.progressCount).toBeLessThan(paced!.targetCount!);
   });
 
   // A timed task can hand its countdown out to its subtasks, and one that

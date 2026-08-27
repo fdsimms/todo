@@ -851,6 +851,53 @@ export interface Task {
   // existing quota task keeps completing the instant it hits target.
   allowOvershoot: boolean;
 
+  // How often one unit falls due, in minutes. The interval and the count are
+  // the same triangle read from different corners — a span divided by one
+  // gives the other — and which one is *stored* decides what stays fixed when
+  // the span moves. Storing the count keeps "24 a day" and squeezes the
+  // spacing; storing the interval keeps "every 20 minutes" and takes fewer of
+  // them. For anything the user actually thinks of as a cadence (an eye break
+  // every 20 minutes, standing up every half hour) the second is what they
+  // mean, and it's the only one that survives quotaStartedAt moving the start
+  // (see quotaRunSpan in src/utils/quotaSchedule.ts).
+  //
+  // So when this is set, `targetCount` is *derived* from it and the run's
+  // span, recomputed wherever either changes (see QUOTA_SPAN_FIELDS in
+  // useTaskStore) rather than typed. Every existing reader keeps reading
+  // targetCount and needs to know nothing about this column — the same call
+  // recurrenceAnchorDate makes about staying inside the recurrence engine.
+  //
+  // null = the count is the primitive, which is every quota task that predates
+  // this and every one whose target is a real goal ("8 glasses") rather than
+  // arithmetic.
+  quotaIntervalMinutes: number | null;
+  // Send a notification each time a unit falls due, instead of only surfacing
+  // the row on Today.
+  //
+  // A quota has always paced silently, which is right for water (you'll see
+  // the row when you next look at your phone) and useless for anything whose
+  // whole point is to interrupt you — the row can't nudge you off a screen if
+  // looking at the row means looking at a screen. Materialised as N one-shot
+  // notifications for the reason src/utils/alarmChain.ts spells out at length:
+  // the layer underneath only understands one fire at one time.
+  //
+  // Independent of quotaIntervalMinutes on purpose. A cadence you don't want
+  // to be nudged about is a real thing to ask for, and so is being nudged
+  // about a plain count.
+  quotaReminders: boolean;
+  // When today's run was started by hand, if it was — the "start now" that
+  // makes a fixed window optional.
+  //
+  // Deliberately its own per-occurrence timestamp rather than a write to
+  // windowStart: the window is the schedule and holds for every day, while
+  // this is one morning that began at 10:30. It rides no successor
+  // (completeTask clears it beside progressCount), so a run started late
+  // today says nothing about tomorrow.
+  //
+  // Only honoured on its own logical day, so an app left closed over a
+  // weekend doesn't resume Friday's run on Monday. null = the window decides.
+  quotaStartedAt: string | null;
+
   // Supply — how many units of a consumable are left, for a recurring task
   // that spends one every time it's done. Replacing a CPAP filter monthly out
   // of a box of six is the shape: the schedule says when, and this says how

@@ -199,6 +199,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   chipDot: { width: 6, height: 6, borderRadius: radius.full },
-  chipText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
+  chipText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   chipCount: { color: colors.textTertiary, fontSize: font.xs, fontWeight: fontWeight.medium },
 });

@@ -70,7 +70,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.accent,
   },
   dayText: {
-    color: colors.textSecondary,
+    color: colors.text,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },

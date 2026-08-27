@@ -1093,6 +1093,22 @@ export function initDatabase(): void {
     // before this column existed, and a null reads the same as "ungrouped"
     // does anywhere else in the app.
     'ALTER TABLE people ADD COLUMN group_id TEXT',
+    // How often one unit of a daily target falls due, in minutes — see
+    // Task.quotaIntervalMinutes. Null on every existing row, which reads as
+    // "the count is the primitive", exactly how every quota task worked
+    // before this column existed.
+    'ALTER TABLE tasks ADD COLUMN quota_interval_minutes INTEGER',
+    // Whether a daily target nudges when each unit falls due — see
+    // Task.quotaReminders. 0 on every existing row: a quota has always
+    // surfaced on Today silently, and turning that into a notification for
+    // tasks nobody asked to be nudged about would be the one way this lands
+    // as a regression.
+    'ALTER TABLE tasks ADD COLUMN quota_reminders INTEGER NOT NULL DEFAULT 0',
+    // When today's run was started by hand, if it was — see
+    // Task.quotaStartedAt. Null on every existing row and on every fresh
+    // occurrence, which reads as "the window decides", the only behaviour
+    // there has ever been.
+    'ALTER TABLE tasks ADD COLUMN quota_started_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1818,6 +1834,9 @@ function rowToTask(row: Record<string, unknown>): Task {
     progressCount: (row.progress_count as number) ?? 0,
     targetUnit: (row.target_unit as string | null) ?? null,
     allowOvershoot: Boolean(row.allow_overshoot),
+    quotaIntervalMinutes: (row.quota_interval_minutes as number | null) ?? null,
+    quotaReminders: Boolean(row.quota_reminders),
+    quotaStartedAt: (row.quota_started_at as string | null) ?? null,
     supplyCount: (row.supply_count as number | null) ?? null,
     supplyUnit: (row.supply_unit as string | null) ?? null,
     supplyRefillCount: (row.supply_refill_count as number | null) ?? null,
@@ -1918,8 +1937,9 @@ export function dbInsertTask(task: Task): void {
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
-      person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
+      quota_interval_minutes, quota_reminders, quota_started_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -1981,6 +2001,9 @@ export function dbInsertTask(task: Task): void {
       JSON.stringify(task.personIds), task.waitingOnPersonId ?? null,
       task.reminderOffsetDays ?? null,
       task.excludeFromSuggestions ? 1 : 0,
+      task.quotaIntervalMinutes ?? null,
+      task.quotaReminders ? 1 : 0,
+      task.quotaStartedAt ?? null,
     ]
   );
 }
@@ -2005,7 +2028,8 @@ export function dbUpdateTask(task: Task): void {
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
-      person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?
+      person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
+      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2068,6 +2092,9 @@ export function dbUpdateTask(task: Task): void {
       JSON.stringify(task.personIds), task.waitingOnPersonId ?? null,
       task.reminderOffsetDays ?? null,
       task.excludeFromSuggestions ? 1 : 0,
+      task.quotaIntervalMinutes ?? null,
+      task.quotaReminders ? 1 : 0,
+      task.quotaStartedAt ?? null,
       task.id,
     ]
   );

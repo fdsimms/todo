@@ -57,6 +57,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousOccurrenceId: null,
   seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1, seriesDefaults: null,
   postponeCount: 0, postponeMuted: false, driftingSince: null,
+  quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null,
   ...overrides,
 });
 
