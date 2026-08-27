@@ -554,6 +554,13 @@ export function quotaFraction(task: Task): number {
   return task.targetCount ? Math.min(1, task.progressCount / task.targetCount) : 0;
 }
 
+// Where "expected by now" sits on the same 0–1 scale quotaFraction uses for the
+// live fill, so a row can draw both as marks on one gauge — the gap between
+// them is how far behind pace the task is, without reading any number at all.
+export function quotaPaceFraction(task: Task): number {
+  return task.targetCount ? quotaExpectedByNow(task) / task.targetCount : 0;
+}
+
 // Re-exported so this file stays the one place to look for "what does this
 // row's state mean" — the definitions live in the leaf module missed.ts
 // because the pure, node-tested utils can't import this one. See missed.ts.
