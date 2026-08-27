@@ -87,6 +87,7 @@ import {
   focusUrlAction,
   openInAppUrl,
   mealPlanUrlPickSlot,
+  mealPlanUrlShopEntryId,
   isCompleteTaskUrl,
   completeTaskUrlId,
   isStopTimerUrl,
@@ -606,7 +607,7 @@ describe('openInAppUrl', () => {
     // that chooses it.
     expect(mealPlanUrlPickSlot('dundundun://mealplan?date=2026-08-22&pick=lunch')).toBe('lunch');
     expect(openInAppUrl('dundundun://mealplan?date=2026-08-22&pick=lunch')).toBe(true);
-    expect(mockResetToMealPlan).toHaveBeenCalledWith('2026-08-22', 'lunch');
+    expect(mockResetToMealPlan).toHaveBeenCalledWith('2026-08-22', 'lunch', null);
   });
 
   it('carries no slot for a link that names none, or names a bad one', () => {
@@ -618,6 +619,20 @@ describe('openInAppUrl', () => {
     // defaultSlot, and an unknown string there selects no chip at all.
     expect(mealPlanUrlPickSlot('dundundun://mealplan?date=2026-08-22&pick=brunch')).toBeNull();
     expect(mealPlanUrlPickSlot('dundundun://groceries?pick=lunch')).toBeNull();
+  });
+
+  it('opens the add-to-list sheet for the meal a shortfall task named', () => {
+    // The third form of the same one-tap handoff: mealShortfallLinkUrl's own
+    // `&shop=` parameter.
+    expect(mealPlanUrlShopEntryId('dundundun://mealplan?date=2026-08-22&shop=entry-1')).toBe('entry-1');
+    expect(openInAppUrl('dundundun://mealplan?date=2026-08-22&shop=entry-1')).toBe(true);
+    expect(mockResetToMealPlan).toHaveBeenCalledWith('2026-08-22', null, 'entry-1');
+  });
+
+  it('carries no entry id for a link that names none', () => {
+    expect(mealPlanUrlShopEntryId('dundundun://mealplan?date=2026-08-22')).toBeNull();
+    expect(mealPlanUrlShopEntryId('dundundun://mealplan')).toBeNull();
+    expect(mealPlanUrlShopEntryId('dundundun://groceries?shop=entry-1')).toBeNull();
   });
 
   it('opens the pull sheet on one project — a review task\'s own link', () => {

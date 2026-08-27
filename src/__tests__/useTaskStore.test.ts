@@ -5107,9 +5107,8 @@ describe('checkMealShortfallTasks', () => {
     const [row] = shopRows();
     expect(row.title).toBe('Shop for Sun Ragu');
     expect(row.generatedSourceId).toBe('m-2026-08-23-dinner');
-    // The meal plan, opened on the night in question — where the day header's
-    // cart button holds the sheet this row is asking for.
-    expect(row.linkUrl).toBe('dundundun://mealplan?date=2026-08-23');
+    // The meal plan, opened straight on the add-to-list sheet for this meal.
+    expect(row.linkUrl).toBe('dundundun://mealplan?date=2026-08-23&shop=m-2026-08-23-dinner');
     expect(row.category).toBe('Meal Plan');
   });
 

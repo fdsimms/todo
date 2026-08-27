@@ -4874,10 +4874,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         draft: () => ({
           title: want.title,
           dueDate: dueDate.toISOString(),
-          // Opens the Meal Plan screen on the meal's own day, where the day
-          // header's cart button holds the sheet this row is asking for. See
-          // mealShortfallLinkUrl.
-          linkUrl: mealShortfallLinkUrl(want.dayKey),
+          // Opens the Meal Plan screen straight on the add-to-list sheet for
+          // this meal. See mealShortfallLinkUrl.
+          linkUrl: mealShortfallLinkUrl(want.dayKey, want.entryId),
           category,
           ...generatedBy('mealShortfall', want.entryId),
         }),

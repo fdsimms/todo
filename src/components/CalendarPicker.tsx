@@ -4,7 +4,6 @@ import {
   Modal,
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   StyleSheet,
   Dimensions,
@@ -22,8 +21,7 @@ import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, animation, type Colors } from '../theme';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { buildCalendarGrid, weekdayHeaders } from '../utils/calendarGrid';
-import { parseNaturalDate } from '../utils/parseNaturalDate';
-import { dayKeyOf, getLogicalNow } from '../utils/dateUtils';
+import { dayKeyOf } from '../utils/dateUtils';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SheetScrim } from './SheetScrim';
 
@@ -34,7 +32,6 @@ interface Props {
   title: string;
   onConfirm: (date: Date) => void;
   onCancel: () => void;
-  nlEnabled?: boolean;
   /**
    * Multi-date mode: a tap toggles a day in or out of a set rather than
    * replacing the selection, and Done reports the whole set through
@@ -57,7 +54,7 @@ const CAL_PADDING = 10;
 const CELL_SIZE = Math.floor((CARD_WIDTH - CAL_PADDING * 2) / 7);
 
 export function CalendarPicker({
-  visible, value, mode, title, onConfirm, onCancel, nlEnabled,
+  visible, value, mode, title, onConfirm, onCancel,
   multiple, values, onConfirmMultiple,
 }: Props) {
   const colors = useColors();
@@ -71,7 +68,6 @@ export function CalendarPicker({
     if (!value) d.setHours(9, 0, 0, 0);
     return d;
   });
-  const [nlText, setNlText] = useState('');
   const [pickerReady, setPickerReady] = useState(false);
   const [selectedDates, setSelectedDates] = useState<Date[]>(values ?? []);
 
@@ -93,7 +89,6 @@ export function CalendarPicker({
     const t = new Date(base);
     if (!seed) t.setHours(9, 0, 0, 0);
     setTimeDate(t);
-    setNlText('');
     cardScale.setValue(0.92);
     enterAnim.setValue(0);
     Animated.parallel([
@@ -109,19 +104,6 @@ export function CalendarPicker({
     [displayMonth, weekStartsOn]
   );
   const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
-
-  const onNlChange = (text: string) => {
-    setNlText(text);
-    // Resolved against the logical day, not the wall clock: typed at 1am under
-    // a 2am dayResetTime, "tomorrow" means tomorrow by the user's own day —
-    // the same clock quick add and the task editor parse against.
-    const parsed = parseNaturalDate(text, getLogicalNow(dayResetTime));
-    if (parsed) {
-      setSelectedDate(parsed);
-      setDisplayMonth(startOfMonth(parsed));
-      setTimeDate(parsed);
-    }
-  };
 
   const onDayPress = (day: Date) => {
     const merged = new Date(day);
@@ -181,25 +163,6 @@ export function CalendarPicker({
             <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
             <SheetHeaderButton label="Done" onPress={confirm} disabled={!canConfirm} style={styles.headerDoneText} minWidth={28} />
           </View>
-
-          {/* Natural language input */}
-          {nlEnabled && (
-            <View style={styles.nlSection}>
-              <TextInput
-                style={styles.nlInput}
-                value={nlText}
-                onChangeText={onNlChange}
-                onSubmitEditing={confirm}
-                placeholder='e.g. "next monday", "in 3 days"'
-                placeholderTextColor={colors.textTertiary}
-                returnKeyType="done"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-          )}
-
-          {nlEnabled && <View style={styles.sectionGap} />}
 
           {/* Calendar section */}
           <View style={styles.calSection}>
@@ -372,17 +335,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   sectionGap: {
     height: spacing.sm,
-  },
-  nlSection: {
-    marginHorizontal: spacing.md,
-  },
-  nlInput: {
-    color: colors.text,
-    fontSize: font.md,
-    backgroundColor: colors.bgTertiary,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 11,
   },
   calSection: {
     paddingHorizontal: CAL_PADDING,

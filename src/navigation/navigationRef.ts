@@ -67,16 +67,31 @@ export function resetToRecipeDetail(recipeId: string): void {
 // that slot, so "Choose lunch" is one tap from the sheet that chooses it.
 // Rides the same focusStamp, so it can't fire twice for one navigation.
 //
+// `shopEntryId` is the third, carried by a `mealShortfall` task's own link
+// (mealShortfallTasks.mealShortfallLinkUrl): land on the day *and* open the
+// add-to-list sheet for that one meal, the same one-tap shape pickSlot gives
+// the "Choose lunch" row. Opaque — the screen resolves it against the live
+// entry list and falls back to just landing on the day if it no longer does.
+//
 // The picker opens here rather than over Today because that's where it already
 // lives, with the day's other meals around it — the same call
 // resetToProjectPull makes in reverse, sending a review task to the sheet
 // Today already mounts rather than giving Projects a second copy.
-export function resetToMealPlan(focusDay?: string | null, pickSlot?: MealSlot | null): void {
+export function resetToMealPlan(
+  focusDay?: string | null,
+  pickSlot?: MealSlot | null,
+  shopEntryId?: string | null
+): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate({
     name: 'MealPlan',
     params: focusDay
-      ? { focusDay, focusStamp: Date.now(), ...(pickSlot ? { pickSlot } : {}) }
+      ? {
+          focusDay,
+          focusStamp: Date.now(),
+          ...(pickSlot ? { pickSlot } : {}),
+          ...(shopEntryId ? { shopEntryId } : {}),
+        }
       : undefined,
   });
 }
