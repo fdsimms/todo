@@ -69,6 +69,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   pillActive: { backgroundColor: colors.bgQuaternary },
   pillWithIcon: { flexDirection: 'row', gap: 6, borderWidth: border.sm, borderColor: 'transparent' },
-  pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
+  pillText: { color: colors.text, fontSize: font.sm, fontWeight: '500' },
   pillTextActive: { color: colors.text, fontWeight: '600' },
 });

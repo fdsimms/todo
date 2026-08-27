@@ -64,13 +64,13 @@ export function EditorRow({ icon, label, value, hint, caption, expanded, onPress
               accessibilityRole="button"
               accessibilityLabel={`Clear ${label.toLowerCase()}`}
             >
-              <Ionicons name="close-circle" size={16} color={colors.textTertiary} />
+              <Ionicons name="close-circle" size={16} color={colors.textSecondary} />
             </TouchableOpacity>
           )}
-          <Ionicons name={chevron} size={14} color={colors.textTertiary} />
+          <Ionicons name={chevron} size={14} color={colors.textSecondary} />
         </View>
       ) : (
-        <Ionicons name={chevron} size={14} color={colors.textTertiary} />
+        <Ionicons name={chevron} size={14} color={colors.textSecondary} />
       )}
     </TouchableOpacity>
   );
@@ -87,7 +87,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // wrap mid-word.
   content: { flexGrow: 1, flexShrink: 0 },
   label: { color: colors.text, fontSize: font.md },
-  hint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 1 },
+  hint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
   valueRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexShrink: 1 },
   value: { ...disclosureValue(colors), flexShrink: 1 },
 });

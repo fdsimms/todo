@@ -18,6 +18,16 @@ export type Colors = {
   textTertiary: string;
   accent: string;
   accentSubtle: string;
+  /**
+   * Accent as *text*, for the three places bare accent text is sanctioned:
+   * a sheet header button, a disclosure value, and an `InlineAction`'s accent
+   * label. `accent` is tuned as a fill — under text it measures 4.02:1 on a
+   * light card and 3.90:1 on an `accentSubtle` pill in dark, both under AA,
+   * so this is the same blue moved far enough for the text to be readable.
+   * Never use it as a background: a fill stays `accent`, or the two stop
+   * matching each other.
+   */
+  accentText: string;
   green: string;
   orange: string;
   red: string;
@@ -53,6 +63,7 @@ export const darkColors: Colors = {
   textTertiary: '#636366',
   accent: '#0A84FF',
   accentSubtle: 'rgba(10, 132, 255, 0.15)',
+  accentText: '#3D9BFF',
   green: '#4C9A76',
   orange: '#FF9F0A',
   red: '#FF453A',
@@ -87,6 +98,7 @@ export const darkPurpleColors: Colors = {
   textTertiary: '#6E6480',
   accent: '#0A84FF',
   accentSubtle: 'rgba(10, 132, 255, 0.15)',
+  accentText: '#3D9BFF',
   green: '#4C9A76',
   orange: '#FF9F0A',
   red: '#FF453A',
@@ -119,6 +131,7 @@ export const lightColors: Colors = {
   textTertiary: '#8A8A8E',
   accent: '#007AFF',
   accentSubtle: 'rgba(0, 122, 255, 0.12)',
+  accentText: '#0B69D0',
   green: '#3D8563',
   orange: '#FF9500',
   red: '#FF3B30',
