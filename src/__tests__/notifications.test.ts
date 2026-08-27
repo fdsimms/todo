@@ -11,6 +11,7 @@ jest.mock('expo-notifications', () => ({
   requestPermissionsAsync: jest.fn(),
   cancelScheduledNotificationAsync: jest.fn().mockResolvedValue(undefined),
   cancelAllScheduledNotificationsAsync: jest.fn().mockResolvedValue(undefined),
+  getAllScheduledNotificationsAsync: jest.fn().mockResolvedValue([]),
   scheduleNotificationAsync: jest.fn().mockResolvedValue('test-id'),
   SchedulableTriggerInputTypes: { DATE: 'date' },
 }));
@@ -71,6 +72,7 @@ import {
   rescheduleAllReminders,
   scheduleTimerAlarm,
   cancelTimerAlarm,
+  rescheduleAllTimerAlarms,
   scheduleStepAlarm,
   cancelStepAlarm,
   getNotificationPermission,
@@ -424,10 +426,10 @@ describe('cancelTaskReminder', () => {
 // ─── rescheduleAllReminders ───────────────────────────────────────────────────
 
 describe('rescheduleAllReminders', () => {
-  it('cancels all scheduled notifications once regardless of task list contents', async () => {
+  it('never blanket-cancels — every kind cancels on its own terms instead', async () => {
     const task = makeTask({ id: 'task-1', completed: true, reminderTime: FUTURE });
     await rescheduleAllReminders([task]);
-    expect(Notifications.cancelAllScheduledNotificationsAsync).toHaveBeenCalledTimes(1);
+    expect(Notifications.cancelAllScheduledNotificationsAsync).not.toHaveBeenCalled();
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
 
@@ -963,6 +965,35 @@ describe('cancelTimerAlarm', () => {
   });
 });
 
+describe('rescheduleAllTimerAlarms', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('sweeps every timer: alarm actually pending, including ones for tasks not passed in', async () => {
+    // Simulates the OS still holding an alarm from the previous session for a
+    // task that's since been deleted — rescheduleAllTimerAlarms has no fixed
+    // id to cancel it by, unlike the daily agenda or trip reminder, so it has
+    // to find it rather than assume the task list alone accounts for it.
+    (Notifications.getAllScheduledNotificationsAsync as jest.Mock).mockResolvedValueOnce([
+      { identifier: 'timer:gone-task' },
+      { identifier: 'timer:task-1' },
+      { identifier: 'daily-agenda' },
+      { identifier: 'not-a-timer-id' },
+    ]);
+    await rescheduleAllTimerAlarms([]);
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('timer:gone-task');
+    expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith('timer:task-1');
+    expect(Notifications.cancelScheduledNotificationAsync).not.toHaveBeenCalledWith('daily-agenda');
+    expect(Notifications.cancelScheduledNotificationAsync).not.toHaveBeenCalledWith('not-a-timer-id');
+  });
+
+  it('reschedules a running timer from the task list', async () => {
+    const task = makeTask({ id: 'task-1', timedMinutes: 15, timerStartedAt: new Date().toISOString() });
+    await rescheduleAllTimerAlarms([task]);
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.identifier).toBe('timer:task-1');
+  });
+});
+
 // ─── upcomingReminders / pendingReminderStats ────────────────────────────────
 
 describe('upcomingReminders', () => {
@@ -1197,15 +1228,14 @@ describe('cancelDailyAgenda', () => {
   });
 });
 
-// The blanket cancelAllScheduledNotificationsAsync in rescheduleAllReminders
-// clears everything this app owns, so anything else it schedules has to be put
-// back in the same pass. That was already true of timer alarms; the agenda is
-// the second thing it's true of, and the easiest to lose silently.
+// The daily agenda is scheduled on every full resync, under its own fixed id
+// — cancelled and replaced by scheduleDailyAgenda itself, independent of
+// every other kind rescheduleAllReminders rebuilds.
 describe('rescheduleAllReminders restores the agenda it just cancelled', () => {
-  it('reschedules the agenda after the blanket cancel', async () => {
+  it('reschedules the agenda on every resync', async () => {
     mockSettings.dailyAgendaEnabled = true;
     await rescheduleAllReminders([dueOnAgendaDay()]);
-    expect(Notifications.cancelAllScheduledNotificationsAsync).toHaveBeenCalledTimes(1);
+    expect(Notifications.cancelAllScheduledNotificationsAsync).not.toHaveBeenCalled();
     expect(agendaCall()).toBeDefined();
   });
 
@@ -1224,12 +1254,11 @@ describe('rescheduleAllReminders restores the agenda it just cancelled', () => {
   });
 });
 
-// The trip reminder is the third thing that has to be put back after the same
-// blanket cancel — omitted entirely (the shape every existing call above
-// uses), it's simply left cancelled, which is right for all of them since
-// none is mid-trip.
+// The trip reminder is rebuilt under its own fixed id on every full resync —
+// omitted entirely (the shape every existing call above uses), it's simply
+// left cancelled, which is right for all of them since none is mid-trip.
 describe('rescheduleAllReminders restores the trip reminder it just cancelled', () => {
-  it('reschedules a live trip after the blanket cancel', async () => {
+  it('reschedules a live trip on every resync', async () => {
     mockSettings.tripReminderEnabled = true;
     const costco = makeShop();
     const startedAt = new Date().toISOString();
@@ -1244,11 +1273,10 @@ describe('rescheduleAllReminders restores the trip reminder it just cancelled', 
   });
 });
 
-// The fourth thing, and the one the "own id prefix, cancel by prefix" note in
-// rescheduleAllReminders was written for — omitted entirely, same as trip
-// info, it's simply left cancelled.
+// Cancelled and rescheduled by their own `event-reminder:<key>` id — omitted
+// entirely, same as trip info, it's simply left cancelled.
 describe('rescheduleAllReminders restores event reminders it just cancelled', () => {
-  it('reschedules every event reminder passed in, after the blanket cancel', async () => {
+  it('reschedules every event reminder passed in, on every resync', async () => {
     const reminder = makeEventReminder();
     await rescheduleAllReminders([], undefined, [reminder]);
     const ids = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls.map(c => c[0].identifier);

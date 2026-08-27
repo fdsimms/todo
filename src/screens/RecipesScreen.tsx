@@ -30,7 +30,7 @@ import { RecipeCreateSheet } from '../components/RecipeCreateSheet';
 import type { RecipeInputMode } from '../components/RecipeSourcePicker';
 import { RecipeTagFilterSheet } from '../components/RecipeTagFilterSheet';
 import { RecipeSortFilterSheet } from '../components/RecipeSortFilterSheet';
-import { Fab, FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
+import { FabMenu, FAB_SIZE, type FabDragHandlers, type FabMenuItem } from '../components/Fab';
 import {
   FabDropZone,
   FabDropZoneProvider,
@@ -131,19 +131,11 @@ function recipeDropLabel(intent: FabDropIntent | null): string | null {
 }
 
 // The add button, naming what a release right now would do — mirrors
-// AddProjectFabWithDropLabel (ProjectsScreen.tsx). Two variants because the
-// button itself is either a Fab or a FabMenu, depending on whether an
-// Anthropic key unlocks the import options.
-function AddRecipeFabWithDropLabel({
-  channel,
-  ...props
-}: {
-  channel: FabIntentChannel;
-} & Omit<React.ComponentProps<typeof Fab>, 'dragLabel'>) {
-  const label = useFabIntentSelector(channel, recipeDropLabel);
-  return <Fab {...props} dragLabel={label} />;
-}
-
+// AddProjectFabWithDropLabel (ProjectsScreen.tsx). Always a FabMenu: with no
+// Anthropic key the import options drop out of `addMenuItems` below, leaving
+// "New recipe" alone, and FabMenu performs a lone item on the tap rather than
+// accordioning out to offer it — so there's no separate plain-Fab variant to
+// keep matching this one's bottom/drag/dragHint/accessibilityLabel by hand.
 function AddRecipeFabMenuWithDropLabel({
   channel,
   ...props
@@ -247,13 +239,20 @@ export function RecipesScreen() {
   // Bottom-up: "New recipe" ends up closest to the button, so the plain add is
   // still the one under your thumb. The three import items sit in the same
   // order as RecipeSourcePicker's own Paste/Link/Photo tabs, so the menu and
-  // the sheet it opens agree on which one is the "default" way in.
-  const addMenuItems = useMemo<FabMenuItem[]>(() => ([
+  // the sheet it opens agree on which one is the "default" way in. All three
+  // funnel into the same AI extraction (RecipeCreateSheet -> extractRecipe),
+  // so all three drop out together without a key, leaving "New recipe" —
+  // which needs no AI — as the menu's one remaining, and therefore only,
+  // item. FabMenu performs a lone item on the tap instead of opening, so this
+  // is also what makes the plain-Fab variant this used to need removable.
+  const addMenuItems = useMemo<FabMenuItem[]>(() => (anthropicApiKey ? [
     { key: 'paste', label: 'Paste text', icon: 'clipboard-outline' },
     { key: 'link', label: 'From a link', icon: 'link-outline' },
     { key: 'import', label: 'From a photo', icon: 'camera-outline' },
     { key: 'name', label: 'New recipe', icon: 'add-circle-outline' },
-  ]), []);
+  ] : [
+    { key: 'name', label: 'New recipe', icon: 'add-circle-outline' },
+  ]), [anthropicApiKey]);
 
   const handleAddMenuSelect = useCallback((key: string) => {
     // All three import items open the one sheet, on their own tab — see
@@ -827,7 +826,7 @@ export function RecipesScreen() {
 
       {/* The bulk bar sits where the button does, and adding a recipe isn't
           something you're doing mid-selection anyway. */}
-      {!selectionMode && (anthropicApiKey ? (
+      {!selectionMode && (
         <AddRecipeFabMenuWithDropLabel
           channel={fabIntentChannel}
           items={addMenuItems}
@@ -837,16 +836,7 @@ export function RecipesScreen() {
           drag={fabDrag}
           dragHint="Drag onto a section to add a recipe there, or back to the button to cancel"
         />
-      ) : (
-        <AddRecipeFabWithDropLabel
-          channel={fabIntentChannel}
-          onPress={() => { haptics.tap(); setAddVisible(true); }}
-          accessibilityLabel="Add recipe"
-          bottom={insets.bottom + tabBarHeight + spacing.md}
-          drag={fabDrag}
-          dragHint="Drag onto a section to add a recipe there, or back to the button to cancel"
-        />
-      ))}
+      )}
 
       {selectionMode && (
         <ListBulkBar

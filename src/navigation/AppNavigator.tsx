@@ -24,6 +24,8 @@ import { DriftScreen } from '../screens/DriftScreen';
 import { TemplatesScreen } from '../screens/TemplatesScreen';
 import { RecipesScreen } from '../screens/RecipesScreen';
 import { RecipeDetailScreen } from '../screens/RecipeDetailScreen';
+import { CookbooksScreen } from '../screens/CookbooksScreen';
+import { CookbookDetailScreen } from '../screens/CookbookDetailScreen';
 import { MealPlanScreen } from '../screens/MealPlanScreen';
 import { KitchenScreen } from '../screens/KitchenScreen';
 import { TemplateDetailScreen } from '../screens/TemplateDetailScreen';
@@ -72,7 +74,7 @@ const EDGE_WIDTH = 20;
 // nobody can see.
 const HIDDEN = { tabBarButton: () => null, tabBarItemStyle: { display: 'none' as const } };
 
-const DRAWER_TABS = new Set(['Search', 'Calendar', 'Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Backfill', 'Waiting', 'Drift', 'Archived', 'Recipes', 'MealPlan', 'Kitchen']);
+const DRAWER_TABS = new Set(['Search', 'Calendar', 'Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Backfill', 'Waiting', 'Drift', 'Archived', 'Recipes', 'MealPlan', 'Kitchen', 'Cookbooks']);
 
 // Every screen it's safe to reopen the app directly on: the visible bottom
 // tabs plus every drawer screen, none of which take a route param. Excludes
@@ -89,7 +91,7 @@ const RESTORABLE_SCREENS = new Set(['Today', 'Groceries', 'Projects', ...DRAWER_
 // offers a way back to. Checked only on the read side below — kitchenEnabled
 // can't change out from under an *open* session onto one of these screens,
 // since turning it off removes the only way to reach them.
-const KITCHEN_SCREENS = new Set(['Groceries', 'Recipes', 'MealPlan', 'Kitchen']);
+const KITCHEN_SCREENS = new Set(['Groceries', 'Recipes', 'MealPlan', 'Kitchen', 'Cookbooks']);
 
 // RootStack cards, not tabs. Pushing one must leave the drawer's highlight on
 // whichever tab you pushed it *from*, so these never become the active tab.
@@ -97,7 +99,7 @@ const KITCHEN_SCREENS = new Set(['Groceries', 'Recipes', 'MealPlan', 'Kitchen'])
 // drawer's current selection.
 const PUSHED_ROUTES = new Set([
   'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail',
-  'RecipeDetail', 'PersonDetail',
+  'RecipeDetail', 'PersonDetail', 'CookbookDetail',
 ]);
 
 function MorePlaceholder() {
@@ -205,6 +207,7 @@ const MainTabs = React.memo(function MainTabs({
       {/* Drawer-only screens — not visible in the tab bar */}
       <Tab.Screen name="Search" component={SearchScreen} options={HIDDEN} />
       <Tab.Screen name="Recipes" component={RecipesScreen} options={HIDDEN} />
+      <Tab.Screen name="Cookbooks" component={CookbooksScreen} options={HIDDEN} />
       <Tab.Screen name="MealPlan" component={MealPlanScreen} options={HIDDEN} />
       <Tab.Screen name="Kitchen" component={KitchenScreen} options={HIDDEN} />
       <Tab.Screen name="Calendar" component={CalendarScreen} options={HIDDEN} />
@@ -363,6 +366,11 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="RecipeDetail"
             component={RecipeDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="CookbookDetail"
+            component={CookbookDetailScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen
