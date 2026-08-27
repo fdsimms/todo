@@ -280,6 +280,48 @@ in the row being there, and going quiet when it isn't. **Both numbers, not
 one** — they only coincide as the day's span closes, and "how many before this
 goes quiet" is the question someone mid-session is actually asking.
 
+## Correcting an estimate from what it actually took
+
+A session's Done tap can offer to update the task's estimate to the clock
+reading for the step just finished (`focusMeasuredMinutes` in
+`focusPlan.ts`, wired in `FocusSessionSheet.handleDone`). It reuses
+`applyMeasuredTime`/`useTaskStore.setMeasuredTime` — the same mechanism the
+standalone stopwatch writes through — so the corrected number gets the same
+"Timed" label on the row and in the Logbook, and the same in-place correction
+affordance, regardless of which one measured it.
+
+Three gates, and each exists because the naive version is wrong in a specific
+way:
+
+- **Offered only from this Done tap, never from `syncWithTasks`.** A task
+  ticked off from the Today list while the session runs behind it is caught
+  there, but the session's clock reading has no relationship to when that
+  work actually happened — the task could have been finished long before the
+  step's clock says, or well after. Only the in-the-moment tap is a stand-in
+  for a stopwatch; the background sync path never offers this.
+- **Only a task worked in a single stretch (`step.partCount === 1`).** The
+  session doesn't keep what a split task's earlier stretches cost — see "The
+  plan is stored, not re-derived" above and the "not a timesheet" note in
+  `focusPlan.ts` — so a step that's part 2 of 3 can only speak for a third of
+  the task. `focusMeasuredMinutes` returns null rather than a number that
+  quietly undercounts.
+- **Skipped entirely mid-chain when the active step carries its own
+  estimate** (`measuredTimeAppliesTo` in `effort.ts`). `estimatedMinutesFor`
+  reads a chain step's own estimate ahead of the task-level fields
+  `applyMeasuredTime` writes, so applying it there would change nothing a
+  reader ever sees — a silent no-op is worse than not offering at all.
+
+- **A real miss, not any miss** (`measuredTimeDiffersEnough` in `effort.ts`).
+  Unlike `applyMeasuredTime` itself — which has no threshold, because a
+  deliberate stopwatch run is already a decision to measure — this reading is
+  a byproduct of running the plan, so it needs to actually disagree before
+  it's worth a tap: the greater of 5 minutes or 25% of the existing estimate.
+  A 5-minute task running 6 is normal slop, not a correction; a 4-hour
+  estimate running 20 minutes over is the same story at a different scale.
+  A task with no estimate at all skips the threshold — there's nothing to
+  weigh the reading against — and is offered worded as "Save" rather than
+  "Update".
+
 ## Why the store takes tasks as arguments
 
 `useTaskStore.initialize` fans out to `useFocusStore.initialize`, so an import

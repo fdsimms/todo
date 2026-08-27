@@ -6,7 +6,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
-import { formatDuration, formatStopwatch } from '../utils/effort';
+import { estimatedMinutesFor, formatDuration, formatStopwatch, measuredTimeAppliesTo, measuredTimeDiffersEnough } from '../utils/effort';
 import { formatTimeOfDay } from '../utils/dateUtils';
 import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
@@ -15,6 +15,7 @@ import { displayTitleFor, isQuotaTask, isQuotaOnPace, quotaUnitsToPace, quotaRid
 import { formatQuotaCatchUp, formatQuotaProgress, formatQuotaTarget } from '../utils/quotaUnit';
 import {
   currentFocusStep,
+  focusMeasuredMinutes,
   focusPlanTotals,
   focusProjectedEnd,
   focusStepProgress,
@@ -73,6 +74,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const { session, now } = useFocusSession();
   const tasks = useTaskStore(s => s.tasks);
   const completeTask = useTaskStore(s => s.completeTask);
+  const setMeasuredTime = useTaskStore(s => s.setMeasuredTime);
   const { enqueue, queueProps } = useAnswerFirstCompletion();
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
   const pause = useFocusStore(s => s.pause);
@@ -205,7 +207,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     logQuotaUnit(quotaTask.id);
   };
 
-  const handleDone = () => {
+  const completeCurrentTask = () => {
     if (!currentTask) return;
     // A task that asks something when it's ticked off asks here too. Done is a
     // person finishing a task, exactly as its own row's checkbox is, and
@@ -223,6 +225,46 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     // do from a task row. The session notices on the next sync and takes the
     // task's remaining stretches out of the plan.
     completeTask(currentTask.id);
+  };
+
+  const handleDone = () => {
+    if (!currentTask) return;
+
+    // The session clock only stands in for a stopwatch right here: this is
+    // the one Done tap actually made in the moment, on a task worked in a
+    // single stretch. A task ticked off from Today instead (caught by
+    // syncWithTasks) gets no such offer — there's no guarantee that clock
+    // reading has anything to do with when the work actually happened.
+    const measured = focusMeasuredMinutes(session, now);
+    if (measured != null && measuredTimeAppliesTo(currentTask)) {
+      const currentEstimate = estimatedMinutesFor(currentTask);
+      if (measuredTimeDiffersEnough(currentEstimate, measured)) {
+        haptics.tap();
+        Alert.alert(
+          currentEstimate == null ? 'Save time estimate?' : 'Update time estimate?',
+          currentEstimate == null
+            ? `This took ${formatDuration(measured)}. Save that as the estimate?`
+            : `This took ${formatDuration(measured)}, estimated ${formatDuration(currentEstimate)}. Update the estimate to ${formatDuration(measured)}?`,
+          [
+            {
+              text: currentEstimate == null ? 'Not now' : 'Keep estimate',
+              style: 'cancel',
+              onPress: completeCurrentTask,
+            },
+            {
+              text: currentEstimate == null ? 'Save estimate' : 'Update',
+              onPress: () => {
+                setMeasuredTime(currentTask.id, measured);
+                completeCurrentTask();
+              },
+            },
+          ],
+        );
+        return;
+      }
+    }
+
+    completeCurrentTask();
   };
 
   const handleSkip = () => {

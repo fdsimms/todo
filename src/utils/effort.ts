@@ -92,6 +92,38 @@ export function estimatedMinutesFor(task: EstimateSource): number | null {
 }
 
 /**
+ * Whether `applyMeasuredTime` would actually change what `estimatedMinutesFor`
+ * reads back for this task. False mid-chain when the active step carries its
+ * own estimate — that one always wins over the task-level fields
+ * `applyMeasuredTime` writes, so applying it would be a silent no-op.
+ */
+export function measuredTimeAppliesTo(task: EstimateSource): boolean {
+  return activeChainStep(task)?.estimatedMinutes == null;
+}
+
+// The floor a diff has to clear before a session's clock reading is worth
+// asking about, and the fraction of the estimate it has to clear on top of
+// that — whichever asks for more. A short task needs the bigger multiple: 5
+// vs 6 minutes is only a one-minute miss, but it's also 20%, which is why the
+// floor exists at all. A long one needs the bigger minute count: 8% over a
+// four-hour estimate is a real number of minutes that isn't worth a prompt.
+const ESTIMATE_CORRECTION_MIN_DIFF_MINUTES = 5;
+const ESTIMATE_CORRECTION_MIN_DIFF_RATIO = 0.25;
+
+/**
+ * Whether a measured duration is off from an existing estimate by enough to
+ * be worth interrupting the Done tap about. A task with no estimate at all is
+ * always worth offering — there's nothing to weigh the reading against. One
+ * that already has an estimate needs a real miss, not the ordinary slop of
+ * "took a bit longer than planned": see the constants above for what counts.
+ */
+export function measuredTimeDiffersEnough(estimate: number | null, measured: number): boolean {
+  if (estimate == null) return true;
+  const diff = Math.abs(measured - estimate);
+  return diff >= Math.max(ESTIMATE_CORRECTION_MIN_DIFF_MINUTES, estimate * ESTIMATE_CORRECTION_MIN_DIFF_RATIO);
+}
+
+/**
  * Total estimated minutes across a set of tasks, falling back to each task's
  * coarse effort bucket when it has no precise estimate. Powers the "how full
  * is today" workload readout.

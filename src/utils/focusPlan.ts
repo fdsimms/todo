@@ -227,6 +227,23 @@ export function isFocusStepDone(session: FocusSession, now: number = Date.now())
   return step !== null && focusStepRemaining(session, now) <= 0;
 }
 
+/**
+ * Minutes actually spent on the current step, for offering back as a
+ * corrected estimate when the task under it is marked done.
+ *
+ * Null, not 0, for a rest step or a split task — callers use this to decide
+ * whether there's anything to offer at all. A split task is excluded because
+ * the session doesn't keep what its earlier stretches cost (see the module
+ * note on "not a timesheet"): a step that's part 2 of 3 can only speak for a
+ * third of the task, and summing would need state this store deliberately
+ * doesn't keep.
+ */
+export function focusMeasuredMinutes(session: FocusSession, now: number = Date.now()): number | null {
+  const step = currentFocusStep(session);
+  if (!step || step.kind !== 'work' || step.partCount !== 1) return null;
+  return Math.max(1, Math.round(focusStepElapsed(session, now) / 60));
+}
+
 // ==== Totals ====
 
 export interface FocusPlanTotals {
