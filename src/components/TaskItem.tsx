@@ -39,7 +39,7 @@ import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } 
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, dayKeyToDate } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
 import { isDateAnchored } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
@@ -64,6 +64,9 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { MEAL_PLAN_NUDGE_SLOT_COUNT, mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
+import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
+import { useCalendarStore } from '../store/useCalendarStore';
+import type { BusyEvent } from '../utils/calendarBusy';
 import { usePlanMeal } from '../hooks/usePlanMeal';
 import {
   describeProjectQuiet,
@@ -112,6 +115,11 @@ const QUOTA_TOPPING_MS = animation.duration.normal;
 // the row has gone. Every further tap pushes this out again, so the window is
 // the gap between taps, not a budget for the whole burst.
 const QUOTA_LINGER_MS = 4000;
+// Stable reference for every row that isn't a calendarReview task, so
+// subscribing to the calendar store below doesn't re-render rows it has
+// nothing to say about — see the reviewProject/quietDays comment further down
+// for the same shape.
+const EMPTY_BUSY_EVENTS: BusyEvent[] = [];
 
 interface Props {
   task: Task;
@@ -804,6 +812,23 @@ export const TaskItem = React.memo(function TaskItem({
       : null
   );
 
+  // The "Review tomorrow's calendar" task's own answer: the day it names,
+  // read back off whatever the calendar store currently has, so the row can
+  // show what's actually on it instead of being a bare checkbox pointing at
+  // nothing. Same gate as reviewProject above — only the one live
+  // calendarReview task (see calendarReviewTasks.ts) ever gets a real array
+  // back, so every other row's subscription is a stable empty reference and
+  // re-renders no more often than it did.
+  const calendarReviewRawEvents = useCalendarStore(s =>
+    task.generatedKind === 'calendarReview' ? s.events : EMPTY_BUSY_EVENTS
+  );
+  const calendarReviewEvents = useMemo(
+    () => (task.generatedKind === 'calendarReview'
+      ? calendarReviewEventsFor(task, calendarReviewRawEvents)
+      : EMPTY_BUSY_EVENTS),
+    [task, calendarReviewRawEvents]
+  );
+
   // The stretches the subtasks split the countdown into, and which one the
   // clock is in. Empty for a timed task nobody apportioned, which is what keeps
   // every existing one rendering exactly as before.
@@ -1055,7 +1080,7 @@ export const TaskItem = React.memo(function TaskItem({
 
   const hasExpandContent =
     task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' || activeChainItem !== null ||
-    otherSeriesDates !== '';
+    otherSeriesDates !== '' || calendarReviewEvents.length > 0;
 
   // The stamp outlives the date it explains — that's what lets the drip read a
   // cleared one as "not today" (see Task.autoScheduledAt) — so the chip asks
@@ -2420,6 +2445,31 @@ export const TaskItem = React.memo(function TaskItem({
               </View>
             )}
 
+            {/* The task's own answer, read live off the calendar store — see
+                the calendarReviewEvents comment above. Whatever the row above
+                this one rendered (there normally is none) gets the divider;
+                this one never needs its own top divider from anything below
+                it, since it's built off hasExpandContent before this
+                condition folds itself in. */}
+            {task.generatedKind === 'calendarReview' && calendarReviewEvents.length > 0 && (
+              <View style={[
+                styles.expandSection,
+                (task.notes.length > 0 || subtasks.length > 0 || task.recurrenceType !== 'none' ||
+                  otherSeriesDates !== '' || !!chainStepPreview) && styles.sectionDivider,
+              ]}>
+                {calendarReviewEvents.map(event => (
+                  <View key={event.id} style={styles.calendarReviewEventRow}>
+                    <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
+                    <Text style={styles.expandMeta} numberOfLines={1}>
+                      {event.allDay ? 'All day' : formatTimeOfDay(new Date(event.start))}
+                      {' · '}
+                      {event.title || 'Event'}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
             {timed && (
               <View style={[
                 styles.countdownRow,
@@ -3530,6 +3580,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   expandMeta: {
     color: colors.textSecondary,
     fontSize: font.xs,
+  },
+  calendarReviewEventRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   timedEditAction: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
   timedEditActionDisabled: { color: colors.textTertiary },

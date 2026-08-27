@@ -1,5 +1,6 @@
+import { addDays } from 'date-fns/addDays';
 import type { Task } from '../types';
-import type { BusyEvent } from './calendarBusy';
+import { eventsIn, type BusyEvent } from './calendarBusy';
 import { generatedSourceOf } from './generatedTasks';
 
 /**
@@ -44,4 +45,33 @@ export function calendarReviewDayKey(
  */
 export function wantsCalendarReview(tomorrowEvents: readonly BusyEvent[]): boolean {
   return tomorrowEvents.length > 0;
+}
+
+/**
+ * The events a review task is actually asking about, read back off whatever
+ * the calendar store currently has.
+ *
+ * This is what lets the row answer its own question inline — `TaskItem`'s
+ * expanded panel — instead of being a bare checkbox pointing at a day nobody
+ * can see without leaving the list. The day key is the only state the task
+ * carries (see `calendarReviewDayKey`), so this rebuilds the same [start, end)
+ * window `checkCalendarReviewTasks` used to decide the task was wanted, and
+ * reads today's snapshot of the calendar through it rather than caching
+ * anything on the row — a task titled two days ago must show tonight's
+ * up-to-date events, not what tomorrow looked like when it fired.
+ *
+ * Rebuilds the local-midnight instant by hand rather than importing
+ * `dateUtils`' `dayKeyToDate` — this module is deliberately store-free (see
+ * `weatherTasks.ts`'s comment on the same point), and `dateUtils` reaches
+ * `useSettingsStore`, which drags `expo-sqlite` into any test that imports
+ * this file.
+ */
+export function calendarReviewEventsFor(
+  task: Pick<Task, 'generatedKind' | 'generatedSourceId'>,
+  events: readonly BusyEvent[],
+): BusyEvent[] {
+  const dayKey = calendarReviewDayKey(task);
+  if (!dayKey) return [];
+  const dayStart = new Date(`${dayKey}T00:00:00`);
+  return eventsIn(events, dayStart, addDays(dayStart, 1));
 }
