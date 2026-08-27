@@ -26,7 +26,7 @@ import { TipHost } from '../components/TipHost';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { InlineAction } from '../components/InlineAction';
 import { PeriodNav } from '../components/PeriodNav';
-import { MealSlotRow } from '../components/MealSlotRow';
+import { MealDragCard, MealSlotRow } from '../components/MealSlotRow';
 import { MealEntrySheet } from '../components/MealEntrySheet';
 import { usePersonStore } from '../store/usePersonStore';
 import { describeGuests, guestsOn } from '../utils/mealGuests';
@@ -50,6 +50,7 @@ import {
   type FabIntentChannel,
 } from '../components/FabDropZones';
 import { type DragScroller, type DropZone, type FabDropIntent } from '../utils/fabDrop';
+import { useDragToDay, type DayDragHandlers } from '../hooks/useDragToDay';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
@@ -254,9 +255,10 @@ function DayDropTargetRow({
  * not the day has anything in it.
  *
  * **The button's own drag is gone, but the day drop zones aren't.** Dragging a
- * container out of the fridge onto a day (see the "Dragging a container..."
- * block below) answers the same question the button's drag used to — which
- * day — so it reuses that infrastructure wholesale: `FabDropZone` registers
+ * container out of the fridge onto a day, or a meal from one day to another
+ * (see the "Dragging onto a day" block below), answers the same question the
+ * button's drag used to — which day — so both reuse that infrastructure
+ * wholesale, and there is one registry rather than three: `FabDropZone` registers
  * each day's band once in `renderDay`, `DayDropTargetRow`/`DayDropHighlight`
  * above light one up, and the autoscroll controller still runs so a card
  * lifted from above Monday can reach Sunday. Only the button-specific pieces
@@ -269,11 +271,25 @@ function DayDropTargetRow({
  * picks the day, so nothing about reaching Sunday changed, and aiming at the
  * middle of a day is still dinner.
  *
- * **No drag *between* days either.** Moving a planned meal is a row action
- * opening a compact 7-day chip row plus an "Another date…" escape (see
- * MealEntrySheet); cross-section drag has needed bespoke math twice here and
- * the one built for Today's category headers never lined up with the finger
- * and was deleted along with its helpers.
+ * **And a meal already on the week can be dragged between days**, by the same
+ * hold-and-release the fridge row uses — one gesture, one set of drop zones,
+ * one floating card (see the drag handlers in the body, and useDragToDay).
+ *
+ * This was refused twice before, on the grounds that cross-section drag had
+ * needed bespoke math twice in this app and the one built for Today's category
+ * headers never lined up with the finger holding it. That reasoning was written
+ * before the fridge drag existed and it doesn't survive it: this is not a
+ * cross-section *reorder*, which is the thing that needed the math. Nothing is
+ * displaced, no drop index is derived, no row moves under the finger — the
+ * whole gesture is "which day band is this point in", which the registry
+ * already answers for the add button and the fridge, and the commit is
+ * moveEntry, which the entry sheet's chips already call. What was expensive was
+ * the part this doesn't do.
+ *
+ * **The chip row stays and is still the route.** A drag is unreachable with
+ * VoiceOver or a shaky hand, and it can only reach the week on screen — moving
+ * a meal to next month is still MealEntrySheet's "Another date…". Same rule the
+ * fridge row's calendar button keeps.
  *
  * The store is loaded a week at a time rather than wholesale, and that matters
  * more here than it looks: `enableScreens(false)` makes `freezeOnBlur` inert
@@ -552,29 +568,32 @@ export function MealPlanScreen() {
     };
   }, []);
 
-  // ——— Dragging a container out of the fridge onto a day ————————————————
+  // ——— Dragging onto a day ——————————————————————————————————————————————
   //
-  // The card's calendar button opens PlanMealSheet's day chips; this is the
-  // same question answered by pointing at the week that is already on screen
-  // underneath it. It reuses the add button's drop zones wholesale — the day
-  // bands are registered once (see renderDay) and answer both gestures, so
-  // there is one piece of hit-testing here and one set of highlights, and a
-  // container drop lands on exactly the day a new meal would.
+  // Two things can be picked up and dropped on the week: a container out of the
+  // fridge (plan it that night) and a meal already on the week (move it to
+  // another night). They are one gesture — hold, carry, release over a day —
+  // and one drag in flight at a time, so they are one piece of state here and
+  // one floating card, differing only in what the release writes.
   //
-  // What it does NOT reuse is the button's cancel well: dropping a container
-  // anywhere that isn't a day already means "nothing happened" (there is no
-  // sheet it would otherwise open), so `plain` is the way out and the corner
-  // needs no second meaning.
-  const [fridgeDrag, setFridgeDrag] = useState<{ leftover: Leftover; top: number } | null>(null);
-  // Whether a finger is still on a container, which is *not* the same question
+  // Both reuse the add button's drop zones wholesale: the day bands are
+  // registered once (see renderDay) and answer every gesture, so there is one
+  // piece of hit-testing here and one set of highlights, and a dropped meal
+  // lands on exactly the day a new one would.
+  //
+  // What neither reuses is the button's cancel well: dropping anywhere that
+  // isn't a day already means "nothing happened" (there is no sheet it would
+  // otherwise open), so `plain` is the way out and the corner needs no second
+  // meaning.
+  type DragPayload =
+    | { kind: 'leftover'; leftover: Leftover }
+    | { kind: 'meal'; entry: MealPlanEntry; title: string; hasRecipe: boolean };
+  const [drag, setDrag] = useState<{ payload: DragPayload; top: number } | null>(null);
+  // Whether a finger is still on something, which is *not* the same question
   // as whether a card is on screen: the card outlives the gesture by the length
   // of its spring home, and the week has to be scrollable again the moment the
   // finger lifts rather than a third of a second later.
-  const [fridgeDragging, setFridgeDragging] = useState(false);
-  // The same container, for the handlers: `onEnd` fires from a responder that
-  // was created before this render, and the state above is what draws the card
-  // rather than what the drop reads.
-  const draggedLeftoverRef = useRef<Leftover | null>(null);
+  const [dragging, setDragging] = useState(false);
   const ghostX = useRef(new Animated.Value(0)).current;
   const ghostY = useRef(new Animated.Value(0)).current;
   const ghostOpacity = useRef(new Animated.Value(1)).current;
@@ -588,16 +607,25 @@ export function MealPlanScreen() {
   // subtract a row's measured band from.
   const dragLayerRef = useRef<View | null>(null);
   const dragLayerTopRef = useRef(0);
+  // The thing being carried, for the handlers. A ref rather than a closure
+  // variable, and that distinction is the whole gesture: the lift calls
+  // setDrag, which re-renders, which rebuilds the handler objects below — so
+  // anything the lift stashed in a closure is gone by the time the release
+  // reads it, and the drop would commit nothing. Untyped because only one drag
+  // is ever in flight, and the factory that wrote it is the one reading it.
+  const carriedRef = useRef<unknown>(null);
 
   /**
    * Puts the floating card back where it was lifted from and fades it out.
    *
-   * The same ending whether the drop landed or not, and deliberately so: the
-   * container does not leave the fridge either way (see Leftover.finishedAt),
+   * The same ending whether the drop landed or not, and deliberately so.
+   * A container does not leave the fridge either way (see Leftover.finishedAt),
    * so a card that flew off to Thursday would be describing a move that didn't
-   * happen. What says the drop landed is the meal row appearing on the day.
+   * happen; a meal that *did* move has already left its old day and appeared on
+   * its new one, which says it better than the card could. What says a drop
+   * landed is the week underneath, not the thing being carried.
    */
-  const settleFridgeDrag = () => {
+  const settleDrag = () => {
     const run = ghostRunRef.current;
     Animated.parallel([
       Animated.spring(ghostX, { toValue: 0, ...animation.spring.snappy, useNativeDriver: true }),
@@ -606,8 +634,63 @@ export function MealPlanScreen() {
         toValue: 0, duration: animation.duration.normal, useNativeDriver: true,
       }),
     ]).start(() => {
-      if (ghostRunRef.current === run) setFridgeDrag(null);
+      if (ghostRunRef.current === run) setDrag(null);
     });
+  };
+
+  /**
+   * The responder lifecycle both gestures share, given how to draw the thing
+   * being carried and what to do with it at the end.
+   *
+   * The item reaches `commit` through carriedRef rather than off `drag` state:
+   * that state is what draws the card, and a drop has to read what was lifted
+   * even on the render where the card is already fading.
+   */
+  const dragHandlersFor = <T,>(
+    payloadOf: (item: T) => DragPayload,
+    commit: (item: T, intent: FabDropIntent) => void,
+  ): DayDragHandlers<T> => {
+    return {
+      onStart: (item, frame) => {
+        ghostRunRef.current += 1;
+        ghostX.setValue(0);
+        ghostY.setValue(0);
+        ghostOpacity.setValue(1);
+        carriedRef.current = item;
+        setDragging(true);
+        setDrag({ payload: payloadOf(item), top: frame.top - dragLayerTopRef.current });
+        dropZonesRef.current?.begin();
+      },
+      onMove: (page, translation) => {
+        ghostX.setValue(translation.x);
+        ghostY.setValue(translation.y);
+        // `home` is always 'outside': with no corner to come back to, every
+        // sample is out over the list, which is also the only state that
+        // autoscrolls — and autoscroll is what puts Sunday within reach of a
+        // card lifted from above Monday. Both axes go through: the x is what
+        // picks the meal once a day band has been found.
+        dropZonesRef.current?.moveTo(page.y, 'outside', page.x);
+      },
+      onEnd: page => {
+        const item = carriedRef.current as T | null;
+        carriedRef.current = null;
+        setDragging(false);
+        // The release carries its own x as well, rather than leaning on the last
+        // move: a hold that lifts a row and releases without travelling never
+        // moves at all, and a release resolved without one would silently mean
+        // whichever meal the default is.
+        const intent = dropZonesRef.current?.end(page.y, 'outside', page.x)
+          ?? { kind: 'plain' as const };
+        settleDrag();
+        if (item) commit(item, intent);
+      },
+      onCancel: () => {
+        carriedRef.current = null;
+        setDragging(false);
+        dropZonesRef.current?.cancel();
+        settleDrag();
+      },
+    };
   };
 
   /**
@@ -622,61 +705,53 @@ export function MealPlanScreen() {
    *
    * `planMeal` registers its own undo, so a mis-drop is a shake away.
    */
-  const planLeftoverOnDrop = (leftover: Leftover, intent: FabDropIntent) => {
-    // Released clear of every day: the drag is the whole of what happened, and
-    // the card springing home has already said so.
-    if (intent.kind !== 'day') return;
-    animateLayout();
-    planMeal({
-      date: intent.dayKey,
-      slot: intent.slot,
-      leftoverId: leftover.id,
-      title: mealTitleForLeftover(leftover),
-    });
-    haptics.success();
-  };
+  const fridgeDragHandlers = dragHandlersFor<Leftover>(
+    leftover => ({ kind: 'leftover', leftover }),
+    (leftover, intent) => {
+      // Released clear of every day: the drag is the whole of what happened, and
+      // the card springing home has already said so.
+      if (intent.kind !== 'day') return;
+      animateLayout();
+      planMeal({
+        date: intent.dayKey,
+        slot: intent.slot,
+        leftoverId: leftover.id,
+        title: mealTitleForLeftover(leftover),
+      });
+      haptics.success();
+    },
+  );
 
-  const fridgeDragHandlers: LeftoverDragHandlers = {
-    onStart: (leftover, frame) => {
-      ghostRunRef.current += 1;
-      ghostX.setValue(0);
-      ghostY.setValue(0);
-      ghostOpacity.setValue(1);
-      draggedLeftoverRef.current = leftover;
-      setFridgeDragging(true);
-      setFridgeDrag({ leftover, top: frame.top - dragLayerTopRef.current });
-      dropZonesRef.current?.begin();
+  /**
+   * The same release, moving a meal that is already on the week.
+   *
+   * `moveEntry` is the commit path the entry sheet's day chips already use, so
+   * a dragged meal and a picked one write exactly the same thing — including
+   * the cook task and calendar event following it to the new day, and the undo
+   * that lets a mis-drop be shaken away.
+   *
+   * **A drop on the slot it is already in is not a move**, and must not report
+   * one: moveEntry itself no-ops on it, so the guard here is only about not
+   * firing a success haptic for a gesture that wrote nothing. It is also the
+   * slot every such drag starts over, so this is the ordinary way one ends.
+   */
+  const mealDragHandlers = dragHandlersFor<MealPlanEntry>(
+    entry => ({
+      kind: 'meal',
+      entry,
+      title: titleForEntry(entry, recipesById),
+      hasRecipe: !!entry.recipeId && recipesById.has(entry.recipeId),
+    }),
+    (entry, intent) => {
+      if (intent.kind !== 'day') return;
+      if (intent.dayKey === entry.date && intent.slot === entry.slot) return;
+      animateLayout();
+      moveEntry(entry.id, { date: intent.dayKey, slot: intent.slot });
+      haptics.success();
     },
-    onMove: (page, translation) => {
-      ghostX.setValue(translation.x);
-      ghostY.setValue(translation.y);
-      // `home` is always 'outside': with no corner to come back to, every
-      // sample is out over the list, which is also the only state that
-      // autoscrolls — and autoscroll is what puts Sunday within reach of a card
-      // lifted from above Monday. Both axes go through: the x is what picks the
-      // meal once a day band has been found.
-      dropZonesRef.current?.moveTo(page.y, 'outside', page.x);
-    },
-    onEnd: page => {
-      const leftover = draggedLeftoverRef.current;
-      draggedLeftoverRef.current = null;
-      setFridgeDragging(false);
-      // The release carries its own x as well, rather than leaning on the last
-      // move: a hold that lifts a row and releases without travelling never
-      // moves at all, and a release resolved without one would silently mean
-      // whichever meal the default is.
-      const intent = dropZonesRef.current?.end(page.y, 'outside', page.x)
-        ?? { kind: 'plain' as const };
-      settleFridgeDrag();
-      if (leftover) planLeftoverOnDrop(leftover, intent);
-    },
-    onCancel: () => {
-      draggedLeftoverRef.current = null;
-      setFridgeDragging(false);
-      dropZonesRef.current?.cancel();
-      settleFridgeDrag();
-    },
-  };
+  );
+
+  const mealDrag = useDragToDay<MealPlanEntry>(mealDragHandlers);
 
   useEffect(() => {
     if (range) loadRange(range.startKey, range.endKey);
@@ -1199,30 +1274,59 @@ export function MealPlanScreen() {
                 */}
                 {!collapsed && dayEntries.length > 0 && (
                   (
-                    <View style={styles.card}>
+                    /*
+                      The responder that carries a lifted meal, on the day's
+                      card rather than on each row: it claims the touch only
+                      once a row has been held (see useDragToDay), so the rows'
+                      taps, swipes and cooked toggles are untouched until then.
+                      One hook drives all seven cards — whichever one the touch
+                      starts in becomes the responder, and there is only ever
+                      one meal in the air.
+                    */
+                    <View
+                      style={styles.card}
+                      {...(selectionMode ? {} : mealDrag.panHandlers)}
+                      {...(selectionMode ? {} : mealDrag.containerHandlers)}
+                    >
                       {dayEntries.map((entry, idx) => (
                         <React.Fragment key={entry.id}>
                           {idx > 0 && <View style={styles.sep} />}
-                          <MealSlotRow
-                            entry={entry}
-                            title={titleForEntry(entry, recipesById)}
-                            hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
-                            choices={describeEntryChoices(entry)}
-                            guests={describeGuests(guestsOn(entry, people))}
-                            onPress={() => {
-                              if (selectionMode) toggleSelection(entry.id);
-                              else { haptics.tap(); setSelectedId(entry.id); }
-                            }}
-                            onToggleCooked={
-                              selectionMode ? undefined : () => setCooked(entry, !entry.cookedAt)
-                            }
-                            selectionMode={selectionMode}
-                            selected={selectedIds.has(entry.id)}
-                            onSwipeSelect={id => enterSelectionMode(id)}
-                            // Matches styles.card, so the swipe panel is uncovered
-                            // by the row rather than showing through it.
-                            surface={colors.bgSecondary}
-                          />
+                          {/*
+                            A wrapper rather than a ref on the row itself, so
+                            what gets measured is a plain host view — the same
+                            reason FabDropZone wraps its rows instead of
+                            reaching into them. It carries the lifted dim too,
+                            which is why the row only needs to know that it *is*
+                            lifted (see MealSlotRow's `dragging`).
+                          */}
+                          <View
+                            ref={mealDrag.registerRow(entry.id)}
+                            collapsable={false}
+                            style={mealDrag.draggingId === entry.id && styles.rowLifted}
+                          >
+                            <MealSlotRow
+                              entry={entry}
+                              title={titleForEntry(entry, recipesById)}
+                              hasRecipe={!!entry.recipeId && recipesById.has(entry.recipeId)}
+                              choices={describeEntryChoices(entry)}
+                              guests={describeGuests(guestsOn(entry, people))}
+                              onPress={() => {
+                                if (selectionMode) toggleSelection(entry.id);
+                                else { haptics.tap(); setSelectedId(entry.id); }
+                              }}
+                              onToggleCooked={
+                                selectionMode ? undefined : () => setCooked(entry, !entry.cookedAt)
+                              }
+                              selectionMode={selectionMode}
+                              selected={selectedIds.has(entry.id)}
+                              onSwipeSelect={id => enterSelectionMode(id)}
+                              onDragStart={() => mealDrag.startDrag(entry)}
+                              dragging={mealDrag.draggingId === entry.id}
+                              // Matches styles.card, so the swipe panel is uncovered
+                              // by the row rather than showing through it.
+                              surface={colors.bgSecondary}
+                            />
+                          </View>
                         </React.Fragment>
                       ))}
                     </View>
@@ -1240,7 +1344,7 @@ export function MealPlanScreen() {
     // closed from the fridge card while this list stayed mounted is still live
     // to this closure, and the badge asks about a leftover that's already been
     // finished. Don't prune it as unused.
-  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList]);
+  }, [entries, recipesById, styles, collapsedDays, colors, fabIntentChannel, selectionMode, selectedIds, toggleSelection, enterSelectionMode, leftovers, describeEntryChoices, todayKey, previousDaysInfo, previousDaysExpanded, openDayAddToList, mealDrag, people]);
 
   // Cheap enough to compute on every render: whether there's anything an "Add
   // week to list" could possibly find, without running the full ingredient
@@ -1382,7 +1486,7 @@ export function MealPlanScreen() {
    * Dinner, because that is what the sheet's nights *are*: `decidableNights`
    * reads the dinner slot, so there's no other slot a pick from it could mean.
    * A drag is where a container lands on some other slot, since it has a target
-   * under the finger to say which one (see planLeftoverOnDrop).
+   * under the finger to say which one (see the drag handlers above).
    *
    * No prep-task offer: a leftover has no recipe behind it to have any.
    */
@@ -1537,7 +1641,7 @@ export function MealPlanScreen() {
           // wired up above — that responder is a *descendant* of this list,
           // so the native scroll would otherwise take the touch on the first
           // finger move (same reason SortableList's callers switch it off).
-          scrollEnabled={!fridgeDragging}
+          scrollEnabled={!dragging}
           onScroll={e => { scrollOffsetRef.current = e.nativeEvent.contentOffset.y; }}
           scrollEventThrottle={16}
           onLayout={e => { viewportHeightRef.current = e.nativeEvent.layout.height; }}
@@ -1691,12 +1795,12 @@ export function MealPlanScreen() {
           if (Number.isFinite(y)) dragLayerTopRef.current = y;
         })}
       >
-        {fridgeDrag && (
+        {drag && (
           <Animated.View
             style={[
               styles.dragCard,
               {
-                top: fridgeDrag.top,
+                top: drag.top,
                 opacity: ghostOpacity,
                 transform: [
                   { translateX: ghostX },
@@ -1708,7 +1812,16 @@ export function MealPlanScreen() {
               },
             ]}
           >
-            <LeftoverDragCard leftover={fridgeDrag.leftover} channel={fabIntentChannel} />
+            {drag.payload.kind === 'leftover' ? (
+              <LeftoverDragCard leftover={drag.payload.leftover} channel={fabIntentChannel} />
+            ) : (
+              <MealDragCard
+                entry={drag.payload.entry}
+                title={drag.payload.title}
+                hasRecipe={drag.payload.hasRecipe}
+                channel={fabIntentChannel}
+              />
+            )}
           </Animated.View>
         )}
       </View>
@@ -2106,8 +2219,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     ...StyleSheet.absoluteFill,
     zIndex: 30,
   },
+  // The row a drag is carrying, left behind on the week until it lands. Same
+  // dim the fridge card's own lifted row uses.
+  rowLifted: {
+    opacity: 0.4,
+  },
   // Inset to match the fridge card's own margins, so the copy starts exactly
-  // over the row it was lifted from.
+  // over the row it was lifted from. The day cards carry the same
+  // marginHorizontal, so one inset serves both things that can be lifted.
   dragCard: {
     position: 'absolute',
     left: spacing.md,

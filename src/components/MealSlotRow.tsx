@@ -2,12 +2,13 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Animated, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { MealPlanEntry } from '../types';
-import { useColors } from '../theme/ThemeContext';
+import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { slotLabel } from '../utils/mealPlan';
 import { formatScale, isUnscaled } from '../utils/recipeScale';
 import { SwipeableRow } from './SwipeableRow';
+import { useFabIntentSelector, type FabIntentChannel } from './FabDropZones';
 
 interface Props {
   entry: MealPlanEntry;
@@ -52,6 +53,25 @@ interface Props {
    */
   onSwipeSelect?: (id: string) => void;
   /**
+   * Held long enough to lift this meal off the week, for dropping onto another
+   * day (see MealPlanScreen's drag handlers, and useDragToDay for the gesture).
+   * Omit on any surface with no week under the row — Today's tray — and the row
+   * stays tap-and-swipe only, exactly as it was.
+   *
+   * The entry sheet's day chips stay either way: a drag is the shortcut, not
+   * the route, and it's unreachable with VoiceOver or a shaky hand. Same rule
+   * the fridge row's calendar button keeps.
+   */
+  onDragStart?: () => void;
+  /**
+   * This row is the one currently lifted. It switches the swipe off for the
+   * duration — the two gestures both start with a finger on the row, and a
+   * horizontal drag once lifted is aiming at a meal column, not at the select
+   * panel. The dim belongs to whoever wraps the row (the screen measures that
+   * wrapper anyway), the same split LeftoversCard makes.
+   */
+  dragging?: boolean;
+  /**
    * The background of the container this row sits in — the meal plan's card
    * (`bgSecondary`), Today's tray (`bgSunken`).
    *
@@ -93,7 +113,7 @@ interface Props {
  */
 export function MealSlotRow({
   entry, title, hasRecipe, choices, guests, onPress, onToggleCooked, selectionMode, selected, onSwipeSelect,
-  surface,
+  onDragStart, dragging, surface,
 }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -135,6 +155,10 @@ export function MealSlotRow({
         selectionMode && selected && styles.rowSelected,
       ]}
       onPress={onPress}
+      // Selection mode takes the row's gestures over wholesale, drag included:
+      // a finger held on a row mid-selection is reaching to select it.
+      onLongPress={onDragStart && !selectionMode ? onDragStart : undefined}
+      delayLongPress={interaction.delayLongPress}
       activeOpacity={interaction.activeOpacity}
       accessibilityRole={selectionMode ? 'checkbox' : 'button'}
       accessibilityState={selectionMode ? { checked: !!selected } : undefined}
@@ -142,7 +166,12 @@ export function MealSlotRow({
         [slotLabel(entry.slot), title, scaleLabel, guests ? `with ${guests}` : null, choices, cooked ? 'cooked' : null]
           .filter(Boolean).join(', ')
       }
-      accessibilityHint={selectionMode ? 'Double tap to select this meal.' : 'Double tap to move or remove this meal.'}
+      accessibilityHint={
+        selectionMode ? 'Double tap to select this meal.'
+          : onDragStart
+            ? 'Double tap to move or remove this meal. Or hold and drag it onto another day. Left to right across the day picks breakfast, lunch, dinner or a snack.'
+            : 'Double tap to move or remove this meal.'
+      }
     >
       {selectionMode ? (
         // Takes the icon tile's place rather than sitting beside it, same
@@ -228,6 +257,7 @@ export function MealSlotRow({
 
   return (
     <SwipeableRow
+      enabled={!dragging}
       selectAction={onSwipeSelect ? {
         onSelect: () => onSwipeSelect(entry.id),
         accessibilityLabel: `Select ${title}`,
@@ -235,6 +265,83 @@ export function MealSlotRow({
     >
       {rowBody}
     </SwipeableRow>
+  );
+}
+
+/**
+ * The meal itself, on its way to another day — what MealPlanScreen floats under
+ * the finger for the length of a drag.
+ *
+ * It lives here rather than in the screen so it can't drift from the row it is
+ * a copy of: same icon tile, same title, same shape, off the same stylesheet.
+ * What differs is the caption, which is the whole reason a floating card beats a
+ * bare label — it stops describing where the meal *is* and starts describing
+ * where a release right now would put it, naming the day and the meal. Exactly
+ * the job LeftoverDragCard does for a container out of the fridge, reading the
+ * same channel to do it.
+ *
+ * **A release over the slot it already sits in says so**, rather than naming
+ * that slot as though something were about to happen: `moveEntry` no-ops on it,
+ * and a card promising "Thursday · Dinner" for a drop that writes nothing is the
+ * one state where the caption would be lying about the outcome. It's also the
+ * state a drag passes through on its way out of its own day, so it has to read
+ * as "nothing yet" rather than as a target.
+ */
+export function MealDragCard({
+  entry,
+  title,
+  hasRecipe,
+  channel,
+}: {
+  entry: MealPlanEntry;
+  title: string;
+  hasRecipe: boolean;
+  channel: FabIntentChannel;
+}) {
+  const colors = useColors();
+  const { shadows } = useTheme();
+  const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  // Selected as plain strings, never as the intent: most pointer samples don't
+  // change either, and one that doesn't must cost nothing. See
+  // useFabIntentSelector. Split in two so the slot name can carry its own
+  // emphasis — it's the half that changes as a finger crosses meal columns,
+  // the day label doesn't.
+  const captionPrefix = useFabIntentSelector(channel, intent => {
+    if (intent?.kind !== 'day') return slotLabel(entry.slot);
+    if (intent.dayKey === entry.date && intent.slot === entry.slot) return 'Already here';
+    return `${intent.dayLabel} · `;
+  });
+  const captionSlot = useFabIntentSelector(channel, intent => {
+    if (intent?.kind !== 'day') return null;
+    if (intent.dayKey === entry.date && intent.slot === entry.slot) return null;
+    return slotLabel(intent.slot);
+  });
+
+  return (
+    <View style={[styles.dragCard, shadows.fab]}>
+      <View style={[styles.row, { backgroundColor: 'transparent' }]}>
+        <View
+          style={[
+            styles.icon,
+            { backgroundColor: hasRecipe ? colors.accentSubtle : colors.bgTertiary },
+          ]}
+        >
+          <Ionicons
+            name={entry.leftoverId ? 'snow-outline' : hasRecipe ? 'restaurant-outline' : 'create-outline'}
+            size={16}
+            color={hasRecipe ? colors.accent : colors.textSecondary}
+          />
+        </View>
+        <View style={styles.info}>
+          <Text style={styles.title} numberOfLines={1}>{title}</Text>
+          <Text style={styles.slot} numberOfLines={1}>
+            {captionPrefix}
+            {captionSlot != null && <Text style={styles.slotTarget}>{captionSlot}</Text>}
+          </Text>
+        </View>
+      </View>
+    </View>
   );
 }
 
@@ -248,6 +355,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   rowSelected: {
     backgroundColor: colors.accent + '1A',
+  },
+  // The floating copy. Deliberately not the day's `card` style plus a shadow,
+  // for the reason LeftoverDragCard's own note gives: that style clips to its
+  // bounds and an iOS shadow is drawn outside the layer it belongs to, so one
+  // view can't both clip and cast one. It sits on the same surface the row does
+  // and is lifted off the page by the shadow rather than by a different fill.
+  dragCard: {
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+  },
+  // The half of the caption naming the meal a release would land in — the part
+  // that changes as the finger crosses columns, so it carries the emphasis.
+  slotTarget: {
+    color: colors.accent,
+    fontWeight: fontWeight.semibold,
   },
   icon: {
     width: 32,
