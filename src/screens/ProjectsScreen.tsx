@@ -434,16 +434,9 @@ export function ProjectsScreen() {
               : `${visibleProjects.length} active ${visibleProjects.length === 1 ? 'project' : 'projects'}`
           : undefined}
         actions={[
-          // Only when there is something to select. A select button over an
-          // empty list is a control that can do nothing.
-          ...(visibleProjects.length > 0 && !selectionMode
-            ? [{
-                icon: 'checkmark-circle-outline' as const,
-                onPress: () => enterSelectionMode(),
-                accessibilityLabel: 'Select projects',
-              }]
-            : []),
-          // Hidden while selecting too: the menu switches which list is on
+          // Selecting is reached by swiping a row now, same as every other
+          // bulk-selecting list — no header button needed.
+          // Hidden while selecting: the menu switches which list is on
           // screen, and a selection built from one list committing against
           // another is the one way this bar could act on rows nobody picked.
           ...(selectionMode

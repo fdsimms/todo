@@ -186,11 +186,8 @@ export function PeopleScreen() {
             active: showArchived,
             accessibilityLabel: showArchived ? 'Show current people' : 'Show archived people',
           },
-          ...(visiblePeople.length > 0 ? [{
-            icon: 'checkmark-circle-outline' as const,
-            onPress: () => enterSelectionMode(),
-            accessibilityLabel: 'Select people',
-          }] : []),
+          // Selecting is reached by swiping a row now, same as every other
+          // bulk-selecting list — no header button needed.
         ]}
       />
 
