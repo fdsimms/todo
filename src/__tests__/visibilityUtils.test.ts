@@ -143,7 +143,7 @@ const baseTask: Task = {
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null,
+  quotaStartedAt: null, quotaAlwaysVisible: false,
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
@@ -1553,6 +1553,29 @@ describe('quota tasks', () => {
       expect(isQuotaOnPace(onPace)).toBe(true);
       expect(isTaskVisible(onPace)).toBe(false);
     });
+
+    it('quotaAlwaysVisible: stays on Today while on pace, unlike a plain quota', () => {
+      const onPace = { ...quotaTask, quotaAlwaysVisible: true, progressCount: 2 };
+      // The pace math is unchanged — only the hide is opted out of.
+      expect(isQuotaOnPace(onPace)).toBe(true);
+      expect(isTaskVisible(onPace)).toBe(true);
+    });
+
+    it('quotaAlwaysVisible: behind-pace behavior is unchanged', () => {
+      const behind = { ...quotaTask, quotaAlwaysVisible: true, progressCount: 1 };
+      expect(isQuotaOnPace(behind)).toBe(false);
+      expect(isTaskVisible(behind)).toBe(true);
+    });
+
+    it('quotaAlwaysVisible: still loses to its own date gate when due on a later day', () => {
+      const tomorrow = {
+        ...quotaTask,
+        quotaAlwaysVisible: true,
+        progressCount: 2,
+        dueDate: new Date(2025, 5, 11, 12, 0, 0).toISOString(),
+      };
+      expect(isTaskVisible(tomorrow)).toBe(false);
+    });
   });
 
   describe('quotaLeavesTodayAfterLog', () => {
@@ -1635,6 +1658,10 @@ describe('quota tasks', () => {
       expect(isOnPaceQuota({ ...quotaTask, progressCount: 8, completed: true })).toBe(false);
       expect(isOnPaceQuota({ ...quotaTask, progressCount: 2, archived: true })).toBe(false);
       expect(isOnPaceQuota(baseTask)).toBe(false);
+    });
+
+    it('is false for quotaAlwaysVisible — being on pace never keeps it off Today', () => {
+      expect(isOnPaceQuota({ ...quotaTask, quotaAlwaysVisible: true, progressCount: 2 })).toBe(false);
     });
   });
 

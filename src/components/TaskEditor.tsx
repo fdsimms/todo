@@ -184,6 +184,7 @@ export interface TaskDraft {
   allowOvershoot?: boolean;
   quotaIntervalMinutes?: number | null;
   quotaReminders?: boolean;
+  quotaAlwaysVisible?: boolean;
   supplyCount?: number | null;
   supplyUnit?: string | null;
   supplyRefillCount?: number | null;
@@ -363,6 +364,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [allowOvershoot, setAllowOvershoot] = useState(false);
   const [quotaIntervalMinutes, setQuotaIntervalMinutes] = useState<number | null>(null);
   const [quotaReminders, setQuotaReminders] = useState(false);
+  const [quotaAlwaysVisible, setQuotaAlwaysVisible] = useState(false);
   const [showTargetCount, setShowTargetCount] = useState(false);
   const [supplyCount, setSupplyCount] = useState<number | null>(null);
   const [supplyUnit, setSupplyUnit] = useState('');
@@ -596,6 +598,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setAllowOvershoot(task.allowOvershoot ?? false);
       setQuotaIntervalMinutes(task.quotaIntervalMinutes ?? null);
       setQuotaReminders(task.quotaReminders ?? false);
+      setQuotaAlwaysVisible(task.quotaAlwaysVisible ?? false);
       setSupplyCount(task.supplyCount ?? null);
       setSupplyUnit(task.supplyUnit ?? '');
       setSupplyRefillCount(task.supplyRefillCount ?? null);
@@ -637,7 +640,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(null); setReminderKind('notification'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -704,6 +707,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       allowOvershoot: task ? (task.allowOvershoot ?? false) : (initialDraft?.allowOvershoot ?? false),
       quotaIntervalMinutes: task ? (task.quotaIntervalMinutes ?? null) : (initialDraft?.quotaIntervalMinutes ?? null),
       quotaReminders: task ? (task.quotaReminders ?? false) : (initialDraft?.quotaReminders ?? false),
+      quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
       supplyCount: task ? (task.supplyCount ?? null) : null,
       supplyUnit: task ? (task.supplyUnit ?? '') : '',
       supplyRefillCount: task ? (task.supplyRefillCount ?? null) : null,
@@ -951,6 +955,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // behind they'd come back to life the next time a target was added.
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
+      quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
       // A supply counts down by riding onto the successor a completion spawns,
       // so it means nothing on a one-off — cleared with the repeat rather than
       // left to sit at its starting number for ever, the same reset showStreak
@@ -1464,6 +1469,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       allowOvershoot: targetCount !== null ? allowOvershoot : false,
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
+      quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
       supplyCount, supplyUnit, supplyRefillCount, supplyReorderAt, supplyLeadDays, supplyGroceryItemId,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
@@ -2401,6 +2407,25 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       </View>
                       <View style={[styles.toggle, allowOvershoot && styles.toggleOn]}>
                         <View style={[styles.toggleKnob, allowOvershoot && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
+                  )}
+                  {targetCount !== null && (
+                    <TouchableOpacity
+                      style={styles.optionRow}
+                      onPress={() => { haptics.tap(); setQuotaAlwaysVisible(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Stay visible even when on pace"
+                      accessibilityState={{ checked: quotaAlwaysVisible }}
+                    >
+                      <Ionicons name="eye-outline" size={18} color={quotaAlwaysVisible ? colors.accent : colors.textSecondary} />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Stay visible even when on pace</Text>
+                        <Text style={styles.optionHint}>Keep showing this on Today all day, instead of hiding it while you're keeping up with it</Text>
+                      </View>
+                      <View style={[styles.toggle, quotaAlwaysVisible && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, quotaAlwaysVisible && styles.toggleKnobOn]} />
                       </View>
                     </TouchableOpacity>
                   )}

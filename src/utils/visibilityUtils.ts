@@ -559,6 +559,9 @@ export function quotaLeavesTodayAfterLog(task: Task): boolean {
 // (four glasses at once, and the fourth was never owed).
 export function isOnPaceQuota(task: Task): boolean {
   if (!isQuotaTask(task) || task.completed || task.archived) return false;
+  // Being on pace never keeps this off Today when the task has opted out of
+  // the hide, so it's never "the only thing" keeping it away.
+  if (task.quotaAlwaysVisible) return false;
   if (!isQuotaOnPace(task)) return false;
   // Asked as though it weren't a target at all: nothing else in isTaskVisible
   // reads targetCount, so dropping it lifts the pace gate specifically and
@@ -643,8 +646,10 @@ export function isVisibleApartFromVacation(task: Task): boolean {
 
   // Last of the gates, so a quota task still loses to its own date/defer/window
   // checks first: being on pace only hides a task that would otherwise be due
-  // right now.
-  if (isQuotaTask(task) && isQuotaOnPace(task)) return false;
+  // right now. quotaAlwaysVisible opts a task out of this specific hide —
+  // logging still paces normally (see isQuotaOnPace, isOnPaceQuota), it just
+  // never disappears for being ahead of it.
+  if (isQuotaTask(task) && isQuotaOnPace(task) && !task.quotaAlwaysVisible) return false;
 
   if (!isCategoryScheduleActive(task.category)) return false;
 
