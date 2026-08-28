@@ -1,0 +1,4 @@
+{
+  "message": "The \"done\" figure in the Today header no longer drops back to nothing at midnight if your day is set to start later than that. It now clears when your day actually rolls over.",
+  "date": "2026-08-28"
+}
