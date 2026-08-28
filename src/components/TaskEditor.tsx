@@ -1053,7 +1053,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         // set to put back, and it has to be read now rather than at open time
         // in case something else pointed at this task while the sheet was up.
         const blocksBefore = blockedTasksOf(task.id).map(t => t.id);
-        updateTask(task.id, data, scope === 'occurrence' ? { scope: 'occurrence' } : undefined);
+        updateTask(task.id, data, {
+          ...(scope === 'occurrence' ? { scope: 'occurrence' as const } : {}),
+          // The user is looking at this task right now, so if this save is
+          // what makes it visible today it must not also read as unseen.
+          markSeenOnBecomeVisible: true,
+        });
         // Other rows, so it can't ride along in `data`: "Blocks" writes each
         // picked task's own blockedById (see setBlockedTasks).
         setBlockedTasks(task.id, blocksIds);

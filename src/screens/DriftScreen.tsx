@@ -121,7 +121,11 @@ export function DriftScreen() {
       onPress: () => {
         haptics.success();
         animateLayout();
-        updateTask(task.id, { dueDate: noonToday().toISOString(), deferUntil: null });
+        updateTask(
+          task.id,
+          { dueDate: noonToday().toISOString(), deferUntil: null },
+          { markSeenOnBecomeVisible: true },
+        );
       },
     },
     secondary: [

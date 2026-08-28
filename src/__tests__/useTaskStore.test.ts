@@ -1170,6 +1170,61 @@ describe('updateTask', () => {
       expect(useTaskStore.getState().tasks[0].seenAt).toBe('2020-01-01T00:00:00.000Z');
     });
   });
+
+  // The date-editing equivalent of "moving a task to another category" above:
+  // moving a task's own date onto today, right now, must not turn around and
+  // hand that same task back as unseen. Only opts in with
+  // markSeenOnBecomeVisible, since a plain updateTask call is also how the
+  // app's own engines (project drip, the expired sweep) write these fields,
+  // and those *want* the stale seenAt.
+  describe("moving a task's date onto today", () => {
+    const staleTask = (overrides: Partial<Task> = {}) => makeTask({
+      id: 't1',
+      dueDate: null,
+      deferUntil: null,
+      seenAt: '2020-01-01T00:00:00.000Z',
+      ...overrides,
+    });
+
+    it('marks it seen when a dueDate write pulls it onto today', () => {
+      useTaskStore.setState({ tasks: [staleTask()] });
+
+      useTaskStore.getState().updateTask('t1', { dueDate: new Date().toISOString() }, { markSeenOnBecomeVisible: true });
+
+      const moved = useTaskStore.getState().tasks[0];
+      expect(moved.seenAt).not.toBe('2020-01-01T00:00:00.000Z');
+      expect(isTaskNew(moved)).toBe(false);
+    });
+
+    it('leaves seenAt alone without the flag, even though the task is now new', () => {
+      useTaskStore.setState({ tasks: [staleTask()] });
+
+      useTaskStore.getState().updateTask('t1', { dueDate: new Date().toISOString() });
+
+      const moved = useTaskStore.getState().tasks[0];
+      expect(moved.seenAt).toBe('2020-01-01T00:00:00.000Z');
+      expect(isTaskNew(moved)).toBe(true);
+    });
+
+    it('leaves a future date alone even with the flag set', () => {
+      const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      useTaskStore.setState({ tasks: [staleTask()] });
+
+      useTaskStore.getState().updateTask('t1', { dueDate: future.toISOString() }, { markSeenOnBecomeVisible: true });
+
+      expect(useTaskStore.getState().tasks[0].seenAt).toBe('2020-01-01T00:00:00.000Z');
+    });
+
+    it('leaves a task that was already new alone, so the edit does not clear its dot', () => {
+      useTaskStore.setState({ tasks: [staleTask({ dueDate: new Date().toISOString() })] });
+
+      useTaskStore.getState().updateTask('t1', { notes: 'updated' }, { markSeenOnBecomeVisible: true });
+
+      const moved = useTaskStore.getState().tasks[0];
+      expect(moved.seenAt).toBe('2020-01-01T00:00:00.000Z');
+      expect(isTaskNew(moved)).toBe(true);
+    });
+  });
 });
 
 // ─── deleteTask ──────────────────────────────────────────────────────────────
@@ -2698,6 +2753,23 @@ describe('deloadTasks', () => {
     useTaskStore.getState().deloadTasks([]);
     expect(useTaskStore.getState().lastAction).toBeNull();
   });
+
+  // The user approved this specific move in the deload sheet, so a task it
+  // pulls onto today must not come back reading as unseen. See updateTask's
+  // transitionedIntoNew / markSeenOnBecomeVisible.
+  it('marks a task seen when the approved move pulls it onto today', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', dueDate: null, deferUntil: null, seenAt: '2020-01-01T00:00:00.000Z' })],
+    });
+
+    useTaskStore.getState().deloadTasks([
+      { id: 'a', updates: { dueDate: new Date().toISOString() } },
+    ]);
+
+    const moved = useTaskStore.getState().tasks[0];
+    expect(moved.seenAt).not.toBe('2020-01-01T00:00:00.000Z');
+    expect(isTaskNew(moved)).toBe(false);
+  });
 });
 
 // ─── applyTitleRuleToExisting ───────────────────────────────────────────────
@@ -2828,6 +2900,23 @@ describe('pullProjectTasks', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a' })], lastAction: null });
     useTaskStore.getState().pullProjectTasks([]);
     expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  // "The direct, user-initiated action that resolves a project's 'quiet'
+  // state" (see the comment in pullProjectTasks) — so a member it pulls onto
+  // today must not come back reading as unseen.
+  it('marks a task seen when the pull dates it onto today', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'a', projectId: 'p1', seenAt: '2020-01-01T00:00:00.000Z' })],
+    });
+
+    useTaskStore.getState().pullProjectTasks([
+      { id: 'a', updates: { dueDate: new Date().toISOString(), deferUntil: null } },
+    ]);
+
+    const pulled = useTaskStore.getState().tasks[0];
+    expect(pulled.seenAt).not.toBe('2020-01-01T00:00:00.000Z');
+    expect(isTaskNew(pulled)).toBe(false);
   });
 });
 
@@ -7724,6 +7813,32 @@ describe('bulkDefer', () => {
     useTaskStore.getState().bulkDefer(['a'], until);
     expect(dbBulkSetPinned).not.toHaveBeenCalled();
   });
+
+  // Same rule as updateTask's transitionedIntoNew: the user picked this date
+  // right now, in a bulk move, so it must not also read as unseen.
+  it('marks a task seen when deferring it onto today would make it new', () => {
+    const today = new Date();
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', dueDate: null, deferUntil: null, seenAt: '2020-01-01T00:00:00.000Z',
+      })],
+    });
+    useTaskStore.getState().bulkDefer(['a'], today);
+    const moved = useTaskStore.getState().tasks[0];
+    expect(moved.seenAt).not.toBe('2020-01-01T00:00:00.000Z');
+    expect(isTaskNew(moved)).toBe(false);
+  });
+
+  it('leaves a task that is still deferred to the future alone', () => {
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', dueDate: null, deferUntil: null, seenAt: '2020-01-01T00:00:00.000Z',
+      })],
+    });
+    useTaskStore.getState().bulkDefer(['a'], future);
+    expect(useTaskStore.getState().tasks[0].seenAt).toBe('2020-01-01T00:00:00.000Z');
+  });
 });
 
 describe('bulkSetWhen', () => {
@@ -7759,6 +7874,31 @@ describe('bulkSetWhen', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', pinned: false })] });
     useTaskStore.getState().bulkSetWhen(['a'], new Date(2025, 5, 20), []);
     expect(dbBulkSetPinned).not.toHaveBeenCalled();
+  });
+
+  // Same rule as bulkDefer above, and updateTask's transitionedIntoNew.
+  it('marks a task seen when setting its date to today would make it new', () => {
+    const today = new Date();
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', dueDate: null, deferUntil: null, seenAt: '2020-01-01T00:00:00.000Z',
+      })],
+    });
+    useTaskStore.getState().bulkSetWhen(['a'], today, []);
+    const moved = useTaskStore.getState().tasks[0];
+    expect(moved.seenAt).not.toBe('2020-01-01T00:00:00.000Z');
+    expect(isTaskNew(moved)).toBe(false);
+  });
+
+  it('leaves a task set to a future date alone', () => {
+    const future = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'a', dueDate: null, deferUntil: null, seenAt: '2020-01-01T00:00:00.000Z',
+      })],
+    });
+    useTaskStore.getState().bulkSetWhen(['a'], future, []);
+    expect(useTaskStore.getState().tasks[0].seenAt).toBe('2020-01-01T00:00:00.000Z');
   });
 });
 
@@ -8853,7 +8993,7 @@ describe('deleteCategory', () => {
   });
 
   // Same rule as the move paths: the category going away must not make its
-  // tasks read as new. See updateTask's recategorizedIntoNew.
+  // tasks read as new. See updateTask's transitionedIntoNew.
   it('marks tasks seen when losing the category would make them new', () => {
     const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
     const routines = {
