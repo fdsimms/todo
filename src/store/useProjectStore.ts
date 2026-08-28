@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Project, Task } from '../types';
+import type { Project, ProjectKind, Task } from '../types';
 import { getCurrentDayStart } from '../utils/dateUtils';
 import { nudgeFieldsFor } from '../utils/nudgeCadence';
 import { isRealCompletion } from '../utils/missed';
@@ -172,8 +172,8 @@ interface ProjectStore {
   projects: Project[];
   initialized: boolean;
   initialize: () => void;
-  createProject: (title: string, deadline: string | null) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'sequential' | 'nudgeOptIn' | 'reviewDeclinedAt' | 'backfillDismissedFields'>>) => void;
+  createProject: (title: string, deadline: string | null, kind?: ProjectKind) => Project;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'sequential' | 'nudgeOptIn' | 'reviewDeclinedAt' | 'backfillDismissedFields' | 'kind'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -205,7 +205,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ projects, initialized: true });
   },
 
-  createProject(title, deadline) {
+  createProject(title, deadline, kind = 'project') {
     const maxOrder = get().projects.reduce((m, p) => Math.max(m, p.sortOrder), 0);
     // Settings' "Default review cadence" decides both fields, not just the
     // number. It used to seed the cadence beside a hardcoded `nudgeOptIn:
@@ -237,6 +237,10 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       sequential: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
+      // Presentation only — a list's members are ordinary tasks in an ordinary
+      // project, and every field above means the same thing either way. See
+      // Project.kind.
+      kind,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));

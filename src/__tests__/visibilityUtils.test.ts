@@ -1375,6 +1375,7 @@ describe('isTaskNew when a hold comes off', () => {
       nudgeOptIn: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
+      kind: 'project' as const,
       groupId: null,
       personIds: [],
     };
@@ -2087,6 +2088,7 @@ describe('isSequenceBlocked', () => {
       nudgeOptIn: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
+      kind: 'project' as const,
       groupId: null,
       personIds: [],
     }]);

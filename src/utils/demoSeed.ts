@@ -705,15 +705,40 @@ export function seedDemoData(): void {
     .reduce((max, t) => Math.max(max, t.sortOrder), 0);
   useTaskGroupStore.getState().updateGroup(appliances.id, { sortOrder: lastKitchenSlot + 1 });
 
-  // A reference list, not a to-do list: nothing here ever gets a date, and
-  // nudgeOptIn defaults to false, so it never trips the gone-quiet nudge or
-  // shows up in "Pull from projects" the way an ordinary undated project
-  // would. See Project.nudgeOptIn.
-  const giftIdeas = createProject('Gift ideas', null);
+  // A list rather than a project, which is what it always was: nothing here
+  // ever gets a date, and it predates Project.kind by long enough that its own
+  // comment already described a list. Seeded as one so the presentation is in
+  // the demo rather than only the behaviour — a list drawn as a project is a
+  // feature the demo says the app doesn't have.
+  //
+  // nudgeOptIn defaults to false, so it still never trips the gone-quiet nudge
+  // or shows up in "Pull from projects". See Project.nudgeOptIn.
+  const giftIdeas = createProject('Gift ideas', null, 'list');
   updateProject(giftIdeas.id, { category: 'Ideas' });
   ['Something for Mom\'s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);
+  });
+
+  // The list the feature was built for, and the one that shows an answer being
+  // recorded. Exactly one item carries a deliverable: a list where every line
+  // demanded an answer on completion would be a form, so the kind is opt-in
+  // per item and the demo has to show that it's the exception rather than the
+  // rule. See Project.kind.
+  const doctor = createProject('Questions for Dr. Okafor', null, 'list');
+  updateProject(doctor.id, { category: 'Ideas' });
+  const asked = addTask({
+    title: 'Is the new dose meant to make me this tired?',
+    deliverableKind: 'text',
+  });
+  addExistingToProject(asked.id, doctor.id);
+  completeTask(asked.id, {
+    deliverableValue: 'Yes for the first two weeks. Call if it is still bad after that.',
+  });
+  ['Ask about the MRI results', 'Whether to keep taking the iron tablets',
+    'Get the referral letter for physio'].forEach(title => {
+    const t = addTask({ title });
+    addExistingToProject(t.id, doctor.id);
   });
 
   // A project whose order is mandatory: only the top step is open, the rest

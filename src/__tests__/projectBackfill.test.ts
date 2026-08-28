@@ -22,6 +22,7 @@ const baseProject: Project = {
   nudgeOptIn: false,
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
+  kind: 'project' as const,
 };
 
 describe('isProjectFieldMissing', () => {

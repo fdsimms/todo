@@ -1524,6 +1524,7 @@ describe('Projects', () => {
     nudgeOptIn: true,
     reviewDeclinedAt: null,
     backfillDismissedFields: [],
+    kind: 'project' as const,
     ...overrides,
   });
 
@@ -1710,6 +1711,7 @@ describe('backup and restore', () => {
       nudgeOptIn: true,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
+      kind: 'project' as const,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');
