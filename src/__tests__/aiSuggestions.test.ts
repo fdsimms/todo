@@ -1250,34 +1250,6 @@ describe('suggestMealIdeas', () => {
     expect(body.messages[0].content as string).toContain('something quick and vegetarian');
   });
 
-  it('states excluded tags as a hard constraint, in the cook\'s own words', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(ideasResponse([])),
-    } as Response);
-
-    await suggestMealIdeas([], [], 3, undefined, ['vegetarian', 'eggy']);
-
-    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
-    const content = body.messages[0].content as string;
-    expect(content).toContain('vegetarian, eggy');
-    expect(content).toContain('Must avoid');
-  });
-
-  it('adds no diet constraint when nothing is excluded', async () => {
-    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
-      ok: true,
-      status: 200,
-      json: () => Promise.resolve(ideasResponse([])),
-    } as Response);
-
-    await suggestMealIdeas([], [], 3);
-
-    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
-    expect(body.messages[0].content as string).not.toContain('Must avoid');
-  });
-
   it('asks for a count clamped into the MIN/MAX band', async () => {
     const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValueOnce({
       ok: true,
@@ -1311,7 +1283,7 @@ describe('suggestMealIdeas', () => {
       json: () => Promise.resolve(ideasResponse([])),
     } as Response);
 
-    await suggestMealIdeas([], [], 3, undefined, [], ['Spinach — Use by today', 'Mushrooms — 2 days left']);
+    await suggestMealIdeas([], [], 3, undefined, ['Spinach — Use by today', 'Mushrooms — 2 days left']);
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;
@@ -1342,7 +1314,7 @@ describe('suggestMealIdeas', () => {
     } as Response);
     const many = Array.from({ length: 20 }, (_, i) => `Item ${i}`);
 
-    await suggestMealIdeas([], [], 3, undefined, [], many);
+    await suggestMealIdeas([], [], 3, undefined, many);
 
     const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
     const content = body.messages[0].content as string;

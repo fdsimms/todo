@@ -1144,7 +1144,6 @@ export async function suggestMealIdeas(
   recentTitles: string[],
   slotsToFill: number,
   hints?: string,
-  excludedTags: readonly string[] = [],
   expiringItems: readonly string[] = [],
 ): Promise<MealIdea[]> {
   const { apiKey, model } = requireFeature('mealIdeas');
@@ -1163,14 +1162,6 @@ export async function suggestMealIdeas(
     : 'There is no recent cooking history to go on, so keep the ideas broad and unfussy.';
   const expiringPart = expiring.length > 0
     ? `A few things in the kitchen are close to going bad, for inspiration:\n${expiring.map(t => `- ${t}`).join('\n')}\nIf a genuinely good dish uses one or two of these — even a creative or unexpected use — that's a welcome bonus. But never force one in where it doesn't belong just to use it up, and a dish that ignores this list entirely is completely fine.`
-    : '';
-  // The same free-form words the recipe box's own tags use (see
-  // excludeRecipesByTags) — never an ingredient database, just the cook's own
-  // vocabulary handed to the model as instructions rather than asked to be
-  // inferred. "Eggy" is deliberately answerable this way: a model can tell an
-  // omelette from a cake without being told what's in either.
-  const dietPart = excludedTags.length > 0
-    ? `Must avoid, no exceptions: dishes that would be described as ${excludedTags.join(', ')}.`
     : '';
 
   const data = await callAnthropic({
@@ -1212,7 +1203,6 @@ export async function suggestMealIdeas(
         plannedPart,
         recentPart,
         expiringPart,
-        dietPart,
         nudge ? `What they asked for: ${nudge}` : '',
       ].filter(Boolean).join('\n\n'),
     }],
