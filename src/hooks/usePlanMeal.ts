@@ -4,9 +4,10 @@ import { useShallow } from 'zustand/react/shallow';
 import type { MealPlanEntry, MealSlot, Recipe } from '../types';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
-import { recipeIndex } from '../utils/mealPlan';
-import { dayKeyToDate } from '../utils/dateUtils';
+import { earliestUnplannedSlot, recipeIndex } from '../utils/mealPlan';
+import { dayKeyOf, dayKeyToDate } from '../utils/dateUtils';
 import { prepTaskDraftsForMeal } from '../utils/recipeUtils';
 import { haptics } from '../utils/haptics';
 
@@ -26,9 +27,22 @@ import { haptics } from '../utils/haptics';
  */
 export function usePlanMeal() {
   const planMeal = useMealPlanStore(s => s.planMeal);
+  const entriesForDayLive = useMealPlanStore(s => s.entriesForDayLive);
+  const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addTask = useTaskStore(s => s.addTask);
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
+
+  /**
+   * `PlanMealSheet`'s smart slot default (see `RecipePickerSheet`'s own
+   * `defaultSlot`, computed the same way in `MealPlanScreen`) — this screen's
+   * sheet always opens on today, so unlike that one there's no day argument
+   * to take.
+   */
+  const earliestUnplannedSlotToday = useCallback((): MealSlot => {
+    const todayKey = dayKeyOf(new Date());
+    return earliestUnplannedSlot(entriesForDayLive(todayKey), todayKey, mealSlotsEnabled);
+  }, [entriesForDayLive, mealSlotsEnabled]);
 
   /**
    * The ask at plan time. Prep steps are the part of a recipe that has to
@@ -110,5 +124,5 @@ export function usePlanMeal() {
     [planMeal]
   );
 
-  return { planRecipe, offerPrepTasks, offerPrepTasksForEach };
+  return { planRecipe, offerPrepTasks, offerPrepTasksForEach, earliestUnplannedSlotToday };
 }

@@ -40,6 +40,7 @@ import { totalMinutes } from '../utils/recipeUtils';
 import {
   cleanMealTitle,
   cookEntryForRecipe,
+  entriesForDay,
   entriesForSlot,
   isKeyInRange,
   mealPlanPurgeCutoffKey,
@@ -215,6 +216,17 @@ interface MealPlanStore {
 
   /** Loads an inclusive day-key window, replacing whatever was loaded before. */
   loadRange: (startKey: string, endKey: string) => void;
+
+  /**
+   * A day's entries, read through the loaded window first and SQLite when the
+   * day falls outside it — the same fallback `slotEntry` (internal, below)
+   * already used for one slot at a time, exposed here for callers asking
+   * about a day that isn't necessarily the one Meal Plan currently has open.
+   * `PlanMealSheet`'s smart slot default is the one: it opens from a recipe
+   * or the fridge, screens with no week of their own that might have loaded
+   * it already.
+   */
+  entriesForDayLive: (dayKey: string) => MealPlanEntry[];
 
   /**
    * How many of each day's three meals are planned, keyed by day key — what the
@@ -683,6 +695,14 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       rangeStart: startKey,
       rangeEnd: endKey,
     });
+  },
+
+  entriesForDayLive(dayKey) {
+    const { entries, rangeStart, rangeEnd } = get();
+    const source = rangeStart && rangeEnd && isKeyInRange(dayKey, rangeStart, rangeEnd)
+      ? entries
+      : dbGetMealPlanEntries(dayKey, dayKey);
+    return entriesForDay(source, dayKey);
   },
 
   refreshPlannedSlotCounts(dayKeys) {
@@ -1463,23 +1483,19 @@ function liveMealSlotTask(dayKey: string, slot: MealSlot): Task | undefined {
 }
 
 /**
- * What is currently in a slot — the loaded window first, SQLite for a day
- * outside it.
+ * What is currently in a slot — `entriesForDayLive`'s read-through, narrowed
+ * to one slot.
  *
- * The same two-step `resolveEntry` makes one row at a time, and for the same
- * reason: `entries` is the one week the Meal Plan screen has open, and a
- * reconcile can be triggered from well outside it (a bulk move landing next
- * month, an undo after the week was paged away). Reading only the store would
- * report those slots as empty and rewrite a perfectly good task back to
- * "Choose lunch"; reading only SQLite would go to disk for a day already in
- * hand on every mutation.
+ * The two-step fallback matters here for the same reason it does there:
+ * `entries` is the one week the Meal Plan screen has open, and a reconcile
+ * can be triggered from well outside it (a bulk move landing next month, an
+ * undo after the week was paged away). Reading only the store would report
+ * those slots as empty and rewrite a perfectly good task back to "Choose
+ * lunch"; reading only SQLite would go to disk for a day already in hand on
+ * every mutation.
  */
 function slotEntry(get: () => MealPlanStore, dayKey: string, slot: MealSlot): MealPlanEntry | null {
-  const { entries, rangeStart, rangeEnd } = get();
-  const source = rangeStart && rangeEnd && isKeyInRange(dayKey, rangeStart, rangeEnd)
-    ? entries
-    : dbGetMealPlanEntries(dayKey, dayKey);
-  return entriesForSlot(source, dayKey, slot)[0] ?? null;
+  return entriesForSlot(get().entriesForDayLive(dayKey), dayKey, slot)[0] ?? null;
 }
 
 /**
