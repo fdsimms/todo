@@ -576,6 +576,7 @@ export const TaskItem = React.memo(function TaskItem({
   const paintRowRef = usePaintSelectionRow(isActive || duplicateRow ? null : task.id);
   const titleInputRef = useRef<TextInput>(null);
   const subtaskTitleInputRef = useRef<TextInput>(null);
+  const newSubtaskInputRef = useRef<TextInput>(null);
 
   // ==== effects: the completion hold, collapse animation, and now-tick ====
   useEffect(() => {
@@ -1533,6 +1534,14 @@ export const TaskItem = React.memo(function TaskItem({
     }
   };
 
+  // Enter on a subtask you're renaming saves it and hands focus straight to
+  // the always-visible "Add subtask" field, so a run of edits down the list
+  // can end in adding one more without an extra tap to get there.
+  const saveSubtaskTitleAndFocusAdd = (sub: Task) => {
+    saveSubtaskTitle(sub);
+    newSubtaskInputRef.current?.focus();
+  };
+
   // Mirrors the editor's own always-visible "Add subtask" field — appends,
   // clears, and leaves the keyboard up so a burst of entries doesn't drop it
   // between taps. Fires from both submit and blur, so a title typed then
@@ -2349,10 +2358,10 @@ export const TaskItem = React.memo(function TaskItem({
                           value={subtaskTitleEdit}
                           onChangeText={setSubtaskTitleEdit}
                           onBlur={() => saveSubtaskTitle(sub)}
-                          onSubmitEditing={() => saveSubtaskTitle(sub)}
-                          returnKeyType="done"
+                          onSubmitEditing={() => saveSubtaskTitleAndFocusAdd(sub)}
+                          returnKeyType="next"
                           maxLength={TITLE_MAX_LENGTH}
-                          blurOnSubmit
+                          blurOnSubmit={false}
                           autoFocus
                         />
                       ) : (
@@ -2416,6 +2425,7 @@ export const TaskItem = React.memo(function TaskItem({
               <View style={[styles.subtaskRow, styles.subtaskRowLast]}>
                 <View style={styles.subtaskCheck} />
                 <TextInput
+                  ref={newSubtaskInputRef}
                   style={styles.subtaskTitleInput}
                   value={newSubtaskTitle}
                   onChangeText={setNewSubtaskTitle}

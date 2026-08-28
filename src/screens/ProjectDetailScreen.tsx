@@ -27,6 +27,7 @@ import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
+import { GroupDropTarget } from '../components/GroupDropTarget';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
 import { buildProjectListItems, type ProjectListItem } from '../utils/projectStacks';
@@ -106,6 +107,7 @@ export function ProjectDetailScreen() {
   const completeGroup = useTaskStore(s => s.completeGroup);
   const deferGroup = useTaskStore(s => s.deferGroup);
   const pinGroup = useTaskStore(s => s.pinGroup);
+  const addExistingToGroup = useTaskStore(s => s.addExistingToGroup);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editorVisible, setEditorVisible] = useState(false);
@@ -122,6 +124,20 @@ export function ProjectDetailScreen() {
   // fires synchronously inside drag(), so the id is never set a frame late.
   const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null);
   const pendingGroupDragRef = React.useRef<string | null>(null);
+  // Tracks a "drag onto a group to join it" gesture while a plain loose task
+  // is being dragged — same mechanism as TodayScreen's joinGroupIntentRef.
+  // Set from onDragMove whenever the dragged card sits over a group, read
+  // once at drop time in onDragEnd.
+  const joinGroupIntentRef = React.useRef<string | null>(null);
+  const [joinGroupIntentId, setJoinGroupIntentId] = useState<string | null>(null);
+  // Task the drop just handed to a group (set in onDragEnd, which runs before
+  // onReorder), so the placement pass below leaves it alone — it belongs to
+  // the group now, not to whatever slot it was let go over.
+  const joinedTaskIdRef = React.useRef<string | null>(null);
+  // Index (within projectListItems) of the row currently being dragged, kept
+  // up to date from dragRange (called every hover update) so onDragMove can
+  // tell which row is in flight.
+  const activeDragIndexRef = React.useRef<number | null>(null);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   // True while a subtask inside the expanded row is mid-drag; the list has to
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
@@ -565,15 +581,70 @@ export function ProjectDetailScreen() {
             // stack has no children to stand in for it, so it hands over its
             // own id and holds the slot itself.
             onReorder={reordered => {
-              const orderedIds = reordered.flatMap(item =>
+              // A task just handed to a group (see onDragEnd) has already been
+              // absorbed there — drop it from the normal placement pass so it
+              // doesn't also get a sortOrder of its own from this reorder.
+              const joinedTaskId = joinedTaskIdRef.current;
+              joinedTaskIdRef.current = null;
+              const settled = joinedTaskId !== null
+                ? reordered.filter(item => !(item.type === 'task' && item.task.id === joinedTaskId))
+                : reordered;
+              const orderedIds = settled.flatMap(item =>
                 item.type !== 'group' ? [item.task.id]
                   : item.children.length > 0 ? item.children.map(t => t.id)
                   : [item.group.id],
               );
               reorderProjectItems(projectId, orderedIds);
             }}
-            onDragBegin={() => setDraggingGroupId(pendingGroupDragRef.current)}
-            onDragEnd={() => setDraggingGroupId(null)}
+            onDragBegin={() => {
+              joinedTaskIdRef.current = null;
+              setDraggingGroupId(pendingGroupDragRef.current);
+            }}
+            onDragEnd={({ committed }) => {
+              const joinGroupId = joinGroupIntentRef.current;
+              joinGroupIntentRef.current = null;
+              setJoinGroupIntentId(null);
+              // The join lands here rather than in onReorder: a drop onto a
+              // group leaves the list order untouched (dropDisabled stops it
+              // opening a gap), and onReorder stays silent when nothing moved.
+              // `committed` keeps a cancelled drag — touch loss, app switch —
+              // from quietly joining the task to the group.
+              const dragged = projectListItems[activeDragIndexRef.current ?? -1];
+              if (committed && joinGroupId !== null && dragged?.type === 'task') {
+                joinedTaskIdRef.current = dragged.task.id;
+                addExistingToGroup(dragged.task.id, joinGroupId);
+                haptics.success();
+              }
+              setDraggingGroupId(null);
+            }}
+            onDragMove={({ overIndex }) => {
+              const draggedItem = projectListItems[activeDragIndexRef.current ?? -1];
+              // Only a plain loose task can be dragged onto a group to join it.
+              if (draggedItem?.type !== 'task') return;
+              const over = overIndex !== null ? projectListItems[overIndex] : null;
+              const target = over?.type === 'group' ? over.group : null;
+              const nextId = target ? target.id : null;
+              if (nextId !== joinGroupIntentRef.current) {
+                joinGroupIntentRef.current = nextId;
+                setJoinGroupIntentId(nextId);
+                if (nextId) haptics.impactLight();
+              }
+            }}
+            // Aiming at a group takes the drag over: the list stops opening a
+            // reorder gap, so the target stays put under the card instead of
+            // sliding away from the finger chasing it.
+            dropDisabled={joinGroupIntentId !== null}
+            dropIntoIndex={
+              joinGroupIntentId === null
+                ? null
+                : projectListItems.findIndex(i => i.type === 'group' && i.group.id === joinGroupIntentId)
+            }
+            // Only here to record which row is in flight (onDragMove reads
+            // it); every draggable row on this list may go anywhere in it.
+            dragRange={(rangeData, activeIndex) => {
+              activeDragIndexRef.current = activeIndex;
+              return [0, rangeData.length - 1];
+            }}
             // Inside the scroll content, not pinned above the list: it's
             // reference material, so it should scroll out of the way once
             // you're working through the tasks. Not tappable while selecting —
@@ -594,6 +665,7 @@ export function ProjectDetailScreen() {
                 // group row without the task that led it there.
                 const empty = children.length === 0;
                 return (
+                  <GroupDropTarget active={joinGroupIntentId === group.id}>
                   <TaskGroupTray>
                     <TaskGroupHeader
                       group={group}
@@ -639,6 +711,7 @@ export function ProjectDetailScreen() {
                       ))}
                     </TaskGroupBody>
                   </TaskGroupTray>
+                  </GroupDropTarget>
                 );
               }
               return renderProjectTaskItem(item.task, { drag, isActive });
