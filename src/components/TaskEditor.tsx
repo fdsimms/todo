@@ -550,6 +550,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const chainItemSavedRef = useRef(false);
   const chainItemTitleEditRef = useRef<TextInput>(null);
   const subtaskTitleEditRef = useRef<TextInput>(null);
+  const newSubtaskInputRef = useRef<TextInput>(null);
   const initialStateRef = useRef<string>('');
 
   /**
@@ -1787,6 +1788,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setDraftSubtasks(draftSubtasks.map(s => s.id === sub.id ? { ...s, title: trimmed } : s));
     }
+  };
+
+  // Enter on a subtask you're renaming saves it and hands focus straight to
+  // the always-visible "Add subtask" field, so a run of edits down the list
+  // can end in adding one more without an extra tap to get there.
+  const saveSubtaskTitleAndFocusAdd = (sub: Task | DraftSubtask) => {
+    saveSubtaskTitle(sub);
+    newSubtaskInputRef.current?.focus();
   };
 
   const toggleDraftSubtask = (id: string) => {
@@ -3932,10 +3941,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       value={subtaskTitleEdit}
                       onChangeText={setSubtaskTitleEdit}
                       onBlur={() => saveSubtaskTitle(sub)}
-                      onSubmitEditing={() => saveSubtaskTitle(sub)}
-                      returnKeyType="done"
+                      onSubmitEditing={() => saveSubtaskTitleAndFocusAdd(sub)}
+                      returnKeyType="next"
                       maxLength={TITLE_MAX_LENGTH}
-                      blurOnSubmit
+                      blurOnSubmit={false}
                       autoFocus
                     />
                   ) : (
@@ -3984,6 +3993,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 <View style={styles.subtaskBox} />
               </View>
               <TextInput
+                ref={newSubtaskInputRef}
                 style={styles.subtaskInput}
                 value={newSubtaskTitle}
                 onChangeText={setNewSubtaskTitle}
