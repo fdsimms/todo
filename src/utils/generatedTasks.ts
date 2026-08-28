@@ -220,6 +220,35 @@ export interface GeneratedKindSpec {
    */
   kitchen: boolean;
   /**
+   * Whether a row of this kind is a *notice* rather than a task to manage.
+   *
+   * A notice is something the app is telling you, with a tick box on it: it
+   * shows what it is about, you check it off, and that is the whole
+   * interaction. The row keeps its checkbox, its meta chips and its link, and
+   * drops every control that treats it as a thing to plan — the reschedule
+   * chip and the swipe that opens it, duplicate, the pin, Edit, renaming the
+   * title in place, and the "Add subtask" field. What is left in its expanded
+   * panel is whatever the kind itself has to show (`calendarReview`'s
+   * events), so a notice with nothing to show does not expand at all.
+   * `isNoticeTask` is the read and `TaskItem` is the only caller.
+   *
+   * True for the two kinds whose task is one question about one day and
+   * nothing else: `calendarReview` ("what is on tomorrow") and
+   * `mealPlanNudge` ("how much of Monday is planned"). Both are day-keyed
+   * with no source row, both carry a title that never varies, and neither has
+   * anything a reschedule could mean — tomorrow's calendar moved to Thursday
+   * is not a thing, and next Monday is a different question rather than this
+   * one later.
+   *
+   * False everywhere else, and not because the rest are less automatic. A
+   * pantry review deferred to Saturday is that generator working as designed,
+   * "put on sunscreen" and "get someone a present" are ordinary tasks that
+   * happen to have been written by the app, and a use-up task is exactly the
+   * sort of thing a person pushes a day. Being generated is not what makes a
+   * row a notice; having nothing to decide about it is.
+   */
+  notice: boolean;
+  /**
    * Whether the user can choose a category to file this kind under.
    *
    * `false` for two kinds. `calendarReview` reuses `calendarEventCategory`,
@@ -277,6 +306,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     offHint: 'People add no catch-up tasks',
     icon: 'people-outline',
     sourced: true,
+    notice: false,
     kitchen: false,
     categorized: true,
     defaultCategory: 'People',
@@ -289,6 +319,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     offHint: 'Birthdays add no tasks',
     icon: 'gift-outline',
     sourced: true,
+    notice: false,
     kitchen: false,
     categorized: true,
     defaultCategory: 'People',
@@ -308,6 +339,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     offHint: 'Birthdays add no task to get a gift',
     icon: 'gift-outline',
     sourced: true,
+    notice: false,
     kitchen: false,
     categorized: true,
     defaultCategory: 'People',
@@ -326,6 +358,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // is mealSlotTasksWrittenThroughDayKey, a high-water mark the pass only
     // ever writes past — so a day it has covered is never revisited.
     sourced: false,
+    notice: false,
     kitchen: true,
     categorized: true,
     defaultCategory: 'Meal Plan',
@@ -341,6 +374,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     offHint: 'Planning a recipe adds no task',
     icon: 'restaurant-outline',
     sourced: true,
+    notice: false,
     kitchen: true,
     categorized: true,
     defaultCategory: 'Meal Plan',
@@ -353,6 +387,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     offHint: 'Buying something with a use-by date adds no task',
     icon: 'alarm-outline',
     sourced: true,
+    notice: false,
     kitchen: true,
     categorized: true,
     defaultCategory: 'Groceries',
@@ -365,6 +400,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     offHint: 'No task to check whether you still have something',
     icon: 'help-circle-outline',
     sourced: true,
+    notice: false,
     kitchen: true,
     categorized: true,
     defaultCategory: 'Groceries',
@@ -386,6 +422,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // the reason writeGeneratedOptOut has nothing to write for this kind. What
     // stops a swiped-away row coming straight back is pantryReviewLastDayKey.
     sourced: false,
+    notice: false,
     // The deck reads the grocery catalog and checkPantryReviewTasks refuses to
     // run with the area off, so the row has to go with it — the `true` half of
     // this flag's contract.
@@ -409,6 +446,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     offHint: 'A leftover about to go bad adds no task',
     icon: 'file-tray-outline',
     sourced: true,
+    notice: false,
     kitchen: true,
     categorized: true,
     defaultCategory: 'Leftovers',
@@ -421,6 +459,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     offHint: 'A project with nothing scheduled adds no task',
     icon: 'folder-outline',
     sourced: true,
+    notice: false,
     kitchen: false,
     categorized: true,
     defaultCategory: 'Projects',
@@ -437,6 +476,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // kind of row it names — but it is the reason writeGeneratedOptOut's case
     // here writes to useTaskStore rather than to one of the other stores.
     sourced: true,
+    notice: false,
     kitchen: false,
     // No "File them under" of its own — see GeneratedKindSpec.categorized.
     // Each reorder task takes the category of the task its supply is on.
@@ -455,6 +495,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // back — this is the one generator whose source the user re-plans freely,
     // so the tombstone does more work here than anywhere else.
     sourced: true,
+    notice: false,
     kitchen: true,
     categorized: true,
     // With the nudge and the meal tasks, for the reason those two share one:
@@ -471,6 +512,10 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     offHint: 'No weekly task to plan the week\'s meals',
     icon: 'calendar-outline',
     sourced: false,
+    // A notice: seven rows saying how much of each day is planned, with the
+    // Meal Plan screen one tap away on the link. There is nothing to
+    // reschedule — next Monday's nudge is next week's own write.
+    notice: true,
     kitchen: true,
     // Categorized like the other three now: it was the one generator with
     // nowhere to file its task, so the weekly nudge landed loose at the top of
@@ -488,6 +533,9 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     // Its source id is tomorrow's day key, the same "square on the calendar,
     // not a row" position mealPlanNudge is in — see the type's own note.
     sourced: false,
+    // A notice, for the reason the nudge is one: it asks about a day rather
+    // than being a piece of work, and it answers itself in the row.
+    notice: true,
     kitchen: false,
     // Reuses calendarEventCategory rather than owning a category of its own —
     // see the field's doc comment above.
@@ -506,6 +554,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     offHint: 'Weather adds no tasks',
     icon: 'partly-sunny-outline',
     sourced: false,
+    notice: false,
     kitchen: false,
     categorized: true,
     defaultCategory: 'Weather',
@@ -689,6 +738,17 @@ export function generatedBy(
   sourceId: string | null = null
 ): { generatedKind: GeneratedKind; generatedSourceId: string | null } {
   return { generatedKind: kind, generatedSourceId: sourceId };
+}
+
+/**
+ * Whether this row is a notice rather than a task to manage — see
+ * `GeneratedKindSpec.notice` for what that means and which kinds are one.
+ *
+ * A hand-made task answers false off the null check, which is nearly every
+ * row this is asked about.
+ */
+export function isNoticeTask(task: Pick<Task, 'generatedKind'>): boolean {
+  return task.generatedKind !== null && GENERATED_KIND_SPECS[task.generatedKind].notice;
 }
 
 /**
