@@ -465,7 +465,53 @@ export interface Project {
    * from `src/utils`.
    */
   backfillDismissedFields: string[];
+  /**
+   * How this project's own screen is drawn: an ordinary project, or a list.
+   *
+   * **It changes presentation, never behaviour.** A list's members are
+   * ordinary tasks in an ordinary project, and every rule about them is
+   * unchanged — `projectProgress` counts them, `isTaskVisible` places them,
+   * completing one behaves exactly as completing any task does. Nothing reads
+   * this outside the two Projects screens, and nothing about scheduling,
+   * visibility, sync or search branches on it.
+   *
+   * That narrowness is the whole design, and it's what the alternative got
+   * wrong. A "list of things with no date" was first built as its own entity —
+   * two tables, a store, two screens, a drawer row, its own search source —
+   * on the premise that a task drags the visibility model along with it. That
+   * premise was false: `isVisibleApartFromVacation` already refuses a project
+   * task with no `dueDate`, and `projectId == null` is a condition of both
+   * `isInboxTask` and `isUnscheduledTask`. **An undated task in a project is
+   * already absent from Today, Inbox and Unscheduled**, which is exactly the
+   * behaviour the separate entity existed to obtain. Everything else it needed
+   * was here too: progress is `projectProgress`, the recorded answer is
+   * `deliverableValue` read back by `projectDecisions`, and ordering, archive,
+   * sync, backup and search were all already wired.
+   *
+   * So what a list actually needed was a way to *look* like one: an add field
+   * that takes a line of text and keeps focus, and the scheduling affordances
+   * out of the way. That is this field, and it should stay that small. If
+   * something here ever wants to change what a task *does*, it belongs on the
+   * task.
+   *
+   * A list item is a plain task by default — in particular it gets no
+   * `deliverableKind`. Recording what the doctor said is worth having and is
+   * one tap away in the editor, but a list where every line demands an answer
+   * on completion is a form, not a list.
+   */
+  kind: ProjectKind;
 }
+
+/**
+ * `'project'` for work that finishes; `'list'` for a running list of things to
+ * remember that never gets scheduled — doctor questions, a wish list, packing.
+ *
+ * Persisted verbatim in `projects.kind`, so these are storage values: adding a
+ * third means an older build has to keep drawing rows carrying it, which is why
+ * `rowToProject` reads anything unrecognised as `'project'` rather than
+ * throwing.
+ */
+export type ProjectKind = 'project' | 'list';
 
 // Fallback cadence for a project row written before the nudge columns existed,
 // and the default for a newly created project. Never, deliberately: being asked

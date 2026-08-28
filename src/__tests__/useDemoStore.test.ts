@@ -392,6 +392,54 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // A list is drawn differently from a project and is otherwise the same row,
+  // so the only thing that can make the feature visible in demo mode is a
+  // project actually carrying kind: 'list'. Behaviour is asserted alongside:
+  // its members are undated, which is what keeps them off Today and out of
+  // Inbox without any code of their own.
+  it('seeds a list, with undated members', () => {
+    useDemoStore.getState().enterDemoMode();
+    const projects = useProjectStore.getState().projects;
+    const tasks = useTaskStore.getState().tasks;
+
+    const lists = projects.filter(p => p.kind === 'list');
+    expect(lists.length).toBeGreaterThanOrEqual(2);
+    // And ordinary projects still exist, or the demo would say every project
+    // is a list.
+    expect(projects.some(p => p.kind === 'project')).toBe(true);
+
+    for (const list of lists) {
+      const members = tasks.filter(t => t.projectId === list.id);
+      expect(members.length).toBeGreaterThan(0);
+      expect(members.every(t => t.dueDate === null && t.deferUntil === null)).toBe(true);
+      // The property the whole design rests on: an undated project task is
+      // absent from Today, Inbox and Unscheduled with no special-casing.
+      expect(members.every(t => !isTaskVisible(t))).toBe(true);
+    }
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  // Opt-in per item, not per list — see Project.kind. A list where every line
+  // demanded an answer would be a form, so the demo has to show one item
+  // carrying a question and the rest not.
+  it('seeds exactly one list item that records an answer', () => {
+    useDemoStore.getState().enterDemoMode();
+    const projects = useProjectStore.getState().projects;
+    const tasks = useTaskStore.getState().tasks;
+
+    const listIds = new Set(projects.filter(p => p.kind === 'list').map(p => p.id));
+    const members = tasks.filter(t => t.projectId && listIds.has(t.projectId));
+    const answered = members.filter(t => t.deliverableValue !== null);
+
+    expect(answered).toHaveLength(1);
+    expect(answered[0].deliverableValue).toBeTruthy();
+    // The rest are plain: no question, nothing to answer on completion.
+    expect(members.filter(t => t.deliverableKind !== null)).toHaveLength(1);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // Every other pinned row in the seed is a single task, so nothing else
   // would catch a later edit that dropped the pinGroup call or unpinned a
   // member — the stack editor's pin-all button would read as untested.

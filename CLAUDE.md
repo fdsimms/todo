@@ -331,6 +331,7 @@ exports.
 | exporting or restoring a backup | `src/utils/backup.ts` + `src/utils/backupFile.ts` |
 | writing tasks to the system calendar | `src/utils/calendarSync.ts` (+ `deadlineCalendarSync.ts`, `mealCalendarSync.ts`) |
 | reading free/busy out of the system calendar | `src/utils/calendarBusy.ts` + `src/store/useCalendarStore.ts` |
+| a running list of things with no date (doctor questions, a wish list) | `Project.kind` in `src/types/index.ts` — a project drawn as a list; the members are ordinary undated tasks |
 | pulling tasks out of a project | `src/utils/projectPull.ts` |
 | what a task is waiting on, and what it blocks | `src/utils/blocking.ts` + `src/utils/blockerRegistry.ts` |
 | how loaded a day is, and lightening an overloaded one | `src/utils/dayLoad.ts` + `src/utils/deloadPlan.ts` |
@@ -351,7 +352,7 @@ exports.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (7.0k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (4.8k),
-`store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.4k), `types/index.ts` (4.1k),
+`store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.4k), `types/index.ts` (4.2k),
 `components/TaskItem.tsx` (4.0k), `components/QuickAddModal.tsx` (3.0k),
 `store/useSettingsStore.ts` (2.8k), `utils/demoSeed.ts` (2.8k).
 
