@@ -661,9 +661,9 @@ export function initDatabase(): void {
     // meant to drop out of suggestions. Same naming convention as
     // categories' exclude_from_pin_suggestions.
     'ALTER TABLE grocery_shops ADD COLUMN exclude_from_suggestions INTEGER NOT NULL DEFAULT 0',
-    // See ReceiptStyle. Text rather than an integer flag because it is three
-    // states and will read back as itself in a sqlite browser; 'itemized' for
-    // every existing row, which is what they have all been treated as.
+    // See ReceiptStyle. Text rather than an integer flag because it reads back
+    // as itself in a sqlite browser; 'itemized' for every existing row, which
+    // is what they have all been treated as.
     "ALTER TABLE grocery_shops ADD COLUMN receipt_style TEXT NOT NULL DEFAULT 'itemized'",
     // Null for every existing recipe — splits the old single sourceName
     // attribution into author/source (#1266). Not backfilled from
@@ -1196,6 +1196,16 @@ export function initDatabase(): void {
     // a stack built from a project's own screen gets an id here, so it can sit
     // on that project's page before it has any members. See TaskGroup.projectId.
     'ALTER TABLE task_groups ADD COLUMN project_id TEXT',
+    // The one statement here that isn't an ADD COLUMN. 'opaque' is gone from
+    // ReceiptStyle, and a store that prints prices without item names is now a
+    // store whose receipt can't be read: 'none', not 'itemized'. Left to
+    // rowToShop's fallback they would come back as 'itemized' and the sheet
+    // would offer to spend a request reading paper with nothing on it to match.
+    // Idempotent like the ALTERs around it, so it costs a no-op UPDATE on every
+    // later launch rather than needing a schema version to guard it, and it
+    // runs before the sync triggers are installed (below) so it stays a local
+    // repair on each device rather than a change to push.
+    "UPDATE grocery_shops SET receipt_style = 'none' WHERE receipt_style = 'opaque'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -3448,6 +3458,12 @@ function rowToShop(row: Record<string, unknown>): Shop {
     // predates the column gets: an ordinary receipt is the overwhelming default
     // and the only value that costs nothing to be wrong about (you scan, and it
     // works or it doesn't).
+    //
+    // Retired 'opaque' rows don't rely on this — the migration above rewrites
+    // them to 'none' first, which is the honest answer for a store that prints
+    // no names. One can still arrive here from a device that hasn't updated,
+    // via sync; it reads as 'itemized' for that session and the next launch's
+    // migration settles it.
     receiptStyle: isReceiptStyle(row.receipt_style) ? row.receipt_style : 'itemized',
   };
 }

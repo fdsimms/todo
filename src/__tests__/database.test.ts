@@ -63,6 +63,8 @@ import {
   dbFinishGroceryShopping,
   dbGetAllItemShopLinks,
   dbInsertGroceryShop,
+  dbGetAllGroceryShops,
+  dbSetShopReceiptStyle,
   dbGetAllItemSubLinks,
   dbSetItemSubLink,
   dbDeleteItemSubLink,
@@ -378,6 +380,54 @@ describe('initDatabase', () => {
     initDatabase();
     const row = mockRawDb.prepare('SELECT seen_at FROM tasks WHERE id = ?').get('legacy-row') as { seen_at: string };
     expect(row.seen_at).toBe('2025-01-01T00:00:00.000Z');
+  });
+
+  // 'opaque' is retired from ReceiptStyle. Without this pass a store marked it
+  // reads back as 'itemized' — rowToShop's fallback for anything unrecognised —
+  // and the receipt sheet offers to spend a request reading paper that has no
+  // item names on it at all.
+  describe('retiring the opaque receipt style', () => {
+    const insertShop = (id: string, style: string) => {
+      mockRawDb
+        .prepare(
+          'INSERT INTO grocery_shops (id, name, name_key, sort_order, created_at, receipt_style)' +
+            " VALUES (?, ?, ?, 1, '2026-01-01T00:00:00.000Z', ?)"
+        )
+        .run(id, id, id, style);
+    };
+    const styleOf = (id: string) =>
+      dbGetAllGroceryShops().find(s => s.id === id)?.receiptStyle;
+
+    it("rewrites an opaque store to 'none' rather than leaving it to read as itemized", () => {
+      insertShop('corner-shop', 'opaque');
+
+      initDatabase();
+
+      expect(styleOf('corner-shop')).toBe('none');
+    });
+
+    it('leaves the two surviving styles alone', () => {
+      insertShop('supermarket', 'itemized');
+      insertShop('market-stall', 'none');
+
+      initDatabase();
+
+      expect(styleOf('supermarket')).toBe('itemized');
+      expect(styleOf('market-stall')).toBe('none');
+    });
+
+    // The UPDATE is unguarded, so it runs on every launch for ever. It has to
+    // stay a no-op on a database that has already been through it, including
+    // one where the user has since said this store's receipts do have names.
+    it('is a no-op on a second run and does not undo a later answer', () => {
+      insertShop('corner-shop', 'opaque');
+      initDatabase();
+      dbSetShopReceiptStyle('corner-shop', 'itemized');
+
+      initDatabase();
+
+      expect(styleOf('corner-shop')).toBe('itemized');
+    });
   });
 
   // A row that misses this pass reads as a task nobody generated: its meal

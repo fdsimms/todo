@@ -1,0 +1,4 @@
+{
+  "message": "Removed price pairing for stores that print prices without item names. Matching a column of prices to a column of items was work the app couldn't help with, so it was all yours to do by hand. Those stores now sit under \"Nothing readable\" instead, and the sheet says so rather than reading the photo.",
+  "date": "2026-08-28"
+}

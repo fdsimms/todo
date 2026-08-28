@@ -145,7 +145,6 @@ render, so listing them adds lines without adding answers.
 - `src/utils/plu.ts` — normalizePlu, splitOrganicPlu, pluNameFor
 - `src/utils/postpone.ts` — PostponeOutcome, DEFAULT_POSTPONE_THRESHOLD, MIN_POSTPONE_THRESHOLD, MAX_POSTPONE_THRESHOLD, parsePostponeThreshold, postponeOutcome, nextPostponeCount, nextDriftingSince, DriftEntry, driftingTaskList, +2 more
 - `src/utils/priceHistory.ts` — PRICE_HISTORY_LIMIT, parsePriceHistory, appendPriceObservation, PRODUCT_RUN_MIN, priceRunForProduct, priceBaseline, PriceStanding, priceStanding, mergePriceHistories
-- `src/utils/pricePairing.ts` — PairItem, Pairing, autoPairing, pairWith, unpair, unpairedPriceIndexes, pricesByItemId
 - `src/utils/prioritySegments.ts` — PRIORITY_SEGMENTS
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
 - `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField
