@@ -72,7 +72,8 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
-import { nextStreakRecord, streakHint } from '../utils/streakRecord';
+import { isStreakAtRecord, nextStreakRecord, streakHint } from '../utils/streakRecord';
+import { FlameIcon } from './FlameIcon';
 import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
@@ -4399,7 +4400,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   }}
                   activeOpacity={interaction.activeOpacity}
                 >
-                  <Ionicons name="flame-outline" size={18} color={task.streakCount > 0 ? colors.orange : colors.textSecondary} />
+                  <FlameIcon
+                    variant={isStreakAtRecord(task) ? 'record' : task.streakCount > 0 ? 'streak' : 'none'}
+                    size={18}
+                    color={task.streakCount > 0 ? colors.orange : colors.textSecondary}
+                  />
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Streak</Text>
                     <Text style={styles.optionHint}>

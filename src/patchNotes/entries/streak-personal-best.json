@@ -1,4 +1,4 @@
 {
-  "message": "Recurring tasks now remember their longest run. When a streak passes it, the flame on the row burns bigger and stays that way for the rest of the run, so overtaking your record is something you see once rather than every day after. The editor's Streak row and the streak leaderboard on Stats both name the record too.",
+  "message": "Recurring tasks now remember their longest run. When a streak passes it the flame on the row becomes a bigger one, and stays that way for the rest of the run, so overtaking your record is something you see once rather than every day afterwards. The editor's Streak row and the streak leaderboard on Stats both name the record too.",
   "date": "2026-08-28"
 }

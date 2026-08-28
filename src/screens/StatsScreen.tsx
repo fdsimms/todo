@@ -20,6 +20,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
+import { FlameIcon } from '../components/FlameIcon';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 import { useReduceMotion } from '../utils/useReduceMotion';
@@ -566,9 +567,9 @@ export function StatsScreen() {
                       <Text style={styles.streakBest}>best {bestStreakOf(t)}</Text>
                     )}
                     <View style={styles.badge}>
-                      <Ionicons
-                        name="flame"
-                        size={isStreakAtRecord(t) ? 15 : 13}
+                      <FlameIcon
+                        variant={isStreakAtRecord(t) ? 'record' : 'streak'}
+                        size={13}
                         color={colors.orange}
                       />
                       <Text style={[styles.badgeText, { color: colors.orange }]}>{t.streakCount}</Text>
