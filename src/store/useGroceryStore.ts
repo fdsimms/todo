@@ -1326,6 +1326,7 @@ function newItemRow(fields: {
     // Nobody has been asked about a row that didn't exist a moment ago, and a
     // brand-new row can't have a lapsed purchase reading to be asked about.
     pantryCheckDeclinedAt: null,
+    pantryReviewedAt: null,
     // Nothing has left the pantry yet, because nothing has been in it. See
     // GroceryItem.usedUpCount.
     usedUpCount: 0,
@@ -3105,27 +3106,40 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // 'low' is setRunningLow outright, including its one-directional reach into
     // onList — that reach is the whole reason this answer is in the deck (see
     // PantryReviewAnswer), so routing round it would leave the middle answer
-    // with nothing to show for itself.
-    if (answer === 'low') {
-      get().setRunningLow(itemId, true, { registerUndo: false });
-      return;
-    }
+    // with nothing to show for itself. It's called first and the stamp below
+    // then rides on the row it wrote.
+    if (answer === 'low') get().setRunningLow(itemId, true, { registerUndo: false });
     const item = get().items.find(i => i.id === itemId);
     if (!item) return;
-    // Both remaining answers are one column, which is why they share a path:
+    // The other two answers are one column, which is why they share a path:
     // "still have it" is the window a fresh "Got it" asserts for, and "out of
     // it" is the sentinel. Bare `new Date()` on purpose — a pantry window is
     // measured in real elapsed days rather than logical ones, the same call
     // defaultOnHandUntil's other callers make.
-    const until = answer === 'have' ? defaultOnHandUntil(item, new Date()) : OUT_OF_IT_UNTIL;
-    if (item.onHandUntil === until) return;
-    const updated: GroceryItem = { ...item, onHandUntil: until };
+    const now = new Date();
+    const until =
+      answer === 'have' ? defaultOnHandUntil(item, now)
+      : answer === 'out' ? OUT_OF_IT_UNTIL
+      : item.onHandUntil;
+    // Deliberately no early return on the column being unchanged. Every answer
+    // stamps, because the stamp is what keeps the deck from dealing this card
+    // again tomorrow (see GroceryItem.pantryReviewedAt) — and the cases where
+    // nothing else changes are exactly the ones that need it: a row already
+    // running low, one already out of it, and one whose window the same answer
+    // has just renewed to the value it already held.
+    const updated: GroceryItem = {
+      ...item,
+      onHandUntil: until,
+      pantryReviewedAt: now.toISOString(),
+    };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === itemId ? updated : i)) }));
     // Answering "out of it" resolves the same question a live "Use up X"
     // task was asking — leaving the task standing is what had it come back
-    // the morning after it was already answered here.
-    if (answer === 'out') dropUseUpTask(itemId);
+    // the morning after it was already answered here. Still gated on the column
+    // having actually changed, which the stamp above no longer is: a second
+    // "out of it" on a row already out has no task left to drop.
+    if (answer === 'out' && item.onHandUntil !== OUT_OF_IT_UNTIL) dropUseUpTask(itemId);
   },
 
   revertPantryAnswer(item, entry) {

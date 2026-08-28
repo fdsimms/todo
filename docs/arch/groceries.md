@@ -948,6 +948,16 @@ write. "Computed first, corrected second" is the rule; this is the second half, 
   still means you have it, and an "Out of it" does not either, because the precedence already shadows
   it and a purchase clears both. Inventing a cascade here would put a second, quieter copy of that
   ladder in the store.
+- **An answer stands for a week** (`PANTRY_REVIEW_QUIET_DAYS`, stamped on
+  `GroceryItem.pantryReviewedAt`), and that is a *fourth* exclusion rather than a nicety. None of
+  the three answers takes the row out of the qualifying set on its own: "Still have it" renews
+  `onHandUntil` and "Running low" sets `runningLowAt`, and both of those make the row `asserted`,
+  which is a tier the deck cards on purpose. Only "Out of it" leaves, and only by the sentinel. So
+  a pass reopened after it finished dealt back the same twenty cards, with the answers the user had
+  just given as the reason they qualified. The stamp is written by every answer including the two
+  that change nothing else (a row already running low, a row already out of it), because those are
+  exactly the ones that had nothing to show for the swipe. Undo restores it with the rest of the
+  row snapshot, so a mis-swipe doesn't silence a row for a week.
 - **`runningLowAt` is why there are three answers and not two.** It is the middle of the scale the
   "Got it"/"Out of it" pair was missing, and it is the one answer with an outlet — it puts the row on
   the shopping list. That is what gives a review pass something to show for itself rather than being
@@ -969,6 +979,13 @@ write. "Computed first, corrected second" is the rule; this is the second half, 
   those touches — see the drag-and-drop note in `CLAUDE.md` (#1182). The symptom is a card that
   follows the finger and then snaps back. `EditorSheet` and `CategoryOrderSheet` are `fullScreen` for
   the identical reason.
+- **The card claims the touch on touch-down, in both phases.** `fullScreen` is only half of what a
+  swipe here needs; the deck shipped claiming on the *bubble* phase after
+  `interaction.tapMoveThreshold` of movement, alone among the app's pan surfaces, and the card did
+  not move at all. Every one that works — the sheet drags, `Fab`, `ReorderableList`,
+  `SortableList` — claims on start or in the capture phase. The early claim costs nothing here
+  because the card has no tap of its own: the three answers and Undo are buttons below it, and a
+  touch that doesn't travel far enough is released as no answer and springs back.
 - **The deck is seeded once per open, never derived from the store.** Every answer writes to `items`,
   so a deck recomputed on each render would reorder and resize itself under the finger — the card you
   were about to swipe becoming a different card. Same call `CategoryOrderSheet` makes about its own
