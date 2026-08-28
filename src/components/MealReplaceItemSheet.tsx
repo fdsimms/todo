@@ -248,8 +248,13 @@ export function MealReplaceItemSheet({ visible, count, onReplace, onClose }: Pro
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
   // EmptyState brings its own centring, icon circle and type — this only has
-  // to keep it off the sheet's edges.
+  // to keep it off the sheet's edges and give it a tall enough box to centre
+  // in. The ScrollView above is shrink-wrapped (`maxHeight` only, no
+  // `flex: 1`), so it sizes to its content rather than stretching to fill
+  // the sheet — a fixed `minHeight` here is what gives EmptyState's own
+  // `flex: 1` something to grow into instead of collapsing to the top.
   emptyWrap: {
+    minHeight: 240,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
   },

@@ -619,7 +619,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
 
         <ScrollView
           ref={keyboardScroll.ref}
-          contentContainerStyle={styles.body}
+          contentContainerStyle={rows.length === 0 ? styles.bodyEmpty : styles.body}
           keyboardShouldPersistTaps="handled"
           {...keyboardScroll.props}
         >
@@ -829,6 +829,10 @@ function makeStyles(colors: Colors) {
       opacity: 0.6,
     },
     body: { padding: spacing.md, paddingBottom: spacing.xl },
+    // Full-height content container so EmptyState's own `flex: 1` has room
+    // to center above the manual-add row, instead of collapsing to its
+    // natural height right under the camera.
+    bodyEmpty: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl },
     label: {
       color: colors.textSecondary,
       fontSize: font.xs,
