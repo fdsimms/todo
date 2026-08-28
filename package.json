@@ -90,6 +90,7 @@
     "react-native-worklets": "0.10.1",
     "todo-alarmkit-bridge": "file:./modules/todo-alarmkit-bridge",
     "todo-cloudkit-bridge": "file:./modules/todo-cloudkit-bridge",
+    "todo-screentime-bridge": "file:./modules/todo-screentime-bridge",
     "todo-widget-bridge": "file:./modules/todo-widget-bridge",
     "zustand": "^5.0.15"
   },
