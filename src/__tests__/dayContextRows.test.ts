@@ -411,6 +411,17 @@ describe('plannedUsesToday', () => {
     expect(uses.get(spinach.id)).toBe('Green salad');
   });
 
+  it('pairs a catalog row with a recipe line one plural away from it', () => {
+    const peppers = kitchen('Serrano peppers', 'due');
+    const stirFry = withRecipe('Stir-fry', ['serrano pepper', 'rice']);
+    const uses = plannedUsesToday(
+      [peppers],
+      [entry('dinner', { recipeId: stirFry.id })],
+      new Map([[stirFry.id, stirFry]]),
+    );
+    expect(uses.get(peppers.id)).toBe('Stir-fry');
+  });
+
   it('pairs a leftover by the pointer the user made, not by its title', () => {
     const chilli = kitchen('Chilli', 'due', { kind: 'leftover', sourceId: 'lo-1' });
     const uses = plannedUsesToday(

@@ -17,6 +17,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { groceryNameKey } from '../utils/groceryParse';
+import { catalogItemForKey } from '../utils/groceryPlural';
 import { describeSubstituteLink, substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { parseQuantity } from '../utils/quantity';
 import { describeUnitFamily } from '../utils/unitConvert';
@@ -236,7 +237,10 @@ export function SubstituteSheet({ visible, itemId, editingSubItemId = null, onSw
   // The field both filters and adds, the way `KitchenScreen`'s and `PillGroup`'s
   // do: what the search can't find is exactly what you're offered the chance
   // to add, and "what about ghee" is the moment you find out ghee has no row.
-  const canAdd = !!typed && !items.some(i => i.nameKey === typedKey);
+  // Through the catalog's own resolution, so typing the singular of a row you
+  // already have offers that row (it is in `results` above) rather than an add
+  // that would quietly resolve to it anyway. See groceryPlural.ts.
+  const canAdd = !!typed && !catalogItemForKey(typedKey, items);
 
   const handleAddTyped = () => {
     const created = ensureCatalogItem(typed);

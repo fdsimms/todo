@@ -75,6 +75,22 @@ describe('useUpRecipes', () => {
     expect(suggestions[0].uses.map(e => e.title)).toEqual(['Spinach']);
   });
 
+  it('matches across a plural, the way the catalog itself resolves one', () => {
+    const peppers = entry('Serrano peppers', 'due');
+    const suggestions = useUpRecipes([peppers], [recipe('Stir-fry', ['serrano pepper', 'rice'])]);
+
+    expect(suggestions).toHaveLength(1);
+    expect(suggestions[0].uses.map(e => e.title)).toEqual(['Serrano peppers']);
+  });
+
+  it('counts a singular and a plural line as the one thing being used up', () => {
+    const tomatoes = entry('Tomatoes', 'due');
+    // "2 tomatoes" for the sauce and "1 tomato" to garnish is one tomato being
+    // used up, the same rule the exact-key case keeps.
+    const suggestions = useUpRecipes([tomatoes], [recipe('Sauce', ['tomatoes', 'tomato'])]);
+    expect(suggestions[0].uses).toHaveLength(1);
+  });
+
   it('leaves out a recipe that uses none of what is dying', () => {
     expect(useUpRecipes([entry('Spinach', 'due')], [recipe('Pancakes', ['flour', 'eggs'])]))
       .toEqual([]);

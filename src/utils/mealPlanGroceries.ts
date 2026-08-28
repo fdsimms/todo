@@ -3,6 +3,7 @@ import type { GroceryItem, ItemSubLink, MealPlanEntry, Recipe } from '../types';
 import { isKeyInRange } from './mealPlan';
 import { dayKeyToDate } from './dateUtils';
 import { probablyHaveReason } from './grocerySuggest';
+import { resolvePluralKey } from './groceryPlural';
 import { describeSubstitutesOnHand, substitutesOnHand } from './itemSubs';
 import { coveringVariety, describeFamilyOnHand, familyOnHand, varietyIndex } from './itemVarieties';
 import { choiceGroupKey, flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
@@ -488,6 +489,24 @@ export function classifyPlanned(
     const group = groups.get(key);
     if (group) group.push(p);
     else groups.set(key, [p]);
+  }
+
+  // A line one plural apart from a row that exists *becomes* that row, before
+  // anything below reads a key — "serrano pepper" against Serrano peppers is
+  // one shelf item, and the catalog's own find-or-insert resolves it that way
+  // (`catalogItemForKey`, `groceryPlural.ts`), so a sheet that classified it
+  // apart would offer to buy what is already in the trolley. Deliberately no
+  // `swappedFrom`: this is the same thing spelled the other way, not a swap,
+  // and "instead of serrano pepper" would be a caption about nothing. Ordered
+  // ahead of the variety pass so a re-filed key gets that pass too.
+  for (const [key, group] of [...groups]) {
+    if (byKey.has(key)) continue;
+    const resolved = resolvePluralKey(key, byKey.keys());
+    if (!resolved) continue;
+    groups.delete(key);
+    const target = groups.get(resolved);
+    if (target) target.push(...group);
+    else groups.set(resolved, group);
   }
 
   // A generic line covered by a declared variety *becomes* that variety's row

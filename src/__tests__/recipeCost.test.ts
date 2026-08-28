@@ -149,6 +149,17 @@ describe('estimateRecipeCost', () => {
     expect(estimateRecipeCost(dish, catalog)).toBeNull();
   });
 
+  it('prices a line against the row it is the plural of', () => {
+    const dish = recipe('Salsa', [ing('serrano pepper', { quantity: '1 lb' })]);
+    const catalog = [item({
+      name: 'Serrano peppers',
+      lastPriceMinor: 400, lastPriceQuantity: '2 lb', lastPricedAt: NOW.toISOString(),
+    })];
+    // Priced, so the line counts on both sides of the coverage fraction rather
+    // than dragging it down over a letter s.
+    expect(estimateRecipeCost(dish, catalog)?.totalMinor).toBe(200);
+  });
+
   it('declines below the coverage floor — the issue\'s own 3-of-9 example', () => {
     const dish = recipe('Big dish', [
       ing('Flour', { quantity: '1 lb' }),

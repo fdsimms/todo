@@ -66,6 +66,7 @@ import {
 } from '../utils/groceryLists';
 import { appendPriceObservation, mergePriceHistories } from '../utils/priceHistory';
 import { groceryNameKey, parseGroceryInput, splitGroceryLines } from '../utils/groceryParse';
+import { catalogItemForKey } from '../utils/groceryPlural';
 import { hasUserFacts, factSignature, linkCounts } from '../utils/groceryFacts';
 import { describeQuantities } from '../utils/mealPlanGroceries';
 import { defaultOnHandUntil, OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
@@ -1773,7 +1774,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // drain mid-batch.
     const key = groceryNameKey(name) || name.trim().toLowerCase();
     const now = new Date().toISOString();
-    const existing = key ? get().items.find(i => i.nameKey === key) : undefined;
+    // Exact key first, then the singular/plural of it — "serrano pepper"
+    // against a catalog holding Serrano peppers is that row, not a second one
+    // splitting its purchase count and its aisle in two. See groceryPlural.ts;
+    // nothing about the stored key changes, this is only how a name finds it.
+    const existing = catalogItemForKey(key, get().items) ?? undefined;
     const wasOnList = existing?.onList === true;
     // `in` rather than `??`, because null is a real answer here — the list at
     // home — and the Reminders mirror passes exactly that. See the option's own
@@ -1784,7 +1789,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       const updated: GroceryItem = {
         ...existing,
         // The typed name wins — capitalisation and wording are the user's.
-        name: name || existing.name,
+        // Only on an exact key, though: a row found through its plural keeps
+        // the name it has, because `nameKey` is derived from `name` and every
+        // reader trusts that. Renaming Serrano peppers to "serrano pepper"
+        // here would leave the row keyed for a name it no longer carries.
+        name: existing.nameKey === key ? name || existing.name : existing.name,
         // Both are the home entry's mirror and are recomputed from the
         // entries by the `joinList` below — set here only so the row this
         // returns is already right for a caller that reads it straight back.
@@ -1912,7 +1921,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const preexisting = new Set(get().items.map(i => i.id));
     for (const line of lines) {
       const key = groceryNameKey(parseGroceryInput(line).name);
-      const before = key ? get().items.find(i => i.nameKey === key) : undefined;
+      // The same resolution addByName is about to make, or this loop counts a
+      // line it merged into an existing row as a freshly minted one.
+      const before = catalogItemForKey(key, get().items) ?? undefined;
       const wasOnList = before?.onList === true;
       const item = get().addByName(line, undefined, undefined, { registerUndo: false });
       if (wasOnList) alreadyOnList.push(item);
@@ -2011,7 +2022,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     dbTransaction(() => {
       for (const row of rows) {
         const key = groceryNameKey(row.name);
-        const existing = key ? get().items.find(i => i.nameKey === key) : undefined;
+        // Plural-tolerant, like addByName's own lookup below: a recipe line
+        // reading "serrano pepper" must skip the Serrano peppers already in
+        // the trolley rather than adding them again under a second name.
+        const existing = catalogItemForKey(key, get().items) ?? undefined;
 
         if (existing?.checked) { skippedInCart.push(existing); continue; }
         if (existing?.onList) { alreadyOnList.push(existing); continue; }
@@ -2799,13 +2813,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
     const now = new Date();
     const nowIso = now.toISOString();
-    const existing = get().items.find(i => i.nameKey === key);
+    const existing = catalogItemForKey(key, get().items);
 
     if (existing) {
       const updated: GroceryItem = {
         ...existing,
-        // The typed name wins, as it does in addByName.
-        name: trimmed,
+        // The typed name wins, as it does in addByName — and, as there, only
+        // on an exact key: a row found through its plural keeps the name its
+        // own key was derived from.
+        name: existing.nameKey === key ? trimmed : existing.name,
         onHandUntil: defaultOnHandUntil(existing, now),
       };
       dbUpdateGroceryItem(updated);
@@ -2852,7 +2868,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     let count = 0;
     for (const raw of names) {
       const key = groceryNameKey(parseGroceryInput(raw).name);
-      const before = key ? get().items.find(i => i.nameKey === key) : undefined;
+      // The resolution addToPantry itself makes, plural included — read bare,
+      // a row it merely updated would look freshly minted and undo would
+      // delete a catalog row the user already had.
+      const before = catalogItemForKey(key, get().items) ?? undefined;
       const item = get().addToPantry(raw, { registerUndo: false });
       if (!item) continue;
       count++;
@@ -4397,7 +4416,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // away ("???"): the key has to stay unique or the second such row collides
     // on the index.
     const key = groceryNameKey(trimmed) || trimmed.toLowerCase();
-    const existing = get().items.find(i => i.nameKey === key);
+    // Plural-tolerant, like addByName: naming "serrano pepper" so a standing
+    // fact can hang off it means the Serrano peppers row you already have.
+    const existing = catalogItemForKey(key, get().items);
     if (existing) return existing;
 
     const nowIso = new Date().toISOString();
@@ -4713,7 +4734,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   },
 
   itemByNameKey(key) {
-    return get().items.find(i => i.nameKey === key) ?? null;
+    // The plural counts as the same key here too — see groceryPlural.ts. This
+    // is the lookup a caller reaches for to ask "is this in the catalog", and
+    // it has to answer the same way addByName does or the two disagree about
+    // what a name means.
+    return catalogItemForKey(key, get().items);
   },
 
   itemById(id) {

@@ -15,6 +15,7 @@ import { CatalogLinkPicker } from './CatalogLinkPicker';
 import { InlineAction } from './InlineAction';
 import { type PendingEdits } from '../hooks/usePendingEdits';
 import { groceryNameKey } from '../utils/groceryParse';
+import { catalogItemForKey } from '../utils/groceryPlural';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 
@@ -101,7 +102,7 @@ export function ExtractedIngredientRow({
   // comment), so this is the same lookup the store does on save, run early so
   // the icon can say which way this line is headed.
   const linkedItem = useMemo(
-    () => catalogItems.find(i => i.nameKey === groceryNameKey(row.name)) ?? null,
+    () => catalogItemForKey(groceryNameKey(row.name), catalogItems),
     [catalogItems, row.name]
   );
 

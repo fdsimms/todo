@@ -26,6 +26,7 @@ import { aisleForName } from '../utils/groceryAisles';
 import { groceryNameKey, splitAlternativeNames } from '../utils/groceryParse';
 import { varietyOfferFor } from '../utils/itemVarieties';
 import { matchIngredientToCatalog } from '../utils/ingredientCatalogMatch';
+import { catalogItemForKey } from '../utils/groceryPlural';
 import { cleanChoiceGroup } from '../utils/recipeUtils';
 import { describeCatalogItem } from '../utils/groceryProduct';
 import { allSectionsOf } from '../utils/recipeSections';
@@ -159,7 +160,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   const catalogItem = useMemo(() => {
     if (!ingredient) return null;
     const key = groceryNameKey(name) || ingredient.nameKey;
-    return groceryItems.find(i => i.nameKey === key) ?? null;
+    // Through the same resolution the catalog itself uses, so a line one
+    // plural away from a row you have reads as the row it will actually add
+    // to rather than as "not in your groceries yet".
+    return catalogItemForKey(key, groceryItems);
   }, [groceryItems, ingredient, name]);
 
   // Who this line is currently an alternative to, by name. The label alone is

@@ -377,6 +377,51 @@ describe('setPendingUseUpItem', () => {
 // ─── addByName ───────────────────────────────────────────────────────────────
 
 describe('addByName', () => {
+  // See groceryPlural.ts. The stored key is untouched; what changed is that a
+  // name looks for its own plural before deciding it is new.
+  it('adds to the row a name is the plural of rather than minting a second one', () => {
+    const created = useGroceryStore.getState().addByName('Serrano peppers');
+    useGroceryStore.getState().removeFromList(created.id);
+
+    const again = useGroceryStore.getState().addByName('serrano pepper');
+    expect(again.id).toBe(created.id);
+    expect(useGroceryStore.getState().items).toHaveLength(1);
+  });
+
+  it('adds to the row a name is the singular of, too', () => {
+    const created = useGroceryStore.getState().addByName('Serrano pepper');
+    const again = useGroceryStore.getState().addByName('serrano peppers');
+    expect(again.id).toBe(created.id);
+    expect(useGroceryStore.getState().items).toHaveLength(1);
+  });
+
+  // The typed name wins on an exact key and only there: `nameKey` is derived
+  // from `name`, so renaming a row reached through its plural would leave it
+  // keyed for a name it no longer carries — and every reader trusts that key.
+  it('does not rename a row reached through its plural', () => {
+    const created = useGroceryStore.getState().addByName('Serrano peppers');
+    const again = useGroceryStore.getState().addByName('serrano pepper');
+    expect(again.name).toBe('Serrano peppers');
+    expect(again.nameKey).toBe('serrano peppers');
+  });
+
+  it('still lets the typed name win on an exact key', () => {
+    const created = useGroceryStore.getState().addByName('serrano peppers');
+    const again = useGroceryStore.getState().addByName('Serrano Peppers');
+    expect(again.id).toBe(created.id);
+    expect(again.name).toBe('Serrano Peppers');
+  });
+
+  // Ambiguity is refused rather than ranked — the same call uniqueSimilarItem
+  // makes for a one-character correction.
+  it('mints a new row when two existing rows are a plural apart from the name', () => {
+    useGroceryStore.getState().addByName('leaf');
+    useGroceryStore.getState().addByName('leave');
+    const added = useGroceryStore.getState().addByName('leaves');
+    expect(added.nameKey).toBe('leaves');
+    expect(useGroceryStore.getState().items).toHaveLength(3);
+  });
+
   it('keeps an override note on the row it creates', () => {
     const item = useGroceryStore.getState().addByName('limes', {
       name: 'limes', quantity: null, note: 'for margs',
@@ -3903,6 +3948,20 @@ describe('addManyToPantry', () => {
     const items = useGroceryStore.getState().items;
     expect(items).toHaveLength(1);
     expect(items[0]).toEqual(milk);
+  });
+
+  // Read bare, the plural row addToPantry updates looks like one this batch
+  // minted, and the undo above deletes a row the user already had.
+  it('undo restores a row reached through its plural rather than deleting it', () => {
+    const peppers = makeItem({ name: 'Serrano peppers', onHandUntil: null, onList: true });
+    seed([peppers]);
+
+    useGroceryStore.getState().addManyToPantry(['serrano pepper']);
+    useGroceryStore.getState().undoLastAction();
+
+    const items = useGroceryStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual(peppers);
   });
 
   it('freezes only the names passed in frozenNames, matched exactly', () => {

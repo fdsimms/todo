@@ -84,6 +84,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/groceryFacts.ts` — ItemRelations, linkCounts, hasUserFacts, factSignature
 - `src/utils/groceryLists.ts` — HOME_LIST_NAME, isAwayList, listNameFor, entryFor, onListAnywhere, listedAnywhere, itemsOnList, withHomeMembership, trolleyStateFor, listCount, +4 more
 - `src/utils/groceryParse.ts` — groceryNameKey, parseGroceryInput, splitPrep, splitPurpose, suggestShorterCatalogName, splitAlternativeNames, looksLikeAlternativeList, resolveGroceryTokens, splitGroceryLines
+- `src/utils/groceryPlural.ts` — pluralKeyVariants, resolvePluralKey, catalogItemForKey
 - `src/utils/groceryPrice.ts` — parsePriceInput, formatPrice, priceToInput, formatPriceInput, describePriceAge, describePriceContext, describeShopPrices, ShopPrice, shopPricesFor, Comparable, +13 more
 - `src/utils/groceryProduct.ts` — productKeyFor, describeProduct, describeCatalogItem, productsForItem, productForGtin, preferredProductOf, describePreferredProduct, RATING_LABELS, describeProductPurchases, parseUnavailableProductIds, +1 more
 - `src/utils/groceryReminderMirror.ts` — GroceryReminderLink, GroceryLinkIndex, parseGroceryLinks, serializeGroceryLinks, withGroceryLinks, MirrorItem, MirrorReminder, mirrorTitleFor, normalizeMirrorTitle, GroceryReminderPlan, +1 more

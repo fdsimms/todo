@@ -4,6 +4,7 @@ import { flattenRecipeIngredients, type ChoiceResolution } from './recipeCompone
 import { collectPlannedIngredients } from './mealPlanGroceries';
 import { normalizeScale, scaleQuantity } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
+import { resolvePluralKey } from './groceryPlural';
 
 /**
  * What a recipe, or a week of planned meals, is likely to cost — the one place
@@ -86,7 +87,11 @@ function accumulate(
   quantity: string,
   byKey: ReadonlyMap<string, GroceryItem>
 ): void {
-  const item = byKey.get(nameKey);
+  // Plural-tolerant like every other catalog read (`groceryPlural.ts`), or a
+  // line one letter off its own row counts against coverage while the price it
+  // needs sits right there.
+  const resolved = byKey.has(nameKey) ? nameKey : resolvePluralKey(nameKey, byKey.keys());
+  const item = resolved ? byKey.get(resolved) : undefined;
   if (item?.isStaple) return;
   acc.total += 1;
   if (!item) return;
