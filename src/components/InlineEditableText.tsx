@@ -4,8 +4,14 @@ import {
   type StyleProp, type TextStyle,
 } from 'react-native';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, border, interaction, type Colors } from '../theme';
+import { radius, border, interaction, type Colors } from '../theme';
 import { useRegisterPendingEdit, type PendingEdits } from '../hooks/usePendingEdits';
+
+// Not off `spacing`: these sit inside a line of running text rather than
+// between blocks, so the box wants to be tight to its own glyphs — a chip
+// padded on the 4/8 scale reads as a button in a sentence.
+const CHIP_PAD_H = 6;
+const CHIP_PAD_V = 2;
 
 interface Props {
   edits: PendingEdits;
@@ -36,6 +42,10 @@ interface Props {
  * ingredient names and amounts. Same behaviour it always had: tapping the text
  * turns it into a field, blur or return commits, and an emptied field reverts
  * unless the caller says a blank means something.
+ *
+ * The read state is a filled chip and the open field is that same chip with
+ * its border coloured in — see the styles below for why the cue has to be a
+ * fill rather than the underline it started as.
  *
  * It registers its own pending draft with the sheet's `PendingEdits` registry,
  * so an edit still being typed when Add is tapped lands rather than being
@@ -126,27 +136,43 @@ export function InlineEditableText({
 
 function makeStyles(colors: Colors) {
   return StyleSheet.create({
-    // The dashed underline is the only cue this text is tappable, since it
-    // otherwise renders identically to the read-only labels around it. Only
-    // paddingTop carries the 1pt readWrap used to split across top/bottom —
-    // the bottom pt is now the border itself, so the total stays 2pt either
-    // side of edit mode (see the comment on `input` below).
+    // A filled chip is what says this text is tappable. It replaced a 1pt
+    // dashed underline in `separator`, which measured about 1.3:1 against the
+    // card it sat on and so read as no cue at all: the import review list's
+    // fields were indistinguishable from the static text between them
+    // ("4 · e.g. 45 min" is three of each), and an empty one was
+    // indistinguishable from prose. Same treatment the ingredient row's
+    // quantity had already hand-rolled for itself as `qtyPill`.
+    //
+    // It hugs its content rather than filling its parent, which only matters
+    // in the column parents (an ingredient's name, a method step): a chip
+    // stretched to a `flex: 1` body leaves a box wider than the words in it
+    // on every short ingredient, and a ragged right edge reads as broken
+    // rather than as a field.
     readWrap: {
-      paddingTop: 1,
-      borderBottomWidth: border.sm,
-      borderBottomColor: colors.separator,
-      borderStyle: 'dashed',
-    },
-    // Padded and tinted so an open field reads as a field. The vertical
-    // padding is matched by readWrap's 1pt plus the border, so flipping into
-    // edit mode doesn't shift the line it's on.
-    input: {
-      backgroundColor: colors.bgSecondary,
+      alignSelf: 'flex-start',
+      backgroundColor: colors.bgTertiary,
       borderRadius: radius.sm,
-      borderWidth: 1,
+      // Transparent rather than absent, so edit mode below can colour the
+      // same border in without the text moving a pixel either way.
+      borderWidth: border.sm,
+      borderColor: 'transparent',
+      paddingHorizontal: CHIP_PAD_H,
+      paddingVertical: CHIP_PAD_V,
+    },
+    // The same box with its border coloured in — the open field is the read
+    // chip plus a focus ring, so flipping between them shifts nothing.
+    // `minWidth` is what makes an emptied field typable: the inline ones sit
+    // in row parents and are sized by their content, so a blank field would
+    // otherwise open at zero width with nowhere to put the caret.
+    input: {
+      backgroundColor: colors.bgTertiary,
+      borderRadius: radius.sm,
+      borderWidth: border.sm,
       borderColor: colors.accent,
-      paddingHorizontal: spacing.xs,
-      paddingVertical: 0,
+      paddingHorizontal: CHIP_PAD_H,
+      paddingVertical: CHIP_PAD_V,
+      minWidth: 56,
       margin: 0,
     },
     placeholder: { color: colors.textTertiary },
