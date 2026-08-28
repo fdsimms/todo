@@ -575,11 +575,10 @@ export function ProjectDetailScreen() {
             // middle. Same reasoning as ListFooterComponent below.
             contentContainerStyle={[{ flexGrow: 1 }, incompleteProjectTasks.length > 0 && { paddingTop: spacing.sm }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
             onHoverChange={haptics.dragTick}
-            // A dragged group moves as the single row it renders as, so its
-            // children just ride along in their existing relative order —
-            // reorderProjectItems only needs the flattened id order. An empty
-            // stack has no children to stand in for it, so it hands over its
-            // own id and holds the slot itself.
+            // A stack hands over its own id, never its children's: it holds a
+            // slot in this order itself (see buildProjectListItems), and its
+            // members' sortOrders are their within-stack order, which a drag
+            // out here has no business rewriting.
             onReorder={reordered => {
               // A task just handed to a group (see onDragEnd) has already been
               // absorbed there — drop it from the normal placement pass so it
@@ -589,10 +588,8 @@ export function ProjectDetailScreen() {
               const settled = joinedTaskId !== null
                 ? reordered.filter(item => !(item.type === 'task' && item.task.id === joinedTaskId))
                 : reordered;
-              const orderedIds = settled.flatMap(item =>
-                item.type !== 'group' ? [item.task.id]
-                  : item.children.length > 0 ? item.children.map(t => t.id)
-                  : [item.group.id],
+              const orderedIds = settled.map(item =>
+                item.type === 'group' ? item.group.id : item.task.id,
               );
               reorderProjectItems(projectId, orderedIds);
             }}

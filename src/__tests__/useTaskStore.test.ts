@@ -6543,6 +6543,22 @@ describe('reorderProjectItems', () => {
     expect(tasks.find(t => t.id === 'b')?.sortOrder).toBe(30);
   });
 
+  // A stacked task's sortOrder is its within-stack order, not a slot in this
+  // list, so a drag out here must not touch it — the stack moves by its own id.
+  it('leaves a stacked member’s within-stack order alone', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'loose', projectId: 'p1', sortOrder: 40 }),
+        makeTask({ id: 'member', projectId: 'p1', groupId: 'stack', sortOrder: 1 }),
+      ],
+    });
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'stack', sortOrder: 90 })] });
+    useTaskStore.getState().reorderProjectItems('p1', ['stack', 'loose']);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'member')?.sortOrder).toBe(1);
+    expect(useTaskGroupStore.getState().groups.find(g => g.id === 'stack')?.sortOrder).toBe(40);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'loose')?.sortOrder).toBe(90);
+  });
+
   it('leaves a stack homed on another project where it is', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1', sortOrder: 10 })] });
     useTaskGroupStore.setState({ groups: [makeGroup({ id: 'elsewhere', projectId: 'p2', sortOrder: 5 })] });

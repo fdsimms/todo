@@ -5427,14 +5427,19 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   reorderProjectItems(projectId, orderedIds) {
     const tasks = liveProjectSteps(projectId, get().tasks);
-    // Stacks homed on this project hold slots in the same number space (see
-    // TaskGroup.sortOrder), so they're reordered against the tasks in one pass
-    // rather than in a second space that would have to be kept in step. Only
-    // the ones the caller actually named move — slotUpdates ignores the rest,
-    // so passing every homed stack costs nothing and a stack found through its
-    // members keeps taking its slot from them.
-    const homedGroups = useTaskGroupStore.getState().groups.filter(g => g.projectId === projectId);
-    const updates = slotUpdates([...tasks, ...homedGroups], orderedIds);
+    // Every stack this project lists: the ones holding tasks here and the ones
+    // homed here with none. Both hold slots in the same number space the tasks
+    // use (see TaskGroup.sortOrder), so the two are reordered against each
+    // other in one pass rather than in a second space to be kept in step.
+    //
+    // The stacked tasks in `tasks` are deliberately still in the universe but
+    // never named by the caller, which is the point: their sortOrder is their
+    // within-stack order, so they're skipped here and keep it, and the slot
+    // pool is built from the rows that actually appear in this list.
+    const memberGroupIds = new Set(tasks.map(t => t.groupId).filter((id): id is string => !!id));
+    const listedGroups = useTaskGroupStore.getState().groups
+      .filter(g => g.projectId === projectId || memberGroupIds.has(g.id));
+    const updates = slotUpdates([...tasks, ...listedGroups], orderedIds);
     if (updates.length === 0) return;
     const taskIds = new Set(tasks.map(t => t.id));
     const taskUpdates = updates.filter(u => taskIds.has(u.id));
