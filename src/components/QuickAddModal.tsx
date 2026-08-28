@@ -216,6 +216,11 @@ export function QuickAddModal({
   const tasks = useTaskStore(s => s.tasks);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const newTaskDefaults = useSettingsStore(s => s.newTaskDefaults);
+  const setNewTaskDefaults = useSettingsStore(s => s.setNewTaskDefaults);
+  // Titles filed since the sheet opened, while "Add another" is on — the
+  // sheet's own record of a burst, since nothing behind it is announcing them
+  // (see createTask). Cleared with the rest of the draft when it reopens.
+  const [burstAdded, setBurstAdded] = useState<string[]>([]);
   const titleRules = useSettingsStore(useShallow(s => s.titleRules));
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleTaskForm = useSettingsStore(s => s.simpleTaskForm);
@@ -402,67 +407,89 @@ export function QuickAddModal({
   const seedRef = useRef(seed);
   seedRef.current = seed;
 
+  /**
+   * Every field back to what a freshly opened sheet shows, with no seed
+   * applied. Two callers: the open effect below, which then layers the drop
+   * seed on top, and a burst add (see createTask), which deliberately doesn't
+   * get one — a dropped task's slot is a one-task intent, so "Add another"
+   * isn't offered for a seeded sheet at all.
+   *
+   * Deliberately a plain function rather than a useCallback in the effect's
+   * dependency array: it closes over newTaskDefaults, and an effect that
+   * re-ran when those changed would wipe a half-typed task out from under the
+   * user. The effect's deps stay exactly what they were.
+   */
+  const resetDraft = (nextTitle: string) => {
+    setTitle(nextTitle);
+    titleCaret.resetCaret(nextTitle);
+    setPriority(newTaskDefaults.priority ?? 0);
+    setEffort(newTaskDefaults.effort ?? 0);
+    setEstimatedMinutes(null);
+    setCustomEffortText('');
+    setDueDate(defaultDueDate());
+    setTimeSegments(newTaskDefaults.timeSegment ? [newTaskDefaults.timeSegment] : []);
+    setWindowStart(null);
+    setWindowEnd(null);
+    setTags([]);
+    setPersonOverrides({});
+    setCategory(newTaskDefaults.category);
+    setSeedActive(false);
+    setLinkUrl(null);
+    setPhoneNumber(null);
+    setEmailAddress(null);
+    setDeadline(null);
+    setType(initialType);
+    setTimedMinutes(initialType === 'timed' ? DEFAULT_TIMED_MINUTES : null);
+    setCustomTimedText('');
+    setTargetCount(initialType === 'target' ? DEFAULT_TARGET_COUNT : null);
+    setChainItems([]);
+    setNewStepTitle('');
+    setCustomLinkText('');
+    setPhoneText('');
+    setEmailText('');
+    setTagInput('');
+    setActivePanel(null);
+    setShowAllChips(false);
+    // A quota resets by spawning its next occurrence, so opening straight
+    // into Target has to arrive with the repeat already on.
+    setRecurrenceType(initialType === 'target' ? 'daily' : 'none');
+    setRecurrenceInterval(1);
+    setRecurrenceDays([]);
+    setRecurrenceMonthDay(null);
+    setRecurrenceWeekOrdinal(null);
+    setRecurrenceEndDate(null);
+    setRecurrenceCount(null);
+    setRecurrenceFromCompletion(false);
+    setSupplyCount(null);
+    setSupplyUnit('');
+    setProjectId(null);
+    setRulesOptedOut(false);
+    appliedRuleRef.current = null;
+    setPrefixW(null);
+    setMatchW(null);
+    tooltipAnim.setValue(0);
+    hadParse.current = false;
+    setWhenPickerVisible(false);
+    setCategoryPickerVisible(false);
+    setPostCreateTask(null);
+  };
+
   // ==== effects: seeding and resetting the draft ====
   useEffect(() => {
     if (visible) {
-      setTitle(initialTitle ?? '');
-      titleCaret.resetCaret(initialTitle ?? '');
-      setPriority(newTaskDefaults.priority ?? 0);
-      setEffort(newTaskDefaults.effort ?? 0);
-      setEstimatedMinutes(null);
-      setCustomEffortText('');
-      setDueDate(
-        seedRef.current?.dueDate !== undefined
-          ? (seedRef.current.dueDate ? new Date(seedRef.current.dueDate) : null)
-          : defaultDueDate()
-      );
-      setTimeSegments(seedRef.current?.timeSegments ?? (newTaskDefaults.timeSegment ? [newTaskDefaults.timeSegment] : []));
-      setWindowStart(seedRef.current?.windowStart ?? null);
-      setWindowEnd(seedRef.current?.windowEnd ?? null);
-      setTags([]);
-      setPersonOverrides({});
+      resetDraft(initialTitle ?? '');
       // Applied after the reset rather than folded into it, so a drop's
       // category overrides the default instead of racing it.
-      setCategory(seedRef.current?.category ?? newTaskDefaults.category);
-      setSeedActive(!!seedRef.current);
-      setLinkUrl(null);
-      setPhoneNumber(null);
-      setEmailAddress(null);
-      setDeadline(null);
-      setType(initialType);
-      setTimedMinutes(initialType === 'timed' ? DEFAULT_TIMED_MINUTES : null);
-      setCustomTimedText('');
-      setTargetCount(initialType === 'target' ? DEFAULT_TARGET_COUNT : null);
-      setChainItems([]);
-      setNewStepTitle('');
-      setCustomLinkText('');
-      setPhoneText('');
-      setEmailText('');
-      setTagInput('');
-      setActivePanel(null);
-      setShowAllChips(false);
-      // A quota resets by spawning its next occurrence, so opening straight
-      // into Target has to arrive with the repeat already on.
-      setRecurrenceType(initialType === 'target' ? 'daily' : 'none');
-      setRecurrenceInterval(1);
-      setRecurrenceDays([]);
-      setRecurrenceMonthDay(null);
-      setRecurrenceWeekOrdinal(null);
-      setRecurrenceEndDate(null);
-      setRecurrenceCount(null);
-      setRecurrenceFromCompletion(false);
-      setSupplyCount(null);
-      setSupplyUnit('');
-      setProjectId(null);
-      setRulesOptedOut(false);
-      appliedRuleRef.current = null;
-      setPrefixW(null);
-      setMatchW(null);
-      tooltipAnim.setValue(0);
-      hadParse.current = false;
-      setWhenPickerVisible(false);
-      setCategoryPickerVisible(false);
-      setPostCreateTask(null);
+      if (seedRef.current) {
+        const seeded = seedRef.current;
+        if (seeded.dueDate !== undefined) setDueDate(seeded.dueDate ? new Date(seeded.dueDate) : null);
+        if (seeded.timeSegments) setTimeSegments(seeded.timeSegments);
+        if (seeded.windowStart) setWindowStart(seeded.windowStart);
+        if (seeded.windowEnd) setWindowEnd(seeded.windowEnd);
+        if (seeded.category != null) setCategory(seeded.category);
+        setSeedActive(true);
+      }
+      setBurstAdded([]);
       scaleAnim.setValue(0.95);
       translateYAnim.setValue(16);
       sheetOpacity.setValue(0);
@@ -969,6 +996,11 @@ export function QuickAddModal({
   };
 
   // ==== creating the task ====
+  // The burst mode itself. Gated on there being no drop seed, so the toggle is
+  // neither shown nor honoured for a sheet opened by dragging the add button
+  // onto a spot in the list.
+  const keepOpen = newTaskDefaults.keepOpenAfterQuickAdd && !seedActive;
+
   const createTask = (finalTitle: string) => {
     haptics.success();
     animateLayout();
@@ -1019,6 +1051,21 @@ export function QuickAddModal({
     // NumberPadAccessory/TitleTokenAccessory InputAccessoryViews — mounted
     // at once for the ~120ms fade, which could leave an accessory bar
     // attached to the wrong window and stuck behind the keyboard.
+    // "Add another" on: file it and stay, ready for the next one. `onCreated`
+    // is deliberately not called — on Today it can switch the view mode and
+    // flash the new row, which behind an open sheet is the background changing
+    // under a sheet the user is still typing into, the very thing dismiss's
+    // onDone exists to avoid. Each add says where it went in the sheet instead
+    // (see the burst row below), which is where the user is already looking.
+    //
+    // A seeded sheet never takes this path: the drop chose a slot for one
+    // task, and positioning that task is exactly what onCreated does.
+    if (keepOpen) {
+      setBurstAdded(prev => [...prev, finalTitle]);
+      resetDraft('');
+      inputRef.current?.focus();
+      return;
+    }
     dismiss(() => {
       if (newTaskDefaults.openEditorAfterQuickAdd) {
         setPostCreateTask(task);
@@ -2202,6 +2249,40 @@ export function QuickAddModal({
             </View>
           )}
 
+          {/* "Add another": the burst-capture switch. Its own row rather than
+              squeezed into the footer, which in the simple form already holds
+              three buttons — and so that the count beside it has somewhere to
+              sit. Hidden for a seeded sheet, where the mode doesn't apply. */}
+          {!seedActive && (
+            <View style={styles.burstRow}>
+              <TouchableOpacity
+                style={[styles.keepOpenChip, keepOpen && styles.keepOpenChipOn]}
+                onPress={() => {
+                  haptics.tap();
+                  setNewTaskDefaults({ keepOpenAfterQuickAdd: !keepOpen });
+                }}
+                activeOpacity={interaction.activeOpacity}
+                accessibilityRole="switch"
+                accessibilityState={{ checked: keepOpen }}
+                accessibilityLabel="Add another"
+              >
+                <Ionicons
+                  name={keepOpen ? 'checkmark-circle' : 'ellipse-outline'}
+                  size={15}
+                  color={keepOpen ? colors.accent : colors.textSecondary}
+                />
+                <Text style={[styles.keepOpenText, keepOpen && styles.keepOpenTextOn]}>
+                  Add another
+                </Text>
+              </TouchableOpacity>
+              {burstAdded.length > 0 && (
+                <Text style={styles.burstCount}>
+                  {burstAdded.length} added
+                </Text>
+              )}
+            </View>
+          )}
+
           {/* More details — and, with "Show fewer fields" on, the sheet's two
               named buttons. A bare accent arrow beside the field says what it
               looks like and nothing about what it does; naming the action is
@@ -2819,6 +2900,44 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     color: colors.textSecondary,
     fontSize: font.xs,
   },
+  // The "Add another" row. A chip rather than a Switch: it sits in a dense
+  // sheet beside text buttons, and a full switch reads as a settings row.
+  burstRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    // Both sides: the footer below brings only its own spacing.xs, and this
+    // chip is bgTertiary like the "More details" button under it, so at 4pt
+    // apart the two read as one stack of buttons rather than a switch and a
+    // separate action.
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  keepOpenChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: colors.bgTertiary,
+  },
+  keepOpenChipOn: {
+    backgroundColor: colors.accent + '22',
+  },
+  keepOpenText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  keepOpenTextOn: {
+    color: colors.accent,
+    fontWeight: fontWeight.semibold,
+  },
+  burstCount: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+
   moreBtn: {
     flexDirection: 'row',
     alignItems: 'center',

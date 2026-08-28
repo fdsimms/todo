@@ -96,6 +96,14 @@ export function seedDemoData(): void {
   });
   ['bills', 'quick', 'reading', 'admin'].forEach(addTag);
 
+  // --- Recent searches -----------------------------------------------------
+  // The Search screen's empty-field state is the recents list, so with nothing
+  // seeded the demo opens Search onto "Find any task" and the feature reads as
+  // absent. Three queries that all hit something seeded below.
+  ['dentist', 'chicken', 'passport'].forEach(q =>
+    useSettingsStore.getState().pushRecentSearch(q)
+  );
+
   // --- Title rules ---------------------------------------------------------
   // Seeded before the tasks on purpose: the "Expense the client lunch" task
   // below names no category and no tag, so what files it under Work is the

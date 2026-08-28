@@ -852,6 +852,18 @@ describe('demo mode', () => {
     expect(filed!.effort).toBe(rule.effort);
   });
 
+  // The Search screen shows its recents list only when there is one, so an
+  // unseeded demo opens Search onto the bare "Find any task" prompt and the
+  // feature reads as missing. Newest first, so the last one pushed leads.
+  it('seeds recent searches', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const recents = useSettingsStore.getState().recentSearches;
+    expect(recents.length).toBeGreaterThan(0);
+    expect(recents).toContain('dentist');
+    expect(recents[0]).toBe('passport');
+  });
+
   // Same proof as the rule above, for the field a rule fills that isn't
   // category/tags/effort — a link is invisible on a row until something
   // opens it, so what this pins is that the seeded task's linkUrl came from

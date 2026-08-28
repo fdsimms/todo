@@ -26,6 +26,7 @@ import {
 } from '../utils/birthdayTasks';
 import { DEFAULT_MEAL_SLOTS_ENABLED } from '../utils/mealSlotTasks';
 import { parseRetentionDays, type RetentionDays } from '../utils/retention';
+import { addRecentSearch, parseRecentSearches } from '../utils/recentSearches';
 import { parseExpiredTaskGrace, serializeExpiredTaskGrace, type ExpiredTaskGraceDays } from '../utils/expiredTaskGrace';
 import { DEFAULT_APP_LOCK_GRACE_SECONDS, parseGraceSeconds } from '../utils/appLock';
 import { FDC_KEY_SECURE_KEY, GO_UPC_KEY_SECURE_KEY, loadAnthropicApiKey, loadSecureKey, saveAnthropicApiKey, saveSecureKey } from '../utils/secureApiKey';
@@ -123,6 +124,15 @@ export interface NewTaskDefaults {
   timeSegment: TimeOfDay | null;
   destination: 'today' | 'inbox' | 'unscheduled';
   openEditorAfterQuickAdd: boolean;
+  // Quick add stays open after filing a task, ready for the next one, instead
+  // of closing. Set from the sheet's own "Add another" toggle rather than a
+  // Settings row: it's a mode you turn on for a burst of capture and off after,
+  // so it belongs where you're standing when you want it. Persisted all the
+  // same, so someone who works this way doesn't re-arm it every time.
+  //
+  // Takes precedence over openEditorAfterQuickAdd above, which would close the
+  // sheet to hand off to the full editor — the opposite of what this asks for.
+  keepOpenAfterQuickAdd: boolean;
 }
 
 // Preserves today's actual behavior exactly: newTaskFromDraft already
@@ -137,6 +147,7 @@ const DEFAULT_NEW_TASK_DEFAULTS: NewTaskDefaults = {
   timeSegment: null,
   destination: 'today',
   openEditorAfterQuickAdd: false,
+  keepOpenAfterQuickAdd: false,
 };
 
 interface SettingsStore {
@@ -684,6 +695,10 @@ interface SettingsStore {
   // type and never renamed, so there's nothing to reconcile against on load
   // the way `collapsedCategories` has to be.
   collapsedRecipeSections: string[];
+  // The last few queries run on the Search screen, newest first, offered back
+  // while the field is empty. Device-local on purpose — see the note in
+  // src/utils/recentSearches.ts for why this one isn't in SYNCED_SETTING_KEYS.
+  recentSearches: string[];
   // Whether a reminder landing inside a meeting gets pushed to the meeting's
   // end (#1491). A refinement of calendarReadEnabled, not a separate read —
   // it does nothing while that's off, and defaults on once it's turned on so
@@ -1076,6 +1091,8 @@ interface SettingsStore {
   setUseUpTaskCap: (cap: number | null) => void;
   setPatchNoteQaStatus: (id: string, status: PatchNoteQaStatus | null) => void;
   setNewTaskDefaults: (patch: Partial<NewTaskDefaults>) => void;
+  pushRecentSearch: (query: string) => void;
+  clearRecentSearches: () => void;
   setTitleRules: (rules: TitleRule[]) => void;
   setLastVisitedScreen: (screen: string | null) => void;
   resetToDefaults: () => void;
@@ -1398,6 +1415,9 @@ function parseNewTaskDefaults(raw: string | null): NewTaskDefaults {
     if (typeof parsed.openEditorAfterQuickAdd === 'boolean') {
       result.openEditorAfterQuickAdd = parsed.openEditorAfterQuickAdd;
     }
+    if (typeof parsed.keepOpenAfterQuickAdd === 'boolean') {
+      result.keepOpenAfterQuickAdd = parsed.keepOpenAfterQuickAdd;
+    }
   } catch {
     // keep defaults
   }
@@ -1539,6 +1559,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   mealPlanNudgeLastFiredWeekKey: null,
   mealPlanNudgeGroupId: null,
   newTaskDefaults: DEFAULT_NEW_TASK_DEFAULTS,
+  recentSearches: [],
   lastVisitedScreen: null,
   initialized: false,
 
@@ -1620,6 +1641,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const hideCategories = dbGetSetting('hideCategories') === 'true';
     const collapsedCategories = parseCategoryNames(dbGetSetting('collapsedCategories'));
     const collapsedRecipeSections = parseCollapsedRecipeSections(dbGetSetting('collapsedRecipeSections'));
+    const recentSearches = parseRecentSearches(dbGetSetting('recentSearches'));
     const simpleTaskForm = dbGetSetting('simpleTaskForm') === 'true';
     const simpleMode = dbGetSetting('simpleMode') === 'true';
     const hideHelpText = dbGetSetting('hideHelpText') === 'true';
@@ -1891,7 +1913,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2678,6 +2700,22 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setCollapsedRecipeSections(sections: string[]) {
     dbSetSetting('collapsedRecipeSections', JSON.stringify(sections));
     set({ collapsedRecipeSections: sections });
+  },
+
+  pushRecentSearch(query: string) {
+    const next = addRecentSearch(get().recentSearches, query);
+    // addRecentSearch returns the list untouched for a blank query, and
+    // returns a new array otherwise — so identity is the "nothing happened"
+    // check, and a no-op doesn't write to the database on every keystroke's
+    // worth of nothing.
+    if (next === get().recentSearches) return;
+    dbSetSetting('recentSearches', JSON.stringify(next));
+    set({ recentSearches: next });
+  },
+
+  clearRecentSearches() {
+    dbSetSetting('recentSearches', JSON.stringify([]));
+    set({ recentSearches: [] });
   },
 
   setReminderMeetingNudgeEnabled(on: boolean) {
