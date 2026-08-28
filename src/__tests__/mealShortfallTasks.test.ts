@@ -273,6 +273,14 @@ describe('mealShortfallRows', () => {
     expect(call(entry(TODAY, r.id), rows(r), [])?.map(x => x.known)).toEqual([false]);
   });
 
+  it('leaves out a garnish or serving suggestion, same as the sheet it opens', () => {
+    // Missing only the mint sprigs must not spawn "shop for this meal" — the
+    // sheet this task sends you to starts that line unticked, so being
+    // missing can't be what triggers the task.
+    const r = recipe('Iced tea', [ing('Tea bags'), ing('Mint sprigs', { optional: true })]);
+    expect(call(entry(TODAY, r.id), rows(r), [item({ name: 'Tea bags', onList: true })])).toEqual([]);
+  });
+
   it('ignores a staple, and something the pantry still vouches for', () => {
     const r = recipe('Ragù', [ing('Onions'), ing('Salt')]);
     const result = call(entry(TODAY, r.id), rows(r), [

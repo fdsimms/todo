@@ -94,6 +94,8 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
   // anything: "keep as written" is off for nearly every line in the app, and
   // storing `false` on all of them would grow every recipe's blob to say so.
   if (r.noSwap === true) normalized.noSwap = true;
+  // Same rule, same reason: most lines are needed, not a garnish.
+  if (r.optional === true) normalized.optional = true;
   return normalized;
 }
 

@@ -182,6 +182,17 @@ describe('collectPlannedIngredients', () => {
     ]);
   });
 
+  it('carries an optional ingredient through, and writes the key only when it is set', () => {
+    const tea = recipe('Iced tea', [ing('Tea bags'), ing('Mint sprigs', { purpose: 'garnish', optional: true })]);
+    const recipesById = new Map([[tea.id, tea]]);
+    const entries = [entry('2026-08-11', tea.id)]; // Tuesday
+
+    const result = collectPlannedIngredients(entries, recipesById, RANGE);
+
+    expect('optional' in result[0]).toBe(false);
+    expect(result[1].optional).toBe(true);
+  });
+
   it('scales each entry by its own factor, leaving the others alone', () => {
     const ragu = recipe('Ragù', [ing('Onions', { quantity: '2' }), ing('Salt', { quantity: 'a pinch' })]);
     const recipesById = new Map([[ragu.id, ragu]]);
@@ -321,6 +332,13 @@ describe('plannedIngredientsForRecipe', () => {
       { name: 'Onions', nameKey: 'onions', quantity: '2', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', choiceGroup: null, swappedFrom: null },
       { name: 'Garlic', nameKey: 'garlic', quantity: '3 cloves', aisle: null, source: 'Ragù', recipeId: ragu.id, recipeTitle: 'Ragù', choiceGroup: null, swappedFrom: null },
     ]);
+  });
+
+  it('carries an optional ingredient through, and writes the key only when it is set', () => {
+    const tea = recipe('Iced tea', [ing('Tea bags'), ing('Mint sprigs', { purpose: 'garnish', optional: true })]);
+    const result = plannedIngredientsForRecipe(tea);
+    expect('optional' in result[0]).toBe(false);
+    expect(result[1].optional).toBe(true);
   });
 
   it('scales every quantity by the factor it is given', () => {
@@ -669,6 +687,31 @@ describe('classifyPlanned', () => {
     const row = classifyPlanned(planned, [item({ name: 'Milk' })], now)[0];
     expect(row.nameKey).toBe('serrano pepper');
     expect(row.category).toBe('needToBuy');
+  });
+
+  it('carries an optional line through, and writes the key only when it is set', () => {
+    const planned = [
+      { name: 'Mint sprigs', nameKey: 'mint sprigs', quantity: '', aisle: null, source: 'Tue Iced tea', optional: true },
+    ];
+    const row = classifyPlanned(planned, [], now)[0];
+    expect(row.optional).toBe(true);
+
+    const plainRow = classifyPlanned(
+      [{ name: 'Tea bags', nameKey: 'tea bags', quantity: '4', aisle: null, source: 'Tue Iced tea' }], [], now
+    )[0];
+    expect('optional' in plainRow).toBe(false);
+  });
+
+  // A row several recipes call for is only skippable by default when *none*
+  // of them actually need it — one recipe using basil as a garnish must not
+  // silently drop the line another recipe cooks with.
+  it('only carries optional through when every contributing line agrees', () => {
+    const planned = [
+      { name: 'Basil', nameKey: 'basil', quantity: '', aisle: null, source: 'Tue Pizza', optional: true },
+      { name: 'Basil', nameKey: 'basil', quantity: '2 cups', aisle: null, source: 'Thu Pesto' },
+    ];
+    const row = classifyPlanned(planned, [], now)[0];
+    expect('optional' in row).toBe(false);
   });
 
   it('classifies a known, off-list row as probablyHave when the pantry guess says so, with its reason', () => {

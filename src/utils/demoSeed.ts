@@ -1446,6 +1446,7 @@ function componentIdFor(parentId: string, childRecipeId: string): string | null 
  */
 function seedRecipes(): DemoRecipes {
   const {
+    addIngredient,
     addIngredientsFromText,
     updateIngredient,
     addEmptySection,
@@ -1641,6 +1642,12 @@ function seedRecipes(): DemoRecipes {
   setMealType(tea.id, 'beverage');
   setRecipeYield(tea.id, '2 quarts');
   setEstimatedMinutes(tea.id, 10);
+  // A serving suggestion, not something the pitcher needs — the escape hatch
+  // from "everything on the recipe is something to buy" (RecipeIngredient.optional).
+  // Seeded because it's otherwise invisible: without one, both add-to-list
+  // sheets read exactly as they did before the field existed.
+  const mintSprigs = addIngredient(tea.id, 'Mint sprigs');
+  if (mintSprigs) updateIngredient(tea.id, mintSprigs.id, { purpose: 'garnish', optional: true });
 
   // --- Dinners -------------------------------------------------------------
   const stirFry = newRecipe('Weeknight chicken stir-fry');

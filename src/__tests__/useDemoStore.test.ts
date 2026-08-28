@@ -1678,6 +1678,25 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(grouped.every(i => !/\bor\b/.test(i.nameKey))).toBe(true);
   });
 
+  it('seeds an optional ingredient, unticked by default when its recipe goes on the list', () => {
+    // Invisible without a seeded instance, same as the either/or case above:
+    // nothing infers "this is a garnish" from the text of a recipe.
+    const recipes = useRecipeStore.getState().recipes;
+    const optionalLine = recipes.flatMap(r => r.ingredients).find(i => i.optional);
+    expect(optionalLine).toBeDefined();
+    expect(optionalLine!.purpose).toBeTruthy();
+
+    const owner = recipes.find(r => r.ingredients.some(i => i.id === optionalLine!.id))!;
+    const planned = plannedIngredientsForRecipe(owner);
+    const plannedLine = planned.find(p => p.nameKey === optionalLine!.nameKey);
+    expect(plannedLine?.optional).toBe(true);
+
+    const classified = classifyPlanned(planned, useGroceryStore.getState().items, new Date());
+    const row = classified.find(r => r.nameKey === optionalLine!.nameKey);
+    expect(row?.optional).toBe(true);
+    expect(row?.category).toBe('needToBuy');
+  });
+
   it('seeds substitutes in both directions', () => {
     const { items, itemSubs } = useGroceryStore.getState();
 

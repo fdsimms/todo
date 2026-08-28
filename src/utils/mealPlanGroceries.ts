@@ -80,6 +80,15 @@ export interface PlannedIngredient {
    * respect.
    */
   swappedFrom?: string | null;
+  /**
+   * `RecipeIngredient.optional`, carried through. Absent (the common case)
+   * means the line is needed; present and `true` means it's a garnish or
+   * serving suggestion. Same write-only-when-true convention as `noSwap` —
+   * this is a derived, in-memory row, not a stored one, but keeping the
+   * convention is what lets classifyPlanned's own literal test fixtures stay
+   * untouched by a field most of them have nothing to say about.
+   */
+  optional?: boolean;
 }
 
 /**
@@ -142,6 +151,7 @@ export function collectPlannedIngredients(
         recipeId: flat.recipe.id,
         recipeTitle: flat.recipe.name,
         swappedFrom: flat.swappedFrom ?? null,
+        ...(flat.ingredient.optional ? { optional: true } : {}),
       });
     }
   }
@@ -223,6 +233,7 @@ export function plannedIngredientsForRecipe(
     recipeTitle: flat.recipe.name,
     choiceGroup: groupKeyIfUndecided(flat.recipe.id, flat.ingredient.choiceGroup, undecided),
     swappedFrom: flat.swappedFrom ?? null,
+    ...(flat.ingredient.optional ? { optional: true } : {}),
   }));
 }
 
@@ -417,6 +428,17 @@ export interface ClassifiedIngredient {
    */
   sourceRecipeId: string | null;
   sourceRecipeTitle: string | null;
+  /**
+   * `PlannedIngredient.optional`, narrowed to *every* contributing line —
+   * a row several recipes call for is only skippable by default when none of
+   * them actually need it. One recipe treating "basil" as a garnish and
+   * another as the point of the dish must still default to bought.
+   *
+   * Read only by the two add-to-list sheets, to leave a merged row unticked
+   * rather than to hide it: it's still listed, still one tap from going on
+   * the list, exactly like every other row here.
+   */
+  optional?: boolean;
 }
 
 /**
@@ -582,8 +604,14 @@ export function classifyPlanned(
     // that something else needs unconditionally.
     const choiceGroup = group.find(g => g.choiceGroup)?.choiceGroup ?? null;
     const swappedFrom = group.find(g => g.swappedFrom)?.swappedFrom ?? null;
+    // Every contributor has to agree it's optional — see ClassifiedIngredient.optional.
+    const optional = group.every(g => g.optional);
 
-    rows.push({ nameKey: key, name, aisle, quantity, sources, category, known: !!match, reason, choiceGroup, swappedFrom, sourceRecipeId, sourceRecipeTitle });
+    rows.push({
+      nameKey: key, name, aisle, quantity, sources, category, known: !!match, reason,
+      choiceGroup, swappedFrom, sourceRecipeId, sourceRecipeTitle,
+      ...(optional ? { optional: true } : {}),
+    });
   }
   return rows;
 }
