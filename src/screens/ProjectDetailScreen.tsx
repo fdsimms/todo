@@ -775,9 +775,9 @@ export function ProjectDetailScreen() {
                 <EmptyState
                   icon="briefcase-outline"
                   title="No tasks yet"
-                  subtitle="Add a new task, or pull in one you've already written down"
+                  subtitle={isList ? 'Add a line to get started' : "Add a new task, or pull in one you've already written down"}
                   actionLabel="New task"
-                  onAction={() => setQuickAddVisible(true)}
+                  onAction={() => isList ? listInputRef.current?.focus() : setQuickAddVisible(true)}
                 />
               ) : null
             }
