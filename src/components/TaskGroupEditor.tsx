@@ -15,6 +15,7 @@ import { formatTaskDate, getCurrentDayStart, getDayStart } from '../utils/dateUt
 import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useProjectStore } from '../store/useProjectStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -30,7 +31,7 @@ import { SheetHeaderButton } from './SheetHeaderButton';
 import { TaskEditor } from './TaskEditor';
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'category' | 'tags';
+type FieldKey = 'category' | 'tags' | 'project';
 
 /**
  * One line answering "where does this member stand today?" — the question the
@@ -79,6 +80,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
 
   const allCategories = useTaskStore(useShallow(s => s.allCategories()));
   const categories = useCategoryStore(useShallow(s => s.categories));
+  const projects = useProjectStore(useShallow(s => s.projects));
   const allTasks = useTaskStore(s => s.tasks);
   const groupRosterOf = useTaskStore(s => s.groupRosterOf);
   const addNewGroupedTask = useTaskStore(s => s.addNewGroupedTask);
@@ -99,6 +101,9 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
   const [newTag, setNewTag] = useState('');
   const [addingTag, setAddingTag] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
+  // The stack's own home (TaskGroup.projectId), not the `projectId` prop —
+  // that one is the screen the sheet was opened from.
+  const [homeProjectId, setHomeProjectId] = useState<string | null>(null);
 
   // Set while a member row is being dragged, purely to take the sheet's own
   // ScrollView out of the running for the touch (see SortableList's
@@ -121,6 +126,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
     setNotes(group.notes);
     setTags(group.tags);
     setCategory(group.category);
+    setHomeProjectId(group.projectId);
     setShowExistingPicker(false);
     setExistingSearch('');
     setOpenFields({});
@@ -154,13 +160,21 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
     pinGroup(group.id);
   };
 
+  // Which project a task added here gets filed into. The screen the sheet was
+  // opened from wins, so adding on a project's page files into the project
+  // you're looking at. Falling back to the stack's own home is what keeps a
+  // homed stack coherent when it's edited from anywhere else: without it, a
+  // task added from Today joins a stack that sits on a project's page while
+  // not being in that project.
+  const filingProjectId = projectId ?? homeProjectId;
+
   // New members always land at the end of the roster — drag the row afterward
   // to move it, same as TaskEditor's own subtask/chain-step lists.
   const commitChild = (title: string) => {
     const trimmed = title.trim();
     if (!group || !trimmed) return;
     const task = addNewGroupedTask(group.id, trimmed);
-    if (projectId) addExistingToProject(task.id, projectId);
+    if (filingProjectId) addExistingToProject(task.id, filingProjectId);
     // The field closes on submit here (returnKeyType="done", no
     // blurOnSubmit={false}), so there's no burst to keep together.
   };
@@ -168,7 +182,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
   const commitExisting = (taskId: string) => {
     if (!group) return;
     addExistingToGroup(taskId, group.id);
-    if (projectId) addExistingToProject(taskId, projectId);
+    if (filingProjectId) addExistingToProject(taskId, filingProjectId);
     // The picker stays open for a run of adds.
   };
 
@@ -183,10 +197,10 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
       !t.parentId &&
       !t.groupId &&
       !t.completed &&
-      (!projectId || !t.projectId) &&
+      (!filingProjectId || !t.projectId) &&
       (q === '' || t.title.toLowerCase().includes(q))
     );
-  }, [allTasks, existingSearch, group, projectId]);
+  }, [allTasks, existingSearch, group, filingProjectId]);
   const EXISTING_TASK_PICKER_LIMIT = 30;
   const eligibleForAdd = useMemo(
     () => eligibleMatches.slice(0, EXISTING_TASK_PICKER_LIMIT),
@@ -220,6 +234,11 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
       notes,
       tags: resolvedTags,
       category,
+      // Deliberately no cascade onto the members, unlike category below. A
+      // stack owns its members' category; it does not own their project —
+      // tasks in one stack can sit in different projects, and this field only
+      // says which project's page shows the stack when it has nothing in it.
+      projectId: homeProjectId,
     });
     // The stack owns its members' category, so changing it here re-files
     // them. Deliberately on save rather than as the pills are tapped: the
@@ -374,6 +393,36 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
             ))}
           </View>
         </CollapsibleField>
+        {projects.length > 0 && (
+          <>
+            <View style={styles.cardSep} />
+            <CollapsibleField
+              label="Project"
+              summary={projects.find(p => p.id === homeProjectId)?.title}
+              hint="Keeps the stack on that project's page even while it has no tasks in it. Doesn't move the tasks it already has."
+              expanded={fieldOpen('project')}
+              onToggle={() => toggleField('project')}
+            >
+              <View style={styles.pillRow}>
+                <TouchableOpacity
+                  style={[styles.pill, !homeProjectId && styles.pillActive]}
+                  onPress={() => { haptics.tap(); setHomeProjectId(null); closeField('project'); }}
+                >
+                  <Text style={[styles.pillText, !homeProjectId && styles.pillTextActive]}>None</Text>
+                </TouchableOpacity>
+                {projects.map(p => (
+                  <TouchableOpacity
+                    key={p.id}
+                    style={[styles.pill, homeProjectId === p.id && styles.pillActive]}
+                    onPress={() => { haptics.tap(); setHomeProjectId(p.id); closeField('project'); }}
+                  >
+                    <Text style={[styles.pillText, homeProjectId === p.id && styles.pillTextActive]}>{p.title}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </CollapsibleField>
+          </>
+        )}
         <View style={styles.cardSep} />
         <CollapsibleField
           label="Tags"
@@ -500,7 +549,7 @@ export function TaskGroupEditor({ visible, group, isNew, onClose, projectId }: P
               ))}
               {eligibleForAdd.length === 0 && (
                 <Text style={styles.existingEmpty}>
-                  {projectId ? 'No matching tasks with no stack or project yet' : 'No matching unstacked tasks'}
+                  {filingProjectId ? 'No matching tasks with no stack or project yet' : 'No matching unstacked tasks'}
                 </Text>
             )}
               {eligibleMatches.length > EXISTING_TASK_PICKER_LIMIT && (

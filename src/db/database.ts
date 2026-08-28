@@ -1191,6 +1191,11 @@ export function initDatabase(): void {
     // which is exactly what "no answer to keep quiet" means for this column.
     // See GroceryItem.pantryReviewedAt.
     'ALTER TABLE grocery_items ADD COLUMN pantry_reviewed_at TEXT',
+    // NULL on every existing stack, which is the honest reading: a stack that
+    // predates this column was scoped by its children and stays that way. Only
+    // a stack built from a project's own screen gets an id here, so it can sit
+    // on that project's page before it has any members. See TaskGroup.projectId.
+    'ALTER TABLE task_groups ADD COLUMN project_id TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2658,6 +2663,7 @@ function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     collapsed: Boolean(row.collapsed),
+    projectId: (row.project_id as string) ?? null,
   };
 }
 
@@ -2671,20 +2677,22 @@ export function dbInsertTaskGroup(group: TaskGroup): void {
     // completed_at is deliberately absent: it held the old "stack dismissed
     // for today" stamp, which no longer exists (see TaskGroup). The column
     // stays on the table for installs that already have it, and stays null.
-    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed) VALUES (?,?,?,?,?,?,?)',
+    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, project_id) VALUES (?,?,?,?,?,?,?,?)',
     [
       group.id, group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
+      group.projectId ?? null,
     ]
   );
 }
 
 export function dbUpdateTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=? WHERE id=?',
+    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, project_id=? WHERE id=?',
     [
       group.title, group.notes, JSON.stringify(group.tags),
-      group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0, group.id,
+      group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
+      group.projectId ?? null, group.id,
     ]
   );
 }

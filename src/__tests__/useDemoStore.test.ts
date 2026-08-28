@@ -931,6 +931,20 @@ describe('demo mode', () => {
     expect(members.every(t => t.projectId === kitchen!.id)).toBe(true);
   });
 
+  // The only stack in the seed with no members at all. Every other screen
+  // finds a stack through its children, so without one homed on a project
+  // there's nothing in demo mode that shows a stack can be empty.
+  it('seeds an empty stack homed on a project', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    expect(kitchen).toBeDefined();
+
+    const appliances = useTaskGroupStore.getState().groups.find(g => g.title === 'Appliance decisions');
+    expect(appliances?.projectId).toBe(kitchen!.id);
+    expect(useTaskStore.getState().tasks.filter(t => t.groupId === appliances!.id)).toHaveLength(0);
+  });
+
   it('seeds a reference-list project excluded from every nudge', () => {
     // A checklist project like Gift ideas has nothing but undated tasks —
     // exactly what would otherwise read as "gone quiet" — so the seed only

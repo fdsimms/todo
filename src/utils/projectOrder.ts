@@ -64,9 +64,16 @@ export function stepNumbersByTask(tasks: readonly Task[]): Map<string, number> {
  * created in a batch can share a sortOrder (a template apply, an import), and
  * reassigning a run of equal numbers would leave the drag with nothing to
  * persist and the row snapping back.
+ *
+ * Takes anything holding a slot rather than `Task[]` specifically, because a
+ * project's list holds stacks as well: `TaskGroup.sortOrder` is the same number
+ * space (see the note on that field), so an empty stack occupies a slot here
+ * exactly like a task does and the two are reordered against each other in one
+ * pass. Ids not in `members` are ignored, so a caller can pass the whole
+ * universe and let `orderedIds` say which rows actually moved.
  */
 export function slotUpdates(
-  members: readonly Task[],
+  members: readonly { id: string; sortOrder: number }[],
   orderedIds: readonly string[],
 ): Array<{ id: string; sortOrder: number }> {
   const byId = new Map(members.map(t => [t.id, t]));
