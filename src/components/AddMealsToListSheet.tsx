@@ -186,7 +186,11 @@ export function AddMealsToListSheet({
   // GroceryAISheet uses for its own accepted-rows state.
   useEffect(() => {
     if (!visible) return;
-    const defaultTicked = new Set(byCategory.needToBuy.map(r => r.nameKey));
+    // A garnish or serving suggestion (RecipeIngredient.optional) starts
+    // unticked — it's still listed and one tap away, just not assumed.
+    const defaultTicked = new Set(
+      byCategory.needToBuy.filter(r => !r.optional).map(r => r.nameKey)
+    );
     setTicked(defaultTicked);
     tickedBaselineRef.current = JSON.stringify([...defaultTicked].sort());
     setExpandedSections(defaultExpandedSections());
@@ -390,7 +394,13 @@ export function AddMealsToListSheet({
                               // source breakdown — it's the more useful "why is
                               // this here" for a probablyHave row, and a
                               // single-source row has no breakdown to show anyway.
-                              const subtitle = row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null);
+                              // "Optional" rides along on the same line rather
+                              // than a separate one, since it's rare for both
+                              // to apply and the row has no room to spare.
+                              const subtitle = [
+                                row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null),
+                                row.optional ? 'Optional' : null,
+                              ].filter(Boolean).join(' · ') || null;
                               // Shown in the reader's units; what gets written to
                               // the list is still row.quantity, as the recipes
                               // wrote it.

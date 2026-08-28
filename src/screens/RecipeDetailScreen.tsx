@@ -772,6 +772,7 @@ export function RecipeDetailScreen() {
           accessibilityLabel={
             [ingredient.section, line.name, swapNote, scaledQuantity, ingredient.prep,
              ingredient.purpose && `for ${ingredient.purpose}`,
+             ingredient.optional && 'optional',
              choiceGroup && (isChoiceDefault ? `usual choice for ${choiceGroup}` : `alternative for ${choiceGroup}`)]
               .filter(Boolean).join(', ')
           }
@@ -795,9 +796,10 @@ export function RecipeDetailScreen() {
             {!!swapNote && (
               <Text style={styles.swapNote} numberOfLines={1}>{swapNote}</Text>
             )}
-            {(!!ingredient.prep || !!ingredient.purpose) && (
+            {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional) && (
               <Text style={styles.ingredientPrep}>
-                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`].filter(Boolean).join(' · ')}
+                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'Optional']
+                  .filter(Boolean).join(' · ')}
               </Text>
             )}
             {!!alternativeNote && (

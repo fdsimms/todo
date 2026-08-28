@@ -117,6 +117,9 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
   // The per-line exception to a standing swap — "this pastry needs real
   // butter" (RecipeIngredient.noSwap).
   const [noSwap, setNoSwap] = useState(false);
+  // A garnish or serving suggestion rather than something the dish needs
+  // (RecipeIngredient.optional).
+  const [optional, setOptional] = useState(false);
   // Nested rather than a sibling: a Modal presents from its React parent's view
   // controller, so a sibling would ask this sheet's own presenter for a second
   // presentation while this one is up. Same call GroceryCatalogSheet makes, and it's
@@ -141,6 +144,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
     setEditingGroupName(false);
     setAisle(ingredient.aisle);
     setNoSwap(!!ingredient.noSwap);
+    setOptional(!!ingredient.optional);
     setEditingItemId(null);
     setLinkOpen(false);
     setAltLinkOpen(false);
@@ -220,6 +224,7 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
       choiceGroup: resolvedChoiceGroup,
       aisle,
       noSwap,
+      optional,
     });
     onClose();
   };
@@ -535,6 +540,31 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
         <Text style={styles.hint}>
           Why it's on the list, when the same ingredient does two jobs: “flour, for dusting”.
         </Text>
+
+        <View style={styles.separator} />
+
+        <TouchableOpacity
+          style={styles.toggleRow}
+          activeOpacity={interaction.activeOpacity}
+          onPress={() => { haptics.tap(); setOptional(v => !v); }}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: optional }}
+          accessibilityLabel="Optional"
+        >
+          <Ionicons
+            name={optional ? 'checkbox' : 'square-outline'}
+            size={iconSize.md}
+            color={optional ? colors.accent : colors.textSecondary}
+          />
+          <View style={styles.toggleBody}>
+            <Text style={styles.toggleLabel}>Optional</Text>
+            <Text style={styles.hint}>
+              A garnish or serving suggestion rather than something the dish needs. Starts
+              unchecked when this recipe's ingredients go on your list — still there to check
+              off by hand.
+            </Text>
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* The other half of this line's identity. See the component note: the

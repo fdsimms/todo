@@ -3333,6 +3333,13 @@ export interface RecipeIngredient {
   // site (the parser, the extractor, the editor, the seed) for a bit that is
   // off almost everywhere.
   noSwap?: boolean;
+  // A garnish or serving suggestion rather than something the dish needs —
+  // "lime wedges, for serving". Doesn't change what's on the recipe or hide
+  // the line anywhere it's shown; it only changes the *default* when this
+  // recipe's ingredients go on a shopping list (see classifyPlanned in
+  // mealPlanGroceries.ts), where an optional line starts unticked instead of
+  // ticked. Same optional-boolean convention as noSwap, for the same reason.
+  optional?: boolean;
 }
 
 // One recipe used as a part of another — "mashed potatoes" inside both "Steak

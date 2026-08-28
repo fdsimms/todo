@@ -269,9 +269,12 @@ export function RecipeToListSheet({
   // stay unticked when they double the batch.
   useEffect(() => {
     if (!visible) return;
-    const rows = initialSelection === 'restock'
+    const rows = (initialSelection === 'restock'
       ? restockRows(byCategory.needToBuy)
-      : byCategory.needToBuy;
+      : byCategory.needToBuy
+    // A garnish or serving suggestion (RecipeIngredient.optional) starts
+    // unticked — it's still listed and one tap away, just not assumed.
+    ).filter(r => !r.optional);
     const defaultTicked = new Set(rows.map(r => r.nameKey));
     setTicked(defaultTicked);
     tickedBaselineRef.current = JSON.stringify([...defaultTicked].sort());
@@ -570,7 +573,13 @@ export function RecipeToListSheet({
                             {!!label && <Text style={styles.recipeGroupLabel}>{label}</Text>}
                             {group.rows.map((row, i) => {
                               const on = interactive && ticked.has(row.nameKey);
-                              const subtitle = row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null);
+                              // "Optional" rides along on the same line rather
+                              // than a separate one — it's rare for both to
+                              // apply and the row has no room to spare.
+                              const subtitle = [
+                                row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null),
+                                row.optional ? 'Optional' : null,
+                              ].filter(Boolean).join(' · ') || null;
                               // Its own line rather than folded into the
                               // subtitle: the subtitle says why the row is
                               // here, this says the row is one of a set, and a

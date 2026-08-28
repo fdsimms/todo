@@ -154,6 +154,20 @@ describe('parseRecipeIngredients', () => {
     expect('noSwap' in plain[0]).toBe(false);
   });
 
+  it('keeps a line’s optional flag, and writes the key only when it is set', () => {
+    // Same reasoning as noSwap above: normalizeIngredient rebuilds field by
+    // field, and most lines are needed rather than a garnish.
+    const optional = JSON.parse(JSON.stringify(parseRecipeIngredients(JSON.stringify([
+      { id: 'a', name: 'Mint sprigs', nameKey: 'mint sprigs', quantity: '', optional: true },
+    ]))));
+    expect(optional[0].optional).toBe(true);
+
+    const plain = parseRecipeIngredients(JSON.stringify([
+      { id: 'a', name: 'Mint sprigs', nameKey: 'mint sprigs', quantity: '' },
+    ]));
+    expect('optional' in plain[0]).toBe(false);
+  });
+
   it('reads a stored purpose clause', () => {
     const stored = JSON.stringify([
       { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas' },

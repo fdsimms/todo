@@ -25,15 +25,19 @@ import type { StandingSwapMap } from './standingSwaps';
  *
  * Where it deliberately differs, and why:
  *
- * - **The qualifying set is every `needToBuy` row, `known` ones and not.**
- *   `restockRows` narrows to `known` because after a cooking, a recipe naming an
- *   item the app has never seen says nothing about whether the cook needs to buy
- *   it. Shopping *ahead* of a meal inverts that: an item with no catalog row has
- *   never been bought and is exactly what you'll be missing. More to the point,
- *   `needToBuy` is precisely what the add-to-list sheet this task sends you to
- *   already offers pre-ticked, so narrowing it here would let the row disagree
- *   with the sheet it opens. That is the one thing `hasShoppableMeals` exists to
- *   prevent, and it applies with more force to a task than to a button.
+ * - **The qualifying set is every `needToBuy` row, `known` ones and not, minus
+ *   anything `optional`.** `restockRows` narrows to `known` because after a
+ *   cooking, a recipe naming an item the app has never seen says nothing about
+ *   whether the cook needs to buy it. Shopping *ahead* of a meal inverts that:
+ *   an item with no catalog row has never been bought and is exactly what
+ *   you'll be missing. More to the point, this is precisely what the
+ *   add-to-list sheet this task sends you to already offers pre-ticked, so
+ *   narrowing it here would let the row disagree with the sheet it opens —
+ *   which is why a garnish or serving suggestion (RecipeIngredient.optional)
+ *   is left out here too: it starts unticked in that sheet, so being missing
+ *   must not be what spawns the task that opens it. That is the one thing
+ *   `hasShoppableMeals` exists to prevent, and it applies with more force to a
+ *   task than to a button.
  * - **The window is the reason, not a grace period.** `PANTRY_CHECK_GRACE_DAYS`
  *   bounds *raising* a question and deliberately doesn't judge a live row, since
  *   a question already asked doesn't expire. Here the window is the whole
@@ -167,7 +171,7 @@ export function mealShortfallRows(
     now,
     itemSubs
   );
-  return classified.filter(row => row.category === 'needToBuy');
+  return classified.filter(row => row.category === 'needToBuy' && !row.optional);
 }
 
 /**
