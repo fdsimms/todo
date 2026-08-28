@@ -254,6 +254,45 @@ export interface WeatherRule {
   lastFiredDayKey: string | null;
 }
 
+/**
+ * "After 30 minutes on the apps I picked, add a task" — the same
+ * user-authored-rule shape as `WeatherRule` above, against iOS Screen Time
+ * instead of the forecast, and stored the same way (`screenTimeRules` in
+ * settings, see `screenTimeRules.ts`).
+ *
+ * The one place it parts company with `WeatherRule` is `thresholdMinutes`.
+ * `weatherCondition.ts` deliberately refuses a per-rule number on the grounds
+ * that a rule's title says what its threshold is for ("Put on sunscreen" wants
+ * a lower bar than "Bring a heavy coat"). That move isn't available here: the
+ * number *is* the rule, and two rules over the same apps at 30 and 90 minutes
+ * are a perfectly ordinary pair to want.
+ *
+ * Which apps is not stored here, and can't be. The picked set lives in the App
+ * Group as opaque tokens iOS never resolves for the app, so every rule watches
+ * the same one selection — see modules/todo-screentime-bridge.
+ */
+export interface ScreenTimeRule {
+  id: string;
+  /** Minutes of use across the chosen apps that trips this rule. */
+  thresholdMinutes: number;
+  /** The task's title, e.g. "Take a walk". */
+  title: string;
+  // Off keeps the rule written down but stops it firing, same as WeatherRule.
+  enabled: boolean;
+  /**
+   * The day key (`dayKeyOf`) this rule last created a task on.
+   *
+   * Serves the job `WeatherRule.lastFiredDayKey` does — a task swiped away
+   * must not come straight back — but it cannot be written the same way. The
+   * weather mark is stamped before the day is even checked, because the app
+   * is what does the deciding; here the deciding happens in the OS and arrives
+   * as a crossing the app drains. So this is written when a crossing is
+   * actually turned into a task, and it is what makes a second report of the
+   * same rule on the same day a no-op.
+   */
+  lastFiredDayKey: string | null;
+}
+
 // A lightweight, collapsible label for grouping several independent tasks
 // together (e.g. "Take supplements" grouping Coq10/Vitamin D/Iron, each on
 // its own schedule). Deliberately NOT a Task — it has no dueDate, recurrence,
@@ -816,7 +855,14 @@ export type GeneratedKind =
   // calendar, not a row" position calendarReview is in, and for the same
   // reason writeGeneratedOptOut has nothing to write for it: the rule it
   // points at lives in settings, not in a row a stamp could be spent against.
-  | 'weather';
+  | 'weather'
+  // A Screen Time usage threshold the user wrote down ("after 30 minutes on
+  // these apps") that the OS reported crossed — see
+  // src/utils/screenTimeRules.ts. Its source id is a day key and a rule id,
+  // the same `${dayKey}#${ruleId}` shape weather uses and for the same reason:
+  // the source is a rule in settings, not a row a decline could be stamped on,
+  // so writeGeneratedOptOut has nothing to write for it either.
+  | 'screenTime';
 
 export interface Task {
   id: string;

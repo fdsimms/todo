@@ -221,6 +221,14 @@ jest.mock('../store/useWeatherStore', () => ({
   useWeatherStore: { getState: () => ({ snapshot: null, snapshotDayKey: null, refreshing: false }) },
 }));
 
+// Same reason as the weather store above: it reaches react-native at module
+// scope for its own AppState sync, and nothing here exercises it — the demo's
+// screen-time task is seeded directly, since the generator refuses to run in
+// demo mode at all.
+jest.mock('../store/useScreenTimeStore', () => ({
+  useScreenTimeStore: { getState: () => ({ crossings: [], refreshing: false, consume: () => {} }) },
+}));
+
 // ---------------------------------------------------------------------------
 
 function realDbTaskTitles(): string[] {
@@ -2315,6 +2323,29 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // are still askable on whatever day their own condition shows up.
     expect(sunscreenRule!.lastFiredDayKey).toBe(dayKeyOf(getCurrentDayStart()));
     rules.filter(r => r.id !== sunscreenRule!.id).forEach(r => {
+      expect(r.lastFiredDayKey).toBeNull();
+    });
+  });
+
+  it('seeds a screen time task and the rules alongside it', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const rules = settings.screenTimeRules;
+    expect(rules.length).toBeGreaterThan(1);
+
+    const task = tasks.find(t => t.generatedKind === 'screenTime');
+    expect(task).toBeDefined();
+    expect(task!.category).toBe('Screen Time');
+    expect(settings.screenTimeTaskCategory).toBe('Screen Time');
+
+    const firedRule = rules.find(r => r.title === task!.title);
+    expect(firedRule).toBeDefined();
+    expect(task!.generatedSourceId).toBe(`${dayKeyOf(getCurrentDayStart())}#${firedRule!.id}`);
+    // Only the rule that fired is spent for today — the others are still
+    // askable if their own threshold is crossed later on.
+    expect(firedRule!.lastFiredDayKey).toBe(dayKeyOf(getCurrentDayStart()));
+    rules.filter(r => r.id !== firedRule!.id).forEach(r => {
       expect(r.lastFiredDayKey).toBeNull();
     });
   });

@@ -128,6 +128,13 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // The fourteenth, appended rather than paired: nothing else here reads the
   // weather, so there's no existing generator it belongs beside.
   'weather',
+  // The fifteenth, beside weather rather than appended blindly: the two are a
+  // pair from the list's side in the way pantryCheck and groceryUseUp are.
+  // Both are a list of rules the user wrote against something outside the app
+  // — the forecast, their own phone use — and somebody meeting one in Settings
+  // should meet the other, since "rules that add a task" is one idea and
+  // reading them apart is how you learn only half of it.
+  'screenTime',
 ];
 
 /**
@@ -177,7 +184,8 @@ export type GeneratedEnabledKey =
   | 'birthdayGiftTasks'
   | 'reachOutTasks'
   | 'pantryReviewTasks'
-  | 'weatherTasks';
+  | 'weatherTasks'
+  | 'screenTimeTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -558,6 +566,24 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Weather',
+  },
+  // The fifteenth, and the second rule-sourced one — same `${dayKey}#${ruleId}`
+  // source id as weather, and writeGeneratedOptOut has nothing to write for it
+  // for the same reason. What's different is who decides: weather reads the
+  // forecast and applies the rule itself, whereas this one arms iOS with a
+  // threshold and is told it was crossed. See src/utils/screenTimeRules.ts.
+  screenTime: {
+    kind: 'screenTime',
+    enabledKey: 'screenTimeTasks',
+    label: 'Screen time tasks',
+    onHint: 'A rule adds its task once you have spent that long on the apps you picked',
+    offHint: 'Screen time adds no tasks',
+    icon: 'phone-portrait-outline',
+    sourced: false,
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Screen Time',
   },
 };
 

@@ -40,6 +40,7 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { InlineTimePicker } from './InlineTimePicker';
 import { WeatherRulesSheet } from '../../components/WeatherRulesSheet';
+import { ScreenTimeRulesSheet } from '../../components/ScreenTimeRulesSheet';
 import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
@@ -145,6 +146,12 @@ export function GeneratedTasksSection() {
     [s.weatherRules],
   );
 
+  const [screenTimeRulesVisible, setScreenTimeRulesVisible] = useState(false);
+  const activeScreenTimeRuleCount = useMemo(
+    () => s.screenTimeRules.filter(r => r.enabled).length,
+    [s.screenTimeRules],
+  );
+
   const weekdaySegmentOptions = useMemo(() => weekdayOptions(s.weekStartsOn), [s.weekStartsOn]);
 
   // Each generator's on/off answer and its category still live under their own
@@ -176,6 +183,7 @@ export function GeneratedTasksSection() {
       case 'birthdayGift': return s.birthdayGiftTasks;
       case 'reachOut': return s.reachOutTasks;
       case 'weather': return s.weatherTasks;
+      case 'screenTime': return s.screenTimeTasks;
     }
   };
 
@@ -229,6 +237,7 @@ export function GeneratedTasksSection() {
       case 'supplyReorder': return null;
       case 'reachOut': return s.reachOutTaskCategory;
       case 'weather': return s.weatherTaskCategory;
+      case 'screenTime': return s.screenTimeTaskCategory;
     }
   };
 
@@ -555,6 +564,27 @@ export function GeneratedTasksSection() {
       );
     }
 
+    if (kind === 'screenTime') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="screenTimeRules"
+            icon="list-outline"
+            iconColor={activeScreenTimeRuleCount > 0 ? colors.accent : undefined}
+            label="Rules"
+            hint="How long on which apps adds which task. The apps are picked in here too."
+            value={
+              activeScreenTimeRuleCount === 0
+                ? 'None'
+                : activeScreenTimeRuleCount === 1 ? '1 rule' : `${activeScreenTimeRuleCount} rules`
+            }
+            onPress={() => { haptics.tap(); setScreenTimeRulesVisible(true); }}
+          />
+        </>
+      );
+    }
+
     return null;
   };
 
@@ -648,6 +678,7 @@ export function GeneratedTasksSection() {
       )}
     </SettingsSection>
     <WeatherRulesSheet visible={weatherRulesVisible} onClose={() => setWeatherRulesVisible(false)} />
+    <ScreenTimeRulesSheet visible={screenTimeRulesVisible} onClose={() => setScreenTimeRulesVisible(false)} />
     </>
   );
 }

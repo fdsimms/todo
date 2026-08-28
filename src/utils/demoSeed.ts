@@ -35,6 +35,7 @@ import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import { weatherSourceId, defaultWeatherRules } from './weatherTasks';
+import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -823,6 +824,27 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Weather',
     ...generatedBy('weather', weatherSourceId(dayKeyOf(today), sunscreenRule.id)),
+  });
+
+  // A screen-time task, seeded directly for the reason the weather one above
+  // is and one more: this generator's source isn't merely a real device
+  // reading, it's a queue drained destructively from the OS, so demo mode is
+  // refused at two gates (screenTimeBridge, and checkScreenTimeTasks itself)
+  // and could never produce this row on its own. Its rules are written to
+  // settings the same way, so the sheet listing them isn't empty either.
+  addCategory('Screen Time');
+  setCategoryEmoji('Screen Time', '📱');
+  useSettingsStore.getState().setScreenTimeTaskCategory('Screen Time');
+  const [walkRule, ...otherScreenTimeRules] = defaultScreenTimeRules();
+  useSettingsStore.getState().setScreenTimeRules([
+    { ...walkRule, lastFiredDayKey: dayKeyOf(today) },
+    ...otherScreenTimeRules,
+  ]);
+  addTask({
+    title: walkRule.title,
+    dueDate: today.toISOString(),
+    category: 'Screen Time',
+    ...generatedBy('screenTime', screenTimeSourceId(dayKeyOf(today), walkRule.id)),
   });
 
   // Marked complete rather than archived — demonstrates Project.completed,

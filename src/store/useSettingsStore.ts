@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
-import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule } from '../types';
+import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, ScreenTimeRule } from '../types';
 import {
   DEFAULT_CURRENCY_SYMBOL,
   CURRENCY_SYMBOL_MAX_LENGTH,
@@ -49,6 +49,7 @@ import {
 import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
+import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
 import type { LastTipShown } from '../utils/tips';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
@@ -870,6 +871,17 @@ interface SettingsStore {
   // ...LastDayKey field here — the mark lives on the rule it belongs to,
   // which is also what keeps a deleted rule from leaving a mark behind.
   weatherRules: WeatherRule[];
+  // Whether a Screen Time rule the OS reports crossed gets its task (see
+  // src/utils/screenTimeRules.ts). Off for the same reason weatherTasks is,
+  // with one more on top: it wants a Screen Time authorization the app doesn't
+  // hold, and asking for one unprompted is not something a generator does.
+  screenTimeTasks: boolean;
+  // Which category a screen-time task files itself under, by name, or null.
+  screenTimeTaskCategory: string | null;
+  // The rules themselves — "after 30 minutes on these apps, add a task". Kept
+  // out of DEFAULT_SETTINGS for the same mechanical reason weatherRules is,
+  // and each carries its own idempotency mark the same way.
+  screenTimeRules: ScreenTimeRule[];
   // The opt-in "plan meals for the week" nudge (#1121) — a real Task,
   // auto-created once a week, off by default so an existing install sees no
   // new task until this is turned on. See src/utils/mealPlanNudge.ts for the
@@ -1061,6 +1073,9 @@ interface SettingsStore {
   setWeatherTasks: (on: boolean) => void;
   setWeatherTaskCategory: (category: string | null) => void;
   setWeatherRules: (rules: WeatherRule[]) => void;
+  setScreenTimeTasks: (on: boolean) => void;
+  setScreenTimeTaskCategory: (category: string | null) => void;
+  setScreenTimeRules: (rules: ScreenTimeRule[]) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
   setMealPlanNudgeWeekday: (weekday: number) => void;
@@ -1515,6 +1530,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   weatherTasks: false,
   weatherTaskCategory: null,
   weatherRules: [],
+  screenTimeTasks: false,
+  screenTimeTaskCategory: null,
+  screenTimeRules: [],
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
@@ -1797,6 +1815,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // even an explicitly emptied list ('[]'), always wins.
     const storedWeatherRules = dbGetSetting('weatherRules');
     const weatherRules = storedWeatherRules ? parseWeatherRules(storedWeatherRules) : defaultWeatherRules();
+    const screenTimeTasks = dbGetSetting('screenTimeTasks') === 'true';
+    const screenTimeTaskCategory = dbGetSetting('screenTimeTaskCategory') || null;
+    const storedScreenTimeRules = dbGetSetting('screenTimeRules');
+    const screenTimeRules = storedScreenTimeRules
+      ? parseScreenTimeRules(storedScreenTimeRules)
+      : defaultScreenTimeRules();
     // Same TEXT-column parse as every other numeric setting here: an
     // unparseable or missing row (a fresh install, or one that predates this
     // setting) reads back as 0 — never nudge — matching DEFAULT_NUDGE_CADENCE_DAYS.
@@ -1876,7 +1900,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2234,6 +2258,22 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWeatherRules(rules: WeatherRule[]) {
     dbSetSetting('weatherRules', JSON.stringify(rules));
     set({ weatherRules: rules });
+  },
+
+  setScreenTimeTasks(on: boolean) {
+    dbSetSetting('screenTimeTasks', on ? 'true' : 'false');
+    set({ screenTimeTasks: on });
+  },
+
+  setScreenTimeTaskCategory(category: string | null) {
+    dbSetSetting('screenTimeTaskCategory', category ?? '');
+    set({ screenTimeTaskCategory: category });
+  },
+
+  // Written whole rather than patched, same as setWeatherRules.
+  setScreenTimeRules(rules: ScreenTimeRule[]) {
+    dbSetSetting('screenTimeRules', serializeScreenTimeRules(rules));
+    set({ screenTimeRules: rules });
   },
 
   setAutoRemoveExpiredTasks(days: ExpiredTaskGraceDays) {

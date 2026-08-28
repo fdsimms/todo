@@ -27,6 +27,10 @@ enum ScreenTimeShared {
   /// Thresholds that have been crossed and not yet turned into tasks.
   /// Extension writes, app drains.
   static let crossingsFileName = "screentime_crossings.json"
+  /// The logical day the monitor was last armed for. App writes, extension
+  /// reads — see `ScreenTimeCrossing.dayKey` for why the extension can't work
+  /// this out itself.
+  static let dayFileName = "screentime_day.json"
 
   static func containerURL() -> URL? {
     FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
@@ -89,6 +93,24 @@ extension ScreenTimeShared {
   static func readRules() -> [ScreenTimeRuleShared] {
     guard let data = readData(rulesFileName) else { return [] }
     return (try? JSONDecoder().decode([ScreenTimeRuleShared].self, from: data)) ?? []
+  }
+
+  /// The logical day the app last armed the monitor for, or nil if it never
+  /// has. A crossing with no day to file it under is dropped rather than
+  /// guessed at: `Date()` in the extension is the calendar day, which is the
+  /// wrong answer for anyone whose day starts at 4am.
+  static func readDayKey() -> String? {
+    guard let data = readData(dayFileName),
+          let decoded = try? JSONDecoder().decode([String: String].self, from: data)
+    else { return nil }
+    let key = decoded["dayKey"] ?? ""
+    return key.isEmpty ? nil : key
+  }
+
+  @discardableResult
+  static func writeDayKey(_ dayKey: String) -> Bool {
+    guard let data = try? JSONEncoder().encode(["dayKey": dayKey]) else { return false }
+    return writeData(data, to: dayFileName)
   }
 
   static func readCrossings() -> [ScreenTimeCrossing] {

@@ -236,9 +236,7 @@ public class TodoScreenTimeBridgeModule: Module {
           // Handed to the extension so it can stamp a crossing with the day
           // the app considers current.
           ScreenTimeShared.writeData(data, to: ScreenTimeShared.rulesFileName)
-          if let dayData = try? JSONEncoder().encode(["dayKey": dayKey]) {
-            ScreenTimeShared.writeData(dayData, to: "screentime_day.json")
-          }
+          ScreenTimeShared.writeDayKey(dayKey)
 
           var events: [DeviceActivityEvent.Name: DeviceActivityEvent] = [:]
           for rule in rules where rule.thresholdMinutes > 0 {

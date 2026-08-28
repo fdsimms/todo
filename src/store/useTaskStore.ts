@@ -173,6 +173,8 @@ import { useCalendarStore } from './useCalendarStore';
 import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
 import { weatherSourceId, parseWeatherSourceId, ruleMatchesToday } from '../utils/weatherTasks';
+import { useScreenTimeStore } from './useScreenTimeStore';
+import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask } from '../utils/screenTimeRules';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
 
@@ -604,6 +606,13 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       // stops a swiped-away task coming straight back, and checkWeatherTasks
       // writes it unconditionally, the same order calendarReview's own mark
       // is written in.
+      return;
+    case 'screenTime':
+      // Nothing to write either, and for the same reason: the source is a
+      // rule in settings. ScreenTimeRule.lastFiredDayKey is the mark, written
+      // by checkScreenTimeTasks as it turns a crossing into a task — it can't
+      // be spent ahead of the decision the way weather's is, because the
+      // deciding is the OS's (see the field's own note).
       return;
     case 'pantryReview':
       return;
@@ -1546,6 +1555,7 @@ interface TaskStore extends UndoHistoryActions {
    */
   checkCalendarReviewTasks: () => void;
   checkWeatherTasks: () => void;
+  checkScreenTimeTasks: () => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook, streak left exactly as it was.
@@ -5154,6 +5164,93 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       return { ...rule, lastFiredDayKey: todayKey };
     });
     if (rulesChanged) settings.setWeatherRules(nextRules);
+  },
+
+  /**
+   * The fifteenth generator, and the second whose "source" is a rule the user
+   * wrote — see `src/utils/screenTimeRules.ts`. Structurally it is
+   * `checkWeatherTasks` with the decision taken out: weather reads a forecast
+   * and applies the rule itself, whereas here iOS was armed with a threshold
+   * and reports having crossed it, so what this walks is the crossings rather
+   * than the rules.
+   *
+   * That inversion is why the idempotency mark can't be spent ahead of the
+   * decision the way weather's is (`ScreenTimeRule.lastFiredDayKey`), and why
+   * there is no "considered and found not to apply" case to mark: a rule that
+   * didn't trip produces no crossing to consider.
+   */
+  checkScreenTimeTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.screenTimeTasks) return;
+    // Same refusal checkWeatherTasks makes, and the more important one here:
+    // the crossings this reads are drained destructively from the OS, so
+    // acting on them against a database about to be discarded would lose them
+    // outright rather than merely writing fiction. useScreenTimeStore's own
+    // gate (screenTimeBridge) already refuses to drain in demo mode; this is
+    // the second half of the same rule.
+    if (isDemoModeActive()) return;
+    if (!settings.screenTimeTaskCategory) return;
+
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const tasks = get().tasks;
+    const activeRuleIds = new Set(settings.screenTimeRules.map(r => r.id));
+    // Clear a task whose rule has since been deleted, or whose day has rolled
+    // over, before deciding today's — same ordering checkWeatherTasks uses.
+    liveGeneratedTasksOfKind(tasks, 'screenTime')
+      .filter(task => {
+        const parsed = parseScreenTimeSourceId(task.generatedSourceId);
+        return !parsed || parsed.dayKey !== todayKey || !activeRuleIds.has(parsed.ruleId);
+      })
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    const crossings = useScreenTimeStore.getState().crossings;
+    if (crossings.length === 0) return;
+
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+    const rulesById = new Map(settings.screenTimeRules.map(r => [r.id, r]));
+
+    let rulesChanged = false;
+    const fired = new Set<string>();
+    const nextRules = [...settings.screenTimeRules];
+
+    for (const crossing of crossings) {
+      // A crossing stamped with another logical day is stale — the phone was
+      // left open across a boundary, or the monitor was armed before the
+      // user moved dayResetTime. It is spent either way rather than held,
+      // since the day it belongs to has gone.
+      fired.add(crossing.ruleId);
+      if (crossing.dayKey !== todayKey) continue;
+
+      const rule = rulesById.get(crossing.ruleId);
+      if (!rule || !crossingWantsTask(rule, todayKey)) continue;
+
+      const sourceId = screenTimeSourceId(todayKey, rule.id);
+      reconcileGeneratedTask({
+        kind: 'screenTime',
+        sourceId,
+        wanted: true,
+        // The title is the rule's own and never varies mid-day.
+        drift: () => null,
+        draft: () => ({
+          title: rule.title,
+          dueDate: dueDate.toISOString(),
+          category: settings.screenTimeTaskCategory,
+          ...generatedBy('screenTime', sourceId),
+        }),
+      });
+
+      const index = nextRules.findIndex(r => r.id === rule.id);
+      if (index !== -1) {
+        nextRules[index] = { ...nextRules[index], lastFiredDayKey: todayKey };
+        rulesChanged = true;
+      }
+    }
+
+    if (rulesChanged) settings.setScreenTimeRules(nextRules);
+    // Spent whether or not they produced anything — a crossing held back
+    // would be re-examined against the same rule and same day for ever.
+    if (fired.size > 0) useScreenTimeStore.getState().consume([...fired]);
   },
 
   skipNextRecurrence(id) {

@@ -27,6 +27,7 @@ import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
 import { useWeatherSync } from './src/store/useWeatherStore';
+import { useScreenTimeSync } from './src/store/useScreenTimeStore';
 import { useFocusShieldSync } from './src/hooks/useFocusShieldSync';
 import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
@@ -130,6 +131,7 @@ function AppRoot() {
   const checkMealShortfallTasks = useTaskStore(s => s.checkMealShortfallTasks);
   const checkCalendarReviewTasks = useTaskStore(s => s.checkCalendarReviewTasks);
   const checkWeatherTasks = useTaskStore(s => s.checkWeatherTasks);
+  const checkScreenTimeTasks = useTaskStore(s => s.checkScreenTimeTasks);
   const checkBirthdayTasks = useTaskStore(s => s.checkBirthdayTasks);
   const checkBirthdayGiftTasks = useTaskStore(s => s.checkBirthdayGiftTasks);
   const checkReachOutTasks = useTaskStore(s => s.checkReachOutTasks);
@@ -220,6 +222,10 @@ function AppRoot() {
       // cold-launch time either, since the snapshot it reads is only ever
       // populated by useWeatherSync's own effect.
       ['check weather tasks', checkWeatherTasks],
+      // Beside it, same trigger and the same near-no-op at cold launch: the
+      // crossings it reads are only ever drained by useScreenTimeSync's own
+      // effect, which has not run yet on the very first pass.
+      ['check screen time tasks', checkScreenTimeTasks],
       // Birthdays, which share the same trigger — a date arriving rather than a
       // source changing — and read the people initTasks' fan-out has loaded.
       // After initSettings for the same reason the meal pass is: the day a task
@@ -276,7 +282,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkPantryReviewTasks, checkMealShortfallTasks, checkBirthdayTasks, checkBirthdayGiftTasks, checkReachOutTasks, checkCalendarReviewTasks, checkWeatherTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkPantryReviewTasks, checkMealShortfallTasks, checkBirthdayTasks, checkBirthdayGiftTasks, checkReachOutTasks, checkCalendarReviewTasks, checkWeatherTasks, checkScreenTimeTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
@@ -304,6 +310,9 @@ function AppRoot() {
   // inert until weatherTasks is switched on, and never requests location
   // permission itself (see getCurrentLocation).
   useWeatherSync();
+  // Keeps the OS usage monitor armed against the current rules and drains
+  // what it has reported. Inert until screenTimeTasks is switched on.
+  useScreenTimeSync();
   // Blocks the chosen apps while a focus session is actually running, and —
   // the half that matters — lifts a shield left in force by a run that
   // crashed. Inert until focusShieldEnabled is switched on.

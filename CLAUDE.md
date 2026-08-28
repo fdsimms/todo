@@ -263,7 +263,7 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (fourteen generators now: `weather` is the newest, and the first whose source is a rule the user wrote rather than a row) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (fifteen generators now: `screenTime` is the newest, and the second whose source is a rule the user wrote rather than a row) |
 | a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
@@ -351,14 +351,14 @@ exports.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (7.0k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (4.9k),
-`store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.3k), `types/index.ts` (4.2k),
+`store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.4k), `types/index.ts` (4.2k),
 `components/TaskItem.tsx` (4.0k), `components/QuickAddModal.tsx` (2.9k),
-`utils/demoSeed.ts` (2.8k), `store/useSettingsStore.ts` (2.8k).
+`store/useSettingsStore.ts` (2.8k), `utils/demoSeed.ts` (2.8k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **244 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **245 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

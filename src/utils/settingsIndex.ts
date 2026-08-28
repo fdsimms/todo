@@ -218,6 +218,7 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   // instead of what the setting does.
   pantryReview: ['cupboard', 'stock', 'take stock', 'swipe', 'deck', 'still have', 'grocery',
     'kitchen', 'generated', 'automatic'],
+  screenTime: ['phone', 'usage', 'distraction', 'social media', 'doomscroll', 'limit', 'apps'],
   weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
     'location', 'temperature', 'generated', 'automatic'],
 };
@@ -417,6 +418,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'weatherRules', groupId: 'generated', label: 'Rules', section: 'Weather-based tasks',
     keywords: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat',
       'forecast', 'location', 'condition', 'weather rule'] },
+  { id: 'screenTimeRules', groupId: 'generated', label: 'Rules', section: 'Screen time tasks',
+    keywords: ['screen time', 'usage', 'phone', 'apps', 'threshold', 'minutes', 'distraction',
+      'social media', 'doomscroll', 'limit', 'screen time rule'] },
   { id: 'simpleTaskForm', groupId: 'tasksProjects', label: 'Show fewer fields', section: 'Task form',
     keywords: ['simple', 'quick add', 'chips', 'declutter', 'basic', 'minimal'] },
   { id: 'hideCategories', groupId: 'tasksProjects', label: 'Hide categories', section: 'Today',
