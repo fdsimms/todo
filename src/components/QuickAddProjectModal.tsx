@@ -312,7 +312,11 @@ export function QuickAddProjectModal({
             </TouchableOpacity>
           </View>
 
-          {/* Attribute toolbar */}
+          {/* Attribute toolbar. Every chip always carries its label — an
+              icon alone doesn't say what tapping it does, and "List" sitting
+              on a bare checkbox read as a task-list checkbox rather than as
+              this project's own kind. Same shape as QuickAddModal's own
+              toolbar: label until there's a value, then the value replaces it. */}
           <View style={styles.toolbar}>
             <TouchableOpacity
               style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
@@ -322,7 +326,9 @@ export function QuickAddProjectModal({
               accessibilityLabel={category !== null ? `Category: ${category}` : 'Set category'}
             >
               <Ionicons name="folder-outline" size={13} color={category ? colors.accent : colors.textTertiary} />
-              {category !== null && <Text style={[styles.toolChipText, styles.toolChipTextSet]}>{category}</Text>}
+              <Text style={[styles.toolChipText, category !== null && styles.toolChipTextSet]} numberOfLines={1}>
+                {category ?? 'Category'}
+              </Text>
             </TouchableOpacity>
 
             {/*
@@ -330,6 +336,10 @@ export function QuickAddProjectModal({
               one of them is the default, so this is "make it a list", not a
               question every new project has to answer. Set, it reads as one of
               the other chips does. See Project.kind.
+
+              Icon is the bullet-list glyph, not a checkbox: `checkbox-outline`
+              is what a task's own completion box looks like, so this chip read
+              as "add a checklist" rather than as choosing the project's kind.
             */}
             <TouchableOpacity
               style={[styles.toolChip, kind === 'list' && styles.toolChipSet]}
@@ -337,14 +347,16 @@ export function QuickAddProjectModal({
               activeOpacity={interaction.activeOpacity}
               accessibilityRole="switch"
               accessibilityState={{ checked: kind === 'list' }}
-              accessibilityLabel="Keep it as a list"
+              accessibilityLabel="Keep it as a list, without dates"
             >
               <Ionicons
-                name="checkbox-outline"
+                name="list-outline"
                 size={13}
                 color={kind === 'list' ? colors.accent : colors.textTertiary}
               />
-              {kind === 'list' && <Text style={[styles.toolChipText, styles.toolChipTextSet]}>List</Text>}
+              <Text style={[styles.toolChipText, kind === 'list' && styles.toolChipTextSet]} numberOfLines={1}>
+                List
+              </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -355,11 +367,9 @@ export function QuickAddProjectModal({
               accessibilityLabel={deadline ? `Deadline: ${formatDeadlineDate(deadline.toISOString())}` : 'Set deadline'}
             >
               <Ionicons name="flag-outline" size={13} color={deadline ? colors.accent : colors.textTertiary} />
-              {deadline != null && (
-                <Text style={[styles.toolChipText, styles.toolChipTextSet]}>
-                  {formatDeadlineDate(deadline.toISOString())}
-                </Text>
-              )}
+              <Text style={[styles.toolChipText, deadline != null && styles.toolChipTextSet]} numberOfLines={1}>
+                {deadline != null ? formatDeadlineDate(deadline.toISOString()) : 'Deadline'}
+              </Text>
             </TouchableOpacity>
           </View>
 
@@ -502,6 +512,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   toolChip: {
     flexDirection: 'row',
     alignItems: 'center',
+    flexShrink: 1,
     gap: 4,
     paddingHorizontal: 10,
     paddingVertical: spacing.sm,
@@ -518,6 +529,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
+    flexShrink: 1,
   },
   toolChipTextSet: {
     color: colors.accent,

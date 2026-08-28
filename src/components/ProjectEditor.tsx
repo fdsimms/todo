@@ -443,7 +443,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           accessibilityLabel="Keep it as a list"
           accessibilityState={{ checked: isList }}
         >
-          <Ionicons name="checkbox-outline" size={18} color={isList ? colors.accent : colors.textSecondary} />
+          {/* clipboard-outline, not checkbox-outline: a checkbox reads as a
+              task's own completion box, and not list-outline either, since
+              the "Do these in order" row right below already uses that for
+              a bullet list. */}
+          <Ionicons name="clipboard-outline" size={18} color={isList ? colors.accent : colors.textSecondary} />
           <View style={styles.optionContent}>
             <Text style={styles.optionLabel}>Keep it as a list</Text>
             <Text style={styles.optionHint}>
