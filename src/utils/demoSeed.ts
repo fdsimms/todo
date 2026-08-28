@@ -1394,7 +1394,14 @@ function seedRecipes(): DemoRecipes {
   const oats = newRecipe('Overnight oats');
   addIngredientsFromText(
     oats.id,
-    ['1 cup rolled oats', '1 cup milk', '1 tbsp honey', '1/2 cup blueberries'].join('\n')
+    // The yogurt line is the demo's example of a *suggested* catalog match:
+    // the catalog says Greek yogurt, the recipe says yogurt, and the row's
+    // "Greek yogurt?" pill is the only place that state is visible. It used to
+    // fall out of the seed for free from a plural ("chicken breasts" against
+    // Chicken breast), which the catalog now resolves to one row of its own
+    // accord — so a near-miss the app still can't settle has to be seeded
+    // deliberately or the badge reads as a feature the app doesn't have.
+    ['1 cup rolled oats', '1 cup milk', '1/2 cup yogurt', '1 tbsp honey', '1/2 cup blueberries'].join('\n')
   );
   setMealType(oats.id, 'breakfast');
   setTags(oats.id, ['make ahead']);

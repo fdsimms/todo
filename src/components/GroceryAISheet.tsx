@@ -33,6 +33,7 @@ import {
 } from '../services/aiSuggestions';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { groceryNameKey } from '../utils/groceryParse';
+import { catalogItemForKey } from '../utils/groceryPlural';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EmptyState } from './EmptyState';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
@@ -185,7 +186,10 @@ export function GroceryAISheet({ visible, mode, onClose }: Props) {
         // action added — same distinction addManyFromText draws — so it's
         // excluded from what undo removes.
         const key = groceryNameKey(row.name);
-        const before = key ? useGroceryStore.getState().items.find(it => it.nameKey === key) : undefined;
+        // Resolved the way addByName itself resolves it, plural included, or a
+        // row already on the list reads as one this apply added — and undo
+        // would then take it off. Same lookup addManyFromText makes.
+        const before = catalogItemForKey(key, useGroceryStore.getState().items) ?? undefined;
         const wasOnList = before?.onList === true;
         // addByName so an item already in the catalog is re-listed rather than
         // duplicated; the aisle and quantity are then applied on top of

@@ -200,11 +200,55 @@ describe('matchIngredientToCatalog', () => {
     expect(matchIngredientToCatalog('eggplant', items, NOW).reason).not.toBe('prefix');
   });
 
-  it('takes the autocomplete ranking, which carries plural tolerance', () => {
+  it('takes the autocomplete ranking for a near-miss that is not a plural', () => {
+    const items = [makeItem({ name: 'Greek yogurt' })];
+    const match = matchIngredientToCatalog('yogurt', items, NOW);
+    expect(match.kind).toBe('suggested');
+    expect(match.reason).toBe('ranked');
+    expect(match.suggestedName).toBe('Greek yogurt');
+  });
+
+  // ─── the plural tier ───────────────────────────────────────────────────────
+
+  it('reads a line one plural away from a catalog row as linked, not suggested', () => {
     const items = [makeItem({ name: 'Bananas' })];
     const match = matchIngredientToCatalog('banana', items, NOW);
-    expect(match.kind).toBe('suggested');
-    expect(match.suggestedName).toBe('Bananas');
+    expect(match.kind).toBe('linked');
+    expect(match.reason).toBe('plural');
+    expect(match.item?.name).toBe('Bananas');
+    // Nothing to accept: the catalog resolves the pair itself, so offering a
+    // rename would be a question whose only answer is a letter s.
+    expect(match.suggestedName).toBeNull();
+  });
+
+  it('reads a plural line against a singular row the same way', () => {
+    const items = [makeItem({ name: 'Serrano pepper' })];
+    const match = matchIngredientToCatalog('serrano peppers', items, NOW);
+    expect(match.kind).toBe('linked');
+    expect(match.reason).toBe('plural');
+  });
+
+  it('prefers an exact row over a plural one', () => {
+    const items = [makeItem({ name: 'Peppers' }), makeItem({ name: 'Pepper' })];
+    const match = matchIngredientToCatalog('pepper', items, NOW);
+    expect(match.kind).toBe('linked');
+    expect(match.reason).toBeNull();
+    expect(match.item?.name).toBe('Pepper');
+  });
+
+  it('falls through to the suggestion tiers when the plural is ambiguous', () => {
+    // Two rows a plural apart from "leaves" and no way to tell which was
+    // meant — refused there, so the ranked tier still gets its turn.
+    const items = [makeItem({ name: 'Leaf' }), makeItem({ name: 'Leave' })];
+    const match = matchIngredientToCatalog('leaves', items, NOW);
+    expect(match.reason).not.toBe('plural');
+    expect(match.kind).not.toBe('linked');
+  });
+
+  it('counts a plural line as linked in the summary', () => {
+    const items = [makeItem({ name: 'Bananas' })];
+    const summary = catalogMatchSummary(matchIngredientsToCatalog(['banana'], items, NOW));
+    expect(summary).toMatchObject({ total: 1, linked: 1, suggested: 0, unknown: 0 });
   });
 
   it('offers a one-character correction', () => {

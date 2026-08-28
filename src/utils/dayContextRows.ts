@@ -9,6 +9,7 @@ import { titleForEntry } from './mealPlan';
 import { useUpEntries, type KitchenEntry } from './kitchenInventory';
 import { flattenRecipeIngredients } from './recipeComponents';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
+import { resolvePluralKey } from './groceryPlural';
 
 /**
  * The day's calendar events, planned meals and dying food, as rows in the task
@@ -251,9 +252,15 @@ export function plannedUsesToday(
 
     for (const entry of entries) {
       if (out.has(entry.id)) continue;
+      // A pantry row and the line that cooks it are one thing across a plural
+      // ("serrano peppers" in the drawer, "serrano pepper" in the recipe) —
+      // the same resolution the catalog itself makes, see groceryPlural.ts.
       const used = entry.kind === 'leftover'
         ? meal.leftoverId === entry.sourceId
-        : !!entry.matchKey && !!ingredientKeys?.has(entry.matchKey);
+        : !!entry.matchKey && !!ingredientKeys && (
+            ingredientKeys.has(entry.matchKey)
+            || resolvePluralKey(entry.matchKey, ingredientKeys) !== null
+          );
       if (used) out.set(entry.id, label);
     }
   }

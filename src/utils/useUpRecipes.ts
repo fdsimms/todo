@@ -1,6 +1,7 @@
 import type { KitchenEntry } from './kitchenInventory';
 import type { GroceryItem, Recipe } from '../types';
 import { freshnessRank } from './freshness';
+import { resolvePluralKey } from './groceryPlural';
 
 /**
  * "You could make X with what's about to go off."
@@ -122,7 +123,14 @@ export function useUpRecipes(
     // tomato" to garnish) and that is one tomato being used up, not two.
     const uses = new Map<string, KitchenEntry>();
     for (const ingredient of recipe.ingredients) {
-      const entry = ingredient.nameKey ? dying.get(ingredient.nameKey) : undefined;
+      if (!ingredient.nameKey) continue;
+      // Its own plural counts, the same way it does everywhere the catalog
+      // resolves a name (`groceryPlural.ts`) — a line reading "serrano pepper"
+      // is exactly the Serrano peppers going soft in the drawer.
+      const key = dying.has(ingredient.nameKey)
+        ? ingredient.nameKey
+        : resolvePluralKey(ingredient.nameKey, dying.keys());
+      const entry = key ? dying.get(key) : undefined;
       if (entry) uses.set(entry.id, entry);
     }
     if (uses.size === 0) continue;

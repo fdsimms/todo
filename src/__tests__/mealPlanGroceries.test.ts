@@ -631,6 +631,46 @@ describe('classifyPlanned', () => {
     ]);
   });
 
+  // See groceryPlural.ts: the catalog resolves a singular to its plural row,
+  // so a sheet that classified the line apart would offer to buy what is
+  // already in the trolley.
+  it('files a line under the catalog row it is the plural of', () => {
+    const items = [item({ name: 'Serrano peppers', onList: true })];
+    const planned = [
+      { name: 'serrano pepper', nameKey: 'serrano pepper', quantity: '2', aisle: null, source: 'Tue Stir-fry' },
+    ];
+    const row = classifyPlanned(planned, items, now)[0];
+    expect(row.nameKey).toBe('serrano peppers');
+    expect(row.name).toBe('Serrano peppers');
+    expect(row.category).toBe('alreadyOnList');
+    // Not a swap: it is the same thing spelled the other way, so there is no
+    // "instead of" to caption.
+    expect(row.swappedFrom).toBeNull();
+  });
+
+  it('merges a singular and a plural line onto one row', () => {
+    const items = [item({ name: 'Serrano peppers', onList: false })];
+    const planned = [
+      { name: 'serrano pepper', nameKey: 'serrano pepper', quantity: '2', aisle: null, source: 'Tue Stir-fry' },
+      { name: 'serrano peppers', nameKey: 'serrano peppers', quantity: '3', aisle: null, source: 'Thu Salsa' },
+    ];
+    const rows = classifyPlanned(planned, items, now);
+    expect(rows).toHaveLength(1);
+    // Both meals credited to the one row. Re-filing appends, the same as the
+    // variety pass beside it, so the order is the catalog key's group first.
+    expect(rows[0].sources).toEqual(expect.arrayContaining(['Tue Stir-fry', 'Thu Salsa']));
+    expect(rows[0].sources).toHaveLength(2);
+  });
+
+  it('leaves a line alone when the catalog has nothing a plural apart', () => {
+    const planned = [
+      { name: 'serrano pepper', nameKey: 'serrano pepper', quantity: '2', aisle: null, source: 'Tue Stir-fry' },
+    ];
+    const row = classifyPlanned(planned, [item({ name: 'Milk' })], now)[0];
+    expect(row.nameKey).toBe('serrano pepper');
+    expect(row.category).toBe('needToBuy');
+  });
+
   it('classifies a known, off-list row as probablyHave when the pantry guess says so, with its reason', () => {
     const items = [item({
       name: 'Milk', onList: false, purchaseCount: 3,

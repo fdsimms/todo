@@ -1,5 +1,6 @@
 import type { GroceryItem } from '../types';
 import { groceryNameKey, suggestShorterCatalogName } from './groceryParse';
+import { resolvePluralKey } from './groceryPlural';
 import { rankGrocerySuggestions } from './grocerySuggest';
 import { varietyIndex } from './itemVarieties';
 
@@ -49,6 +50,16 @@ export type IngredientMatchReason =
   /** One character out — "skir" → "Skyr". The only tier that tolerates a misspelling. */
   | 'similar'
   /**
+   * The line is the singular or plural of a row you already have — "serrano
+   * pepper" against Serrano peppers. Rides on `linked` rather than
+   * `suggested`, the same call `variety` makes below and for the same reason:
+   * the catalog itself resolves the pair to one row now (`catalogItemForKey`,
+   * `groceryPlural.ts`), so there is nothing left to offer. Suggesting it was
+   * the old behaviour and it was noise — a "did you mean" whose only answer
+   * was a letter s, on every recipe line naming one of something.
+   */
+  | 'plural'
+  /**
    * The line names a generic the catalog holds declared varieties of — "onion"
    * against a white onion carrying `varietyOfKey: 'onion'`. The one reason
    * that rides on `linked` rather than `suggested`: the line has crossed the
@@ -59,7 +70,7 @@ export type IngredientMatchReason =
   | 'variety';
 
 export type IngredientMatchKind =
-  /** Exact `nameKey` hit, or a generic covered by its declared varieties (`reason: 'variety'`). */
+  /** Exact `nameKey` hit, its singular/plural (`reason: 'plural'`), or a generic covered by its declared varieties (`reason: 'variety'`). */
   | 'linked'
   /** No exact hit, but something close enough to offer. */
   | 'suggested'
@@ -189,8 +200,10 @@ function uniqueSimilarItem(
  * One line against the catalog.
  *
  * The tiers are tried strongest-evidence first, and each one is something the
- * app already trusts somewhere else: an exact key (the join itself), a
- * confirmed leading-word trim (`suggestShorterCatalogName`), a whole-word
+ * app already trusts somewhere else: an exact key (the join itself), its own
+ * singular or plural (`groceryPlural.ts`, which is what the catalog's
+ * find-or-insert resolves through), a confirmed leading-word trim
+ * (`suggestShorterCatalogName`), a whole-word
  * prefix, the autocomplete's own ranking (`rankGrocerySuggestions`, which
  * carries plural tolerance), and finally a single character's difference.
  *
@@ -209,6 +222,15 @@ function matchOne(
 
   const exact = byKey.get(key);
   if (exact) return { kind: 'linked', item: exact, suggestedName: null, reason: null };
+
+  // One plural apart is the same shelf item, and the catalog now agrees —
+  // adding this line resolves to that row rather than minting a near-duplicate
+  // (`catalogItemForKey`). So the line has crossed the bridge: no badge, and
+  // nothing to rename. Ambiguity is refused inside `resolvePluralKey`, which
+  // drops the line through to the suggestion tiers below rather than guessing.
+  const pluralKey = resolvePluralKey(key, byKey.keys());
+  const plural = pluralKey ? byKey.get(pluralKey) : undefined;
+  if (plural) return { kind: 'linked', item: plural, suggestedName: null, reason: 'plural' };
 
   // Identity, not pantry state: whether any variety is actually on hand is the
   // shopping reads' question, asked at shop time. Here a declaration alone

@@ -363,16 +363,19 @@ that a line can open to fix that.
 
 `nameKey` is an exact match and nothing else, which is right for a stored pointer every reader
 trusts and is why plural tolerance lives in `matchWeight` rather than in `groceryNameKey`, "where
-merging two shelf items would be permanent". The cost was that nothing ever *said* whether a line
+merging two shelf items would be permanent" (a singular and its plural are the one exception, and
+they are resolved rather than keyed — see "Singular and plural are one row" in
+`docs/arch/groceries.md`). The cost was that nothing ever *said* whether a line
 had crossed the bridge: a line one character or one leading word off read exactly like a line
 naming something genuinely new, and the only way to find out was to open each one. #2061 was
 someone watching "skyr" offer to create itself while a Skyr row sat in the catalog.
 
 This module is the other half — everything the exact join can't say, computed at read time,
-offered, never written. Five tiers, strongest evidence first: an exact key (`linked`), then
-`suggestShorterCatalogName`'s confirmed leading-word trim, a whole-word prefix
-("greek yogurt plain" → Greek yogurt), `rankGrocerySuggestions`' own ranking (which is where
-plural tolerance already lived), and finally a single character's difference.
+offered, never written. Six tiers, strongest evidence first: an exact key (`linked`), its own
+singular or plural (`linked` too, `reason: 'plural'` — the catalog resolves that pair to one row
+itself, so there is nothing to offer), then `suggestShorterCatalogName`'s confirmed leading-word
+trim, a whole-word prefix ("greek yogurt plain" → Greek yogurt), `rankGrocerySuggestions`' own
+ranking, and finally a single character's difference.
 
 - **Nothing here writes, and there is still no second key field.** Taking a suggestion renames
   the line to the catalog item's own name and lets the existing derivation follow — the same

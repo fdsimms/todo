@@ -1044,9 +1044,11 @@ The kitchen knows what's dying and a recipe knows what it's made of, and nothing
 useful part starts.
 
 - **The join is `nameKey` and nothing else.** `RecipeIngredient.nameKey` is already "THE bridge to
-  the catalog" and `KitchenEntry.matchKey` is a catalog row's own key, so the match is exact. No
-  fuzzy matching: a wrong suggestion costs more than a missing one, and the app already refuses
-  this class of guess for a shelf life (`shelfLifeDaysFor`) for the same reason.
+  the catalog" and `KitchenEntry.matchKey` is a catalog row's own key, so the match is exact — bar
+  the singular/plural of that key, which the catalog resolves to one row everywhere (see "Singular
+  and plural are one row" above) and so is not a second opinion here. No fuzzy matching beyond
+  that: a wrong suggestion costs more than a missing one, and the app already refuses this class of
+  guess for a shelf life (`shelfLifeDaysFor`) for the same reason.
 - **Groceries only.** A leftover's `matchKey` comes from its own free-typed title rather than from
   the catalog, so it would match only by accident — and you reheat last night's chilli, you don't
   cook with it. Planning a container onto a night is `LeftoversCard`'s job.
@@ -1296,6 +1298,43 @@ Three rules the resolver enforces, all pinned by `standingSwaps.test.ts`:
   rewrites what lands in the trolley has to be answerable somewhere that isn't "open every
   grocery item and check".
 
+## Singular and plural are one row (`groceryPlural.ts`)
+
+`groceryNameKey` does not stem plurals and still doesn't — stemming the *identity* key merges two
+shelf items forever, and its own note lists the four places a change to it would have to backfill.
+So "serrano pepper" and "serrano peppers" were two rows, each with its own aisle, purchase count
+and pantry state, and every recipe line naming one of something wore a "did you mean serrano
+peppers?" pill whose only answer was a letter s.
+
+The fix is a *resolve* rather than a key change: `catalogItemForKey(key, items)` takes the exact
+row if there is one, else the single existing row a plural apart. Nothing stored moves, so there is
+nothing to backfill.
+
+- **It only ever matches keys that already exist.** The plural table generates candidates to look
+  up, so a bad stem ("hummus" → "hummu") finds nothing and the name is minted as typed. A wrong
+  guess can't invent a row; at worst it lands two names on one row a person can rename.
+- **Ambiguity is refused, not ranked.** A catalog holding both "leaf" and "leave" says nothing
+  about which one "leaves" meant. Same refusal `uniqueSimilarItem` and the ranked tier both make.
+- **Only the last word varies**, so "green beans" never reaches "greens beans", and `-es` is only
+  dropped after a sibilant, so "grapes" offers "grape" and never "grap".
+- **A row reached through its plural is never renamed.** `addByName`'s "the typed name wins" rule
+  is now exact-key only: `nameKey` is derived from `name` and every reader trusts that, so
+  renaming Serrano peppers to "serrano pepper" would leave the row keyed for a name it no longer
+  carries.
+- **Every find-or-insert goes through it** — `addByName`, `addManyFromText`, `addFromPlan`,
+  `addToPantry`, `ensureCatalogItem`, `itemByNameKey`. Reading `items.find(i => i.nameKey === key)`
+  bare is what mints the near-duplicate, so don't.
+- **Every reader that joins a recipe line to a catalog row agrees with it**, or the app would
+  say a line is covered on one screen and missing on the next: `ingredientCatalogMatch` reads such
+  a line as `linked` (`reason: 'plural'`, riding on `linked` exactly like `variety` below),
+  `classifyPlanned` re-files the line under the catalog's own key before classifying — with no
+  `swappedFrom`, since this is the same thing spelled the other way rather than a swap —
+  `recipeReadiness` counts it as covered, `recipeCost` prices it, `useUpRecipes` offers the recipe
+  for the dying row, `plannedUsesToday` pairs the two, and the import review's own link icon
+  (`ExtractedIngredientRow`) reports what the store will actually do on save. Plural tolerance in
+  `matchWeight` is untouched and still does its own job: that one is autocomplete, where a wrong
+  guess costs a keystroke.
+
 ## Varieties (`GroceryItem.varietyOfKey`) — white onion is a kind of onion
 
 Every relation above is *lateral* — a product is a box of one item, either/or and alternatives
@@ -1356,9 +1395,10 @@ read side.
   — and `RecipeIngredientSheet` offers "Is White onion a kind of onion?" beside the rename.
   Only the ranked tier can produce that shape (`shorter` and `prefix` both need the catalog key
   to be the shorter one), so gating on the reason as well would restate the shape in a way that
-  could drift from it. Both accepts stay on offer: a near-duplicate ("Onions" for "onion") wants
-  the rename, and only a person can tell the two apart. An item that already declares something
-  is left alone.
+  could drift from it. Both accepts stay on offer, for the near-duplicates the catalog can't
+  settle itself ("Spring onion" for "onion"): only a person can tell a variety from a rename. A
+  bare plural ("Onions" for "onion") no longer reaches either — it resolves to one row above this
+  and never becomes a suggestion. An item that already declares something is left alone.
 - **The ranked tier refuses a tie**, which is what makes the offer above trustworthy: two
   candidates on an identical score mean the sort fell through to name length and the alphabet,
   and a catalog holding White onion and Red onion would otherwise badge one of them for "onion"

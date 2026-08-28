@@ -19,6 +19,7 @@ import { resolveOffsetDate } from './templateUtils';
 import { classifyPlanned, plannedIngredientsForRecipe } from './mealPlanGroceries';
 import { substitutesOnHand } from './itemSubs';
 import { varietyIndex } from './itemVarieties';
+import { resolvePluralKey } from './groceryPlural';
 import { standingSwapMap } from './standingSwaps';
 import { formatDuration } from './effort';
 import {
@@ -1246,6 +1247,14 @@ function catalogCoverage(
     // precisely. Discounting it would rank a kitchen that stocks white onions
     // below one holding a row called plain "Onion", for the same dish.
     let item = byKey.get(ingredient.nameKey);
+    // Its own plural counts, ahead of the varieties below: "serrano pepper"
+    // and Serrano peppers are one row everywhere else now (`groceryPlural.ts`),
+    // and a readiness score that disagreed would rank a dish as a shop away
+    // from cookable over a letter s.
+    if (!item && ingredient.nameKey) {
+      const plural = resolvePluralKey(ingredient.nameKey, byKey.keys());
+      if (plural) item = byKey.get(plural);
+    }
     if (!item && ingredient.nameKey) {
       varieties ??= varietyIndex(items);
       item = bestByRecency(varieties.get(ingredient.nameKey), now) ?? undefined;
