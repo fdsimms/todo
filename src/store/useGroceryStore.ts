@@ -129,19 +129,11 @@ const CART_HOLD_MS = 1200;
 /** Shared empty set for `undoForAdds` callers where every id is newly minted. */
 const EMPTY_IDS: ReadonlySet<string> = new Set<string>();
 
-/**
- * Mirrors useTaskStore's UndoableAction: shake-to-undo reads whichever of the
- * two stores' `lastAction` is freshest (see useShakeToUndo), so the shape has
- * to match — `undo` reverts exactly this action, `at` is stamped centrally by
- * setLastAction, never passed by a call site.
- */
-interface UndoableAction {
-  label: string;
-  undo: () => void;
-  at?: number;
-  /** See useTaskStore's UndoableAction — same flag, same UndoBar. */
-  destructive?: boolean;
-}
+import {
+  UndoableAction,
+  UndoHistoryActions,
+  undoHistoryActions,
+} from '../utils/undoHistory';
 
 // One shared timer, re-armed by each tap, exactly like armCompletionCollapse
 // in useTaskStore — so a burst of checks sinks together instead of dribbling
@@ -186,7 +178,7 @@ function pickPriceFields<
   };
 }
 
-interface GroceryStore {
+interface GroceryStore extends UndoHistoryActions {
   items: GroceryItem[];
   aisleOrder: string[];
   /**
@@ -347,9 +339,10 @@ interface GroceryStore {
    * are otherwise unrelated. useShakeToUndo compares both stores' `at` and
    * offers whichever is freshest.
    */
+  /** The top of `undoStack`, mirrored. See useTaskStore's own note. */
   lastAction: UndoableAction | null;
-  setLastAction: (action: UndoableAction | null) => void;
-  undoLastAction: () => void;
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
 
   initialize: () => void;
 
@@ -1581,21 +1574,9 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   disposalOffer: null,
   initialized: false,
   lastAction: null,
-
-  setLastAction(action) {
-    set({ lastAction: action ? { ...action, at: Date.now() } : null });
-  },
-
-  undoLastAction() {
-    const action = get().lastAction;
-    if (!action) return;
-    try {
-      action.undo();
-    } catch (e) {
-      console.error('undoLastAction failed', e);
-    }
-    set({ lastAction: null });
-  },
+  undoStack: [],
+  redoStack: [],
+  ...undoHistoryActions(set, get),
 
   initialize() {
     const items = dbGetAllGroceryItems();
@@ -2671,6 +2652,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     get().setLastAction({
       label: `Out of ${updates.length === 1 ? '1 thing' : `${updates.length} things`}`,
       destructive: true,
+      redo: () => get().markProductsOutOf(ids),
       undo: () => {
         for (const row of before) dbSetItemProduct(row);
         const restore = new Map(before.map(p => [p.id, p]));
@@ -2776,6 +2758,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     get().setLastAction({
       label: `Marked ${updates.length} ${updates.length === 1 ? 'thing' : 'things'} out`,
       destructive: true,
+      redo: () => get().markOutOfMany(ids, outcome),
       undo: () => {
         for (const b of before) dbUpdateGroceryItem(b);
         const originalById = new Map(before.map(b => [b.id, b]));
@@ -3299,6 +3282,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // option off the list at once, and that's the "what just happened?" a
       // shake answers.
       destructive: true,
+      redo: () => get().resolveChoice(id),
       undo: () => {
         for (const row of beforeItems) dbUpdateGroceryItem(row);
         const back = new Map(beforeItems.map(i => [i.id, i]));
@@ -3782,6 +3766,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     get().setLastAction({
       label: `Bought ${ids.length} ${ids.length === 1 ? 'thing' : 'things'}`,
       destructive: true,
+      redo: () => get().finishShopping(shopId, priceById, purchasedAt, frozenIds),
       undo: () => {
         // Back in the trolley they were in, each with the tick and the slot it
         // had — the membership half of putting a trip back.
@@ -3904,6 +3889,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     get().setLastAction({
       label: 'Cleared the list',
       destructive: true,
+      redo: () => get().clearList(),
       // No links to put back: a row this swept had none, or hasUserFacts would
       // have kept it. Re-inserting the rows is the whole restore.
       undo: () => {

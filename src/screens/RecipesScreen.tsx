@@ -204,7 +204,7 @@ export function RecipesScreen() {
     endTrip();
   }, [endTrip]);
 
-  const { planRecipe, offerPrepTasks } = usePlanMeal();
+  const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday } = usePlanMeal();
   // The recipe whose day is being picked; null closes the sheet.
   const [planningRecipe, setPlanningRecipe] = useState<Recipe | null>(null);
   const [query, setQuery] = useState('');
@@ -909,6 +909,7 @@ export function RecipesScreen() {
       <PlanMealSheet
         visible={planningRecipe !== null}
         title={planningRecipe?.name ?? null}
+        defaultSlot={earliestUnplannedSlotToday()}
         onPlan={(dateKey, slot) =>
           planningRecipe ? planRecipe(planningRecipe, dateKey, slot) : null}
         // After the dismissal, never before — see PlanRecipeSheet.onPlanned.

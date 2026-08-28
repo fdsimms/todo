@@ -180,7 +180,7 @@ export function ProjectCategoriesSheet({ visible, onClose }: Props) {
         </View>
 
         <ScrollView
-          contentContainerStyle={styles.list}
+          contentContainerStyle={order.length === 0 ? styles.listEmpty : styles.list}
           scrollEnabled={!dragging}
           keyboardShouldPersistTaps="handled"
         >
@@ -315,6 +315,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   list: { padding: spacing.md, paddingBottom: spacing.xl },
+  // Full-height content container so EmptyState's own `flex: 1` has room to
+  // center above the add row, instead of collapsing to its natural height
+  // at the top of the scroll view.
+  listEmpty: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl },
   intro: {
     color: colors.textSecondary,
     fontSize: font.sm,

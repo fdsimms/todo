@@ -113,7 +113,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent
 - `src/utils/mealGuests.ts` — guestsOn, describeGuests, hasGuests, GuestMeal, upcomingMealsWithGuest
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +6 more
-- `src/utils/mealPlan.ts` — slotRank, slotLabel, sortMealEntries, entriesForDay, cookEntryForRecipe, entriesForSlot, nextSortOrder, upcomingDays, daysWithoutMeal, shiftDayKey, +15 more
+- `src/utils/mealPlan.ts` — slotRank, slotLabel, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, daysWithoutMeal, +16 more
 - `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, classifyPlanned, +4 more
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more
 - `src/utils/mealShortfallTasks.ts` — MAX_MEAL_SHORTFALL_TASKS, mealShortfallTitle, mealShortfallEntryId, mealShortfallLinkUrl, isWithinShopWindow, mealShortfallRows, MealShortfallWant, wantedMealShortfalls, staleMealShortfallTasks
@@ -228,6 +228,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/titleRules.ts` — MIN_KEYWORD_LENGTH, KEYWORD_MAX_LENGTH, TITLE_RULE_MATCHES, TitleRuleMatchResult, TitleRuleFill, emptyTitleRule, titleRuleSaysNothing, titleRuleIsUseless, normalizeKeywords, matchKeyword, +7 more
 - `src/utils/titleSuggestions.ts` — TitleSuggestion, suggestTitles
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
+- `src/utils/undoHistory.ts` — UndoableAction, UndoHistory, UNDO_STACK_LIMIT, topOf, pushEntry, popEntry, freshest, redoIsCurrent, UndoHistoryActions, UndoHistoryState, +6 more
 - `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ConvertedQuantity, MeasuredQuantity, measureQuantity, shelfUnit, unitFactor, describeUnitFamily, convertQuantity
 - `src/utils/useReduceMotion.ts` — useReduceMotion
 - `src/utils/useShakeToUndo.ts` — useShakeToUndo

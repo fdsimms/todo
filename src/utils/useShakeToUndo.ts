@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Alert, AppState, AppStateStatus } from 'react-native';
+import { Alert, AlertButton, AppState, AppStateStatus } from 'react-native';
 import { Accelerometer } from 'expo-sensors';
 import { useTaskStore } from '../store/useTaskStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -14,6 +14,7 @@ import {
   isUndoActionFresh,
   SHAKE_UPDATE_INTERVAL_MS,
 } from './shakeDetect';
+import { freshest, redoIsCurrent, topOf } from './undoHistory';
 
 /**
  * Global "shake to undo" gesture. Prompts to confirm undoLastAction()
@@ -72,42 +73,65 @@ export function useShakeToUndo(enabled: boolean): void {
         if (isAppLocked()) return;
 
         // Tasks, grocery, meal plan and leftovers each keep an independent
-        // undo queue (see useGroceryStore's lastAction doc comment) — offer
-        // whichever of the four is freshest, same as if there were one
-        // shared queue.
-        const candidates = [
+        // undo history (see utils/undoHistory) — offer whichever of the four
+        // is freshest, same as if there were one shared stack. Every entry is
+        // stamped with when it landed, so freshest-first across the four is
+        // the order the user actually did things in.
+        const stores = [
           useTaskStore.getState(),
           useGroceryStore.getState(),
           useMealPlanStore.getState(),
           useLeftoverStore.getState(),
         ];
-        const freshest = candidates.reduce<typeof candidates[number] | null>((best, s) => {
-          if (!s.lastAction) return best;
-          if (!best || (s.lastAction.at ?? 0) > (best.lastAction!.at ?? 0)) return s;
-          return best;
-        }, null);
-        const lastAction = freshest?.lastAction ?? null;
-        const undoLastAction = freshest?.undoLastAction;
-        if (!lastAction || !undoLastAction) return;
-        if (!isUndoActionFresh(lastAction.at, now)) return;
+        const topUndos = stores.map(s => topOf(s.undoStack));
+        const undoStore = freshest(stores, s => topOf(s.undoStack)?.at);
+        const lastAction = undoStore ? topOf(undoStore.undoStack) : null;
+
+        // The redo half is offered only while it is still the next step
+        // forward — see redoIsCurrent for why the stamps decide that rather
+        // than a clear broadcast to the other three stores.
+        const redoStore = freshest(stores, s => topOf(s.redoStack)?.at);
+        const redoEntry = redoStore ? topOf(redoStore.redoStack) : null;
+        const canRedo =
+          redoIsCurrent(redoEntry, topUndos) && isUndoActionFresh(redoEntry?.at, now);
+
+        const canUndo = !!lastAction && isUndoActionFresh(lastAction.at, now);
+        if (!canUndo && !canRedo) return;
+
+        // Both halves get their own button when both are available. Undo stays
+        // last, where it has always been, so the muscle memory of shake-then-
+        // rightmost keeps doing the same thing.
+        const buttons: AlertButton[] = [
+          { text: 'Cancel', style: 'cancel', onPress: () => { confirmOpenRef.current = false; } },
+        ];
+        if (canRedo && redoStore) {
+          buttons.push({
+            text: `Redo "${redoEntry!.label}"`,
+            onPress: async () => {
+              confirmOpenRef.current = false;
+              await haptics.success();
+              redoStore.redoLastUndone();
+            },
+          });
+        }
+        if (canUndo && undoStore) {
+          buttons.push({
+            text: 'Undo',
+            style: 'destructive',
+            onPress: async () => {
+              confirmOpenRef.current = false;
+              await haptics.success();
+              undoStore.undoLastAction();
+            },
+          });
+        }
 
         confirmOpenRef.current = true;
         haptics.warning();
         Alert.alert(
-          'Undo last action',
-          `Undo "${lastAction.label}"?`,
-          [
-            { text: 'Cancel', style: 'cancel', onPress: () => { confirmOpenRef.current = false; } },
-            {
-              text: 'Undo',
-              style: 'destructive',
-              onPress: async () => {
-                confirmOpenRef.current = false;
-                await haptics.success();
-                undoLastAction();
-              },
-            },
-          ],
+          canUndo ? 'Undo last action' : 'Redo last undo',
+          canUndo ? `Undo "${lastAction!.label}"?` : `Redo "${redoEntry!.label}"?`,
+          buttons,
           { onDismiss: () => { confirmOpenRef.current = false; } }
         );
       });
