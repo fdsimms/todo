@@ -313,6 +313,7 @@ export function ProjectsScreen() {
     const dropped = pendingDropRef.current;
     pendingDropRef.current = null;
     if (placed && dropped?.kind === 'insert') placeCreatedProject(project, dropped);
+    (navigation as any).navigate('ProjectDetail', { projectId: project.id });
   };
 
   // Rebuilt each render so it closes over fresh state; the button reads it
