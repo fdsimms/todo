@@ -762,8 +762,7 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
 - `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount.
 - `PinIcon` (`src/components/PinIcon.tsx`) — the pin glyph everywhere pinning is shown or toggled
   (task row, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header),
-  and one of the **two** icons in the app that aren't Ionicons names (see `FlameIcon` below).
-  Ionicons has no thumbtack: its `pin`
+  and the **one** icon in the app that isn't an Ionicons name. Ionicons has no thumbtack: its `pin`
   is a *map* pin — thin needle, round head — which reads as a location rather than "hold this at
   the top" and goes wispy at `iconSize.sm`. So it's drawn, as two `react-native-svg` paths on the
   same 24-unit grid the Ionicons use, and takes `size` from `iconSize` like they do. Keep the
@@ -772,18 +771,6 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   it *is* a native module, so it needs a fresh build, not just a JS reload). The app's *other*
   `pin-outline` — the "Count days from" anchor row in `TemplateItemEditor` — is a map pin on
   purpose and stays Ionicons.
-- `FlameIcon` (`src/components/FlameIcon.tsx`) — the streak flame, in its three states: no streak
-  (outline), a streak running, and a run that has overtaken every run before it (see
-  `isStreakAtRecord`). The second non-Ionicons icon, and for a reason `PinIcon` will recognise:
-  Ionicons has exactly one flame, and a personal best needs a second that reads as *more fire*
-  beside the first. Two peaks for the ordinary one, three and a wider base for the record — a
-  difference in **silhouette**, because that's the only kind that survives 12pt. Colour was the
-  alternative and there's nowhere to go: orange already means "streak", and the app's other warm
-  colour is red, spent on out-of-stock and expired windows. A tinted pill behind the glyph shipped
-  first and read as a badge stuck on the row rather than as the flame burning harder. Don't draw
-  the ordinary flame as a single smooth teardrop, however obvious that looks in a vector editor —
-  it reads as a *water droplet* at this size, which is what the notch between the two peaks exists
-  to prevent. Same 24-unit grid and 1.8 stroke as `PinIcon`, for the same reason.
 - `SegmentedControl` (`src/components/SegmentedControl.tsx`) — **pick exactly one of a small,
   closed set.** The task's kind, the repeat type, priority, a unit, an anchor: one bounded track
   of equal segments, the chosen one raised rather than accent-filled. This is the rule the pill

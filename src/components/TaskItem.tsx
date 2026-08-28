@@ -45,7 +45,6 @@ import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
-import { FlameIcon } from './FlameIcon';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { asksOnCompletion } from '../utils/deliverables';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
@@ -1108,8 +1107,13 @@ export const TaskItem = React.memo(function TaskItem({
   //
   // Deliberately not gated on showStreakChip: the expanded panel's own streak
   // badge shows whether or not the collapsed row opted into the chip, and it
-  // takes the same pair of flames.
+  // takes the same colour.
   const atRecord = isStreakAtRecord(task);
+  // Orange for a run, red once it is the longest this task has had. Red is the
+  // app's destructive colour elsewhere (out of stock, an expired window), so
+  // it is only ever reached here alongside a flame and a rising count, where
+  // nothing about it reads as a warning.
+  const streakColor = atRecord ? colors.red : colors.orange;
 
   // Both read through the blocker index rather than scanning the task list, so
   // a long list stays O(1) per row. The selector still runs on every store
@@ -1964,12 +1968,19 @@ export const TaskItem = React.memo(function TaskItem({
                       : 'No streak yet'
                 }
               >
-                <FlameIcon
-                  variant={atRecord ? 'record' : task.streakCount > 0 ? 'streak' : 'none'}
+                <Ionicons
+                  name={task.streakCount > 0 ? 'flame' : 'flame-outline'}
                   size={iconSize.xs}
-                  color={task.streakCount > 0 ? colors.orange : colors.textSecondary}
+                  color={task.streakCount > 0 ? streakColor : colors.textSecondary}
                 />
-                <Text style={[styles.streakChipText, task.streakCount > 0 && styles.streakChipTextActive]} numberOfLines={1}>
+                <Text
+                  style={[
+                    styles.streakChipText,
+                    task.streakCount > 0 && styles.streakChipTextActive,
+                    atRecord && { color: streakColor },
+                  ]}
+                  numberOfLines={1}
+                >
                   {task.streakCount}
                 </Text>
               </View>
@@ -2514,7 +2525,7 @@ export const TaskItem = React.memo(function TaskItem({
                   <>
                     <Text style={styles.expandMeta}> · </Text>
                     <View style={styles.streakBadge}>
-                      <FlameIcon variant={atRecord ? 'record' : 'streak'} size={12} color={colors.orange} />
+                      <Ionicons name="flame" size={12} color={streakColor} />
                       <Text style={styles.expandMeta}>{task.streakCount}</Text>
                     </View>
                   </>
