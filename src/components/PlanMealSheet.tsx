@@ -48,6 +48,14 @@ interface Props {
    */
   title: string | null;
   /**
+   * The slot to open on — the earliest of today's meals with nothing planned
+   * yet (see `earliestUnplannedSlot`), computed by the caller through
+   * `usePlanMeal`'s `earliestUnplannedSlotToday`. This sheet knows nothing
+   * about what it is planning (see below), and reading the meal plan to work
+   * that out itself would be exactly the thing that doesn't belong here.
+   */
+  defaultSlot: MealSlot;
+  /**
    * Plans it onto the chosen night, returning the row that was written — or
    * null if the store refused it. Called while the sheet is still up, so the
    * caller must not raise an alert from here; see `onPlanned`.
@@ -88,7 +96,7 @@ interface Props {
  * is also how the same dish gets planned onto two nights without reopening
  * anything.
  */
-export function PlanMealSheet({ visible, title, onPlan, onPlanned, onClose }: Props) {
+export function PlanMealSheet({ visible, title, defaultSlot, onPlan, onPlanned, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -105,18 +113,24 @@ export function PlanMealSheet({ visible, title, onPlan, onPlanned, onClose }: Pr
   // with their dates.
   const [days, setDays] = useState<Date[]>(() => upcomingDays(new Date(), DAYS_OFFERED));
   const [dayKey, setDayKey] = useState<string>(() => dayKeyOf(new Date()));
-  const [slot, setSlot] = useState<MealSlot>('dinner');
+  const [slot, setSlot] = useState<MealSlot>(defaultSlot);
   /** The row just written, or null while the button is still armed. */
   const [planned, setPlanned] = useState<MealPlanEntry | null>(null);
+
+  // Read at the moment the sheet opens, not as an effect dependency: `defaultSlot`
+  // is recomputed by the caller from live meal-plan state and can change while
+  // this sheet is already open (planning a meal writes to that same state), and
+  // that must not reset the day/slot the user is mid-way through choosing or
+  // replay the opening animation under them.
+  const defaultSlotRef = useRef(defaultSlot);
+  defaultSlotRef.current = defaultSlot;
 
   useEffect(() => {
     if (!visible) return;
     const fresh = upcomingDays(new Date(), DAYS_OFFERED);
     setDays(fresh);
     setDayKey(dayKeyOf(fresh[0]));
-    // Dinner is what planning a recipe nearly always means, and it's the slot
-    // the meal plan's own picker defaults to. The chips are right there.
-    setSlot('dinner');
+    setSlot(defaultSlotRef.current);
     setPlanned(null);
     translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);

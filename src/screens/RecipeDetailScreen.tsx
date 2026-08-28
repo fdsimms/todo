@@ -223,7 +223,7 @@ export function RecipeDetailScreen() {
   const [editingPrepTask, setEditingPrepTask] = useState<RecipePrepTask | null>(null);
   const [addToListVisible, setAddToListVisible] = useState(false);
   const [planVisible, setPlanVisible] = useState(false);
-  const { planRecipe, offerPrepTasks } = usePlanMeal();
+  const { planRecipe, offerPrepTasks, earliestUnplannedSlotToday } = usePlanMeal();
   const [extractVisible, setExtractVisible] = useState(false);
   const [cookModeVisible, setCookModeVisible] = useState(false);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
@@ -1816,6 +1816,7 @@ export function RecipeDetailScreen() {
       <PlanMealSheet
         visible={planVisible}
         title={recipe.name}
+        defaultSlot={earliestUnplannedSlotToday()}
         onPlan={(dateKey, slot) => planRecipe(recipe, dateKey, slot)}
         // After the dismissal, never before — see PlanRecipeSheet.onPlanned.
         onPlanned={offerPrepTasks}

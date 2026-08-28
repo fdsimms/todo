@@ -85,6 +85,26 @@ export function cookEntryForRecipe(
   return sortMealEntries(candidates)[0] ?? null;
 }
 
+/**
+ * The earliest of `enabledSlots` (in day order) with nothing planned yet for
+ * this day — what a picker opened cold, with no slot named by whatever
+ * opened it (see RecipePickerSheet's `forceSlot`), should default to.
+ *
+ * Falls back to `dinner` when every enabled slot already has something in
+ * it, or none is enabled: there's no unplanned slot left to point at, and
+ * dinner is what a week plan is mostly about (see RecipePickerSheet's
+ * `lastPickedSlot` comment, which makes the same call for its own fallback).
+ */
+export function earliestUnplannedSlot(
+  entries: readonly Pick<MealPlanEntry, 'date' | 'slot'>[],
+  dayKey: string,
+  enabledSlots: readonly MealSlot[]
+): MealSlot {
+  const planned = new Set(entries.filter(e => e.date === dayKey).map(e => e.slot));
+  const ordered = MEAL_SLOTS.filter(s => enabledSlots.includes(s));
+  return ordered.find(s => !planned.has(s)) ?? 'dinner';
+}
+
 /** One (day, slot)'s entries, in reading order. Several is normal — see MealPlanEntry.sortOrder. */
 export function entriesForSlot(
   entries: readonly MealPlanEntry[],
