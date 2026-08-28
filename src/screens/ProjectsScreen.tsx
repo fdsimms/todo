@@ -35,7 +35,8 @@ import {
   type DropZone,
   type FabDropIntent,
 } from '../utils/fabDrop';
-import { ReorderableList } from '../components/ReorderableList';
+import { ReorderableList, type RowScroller } from '../components/ReorderableList';
+import { useScrollToTopOnTabPress } from '../hooks/useScrollToTopOnTabPress';
 import { ProgressBar } from '../components/ProgressBar';
 import { ProjectsOptionsMenu, type ProjectFilter } from '../components/ProjectsOptionsMenu';
 import { ProjectCategoriesSheet } from '../components/ProjectCategoriesSheet';
@@ -221,6 +222,10 @@ export function ProjectsScreen() {
   const [fabDragging, setFabDragging] = useState(false);
   // Lets the drag scroll the list once it reaches either end of the screen.
   const scrollControl = useRef<DragScroller | null>(null);
+  // Separate from the drag scroller above: this one backs the tab-press
+  // gesture, not autoscroll.
+  const rowScroller = useRef<RowScroller | null>(null);
+  useScrollToTopOnTabPress(rowScroller);
   // What the drag is aimed at goes through a channel rather than state: it
   // changes as the finger crosses each row, and re-rendering this screen
   // re-runs every row's renderItem. Only the button's label reads it.
@@ -483,6 +488,7 @@ export function ProjectsScreen() {
           // PaintSelectionProvider.
           scrollEnabled={!fabDragging && !painting}
           scrollControlRef={scrollControl}
+          rowScrollerRef={rowScroller}
           contentContainerStyle={styles.list}
           ListFooterComponent={
             <View style={{ height: selectionMode ? selectionListPadding : tabBarHeight + FAB_SIZE + spacing.xl }} />

@@ -3506,12 +3506,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // wrong was unanswerable from the outside.
     //
     // The undo bar is the right surface and not a consolation prize: it is
-    // already on screen for this exact completion, it is where the app's other
-    // "here is what that tap did" lines go, and it costs the user nothing to
-    // ignore. `recurs` is what separates it from an ordinary one-off, which
-    // also spawns nothing and always did.
+    // where the app's other "here is what that tap did" lines go, and it costs
+    // the user nothing to ignore. `recurs` is what separates it from an
+    // ordinary one-off, which also spawns nothing and always did.
+    //
+    // It only reaches that bar because the entry marks itself `destructive`,
+    // which is the flag UndoBar filters on. That is the one exception to
+    // "completes stay shake-only" and it is deliberate: an ordinary completion
+    // is undone by un-ticking the row, so a bar after every tick would be
+    // chrome, while a schedule quietly reaching its end leaves nothing on
+    // screen to notice or reverse. Without the flag this message was written
+    // but never shown — the bar it names was never raised for it.
     const finishedRecurrence = recurs && advancesBySchedule && !missed && nextTask === null;
     get().setLastAction({
+      destructive: finishedRecurrence,
       label: missed
         ? 'Task marked missed'
         : finishedRecurrence

@@ -93,6 +93,47 @@ describe('parseNaturalDate', () => {
     });
   });
 
+  describe('the "m"-less 12-hour shorthand ("5p", "9a")', () => {
+    it('reads "tomorrow 5p" the same as "tomorrow 5pm"', () => {
+      const d = parse('tomorrow 5p')!;
+      expect(d.getDate()).toBe(11);
+      expect(d.getHours()).toBe(17);
+      expect(d.getMinutes()).toBe(0);
+    });
+
+    it('reads "tomorrow 9a" as the morning', () => {
+      expect(parse('tomorrow 9a')!.getHours()).toBe(9);
+    });
+
+    it('keeps the minutes in "tomorrow 5:30p"', () => {
+      const d = parse('tomorrow 5:30p')!;
+      expect(d.getHours()).toBe(17);
+      expect(d.getMinutes()).toBe(30);
+    });
+
+    it('folds 12 the same way the full form does', () => {
+      expect(parse('tomorrow 12p')!.getHours()).toBe(12);
+      expect(parse('tomorrow 12a')!.getHours()).toBe(0);
+    });
+
+    it('leaves a 24-hour reading alone', () => {
+      // "5:30p" must not be found as the "5:30" the 24-hour branch would take,
+      // and a colon time with no letter still goes to that branch.
+      expect(parse('tomorrow 15:00')!.getHours()).toBe(15);
+    });
+
+    it('refuses a face that cannot hold the reading', () => {
+      expect(parse('tomorrow 15p')).toBeNull();
+    });
+
+    it('will not read a space between the digits and the letter', () => {
+      // The whole reason the shorthand is its own branch: one bare letter is
+      // too common a word to reach across a space for.
+      expect(parse('5 apr')!.getDate()).toBe(5);
+      expect(parse('take 2 a day')).toBeNull();
+    });
+  });
+
   describe('day parts', () => {
     it('parses "tomorrow morning"', () => {
       const d = parse('tomorrow morning')!;

@@ -1,0 +1,4 @@
+{
+  "message": "Quick add now reads \"5p\" and \"9a\" as times, not just \"5pm\" and \"9am\". Typing \"pay rent tmrw 5p\" schedules the task the way the tip has always said it would. Typed date fields understand the shorthand too.",
+  "date": "2026-08-28"
+}
