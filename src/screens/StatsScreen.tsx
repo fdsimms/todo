@@ -31,6 +31,14 @@ import { useProjectStore } from '../store/useProjectStore';
 import { isRealCompletion, mostMissed } from '../utils/missed';
 import { formatDuration } from '../utils/effort';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useFocusStore } from '../store/useFocusStore';
+import {
+  breakUse,
+  focusAccuracy,
+  focusMinutesByDay,
+  focusRecordsSince,
+  focusSummary,
+} from '../utils/focusStats';
 import {
   buildRhythmProfile,
   findSegmentMismatches,
@@ -64,6 +72,12 @@ import {
 } from '../utils/cookingStats';
 
 const BAR_HEIGHT = 96;
+// The window the focus summary rows describe. Matches HABIT_DAYS below rather
+// than the 7 days the chart draws: a fortnight of sessions is too few to say
+// anything about how long a stretch really runs, and the chart is answering a
+// different question (what did this week look like) from the rows (what is
+// normal for me).
+const FOCUS_DAYS = 30;
 // Shallower than the 7-day chart: 24 bars is a wide, low shape, and a tall one
 // would push the headline under it off the first screen.
 const HOUR_BAR_HEIGHT = 64;
@@ -285,6 +299,24 @@ export function StatsScreen() {
 
   const onTime = useMemo(() => onTimeSummary(tasks), [tasks]);
 
+  // --- Focus sessions -------------------------------------------------------
+  // The one area here whose history is not the task list: a session's cost is
+  // recorded as each stretch is retired (see utils/focusStats). The chart reads
+  // a week and the rows read a month, deliberately — see FOCUS_DAYS.
+  const focusHistory = useFocusStore(useShallow(s => s.history));
+  const focusDays = useMemo(
+    () => focusMinutesByDay(focusHistory, 7, now, dayResetTime),
+    [focusHistory, now, dayResetTime],
+  );
+  const focusBarMax = useMemo(() => Math.max(1, ...focusDays.map(d => d.minutes)), [focusDays]);
+  const focusRecent = useMemo(
+    () => focusRecordsSince(focusHistory, subDays(now, FOCUS_DAYS)),
+    [focusHistory, now],
+  );
+  const focusTotals = useMemo(() => focusSummary(focusRecent), [focusRecent]);
+  const focusRatio = useMemo(() => focusAccuracy(focusRecent), [focusRecent]);
+  const focusBreaks = useMemo(() => breakUse(focusRecent), [focusRecent]);
+
   // --- Projects -------------------------------------------------------------
   // Retrospective, like everything else here. "Which project has gone quiet" is
   // a real question and deliberately not this one's: it arrives as a task you
@@ -373,7 +405,12 @@ export function StatsScreen() {
   // The cascade counts from wherever the screen actually starts: for someone
   // whose history is all kitchen, every task section above is gone, and a fixed
   // index 9 would hold the whole screen blank for half a second.
-  const cookingStagger = hasTaskData ? 9 : 0;
+  // Its own gate, the same argument the cooking and project ones make: someone
+  // who focuses but completes nothing outside a session has history here, and
+  // an empty screen would be the bug those notes describe.
+  const hasFocusData = focusHistory.length > 0;
+  const focusStagger = hasTaskData ? 9 : 0;
+  const cookingStagger = focusStagger + (hasFocusData ? 2 : 0);
   // The same argument the cooking gate above already makes, one area further
   // out: someone tracking a project with nothing completed in it yet has data
   // here, and telling them the screen is empty is the bug that note describes.
@@ -383,11 +420,11 @@ export function StatsScreen() {
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Stats" subtitle={hasTaskData ? `${done.length} completed` : undefined} />
 
-      {!hasTaskData && !hasCooking && !hasProjectData ? (
+      {!hasTaskData && !hasCooking && !hasProjectData && !hasFocusData ? (
         <EmptyState
           icon="bar-chart-outline"
           title="No data yet"
-          subtitle="Complete tasks, start a project or cook a meal to see your stats here"
+          subtitle="Complete tasks, run a focus session, start a project or cook a meal to see your stats here"
           bottomOffset={tabBarHeight}
         />
       ) : (
@@ -660,6 +697,98 @@ export function StatsScreen() {
                     </View>
                   </View>
                 ))}
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/* Focused minutes per day — last 7 days, the same shape as the
+              completions chart above so the two read as one pair. */}
+          {hasFocusData && (
+            <StaggerIn index={focusStagger}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>FOCUS TIME PER DAY</Text>
+              <View style={styles.card}>
+                <View style={styles.chartInner}>
+                  {focusDays.map(({ dayKey, minutes }, i) => (
+                    <View key={dayKey} style={styles.chartCol}>
+                      <Text style={styles.barCount}>{minutes > 0 ? minutes : ' '}</Text>
+                      <View style={styles.barTrack}>
+                        <Animated.View
+                          style={[
+                            styles.bar,
+                            {
+                              height: chartProgress.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: ['0%', `${Math.max(3, Math.round((minutes / focusBarMax) * 100))}%`],
+                              }),
+                              // The last column is the current logical day by
+                              // construction, so this needs no isToday check —
+                              // focusMinutesByDay ends the run on it.
+                              backgroundColor: i === focusDays.length - 1 ? colors.accent : colors.bgQuaternary,
+                            },
+                          ]}
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.barLabel,
+                          i === focusDays.length - 1 && { color: colors.accent, fontWeight: fontWeight.semibold },
+                        ]}
+                      >
+                        {format(new Date(`${dayKey}T12:00:00`), 'EEE')}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            </View>
+            </StaggerIn>
+          )}
+
+          {/*
+            What a session is actually like, over a month. Counts and one ratio,
+            no red/green verdict — the same call the cooking section below makes
+            and for the same reason: a stretch that ended early is very often a
+            task finished sooner than planned, so grading it would be grading
+            someone for a good afternoon.
+          */}
+          {hasFocusData && focusTotals.sessions > 0 && (
+            <StaggerIn index={focusStagger + 1}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>FOCUS SESSIONS (LAST 30 DAYS)</Text>
+              <View style={styles.card}>
+                <View style={[styles.row, styles.rowBorder]}>
+                  <Text style={styles.rowText}>
+                    {focusTotals.sessions === 1 ? '1 session' : `${focusTotals.sessions} sessions`}
+                  </Text>
+                  <Text style={[styles.badgeText, { color: colors.accent }]}>
+                    {formatDuration(focusTotals.workedMinutes)}
+                  </Text>
+                </View>
+                <View style={[styles.row, styles.rowBorder]}>
+                  <Text style={styles.rowText}>Average session</Text>
+                  <Text style={styles.badgeText}>{formatDuration(focusTotals.averageSessionMinutes)}</Text>
+                </View>
+                <View style={[styles.row, focusRatio !== null && styles.rowBorder]}>
+                  <Text style={styles.rowText}>Longest session</Text>
+                  <Text style={styles.badgeText}>{formatDuration(focusTotals.longestSessionMinutes)}</Text>
+                </View>
+                {focusRatio !== null && (
+                  <View style={[styles.row, focusBreaks.total > 0 && styles.rowBorder]}>
+                    <Text style={styles.rowText}>
+                      Work stretches run {Math.round(focusRatio.ratio * 100)}% of their planned length
+                    </Text>
+                  </View>
+                )}
+                {focusBreaks.total > 0 && (
+                  <View style={styles.row}>
+                    <Text style={styles.rowText}>Breaks taken</Text>
+                    <Text style={styles.badgeText}>
+                      {focusBreaks.taken}/{focusBreaks.total}
+                    </Text>
+                  </View>
+                )}
               </View>
             </View>
             </StaggerIn>

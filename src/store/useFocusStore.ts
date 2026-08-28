@@ -1,10 +1,19 @@
 import { create } from 'zustand';
-import type { FocusSession, Task } from '../types';
-import { dbClearFocusSession, dbGetFocusSession, dbSaveFocusSession } from '../db/database';
+import type { FocusSession, FocusSessionRecord, Task } from '../types';
+import {
+  dbClearFocusSession,
+  dbGetFocusSession,
+  dbGetFocusSessionLog,
+  dbInsertFocusSessionRecord,
+  dbPruneFocusSessionLog,
+  dbSaveFocusSession,
+} from '../db/database';
 import { generateId } from '../utils/id';
+import { selectPurgeableFocusSessionIds } from '../utils/retention';
 import {
   advanceFocusSession,
   buildFocusPlan,
+  closeFocusSession,
   currentFocusStep,
   isFocusSessionFinished,
   pauseFocusSession,
@@ -33,6 +42,12 @@ import { cancelFocusStepAlarm, scheduleFocusStepAlarm } from '../utils/notificat
  */
 interface FocusStore {
   session: FocusSession | null;
+  /**
+   * Finished sessions, most recent first — what Stats reads. Loaded once and
+   * appended to as sessions end, rather than re-read on every render: the rows
+   * only ever change when this store writes one.
+   */
+  history: FocusSessionRecord[];
   initialized: boolean;
 
   /** Load the stored session and reconcile it against the task list. */
@@ -62,6 +77,12 @@ interface FocusStore {
   syncWithTasks: (tasks: readonly Task[]) => void;
   /** End the session and forget it. */
   endSession: () => void;
+  /**
+   * Drop finished sessions that ended before `cutoff`, returning how many
+   * went. Driven by the completed-task retention window — see
+   * `purgeOldCompletedTasks`, which is the one caller.
+   */
+  purgeHistoryBefore: (cutoff: Date) => number;
 }
 
 /**
@@ -82,13 +103,40 @@ function persist(session: FocusSession | null, set: (s: { session: FocusSession 
   void scheduleFocusStepAlarm(session);
 }
 
+/**
+ * Write a session that is going away into the history log, if it amounted to
+ * anything (see `closeFocusSession`).
+ *
+ * Both ways a session ends come through here — the user ending it, and a new
+ * one replacing it — because "start a session, work for an hour, start another
+ * without ending the first" is an ordinary thing to do and the hour is real
+ * either way. Deliberately *not* folded into `persist`: that runs on every
+ * tick, and a log written from there would need to know why it was called.
+ */
+function logFinishedSession(
+  session: FocusSession | null,
+  set: (s: { history: FocusSessionRecord[] }) => void,
+  history: readonly FocusSessionRecord[],
+): void {
+  if (!session) return;
+  const record = closeFocusSession(session);
+  if (!record) return;
+  dbInsertFocusSessionRecord(record);
+  // Prepended rather than re-read: the table is ordered by end date descending
+  // and this row is the newest there is. Filtered by id first so a session
+  // somehow closed twice replaces its row here the same way INSERT OR REPLACE
+  // does in SQLite, rather than showing up as two sessions.
+  set({ history: [record, ...history.filter(r => r.id !== record.id)] });
+}
+
 export const useFocusStore = create<FocusStore>((set, get) => ({
   session: null,
+  history: [],
   initialized: false,
 
   initialize(tasks) {
     const stored = dbGetFocusSession();
-    set({ session: stored, initialized: true });
+    set({ session: stored, history: dbGetFocusSessionLog(), initialized: true });
     if (stored === null) {
       void cancelFocusStepAlarm();
       return;
@@ -104,7 +152,11 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
 
   startSession(tasks, options) {
     const steps = buildFocusPlan([...tasks], options);
+    // Before the empty-plan bail: a start that produces no plan changes
+    // nothing, so the session already in flight is still in flight and must
+    // not be logged as finished.
     if (steps.length === 0) return;
+    logFinishedSession(get().session, set, get().history);
     persist({
       id: generateId(),
       startedAt: new Date().toISOString(),
@@ -116,6 +168,7 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
       stepStartedAt: new Date().toISOString(),
       stepElapsedSeconds: 0,
       completedTaskIds: [],
+      stepLog: [],
     }, set);
   },
 
@@ -195,6 +248,19 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   },
 
   endSession() {
+    logFinishedSession(get().session, set, get().history);
     persist(null, set);
+  },
+
+  purgeHistoryBefore(cutoff) {
+    const doomed = new Set(selectPurgeableFocusSessionIds(get().history, cutoff));
+    if (doomed.size === 0) return 0;
+    // The delete is by date rather than by the ids just collected: this store's
+    // copy is what was loaded at launch, and a session logged by another device
+    // and synced in since is equally out of the window. The in-memory filter
+    // then only has to agree about the rows it can see.
+    dbPruneFocusSessionLog(cutoff.toISOString());
+    set({ history: get().history.filter(r => !doomed.has(r.id)) });
+    return doomed.size;
   },
 }));

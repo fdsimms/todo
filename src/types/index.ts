@@ -254,6 +254,45 @@ export interface WeatherRule {
   lastFiredDayKey: string | null;
 }
 
+/**
+ * "After 30 minutes on the apps I picked, add a task" — the same
+ * user-authored-rule shape as `WeatherRule` above, against iOS Screen Time
+ * instead of the forecast, and stored the same way (`screenTimeRules` in
+ * settings, see `screenTimeRules.ts`).
+ *
+ * The one place it parts company with `WeatherRule` is `thresholdMinutes`.
+ * `weatherCondition.ts` deliberately refuses a per-rule number on the grounds
+ * that a rule's title says what its threshold is for ("Put on sunscreen" wants
+ * a lower bar than "Bring a heavy coat"). That move isn't available here: the
+ * number *is* the rule, and two rules over the same apps at 30 and 90 minutes
+ * are a perfectly ordinary pair to want.
+ *
+ * Which apps is not stored here, and can't be. The picked set lives in the App
+ * Group as opaque tokens iOS never resolves for the app, so every rule watches
+ * the same one selection — see modules/todo-screentime-bridge.
+ */
+export interface ScreenTimeRule {
+  id: string;
+  /** Minutes of use across the chosen apps that trips this rule. */
+  thresholdMinutes: number;
+  /** The task's title, e.g. "Take a walk". */
+  title: string;
+  // Off keeps the rule written down but stops it firing, same as WeatherRule.
+  enabled: boolean;
+  /**
+   * The day key (`dayKeyOf`) this rule last created a task on.
+   *
+   * Serves the job `WeatherRule.lastFiredDayKey` does — a task swiped away
+   * must not come straight back — but it cannot be written the same way. The
+   * weather mark is stamped before the day is even checked, because the app
+   * is what does the deciding; here the deciding happens in the OS and arrives
+   * as a crossing the app drains. So this is written when a crossing is
+   * actually turned into a task, and it is what makes a second report of the
+   * same rule on the same day a no-op.
+   */
+  lastFiredDayKey: string | null;
+}
+
 // A lightweight, collapsible label for grouping several independent tasks
 // together (e.g. "Take supplements" grouping Coq10/Vitamin D/Iron, each on
 // its own schedule). Deliberately NOT a Task — it has no dueDate, recurrence,
@@ -357,6 +396,66 @@ export interface FocusSession {
   /** Banked seconds within the *current* step only — reset on every advance. */
   stepElapsedSeconds: number;
   /** Tasks ticked off from inside the session, for its closing summary. */
+  completedTaskIds: string[];
+  /**
+   * What the steps already behind the cursor actually cost, oldest first.
+   *
+   * The session itself still keeps no per-step clock — `stepElapsedSeconds` is
+   * reset on every advance exactly as before, and nothing here is read to
+   * decide what is on screen. This is the *record*, banked as each step is
+   * left, and it exists because the alternative was logging from each of the
+   * four store actions that can retire a step (advance, prune, end, and a
+   * start that replaces a session in flight). That shape is the one this
+   * codebase has already been bitten by; banking inside the pure plan
+   * functions means a step cannot be dropped without a focusPlan test failing.
+   *
+   * One entry per step *run*, not per step planned: a session ended halfway
+   * records the half it did.
+   */
+  stepLog: FocusStepRecord[];
+}
+
+/**
+ * What one step of a session cost, once it's behind the cursor.
+ *
+ * `plannedMinutes` is copied off the step rather than looked up later because
+ * the plan can be pruned after the fact — the honest comparison is against
+ * what this stretch was actually given at the time it ran.
+ */
+export interface FocusStepRecord {
+  kind: FocusStepKind;
+  taskId: string | null;
+  /** What the plan allowed this stretch, in minutes. */
+  plannedMinutes: number;
+  /** What it actually took, pauses excluded. */
+  actualSeconds: number;
+  part: number;
+  partCount: number;
+  long: boolean;
+}
+
+/**
+ * A finished focus session, kept for Stats. Written once when the session ends
+ * and never updated after that.
+ *
+ * Deliberately not a `FocusSession` with an end date on it: the live session is
+ * a cursor into a plan that is still being pruned and re-timed, and the history
+ * row is a closed account of what ran. Storing one shape for both would mean
+ * every reader of the past having to reason about a plan's unrun tail.
+ */
+export interface FocusSessionRecord {
+  id: string;
+  startedAt: string;
+  endedAt: string;
+  /** Seconds of *work* steps that actually ran, pauses excluded. */
+  workedSeconds: number;
+  /** Seconds of *rest* steps that actually ran. */
+  restedSeconds: number;
+  /** What the plan allowed for the work steps that ran, in minutes. */
+  plannedWorkMinutes: number;
+  /** The steps that ran, oldest first. */
+  steps: FocusStepRecord[];
+  /** Tasks ticked off from inside the session. */
   completedTaskIds: string[];
 }
 
@@ -802,7 +901,14 @@ export type GeneratedKind =
   // calendar, not a row" position calendarReview is in, and for the same
   // reason writeGeneratedOptOut has nothing to write for it: the rule it
   // points at lives in settings, not in a row a stamp could be spent against.
-  | 'weather';
+  | 'weather'
+  // A Screen Time usage threshold the user wrote down ("after 30 minutes on
+  // these apps") that the OS reported crossed — see
+  // src/utils/screenTimeRules.ts. Its source id is a day key and a rule id,
+  // the same `${dayKey}#${ruleId}` shape weather uses and for the same reason:
+  // the source is a rule in settings, not a row a decline could be stamped on,
+  // so writeGeneratedOptOut has nothing to write for it either.
+  | 'screenTime';
 
 export interface Task {
   id: string;

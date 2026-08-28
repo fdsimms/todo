@@ -70,6 +70,8 @@ jest.mock('../db/database', () => ({
   dbGetFocusSession: jest.fn().mockReturnValue(null),
   dbSaveFocusSession: jest.fn(),
   dbClearFocusSession: jest.fn(),
+  dbGetFocusSessionLog: jest.fn().mockReturnValue([]),
+  dbInsertFocusSessionRecord: jest.fn(),
   dbInsertTaskGroup: jest.fn(),
   dbUpdateTaskGroup: jest.fn(),
   dbDeleteTaskGroup: jest.fn(),

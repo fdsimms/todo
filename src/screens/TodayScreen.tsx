@@ -1126,6 +1126,9 @@ export function TodayScreen() {
           // Beside it, same trigger — the reading this checks against is kept
           // current by useWeatherSync's own AppState listener.
           useTaskStore.getState().checkWeatherTasks();
+          // Beside it, same trigger — the crossings this checks against are
+          // kept current by useScreenTimeSync's own AppState listener.
+          useTaskStore.getState().checkScreenTimeTasks();
           // And any template whose schedule came due while the app sat in the
           // background (#1781) — a weekly run would otherwise wait for the next
           // cold start, which for a phone left open all week never comes. Same

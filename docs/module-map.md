@@ -74,8 +74,10 @@ render, so listing them adds lines without adding answers.
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, backfillFieldCounts, dismissBackfillField, estimatePatchFor
 - `src/utils/focusLiveActivity.ts` — FocusRun, buildFocusRun, useFocusLiveActivitySync
-- `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +14 more
+- `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +17 more
 - `src/utils/focusSettings.ts` — FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX, FOCUS_REST_MIN, FOCUS_REST_MAX, FOCUS_REST_AFTER_TASKS_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_LONG_REST_EVERY_MIN, FOCUS_LONG_REST_EVERY_MAX, FOCUS_WINDOW_MIN, +14 more
+- `src/utils/focusShield.ts` — shieldWanted, syncFocusShield
+- `src/utils/focusStats.ts` — MIN_ACCURACY_SAMPLES, FocusDayTotal, focusMinutesByDay, FocusSummary, focusSummary, focusRecordsSince, FocusAccuracy, focusAccuracy, BreakUse, breakUse
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
@@ -180,10 +182,12 @@ render, so listing them adds lines without adding answers.
 - `src/utils/remindersImport.ts` — draftFromReminder, recurrenceFromRule, reminderTimeFromAlarms, scheduleToDraft, pendingImportFor, describePendingImport, isImportableList, reminderListOptions, findReminderList, sortRemindersByCreation, +12 more
 - `src/utils/remindersImportSync.ts` — RemindersPermission, ImportOutcome, lastImportOutcome, getRemindersPermission, requestRemindersPermission, listReminderLists, countImportableReminders, groceryMirrorSignature, importReminders, useRemindersImportSync
 - `src/utils/reorder.ts` — moveItem, dropIndexFromTranslation, cumulativeOffsets, rowDragOffset, rowIndexAtContentY, dragRange, dragTranslation, clampCardToSlots, reorderSubset
-- `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds
+- `src/utils/retention.ts` — RetentionDays, RETENTION_OPTIONS, retentionLabel, parseRetentionDays, retentionCutoff, selectPurgeableTaskIds, selectPurgeableFocusSessionIds, retentionDeletionSummary
 - `src/utils/rhythms.ts` — SegmentBoundaries, DEFAULT_BOUNDARIES, RhythmOptions, MIN_SAMPLES, segmentOf, HourRange, RhythmProfile, buildRhythmProfile, formatHour, formatHourRange, +3 more
 - `src/utils/rhythmsSettings.ts` — rhythmOptionsFromSettings
 - `src/utils/scanResolve.ts` — ScannedItem, ScannedGtinLink, shopperNameFor, sourceLabelFor, variantFor, scannedItemFor, pluScannedItem, unknownScannedItem, alreadyScanned, ScanResolver, +1 more
+- `src/utils/screenTimeBridge.ts` — ScreenTimeBridge, screenTimeBridge, isScreenTimeSupported
+- `src/utils/screenTimeRules.ts` — SCREEN_TIME_RULE_TITLE_MAX_LENGTH, SCREEN_TIME_THRESHOLD_MIN, SCREEN_TIME_THRESHOLD_MAX, SCREEN_TIME_THRESHOLD_DEFAULT, clampThresholdMinutes, defaultScreenTimeRules, parseScreenTimeRules, serializeScreenTimeRules, screenTimeSourceId, parseScreenTimeSourceId, +3 more
 - `src/utils/scrollClamp.ts` — maxRestingOffset, strandedScrollOffset, NO_INSET, NO_INSET_ALT, pulseNoInset
 - `src/utils/scrollFade.ts` — SCROLL_FADE_HEIGHT, SCROLL_FADE_TOLERANCE, ScrollEdgeMetrics, hiddenBelow, hiddenAbove, edgeFadeOpacity
 - `src/utils/searchCollapse.ts` — SearchOccurrence, CollapsedOccurrence, occurrenceFamilyKey, collapseOccurrences, formatOccurrenceCount
@@ -265,6 +269,7 @@ render, so listing them adds lines without adding answers.
 - `src/store/useProjectCategoryStore.ts` — useProjectCategoryStore
 - `src/store/useProjectStore.ts` — projectProgress, projectDecisions, isProjectPastWindow, useProjectStore
 - `src/store/useRecipeStore.ts` — CookStats, useRecipeStore
+- `src/store/useScreenTimeStore.ts` — useScreenTimeStore, useScreenTimeSync
 - `src/store/useSettingsStore.ts` — PatchNoteQaStatus, WeekStart, FabHand, MealsOnToday, NewTaskDefaults, DEFAULT_REMINDER_LEAD_OPTIONS, useSettingsStore
 - `src/store/useSharedLinkStore.ts` — useSharedLinkStore
 - `src/store/useStepTimerStore.ts` — useStepTimerStore
@@ -285,6 +290,7 @@ render, so listing them adds lines without adding answers.
 - `src/hooks/useDragToDay.ts` — DayDragHandlers, DayDragSource, useDragToDay
 - `src/hooks/useElevatedCellRenderer.tsx` — useElevatedCellRenderer
 - `src/hooks/useFocusSession.ts` — useFocusSession
+- `src/hooks/useFocusShieldSync.ts` — useFocusShieldSync
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, useKeyboardInsetScroll
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
 - `src/hooks/useNowTick.ts` — useNowTick
@@ -305,7 +311,7 @@ render, so listing them adds lines without adding answers.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +162 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +165 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SYNC_DELETIONS_TABLE, NOW_EXPR, TOMBSTONE_RETENTION_DAYS, rowKeyExpr, +5 more
 
 ## `src/services`

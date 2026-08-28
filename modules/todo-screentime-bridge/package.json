@@ -1,0 +1,7 @@
+{
+  "name": "todo-screentime-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module for iOS Screen Time: choosing apps to shield, shielding them during a focus session, and the usage thresholds the DeviceActivity monitor extension watches.",
+  "main": "index.ts",
+  "private": true
+}

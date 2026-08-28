@@ -1,0 +1,4 @@
+{
+  "message": "You can now have distracting apps blocked while a focus session is running. Turn on \"Block apps while focusing\" in Settings under Focus sessions, pick the apps, and they stay blocked until you pause or finish the session. iOS doesn't tell the app which apps you picked, so the setting shows a count rather than a list.",
+  "date": "2026-08-28"
+}

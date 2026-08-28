@@ -7,17 +7,27 @@
  * task list while the session runs, and deleting it outright.
  */
 
-import type { FocusSession, Task } from '../types';
+import type { FocusSession, FocusSessionRecord, Task } from '../types';
 import type { FocusPlanOptions } from '../utils/focusPlan';
 
 const mockDb = {
   session: null as FocusSession | null,
+  log: [] as FocusSessionRecord[],
 };
 
 jest.mock('../db/database', () => ({
   dbGetFocusSession: jest.fn(() => mockDb.session),
   dbSaveFocusSession: jest.fn((s: FocusSession) => { mockDb.session = s; }),
   dbClearFocusSession: jest.fn(() => { mockDb.session = null; }),
+  dbGetFocusSessionLog: jest.fn(() => mockDb.log),
+  dbPruneFocusSessionLog: jest.fn((cutoffIso: string) => {
+    const before = mockDb.log.length;
+    mockDb.log = mockDb.log.filter(r => r.endedAt >= cutoffIso);
+    return before - mockDb.log.length;
+  }),
+  dbInsertFocusSessionRecord: jest.fn((r: FocusSessionRecord) => {
+    mockDb.log = [r, ...mockDb.log.filter(existing => existing.id !== r.id)];
+  }),
 }));
 
 const mockScheduleAlarm = jest.fn().mockResolvedValue(undefined);
@@ -30,7 +40,7 @@ jest.mock('../utils/notifications', () => ({
 
 import { useFocusStore } from '../store/useFocusStore';
 import { currentFocusStep, isFocusRunning, isFocusSessionFinished } from '../utils/focusPlan';
-import { dbSaveFocusSession } from '../db/database';
+import { dbSaveFocusSession, dbPruneFocusSessionLog } from '../db/database';
 
 const OPTIONS: FocusPlanOptions = {
   workCapMinutes: 25,
@@ -65,10 +75,12 @@ const live = (): FocusSession => {
 
 beforeEach(() => {
   mockDb.session = null;
-  useFocusStore.setState({ session: null, initialized: false });
+  mockDb.log = [];
+  useFocusStore.setState({ session: null, history: [], initialized: false });
   mockScheduleAlarm.mockClear();
   mockCancelAlarm.mockClear();
   (dbSaveFocusSession as jest.Mock).mockClear();
+  (dbPruneFocusSessionLog as jest.Mock).mockClear();
 });
 
 describe('startSession', () => {
@@ -284,5 +296,124 @@ describe('endSession', () => {
     expect(state().session).toBeNull();
     expect(mockDb.session).toBeNull();
     expect(mockScheduleAlarm).toHaveBeenLastCalledWith(null);
+  });
+});
+
+describe('session history', () => {
+  /**
+   * Puts real time on the current step, since the log deliberately refuses a
+   * session too short to be one (see MIN_LOGGED_SESSION_SECONDS).
+   */
+  const runCurrentStepFor = (seconds: number) => {
+    const session = live();
+    useFocusStore.setState({
+      session: { ...session, stepStartedAt: null, stepElapsedSeconds: seconds },
+    });
+  };
+
+  it('loads what is already logged on initialize', () => {
+    mockDb.log = [{
+      id: 'old', startedAt: 'x', endedAt: 'y', workedSeconds: 600, restedSeconds: 0,
+      plannedWorkMinutes: 10, steps: [], completedTaskIds: [],
+    }];
+    state().initialize([]);
+    expect(state().history.map(r => r.id)).toEqual(['old']);
+  });
+
+  it('logs a session when it ends, newest first', () => {
+    state().startSession([task('a')], OPTIONS);
+    const id = live().id;
+    runCurrentStepFor(20 * 60);
+    state().endSession();
+
+    expect(state().session).toBeNull();
+    expect(state().history.map(r => r.id)).toEqual([id]);
+    expect(state().history[0].workedSeconds).toBe(1200);
+  });
+
+  it('logs the session a new one replaces, so an hour of work is not lost', () => {
+    state().startSession([task('a')], OPTIONS);
+    const first = live().id;
+    runCurrentStepFor(45 * 60);
+    state().startSession([task('b')], OPTIONS);
+
+    expect(state().history.map(r => r.id)).toEqual([first]);
+    expect(live().id).not.toBe(first);
+  });
+
+  it('does not log the session in flight when a start produces no plan', () => {
+    state().startSession([task('a')], OPTIONS);
+    runCurrentStepFor(45 * 60);
+    state().startSession([], OPTIONS);
+
+    // Nothing changed, so nothing finished — the session is still running.
+    expect(state().history).toEqual([]);
+    expect(state().session).not.toBeNull();
+  });
+
+  it('writes nothing for a session ended before it amounted to anything', () => {
+    state().startSession([task('a')], OPTIONS);
+    runCurrentStepFor(4);
+    state().endSession();
+
+    expect(state().history).toEqual([]);
+    expect(state().session).toBeNull();
+  });
+
+  it('ending with no session at all is a no-op rather than a null row', () => {
+    state().endSession();
+    expect(state().history).toEqual([]);
+  });
+
+  it('keeps one row for a session somehow closed twice', () => {
+    state().startSession([task('a')], OPTIONS);
+    const session = live();
+    runCurrentStepFor(20 * 60);
+    state().endSession();
+    // The same session restored and ended again, as a relaunch could.
+    useFocusStore.setState({ session });
+    state().endSession();
+
+    expect(state().history.filter(r => r.id === session.id)).toHaveLength(1);
+  });
+});
+
+describe('purgeHistoryBefore', () => {
+  const record = (id: string, endedAt: string): FocusSessionRecord => ({
+    id, startedAt: endedAt, endedAt, workedSeconds: 600, restedSeconds: 0,
+    plannedWorkMinutes: 10, steps: [], completedTaskIds: [],
+  });
+
+  const seed = () => {
+    mockDb.log = [
+      record('old', new Date(2026, 6, 1, 10).toISOString()),
+      record('recent', new Date(2026, 7, 25, 10).toISOString()),
+    ];
+    state().initialize([]);
+  };
+
+  it('drops what is outside the window from both the log and the store', () => {
+    seed();
+    expect(state().purgeHistoryBefore(new Date(2026, 7, 20))).toBe(1);
+    expect(state().history.map(r => r.id)).toEqual(['recent']);
+    expect(mockDb.log.map(r => r.id)).toEqual(['recent']);
+  });
+
+  it('writes nothing when everything is inside the window', () => {
+    seed();
+    expect(state().purgeHistoryBefore(new Date(2020, 0, 1))).toBe(0);
+    expect(state().history).toHaveLength(2);
+    expect(dbPruneFocusSessionLog).not.toHaveBeenCalled();
+  });
+
+  it('deletes by date rather than by the ids it happened to load', () => {
+    // The store's copy is what was read at launch; a session synced in from
+    // another device since is equally out of the window, so the SQL is what
+    // decides. Asserted through the argument, since this store cannot see a
+    // row it never loaded.
+    seed();
+    const cutoff = new Date(2026, 7, 20);
+    state().purgeHistoryBefore(cutoff);
+    expect(dbPruneFocusSessionLog).toHaveBeenCalledWith(cutoff.toISOString());
   });
 });

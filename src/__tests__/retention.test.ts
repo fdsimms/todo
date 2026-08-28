@@ -4,6 +4,8 @@ import {
   retentionCutoff,
   retentionLabel,
   selectPurgeableTaskIds,
+  selectPurgeableFocusSessionIds,
+  retentionDeletionSummary,
 } from '../utils/retention';
 import type { Task } from '../types';
 
@@ -272,5 +274,65 @@ describe('selectPurgeableTaskIds', () => {
   it('takes nothing when everything is inside the window', () => {
     const tasks = [completedDaysAgo('a', 1), completedDaysAgo('b', 89)];
     expect(selectPurgeableTaskIds(tasks, cutoff)).toEqual([]);
+  });
+});
+
+describe('selectPurgeableFocusSessionIds', () => {
+  const record = (id: string, endedAt: string) => ({ id, endedAt });
+  const cutoff = new Date(2026, 7, 20, 0, 0, 0, 0);
+
+  it('takes a session that ended before the cutoff', () => {
+    expect(selectPurgeableFocusSessionIds([record('a', new Date(2026, 7, 1, 10).toISOString())], cutoff))
+      .toEqual(['a']);
+  });
+
+  it('keeps one that ended on or after it', () => {
+    const records = [
+      record('on', cutoff.toISOString()),
+      record('after', new Date(2026, 7, 25, 10).toISOString()),
+    ];
+    expect(selectPurgeableFocusSessionIds(records, cutoff)).toEqual([]);
+  });
+
+  it('judges a session on when it ended, not when it started', () => {
+    // A session that ran across the boundary is filed on its end date by the
+    // chart too, so the two agree about which day it belongs to.
+    const records = [record('spanning', new Date(2026, 7, 20, 1).toISOString())];
+    expect(selectPurgeableFocusSessionIds(records, cutoff)).toEqual([]);
+  });
+
+  it('has none of the exemptions a task has — every old row goes', () => {
+    // No archiving, no deliverable answer to preserve, no parent to cascade
+    // from: a finished session is a closed account and the only question is
+    // whether it is inside the window.
+    const records = [
+      record('a', new Date(2026, 6, 1).toISOString()),
+      record('b', new Date(2026, 6, 2).toISOString()),
+      record('c', new Date(2026, 6, 3).toISOString()),
+    ];
+    expect(selectPurgeableFocusSessionIds(records, cutoff)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('is empty for an empty log', () => {
+    expect(selectPurgeableFocusSessionIds([], cutoff)).toEqual([]);
+  });
+});
+
+describe('retentionDeletionSummary', () => {
+  it('names both counts when both are about to go', () => {
+    expect(retentionDeletionSummary(12, 4)).toBe('12 completed tasks and 4 focus sessions');
+  });
+
+  it('names only what is actually going', () => {
+    expect(retentionDeletionSummary(12, 0)).toBe('12 completed tasks');
+    expect(retentionDeletionSummary(0, 4)).toBe('4 focus sessions');
+  });
+
+  it('gets both singulars right', () => {
+    expect(retentionDeletionSummary(1, 1)).toBe('1 completed task and 1 focus session');
+  });
+
+  it('is empty when nothing is going, which is the caller’s cue not to ask', () => {
+    expect(retentionDeletionSummary(0, 0)).toBe('');
   });
 });

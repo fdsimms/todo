@@ -147,6 +147,7 @@ function makeSession(overrides: Partial<FocusSession> = {}): FocusSession {
     stepStartedAt: STEP_START,
     stepElapsedSeconds: 0,
     completedTaskIds: [],
+    stepLog: [],
     ...overrides,
   };
 }

@@ -263,7 +263,7 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (fourteen generators now: `weather` is the newest, and the first whose source is a rule the user wrote rather than a row) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (fifteen generators now: `screenTime` is the newest, and the second whose source is a rule the user wrote rather than a row) |
 | a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
@@ -351,15 +351,15 @@ exports.
 **Read narrowly.** 49 files are over 1,000 lines, 31 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (7.0k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (4.8k),
-`store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.4k), `types/index.ts` (4.2k),
+`store/useTaskStore.ts` (7.1k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (4.9k),
+`store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.4k), `types/index.ts` (4.3k),
 `components/TaskItem.tsx` (4.0k), `components/QuickAddModal.tsx` (3.0k),
-`store/useSettingsStore.ts` (2.8k), `utils/demoSeed.ts` (2.8k).
+`store/useSettingsStore.ts` (2.9k), `utils/demoSeed.ts` (2.9k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **243 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **248 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -823,6 +823,18 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   pick a *default* category are deliberately still `PillGroup` — they sit on a page that scrolls,
   so their "N more" is reachable, and their neighbours are the other Settings pill grids.
 - `CollapsibleField` (`src/components/CollapsibleField.tsx`) — a picker section inside an editor card. Collapsed it is `LABEL … value ⌄`; expanded it shows a one-line `hint` explaining the field, then the pills (Category's own contents are a `CategoryPickerList` instead — same disclosure, a list inside it). **Every editor picker (category, project, tags, priority, effort, …) uses this** — see the progressive disclosure note below.
+- `RuleListSheet` (`src/components/RuleListSheet.tsx`) — the sheet a list of user-authored
+  "when X, add this task" rules is edited in: one card, one row per rule (title, a secondary line,
+  a toggle, a chevron), tap to expand into a control, a title field and a delete row, plus an
+  `InlineAction` to add one and an `EmptyState` when there are none. `WeatherRulesSheet` and
+  `ScreenTimeRulesSheet` are both this, and they shipped as near-identical copies first — sixty
+  lines of styles matched character for character, which is the drift `SheetHeaderButton` and
+  `InlineAction` exist to undo, one level up. **A third rules sheet uses this rather than copying
+  one of them.** What a caller supplies is the two ends: `header` (anything above the list — a
+  permission card, a picker) and `renderEditor` (the rule-specific control in the expanded row).
+  `RuleSheetNoticeCard` beside it is the card shape both use for the first of those. It needs no
+  unsaved-changes guard because every edit commits straight through `onChange` as it's made —
+  the other valid answer to the pageSheet `onRequestClose` rule below, not a workaround.
 - `EditorRow` (`src/components/EditorRow.tsx`) — the `icon — label — value ›` row every editor sheet is built from (Date, Deadline, Remind me, Link, …). Pass `expanded` for rows whose controls unfold in place rather than opening a picker, and the chevron becomes up/down.
 - **Filtering by an open-ended set of options (tags, categories) is a bottom sheet with wrapping chips, never a horizontal scrolling chip row.** `LogbookFilterSheet` and `RecipeTagFilterSheet` are the two instances — both replaced a scroll row that had shipped first. A scroll row hides every option past what fits on screen behind a swipe nobody is prompted to make, and a vocabulary the user builds themselves (tags especially) has no ceiling a phone-width row can assume; wrapping puts the whole set on screen at once. The screen itself keeps only a small trigger row: a "Filter"/"Tags" button that opens the sheet, plus whatever's *currently selected* as removable pills (`ActiveFilterPill` in `LogbookScreen`, the `activePill` styles in `RecipesScreen`) — that set stays small by construction, so a scrolling row is still the right shape for it. Don't reach for a horizontal `ScrollView` of chips as the *filter control itself* again; that's the mistake both of these fixed.
 - `SelectionDot` (`src/components/SelectionDot.tsx`) — the circle at a row's **trailing** edge that

@@ -1,4 +1,4 @@
-# Generated tasks: the fourteen things that write a task unattended
+# Generated tasks: the fifteen things that write a task unattended
 
 The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
 project reviews, pantry checks and the pantry review, supply reorders, the
@@ -22,7 +22,7 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the fourteen things that write a task unattended
+## Generated tasks — the fifteen things that write a task unattended
 
 Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
@@ -579,3 +579,46 @@ carried unchanged into "Eat X" (`mealSlotDrift` writes `linkUrl` unconditionally
 `chainIndex === 0`): it's the same dish either way, and there's no second field to hold two
 destinations for one row. The picker link for an unanswered slot, and the meal-plan link for a
 leftover/takeout/typed answer, are unchanged.
+
+## `screenTime` — the fifteenth, and the second rule the user wrote
+
+"After 30 minutes on the apps I picked, add a task to take a walk." Structurally it is `weather`
+(`src/utils/screenTimeRules.ts` is `weatherTasks.ts` with the condition swapped for a number), and
+the differences all come from one place: **the app cannot see usage.**
+
+- **The decision isn't the app's.** `weather` reads a forecast and applies the rule itself.
+  Here the app arms iOS with a threshold and is told, later and in another process, that it was
+  crossed. So `checkScreenTimeTasks` walks the *crossings* rather than the rules, and there is no
+  classifier — nothing here corresponds to `weatherCondition.ts`, because there is no reading to
+  classify. Usage figures exist only inside a `DeviceActivityReport` extension, which is sandboxed
+  with no route back to the app; what a `DeviceActivityMonitor` extension gets is which event
+  tripped, not by how much.
+- **The idempotency mark can't be spent before the decision.** Every other day-keyed generator
+  writes its mark ahead of the qualifying check, so a swiped-away task can't return the same day.
+  That order is unavailable when the deciding happens in the OS: `ScreenTimeRule.lastFiredDayKey`
+  is written when a crossing is *turned into* a task. There is no "considered and found not to
+  apply" case to mark, because a rule that didn't trip produces no crossing at all.
+- **Every rule watches one app selection**, and it is not stored in the rule. iOS hands back opaque
+  `ApplicationToken`s that only SwiftUI can render, so the picked set lives in the App Group and
+  rules differ by threshold and title alone. This is also why the picker sits above the rule list
+  rather than inside a rule: a per-rule set of apps isn't a design that was passed over, it isn't
+  available.
+- **`thresholdMinutes` is per-rule**, which is the one place this deliberately departs from
+  `weatherCondition.ts`'s refusal to expose a threshold per rule. That refusal rests on the title
+  saying what the bar is for ("Put on sunscreen" wants a lower one than "Bring a heavy coat"). The
+  move isn't available here: the number *is* the rule, and 30 and 90 minutes over the same apps are
+  an ordinary pair to want.
+- **The day key is stamped by the app, not the extension.** The extension has no access to
+  `dayResetTime` and `Date()` there is the calendar day, so a crossing would be filed a day early
+  for anyone whose day starts at 4am. The app writes the logical day when it arms the monitor and
+  the extension reads it back; a crossing with no day to file under is dropped rather than guessed.
+- **It ships off**, like `weather` and `pantryCheck`, and for a reason on top of theirs: it wants a
+  Screen Time authorization the app doesn't hold. Asking is a Settings action, from the rules
+  sheet — never something a sweep does.
+- **It is the second generator gated on `isDemoModeActive()`**, and the gate matters more here than
+  it does for `calendarReview`. Crossings are drained *destructively* from the OS, so acting on them
+  against a database about to be discarded wouldn't merely write fiction, it would lose the crossing
+  outright. Both halves refuse: `screenTimeBridge()` won't drain, and `checkScreenTimeTasks` won't
+  run. The demo's own example task is seeded directly in `demoSeed.ts`.
+- **It does not gate on vacation mode**, following `weather` rather than `mealPlanNudge`. A rule
+  about your own phone use is sunscreen, not work: vacation is exactly when somebody might want it.

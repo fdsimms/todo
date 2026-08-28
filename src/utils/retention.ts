@@ -116,3 +116,50 @@ export function selectPurgeableTaskIds(tasks: Task[], cutoff: Date): string[] {
     )
     .map(t => t.id);
 }
+
+/**
+ * Finished focus sessions old enough to purge, under the same window.
+ *
+ * Shares `completedRetentionDays` rather than getting a setting of its own.
+ * The two are one promise from the user's side — "keep my history for N" —
+ * and a second window would mean the Logbook and the Stats focus sections
+ * could disagree about how far back the app remembers, which is not a
+ * distinction anybody asked for.
+ *
+ * Simpler than `selectPurgeableTaskIds` because a session record has none of
+ * the exemptions a task has. There is no archiving, no deliverable answer to
+ * preserve, and no parent to cascade from: every row is a closed account of an
+ * hour that has passed, and the only question is whether it is inside the
+ * window. `endedAt` rather than `startedAt`, so a session that ran across the
+ * boundary is judged on when it finished — the same day the chart files it
+ * under (see `focusMinutesByDay`).
+ */
+export function selectPurgeableFocusSessionIds(
+  records: readonly { id: string; endedAt: string }[],
+  cutoff: Date,
+): string[] {
+  return records
+    .filter(r => new Date(r.endedAt).getTime() < cutoff.getTime())
+    .map(r => r.id);
+}
+
+/**
+ * "12 completed tasks and 4 focus sessions" — what a window is about to take,
+ * for the confirm dialog.
+ *
+ * Here rather than inline in the settings screen because the dialog is the
+ * whole safety mechanism of this feature (a setting that deletes has to show
+ * what it costs at the moment it's chosen, not silently at the next launch),
+ * and it now has two counts to get right instead of one. Either can be zero;
+ * both being zero is the caller's cue not to ask at all.
+ */
+export function retentionDeletionSummary(taskCount: number, sessionCount: number): string {
+  const parts: string[] = [];
+  if (taskCount > 0) {
+    parts.push(`${taskCount} completed task${taskCount === 1 ? '' : 's'}`);
+  }
+  if (sessionCount > 0) {
+    parts.push(`${sessionCount} focus session${sessionCount === 1 ? '' : 's'}`);
+  }
+  return parts.join(' and ');
+}
