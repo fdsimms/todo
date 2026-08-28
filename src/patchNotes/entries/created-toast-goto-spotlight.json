@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where tapping \"Go to it\" on the created-task toast could leave the destination screen dimmed with no task actually focused.",
+  "date": "2026-08-28"
+}
