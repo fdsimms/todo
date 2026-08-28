@@ -3589,11 +3589,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: 6,
     paddingVertical: spacing.xs,
   },
-  // Indents the subtask list a little to the right of the task's own content,
-  // so it visually nests under the task it belongs to.
+  // Indents the subtask list so its checkbox lines up under the task's own
+  // title rather than under the task's checkbox — expandedPanel's own
+  // paddingHorizontal (spacing.md) plus this equals circleWrapper's
+  // marginLeft + width + the row's gap to `content` (spacing.md + 24 +
+  // spacing.sm = 48), which is where the title starts.
   subtaskSection: {
     gap: 0,
-    paddingLeft: spacing.sm,
+    paddingLeft: spacing.xl,
     paddingTop: 0,
   },
   sectionDivider: {
