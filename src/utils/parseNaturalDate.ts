@@ -97,7 +97,20 @@ export function strip(text: string, match: RegExpMatchArray): string {
     .trim();
 }
 
-/** Pull a clock time ("3pm", "3:30pm", "15:00", "noon", "midnight") out of the text. */
+/**
+ * Fold a 12-hour reading and its meridiem letter into a 24-hour clock, or null
+ * if the face can't hold it ("15pm", "3:75pm"). Callers return that null
+ * straight out of extractTime rather than falling through to the next branch —
+ * a number that named a meridiem was meant as a time, so the honest answer is
+ * "no time here", not a second guess at it as a 24-hour reading.
+ */
+function twelveHourClock(hour: number, min: number, meridiem: string): ClockTime | null {
+  if (hour > 12 || min > 59) return null;
+  const h = hour === 12 ? 0 : hour;
+  return { h: meridiem[0] === 'p' ? h + 12 : h, m: min };
+}
+
+/** Pull a clock time ("3pm", "5p", "3:30pm", "15:00", "noon", "midnight") out of the text. */
 export function extractTime(text: string): { time: ClockTime; rest: string } | null {
   let m: RegExpMatchArray | null;
 
@@ -106,13 +119,29 @@ export function extractTime(text: string): { time: ClockTime; rest: string } | n
 
   // 12-hour clock with am/pm, e.g. "3pm", "3:30 pm", "9 a.m."
   if ((m = text.match(/\b(\d{1,2})(?::(\d{2}))?\s*(a\.?m\.?|p\.?m\.?)/))) {
-    let h = parseInt(m[1], 10);
-    const min = m[2] ? parseInt(m[2], 10) : 0;
-    if (h > 12 || min > 59) return null;
-    const pm = m[3][0] === 'p';
-    if (h === 12) h = 0;
-    if (pm) h += 12;
-    return { time: { h, m: min }, rest: strip(text, m) };
+    const time = twelveHourClock(parseInt(m[1], 10), m[2] ? parseInt(m[2], 10) : 0, m[3]);
+    return time ? { time, rest: strip(text, m) } : null;
+  }
+
+  // The same clock with the "m" dropped — "5p", "9a", "5:30p" — which is how
+  // people actually type it in a hurry, and what quick add's own tip has always
+  // advertised ("pay rent tmrw 5p #home").
+  //
+  // The letter has to sit flush against the digits, which is the whole reason
+  // this is a branch of its own rather than an optional "m" on the one above:
+  // one bare letter is far too common a word to read a space across. "take 2 a
+  // day" is not 2am, and "5 apr" is not five in the morning — both keep their
+  // space and so never reach this pattern, while "5p" has none to keep.
+  //
+  // It sits ahead of the 24-hour branch so "5:30p" is half past five in the
+  // afternoon rather than the "5:30" that branch would find first.
+  //
+  // Deliberately *not* added to parseTaskInput's SINGLE_WORD_SAFE: a lone
+  // trailing "5a" is as likely to be a room or flat number as a time, and that
+  // list is exactly where short tokens that need a connector are held back.
+  if ((m = text.match(/\b(\d{1,2})(?::(\d{2}))?([ap])\b/))) {
+    const time = twelveHourClock(parseInt(m[1], 10), m[2] ? parseInt(m[2], 10) : 0, m[3]);
+    return time ? { time, rest: strip(text, m) } : null;
   }
 
   // 24-hour clock with a colon, e.g. "15:00", "9:05"

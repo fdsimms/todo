@@ -152,6 +152,52 @@ describe('parseTaskInput — one-off dates', () => {
   });
 });
 
+describe('parseTaskInput — the "m"-less 12-hour shorthand', () => {
+  it('parses the example quick add\'s own tip advertises', () => {
+    // "pay rent tmrw 5p #home" is the string tips.ts and CLAUDE.md both use to
+    // describe quick add. The tag half is parseCategoryAndTagsInput's (tested
+    // below); this is the schedule half, which used to come back null — the
+    // tip taught a shorthand the grammar didn't accept.
+    const r = parseTaskInput('pay rent tmrw 5p', NOW)!;
+    expect(r.cleanTitle).toBe('pay rent');
+    expect(r.matchedText).toBe('tmrw 5p');
+    expectDay(r.schedule.dueDate, 2025, 5, 11);
+    expect(r.schedule.timeSegments).toEqual(['afternoon']);
+  });
+
+  it('reads "9a" as the morning, with a connector', () => {
+    const r = parseTaskInput('call mom at 9a', NOW)!;
+    expect(r.cleanTitle).toBe('call mom');
+    expect(r.schedule.timeSegments).toEqual(['morning']);
+  });
+
+  it('keeps the minutes', () => {
+    const r = parseTaskInput('pay rent tmrw 5:30p', NOW)!;
+    expect(r.schedule.timeSegments).toEqual(['afternoon']);
+    expectDay(r.schedule.dueDate, 2025, 5, 11);
+  });
+
+  it('carries a deadline phrasing through', () => {
+    const r = parseTaskInput('submit report by fri 9a', NOW)!;
+    expect(r.cleanTitle).toBe('submit report');
+    expectDay(r.schedule.deadline!, 2025, 5, 13);
+  });
+
+  it('works inside a recurrence phrase', () => {
+    const r = parseTaskInput('standup every day at 9a', NOW)!;
+    expect(r.cleanTitle).toBe('standup');
+    expect(r.schedule.recurrenceType).toBe('daily');
+    expect(r.schedule.timeSegments).toEqual(['morning']);
+  });
+
+  it('holds back a bare trailing "3a", which is as likely to be a room number', () => {
+    // Deliberately absent from SINGLE_WORD_SAFE — a lone short token needs a
+    // connector, the same rule "walk the dog mon" is held to below.
+    expect(parseTaskInput('call mom 3a', NOW)).toBeNull();
+    expect(parseTaskInput('meet in room 5a', NOW)).toBeNull();
+  });
+});
+
 describe('parseTaskInput — false positives', () => {
   it.each([
     'discuss may budget',
@@ -161,8 +207,17 @@ describe('parseTaskInput — false positives', () => {
     'ask tom',
     'feed the chickens',
     'buy groceries',
+    'take 2 a day', // the shorthand never reaches across a space
+    'buy 3 apples',
   ])('does not match %j', input => {
     expect(parseTaskInput(input, NOW)).toBeNull();
+  });
+
+  it('still reads "5 apr" as a date, not five in the morning', () => {
+    const r = parseTaskInput('dentist 5 apr', NOW)!;
+    expect(r.cleanTitle).toBe('dentist');
+    expectDay(r.schedule.dueDate, 2026, 3, 5);
+    expect(r.schedule.timeSegments).toEqual([]);
   });
 
   it('accepts an abbreviated weekday with a connector', () => {
