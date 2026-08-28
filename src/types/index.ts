@@ -1279,6 +1279,30 @@ export interface Task {
   previousStreakCount: number;
   previousStreakDate: string | null;
 
+  /**
+   * The longest run this task reached **before the current one** — the record
+   * a live streak is measured against. Zero until a run has ended.
+   *
+   * Deliberately not the all-time best, which is what you would reach for
+   * first and what makes the feature announce itself every day. A running
+   * maximum is raised by the streak that is setting it, so "am I past my
+   * record" is true again on every completion once you have passed it: pass 34
+   * and day 35 beats 34, day 36 beats 35, for ever. Excluding the current run
+   * is what makes overtaking happen exactly once, on the day it happens.
+   *
+   * The all-time figure is still what gets *shown*, and it is derived rather
+   * than stored — `bestStreakOf` is max(this, streakCount), because a run in
+   * progress that is past this is itself the record. `src/utils/streakRecord.ts`
+   * owns all three reads and the fold.
+   *
+   * Folded only when a run ends, by the one rule in `nextStreakRecord`: the
+   * streak going *down* is a run ending, whether that is a break to 0, a
+   * gap restarting it at 1, or a manual reset. Rides onto the successor row
+   * alongside streakCount, since the streak lives on whichever row is
+   * currently running it.
+   */
+  priorBestStreak: number;
+
   // Opt-in per task: surface the streak as a chip on the collapsed row rather
   // than only in the expanded panel. Off by default — a flame on every
   // recurring row is noise, but a habit you're deliberately tracking is worth
@@ -1530,7 +1554,7 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
 // extraTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"

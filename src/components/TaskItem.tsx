@@ -44,6 +44,7 @@ import { isDateAnchored } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
+import { isStreakAtRecord } from '../utils/streakRecord';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
 import { asksOnCompletion } from '../utils/deliverables';
 import { describeTaskRecurrence } from '../utils/recurrenceLabels';
@@ -1101,6 +1102,9 @@ export const TaskItem = React.memo(function TaskItem({
   // a habit whose streak just broke doesn't silently lose a chip — the row
   // keeps its height and reads as "back to nothing" rather than "untracked".
   const showStreakChip = task.showStreak && task.recurrenceType !== 'none';
+  // Whether the run standing right now has beaten every run before it. False
+  // for a first-ever streak however long — see isStreakAtRecord.
+  const atRecord = showStreakChip && isStreakAtRecord(task);
 
   // Both read through the blocker index rather than scanning the task list, so
   // a long list stays O(1) per row. The selector still runs on every store
@@ -1946,16 +1950,22 @@ export const TaskItem = React.memo(function TaskItem({
             )}
             {showStreakChip && (
               <View
-                style={[styles.metaChip, styles.streakChip]}
+                style={[styles.metaChip, styles.streakChip, atRecord && styles.streakChipRecord]}
                 accessibilityLabel={
-                  task.streakCount > 0
-                    ? `${task.streakCount} day streak`
-                    : 'No streak yet'
+                  atRecord
+                    ? `${task.streakCount} day streak, the longest this task has had`
+                    : task.streakCount > 0
+                      ? `${task.streakCount} day streak`
+                      : 'No streak yet'
                 }
               >
                 <Ionicons
                   name={task.streakCount > 0 ? 'flame' : 'flame-outline'}
-                  size={iconSize.xs}
+                  // Burns bigger at a record. Ionicons has one flame, so the
+                  // escalation is the glyph's own size and the pill behind it
+                  // rather than a second icon — the row stays the same height
+                  // either way, since the meta line already clears 16.
+                  size={atRecord ? iconSize.sm : iconSize.xs}
                   color={task.streakCount > 0 ? colors.orange : colors.textSecondary}
                 />
                 <Text style={[styles.streakChipText, task.streakCount > 0 && styles.streakChipTextActive]} numberOfLines={1}>
@@ -3474,6 +3484,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // — override just this chip rather than tightening the shared gap.
   streakChip: {
     gap: spacing.xs / 2,
+  },
+  // The run standing right now is the longest this task has ever had (see
+  // isStreakAtRecord). A tinted pill rather than a different colour: orange
+  // already means "streak" here, and the app's other warm colour is red, which
+  // it uses for out-of-stock and an expired window — the wrong thing to say
+  // about somebody's best run. Same tint-the-token treatment tag chips use.
+  streakChipRecord: {
+    backgroundColor: colors.orange + '26',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 1,
+    borderRadius: radius.full,
   },
   importRow: {
     flexDirection: 'row',

@@ -72,6 +72,7 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { categoryLabel } from '../utils/categoryLabel';
 import { useShallow } from 'zustand/react/shallow';
+import { nextStreakRecord, streakHint } from '../utils/streakRecord';
 import { formatDeadlineDate, formatScheduledDate, formatHHMM, formatTimeOfDay, hhmmToDate, dateToHHMM, getDeadlineFromOffset, getDeadlineFromMonthDay, describeDeadlineOffset, describeReminderOffset, getTaskDayStart, getCurrentDayStart, getLogicalNow, seriesMonthDaysFrom } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import { findArchivedMatch } from '../utils/archiveMatch';
@@ -1197,7 +1198,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           style: clamped === 0 ? 'destructive' : 'default',
           onPress: () => {
             haptics.success();
-            updateTask(task.id, { streakCount: clamped, streakDate: newStreakDate });
+            updateTask(task.id, {
+              streakCount: clamped,
+              streakDate: newStreakDate,
+              // Correcting a streak *down* ends the run it was, so the record
+              // takes it like any other ending. Correcting up needs nothing:
+              // bestStreakOf already counts the live run, so a streak set to 50
+              // is a record of 50 the moment it lands.
+              priorBestStreak: nextStreakRecord(task, clamped),
+            });
             setStreakEditorOpen(false);
           },
         },
@@ -4394,7 +4403,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLabel}>Streak</Text>
                     <Text style={styles.optionHint}>
-                      {task.streakCount > 0 ? `${task.streakCount} day streak, tap to correct` : 'No streak yet'}
+                      {streakHint(task)}
                     </Text>
                   </View>
                   <Ionicons name={streakEditorOpen ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
