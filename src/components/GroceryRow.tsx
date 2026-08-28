@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -18,6 +18,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { GROCERY_NAME_MAX_LENGTH, type GroceryItem, type ItemProduct } from '../types';
 import { SwipeableRow } from './SwipeableRow';
 import { InlineAction } from './InlineAction';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { convertQuantity } from '../utils/unitConvert';
 import { describeProduct, RATING_LABELS } from '../utils/groceryProduct';
 import { formatPrice, formatPriceInput, parsePriceInput, priceToInput } from '../utils/groceryPrice';
@@ -439,11 +440,20 @@ export const GroceryRow = React.memo(function GroceryRow({
                 autoFocus
                 keyboardType="number-pad"
                 returnKeyType="done"
+                inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 placeholder="0.00"
                 placeholderTextColor={colors.textTertiary}
                 maxLength={PRICE_INPUT_MAX_LENGTH}
                 accessibilityLabel={`Price for ${item.name}`}
               />
+              {/* Mounted by the row rather than by the grocery screen, because
+                  the field it belongs to is the row's own: pricingActive is
+                  this row's transient mid-edit flag, and only one row is ever
+                  in it (committing on blur is what ends the last one). The
+                  screen would have to be told which row is editing to do the
+                  same job. Several mounted copies are safe anyway — see
+                  NumberPadAccessory. */}
+              <NumberPadAccessory />
             </View>
           ) : tripPriceRecorded && tripPriceMinor != null ? (
             <TouchableOpacity

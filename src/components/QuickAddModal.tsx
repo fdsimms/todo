@@ -2192,7 +2192,10 @@ export function QuickAddModal({
                   // to blur this field is a tap outside — which in this sheet
                   // dismisses the whole thing, taking the number with it. So
                   // blur is still what saves, and the checkmark is what makes
-                  // that reachable. Same pairing the editor's phone row uses.
+                  // that reachable. Same pairing the editor's phone row uses,
+                  // and the same accessory bar alongside it, so putting the
+                  // keypad away doesn't mean aiming for the sheet's backdrop.
+                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                 />
                 <TouchableOpacity
                   onPress={commitPhone}

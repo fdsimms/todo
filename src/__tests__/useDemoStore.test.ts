@@ -943,6 +943,20 @@ describe('demo mode', () => {
     expect(members.every(t => t.projectId === kitchen!.id)).toBe(true);
   });
 
+  // The only stack in the seed with no members at all. Every other screen
+  // finds a stack through its children, so without one homed on a project
+  // there's nothing in demo mode that shows a stack can be empty.
+  it('seeds an empty stack homed on a project', () => {
+    useDemoStore.getState().enterDemoMode();
+
+    const kitchen = useProjectStore.getState().projects.find(p => p.title === 'Kitchen refresh');
+    expect(kitchen).toBeDefined();
+
+    const appliances = useTaskGroupStore.getState().groups.find(g => g.title === 'Appliance decisions');
+    expect(appliances?.projectId).toBe(kitchen!.id);
+    expect(useTaskStore.getState().tasks.filter(t => t.groupId === appliances!.id)).toHaveLength(0);
+  });
+
   it('seeds a reference-list project excluded from every nudge', () => {
     // A checklist project like Gift ideas has nothing but undated tasks —
     // exactly what would otherwise read as "gone quiet" — so the seed only
@@ -1940,8 +1954,8 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const { recipes } = useRecipeStore.getState();
 
     expect(recipes.some(r => r.tags.length > 1)).toBe(true);
-    // A real dietary tag, not just a cooking-style one — the excluded-tags
-    // picker (#1693) needs something a household would actually exclude on.
+    // A real dietary tag, not just a cooking-style one — recipe tags cover
+    // both kinds and the filter row should have a genuine example of each.
     expect(recipes.some(r => r.tags.includes('vegetarian'))).toBe(true);
     expect(recipes.some(r => r.estimatedMinutes && r.prepMinutes)).toBe(true);
     expect(recipes.some(r => r.servings && r.servingsMax)).toBe(true);

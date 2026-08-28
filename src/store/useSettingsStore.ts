@@ -48,7 +48,6 @@ import {
   serializeOptionalCount,
 } from '../utils/focusSettings';
 import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
-import { normalizeRecipeTags } from '../utils/recipeTags';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
 import type { LastTipShown } from '../utils/tips';
@@ -227,14 +226,6 @@ interface SettingsStore {
   // every recipe visible, so an install that predates this reads unchanged.
   recipeSortOption: RecipeSortOption;
   recipeLovedOnly: boolean;
-  // A standing preference, not a browse filter — unlike recipeLovedOnly
-  // above, this reaches every suggestion path (offline ranking, AI meal
-  // ideas, the meal-plan recipe picker), not just the Recipes screen's own
-  // list. Tag-based and nothing else: see excludeRecipesByTags in
-  // recipeTags.ts for why this never infers from ingredients. Empty by
-  // default, so an untagged box — or one that predates this — is filtered
-  // exactly as before: not at all.
-  excludedRecipeTags: string[];
   // One summary notification each morning. Off by default — an app that
   // starts notifying you daily because you installed it is the reason people
   // turn notifications off wholesale.
@@ -989,7 +980,6 @@ interface SettingsStore {
   setFilterHasReminder: (on: boolean) => void;
   setRecipeSortOption: (sort: RecipeSortOption) => void;
   setRecipeLovedOnly: (lovedOnly: boolean) => void;
-  setExcludedRecipeTags: (tags: string[]) => void;
   setAnthropicApiKey: (key: string) => void;
   setFdcApiKey: (key: string) => void;
   setGoUpcApiKey: (key: string) => void;
@@ -1322,22 +1312,6 @@ function parseCollapsedRecipeSections(raw: string | null): string[] {
 }
 
 /**
- * A stored list of excluded recipe tags. Run through normalizeRecipeTags —
- * not just filtered like parseCategoryNames above — so a tag renamed or
- * reformatted since this was set (recipeTags.ts's own cleanup rules) still
- * matches what's actually on a recipe, rather than silently going stale.
- */
-function parseRecipeTagList(raw: string | null): string[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return normalizeRecipeTags(parsed);
-  } catch {
-    return [];
-  }
-}
-
-/**
  * The stored set of meals that get a task.
  *
  * A missing row falls back to the shipped default (breakfast, lunch, dinner)
@@ -1450,7 +1424,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   filterHasReminder: false,
   recipeSortOption: 'default',
   recipeLovedOnly: false,
-  excludedRecipeTags: [],
   titleRules: [],
   dailyAgendaEnabled: false,
   dailyAgendaTime: '08:00',
@@ -1609,7 +1582,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const recipeSortOption: RecipeSortOption =
       storedRecipeSort && RECIPE_SORT_OPTIONS.includes(storedRecipeSort) ? storedRecipeSort : 'default';
     const recipeLovedOnly = dbGetSetting('recipeLovedOnly') === 'true';
-    const excludedRecipeTags = parseRecipeTagList(dbGetSetting('excludedRecipeTags'));
     const dailyAgendaEnabled = dbGetSetting('dailyAgendaEnabled') === 'true';
     const dailyAgendaTime = dbGetSetting('dailyAgendaTime') ?? '08:00';
     const tripReminderEnabled = dbGetSetting('tripReminderEnabled') === 'true';
@@ -1913,7 +1885,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, excludedRecipeTags, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2072,12 +2044,6 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setRecipeLovedOnly(lovedOnly: boolean) {
     dbSetSetting('recipeLovedOnly', lovedOnly ? 'true' : 'false');
     set({ recipeLovedOnly: lovedOnly });
-  },
-
-  setExcludedRecipeTags(tags: string[]) {
-    const normalized = normalizeRecipeTags(tags);
-    dbSetSetting('excludedRecipeTags', JSON.stringify(normalized));
-    set({ excludedRecipeTags: normalized });
   },
 
   // State first, keychain second and unawaited: every reader of the key is

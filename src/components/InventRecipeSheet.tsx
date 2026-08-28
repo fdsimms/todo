@@ -12,7 +12,6 @@ import {
 import { suggestMealIdeas, draftMealRecipe, describeAIError } from '../services/aiSuggestions';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
-import { useSettingsStore } from '../store/useSettingsStore';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -57,7 +56,6 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const updatePrepTask = useRecipeStore(s => s.updatePrepTask);
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
-  const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
 
   const [hints, setHints] = useState('');
   // Ideas live only as long as the sheet does — a proposal, not data.
@@ -83,7 +81,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
     setGenerateError(null);
     try {
       const recent = recentlyCookedTitles(recipes, new Date());
-      const result = await suggestMealIdeas([], recent, MIN_MEAL_IDEAS, hints, excludedRecipeTags, []);
+      const result = await suggestMealIdeas([], recent, MIN_MEAL_IDEAS, hints, []);
       // suggestMealIdeas only dedupes against the titles it was handed
       // (recently cooked); a dish already in the box under any other name
       // isn't "new" just because it wasn't cooked lately.
@@ -95,7 +93,7 @@ export function InventRecipeSheet({ visible, onClose, onCreated }: Props) {
     } finally {
       setGenerating(false);
     }
-  }, [recipes, hints, excludedRecipeTags]);
+  }, [recipes, hints]);
 
   const dismissIdea = (idea: MealIdea) => {
     haptics.tap();

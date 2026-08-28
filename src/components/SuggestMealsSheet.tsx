@@ -212,7 +212,6 @@ export function SuggestMealsSheet({
   const addPrepTask = useRecipeStore(s => s.addPrepTask);
   const updatePrepTask = useRecipeStore(s => s.updatePrepTask);
   const unitSystem = useSettingsStore(s => s.unitSystem);
-  const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
   const recipesById = useMemo(() => recipeMap(allRecipes), [allRecipes]);
 
   // ==== picks, and the days they'd land on ====
@@ -343,7 +342,6 @@ export function SuggestMealsSheet({
         [...(recentTitles ?? [])],
         slotsToFill ?? openDays.length,
         hints,
-        excludedRecipeTags,
         [...expiringItemHints],
       );
       // The service dedupes against the context it was given; the recipe box
@@ -358,7 +356,7 @@ export function SuggestMealsSheet({
     } finally {
       setGenerating(false);
     }
-  }, [plannedTitles, recentTitles, expiringItemHints, allRecipes, slotsToFill, openDays.length, hints, excludedRecipeTags]);
+  }, [plannedTitles, recentTitles, expiringItemHints, allRecipes, slotsToFill, openDays.length, hints]);
 
   const dismissIdea = (idea: MealIdea) => {
     haptics.tap();

@@ -371,6 +371,7 @@ const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
   category: null,
   sortOrder: 1,
   collapsed: false,
+  projectId: null,
   ...overrides,
 });
 
@@ -1787,6 +1788,34 @@ describe('completeTask', () => {
     useTaskStore.setState({ tasks: [task] });
     useTaskStore.getState().completeTask('last-one');
     expect(useTaskStore.getState().tasks).toHaveLength(1);
+  });
+
+  it('marks the recurrence-ended completion destructive, so the undo bar shows it', () => {
+    // UndoBar filters on `destructive`, so without the flag this label was
+    // written and never rendered — the one telling that a schedule has run out.
+    const task = makeTask({
+      id: 'last-one',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 1,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('last-one');
+    const entry = useTaskStore.getState().lastAction!;
+    expect(entry.label).toBe("Last one, this won't repeat again");
+    expect(entry.destructive).toBe(true);
+  });
+
+  it('leaves an ordinary completion off the undo bar', () => {
+    // The rule the exception above is carved out of: a tick you can undo by
+    // un-ticking the row raises no bar.
+    const task = makeTask({ id: 'plain', recurrenceType: 'none' });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('plain');
+    const entry = useTaskStore.getState().lastAction!;
+    expect(entry.label).toBe('Task completed');
+    expect(entry.destructive).toBeFalsy();
   });
 
   it('advances a chain immediately with no due date when the task does not recur', () => {
@@ -6471,9 +6500,9 @@ describe('reorderTasks', () => {
   });
 });
 
-// ─── reorderProjectTasks ─────────────────────────────────────────────────────
+// ─── reorderProjectItems ─────────────────────────────────────────────────────
 
-describe('reorderProjectTasks', () => {
+describe('reorderProjectItems', () => {
   // The whole point of the separate action: renumbering the project 1..N would
   // drag every dated member of it to the top of Today.
   it('swaps the members between the slots they already held', () => {
@@ -6484,7 +6513,7 @@ describe('reorderProjectTasks', () => {
         makeTask({ id: 'loose', sortOrder: 60 }),
       ],
     });
-    useTaskStore.getState().reorderProjectTasks('p1', ['b', 'a']);
+    useTaskStore.getState().reorderProjectItems('p1', ['b', 'a']);
     const { tasks } = useTaskStore.getState();
     expect(tasks.find(t => t.id === 'b')?.sortOrder).toBe(40);
     expect(tasks.find(t => t.id === 'a')?.sortOrder).toBe(90);
@@ -6505,7 +6534,7 @@ describe('reorderProjectTasks', () => {
         makeTask({ id: 'other', projectId: 'p2', sortOrder: 12 }),
       ],
     });
-    useTaskStore.getState().reorderProjectTasks('p1', ['b', 'a', 'done', 'filed', 'other']);
+    useTaskStore.getState().reorderProjectItems('p1', ['b', 'a', 'done', 'filed', 'other']);
     const { tasks } = useTaskStore.getState();
     expect(tasks.find(t => t.id === 'done')?.sortOrder).toBe(15);
     expect(tasks.find(t => t.id === 'filed')?.sortOrder).toBe(17);
@@ -6521,8 +6550,48 @@ describe('reorderProjectTasks', () => {
       ],
     });
     (dbBatchUpdateSortOrders as jest.Mock).mockClear();
-    useTaskStore.getState().reorderProjectTasks('p1', ['a', 'b']);
+    useTaskStore.getState().reorderProjectItems('p1', ['a', 'b']);
     expect(dbBatchUpdateSortOrders).not.toHaveBeenCalled();
+  });
+
+  // An empty stack has no member to be dragged by, so it holds its own slot in
+  // the same number space the tasks use — see TaskGroup.sortOrder.
+  it('moves a homed stack through the task slots alongside the tasks', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'a', projectId: 'p1', sortOrder: 10 }),
+        makeTask({ id: 'b', projectId: 'p1', sortOrder: 30 }),
+      ],
+    });
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'stack', projectId: 'p1', sortOrder: 20 })] });
+    useTaskStore.getState().reorderProjectItems('p1', ['stack', 'a', 'b']);
+    expect(useTaskGroupStore.getState().groups.find(g => g.id === 'stack')?.sortOrder).toBe(10);
+    const { tasks } = useTaskStore.getState();
+    expect(tasks.find(t => t.id === 'a')?.sortOrder).toBe(20);
+    expect(tasks.find(t => t.id === 'b')?.sortOrder).toBe(30);
+  });
+
+  // A stacked task's sortOrder is its within-stack order, not a slot in this
+  // list, so a drag out here must not touch it — the stack moves by its own id.
+  it('leaves a stacked member’s within-stack order alone', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'loose', projectId: 'p1', sortOrder: 40 }),
+        makeTask({ id: 'member', projectId: 'p1', groupId: 'stack', sortOrder: 1 }),
+      ],
+    });
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'stack', sortOrder: 90 })] });
+    useTaskStore.getState().reorderProjectItems('p1', ['stack', 'loose']);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'member')?.sortOrder).toBe(1);
+    expect(useTaskGroupStore.getState().groups.find(g => g.id === 'stack')?.sortOrder).toBe(40);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'loose')?.sortOrder).toBe(90);
+  });
+
+  it('leaves a stack homed on another project where it is', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', projectId: 'p1', sortOrder: 10 })] });
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'elsewhere', projectId: 'p2', sortOrder: 5 })] });
+    useTaskStore.getState().reorderProjectItems('p1', ['elsewhere', 'a']);
+    expect(useTaskGroupStore.getState().groups.find(g => g.id === 'elsewhere')?.sortOrder).toBe(5);
   });
 });
 
@@ -8701,6 +8770,31 @@ describe('deleteProject', () => {
     });
     useTaskStore.getState().deleteProject('p1', { cascade: false });
     expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  // A stack homed on the project (TaskGroup.projectId) is unfiled, never
+  // deleted — it's a label, and its members may sit in other projects. Left
+  // pointing at a project that's gone it would show on no screen at all.
+  it('unfiles a stack homed on the project, keeping the stack itself', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskGroupStore.setState({
+      groups: [makeGroup({ id: 'homed', projectId: 'p1' }), makeGroup({ id: 'other', projectId: 'p2' })],
+    });
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().deleteProject('p1', { cascade: true });
+    const groups = useTaskGroupStore.getState().groups;
+    expect(groups.map(g => g.id)).toEqual(['homed', 'other']);
+    expect(groups.find(g => g.id === 'homed')?.projectId).toBeNull();
+    expect(groups.find(g => g.id === 'other')?.projectId).toBe('p2');
+  });
+
+  it('re-homes an unfiled stack on undo', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1' })] });
+    useTaskGroupStore.setState({ groups: [makeGroup({ id: 'homed', projectId: 'p1' })] });
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().deleteProject('p1', { cascade: false });
+    useTaskStore.getState().lastAction?.undo();
+    expect(useTaskGroupStore.getState().groups.find(g => g.id === 'homed')?.projectId).toBe('p1');
   });
 });
 

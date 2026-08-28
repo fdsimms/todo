@@ -96,6 +96,7 @@ import { SelectionDot } from './SelectionDot';
 import { SwipeableRow } from './SwipeableRow';
 import { SortableList } from './SortableList';
 import { StepMinutes } from './StepMinutes';
+import { NumberPadAccessory } from './NumberPadAccessory';
 import { SpotlightScrim, useSpotlightLinger } from './SpotlightOverlay';
 import { ProgressBar } from './ProgressBar';
 
@@ -2643,6 +2644,14 @@ export const TaskItem = React.memo(function TaskItem({
                     >
                       <Text style={styles.timedEditCancel}>Cancel</Text>
                     </TouchableOpacity>
+                    {/* StepMinutes above asks for this bar by nativeID, and a
+                        row is the one place that ask had nothing answering it
+                        — the task and template editors mount their own, but a
+                        row edits inline on whichever screen it's on. Mounted
+                        here rather than on those five screens so it can't be
+                        missed off a sixth, and gated on editingTimed because
+                        that's exactly when the field exists. */}
+                    <NumberPadAccessory />
                   </>
                 ) : (
                   <TouchableOpacity

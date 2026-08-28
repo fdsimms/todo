@@ -184,7 +184,7 @@ export const TIPS: Tip[] = [
     screen: 'today',
     icon: 'text-outline',
     title: 'Type the date into the task itself',
-    body: 'Quick add reads what you type. "pay rent tmrw 5p #home" comes out as a task due tomorrow at 5pm, tagged home, with the extra words stripped from the title.',
+    body: 'Quick add reads what you type. "pay rent tmrw 5p #home" comes out as a task due tomorrow afternoon, tagged home, with the extra words stripped from the title.',
     when: s => s.taskCount >= 2,
     keywords: ['natural language', 'parse', 'shorthand', 'syntax', 'hashtag'],
   },

@@ -31,6 +31,8 @@ let cachedProjects: Project[] | null = null;
 let cachedSequentialIds: Set<string> | null = null;
 let cachedStepTasks: Task[] | null = null;
 let cachedSteps: Map<string, number> | null = null;
+let cachedCompletionTasks: Task[] | null = null;
+let cachedCompletions: Map<string, string> | null = null;
 
 /** Called once by useTaskStore at module load. Tests can point it at a fixture. */
 export function registerTaskSource(fn: (() => Task[]) | null): void {
@@ -41,6 +43,8 @@ export function registerTaskSource(fn: (() => Task[]) | null): void {
   cachedCounts = null;
   cachedStepTasks = null;
   cachedSteps = null;
+  cachedCompletionTasks = null;
+  cachedCompletions = null;
 }
 
 /** The same, for useProjectStore — see isSequenceHeld. */
@@ -104,6 +108,40 @@ export function stepNumberOf(task: Task): number | undefined {
     cachedSteps = stepNumbersByTask(tasks);
   }
   return cachedSteps!.get(task.id);
+}
+
+/**
+ * When the most recent step of a project was completed, or null if none has
+ * been — the moment a sequential project last let its next step through.
+ *
+ * That equivalence is what this is for (see getBecameVisibleAt): a sequential
+ * project hides every step but the first, so the one now standing at the front
+ * got there when the step ahead of it was completed, and the step ahead of it
+ * is by construction the project's latest completion. Nothing is written when a
+ * sequence advances — the gate is position (see isSequenceHeld) — so this is
+ * the only timestamp there is to read.
+ *
+ * Indexed per store change like the three above, and for the same reason: asked
+ * once per visible row, a scan per call would be O(n²) across a render.
+ */
+export function latestProjectCompletionAt(projectId: string): string | null {
+  const tasks = source?.();
+  if (!tasks) return null;
+  if (tasks !== cachedCompletionTasks) {
+    cachedCompletionTasks = tasks;
+    cachedCompletions = new Map();
+    for (const t of tasks) {
+      if (!t.projectId || t.parentId || !t.completed || !t.completedAt) continue;
+      // Compared as instants rather than as strings: an ISO string only sorts
+      // lexicographically while every one of them is UTC, and a row restored
+      // from a backup or arriving over sync needn't be.
+      const best = cachedCompletions.get(t.projectId);
+      if (!best || new Date(t.completedAt) > new Date(best)) {
+        cachedCompletions.set(t.projectId, t.completedAt);
+      }
+    }
+  }
+  return cachedCompletions!.get(projectId) ?? null;
 }
 
 function sequentialProjectIds(): Set<string> {

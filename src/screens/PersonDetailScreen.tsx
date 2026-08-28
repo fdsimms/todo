@@ -394,6 +394,48 @@ export function PersonDetailScreen() {
           </View>
         )}
 
+        {/* The notes themselves. Everything above `noteSections` says what this
+            renders and why; it went missing from the JSX while the memo and its
+            four helpers stayed, so a note could be written, stored, synced and
+            backed up but never read back. Gift and food notes still reached
+            their own destinations (the birthday task, a meal's guests), which
+            is why only the plain kind looked like it simply wasn't saving. */}
+        {noteSections.map(section => (
+          <React.Fragment key={section.kind}>
+            <Text style={styles.groupLabel}>{PERSON_NOTE_HEADINGS[section.kind]}</Text>
+            <View style={styles.card}>
+              {section.notes.map((note, i) => {
+                const stale = isStaleNote(note, today);
+                return (
+                  <View key={note.id}>
+                    {i > 0 && <View style={styles.sep} />}
+                    <TouchableOpacity
+                      style={styles.entryRow}
+                      onPress={() => { haptics.tap(); setNoteSheet({ note, kind: section.kind }); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="button"
+                      accessibilityLabel={note.text}
+                      accessibilityHint="Double tap to edit this note"
+                    >
+                      <Text
+                        style={[styles.entryTitle, stale && styles.noteStale]}
+                        numberOfLines={2}
+                      >
+                        {note.text}
+                      </Text>
+                      {note.relevantOn && (
+                        <Text style={[styles.entryDate, stale && styles.noteStale]}>
+                          {describeNoteDay(note.relevantOn, today)}
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </View>
+          </React.Fragment>
+        ))}
+
         {/* Tasks and planned meals in one list, because "what is coming up with
             this person" is one question and two sections answering it in date
             order separately would read as two. A meal is not a task and never

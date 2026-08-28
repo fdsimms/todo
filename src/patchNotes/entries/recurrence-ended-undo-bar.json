@@ -1,0 +1,4 @@
+{
+  "message": "Finishing the last occurrence of a repeating task now says so on the undo bar. The message existed but never appeared, so a schedule reaching its end looked like the task had just stopped coming back.",
+  "date": "2026-08-28"
+}

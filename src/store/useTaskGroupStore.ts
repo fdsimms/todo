@@ -12,8 +12,12 @@ interface TaskGroupStore {
   groups: TaskGroup[];
   initialized: boolean;
   initialize: () => void;
-  createGroup: (title: string, category: string | null) => TaskGroup;
-  updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'category' | 'sortOrder'>>) => void;
+  // projectId is the screen the stack was made on, not something derived from
+  // its members — see TaskGroup.projectId. Omitted everywhere but a project's
+  // own page, which is the only place a memberless stack has to be able to
+  // sit; the stack editor can change it afterward through updateGroup.
+  createGroup: (title: string, category: string | null, projectId?: string | null) => TaskGroup;
+  updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'category' | 'sortOrder' | 'projectId'>>) => void;
   setGroupCollapsed: (id: string, collapsed: boolean) => void;
   getGroupById: (id: string) => TaskGroup | null;
   // Deletion lives in useTaskStore since it needs to touch tasks too; these
@@ -31,7 +35,7 @@ export const useTaskGroupStore = create<TaskGroupStore>((set, get) => ({
     set({ groups, initialized: true });
   },
 
-  createGroup(title, category) {
+  createGroup(title, category, projectId = null) {
     const maxOrder = get().groups.reduce((m, g) => Math.max(m, g.sortOrder), 0);
     const group: TaskGroup = {
       id: generateId(),
@@ -41,6 +45,7 @@ export const useTaskGroupStore = create<TaskGroupStore>((set, get) => ({
       category,
       sortOrder: maxOrder + 1,
       collapsed: true,
+      projectId,
     };
     dbInsertTaskGroup(group);
     set(s => ({ groups: [...s.groups, group] }));

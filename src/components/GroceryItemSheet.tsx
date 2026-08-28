@@ -11,6 +11,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns/format';
 import {
   Modal,
+  Platform,
   View,
   Text,
   TextInput,
@@ -40,6 +41,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { recipesUsingIngredient } from '../utils/recipeComponents';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { ItemDisposalOffer } from './ItemDisposalOffer';
 import { describeDisposalHistory } from '../utils/itemDisposal';
 import { SearchField } from './SearchField';
@@ -1565,6 +1567,11 @@ export function GroceryItemSheet({
               placeholder={priceHint === null ? '0.00' : `e.g. ${priceToInput(priceHint)}`}
               placeholderTextColor={colors.textTertiary}
               keyboardType="number-pad"
+              // The iOS number pad has no return key, so onSubmitEditing above
+              // never fires and blur is the only thing that commits. The
+              // accessory bar is what makes that reachable without having to
+              // guess that tapping some other part of the sheet saves.
+              inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
               maxLength={PRICE_INPUT_MAX_LENGTH}
               accessibilityLabel={targetShopName ? `Last price at ${targetShopName}` : 'Last price'}
             />
@@ -1786,6 +1793,7 @@ export function GroceryItemSheet({
           if (survivorId !== item.id) onClose();
         }}
       />
+      <NumberPadAccessory />
     </Modal>
   );
 }
