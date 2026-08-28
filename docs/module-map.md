@@ -73,8 +73,9 @@ render, so listing them adds lines without adding answers.
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, backfillFieldCounts, dismissBackfillField, estimatePatchFor
 - `src/utils/focusLiveActivity.ts` — FocusRun, buildFocusRun, useFocusLiveActivitySync
-- `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +14 more
+- `src/utils/focusPlan.ts` — FocusPlanTask, FocusPlanOptions, plannedTaskMinutes, splitMinutes, buildFocusPlan, normalizePlanTail, currentFocusStep, isFocusSessionFinished, isFocusRunning, focusStepElapsed, +17 more
 - `src/utils/focusSettings.ts` — FOCUS_WORK_CAP_MIN, FOCUS_WORK_CAP_MAX, FOCUS_REST_MIN, FOCUS_REST_MAX, FOCUS_REST_AFTER_TASKS_MAX, FOCUS_REST_AFTER_MINUTES_MIN, FOCUS_REST_AFTER_MINUTES_MAX, FOCUS_LONG_REST_EVERY_MIN, FOCUS_LONG_REST_EVERY_MAX, FOCUS_WINDOW_MIN, +14 more
+- `src/utils/focusStats.ts` — MIN_ACCURACY_SAMPLES, FocusDayTotal, focusMinutesByDay, FocusSummary, focusSummary, focusRecordsSince, FocusAccuracy, focusAccuracy, BreakUse, breakUse
 - `src/utils/focusSuggest.ts` — MAX_SUGGESTED_FOCUS, FOCUS_BUDGET_MINUTES, FocusContext, buildFocusContext, fitsWindow, scoreFocusTask, nextFocusSuggestion, suggestFocusTasks, focusQueueFromPinned, focusReason
 - `src/utils/focusWindow.ts` — FOCUS_CALENDAR_HORIZON_MINUTES, CalendarWindow, calendarWindow
 - `src/utils/freshness.ts` — daysUntilDay, freshnessFor, FRESHNESS_ORDER, freshnessRank, isUseUpSoon, describeUseBy, liveUseBy, describeOpenedOn, describeFrozenSince
@@ -303,7 +304,7 @@ render, so listing them adds lines without adding answers.
 
 ## `src/db`
 
-- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +162 more
+- `src/db/database.ts` — switchToDemoDatabase, switchToRealDatabase, isUsingDemoDatabase, initDatabase, BACKUP_TABLES, BACKUP_EXCLUDED_TABLES, dbTableColumns, dbExportTables, dbReplaceAllData, isSyncableDatabase, +164 more
 - `src/db/syncTracking.ts` — SyncTable, KEY_SEPARATOR, SYNC_TRACKED_TABLES, SYNC_EXCLUDED_TABLES, SYNCED_SETTING_KEYS, isSyncedSettingKey, SYNC_DELETIONS_TABLE, NOW_EXPR, TOMBSTONE_RETENTION_DAYS, rowKeyExpr, +5 more
 
 ## `src/services`

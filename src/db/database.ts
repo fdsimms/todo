@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Cookbook, DeliverableKind, GeneratedKind, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusStep, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { Cookbook, DeliverableKind, GeneratedKind, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -194,6 +194,24 @@ export function initDatabase(): void {
       step_index INTEGER NOT NULL DEFAULT 0,
       step_started_at TEXT,
       step_elapsed_seconds REAL NOT NULL DEFAULT 0,
+      completed_task_ids TEXT NOT NULL DEFAULT '[]',
+      step_log TEXT NOT NULL DEFAULT '[]'
+    );
+
+    -- One row per session that finished, written once and never updated —
+    -- the opposite invariant to focus_sessions above, which is why it's a
+    -- second table rather than a status column on the first. The live row is
+    -- a cursor into a plan still being pruned and re-timed; these are closed
+    -- accounts, and every reader of the past would otherwise have to reason
+    -- about a plan's unrun tail. See FocusSessionRecord in types.
+    CREATE TABLE IF NOT EXISTS focus_session_log (
+      id TEXT PRIMARY KEY NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT NOT NULL,
+      worked_seconds REAL NOT NULL DEFAULT 0,
+      rested_seconds REAL NOT NULL DEFAULT 0,
+      planned_work_minutes REAL NOT NULL DEFAULT 0,
+      steps TEXT NOT NULL DEFAULT '[]',
       completed_task_ids TEXT NOT NULL DEFAULT '[]'
     );
 
@@ -1196,6 +1214,17 @@ export function initDatabase(): void {
     // a stack built from a project's own screen gets an id here, so it can sit
     // on that project's page before it has any members. See TaskGroup.projectId.
     'ALTER TABLE task_groups ADD COLUMN project_id TEXT',
+    // Empty on a session already in flight when the app upgrades into this
+    // column: what its earlier steps cost was never recorded, and inventing a
+    // figure for them would put a made-up number into Stats on the very first
+    // session anyone sees. It logs from the step it's on. See
+    // FocusSession.stepLog.
+    "ALTER TABLE focus_sessions ADD COLUMN step_log TEXT NOT NULL DEFAULT '[]'",
+    // Every read of the log is "the recent ones", newest first — the Stats
+    // sections all cut by date — so the end date is the index. A migration
+    // rather than part of the CREATE for the usual reason: a device that got
+    // the table from an earlier build still picks the index up.
+    'CREATE INDEX IF NOT EXISTS idx_focus_session_log_ended ON focus_session_log(ended_at)',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1555,6 +1584,12 @@ export const BACKUP_TABLES = [
   'meal_plan_entries',
   'templates',
   'tasks',
+  // After tasks, though nothing enforces it: a record's `completedTaskIds` and
+  // its steps' `taskId`s are ids inside JSON, not foreign keys, and they are
+  // allowed to dangle — a session that worked a task since deleted is still a
+  // true account of that session. Restoring in this order simply means the
+  // rows they name are usually there.
+  'focus_session_log',
   'settings',
 ] as const;
 
@@ -2712,6 +2747,10 @@ function rowToFocusSession(row: Record<string, unknown>): FocusSession {
     stepStartedAt: (row.step_started_at as string) ?? null,
     stepElapsedSeconds: row.step_elapsed_seconds as number,
     completedTaskIds: JSON.parse((row.completed_task_ids as string) ?? '[]') as string[],
+    // `?? '[]'` rather than trusting the column default: a session written by
+    // a build predating step_log is still sitting in this table on upgrade,
+    // and it reads back with the column missing entirely.
+    stepLog: JSON.parse((row.step_log as string) ?? '[]') as FocusStepRecord[],
   };
 }
 
@@ -2733,11 +2772,12 @@ export function dbSaveFocusSession(session: FocusSession): void {
     db.runSync('DELETE FROM focus_sessions');
     db.runSync(
       `INSERT INTO focus_sessions
-         (id, started_at, steps, step_index, step_started_at, step_elapsed_seconds, completed_task_ids)
-       VALUES (?,?,?,?,?,?,?)`,
+         (id, started_at, steps, step_index, step_started_at, step_elapsed_seconds, completed_task_ids, step_log)
+       VALUES (?,?,?,?,?,?,?,?)`,
       [
         session.id, session.startedAt, JSON.stringify(session.steps), session.stepIndex,
         session.stepStartedAt, session.stepElapsedSeconds, JSON.stringify(session.completedTaskIds),
+        JSON.stringify(session.stepLog),
       ]
     );
   });
@@ -2745,6 +2785,56 @@ export function dbSaveFocusSession(session: FocusSession): void {
 
 export function dbClearFocusSession(): void {
   db.runSync('DELETE FROM focus_sessions');
+}
+
+// ─── Focus session history ──────────────────────────────────────────────────
+
+function rowToFocusSessionRecord(row: Record<string, unknown>): FocusSessionRecord {
+  return {
+    id: row.id as string,
+    startedAt: row.started_at as string,
+    endedAt: row.ended_at as string,
+    workedSeconds: row.worked_seconds as number,
+    restedSeconds: row.rested_seconds as number,
+    plannedWorkMinutes: row.planned_work_minutes as number,
+    steps: JSON.parse((row.steps as string) ?? '[]') as FocusStepRecord[],
+    completedTaskIds: JSON.parse((row.completed_task_ids as string) ?? '[]') as string[],
+  };
+}
+
+/**
+ * Finished sessions, most recent first.
+ *
+ * Read wholesale, the same call `dbGetAllPersonNotes` makes: these are a
+ * handful of small rows per day at the very most, and Stats wants several
+ * different cuts of them at once. Scoping the read to a window would mean a
+ * query per section on a screen that already holds the lot.
+ */
+export function dbGetFocusSessionLog(): FocusSessionRecord[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM focus_session_log ORDER BY ended_at DESC'
+  );
+  return rows.map(rowToFocusSessionRecord);
+}
+
+/**
+ * Append a finished session.
+ *
+ * `INSERT OR REPLACE` rather than a plain insert because the row's id is the
+ * session's own: a session restored from SQLite and ended twice (ended, then
+ * the same row reconciled and ended again on a later launch) must leave one
+ * row, not raise a constraint error inside whatever was ending it.
+ */
+export function dbInsertFocusSessionRecord(record: FocusSessionRecord): void {
+  db.runSync(
+    `INSERT OR REPLACE INTO focus_session_log
+       (id, started_at, ended_at, worked_seconds, rested_seconds, planned_work_minutes, steps, completed_task_ids)
+     VALUES (?,?,?,?,?,?,?,?)`,
+    [
+      record.id, record.startedAt, record.endedAt, record.workedSeconds, record.restedSeconds,
+      record.plannedWorkMinutes, JSON.stringify(record.steps), JSON.stringify(record.completedTaskIds),
+    ]
+  );
 }
 
 // ─── Groceries ──────────────────────────────────────────────────────────────

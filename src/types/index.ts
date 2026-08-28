@@ -358,6 +358,66 @@ export interface FocusSession {
   stepElapsedSeconds: number;
   /** Tasks ticked off from inside the session, for its closing summary. */
   completedTaskIds: string[];
+  /**
+   * What the steps already behind the cursor actually cost, oldest first.
+   *
+   * The session itself still keeps no per-step clock — `stepElapsedSeconds` is
+   * reset on every advance exactly as before, and nothing here is read to
+   * decide what is on screen. This is the *record*, banked as each step is
+   * left, and it exists because the alternative was logging from each of the
+   * four store actions that can retire a step (advance, prune, end, and a
+   * start that replaces a session in flight). That shape is the one this
+   * codebase has already been bitten by; banking inside the pure plan
+   * functions means a step cannot be dropped without a focusPlan test failing.
+   *
+   * One entry per step *run*, not per step planned: a session ended halfway
+   * records the half it did.
+   */
+  stepLog: FocusStepRecord[];
+}
+
+/**
+ * What one step of a session cost, once it's behind the cursor.
+ *
+ * `plannedMinutes` is copied off the step rather than looked up later because
+ * the plan can be pruned after the fact — the honest comparison is against
+ * what this stretch was actually given at the time it ran.
+ */
+export interface FocusStepRecord {
+  kind: FocusStepKind;
+  taskId: string | null;
+  /** What the plan allowed this stretch, in minutes. */
+  plannedMinutes: number;
+  /** What it actually took, pauses excluded. */
+  actualSeconds: number;
+  part: number;
+  partCount: number;
+  long: boolean;
+}
+
+/**
+ * A finished focus session, kept for Stats. Written once when the session ends
+ * and never updated after that.
+ *
+ * Deliberately not a `FocusSession` with an end date on it: the live session is
+ * a cursor into a plan that is still being pruned and re-timed, and the history
+ * row is a closed account of what ran. Storing one shape for both would mean
+ * every reader of the past having to reason about a plan's unrun tail.
+ */
+export interface FocusSessionRecord {
+  id: string;
+  startedAt: string;
+  endedAt: string;
+  /** Seconds of *work* steps that actually ran, pauses excluded. */
+  workedSeconds: number;
+  /** Seconds of *rest* steps that actually ran. */
+  restedSeconds: number;
+  /** What the plan allowed for the work steps that ran, in minutes. */
+  plannedWorkMinutes: number;
+  /** The steps that ran, oldest first. */
+  steps: FocusStepRecord[];
+  /** Tasks ticked off from inside the session. */
+  completedTaskIds: string[];
 }
 
 // A themed, long-running collection of loosely-dated tasks the user tracks

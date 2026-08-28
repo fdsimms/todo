@@ -1,4 +1,4 @@
-import type { FocusSession, FocusStep } from '../types';
+import type { FocusSession, FocusSessionRecord, FocusStep, FocusStepKind, FocusStepRecord } from '../types';
 import { estimatedMinutesFor, type EstimateSource } from './effort';
 
 /**
@@ -329,22 +329,52 @@ export function upcomingStepsForTask(session: FocusSession, taskId: string): Foc
 // ==== Moving through the plan ====
 
 /**
+ * What the step under the cursor has cost so far, as a history entry.
+ *
+ * Null past the end of the plan. A step that accrued nothing still records —
+ * a break advanced through in one tap is a real fact about the session, and
+ * dropping the zero would make "how often do I skip my breaks" unanswerable.
+ */
+export function currentStepRecord(session: FocusSession, now: number = Date.now()): FocusStepRecord | null {
+  const step = currentFocusStep(session);
+  if (!step) return null;
+  return {
+    kind: step.kind,
+    taskId: step.taskId,
+    plannedMinutes: step.minutes,
+    actualSeconds: focusStepElapsed(session, now),
+    part: step.part,
+    partCount: step.partCount,
+    long: step.long,
+  };
+}
+
+/**
  * Move to the next step, keeping the session's running/paused state.
  *
  * The step clock resets rather than carrying over: `stepElapsedSeconds` banks
  * the *current* step only, which is what lets a step be paused and resumed
- * without the plan needing a per-step ledger. What a step cost is not kept
- * once it's behind you — the session reports what it planned and what got
- * ticked off, not a timesheet.
+ * without the plan needing a per-step ledger. Nothing on screen reads what a
+ * step cost once it's behind you — the session still reports what it planned
+ * and what got ticked off, not a timesheet.
+ *
+ * What the step cost is appended to `stepLog` on the way past, and that is
+ * deliberately *here* rather than in the store: four store actions retire a
+ * step (advance, prune, end, and a start replacing a session in flight), and a
+ * ledger maintained at four call sites is the shape this codebase has been
+ * bitten by before. Banking in the pure function means the only way to lose a
+ * step is to add a fifth way of moving the cursor, which these tests catch.
  */
 export function advanceFocusSession(session: FocusSession, now: number = Date.now()): FocusSession {
   if (isFocusSessionFinished(session)) return session;
   const running = isFocusRunning(session);
+  const record = currentStepRecord(session, now);
   return {
     ...session,
     stepIndex: session.stepIndex + 1,
     stepElapsedSeconds: 0,
     stepStartedAt: running ? new Date(now).toISOString() : null,
+    stepLog: record ? [...session.stepLog, record] : session.stepLog,
   };
 }
 
@@ -399,6 +429,12 @@ export function pruneFocusPlan(
   // pruning a task three stretches ahead must not restart the one you're
   // sitting on.
   const stillCurrent = tidied[0] === wasCurrent;
+  // A step the cursor is being moved off is banked exactly as `advance` banks
+  // one, and for a reason worth stating: this is the path a task completed
+  // from the Today list takes, so the stretch that *did the work* leaves the
+  // plan here rather than through `advance`. Not banking it would lose time
+  // precisely for the tasks that got finished.
+  const record = stillCurrent ? null : currentStepRecord(session, now);
   return {
     ...session,
     steps: [...past, ...tidied],
@@ -407,5 +443,51 @@ export function pruneFocusPlan(
     stepStartedAt: stillCurrent
       ? session.stepStartedAt
       : (isFocusRunning(session) && tidied.length > 0 ? new Date(now).toISOString() : null),
+    stepLog: record ? [...session.stepLog, record] : session.stepLog,
+  };
+}
+
+// ==== Closing a session out ====
+
+/**
+ * Below this, a session isn't worth a row in the log — a start immediately
+ * undone, or a sheet opened and closed. Stats built on those would report a
+ * count of taps rather than of sessions.
+ */
+export const MIN_LOGGED_SESSION_SECONDS = 60;
+
+/**
+ * Turn a session that's ending into the row Stats reads, banking whatever the
+ * in-flight step accrued on the way.
+ *
+ * Null when there's nothing worth keeping. Completing something always counts,
+ * however short the session was: a minute's work that finished a task is a
+ * real session, and the floor is there for the sheet opened by accident.
+ */
+export function closeFocusSession(
+  session: FocusSession,
+  endedAt: number = Date.now(),
+): FocusSessionRecord | null {
+  const inFlight = currentStepRecord(session, endedAt);
+  const steps = inFlight ? [...session.stepLog, inFlight] : session.stepLog;
+
+  const secondsOf = (kind: FocusStepKind) => steps
+    .filter(s => s.kind === kind)
+    .reduce((total, s) => total + s.actualSeconds, 0);
+
+  const workedSeconds = secondsOf('work');
+  if (workedSeconds < MIN_LOGGED_SESSION_SECONDS && session.completedTaskIds.length === 0) return null;
+
+  return {
+    id: session.id,
+    startedAt: session.startedAt,
+    endedAt: new Date(endedAt).toISOString(),
+    workedSeconds,
+    restedSeconds: secondsOf('rest'),
+    plannedWorkMinutes: steps
+      .filter(s => s.kind === 'work')
+      .reduce((total, s) => total + s.plannedMinutes, 0),
+    steps,
+    completedTaskIds: session.completedTaskIds,
   };
 }

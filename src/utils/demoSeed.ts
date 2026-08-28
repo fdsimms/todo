@@ -1,5 +1,6 @@
 import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
+import { subHours } from 'date-fns/subHours';
 import { setHours } from 'date-fns/setHours';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
@@ -19,7 +20,9 @@ import { supplyReorderTitle } from './supply';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
-import type { DeliverableKind, GroceryItem, MealSlot, Recipe, Shop, TemplateItem } from '../types';
+import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, Recipe, Shop, TemplateItem } from '../types';
+import { dbGetFocusSessionLog, dbInsertFocusSessionRecord } from '../db/database';
+import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
 import { generatedBy } from './generatedTasks';
@@ -888,6 +891,67 @@ export function seedDemoData(): void {
     [roadmap, gutters],
     focusPlanOptionsFrom(useSettingsStore.getState()),
   );
+
+  // --- Finished sessions, so the Stats focus sections aren't empty ---------
+  // The one place here that reaches the database directly rather than going
+  // through a store action, and the reason is the same one the seed's own note
+  // gives for leaving a field out: there is no action that can back-date a
+  // finished session, and a week's chart drawn entirely on today is not a
+  // demo of it. What is *not* hand-written is the row — each one comes out of
+  // `closeFocusSession`, the same pure function the store uses, run over a
+  // plan `buildFocusPlan` actually built, so a record here can't drift from
+  // the type or from what a real session produces.
+  const focusOptions = focusPlanOptionsFrom(useSettingsStore.getState());
+  const PAST_SESSIONS: Array<[number, number, number]> = [
+    // Days ago, work minutes per stretch, stretches run.
+    [1, 25, 3],
+    [2, 25, 2],
+    [3, 25, 4],
+    [5, 25, 2],
+    [6, 25, 3],
+  ];
+  PAST_SESSIONS.forEach(([daysAgo, minutes, stretches]) => {
+    const steps = buildFocusPlan(
+      Array.from({ length: stretches }, (_, i) => ({
+        id: `demo-focus-${daysAgo}-${i}`,
+        estimatedMinutes: minutes,
+        effort: 0,
+        chainEnabled: false,
+        chainIndex: 0,
+        chainItems: [],
+      })),
+      focusOptions,
+    );
+    const endedAt = setHours(subDays(today, daysAgo), 17);
+    let session: FocusSession = {
+      id: generateId(),
+      startedAt: subHours(endedAt, 2).toISOString(),
+      steps,
+      stepIndex: 0,
+      stepStartedAt: null,
+      // Each stretch runs a few minutes under what it was given, so the
+      // "work stretches run N% of their planned length" row has something
+      // other than a round 100% to report.
+      stepElapsedSeconds: (minutes - 3) * 60,
+      completedTaskIds: [],
+      stepLog: [],
+    };
+    // Walked with the real advance, so every step is banked the way a session
+    // banks one — including the breaks, which are left near-untouched so
+    // "breaks taken" isn't a perfect score either.
+    for (let i = 0; i < steps.length - 1; i++) {
+      session = advanceFocusSession(session, endedAt.getTime());
+      session = {
+        ...session,
+        stepElapsedSeconds: steps[session.stepIndex]?.kind === 'rest' ? 20 : (minutes - 3) * 60,
+      };
+    }
+    const record = closeFocusSession(session, endedAt.getTime());
+    if (record) dbInsertFocusSessionRecord(record);
+  });
+  // The store loaded its history before any of this existed, so hand it the
+  // rows the same way initialize would read them.
+  useFocusStore.setState({ history: dbGetFocusSessionLog() });
 
   // --- History, so Logbook and Stats aren't empty --------------------------
   const HISTORY: Array<[string, string, number]> = [

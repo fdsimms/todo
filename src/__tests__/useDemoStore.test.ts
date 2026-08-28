@@ -447,6 +447,41 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // The Stats focus sections are invisible until sessions have actually been
+  // finished, and both of them read a window — so a seed landing everything on
+  // one day would demo the rows and leave the chart a single bar. What this
+  // asserts is that spread, and that the numbers are not a perfect score:
+  // stretches running exactly to plan and every break taken would show two
+  // rows that look like placeholders.
+  it('seeds finished focus sessions across several days, with imperfect numbers', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { history } = useFocusStore.getState();
+
+    expect(history.length).toBeGreaterThan(1);
+    expect(history.every(r => r.workedSeconds > 0)).toBe(true);
+
+    // More than one distinct day, so the 7-day chart has a shape.
+    const days = new Set(history.map(r => r.endedAt.slice(0, 10)));
+    expect(days.size).toBeGreaterThan(1);
+
+    const steps = history.flatMap(r => r.steps);
+    const work = steps.filter(s => s.kind === 'work');
+    const rests = steps.filter(s => s.kind === 'rest');
+
+    // Enough work stretches to clear focusAccuracy's own sample floor, and
+    // running under their planned length rather than exactly to it.
+    expect(work.length).toBeGreaterThanOrEqual(3);
+    const planned = work.reduce((t, s) => t + s.plannedMinutes * 60, 0);
+    const actual = work.reduce((t, s) => t + s.actualSeconds, 0);
+    expect(actual).toBeLessThan(planned);
+
+    // The plans reached breaks, and they were not all taken.
+    expect(rests.length).toBeGreaterThan(0);
+    expect(rests.some(s => s.actualSeconds < 30)).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // The relationship can now be set from either end, so what has to exist in
   // the seed is a live pair: one task carrying the pointer and one that shows
   // as the thing it's waiting on.

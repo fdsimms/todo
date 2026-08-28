@@ -21,6 +21,9 @@ import {
   resumeFocusSession,
   splitMinutes,
   upcomingStepsForTask,
+  closeFocusSession,
+  currentStepRecord,
+  MIN_LOGGED_SESSION_SECONDS,
   type FocusPlanOptions,
   type FocusPlanTask,
 } from '../utils/focusPlan';
@@ -57,6 +60,7 @@ const session = (steps: FocusStep[], over: Partial<FocusSession> = {}): FocusSes
   stepStartedAt: null,
   stepElapsedSeconds: 0,
   completedTaskIds: [],
+  stepLog: [],
   ...over,
 });
 
@@ -469,5 +473,134 @@ describe('pruneFocusPlan', () => {
   it('leaves a finished session alone', () => {
     const s = session([work('a', 25)], { stepIndex: 1 });
     expect(pruneFocusPlan(s, () => true, t0)).toBe(s);
+  });
+});
+
+describe('banking what a step cost', () => {
+  const t0 = Date.parse('2026-08-22T09:00:00.000Z');
+  const running = (steps: FocusStep[], over: Partial<FocusSession> = {}) =>
+    session(steps, { stepStartedAt: new Date(t0).toISOString(), ...over });
+
+  it('records nothing past the end of the plan', () => {
+    expect(currentStepRecord(session([work('a', 25)], { stepIndex: 1 }), t0)).toBeNull();
+  });
+
+  it('reports the step under the cursor with what it has run so far', () => {
+    const s = running([work('a', 25), rest(5)]);
+    expect(currentStepRecord(s, t0 + 10 * 60_000)).toEqual({
+      kind: 'work', taskId: 'a', plannedMinutes: 25, actualSeconds: 600,
+      part: 1, partCount: 1, long: false,
+    });
+  });
+
+  it('appends the step it leaves on every advance, oldest first', () => {
+    const s = running([work('a', 25), rest(5), work('b', 25)]);
+    const afterFirst = advanceFocusSession(s, t0 + 20 * 60_000);
+    const afterSecond = advanceFocusSession(afterFirst, t0 + 24 * 60_000);
+
+    expect(afterSecond.stepLog.map(r => [r.kind, r.actualSeconds])).toEqual([
+      ['work', 1200],
+      ['rest', 240],
+    ]);
+  });
+
+  it('still resets the live step clock, which nothing else reads the log for', () => {
+    const next = advanceFocusSession(running([work('a', 25), rest(5)]), t0 + 20 * 60_000);
+    expect(next.stepElapsedSeconds).toBe(0);
+    expect(next.stepLog).toHaveLength(1);
+  });
+
+  it('counts a paused stretch as the banked seconds only, not wall clock', () => {
+    const s = running([work('a', 25), rest(5)]);
+    const paused = pauseFocusSession(s, t0 + 10 * 60_000);
+    const next = advanceFocusSession(paused, t0 + 60 * 60_000);
+
+    expect(next.stepLog[0].actualSeconds).toBe(600);
+  });
+
+  it('banks the stretch that did the work when a completed task is pruned out', () => {
+    // The path a task completed from the Today list takes. Not banking here
+    // would lose time for exactly the tasks that got finished.
+    const s = running([work('a', 25), rest(5), work('b', 25)]);
+    const next = pruneFocusPlan(s, id => id === 'a', t0 + 18 * 60_000);
+
+    expect(next.stepLog).toHaveLength(1);
+    expect(next.stepLog[0]).toMatchObject({ taskId: 'a', actualSeconds: 1080 });
+  });
+
+  it('banks nothing when a prune leaves the current step where it was', () => {
+    const s = running([work('a', 25), rest(5), work('b', 25)]);
+    const next = pruneFocusPlan(s, id => id === 'b', t0 + 5 * 60_000);
+
+    expect(next.stepLog).toEqual([]);
+    expect(next.stepElapsedSeconds).toBe(0);
+  });
+
+  it('leaves the log alone on pause, resume and a no-op advance', () => {
+    const s = running([work('a', 25)], { stepLog: [] });
+    const done = advanceFocusSession(s, t0 + 25 * 60_000);
+    expect(done.stepLog).toHaveLength(1);
+    // Past the end: nothing more to bank, however many times it is called.
+    expect(advanceFocusSession(done, t0).stepLog).toHaveLength(1);
+    expect(pauseFocusSession(done, t0).stepLog).toHaveLength(1);
+    expect(resumeFocusSession(done, t0).stepLog).toHaveLength(1);
+  });
+});
+
+describe('closeFocusSession', () => {
+  const t0 = Date.parse('2026-08-22T09:00:00.000Z');
+  const running = (steps: FocusStep[], over: Partial<FocusSession> = {}) =>
+    session(steps, { stepStartedAt: new Date(t0).toISOString(), ...over });
+
+  it('refuses a session too short to be one', () => {
+    const s = running([work('a', 25)]);
+    expect(closeFocusSession(s, t0 + 5_000)).toBeNull();
+    expect(MIN_LOGGED_SESSION_SECONDS).toBe(60);
+  });
+
+  it('keeps a short session that finished something', () => {
+    const s = running([work('a', 25)], { completedTaskIds: ['a'] });
+    expect(closeFocusSession(s, t0 + 5_000)).not.toBeNull();
+  });
+
+  it('banks the step still in flight rather than losing the last stretch', () => {
+    const s = running([work('a', 25), rest(5)]);
+    const record = closeFocusSession(s, t0 + 20 * 60_000);
+
+    expect(record?.steps).toHaveLength(1);
+    expect(record?.workedSeconds).toBe(1200);
+  });
+
+  it('totals work and rest apart, and planned against actual', () => {
+    const s = running([work('a', 30), rest(5), work('b', 30)]);
+    const afterWork = advanceFocusSession(s, t0 + 20 * 60_000);
+    const afterRest = advanceFocusSession(afterWork, t0 + 25 * 60_000);
+    const record = closeFocusSession(afterRest, t0 + 40 * 60_000);
+
+    expect(record).toMatchObject({
+      workedSeconds: 20 * 60 + 15 * 60,
+      restedSeconds: 5 * 60,
+      plannedWorkMinutes: 60,
+    });
+    expect(record?.steps).toHaveLength(3);
+  });
+
+  it('carries the session id and start through, so the row is that session', () => {
+    const s = running([work('a', 25)], { id: 'session-7' });
+    const record = closeFocusSession(s, t0 + 20 * 60_000);
+
+    expect(record?.id).toBe('session-7');
+    expect(record?.startedAt).toBe(s.startedAt);
+    expect(record?.endedAt).toBe(new Date(t0 + 20 * 60_000).toISOString());
+  });
+
+  it('records a finished plan with no step in flight from the log alone', () => {
+    const s = running([work('a', 25)]);
+    const finished = advanceFocusSession(s, t0 + 25 * 60_000);
+    const record = closeFocusSession(finished, t0 + 26 * 60_000);
+
+    expect(isFocusSessionFinished(finished)).toBe(true);
+    expect(record?.steps).toHaveLength(1);
+    expect(record?.workedSeconds).toBe(1500);
   });
 });

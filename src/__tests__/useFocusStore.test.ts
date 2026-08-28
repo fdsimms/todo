@@ -7,17 +7,22 @@
  * task list while the session runs, and deleting it outright.
  */
 
-import type { FocusSession, Task } from '../types';
+import type { FocusSession, FocusSessionRecord, Task } from '../types';
 import type { FocusPlanOptions } from '../utils/focusPlan';
 
 const mockDb = {
   session: null as FocusSession | null,
+  log: [] as FocusSessionRecord[],
 };
 
 jest.mock('../db/database', () => ({
   dbGetFocusSession: jest.fn(() => mockDb.session),
   dbSaveFocusSession: jest.fn((s: FocusSession) => { mockDb.session = s; }),
   dbClearFocusSession: jest.fn(() => { mockDb.session = null; }),
+  dbGetFocusSessionLog: jest.fn(() => mockDb.log),
+  dbInsertFocusSessionRecord: jest.fn((r: FocusSessionRecord) => {
+    mockDb.log = [r, ...mockDb.log.filter(existing => existing.id !== r.id)];
+  }),
 }));
 
 const mockScheduleAlarm = jest.fn().mockResolvedValue(undefined);
@@ -65,7 +70,8 @@ const live = (): FocusSession => {
 
 beforeEach(() => {
   mockDb.session = null;
-  useFocusStore.setState({ session: null, initialized: false });
+  mockDb.log = [];
+  useFocusStore.setState({ session: null, history: [], initialized: false });
   mockScheduleAlarm.mockClear();
   mockCancelAlarm.mockClear();
   (dbSaveFocusSession as jest.Mock).mockClear();
@@ -284,5 +290,84 @@ describe('endSession', () => {
     expect(state().session).toBeNull();
     expect(mockDb.session).toBeNull();
     expect(mockScheduleAlarm).toHaveBeenLastCalledWith(null);
+  });
+});
+
+describe('session history', () => {
+  /**
+   * Puts real time on the current step, since the log deliberately refuses a
+   * session too short to be one (see MIN_LOGGED_SESSION_SECONDS).
+   */
+  const runCurrentStepFor = (seconds: number) => {
+    const session = live();
+    useFocusStore.setState({
+      session: { ...session, stepStartedAt: null, stepElapsedSeconds: seconds },
+    });
+  };
+
+  it('loads what is already logged on initialize', () => {
+    mockDb.log = [{
+      id: 'old', startedAt: 'x', endedAt: 'y', workedSeconds: 600, restedSeconds: 0,
+      plannedWorkMinutes: 10, steps: [], completedTaskIds: [],
+    }];
+    state().initialize([]);
+    expect(state().history.map(r => r.id)).toEqual(['old']);
+  });
+
+  it('logs a session when it ends, newest first', () => {
+    state().startSession([task('a')], OPTIONS);
+    const id = live().id;
+    runCurrentStepFor(20 * 60);
+    state().endSession();
+
+    expect(state().session).toBeNull();
+    expect(state().history.map(r => r.id)).toEqual([id]);
+    expect(state().history[0].workedSeconds).toBe(1200);
+  });
+
+  it('logs the session a new one replaces, so an hour of work is not lost', () => {
+    state().startSession([task('a')], OPTIONS);
+    const first = live().id;
+    runCurrentStepFor(45 * 60);
+    state().startSession([task('b')], OPTIONS);
+
+    expect(state().history.map(r => r.id)).toEqual([first]);
+    expect(live().id).not.toBe(first);
+  });
+
+  it('does not log the session in flight when a start produces no plan', () => {
+    state().startSession([task('a')], OPTIONS);
+    runCurrentStepFor(45 * 60);
+    state().startSession([], OPTIONS);
+
+    // Nothing changed, so nothing finished — the session is still running.
+    expect(state().history).toEqual([]);
+    expect(state().session).not.toBeNull();
+  });
+
+  it('writes nothing for a session ended before it amounted to anything', () => {
+    state().startSession([task('a')], OPTIONS);
+    runCurrentStepFor(4);
+    state().endSession();
+
+    expect(state().history).toEqual([]);
+    expect(state().session).toBeNull();
+  });
+
+  it('ending with no session at all is a no-op rather than a null row', () => {
+    state().endSession();
+    expect(state().history).toEqual([]);
+  });
+
+  it('keeps one row for a session somehow closed twice', () => {
+    state().startSession([task('a')], OPTIONS);
+    const session = live();
+    runCurrentStepFor(20 * 60);
+    state().endSession();
+    // The same session restored and ended again, as a relaunch could.
+    useFocusStore.setState({ session });
+    state().endSession();
+
+    expect(state().history.filter(r => r.id === session.id)).toHaveLength(1);
   });
 });

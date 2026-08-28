@@ -94,6 +94,14 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'recipes', key: ['id'] },
   { name: 'leftovers', key: ['id'] },
   { name: 'meal_plan_entries', key: ['id'] },
+  // Finished focus sessions, and the one place this feature parts company with
+  // `focus_sessions` in the exclusion list below. That row is excluded because
+  // it is a cursor two devices could fight over; these are closed accounts,
+  // written once and never updated, so last-writer-wins on a row that never
+  // changes is a no-op. They have to travel or Stats reports a different
+  // history on each phone, which is the reading nobody wants of "how much did
+  // I actually focus this week". Ids are base36 from generateId().
+  { name: 'focus_session_log', key: ['id'] },
 ];
 
 /**
