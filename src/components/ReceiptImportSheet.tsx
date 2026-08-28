@@ -23,7 +23,6 @@ import {
   checkboxRadius,
   type Colors,
 } from '../theme';
-import { itemsOnList } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
@@ -43,10 +42,8 @@ import {
   type ReceiptCaution,
   type ReceiptMatch,
 } from '../utils/receiptMatch';
-import { formatPrice, typicalPriceFor } from '../utils/groceryPrice';
-import { ReceiptPricePairing } from './ReceiptPricePairing';
+import { formatPrice } from '../utils/groceryPrice';
 import { EmptyState } from './EmptyState';
-import { autoPairing, pricesByItemId, type Pairing } from '../utils/pricePairing';
 import { formatScheduledDate } from '../utils/dateUtils';
 import { haptics } from '../utils/haptics';
 import { SHOP_NAME_MAX_LENGTH, type ReceiptStyle } from '../types';
@@ -114,11 +111,9 @@ interface Props {
    * trip to end, so a shop you never made a list for is still worth
    * photographing. See `ReceiptScope`.
    *
-   * Three things are shopping-only, and each is absent rather than inert:
-   * the purchase date (nothing in the pantry writes one — `addToPantry` stamps
-   * on-hand from now), the "already in the cart" note, and the prices-only
-   * pairing flow, which needs a list of what the trip bought to pair against
-   * and has none here.
+   * Two things are shopping-only, and each is absent rather than inert: the
+   * purchase date (nothing in the pantry writes one — `addToPantry` stamps
+   * on-hand from now) and the "already in the cart" note.
    */
   context: 'shopping' | 'pantry';
   /**
@@ -210,8 +205,6 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
-  const listEntries = useGroceryStore(useShallow(s => s.listEntries));
-  const activeListId = useGroceryStore(s => s.activeListId);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const itemShops = useGroceryStore(useShallow(s => s.itemShops));
   const addShop = useGroceryStore(s => s.addShop);
@@ -235,13 +228,6 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   /** "Left alone" rows opted in to "Add as bought", by index into `unclaimed` (#1805). */
   const [addAsBought, setAddAsBought] = useState<Set<number>>(new Set());
-  /**
-   * Which price on an opaque store's receipt belongs to which row. Empty until
-   * the user pairs, or until `autoPairing` finds an ordering that is forced.
-   */
-  const [pairing, setPairing] = useState<Pairing>({});
-  /** The row waiting for a price. Held here so a re-render doesn't drop it. */
-  const [pairSelectedId, setPairSelectedId] = useState<string | null>(null);
 
   const input = useRecipeImportSource('photo', 'read a receipt');
   const { photo, reset: resetInput } = input;
@@ -257,8 +243,6 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     setDateImplausible(false);
     setDatePickerOpen(false);
     setAddAsBought(new Set());
-    setPairing({});
-    setPairSelectedId(null);
     resetInput();
   }, [resetInput]);
 
@@ -343,20 +327,6 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   };
 
   const handleApply = () => {
-    if (opaque) {
-      // Nothing was matched, so there is nothing to remember and nothing to add
-      // as bought — an opaque line has no name to learn. The pairing is the
-      // whole answer: these rows came home, and this is what each cost.
-      haptics.success();
-      onApply(
-        shopId,
-        Object.keys(pairing),
-        pricesByItemId(pairing, pairPrices),
-        purchasedDate.toISOString(),
-        []
-      );
-      return;
-    }
     const priceById: Record<string, number> = {};
     for (const match of matches) {
       if (!match.itemId || !accepted.has(match.itemId)) continue;
@@ -405,66 +375,15 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const receiptStyleOf = (id: string): ReceiptStyle =>
     shops.find(s => s.id === id)?.receiptStyle ?? 'itemized';
 
+  // "Nothing readable" covers both a store that hands you no paper and one
+  // whose paper has no item names on it — see ReceiptStyle. They were two
+  // options while the second had a pairing flow of its own; with that gone the
+  // only thing the sheet does with either answer is decline to read the photo,
+  // so one option says it.
   const RECEIPT_STYLE_OPTIONS: { value: ReceiptStyle; label: string }[] = [
     { value: 'itemized', label: 'Item names' },
-    { value: 'opaque', label: 'Prices only' },
-    { value: 'none', label: 'No receipt' },
+    { value: 'none', label: 'Nothing readable' },
   ];
-
-  /**
-   * Whether the store now selected prints prices without names.
-   *
-   * Derived from the *currently picked* store rather than settled once when the
-   * receipt is read, so correcting the store switches the sheet's whole mode.
-   * That is the coherent behaviour: the claim is about a printer, and picking a
-   * different store is saying a different printer produced this paper.
-   */
-  const opaque = shops.find(s => s.id === shopId)?.receiptStyle === 'opaque';
-
-  /**
-   * The rows an opaque receipt's prices get paired onto: what's on the list
-   * right now.
-   *
-   * The list is the right source rather than the receipt, because at an opaque
-   * store the receipt has nothing on it to make rows *from* — that is the whole
-   * problem. What the trip bought is either already ticked here or was scanned
-   * in beforehand, and either way it is on the list.
-   */
-  const pairRows = useMemo(
-    // The rows a receipt can match are the ones in the trolley it's a receipt
-    // for, which is the list being shown.
-    () => itemsOnList(items, listEntries, activeListId).map(i => ({ id: i.id, name: i.name })),
-    [items]
-  );
-
-  /** Every price the receipt charged, in printed order. */
-  const pairPrices = useMemo(
-    () => (receipt?.lines ?? [])
-      .map(l => l.priceMinor)
-      .filter((p): p is number => p !== null),
-    [receipt]
-  );
-
-  // Runs once per (receipt, store) rather than on every pairing change, or it
-  // would fight the user: clearing a pair they just undid would re-apply the
-  // guess on the next render. Almost always a no-op — see `autoPairing`.
-  useEffect(() => {
-    if (!opaque || !receipt) return;
-    setPairing(
-      autoPairing(
-        pairRows.map(row => {
-          const item = items.find(i => i.id === row.id);
-          return {
-            id: row.id,
-            baselineMinor: item ? typicalPriceFor(item, shopId, itemShops)?.minor ?? null : null,
-          };
-        }),
-        pairPrices
-      )
-    );
-    setPairSelectedId(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opaque, receipt, shopId]);
 
   const claimed = matches.filter((m): m is ReceiptMatch & { itemId: string } => m.itemId !== null);
   const unclaimed = matches.filter(m => m.itemId === null);
@@ -489,11 +408,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       (sum, m, i) => (addAsBought.has(i) && m.line.priceMinor !== null ? sum + m.line.priceMinor : sum),
       0
     );
-  // In pair mode a pairing *is* the assertion that a row came home and cost
-  // this, so it stands in for the checkbox the itemized flow uses.
-  const acceptedCount = opaque
-    ? Object.keys(pairing).length
-    : accepted.size + addAsBought.size;
+  const acceptedCount = accepted.size + addAsBought.size;
 
   // A read receipt or an unread photo are both real work — a swipe-down
   // would otherwise drop either with no dialog.
@@ -599,11 +514,11 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   };
 
   /**
-   * Extracted so pair mode can reuse them verbatim. Both questions are about
-   * the trip rather than about the lines, so they are asked identically
-   * whichever kind of receipt this is — and an opaque store *especially* needs
-   * the store picker, since that is the control that put the sheet in this mode
-   * and the only way back out of it.
+   * Extracted so the "nothing readable" branch can reuse them verbatim. Both
+   * questions are about the trip rather than about the lines, so they are asked
+   * identically whichever kind of receipt this is — and a store whose receipts
+   * can't be read *especially* needs the store picker, since that is the
+   * control that put the sheet in that state and the only way back out of it.
    */
   const storePicker = () => (
     <>
@@ -752,45 +667,10 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
         <>
           {storePicker()}
           <Text style={styles.hint}>
-            You've said this store doesn't give a receipt, so there's nothing here to read. Pick a
-            different store above, or change what its receipts show.
-          </Text>
-        </>
-      );
-    }
-
-    // A store that prints prices with no names has nothing the pantry can use:
-    // the pairing flow below works by putting each price against a row the trip
-    // bought, and on the list those rows are already ticked there waiting. The
-    // pantry has no such set — every row in the catalog is equally a candidate
-    // — so this says so rather than offering a grid of two hundred items.
-    if (opaque && pantry) {
-      return (
-        <>
-          {storePicker()}
-          <Text style={styles.hint}>
-            You've said this store's receipts show prices without item names, so there's nothing
+            You've said this store's receipts have nothing readable on them, so there's nothing
             here to name what you bought. Pick a different store above, or change what its
             receipts show.
           </Text>
-        </>
-      );
-    }
-
-    if (opaque) {
-      return (
-        <>
-          {storePicker()}
-          {datePicker()}
-          <ReceiptPricePairing
-            rows={pairRows}
-            prices={pairPrices}
-            pairing={pairing}
-            onChangePairing={setPairing}
-            selectedId={pairSelectedId}
-            onSelect={setPairSelectedId}
-            currencySymbol={currencySymbol}
-          />
         </>
       );
     }

@@ -2849,29 +2849,26 @@ export interface Shop {
 }
 
 /**
- * Whether a store's receipt can be read, and what to offer when it can't.
- *
- * Three values rather than a flag, because two different things go wrong and
- * they want different answers:
+ * Whether a store's receipt is worth photographing.
  *
  * - `itemized` — an ordinary receipt with names on it. Scan it.
- * - `opaque` — it prints prices but not names ("GROCERIES ... 4.18"). There is
- *   nothing for the extractor to match on, so reading it is a waste of a
- *   request. But the *prices* are real, and they are the one thing a barcode
- *   can't know, so this offers pairing instead: what you scanned in one column,
- *   what you were charged in the other.
- * - `none` — no useful paper at all. Offers nothing, because a store that hands
- *   you nothing has no prices to pair either.
+ * - `none` — nothing an extractor can use. Either the store hands you no paper
+ *   at all, or what it prints has no item names on it ("GROCERIES ... 4.18").
+ *   Both spend a request to learn nothing, so the sheet refuses and says why
+ *   rather than reading it anyway.
  *
- * `opaque` and `none` both skip extraction, which is why the pair looks
- * collapsible. They must not be: the difference is whether there is a column of
- * prices to work with, and collapsing them would either offer an empty pairing
- * screen at a store with no receipt or hide pairing at the store it was built
- * for.
+ * A third value, `opaque`, used to split that second case out: a receipt with
+ * prices but no names still carries *real prices*, so instead of extraction it
+ * offered pairing — what the trip bought in one column, what the paper charged
+ * in the other, tap one then the other. It was removed because the pairing had
+ * no information to work from (`autoPairing` could only ever decide the forced
+ * cases, so the assignment was the user's to do by hand, row by row), and a
+ * store that prints no names is now simply a store whose receipt can't be
+ * read. Stores already marked `opaque` migrate to `none` in `initDatabase`.
  */
-export type ReceiptStyle = 'itemized' | 'opaque' | 'none';
+export type ReceiptStyle = 'itemized' | 'none';
 
-export const RECEIPT_STYLES: ReceiptStyle[] = ['itemized', 'opaque', 'none'];
+export const RECEIPT_STYLES: ReceiptStyle[] = ['itemized', 'none'];
 
 export function isReceiptStyle(value: unknown): value is ReceiptStyle {
   return RECEIPT_STYLES.includes(value as ReceiptStyle);
