@@ -25,7 +25,6 @@ import type { ClassifiedIngredient } from '../utils/mealPlanGroceries';
 import { RECIPE_VOTE_LABELS, type RecipeVote } from '../types';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
-import { EditorRow } from './EditorRow';
 import { InlineAction } from './InlineAction';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
 import { SheetScrim } from './SheetScrim';
@@ -188,11 +187,6 @@ export function CookRecapSheet({
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
 
   const [ticked, setTicked] = useState<Set<string>>(new Set());
-  // Explicit "no" to the Leftovers ask, distinct from Skip: Skip abandons the
-  // whole sheet unanswered, this records that this one question was answered
-  // "no". Tapping the collapsed answer reopens the choice, same as
-  // EditorRow's value being the way back into a field you've already set.
-  const [leftoversDeclined, setLeftoversDeclined] = useState(false);
   // Which restock rows are queued to add — unlike `ticked` above, this starts
   // *full*, not empty (see the class doc's note on that).
   const [restockTicked, setRestockTicked] = useState<Set<string>>(new Set());
@@ -202,7 +196,6 @@ export function CookRecapSheet({
   useEffect(() => {
     if (visible) {
       setTicked(new Set());
-      setLeftoversDeclined(false);
       setRestockTicked(new Set(restockRows.map(r => r.nameKey)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -340,28 +333,13 @@ export function CookRecapSheet({
               <>
                 <Text style={styles.groupLabel}>Leftovers</Text>
                 <View style={styles.card}>
-                  {leftoversDeclined ? (
-                    <EditorRow
-                      icon="cube-outline"
-                      label="Anything left over?"
-                      value="No"
-                      onPress={() => setLeftoversDeclined(false)}
-                    />
-                  ) : (
-                    <View style={styles.choiceRow}>
-                      <Ionicons name="cube-outline" size={18} color={colors.textSecondary} />
-                      <Text style={styles.choiceLabel}>Anything left over?</Text>
-                      <View style={styles.choiceButtons}>
-                        <InlineAction
-                          label="No"
-                          variant="neutral"
-                          onPress={() => { haptics.tap(); setLeftoversDeclined(true); }}
-                          accessibilityLabel="No leftovers"
-                        />
-                        <InlineAction label="Log" onPress={onLogLeftovers} accessibilityLabel="Log leftovers" />
-                      </View>
+                  <View style={styles.choiceRow}>
+                    <Ionicons name="cube-outline" size={18} color={colors.textSecondary} />
+                    <Text style={styles.choiceLabel}>Anything left over?</Text>
+                    <View style={styles.choiceButtons}>
+                      <InlineAction label="Log" onPress={onLogLeftovers} accessibilityLabel="Log leftovers" />
                     </View>
-                  )}
+                  </View>
                 </View>
               </>
             )}
