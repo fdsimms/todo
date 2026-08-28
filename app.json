@@ -105,8 +105,6 @@
       "./plugins/withAlarmKit",
       "./plugins/withCloudKit",
       "./plugins/withSiriShortcuts",
-      "./plugins/withFamilyControls",
-      "./plugins/withActivityMonitor",
       [
         "expo-quick-actions",
         {
@@ -155,16 +153,6 @@
                   "targetName": "TodoShareExtension",
                   "bundleIdentifier": "com.fdsimms.dundundun.ShareExtension",
                   "entitlements": {
-                    "com.apple.security.application-groups": [
-                      "group.com.fdsimms.dundundun"
-                    ]
-                  }
-                },
-                {
-                  "targetName": "TodoActivityMonitor",
-                  "bundleIdentifier": "com.fdsimms.dundundun.ActivityMonitor",
-                  "entitlements": {
-                    "com.apple.developer.family-controls": true,
                     "com.apple.security.application-groups": [
                       "group.com.fdsimms.dundundun"
                     ]
