@@ -342,7 +342,7 @@ export function ProjectsScreen() {
     // The draft carries the seeded category; only the placement is let go of.
     closeQuickAdd();
     animateLayout();
-    const project = createProject(draft.title, draft.deadline, draft.kind);
+    const project = createProject(draft.title, draft.deadline);
     if (draft.category) updateProject(project.id, { category: draft.category });
     newProjectIdRef.current = project.id;
     setEditingProject({ ...project, category: draft.category });
