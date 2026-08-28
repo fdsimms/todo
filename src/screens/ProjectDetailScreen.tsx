@@ -75,6 +75,15 @@ const ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'new', label: 'New task', icon: 'checkbox' },
 ];
 
+// A list's own add field already covers "New task", and Template doesn't fit
+// a line-per-item list the way it does a scheduled project — so the FAB here
+// only offers the two things the field can't: pulling in a task that already
+// exists elsewhere, and starting a section (a Stack homed on this project).
+const LIST_ADD_MENU_ITEMS: FabMenuItem[] = [
+  { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
+  { key: 'stack', label: 'Section', icon: 'layers' },
+];
+
 export function ProjectDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -383,8 +392,8 @@ export function ProjectDetailScreen() {
 
   // Template goes in simplified mode, same as it does from Today's add button.
   const addMenuItems = useMemo(
-    () => ADD_MENU_ITEMS.filter(item => addMenuItemShown(item.key, simpleMode)),
-    [simpleMode],
+    () => (isList ? LIST_ADD_MENU_ITEMS : ADD_MENU_ITEMS).filter(item => addMenuItemShown(item.key, simpleMode)),
+    [isList, simpleMode],
   );
 
   const handleAddMenuSelect = (key: string) => {
@@ -448,12 +457,12 @@ export function ProjectDetailScreen() {
    * A list's add field: one line, straight into the project, and the keyboard
    * stays up for the next one.
    *
-   * The FAB stays for a project and goes for a list. Its menu offers Add
-   * existing / Stack / Template / New task, and the first three are answers to
-   * questions nobody asks of a doctor-questions list — while the one that is
-   * wanted costs a tap, a modal and a dismissal per line. Writing five
-   * questions in a row is the whole activity here, so the field is the surface
-   * and there is nothing to open.
+   * The FAB stays for a list too, but its menu shrinks to Add existing /
+   * Section — New task is this field, and Template doesn't fit a
+   * doctor-questions list. Writing five questions in a row is the whole
+   * activity here, so the field is the surface for that and the FAB is only
+   * for the two things it can't do: pull in a task from elsewhere, or start a
+   * new section to write questions under.
    *
    * No date, no category, no title rules: a line typed here is exactly what it
    * says. `skipTitleRules` matters — a rule rewriting "Ask about the MRI
@@ -923,14 +932,12 @@ export function ProjectDetailScreen() {
           </View>
         </Modal>
 
-        {!isList && (
-          <FabMenu
-            items={addMenuItems}
-            onSelect={handleAddMenuSelect}
-            bottom={insets.bottom + spacing.xl}
-            accessibilityLabel="Add task to project"
-          />
-        )}
+        <FabMenu
+          items={addMenuItems}
+          onSelect={handleAddMenuSelect}
+          bottom={insets.bottom + spacing.xl}
+          accessibilityLabel="Add task to project"
+        />
 
         <TaskGroupEditor
           visible={groupEditorVisible}
