@@ -831,6 +831,51 @@ describe('addComponent / removeComponent', () => {
   });
 });
 
+describe('updateIngredient and choice-group labels', () => {
+  const withGroup = () => {
+    const r = makeRecipe('Salsa', {
+      ingredients: [
+        { id: 'i0', name: 'Tomatoes', nameKey: 'tomatoes', quantity: '6', aisle: null, prep: null, purpose: null, section: null, choiceGroup: null },
+        { id: 'i1', name: 'Serrano', nameKey: 'serrano', quantity: '2', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Serrano or Jalapeño' },
+        { id: 'i2', name: 'Jalapeño', nameKey: 'jalapeno', quantity: '2', aisle: null, prep: null, purpose: null, section: null, choiceGroup: 'Serrano or Jalapeño' },
+      ],
+    });
+    seed([r]);
+    return r;
+  };
+
+  it('carries a renamed member into the group label, on every member, while the label is still the auto join', () => {
+    const r = withGroup();
+
+    useRecipeStore.getState().updateIngredient(r.id, 'i1', { name: 'Habanero' });
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.find(i => i.id === 'i1')!.choiceGroup).toBe('Habanero or Jalapeño');
+    expect(ingredients.find(i => i.id === 'i2')!.choiceGroup).toBe('Habanero or Jalapeño');
+  });
+
+  it('leaves a custom group label alone once renameChoiceGroup has set it', () => {
+    const r = withGroup();
+    useRecipeStore.getState().renameChoiceGroup(r.id, 'Serrano or Jalapeño', 'Pepper');
+
+    useRecipeStore.getState().updateIngredient(r.id, 'i1', { name: 'Habanero' });
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.find(i => i.id === 'i1')!.choiceGroup).toBe('Pepper');
+    expect(ingredients.find(i => i.id === 'i2')!.choiceGroup).toBe('Pepper');
+  });
+
+  it('does not touch a choice group when the patch leaves the name unchanged', () => {
+    const r = withGroup();
+
+    useRecipeStore.getState().updateIngredient(r.id, 'i1', { quantity: '3' });
+
+    const ingredients = useRecipeStore.getState().recipeById(r.id)!.ingredients;
+    expect(ingredients.find(i => i.id === 'i1')!.choiceGroup).toBe('Serrano or Jalapeño');
+    expect(ingredients.find(i => i.id === 'i2')!.choiceGroup).toBe('Serrano or Jalapeño');
+  });
+});
+
 describe('splitIngredientAlternatives', () => {
   const withLine = (name: string, overrides: Partial<RecipeIngredient> = {}) => {
     const r = makeRecipe('Salsa', {

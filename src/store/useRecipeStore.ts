@@ -843,16 +843,39 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
   updateIngredient(recipeId, ingredientId, patch) {
     const recipe = get().recipes.find(r => r.id === recipeId);
     if (!recipe) return;
-    let touched = false;
-    const ingredients = recipe.ingredients.map(i => {
+    const original = recipe.ingredients.find(i => i.id === ingredientId);
+    if (!original) return;
+
+    let ingredients = recipe.ingredients.map(i => {
       if (i.id !== ingredientId) return i;
-      touched = true;
       const next = { ...i, ...patch };
       // The key is derived, never passed in — a patch that changes the name has
       // to move the key with it or the bridge to the catalog goes stale.
       return { ...next, nameKey: groceryNameKey(next.name) };
     });
-    if (!touched) return;
+
+    // A choice group's header defaults to "X or Y", joined from its members'
+    // own names at split time (see splitIngredientAlternatives). As long as
+    // nobody has since given it a custom one (renameChoiceGroup), a member
+    // rename should carry that join forward too — otherwise the header keeps
+    // quoting a name the recipe no longer has. Once the label stops matching
+    // the auto join (a custom rename), it's the user's text and stays put.
+    if (patch.name !== undefined && patch.name !== original.name && original.choiceGroup) {
+      const group = original.choiceGroup;
+      const members = recipe.ingredients.filter(i => i.choiceGroup === group);
+      const autoLabel = members.map(m => m.name).join(' or ');
+      if (autoLabel === group) {
+        const nextLabel = cleanChoiceGroup(
+          members.map(m => (m.id === ingredientId ? patch.name! : m.name)).join(' or ')
+        );
+        if (nextLabel) {
+          ingredients = ingredients.map(i => (
+            i.choiceGroup === group ? { ...i, choiceGroup: nextLabel } : i
+          ));
+        }
+      }
+    }
+
     save(set, { ...recipe, ingredients });
   },
 
