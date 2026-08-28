@@ -61,7 +61,8 @@ import {
 } from '../utils/activeTrip';
 import { InlineAction } from '../components/InlineAction';
 import { ListBulkBar } from '../components/ListBulkBar';
-import { ReorderableList } from '../components/ReorderableList';
+import { ReorderableList, type RowScroller } from '../components/ReorderableList';
+import { useScrollToTopOnTabPress } from '../hooks/useScrollToTopOnTabPress';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet';
@@ -577,6 +578,10 @@ export function GroceryScreen() {
   const [fabDragging, setFabDragging] = useState(false);
   // Lets the drag scroll the list once it reaches either end of the screen.
   const scrollControl = useRef<DragScroller | null>(null);
+  // Separate from the drag scroller above: this one backs the tab-press
+  // gesture, not autoscroll.
+  const rowScroller = useRef<RowScroller | null>(null);
+  useScrollToTopOnTabPress(rowScroller);
   // What the drag is aimed at goes through a channel rather than state: it
   // changes as the finger crosses each row, and re-rendering this screen
   // re-runs every row's renderItem. Only the button's label reads it.
@@ -1295,6 +1300,7 @@ export function GroceryScreen() {
         // control below.
         scrollEnabled={!fabDragging}
         scrollControlRef={scrollControl}
+        rowScrollerRef={rowScroller}
         // dragTick, not tap: a fast drag crosses several rows between frames
         // and unthrottled ticks run together into one long buzz. The lift
         // itself is fired by ReorderableList.

@@ -1789,6 +1789,34 @@ describe('completeTask', () => {
     expect(useTaskStore.getState().tasks).toHaveLength(1);
   });
 
+  it('marks the recurrence-ended completion destructive, so the undo bar shows it', () => {
+    // UndoBar filters on `destructive`, so without the flag this label was
+    // written and never rendered — the one telling that a schedule has run out.
+    const task = makeTask({
+      id: 'last-one',
+      recurrenceType: 'daily',
+      recurrenceInterval: 1,
+      dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
+      recurrenceCount: 1,
+    });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('last-one');
+    const entry = useTaskStore.getState().lastAction!;
+    expect(entry.label).toBe("Last one, this won't repeat again");
+    expect(entry.destructive).toBe(true);
+  });
+
+  it('leaves an ordinary completion off the undo bar', () => {
+    // The rule the exception above is carved out of: a tick you can undo by
+    // un-ticking the row raises no bar.
+    const task = makeTask({ id: 'plain', recurrenceType: 'none' });
+    useTaskStore.setState({ tasks: [task] });
+    useTaskStore.getState().completeTask('plain');
+    const entry = useTaskStore.getState().lastAction!;
+    expect(entry.label).toBe('Task completed');
+    expect(entry.destructive).toBeFalsy();
+  });
+
   it('advances a chain immediately with no due date when the task does not recur', () => {
     const task = makeTask({
       id: 'chained',

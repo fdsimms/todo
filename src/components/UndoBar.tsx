@@ -36,6 +36,12 @@ const VISIBLE_MS = 6000;
  * the rescue the issue is about. See the flag's own doc comment in each
  * store for the reasoning, and for which ones are marked.
  *
+ * One completion marks itself destructive and so does reach this bar: the one
+ * that ends a recurrence ("Last one, this won't repeat again", in
+ * `completeTask`). A tick you can undo by un-ticking the row needs no bar; a
+ * schedule reaching its end leaves no row to un-tick and nothing else on
+ * screen saying it happened. Don't fold it back in with the rest.
+ *
  * **One bar for four independent histories.** Mirrors `useShakeToUndo`:
  * offers whichever of the four stores' top entry is freshest, so a grocery
  * clear and a task delete can't both want the slot at once.
