@@ -104,7 +104,7 @@ export function WeatherRulesSheet({ visible, onClose }: Props) {
           <SheetHeaderButton label="Done" onPress={onClose} minWidth={56} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.list}>
+        <ScrollView contentContainerStyle={rules.length === 0 ? styles.listEmpty : styles.list}>
           {!hideHelpText && (
             <Text style={styles.caption}>
               A rule adds its task on any day the weather matches, checked once a day using your
@@ -253,6 +253,10 @@ function makeStyles(colors: Colors) {
     headerTitle: { flex: 1, textAlign: 'center', color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     headerSpacer: { width: 56 },
     list: { padding: spacing.md, paddingBottom: spacing.xl },
+    // Full-height content container so EmptyState's own `flex: 1` has room to
+    // center below the caption/permission card, instead of collapsing to its
+    // natural height at the top of the scroll view.
+    listEmpty: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl },
     caption: { color: colors.textSecondary, fontSize: font.sm, marginBottom: spacing.md },
     permissionCard: {
       flexDirection: 'row',

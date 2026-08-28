@@ -272,9 +272,13 @@ function makeStyles(colors: Colors) {
       minWidth: 16,
     },
     previewBody: { flex: 1, gap: spacing.xs },
-    previewText: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },
-    // A line that won't be added, still legible so it can be turned back on.
-    dropped: { color: colors.textTertiary, textDecorationLine: 'line-through' },
+    // Same reason as the ingredient row's quantity: each line sits on its own
+    // editable chip now rather than straight on the sunken tray, and the grey
+    // that measured 5.9:1 there measures 4.15:1 on `bgTertiary`.
+    previewText: { fontSize: font.sm, color: colors.text, lineHeight: 20 },
+    // A line that won't be added, still legible so it can be turned back on —
+    // the strikethrough is what says dropped, the grey only ranks it.
+    dropped: { color: colors.textSecondary, textDecorationLine: 'line-through' },
     previewLead: { fontSize: font.xs, color: colors.textTertiary },
     leadStepper: { alignSelf: 'flex-start' },
   });

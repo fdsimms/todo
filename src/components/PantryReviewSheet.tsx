@@ -169,11 +169,27 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
   const responder = useMemo(
     () =>
       PanResponder.create({
-        // Claimed on movement rather than on touch-down, so a tap that lands on
-        // the card (rather than on a button) still reads as a tap.
-        onMoveShouldSetPanResponder: (_e, g) =>
-          Math.abs(g.dx) > interaction.tapMoveThreshold ||
-          Math.abs(g.dy) > interaction.tapMoveThreshold,
+        // Claimed on touch-down, in both phases, which is what every pan
+        // surface in this app that works does (the sheet drags, `Fab`,
+        // `ReorderableList`, `SortableList`) and what the deck was missing:
+        // it alone waited for `interaction.tapMoveThreshold` of movement on the
+        // *bubble* phase only, and the card never moved at all.
+        //
+        // There is nothing the early claim can cost here. The comment it
+        // replaces was guarding a tap on the card, and the card has no tap —
+        // the three answers and Undo are buttons below it, outside this view,
+        // which is the arrangement the accessibility note below describes. A
+        // touch that lands on a card and doesn't travel is released as no
+        // answer by `answerFor` and springs back, so a stray tap still costs
+        // nothing.
+        onStartShouldSetPanResponder: () => true,
+        onStartShouldSetPanResponderCapture: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponderCapture: () => true,
+        // Nothing may take the card mid-swipe: the release is what writes the
+        // answer, so a gesture handed over halfway is one the user made and the
+        // pantry never heard.
+        onPanResponderTerminationRequest: () => false,
         onPanResponderMove: (_e, g) => {
           // Upward drags track vertically and horizontal ones horizontally,
           // never both: a card that follows the finger diagonally reads as

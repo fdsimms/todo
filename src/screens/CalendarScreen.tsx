@@ -334,7 +334,11 @@ export function CalendarScreen() {
       <ScrollView
         style={styles.detail}
         scrollEnabled={!draggingSubtask}
-        contentContainerStyle={{ paddingBottom: tabBarHeight + spacing.xl }}
+        contentContainerStyle={
+          detail.isEmpty
+            ? { flexGrow: 1, paddingBottom: tabBarHeight + spacing.xl }
+            : { paddingBottom: tabBarHeight + spacing.xl }
+        }
         showsVerticalScrollIndicator={false}
       >
         {detail.isEmpty ? (

@@ -441,7 +441,7 @@ function StoresTab({
       <ReorderableList
         data={shops}
         keyExtractor={s => s.id}
-        contentContainerStyle={styles.list}
+        contentContainerStyle={shops.length === 0 ? styles.listEmpty : styles.list}
         placeholderStyle={styles.dropSlot}
         onHoverChange={haptics.dragTick}
         onReorder={reordered => onReorder(reordered.map(s => s.id))}
@@ -607,6 +607,10 @@ function makeStyles(colors: Colors) {
       paddingTop: spacing.md,
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
+    // Full-height content container so the Stores tab's EmptyState centres
+    // in the space above the add row, instead of collapsing to its natural
+    // height at the top of the list.
+    listEmpty: { flexGrow: 1, paddingTop: spacing.md, paddingBottom: spacing.xl },
     dropSlot: {
       marginHorizontal: spacing.md,
       marginVertical: 2,

@@ -7,6 +7,7 @@ import {
   describeAddedToList,
   describeWeekPlan,
   describeWeekRange,
+  earliestUnplannedSlot,
   entriesForDay,
   entriesForSlot,
   isKeyInRange,
@@ -186,6 +187,41 @@ describe('entriesForDay / entriesForSlot', () => {
   it('returns every entry in a slot, not just the first', () => {
     expect(entriesForSlot(week, '2026-08-05', 'dinner')).toHaveLength(2);
     expect(entriesForSlot(week, '2026-08-05', 'lunch')).toEqual([]);
+  });
+});
+
+describe('earliestUnplannedSlot', () => {
+  const enabled: MealSlot[] = ['breakfast', 'lunch', 'dinner'];
+
+  it('picks the day\'s first empty slot, in day order', () => {
+    const entries = [entry('2026-08-05', 'breakfast')];
+    expect(earliestUnplannedSlot(entries, '2026-08-05', enabled)).toBe('lunch');
+  });
+
+  it('defaults to breakfast on a day with nothing planned at all', () => {
+    expect(earliestUnplannedSlot([], '2026-08-05', enabled)).toBe('breakfast');
+  });
+
+  it('ignores another day\'s entries', () => {
+    const entries = [entry('2026-08-04', 'breakfast'), entry('2026-08-04', 'lunch')];
+    expect(earliestUnplannedSlot(entries, '2026-08-05', enabled)).toBe('breakfast');
+  });
+
+  it('skips a slot the user has turned off', () => {
+    expect(earliestUnplannedSlot([], '2026-08-05', ['lunch', 'dinner'])).toBe('lunch');
+  });
+
+  it('falls back to dinner once every enabled slot is planned', () => {
+    const entries = [
+      entry('2026-08-05', 'breakfast'),
+      entry('2026-08-05', 'lunch'),
+      entry('2026-08-05', 'dinner'),
+    ];
+    expect(earliestUnplannedSlot(entries, '2026-08-05', enabled)).toBe('dinner');
+  });
+
+  it('falls back to dinner when nothing is enabled', () => {
+    expect(earliestUnplannedSlot([], '2026-08-05', [])).toBe('dinner');
   });
 });
 

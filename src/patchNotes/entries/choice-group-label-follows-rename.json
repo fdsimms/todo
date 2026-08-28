@@ -1,0 +1,4 @@
+{
+  "message": "Renaming an ingredient that's part of a \"Choose one\" group now updates the group's header too, instead of leaving it quoting the ingredient's old name.",
+  "date": "2026-08-28"
+}

@@ -104,6 +104,7 @@ import {
   describeAddedToList,
   describeWeekPlan,
   describeWeekRange,
+  earliestUnplannedSlot,
   entriesForDay,
   recipeIndex,
   slotLabel,
@@ -321,6 +322,7 @@ export function MealPlanScreen() {
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
+  const mealSlotsEnabled = useSettingsStore(useShallow(s => s.mealSlotsEnabled));
   // ==== local state (the week anchor, sheets, bulk selection, the fridge) ====
   // Any date inside the week on screen. Paging moves the anchor, never the days.
   const [anchor, setAnchor] = useState(() => new Date());
@@ -386,7 +388,7 @@ export function MealPlanScreen() {
   // this screen, the recipe detail screen, a recipe row and the Cook again
   // shelf. `planRecipe` is unused here: this screen plans free text and
   // leftovers too, so it calls planMeal directly and only shares the offer.
-  const { offerPrepTasks, offerPrepTasksForEach } = usePlanMeal();
+  const { offerPrepTasks, offerPrepTasksForEach, earliestUnplannedSlotToday } = usePlanMeal();
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
   // "Always use oat milk for milk", applied to every read here that shops or
@@ -1889,11 +1891,10 @@ export function MealPlanScreen() {
         visible={planningDay !== null}
         dayKey={planningDay ?? ''}
         dayLabel={planningDay ? format(dayKeyToDate(planningDay), 'EEEE') : ''}
-        // Dinner is what a week plan is mostly about, and it's the slot a tap
-        // means when the user didn't say. The chips are right there to say
-        // otherwise — and a meal task's link *has* said, which is what
-        // planningSlot carries.
-        defaultSlot="dinner"
+        // The earliest of the day's meals with nothing planned yet — the chips
+        // are right there to say otherwise, and a meal task's link *has* said,
+        // which is what planningSlot carries.
+        defaultSlot={planningDay ? earliestUnplannedSlot(entries, planningDay, mealSlotsEnabled) : 'dinner'}
         forceSlot={planningSlot}
         onPlan={planFromPicker}
         onPlanned={offerPrepTasksForEach}
@@ -2081,6 +2082,7 @@ export function MealPlanScreen() {
       <PlanMealSheet
         visible={planningLeftover !== null}
         title={planningLeftover?.title ?? null}
+        defaultSlot={earliestUnplannedSlotToday()}
         onPlan={(dateKey, slot) => planningLeftover ? planMeal({
           date: dateKey,
           slot,

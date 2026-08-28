@@ -337,33 +337,17 @@ function makeStyles(colors: Colors) {
     },
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-    // No lineHeight — RN maps it onto the iOS paragraph style with no
-    // compensating baseline offset, so the glyphs sit low in the field.
-    nameInput: {
-      fontSize: font.md,
-      fontWeight: fontWeight.medium,
-      color: colors.text,
-      padding: 0,
-      minHeight: 20,
-    },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },
     // Accent rather than tertiary: it explains a state the app put the row in,
     // where the aisle it replaces is just where the thing lives in the shop.
     note: { fontSize: font.xs, color: colors.accent, marginTop: 2 },
-    qtyPill: {
-      backgroundColor: colors.bgTertiary,
-      borderRadius: radius.sm,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 3,
-      maxWidth: 96,
-    },
-    qtyText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.textSecondary },
-    qtyInput: {
-      fontSize: font.sm,
-      fontWeight: fontWeight.semibold,
-      color: colors.textSecondary,
-      padding: 0,
-      minWidth: 48,
-    },
+    // Width bound only. The pill this used to paint itself is now what every
+    // editable value gets from `InlineEditableText`, and painting it here too
+    // put a chip inside a chip.
+    qtyPill: { maxWidth: 96 },
+    // `text` rather than `textSecondary`: the quantity reads against the chip
+    // behind it now, not against the card, and grey on `bgTertiary` measures
+    // 4.15:1 where the same grey on the card measured 5.9:1.
+    qtyText: { fontSize: font.sm, fontWeight: fontWeight.semibold, color: colors.text },
   });
 }

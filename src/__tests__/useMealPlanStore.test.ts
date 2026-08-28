@@ -179,7 +179,8 @@ beforeEach(() => {
   useGroceryStore.setState({ items: [] });
   useMealPlanStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
-    lastAction: null, cookRecap: null, plannedSlotCounts: {}, cookingCounts: null,
+    lastAction: null, undoStack: [], redoStack: [],
+    cookRecap: null, plannedSlotCounts: {}, cookingCounts: null,
   });
 });
 
@@ -507,6 +508,37 @@ describe('loadRange', () => {
     useMealPlanStore.getState().loadRange('2026-08-10', '2026-08-16');
 
     expect(getEntries().map(e => e.date)).toEqual(['2026-08-12']);
+  });
+});
+
+describe('entriesForDayLive', () => {
+  it('reads the loaded window rather than going to disk, for a day inside it', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbGetMealPlanEntries as jest.Mock).mockClear();
+
+    const result = useMealPlanStore.getState().entriesForDayLive('2026-08-05');
+
+    expect(result).toHaveLength(1);
+    expect(dbGetMealPlanEntries).not.toHaveBeenCalled();
+  });
+
+  it('falls through to SQLite for a day outside the loaded window', () => {
+    loadWeek([entry('2026-08-05', 'dinner')]);
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-09-01', 'lunch')]);
+
+    const result = useMealPlanStore.getState().entriesForDayLive('2026-09-01');
+
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-09-01', '2026-09-01');
+    expect(result.map(e => e.slot)).toEqual(['lunch']);
+  });
+
+  it('goes to SQLite for any day before anything has been loaded', () => {
+    (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry('2026-08-05', 'breakfast')]);
+
+    const result = useMealPlanStore.getState().entriesForDayLive('2026-08-05');
+
+    expect(dbGetMealPlanEntries).toHaveBeenCalledWith('2026-08-05', '2026-08-05');
+    expect(result).toHaveLength(1);
   });
 });
 

@@ -683,10 +683,11 @@ export function RecipeCreateSheet({
           <ImportApplyRow
             checked={applyDetails}
             onToggle={() => setApplyDetails(v => !v)}
-            title="Serves"
-            accessibilityLabel={detailsLabel}
+            title="Details"
+            accessibilityLabel={detailsLabel || 'Details'}
           >
             <View style={styles.detailFields}>
+              <Text style={styles.detailSep}>Serves</Text>
               <InlineEditableText
                 edits={edits}
                 editKey="details:servings"
@@ -783,12 +784,12 @@ export function RecipeCreateSheet({
               onCommit={setSiteName}
               allowEmpty
               textStyle={styles.detailValue}
-              placeholder="e.g. NYT Cooking"
+              placeholder={importedSourceType === 'cookbook' ? 'e.g. Salt Fat Acid Heat' : 'e.g. NYT Cooking'}
               accessibilityLabel="source"
               maxLength={RECIPE_SOURCE_MAX_LENGTH}
               numberOfLines={1}
             />
-            <Text style={styles.detailSep}>·</Text>
+            <Text style={styles.detailSep}>by</Text>
             <InlineEditableText
               edits={edits}
               editKey="source:author"
@@ -803,7 +804,7 @@ export function RecipeCreateSheet({
             />
             {importedSourceType === 'cookbook' && (
               <>
-                <Text style={styles.detailSep}>·</Text>
+                <Text style={styles.detailSep}>page</Text>
                 <InlineEditableText
                   edits={edits}
                   editKey="source:page"
@@ -899,7 +900,12 @@ function makeStyles(colors: Colors) {
     },
     list: { paddingTop: spacing.md, paddingBottom: spacing.xl },
     detailFields: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
-    detailValue: { fontSize: font.sm, color: colors.textSecondary },
+    // `text`, not `textSecondary`: every one of these sits on its own chip
+    // now, and the chrome between them (`detailSep`) is what stays grey. It
+    // used to be the other way round — the static "·"/"min"/"Makes" were
+    // tertiary and the editable values secondary, so the one run of text was
+    // dimmest exactly where it was answerable.
+    detailValue: { fontSize: font.sm, color: colors.text },
     detailSep: { fontSize: font.sm, color: colors.textTertiary },
     groupLabel: {
       color: colors.textSecondary,

@@ -102,6 +102,7 @@ export function IngredientCatalogMatchSheet({
   };
 
   const { summary, suggested, unknown } = rows;
+  const isEmpty = suggested.length === 0 && unknown.length === 0;
 
   return (
     <EditorSheet
@@ -110,7 +111,7 @@ export function IngredientCatalogMatchSheet({
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
-      scrollContentStyle={styles.scrollContent}
+      scrollContentStyle={isEmpty ? styles.scrollContentEmpty : styles.scrollContent}
       header={
         <>
           <SheetHeaderButton label="Done" onPress={onClose} minWidth={40} />
@@ -123,7 +124,7 @@ export function IngredientCatalogMatchSheet({
         {summary.linked} of {summary.total} already in your grocery catalog.
       </Text>
 
-      {suggested.length === 0 && unknown.length === 0 ? (
+      {isEmpty ? (
         <EmptyState
           icon="basket-outline"
           title="Every ingredient is linked"
@@ -215,6 +216,10 @@ function makeStyles(colors: Colors) {
     headerSpacer: { minWidth: 40 },
     scroll: { flex: 1 },
     scrollContent: { padding: spacing.md, paddingBottom: spacing.xl },
+    // Full-height content container so EmptyState's own `flex: 1` has
+    // room to center in below the count line, instead of collapsing to
+    // its natural height at the top of the scroll view.
+    scrollContentEmpty: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl },
     count: {
       fontSize: font.sm,
       color: colors.textSecondary,

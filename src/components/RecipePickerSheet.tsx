@@ -59,17 +59,25 @@ interface Props {
   dayKey: string;
   /** "Tue Aug 5" — names the day being planned, so the sheet doesn't need the calendar. */
   dayLabel: string;
+  /**
+   * The slot to open on absent a `forceSlot` or a remembered `lastPickedSlot`
+   * — the earliest of the day's meals with nothing planned yet (see
+   * `earliestUnplannedSlot`), computed by the caller (`MealPlanScreen`) from
+   * `dayKey`'s own entries.
+   */
   defaultSlot: MealSlot;
   /**
    * A slot the *caller* has already established, which beats both the session's
    * remembered slot and `defaultSlot`.
    *
-   * The distinction `defaultSlot` alone can't draw: it is the ambient guess
-   * ("probably dinner"), and `lastPickedSlot` rightly overrides a guess. A meal
-   * task's link is not a guess — "Choose lunch" named the slot before the sheet
-   * opened, and re-tapping the Lunch chip because the last thing planned was a
-   * dinner is exactly the re-answering the row exists to save. Omit it
-   * everywhere the user is picking a slot as much as a meal (the + on a day).
+   * The distinction `defaultSlot` alone can't draw: it is still a guess — an
+   * educated one now, but a day can have more than one slot open and this
+   * doesn't know which the user is here for — and `lastPickedSlot` rightly
+   * overrides a guess. A meal task's link is not a guess — "Choose lunch"
+   * named the slot before the sheet opened, and re-tapping the Lunch chip
+   * because the last thing planned was a dinner is exactly the re-answering
+   * the row exists to save. Omit it everywhere the user is picking a slot as
+   * much as a meal (the + on a day).
    */
   forceSlot?: MealSlot | null;
   /** Writes the pick immediately. Returns null if the store refused it (a title that cleans to nothing). */
@@ -96,11 +104,11 @@ const MAX_ROWS = 30;
 /**
  * The slot the last pick used, remembered for as long as the app is running.
  *
- * Dinner is the right *default* — it's what a week plan is mostly about, and
- * it's what `defaultSlot` says. It was also the only thing this sheet ever
- * remembered, so someone who plans lunches re-tapped the same chip on every
- * single open, forever (#1368). Now the default seeds the first open of a
- * session and each pick moves it on.
+ * `defaultSlot` seeds the first open of a session and each pick moves this
+ * on — it used to be the only thing this sheet ever remembered, which meant
+ * someone who plans lunches re-tapped the same chip on every single open,
+ * forever (#1368), because the default back then was a flat "dinner"
+ * regardless of the day.
  *
  * Deliberately module state rather than a setting: it's a guess about what
  * you're doing right now, not a preference about how the app should behave,
@@ -213,6 +221,15 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const keyboardOffset = useRef(new Animated.Value(0)).current;
   const [keyboardHeight, setKeyboardHeight] = useState(0);
 
+  // Read at the moment the sheet opens, not as an effect dependency:
+  // `defaultSlot` is now computed from live meal-plan entries (the earliest
+  // still-unplanned one), which change every time a pick lands — including
+  // this sheet's own picks, mid multi-pick session. Putting it in the effect
+  // below would re-run on every one of those, wiping `planned` and losing
+  // every entry picked before the last one from the batch `onPlanned` fires.
+  const defaultSlotRef = useRef(defaultSlot);
+  defaultSlotRef.current = defaultSlot;
+
   useEffect(() => {
     const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
     const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
@@ -235,7 +252,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   useEffect(() => {
     if (!visible) return;
     setQuery('');
-    setSlot(forceSlot ?? lastPickedSlot ?? defaultSlot);
+    setSlot(forceSlot ?? lastPickedSlot ?? defaultSlotRef.current);
     setPlanned([]);
     translateY.setValue(hiddenY);
     backdropOpacity.setValue(0);
@@ -245,7 +262,7 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
       Animated.spring(translateY, { toValue: 0, ...animation.spring.smooth, useNativeDriver: true }),
       Animated.timing(backdropOpacity, { toValue: 1, duration: animation.duration.normal, useNativeDriver: true }),
     ]).start();
-  }, [visible, defaultSlot, forceSlot]);
+  }, [visible, forceSlot]);
 
   const dismiss = () => {
     Keyboard.dismiss();
@@ -686,8 +703,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingBottom: spacing.xs,
   },
   // EmptyState brings its own centring, icon circle and type — this only has
-  // to keep it off the sheet's edges.
+  // to keep it off the sheet's edges and give it a tall enough box to centre
+  // in. The ScrollView above is shrink-wrapped (`maxHeight` only, no
+  // `flex: 1`), so it sizes to its content rather than stretching to fill
+  // the sheet — a fixed `minHeight` here is what gives EmptyState's own
+  // `flex: 1` something to grow into instead of collapsing to the top.
   emptyWrap: {
+    minHeight: 240,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.md,
   },

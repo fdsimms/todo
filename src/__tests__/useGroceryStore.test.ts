@@ -216,6 +216,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     shelfLifeDays: null,
     useUpTask: null,
     pantryCheckDeclinedAt: null,
+    pantryReviewedAt: null,
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
@@ -317,6 +318,10 @@ beforeEach(() => {
   mockUseUpLeadDays = 1;
   mockUseUpCategory = null;
   seed([]);
+  // Every test starts with an empty history. Undo used to null a single slot,
+  // so a test that ended on an undo left one behind that looked clean; a stack
+  // resurfaces whatever was under it in the next test instead.
+  useGroceryStore.getState().clearUndoHistory();
 });
 
 // ─── initialize ──────────────────────────────────────────────────────────────
@@ -4653,6 +4658,38 @@ describe('answerPantryReview', () => {
     seed([makeItem({ name: 'Flour' })]);
     expect(() => useGroceryStore.getState().answerPantryReview('missing', 'out')).not.toThrow();
   });
+
+  // Without the stamp the deck deals the same card again the next time it
+  // opens: every answer leaves the row still qualifying for it. See
+  // GroceryItem.pantryReviewedAt.
+  it.each(['have', 'low', 'out'] as const)('stamps the answer (%s)', answer => {
+    const flour = makeItem({ name: 'Flour', pantryReviewedAt: null });
+    seed([flour]);
+
+    useGroceryStore.getState().answerPantryReview(flour.id, answer);
+
+    expect(useGroceryStore.getState().items[0].pantryReviewedAt).not.toBeNull();
+  });
+
+  // The two answers that write nothing else are exactly the ones that needed
+  // the stamp most: without it they left the row unchanged, so it came back.
+  it('stamps a "running low" on a row already running low', () => {
+    const flour = makeItem({ name: 'Flour', runningLowAt: new Date(Date.now() - 3 * 86_400_000).toISOString(), onList: true });
+    seed([flour]);
+
+    useGroceryStore.getState().answerPantryReview(flour.id, 'low');
+
+    expect(useGroceryStore.getState().items[0].pantryReviewedAt).not.toBeNull();
+  });
+
+  it('stamps an "out of it" on a row already out of it', () => {
+    const flour = makeItem({ name: 'Flour', onHandUntil: OUT_OF_IT_UNTIL });
+    seed([flour]);
+
+    useGroceryStore.getState().answerPantryReview(flour.id, 'out');
+
+    expect(useGroceryStore.getState().items[0].pantryReviewedAt).not.toBeNull();
+  });
 });
 
 describe('revertPantryAnswer', () => {
@@ -4669,6 +4706,19 @@ describe('revertPantryAnswer', () => {
     const restored = useGroceryStore.getState().items[0];
     expect(restored.runningLowAt).toBeNull();
     expect(restored.onList).toBe(false);
+  });
+
+  it('takes the stamp back with the answer', () => {
+    // Undo hands back the card, so the quiet window has to come off with it —
+    // otherwise a mis-swipe silences the row for a week.
+    const flour = makeItem({ name: 'Flour', pantryReviewedAt: null });
+    seed([flour]);
+    const before = useGroceryStore.getState().items[0];
+    useGroceryStore.getState().answerPantryReview(flour.id, 'have');
+
+    useGroceryStore.getState().revertPantryAnswer(before, null);
+
+    expect(useGroceryStore.getState().items[0].pantryReviewedAt).toBeNull();
   });
 
   it('leaves a row deleted since the answer deleted', () => {

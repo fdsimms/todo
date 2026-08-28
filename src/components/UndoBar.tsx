@@ -11,6 +11,10 @@ import { FAB_SIZE } from './Fab';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, border, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { freshest, redoIsCurrent, topOf } from '../utils/undoHistory';
+
+/** What the bar is currently offering: the undo of an action, or its redo. */
+type Shown = { mode: 'undo' | 'redo'; label: string; run: () => void };
 
 // How long the bar stays up before it dismisses itself. Short enough that it
 // never overstays a moment the user has already moved past, long enough to
@@ -32,9 +36,17 @@ const VISIBLE_MS = 6000;
  * the rescue the issue is about. See the flag's own doc comment in each
  * store for the reasoning, and for which ones are marked.
  *
- * **One bar for four independent queues.** Mirrors `useShakeToUndo`:
- * offers whichever of the four stores' `lastAction` is freshest, so a
- * grocery clear and a task delete can't both want the slot at once.
+ * **One bar for four independent histories.** Mirrors `useShakeToUndo`:
+ * offers whichever of the four stores' top entry is freshest, so a grocery
+ * clear and a task delete can't both want the slot at once.
+ *
+ * **It stays up to offer the redo.** Undoing from the bar replaces it with
+ * the same bar naming what was just undone and offering it back, which is
+ * where redo is discoverable at all — the shake gesture announces itself
+ * nowhere, which is the whole reason this component exists. The redo offer
+ * follows the same rule the dialog uses (`redoIsCurrent`): it is shown while
+ * it is still the next step forward, and goes as soon as anything else
+ * happens.
  *
  * **Mounted once at the navigator root**, a sibling of `DemoBanner` —
  * same reasoning: this isn't a place you navigate to, it's a state the
@@ -46,42 +58,67 @@ export function UndoBar() {
   const insets = useSafeAreaInsets();
   const styles = makeStyles(colors);
 
-  const taskAction = useTaskStore(s => s.lastAction);
+  const taskAction = useTaskStore(s => topOf(s.undoStack));
+  const taskRedo = useTaskStore(s => topOf(s.redoStack));
   const undoTask = useTaskStore(s => s.undoLastAction);
-  const groceryAction = useGroceryStore(s => s.lastAction);
+  const redoTask = useTaskStore(s => s.redoLastUndone);
+  const groceryAction = useGroceryStore(s => topOf(s.undoStack));
+  const groceryRedo = useGroceryStore(s => topOf(s.redoStack));
   const undoGrocery = useGroceryStore(s => s.undoLastAction);
-  const mealPlanAction = useMealPlanStore(s => s.lastAction);
+  const redoGrocery = useGroceryStore(s => s.redoLastUndone);
+  const mealPlanAction = useMealPlanStore(s => topOf(s.undoStack));
+  const mealPlanRedo = useMealPlanStore(s => topOf(s.redoStack));
   const undoMealPlan = useMealPlanStore(s => s.undoLastAction);
-  const leftoverAction = useLeftoverStore(s => s.lastAction);
+  const redoMealPlan = useMealPlanStore(s => s.redoLastUndone);
+  const leftoverAction = useLeftoverStore(s => topOf(s.undoStack));
+  const leftoverRedo = useLeftoverStore(s => topOf(s.redoStack));
   const undoLeftover = useLeftoverStore(s => s.undoLastAction);
+  const redoLeftover = useLeftoverStore(s => s.redoLastUndone);
 
   const candidates = [
-    { action: taskAction, undo: undoTask },
-    { action: groceryAction, undo: undoGrocery },
-    { action: mealPlanAction, undo: undoMealPlan },
-    { action: leftoverAction, undo: undoLeftover },
+    { action: taskAction, redoEntry: taskRedo, undo: undoTask, redo: redoTask },
+    { action: groceryAction, redoEntry: groceryRedo, undo: undoGrocery, redo: redoGrocery },
+    { action: mealPlanAction, redoEntry: mealPlanRedo, undo: undoMealPlan, redo: redoMealPlan },
+    { action: leftoverAction, redoEntry: leftoverRedo, undo: undoLeftover, redo: redoLeftover },
   ];
-  const freshest = candidates.reduce<typeof candidates[number] | null>((best, c) => {
-    if (!c.action?.destructive) return best;
-    if (!best || (c.action.at ?? 0) > (best.action!.at ?? 0)) return c;
-    return best;
-  }, null);
-  const freshestAt = freshest?.action?.at ?? 0;
+  const freshestUndo = freshest(
+    candidates.filter(c => c.action?.destructive),
+    c => c.action?.at
+  );
+  const freshestRedo = freshest(
+    candidates.filter(c => c.redoEntry?.destructive),
+    c => c.redoEntry?.at
+  );
+  const redoCurrent = redoIsCurrent(
+    freshestRedo?.redoEntry ?? null,
+    candidates.map(c => c.action)
+  );
+
+  const undoAt = freshestUndo?.action?.at ?? 0;
+  const redoAt = redoCurrent ? freshestRedo?.redoEntry?.at ?? 0 : 0;
+  // Whichever of the two just happened is what the bar is about: a fresh
+  // destructive action raises the undo offer, and undoing one raises the redo
+  // offer in its place.
+  const latestAt = Math.max(undoAt, redoAt);
 
   const [visible, setVisible] = useState(false);
-  const [shown, setShown] = useState<{ label: string; undo: () => void } | null>(null);
+  const [shown, setShown] = useState<Shown | null>(null);
   const shownAtRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (!freshest || freshestAt <= shownAtRef.current) return;
-    shownAtRef.current = freshestAt;
-    setShown({ label: freshest.action!.label, undo: freshest.undo });
+    if (latestAt === 0 || latestAt <= shownAtRef.current) return;
+    shownAtRef.current = latestAt;
+    setShown(
+      redoAt > undoAt && freshestRedo
+        ? { mode: 'redo', label: freshestRedo.redoEntry!.label, run: freshestRedo.redo }
+        : { mode: 'undo', label: freshestUndo!.action!.label, run: freshestUndo!.undo }
+    );
     setVisible(true);
     haptics.warning();
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => setVisible(false), VISIBLE_MS);
-  }, [freshestAt]);
+  }, [latestAt]);
 
   useEffect(() => () => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -89,11 +126,11 @@ export function UndoBar() {
 
   if (!visible || !shown) return null;
 
-  const handleUndo = () => {
+  const handlePress = () => {
     if (timerRef.current) clearTimeout(timerRef.current);
     setVisible(false);
     haptics.success();
-    shown.undo();
+    shown.run();
   };
 
   const bottom = insets.bottom + TAB_BAR_HEIGHT + FAB_SIZE + spacing.lg;
@@ -102,9 +139,13 @@ export function UndoBar() {
     <View style={[styles.wrap, { bottom }]} pointerEvents="box-none">
       <View style={[styles.bar, shadows.fab]}>
         <Text style={styles.label} numberOfLines={1}>
-          {shown.label}
+          {shown.mode === 'redo' ? `Undone: ${shown.label}` : shown.label}
         </Text>
-        <InlineAction label="Undo" onPress={handleUndo} accessibilityLabel={`Undo "${shown.label}"`} />
+        <InlineAction
+          label={shown.mode === 'redo' ? 'Redo' : 'Undo'}
+          onPress={handlePress}
+          accessibilityLabel={`${shown.mode === 'redo' ? 'Redo' : 'Undo'} "${shown.label}"`}
+        />
       </View>
     </View>
   );
