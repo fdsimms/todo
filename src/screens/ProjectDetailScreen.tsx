@@ -29,6 +29,7 @@ import { TaskGroupBody } from '../components/TaskGroupBody';
 import { TaskGroupTray } from '../components/TaskGroupTray';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { groupRoster, isRelevantToGroupToday } from '../utils/visibilityUtils';
+import { buildProjectListItems, type ProjectListItem } from '../utils/projectStacks';
 import { ProjectEditor } from '../components/ProjectEditor';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddModal } from '../components/QuickAddModal';
@@ -36,6 +37,7 @@ import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { ProjectTaskSuggestionsSheet } from '../components/ProjectTaskSuggestionsSheet';
 import { EmptyState } from '../components/EmptyState';
+import { InlineAction } from '../components/InlineAction';
 import { ProjectDecisions } from '../components/ProjectDecisions';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { FabMenu, FAB_SIZE, type FabMenuItem } from '../components/Fab';
@@ -62,10 +64,6 @@ const NO_GROUP_CHILDREN: Task[] = [];
 // A project's incomplete tasks, with any stacked among them collapsed into a
 // single 'group' entry each — mirrors Today's own CategoryListItem, minus the
 // category header this screen doesn't have.
-type ProjectListItem =
-  | { type: 'task'; task: Task }
-  | { type: 'group'; group: TaskGroup; children: Task[] };
-
 // Bottom-up: "New task" ends up closest to the button.
 const ADD_MENU_ITEMS: FabMenuItem[] = [
   { key: 'existing', label: 'Add existing task', icon: 'albums-outline' },
@@ -90,7 +88,7 @@ export function ProjectDetailScreen() {
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
   const bulkRemoveFromProject = useTaskStore(s => s.bulkRemoveFromProject);
-  const reorderProjectTasks = useTaskStore(s => s.reorderProjectTasks);
+  const reorderProjectItems = useTaskStore(s => s.reorderProjectItems);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
   const bulkMarkMissed = useTaskStore(s => s.bulkMarkMissed);
   const bulkSetPriority = useTaskStore(s => s.bulkSetPriority);
@@ -100,6 +98,7 @@ export function ProjectDetailScreen() {
   const setDeliverableValue = useTaskStore(s => s.setDeliverableValue);
   const completeProject = useTaskStore(s => s.completeProject);
   const createTaskGroup = useTaskGroupStore(s => s.createGroup);
+  const updateTaskGroup = useTaskGroupStore(s => s.updateGroup);
   const removeGroupRow = useTaskGroupStore(s => s.removeGroupRow);
   const taskGroups = useTaskGroupStore(useShallow(s => s.groups));
   const setGroupCollapsed = useTaskGroupStore(s => s.setGroupCollapsed);
@@ -279,36 +278,13 @@ export function ProjectDetailScreen() {
     return map;
   }, [taskGroups, childrenByGroupId]);
 
-  const taskGroupById = useMemo(() => new Map(taskGroups.map(g => [g.id, g])), [taskGroups]);
-
-  // incompleteProjectTasks with any stacked tasks collapsed into a single
-  // 'group' entry, positioned where the first of its members falls in the
-  // project's own order — the same "slot a stack takes among loose tasks"
-  // idea as makeCategoryGroups, just without a category to merge within,
-  // since this screen doesn't section by category.
-  const projectListItems: ProjectListItem[] = useMemo(() => {
-    const items: ProjectListItem[] = [];
-    const seenGroups = new Set<string>();
-    for (const task of incompleteProjectTasks) {
-      if (!task.groupId) {
-        items.push({ type: 'task', task });
-        continue;
-      }
-      if (seenGroups.has(task.groupId)) continue;
-      seenGroups.add(task.groupId);
-      const group = taskGroupById.get(task.groupId);
-      if (!group) {
-        items.push({ type: 'task', task });
-        continue;
-      }
-      items.push({
-        type: 'group',
-        group,
-        children: incompleteProjectTasks.filter(t => t.groupId === task.groupId),
-      });
-    }
-    return items;
-  }, [incompleteProjectTasks, taskGroupById]);
+  // Stacked tasks collapsed into a single 'group' entry, plus any stack built
+  // on this project's screen that has no members to be found through — see
+  // buildProjectListItems for which of the two puts a given stack here.
+  const projectListItems: ProjectListItem[] = useMemo(
+    () => buildProjectListItems(incompleteProjectTasks, taskGroups, projectId),
+    [incompleteProjectTasks, taskGroups, projectId],
+  );
 
   // The row handlers take the row's own id rather than closing over it, so one
   // callback serves every row — TaskItem is memoized and a fresh arrow per row
@@ -397,7 +373,16 @@ export function ProjectDetailScreen() {
       return;
     }
     if (key === 'stack') {
-      const group = createTaskGroup('', null);
+      // Homed here, so it stays on this page while the user fills it in —
+      // there are no members yet to scope it by. See TaskGroup.projectId.
+      const group = createTaskGroup('', null, projectId);
+      // createGroup ranks a new stack against other stacks only, which says
+      // nothing about where it falls among this project's tasks — the two
+      // share one number space (TaskGroup.sortOrder), so it has to be anchored
+      // into this list or it lands at the top of it. Same re-anchor groupTasks
+      // does, from the other end: a new stack goes after the rows already here.
+      const lastSlot = incompleteProjectTasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
+      updateTaskGroup(group.id, { sortOrder: lastSlot + 1 });
       newStackIdRef.current = group.id;
       setEditingGroup(group);
       setGroupEditorVisible(true);
@@ -576,12 +561,16 @@ export function ProjectDetailScreen() {
             onHoverChange={haptics.dragTick}
             // A dragged group moves as the single row it renders as, so its
             // children just ride along in their existing relative order —
-            // reorderProjectTasks only needs the flattened id order.
+            // reorderProjectItems only needs the flattened id order. An empty
+            // stack has no children to stand in for it, so it hands over its
+            // own id and holds the slot itself.
             onReorder={reordered => {
               const orderedIds = reordered.flatMap(item =>
-                item.type === 'group' ? item.children.map(t => t.id) : [item.task.id],
+                item.type !== 'group' ? [item.task.id]
+                  : item.children.length > 0 ? item.children.map(t => t.id)
+                  : [item.group.id],
               );
-              reorderProjectTasks(projectId, orderedIds);
+              reorderProjectItems(projectId, orderedIds);
             }}
             onDragBegin={() => setDraggingGroupId(pendingGroupDragRef.current)}
             onDragEnd={() => setDraggingGroupId(null)}
@@ -600,6 +589,10 @@ export function ProjectDetailScreen() {
               if (item.type === 'group') {
                 const { group, children } = item;
                 const allChildren = childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN;
+                // Only ever a stack homed here with nothing to show (see
+                // buildProjectListItems) — the membership walk can't produce a
+                // group row without the task that led it there.
+                const empty = children.length === 0;
                 return (
                   <TaskGroupTray>
                     <TaskGroupHeader
@@ -621,10 +614,25 @@ export function ProjectDetailScreen() {
                       onDrag={!selectionMode && drag ? () => startGroupDrag(group.id, drag) : undefined}
                     />
                     <TaskGroupBody
-                      expanded={!group.collapsed && draggingGroupId !== group.id}
-                      hasChildren={children.length > 0}
+                      // Collapse hides rows, and an empty stack has none to
+                      // hide — collapsed it would be a bare title with no way
+                      // to reach the button that fills it in. A drag still
+                      // folds it, so its floating card is the header alone
+                      // like every other stack's.
+                      expanded={(empty || !group.collapsed) && draggingGroupId !== group.id}
+                      hasChildren
                     >
-                      {children.map(child => (
+                      {empty ? (
+                        <View style={styles.emptyStackRow}>
+                          <Text style={styles.emptyStackText}>No tasks in this stack yet</Text>
+                          <InlineAction
+                            label="Add task"
+                            icon="add"
+                            onPress={() => handleGroupPressEdit(group.id)}
+                            accessibilityLabel={`Add a task to the ${group.title} stack`}
+                          />
+                        </View>
+                      ) : children.map(child => (
                         <React.Fragment key={child.id}>
                           {renderProjectTaskItem(child, { indented: true })}
                         </React.Fragment>
@@ -956,6 +964,20 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
+  },
+  // No horizontal padding: the tray's own TRAY_PAD is what the child cards and
+  // the header's glyph line up against, so anything here would push this block
+  // in past the rows it stands in for.
+  emptyStackRow: {
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
+  // textTertiary because the dimness is the signal here, the same way
+  // CollapsibleField's summaryEmpty says a field has no value yet.
+  emptyStackText: {
+    color: colors.textTertiary,
+    fontSize: font.sm,
   },
   completedSection: {
     paddingBottom: spacing.sm,

@@ -1611,6 +1611,7 @@ describe('Categories', () => {
     category: null,
     sortOrder: 1,
     collapsed: false,
+    projectId: null,
     ...overrides,
   });
 

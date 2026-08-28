@@ -1606,8 +1606,13 @@ interface TaskStore extends UndoHistoryActions {
    * nothing — the members swap the sortOrder slots they already hold, so a
    * dated project task keeps its place among the loose tasks on Today. See
    * utils/projectOrder.slotUpdates.
+   *
+   * Items, not tasks: a stack homed on the project (TaskGroup.projectId) is a
+   * row of this list too, and one with no members has only its own id to be
+   * moved by. Pass a group id where a stack holds its own slot, and its
+   * members' ids where the stack is found through them.
    */
-  reorderProjectTasks: (projectId: string, orderedIds: string[]) => void;
+  reorderProjectItems: (projectId: string, orderedIds: string[]) => void;
 
   addSubtask: (parentId: string, title: string) => Task;
   toggleSubtask: (id: string) => void;
@@ -5420,13 +5425,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
   },
 
-  reorderProjectTasks(projectId, orderedIds) {
-    const members = liveProjectSteps(projectId, get().tasks);
-    const updates = slotUpdates(members, orderedIds);
+  reorderProjectItems(projectId, orderedIds) {
+    const tasks = liveProjectSteps(projectId, get().tasks);
+    // Stacks homed on this project hold slots in the same number space (see
+    // TaskGroup.sortOrder), so they're reordered against the tasks in one pass
+    // rather than in a second space that would have to be kept in step. Only
+    // the ones the caller actually named move — slotUpdates ignores the rest,
+    // so passing every homed stack costs nothing and a stack found through its
+    // members keeps taking its slot from them.
+    const homedGroups = useTaskGroupStore.getState().groups.filter(g => g.projectId === projectId);
+    const updates = slotUpdates([...tasks, ...homedGroups], orderedIds);
     if (updates.length === 0) return;
-    dbBatchUpdateSortOrders(updates);
-    const byId = new Map(updates.map(u => [u.id, { sortOrder: u.sortOrder }]));
-    set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
+    const taskIds = new Set(tasks.map(t => t.id));
+    const taskUpdates = updates.filter(u => taskIds.has(u.id));
+    if (taskUpdates.length > 0) {
+      dbBatchUpdateSortOrders(taskUpdates);
+      const byId = new Map(taskUpdates.map(u => [u.id, { sortOrder: u.sortOrder }]));
+      set(s => ({ tasks: patchTasksById(s.tasks, byId) }));
+    }
+    for (const update of updates) {
+      if (taskIds.has(update.id)) continue;
+      useTaskGroupStore.getState().updateGroup(update.id, { sortOrder: update.sortOrder });
+    }
   },
 
   addSubtask(parentId, title) {
@@ -6147,6 +6167,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const historyBefore = get().undoStack;
     const members = get().tasks.filter(t => t.projectId === projectId);
     const project = useProjectStore.getState().getProjectById(projectId);
+    // Stacks built inside this project (see TaskGroup.projectId). They're
+    // unfiled rather than deleted even on a cascade: the cascade is about the
+    // project's *tasks*, and a stack is a label whose members may well sit in
+    // other projects too. Unfiled, one keeps whatever members it has and is
+    // scoped by them again, exactly like a stack made anywhere else — it's
+    // only a memberless one that goes quiet, which is the same nothing it
+    // would show if the project were still here and empty. Left pointing at a
+    // deleted project it would instead be unreachable from every screen.
+    const homedGroups = useTaskGroupStore.getState().groups.filter(g => g.projectId === projectId);
     const undos: Array<() => void> = [];
     dbTransaction(() => {
       if (opts.cascade) {
@@ -6159,6 +6188,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         members.forEach(member => get().removeFromProject(member.id));
       }
     });
+    for (const group of homedGroups) {
+      useTaskGroupStore.getState().updateGroup(group.id, { projectId: null });
+    }
     useProjectStore.getState().removeProjectRow(projectId);
     // Not part of `members`: a review task carries no `projectId` (see
     // projectReviewTasks.ts), so the loop above never touches it and a
@@ -6176,6 +6208,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       redo: () => get().deleteProject(projectId, opts),
       undo: () => {
         useProjectStore.getState().restoreProject(project);
+        for (const group of homedGroups) {
+          useTaskGroupStore.getState().updateGroup(group.id, { projectId });
+        }
         if (opts.cascade) {
           undos.forEach(fn => fn());
         } else {

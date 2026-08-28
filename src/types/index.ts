@@ -278,6 +278,26 @@ export interface TaskGroup {
   // it's why a stack could only ever render above every loose task.
   sortOrder: number;
   collapsed: boolean;      // persisted expand/collapse state
+  // The project this stack was built inside, if it was built inside one.
+  //
+  // Everywhere else a stack is scoped by its children — which project it
+  // belongs to is read off the members, and it renders wherever they do. That
+  // answers nothing for a stack with no members yet, which is why this exists:
+  // a stack made from a project's own screen is an outline the user is about
+  // to fill in, and without a stored home it would vanish the moment the
+  // editor closed and reappear only once a task happened to point at it.
+  //
+  // Set when the stack is made on a project's screen, and changeable from the
+  // stack editor's Project row — but never *inferred* from members: a stack's
+  // tasks can sit in different projects (or none), so deriving it would have
+  // to pick a winner, and the one thing this field is for is being right
+  // before there are any members to ask. A stack made anywhere else keeps null
+  // and is scoped by its children exactly as before.
+  //
+  // It says which project's page the stack appears on, not who its tasks
+  // belong to, so changing it moves no tasks — unlike `category`, which the
+  // stack does own and cascades onto its members.
+  projectId: string | null;
 }
 
 /**

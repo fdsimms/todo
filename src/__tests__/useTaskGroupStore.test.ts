@@ -22,6 +22,7 @@ const group = (title: string, sortOrder: number, id = `g-${title}`, extra: Parti
   category: null,
   sortOrder,
   collapsed: true,
+  projectId: null,
   ...extra,
 });
 
@@ -56,6 +57,18 @@ describe('createGroup', () => {
   it('starts a fresh sort order at 1 with nothing else on the board', () => {
     const created = useTaskGroupStore.getState().createGroup('Errands', null);
     expect(created.sortOrder).toBe(1);
+  });
+
+  // A stack is otherwise scoped by its children, so one made anywhere but a
+  // project's own screen has no home to record — see TaskGroup.projectId.
+  it('leaves projectId null when no project is named', () => {
+    expect(useTaskGroupStore.getState().createGroup('Errands', null).projectId).toBeNull();
+  });
+
+  it('homes the stack on a project when one is named', () => {
+    const created = useTaskGroupStore.getState().createGroup('Quotes', 'Home', 'p-kitchen');
+    expect(created.projectId).toBe('p-kitchen');
+    expect(dbInsertTaskGroup).toHaveBeenCalledWith(created);
   });
 });
 

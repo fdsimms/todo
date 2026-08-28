@@ -681,6 +681,22 @@ export function seedDemoData(): void {
   addExistingToProject(abcQuote.id, kitchen.id);
   addExistingToProject(sunriseQuote.id, kitchen.id);
 
+  // A stack with nothing in it yet, homed on the project rather than scoped by
+  // members it hasn't got (see TaskGroup.projectId) — an outline of the part of
+  // the job that hasn't been broken down. It renders only on the kitchen's own
+  // page, since every other screen still finds a stack through its children,
+  // and with none seeded the empty state reads as one the app can't hold.
+  const appliances = createGroup('Appliance decisions', 'Home', kitchen.id);
+  // Anchored past the project's own rows, exactly as the project screen's
+  // Stack button anchors one: createGroup ranks a new stack against the other
+  // stacks, which says nothing about where it falls among these tasks, and the
+  // two share a number space (TaskGroup.sortOrder). Unanchored it would open
+  // the project sitting above "Get three quotes".
+  const lastKitchenSlot = useTaskStore.getState().tasks
+    .filter(t => t.projectId === kitchen.id)
+    .reduce((max, t) => Math.max(max, t.sortOrder), 0);
+  useTaskGroupStore.getState().updateGroup(appliances.id, { sortOrder: lastKitchenSlot + 1 });
+
   // A reference list, not a to-do list: nothing here ever gets a date, and
   // nudgeOptIn defaults to false, so it never trips the gone-quiet nudge or
   // shows up in "Pull from projects" the way an ordinary undated project
