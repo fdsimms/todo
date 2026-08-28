@@ -26,14 +26,13 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDeadlineDate } from '../utils/dateUtils';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { TITLE_MAX_LENGTH, type Project, type ProjectKind } from '../types';
+import { TITLE_MAX_LENGTH, type Project } from '../types';
 
 /** The in-progress project the quick-add hands off to the full editor. */
 export interface ProjectDraft {
   title: string;
   category: string | null;
   deadline: string | null;
-  kind: ProjectKind;
 }
 
 interface Props {
@@ -89,7 +88,6 @@ export function QuickAddProjectModal({
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
-  const [kind, setKind] = useState<ProjectKind>('project');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
@@ -130,7 +128,6 @@ export function QuickAddProjectModal({
     setCategory(seedRef.current?.category ?? null);
     setSeedActive(!!seedRef.current);
     setDeadline(null);
-    setKind('project');
     setActivePanel(null);
     setAddingCategory(false);
     setNewCategory('');
@@ -178,7 +175,7 @@ export function QuickAddProjectModal({
     haptics.success();
     animateLayout();
     const resolvedCategory = resolveCategory();
-    const project = createProject(finalTitle, deadline ? deadline.toISOString() : null, kind);
+    const project = createProject(finalTitle, deadline ? deadline.toISOString() : null);
     if (resolvedCategory) updateProject(project.id, { category: resolvedCategory });
     // createProject doesn't take a category, so hand the caller the row as it
     // now stands rather than the one it returned a line ago.
@@ -220,7 +217,6 @@ export function QuickAddProjectModal({
       title: title.trim(),
       category: resolveCategory(),
       deadline: deadline ? deadline.toISOString() : null,
-      kind,
     });
   };
 
@@ -313,10 +309,14 @@ export function QuickAddProjectModal({
           </View>
 
           {/* Attribute toolbar. Every chip always carries its label — an
-              icon alone doesn't say what tapping it does, and "List" sitting
-              on a bare checkbox read as a task-list checkbox rather than as
-              this project's own kind. Same shape as QuickAddModal's own
-              toolbar: label until there's a value, then the value replaces it. */}
+              icon alone doesn't say what tapping it does. Same shape as
+              QuickAddModal's own toolbar: label until there's a value, then
+              the value replaces it.
+
+              Whether the new project is a list isn't asked here any more —
+              that's a toggle on the project's own screen now (Project.kind),
+              set after creation rather than as a question every new project
+              answers up front. */}
           <View style={styles.toolbar}>
             <TouchableOpacity
               style={[styles.toolChip, activePanel === 'category' && styles.toolChipActive, category !== null && styles.toolChipSet]}
@@ -328,34 +328,6 @@ export function QuickAddProjectModal({
               <Ionicons name="folder-outline" size={13} color={category ? colors.accent : colors.textTertiary} />
               <Text style={[styles.toolChipText, category !== null && styles.toolChipTextSet]} numberOfLines={1}>
                 {category ?? 'Category'}
-              </Text>
-            </TouchableOpacity>
-
-            {/*
-              A toggle rather than a segmented control: there are two kinds and
-              one of them is the default, so this is "make it a list", not a
-              question every new project has to answer. Set, it reads as one of
-              the other chips does. See Project.kind.
-
-              Icon is the bullet-list glyph, not a checkbox: `checkbox-outline`
-              is what a task's own completion box looks like, so this chip read
-              as "add a checklist" rather than as choosing the project's kind.
-            */}
-            <TouchableOpacity
-              style={[styles.toolChip, kind === 'list' && styles.toolChipSet]}
-              onPress={() => { haptics.tap(); setKind(k => (k === 'list' ? 'project' : 'list')); }}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="switch"
-              accessibilityState={{ checked: kind === 'list' }}
-              accessibilityLabel="Keep it as a list, without dates"
-            >
-              <Ionicons
-                name="list-outline"
-                size={13}
-                color={kind === 'list' ? colors.accent : colors.textTertiary}
-              />
-              <Text style={[styles.toolChipText, kind === 'list' && styles.toolChipTextSet]} numberOfLines={1}>
-                List
               </Text>
             </TouchableOpacity>
 

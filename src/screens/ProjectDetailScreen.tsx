@@ -96,6 +96,7 @@ export function ProjectDetailScreen() {
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
 
   const projects = useProjectStore(useShallow(s => s.projects));
+  const updateProject = useProjectStore(s => s.updateProject);
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
@@ -537,6 +538,23 @@ export function ProjectDetailScreen() {
           onBack={onClose}
           actions={
             <View style={styles.detailHeaderActions}>
+              {/*
+                Presentation only — see Project.kind. Same shape as Recipes'
+                own grid-outline toggle in its header: an icon button that
+                flips a display switch right where its effect shows, rather
+                than a setting buried in the full editor.
+              */}
+              {!!project && (
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); updateProject(project.id, { kind: isList ? 'project' : 'list' }); }}
+                  hitSlop={8}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: isList }}
+                  accessibilityLabel={isList ? 'Keep as a list, without dates' : 'Show as a project, with dates'}
+                >
+                  <Ionicons name="list-outline" size={20} color={isList ? colors.accent : colors.textSecondary} />
+                </TouchableOpacity>
+              )}
               {!!anthropicApiKey && (
                 <TouchableOpacity
                   onPress={() => { haptics.tap(); setSuggestionsVisible(true); }}

@@ -106,7 +106,6 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [nudgeCadenceDays, setNudgeCadenceDays] = useState(FALLBACK_CADENCE_DAYS);
   const [autoSchedule, setAutoSchedule] = useState(false);
   const [sequential, setSequential] = useState(false);
-  const [isList, setIsList] = useState(false);
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   useEffect(() => {
@@ -119,7 +118,6 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
     setSequential(project.sequential);
-    setIsList(project.kind === 'list');
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -169,7 +167,6 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       // (see dripCandidate) — this just means it is never asked.
       autoSchedule: nudgeMode === 'scheduled' && autoSchedule,
       sequential,
-      kind: isList ? 'list' : 'project',
     });
     onClose();
   };
@@ -429,39 +426,10 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       )}
 
       {/*
-        Presentation only — see Project.kind. Nothing about the tasks changes,
-        which is why this is a switch on the project rather than a different
-        thing to have created: a project that turned out to be a list, or the
-        reverse, is one tap rather than a delete and a retype.
+        Whether this project is a list lives on its own screen now — the
+        list-outline toggle in ProjectDetailScreen's header, right where its
+        effect shows — not here. See Project.kind.
       */}
-      <View style={[styles.card, { marginTop: spacing.xl }]}>
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => { haptics.tap(); setIsList(v => !v); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Keep it as a list"
-          accessibilityState={{ checked: isList }}
-        >
-          {/* clipboard-outline, not checkbox-outline: a checkbox reads as a
-              task's own completion box, and not list-outline either, since
-              the "Do these in order" row right below already uses that for
-              a bullet list. */}
-          <Ionicons name="clipboard-outline" size={18} color={isList ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Keep it as a list</Text>
-            <Text style={styles.optionHint}>
-              {isList
-                ? 'Type straight into it, and dates stay out of the way'
-                : 'Shows dates and the usual task controls'}
-            </Text>
-          </View>
-          <View style={[styles.toggle, isList && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, isList && styles.toggleKnobOn]} />
-          </View>
-        </TouchableOpacity>
-      </View>
-
       <View style={[styles.card, { marginTop: spacing.xl }]}>
         <TouchableOpacity
           style={styles.optionRow}
