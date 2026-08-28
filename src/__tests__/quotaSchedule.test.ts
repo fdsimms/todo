@@ -79,6 +79,20 @@ describe('quotaRunSpan', () => {
     const s = span({ windowStart: '09:00', windowEnd: '17:00', quotaStartedAt: 'not a date' });
     expect(s.start).toEqual(at('09:00'));
   });
+
+  it('resolves a window that closes at or before it opens into the next calendar day', () => {
+    // Active hours for a night owl — "22:00–06:00" — read as the small hours
+    // of *tomorrow*, not as a span that closed before it opened today.
+    const s = span({ windowStart: '22:00', windowEnd: '06:00' });
+    expect(s.start).toEqual(at('22:00'));
+    expect(s.end).toEqual(new Date('2026-08-27T06:00:00'));
+  });
+
+  it('does the same for the active-hours fallback, not just a task window', () => {
+    const s = span({ activeHoursStart: '20:00', activeHoursEnd: '08:00' });
+    expect(s.start).toEqual(at('20:00'));
+    expect(s.end).toEqual(new Date('2026-08-27T08:00:00'));
+  });
 });
 
 describe('quotaTargetForInterval', () => {
@@ -111,9 +125,13 @@ describe('quotaTargetForInterval', () => {
     expect(quotaTargetForInterval(span({ windowStart: '09:00', windowEnd: '17:00' }), 1)).toBe(99);
   });
 
-  it('survives a span that does not resolve, and a nonsense interval', () => {
-    expect(quotaTargetForInterval(span({ windowStart: '17:00', windowEnd: '09:00' }), 20)).toBe(2);
+  it('survives a nonsense interval', () => {
     expect(quotaTargetForInterval(span({ windowStart: '09:00', windowEnd: '17:00' }), 0)).toBe(2);
+  });
+
+  it('divides an overnight window across its full span, not just the hours before midnight', () => {
+    // 17:00–09:00 (next day) is 16h; at 20 minutes that's 48.
+    expect(quotaTargetForInterval(span({ windowStart: '17:00', windowEnd: '09:00' }), 20)).toBe(48);
   });
 });
 
@@ -139,8 +157,19 @@ describe('quotaDueTimes', () => {
     });
   });
 
-  it('is empty for a span that does not resolve', () => {
-    expect(quotaDueTimes(span({ windowStart: '17:00', windowEnd: '09:00' }), 24)).toEqual([]);
+  it('spaces an overnight window grid across the full night, not just up to midnight', () => {
+    const times = quotaDueTimes(span({ windowStart: '17:00', windowEnd: '09:00' }), 24);
+    expect(times).toHaveLength(24);
+    expect(times[0]).toEqual(at('17:00'));
+    expect(times[1]).toEqual(at('17:40'));
+    expect(times[23]).toEqual(new Date('2026-08-27T08:20:00'));
+  });
+
+  it('is empty for a span that genuinely does not resolve', () => {
+    // quotaRunSpan itself never produces one of these any more (it rolls an
+    // overnight close into the next day), but the guard here still has to
+    // hold for a span built by hand.
+    expect(quotaDueTimes({ start: at('17:00'), end: at('09:00') }, 24)).toEqual([]);
   });
 });
 
