@@ -6,7 +6,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { activeChainStep } from './chain';
 import { isBlocked, isWaitingOnPerson } from './blocking';
-import { isSequenceHeld, resolveBlocker } from './blockerRegistry';
+import { isSequenceHeld, isSequentialProject, latestProjectCompletionAt, resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { quotaRunSpan } from './quotaSchedule';
 
@@ -895,10 +895,61 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
   return candidates.reduce((latest, d) => (d > latest ? d : latest));
 }
 
-// The most recent moment a day-based visibility gate (deferUntil, dueDate, or
-// a time-of-day segment) let this task through. Only these three are "day
-// turnover" gates — windowStart/vacationPause aren't, and already have their
-// own indicators — so a task with none of them returns null (never "new").
+// When the hold on this task came off, or null if nothing was ever holding it
+// — the non-clock half of getBecameVisibleAt below.
+//
+// isHeldBack is the one reason a task is hidden that no day turnover resolves,
+// so it was also the one visibility transition with nothing to mark it: a task
+// waiting on another sat out of every list until the blocker was completed and
+// then simply appeared, wherever its category and sort order happened to put
+// it. Both holds are derived rather than stored (see Task.blockedById and
+// isSequenceHeld), which is deliberate and stays that way — so the release
+// moment is read back off whatever *did* get written: the blocker's own
+// completion, and the project's latest step completion.
+//
+// Two releases have no timestamp to read and so mark nothing, which is the
+// honest answer rather than a gap to paper over:
+//
+// - A blocker task or a person that was *deleted* leaves no row at all, by
+//   design (canBlock and canWaitOn both read a missing row as "can't hold this
+//   back", which is what saves every delete path a cascade). Archiving does
+//   leave one, hence archivedAt on both.
+// - Clearing blockedById or waitingOnPersonId is an edit to this task, so
+//   updateTask's own seenAt stamping already covers the transition.
+function getReleasedFromHoldAt(task: Task): Date | null {
+  const candidates: Date[] = [];
+
+  if (task.blockedById) {
+    const blocker = resolveBlocker(task.blockedById);
+    const stamp = blocker?.completed
+      ? blocker.completedAt
+      : blocker?.archived
+        ? blocker.archivedAt
+        : null;
+    if (stamp) candidates.push(new Date(stamp));
+  }
+
+  // A person is never completed, so filing them away is the only release of
+  // this kind that writes anything down.
+  if (task.waitingOnPersonId) {
+    const person = resolvePerson(task.waitingOnPersonId);
+    if (person?.archived && person.archivedAt) candidates.push(new Date(person.archivedAt));
+  }
+
+  if (task.projectId && isSequentialProject(task.projectId)) {
+    const stamp = latestProjectCompletionAt(task.projectId);
+    if (stamp) candidates.push(new Date(stamp));
+  }
+
+  if (candidates.length === 0) return null;
+  return candidates.reduce((latest, d) => (d > latest ? d : latest));
+}
+
+// The most recent moment a visibility gate let this task through: the three
+// "day turnover" gates (deferUntil, dueDate, a time-of-day segment), or a hold
+// coming off (see getReleasedFromHoldAt). windowStart and vacationPause are
+// deliberately not here — they already have their own indicators — so a task
+// with none of the above returns null (never "new").
 function getBecameVisibleAt(task: Task): Date | null {
   const { dayResetTime } = useSettingsStore.getState();
   const now = new Date();
@@ -919,6 +970,12 @@ function getBecameVisibleAt(task: Task): Date | null {
     const threshold = earliestSegmentThreshold(task.timeSegments)!;
     if (threshold <= now) candidates.push(threshold);
   }
+
+  const releasedAt = getReleasedFromHoldAt(task);
+  // Guarded against a clock that ran ahead of this one (a restored backup, a
+  // synced row), for the same reason the three gates above only count once
+  // they've passed: a moment in the future isn't one the user can have missed.
+  if (releasedAt && releasedAt <= now) candidates.push(releasedAt);
 
   if (candidates.length === 0) return null;
   return candidates.reduce((latest, d) => (d > latest ? d : latest));
@@ -950,10 +1007,28 @@ function isCategoryExcludedFromNewTasksBanner(category: string | null): boolean 
   return !!cat?.excludeFromNewTasksBanner;
 }
 
-// True for a visible task that hasn't been interacted with since it most
-// recently crossed a day-based visibility gate — drives the "new" dot.
+// The three sub-views a task can be flagged "new" in, which is every list a
+// task can arrive in *ready to be done*.
+//
+// Today alone until getReleasedFromHoldAt gave a released task a moment to be
+// new at, and Today alone was enough while every reason a task appeared was a
+// clock: a day gate passing always lands it on Today, by definition. A hold
+// coming off doesn't — an undated task waiting on another one turns up in
+// Unscheduled or Inbox instead, which is the ordinary shape for "waiting on"
+// (a task you can't start yet often has no date *because* it can't be started
+// yet), and it would have been the half of the release nothing marked.
+//
+// Later is deliberately not here. A released task with a future date has not
+// arrived anywhere the user can act on it; it has joined a queue for a day
+// that hasn't come, and every one of Later's own rows got there the same way.
+function isTaskListed(task: Task): boolean {
+  return isTaskVisible(task) || isUnscheduledTask(task) || isInboxTask(task);
+}
+
+// True for a listed task that hasn't been interacted with since it most
+// recently crossed a visibility gate — drives the "new" dot.
 export function isTaskNew(task: Task): boolean {
-  if (!isTaskVisible(task)) return false;
+  if (!isTaskListed(task)) return false;
   if (isCategoryExcludedFromNewTasksBanner(task.category)) return false;
   const becameVisibleAt = getBecameVisibleAt(task);
   if (!becameVisibleAt) return false;
