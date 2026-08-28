@@ -648,11 +648,7 @@ function ProjectRow({
           activeOpacity={interaction.activeOpacity}
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
-          accessibilityLabel={
-            // The list glyph beside the title is decorative, so the kind has to
-            // be said here or a screen reader can't tell the two apart.
-            `${project.title}${project.kind === 'list' ? ', list' : ''}, ${progress.done} of ${progress.total} done`
-          }
+          accessibilityLabel={`${project.title}, ${progress.done} of ${progress.total} done`}
           accessibilityHint={
             selectionMode
               ? 'Double tap to select project'
@@ -661,13 +657,10 @@ function ProjectRow({
         >
           <View style={styles.projectInfo}>
             <View style={styles.projectTitleRow}>
-              {/* A glyph rather than a separate section: lists and projects sit
-                  in the same category order the user arranged, and splitting
-                  them would make that order answer to something they didn't
-                  choose. See Project.kind. */}
-              {project.kind === 'list' && (
-                <Ionicons name="checkbox-outline" size={14} color={colors.textTertiary} />
-              )}
+              {/* No list/project glyph here — Project.kind is a view filter on
+                  the project's own screen, not something worth surfacing on
+                  this list. Lists and projects still share the category order
+                  the user arranged. */}
               <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
               {/* Nothing a row can do to itself while a selection is being
                   built — each of these acts on one project and would fight the
