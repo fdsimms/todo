@@ -33,6 +33,7 @@ import { PinIcon } from '../components/PinIcon';
 import { format } from 'date-fns/format';
 import type { ContextRow, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
+import { type CreatedTaskDestination } from '../utils/createdTaskPlacement';
 import { isRealCompletion } from '../utils/missed';
 import { isToday } from 'date-fns/isToday';
 import {
@@ -151,6 +152,7 @@ import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeade
 import { EmptyState } from '../components/EmptyState';
 import { CompletionCollapse } from '../components/CompletionCollapse';
 import { NewTasksBanner } from '../components/NewTasksBanner';
+import { CreatedTaskToast } from '../components/CreatedTaskToast';
 import { TipHost } from '../components/TipHost';
 import { FocusBar } from '../components/FocusBar';
 import { FocusSetupSheet } from '../components/FocusSetupSheet';
@@ -158,7 +160,7 @@ import { FocusSessionSheet } from '../components/FocusSessionSheet';
 import { useFocusStore } from '../store/useFocusStore';
 import { PressableScale } from '../components/PressableScale';
 import { AddTaskFab, type AddTaskType } from '../components/AddTaskFab';
-import { type FabDragHandlers } from '../components/Fab';
+import { type FabDragHandlers, FAB_SIZE } from '../components/Fab';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -199,6 +201,11 @@ const VIEW_BADGE_LABELS: Partial<Record<ViewMode, string>> = {
 const LATER_INITIAL_TASK_LIMIT = 15;
 const LATER_SETTLED_TASK_LIMIT = 60;
 const LATER_TASK_PAGE_SIZE = 60;
+
+// How long the created-task toast stays up before it dismisses itself —
+// same span UndoBar uses, long enough to read and act on, short enough not
+// to overstay a moment already passed.
+const CREATED_TOAST_VISIBLE_MS = 6000;
 
 /** A parent's subtasks plus their done tally — see subtasksByParent. */
 interface SubtaskEntry {
@@ -592,6 +599,12 @@ export function TodayScreen() {
   const [pendingLaterJump, setPendingLaterJump] = useState<{ key: string; n: number } | null>(null);
   const [pendingUnscheduledJump, setPendingUnscheduledJump] = useState<{ index: number; n: number } | null>(null);
   const [pendingInboxJump, setPendingInboxJump] = useState<{ index: number; n: number } | null>(null);
+  // A newly-created task that landed off Today shows a toast naming where it
+  // went instead of switching the screen there outright (see
+  // handleTaskCreated) — this is that toast's state, cleared either by its
+  // own timeout or by the two actions it offers.
+  const [createdToast, setCreatedToast] = useState<{ task: Task; destination: CreatedTaskDestination } | null>(null);
+  const createdToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [autoCompletingIds, setAutoCompletingIds] = useState<Set<string>>(new Set());
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -863,39 +876,13 @@ export function TodayScreen() {
     flashTimeoutRef.current = setTimeout(() => setFlashTaskId(null), 1200);
   };
 
-  // Switch to whichever sub-view the new task actually landed in, so it's never
-  // created into a view that can't show it. A quick-add with no organizing
-  // metadata at all is an Inbox task, whichever view it was added from. Beyond
-  // the switch, scroll to and flash the row itself — a task landing off-screen
-  // (a different category section on Today, a later page of Later, anywhere
-  // in Unscheduled/Inbox) would otherwise just silently appear somewhere the
-  // user has to go looking for it.
-  // ==== handlers: creating, opening and acting on a row ====
-  const handleTaskCreated = (task: Task, placed = false) => {
-    // A drag of the add button chose where this goes; a plain tap didn't, and
-    // shaking the chip off in the sheet takes the choice back.
-    const dropped = pendingDropRef.current;
-    pendingDropRef.current = null;
-
-    const destination: ViewMode = isInboxTask(task)
-      ? 'inbox'
-      : isTaskVisible(task) ? 'today'
-      : isUnscheduledTask(task) ? 'unscheduled'
-      : 'later';
-    // Position it only if it actually landed in the list it was dropped on: the
-    // sheet can push a task out of Today entirely (a defer date, no date at
-    // all), and then the spot it was dropped at isn't somewhere it can go.
-    if (placed && dropped?.kind === 'insert') {
-      if (destination === 'today') placeCreatedTask(task, dropped);
-      else if (destination === 'later') placeCreatedLaterTask(task, dropped);
-      else if (destination === 'unscheduled') placeCreatedUnscheduledTask(task, dropped);
-      else placeCreatedInboxTask(task, dropped);
-    }
+  // Switches to whichever sub-view the task got jumped to and scrolls/flashes
+  // its row there — the part of landing a new task off Today that's common to
+  // going there straight away (destination === 'today', in handleTaskCreated)
+  // and going there later from the created-task toast's "Go to it".
+  const goToCreatedTask = (task: Task, destination: CreatedTaskDestination) => {
     if (destination !== viewMode) setViewMode(destination);
-
-    if (destination === 'today') {
-      revealTaskInToday(task);
-    } else if (destination === 'later') {
+    if (destination === 'later') {
       // Later pages itself in behind a task budget (see laterTaskLimit) — jump
       // it straight to the settled size so the new row's section is actually
       // in the data the list is about to scroll.
@@ -919,9 +906,86 @@ export function TodayScreen() {
     flashTask(task.id);
   };
 
+  const dismissCreatedToast = () => {
+    if (createdToastTimeoutRef.current) clearTimeout(createdToastTimeoutRef.current);
+    createdToastTimeoutRef.current = null;
+    setCreatedToast(null);
+  };
+
+  // Names where the task landed and offers a way to it and a way to undo the
+  // creation, rather than switching the screen there outright — see the doc
+  // comment on CreatedTaskToast for why.
+  const showCreatedTaskToast = (task: Task, destination: CreatedTaskDestination) => {
+    if (createdToastTimeoutRef.current) clearTimeout(createdToastTimeoutRef.current);
+    setCreatedToast({ task, destination });
+    createdToastTimeoutRef.current = setTimeout(dismissCreatedToast, CREATED_TOAST_VISIBLE_MS);
+  };
+
+  const handleCreatedToastGoTo = () => {
+    if (!createdToast) return;
+    const { task, destination } = createdToast;
+    dismissCreatedToast();
+    goToCreatedTask(task, destination);
+  };
+
+  const handleCreatedToastUndo = () => {
+    if (!createdToast) return;
+    const { task } = createdToast;
+    dismissCreatedToast();
+    haptics.success();
+    useTaskStore.getState().deleteTask(task.id);
+  };
+
+  // A quick-add with no organizing metadata at all is an Inbox task, whichever
+  // view it was added from. Landing on Today reveals the row in place, same as
+  // ever; anywhere else, stay on Today and let the toast above say where it
+  // went instead of switching the screen there — a task landing off-screen (a
+  // later page of Later, anywhere in Unscheduled/Inbox) would otherwise just
+  // silently appear somewhere the user has to go looking for it, and jumping
+  // away costs a quick-add of several tasks its place on Today after the
+  // first one that isn't due today.
+  // ==== handlers: creating, opening and acting on a row ====
+  const handleTaskCreated = (task: Task, placed = false) => {
+    // A drag of the add button chose where this goes; a plain tap didn't, and
+    // shaking the chip off in the sheet takes the choice back.
+    const dropped = pendingDropRef.current;
+    pendingDropRef.current = null;
+
+    const destination: ViewMode = isInboxTask(task)
+      ? 'inbox'
+      : isTaskVisible(task) ? 'today'
+      : isUnscheduledTask(task) ? 'unscheduled'
+      : 'later';
+    // Position it only if it actually landed in the list it was dropped on: the
+    // sheet can push a task out of Today entirely (a defer date, no date at
+    // all), and then the spot it was dropped at isn't somewhere it can go.
+    if (placed && dropped?.kind === 'insert') {
+      if (destination === 'today') placeCreatedTask(task, dropped);
+      else if (destination === 'later') placeCreatedLaterTask(task, dropped);
+      else if (destination === 'unscheduled') placeCreatedUnscheduledTask(task, dropped);
+      else placeCreatedInboxTask(task, dropped);
+    }
+
+    if (destination === 'today') {
+      if (destination !== viewMode) setViewMode(destination);
+      revealTaskInToday(task);
+      flashTask(task.id);
+      return;
+    }
+    if (destination === viewMode) {
+      // Already looking at the list this landed in — jump straight to the
+      // row, same as ever. The toast exists to avoid navigating away from
+      // where the user was; it has nothing to offer when nowhere changed.
+      goToCreatedTask(task, destination);
+      return;
+    }
+    showCreatedTaskToast(task, destination);
+  };
+
   useEffect(() => {
     return () => {
       if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+      if (createdToastTimeoutRef.current) clearTimeout(createdToastTimeoutRef.current);
     };
   }, []);
 
@@ -1157,6 +1221,8 @@ export function TodayScreen() {
     animateLayout();
     bulkTogglePin(sectionTasks.map(t => t.id));
   };
+
+  const dayResetTime = useSettingsStore(s => s.dayResetTime);
 
   // Sort & filter state. Persisted, like hideCategories below — the three are
   // set from the same sheet, and only one of them used to survive a launch.
@@ -3841,6 +3907,17 @@ export function TodayScreen() {
             opacity={fabOpacity}
             onSelect={handleAddMenuSelect}
             drag={fabDrag}
+          />
+        )}
+
+        {createdToast && (
+          <CreatedTaskToast
+            task={createdToast.task}
+            destination={createdToast.destination}
+            dayResetTime={dayResetTime}
+            bottom={insets.bottom + 64 + FAB_SIZE + spacing.md}
+            onGoToTask={handleCreatedToastGoTo}
+            onUndo={handleCreatedToastUndo}
           />
         )}
 
