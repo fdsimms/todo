@@ -27,6 +27,7 @@ import { useFocusLiveActivitySync } from './src/utils/focusLiveActivity';
 import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
 import { useWeatherSync } from './src/store/useWeatherStore';
+import { useFocusShieldSync } from './src/hooks/useFocusShieldSync';
 import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
 import { runStartupSequence, runStartupStep } from './src/utils/startup';
@@ -303,6 +304,10 @@ function AppRoot() {
   // inert until weatherTasks is switched on, and never requests location
   // permission itself (see getCurrentLocation).
   useWeatherSync();
+  // Blocks the chosen apps while a focus session is actually running, and —
+  // the half that matters — lifts a shield left in force by a run that
+  // crashed. Inert until focusShieldEnabled is switched on.
+  useFocusShieldSync();
   useSyncOnForeground();
 
   // Keeps the iOS Today widget's shared snapshot in sync with the task store.

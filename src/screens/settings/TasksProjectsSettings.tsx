@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TouchableOpacity, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Platform, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useSettingsStore, type MealsOnToday } from '../../store/useSettingsStore';
@@ -23,6 +23,7 @@ import {
   SIMPLE_AREAS, SIMPLE_AREA_LABELS, SIMPLE_FEATURES, simpleFeaturesIn,
 } from '../../utils/simpleMode';
 import { haptics } from '../../utils/haptics';
+import { isScreenTimeSupported, screenTimeBridge } from '../../utils/screenTimeBridge';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { EFFORT_LABELS, type Effort, type TimeOfDay } from '../../types';
 import { PRIORITY_SEGMENTS } from '../../utils/prioritySegments';
@@ -117,6 +118,63 @@ export function TasksProjectsSettings() {
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
   const [showVacationEndPicker, setShowVacationEndPicker] = useState(false);
   const [titleRulesVisible, setTitleRulesVisible] = useState(false);
+
+  // --- Screen Time -----------------------------------------------------
+  // Asked once on mount rather than subscribed to: whether this build has the
+  // native half, on a device new enough, cannot change while the screen is up.
+  const [screenTimeSupported] = useState(isScreenTimeSupported);
+  const focusShieldEnabled = useSettingsStore(s => s.focusShieldEnabled);
+  const setFocusShieldEnabled = useSettingsStore(s => s.setFocusShieldEnabled);
+  // Counts, not names. iOS hands the app opaque tokens for the apps somebody
+  // picked and only SwiftUI can render them, so this is the most the row can
+  // say — see modules/todo-screentime-bridge.
+  const [shieldCount, setShieldCount] = useState(
+    () => screenTimeBridge()?.screenTimeSelectionCount() ?? { applications: 0, categories: 0 },
+  );
+  const shieldTotal = shieldCount.applications + shieldCount.categories;
+  const shieldSelectionLabel = shieldTotal === 0
+    ? 'None'
+    : [
+      shieldCount.applications > 0
+        ? `${shieldCount.applications} ${shieldCount.applications === 1 ? 'app' : 'apps'}`
+        : null,
+      shieldCount.categories > 0
+        ? `${shieldCount.categories} ${shieldCount.categories === 1 ? 'category' : 'categories'}`
+        : null,
+    ].filter(Boolean).join(', ');
+
+  const handleChooseApps = async () => {
+    haptics.tap();
+    const bridge = screenTimeBridge();
+    if (!bridge) return;
+    const picked = await bridge.presentAppPicker();
+    if (picked) setShieldCount(bridge.screenTimeSelectionCount());
+  };
+
+  const handleToggleShield = async () => {
+    haptics.tap();
+    if (focusShieldEnabled) {
+      setFocusShieldEnabled(false);
+      return;
+    }
+    const bridge = screenTimeBridge();
+    if (!bridge) return;
+    // Asking is a Settings action and never something the app does on its own
+    // — the same rule the weather rules sheet follows for location.
+    const status = await bridge.requestScreenTimeAuthorization();
+    if (status !== 'approved') {
+      Alert.alert(
+        'Screen Time access needed',
+        'Blocking apps during a focus session needs Screen Time access. You can grant it in Settings, under Screen Time.',
+      );
+      return;
+    }
+    setFocusShieldEnabled(true);
+    // Straight into the picker the first time: the setting does nothing at all
+    // until some apps are chosen, and a toggle that visibly changes nothing is
+    // how somebody concludes the feature is broken.
+    if (shieldTotal === 0) await handleChooseApps();
+  };
 
   // What the row's value counts: rules that are actually filing things. A rule
   // switched off is kept and listed, but reporting it here would have the row
@@ -552,6 +610,43 @@ export function TasksProjectsSettings() {
               toggle={focusLiveActivity}
               onPress={() => setFocusLiveActivity(!focusLiveActivity)}
             />
+          </>
+        )}
+
+        {/*
+          Screen Time. Hidden outright rather than shown disabled when the
+          device or build can't do it — the authorization it wants is one an
+          iOS 15 phone can never grant, so offering the row would be asking a
+          question with no answer. Same call the Live Activity row above makes
+          about a non-iOS device.
+        */}
+        {screenTimeSupported && (
+          <>
+            <View style={styles.sep} />
+            <SettingsRow
+              entryId="focusShield"
+              icon="lock-closed-outline"
+              iconColor={focusShieldEnabled ? colors.accent : undefined}
+              label="Block apps while focusing"
+              hint={focusShieldEnabled
+                ? 'The apps you choose are blocked while a session is running, and unblocked when you pause or finish it'
+                : 'Apps stay available during a session'}
+              toggle={focusShieldEnabled}
+              onPress={handleToggleShield}
+            />
+            {focusShieldEnabled && (
+              <>
+                <View style={styles.sep} />
+                <SettingsRow
+                  entryId="focusShieldApps"
+                  icon="apps-outline"
+                  label="Apps to block"
+                  hint="Chosen in the system picker. iOS doesn’t tell the app which ones you picked, so only the count shows here."
+                  value={shieldSelectionLabel}
+                  onPress={handleChooseApps}
+                />
+              </>
+            )}
           </>
         )}
       </SettingsSection>

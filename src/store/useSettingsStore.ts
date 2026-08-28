@@ -310,6 +310,15 @@ interface SettingsStore {
   // Every Nth break is a long one. null = every break is a short one.
   focusLongRestEvery: number | null;
   focusLongRestMinutes: number;
+  // Block the apps chosen in Settings for as long as a focus session is
+  // actually running (iOS Screen Time — see src/utils/focusShield.ts).
+  //
+  // Ships off, like every other feature here that wants an OS permission the
+  // app doesn't already hold: turning it on is what triggers the authorization
+  // sheet, and blocking somebody out of their own apps is not a thing to start
+  // doing unasked. Which apps is not stored here — the picked set lives in the
+  // App Group as opaque tokens, because iOS never tells the app what they are.
+  focusShieldEnabled: boolean;
   // How long completed tasks are kept before a startup purge deletes them.
   // null = forever, and forever is the default: nothing about an existing
   // install changes until the user picks a window in Settings. See
@@ -984,6 +993,7 @@ interface SettingsStore {
   setFocusRestMinutes: (minutes: number) => void;
   setFocusLongRestEvery: (count: number | null) => void;
   setFocusLongRestMinutes: (minutes: number) => void;
+  setFocusShieldEnabled: (on: boolean) => void;
   setCompletedRetentionDays: (days: RetentionDays) => void;
   setDefaultReminderLeadMinutes: (minutes: number | null) => void;
   setHideCategories: (on: boolean) => void;
@@ -1101,6 +1111,7 @@ const DEFAULT_SETTINGS = {
   focusRestMinutes: FOCUS_DEFAULTS.restMinutes,
   focusLongRestEvery: FOCUS_DEFAULTS.longRestEvery,
   focusLongRestMinutes: FOCUS_DEFAULTS.longRestMinutes,
+  focusShieldEnabled: false,
   hideCategories: false,
   simpleTaskForm: false,
   simpleMode: false,
@@ -1428,6 +1439,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   focusRestMinutes: FOCUS_DEFAULTS.restMinutes,
   focusLongRestEvery: FOCUS_DEFAULTS.longRestEvery,
   focusLongRestMinutes: FOCUS_DEFAULTS.longRestMinutes,
+  focusShieldEnabled: false,
   completedRetentionDays: null,
   defaultReminderLeadMinutes: null,
   hideCategories: false,
@@ -1587,6 +1599,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const focusRestMinutes = parseFocusRestMinutes(dbGetSetting('focusRestMinutes'));
     const focusLongRestEvery = parseFocusLongRestEvery(dbGetSetting('focusLongRestEvery'));
     const focusLongRestMinutes = parseFocusLongRestMinutes(dbGetSetting('focusLongRestMinutes'));
+    const focusShieldEnabled = dbGetSetting('focusShieldEnabled') === 'true';
     const completedRetentionDays = parseRetentionDays(dbGetSetting('completedRetentionDays'));
     const defaultReminderLeadMinutes = parseDefaultReminderLeadMinutes(dbGetSetting('defaultReminderLeadMinutes'));
     const hideCategories = dbGetSetting('hideCategories') === 'true';
@@ -1863,7 +1876,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2291,6 +2304,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const clamped = parseFocusLongRestMinutes(String(minutes));
     dbSetSetting('focusLongRestMinutes', String(clamped));
     set({ focusLongRestMinutes: clamped });
+  },
+
+  setFocusShieldEnabled(on: boolean) {
+    dbSetSetting('focusShieldEnabled', on ? 'true' : 'false');
+    set({ focusShieldEnabled: on });
   },
 
   // Stored as '' for forever, matching vacationEnd —
