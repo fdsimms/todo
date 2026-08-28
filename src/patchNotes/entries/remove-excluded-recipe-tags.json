@@ -1,0 +1,4 @@
+{
+  "message": "Removed the \"Tags to avoid\" setting for recipe suggestions. It was a single household-wide list, which didn't fit how different people actually want to avoid different things — rethinking this one.",
+  "date": "2026-08-28"
+}

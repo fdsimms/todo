@@ -168,7 +168,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/recipeProvenance.ts` — ExtractedSource, FetchedSourcePage, SourceFields, sourceFieldsFor, CookbookEditIntent, cookbookEditIntent, SourcePlan, sourcePlanFor
 - `src/utils/recipeScale.ts` — ScaledQuantity, scaleQuantity, RECIPE_SCALE_FACTORS, isUnscaled, normalizeScale, formatScale, scaleServings, factorForServings, targetServingsFor, describeUnscaled
 - `src/utils/recipeSections.ts` — parseEmptySections, SectionedRow, SectionListEntry, sectionsFromMergedOrder, sectionsOf, allSectionsOf
-- `src/utils/recipeTags.ts` — cleanRecipeTag, normalizeRecipeTags, parseRecipeTags, allRecipeTags, recipeTagCounts, filterRecipesByTags, excludeRecipesByTags, formatTagList, toggleRecipeTag
+- `src/utils/recipeTags.ts` — cleanRecipeTag, normalizeRecipeTags, parseRecipeTags, allRecipeTags, recipeTagCounts, filterRecipesByTags, formatTagList, toggleRecipeTag
 - `src/utils/recipeTimer.ts` — CookTimerState, PrepTimerState, hasCookTimer, isCookTimerRunning, cookTimerElapsed, cookTimerRemaining, cookTimerProgress, isCookTimerReady, hasPrepTimer, isPrepTimerRunning, +5 more
 - `src/utils/recipeUrl.ts` — normalizeRecipeUrl, decodeEntities, htmlToText, metaContent, PageRecipe, parseIsoDuration, parseRecipeJsonLd, focusRecipeText, recipeToPlainText, ParsedRecipePage, +1 more
 - `src/utils/recipeUtils.ts` — parseRecipeIngredients, normalizeIngredient, makeIngredient, ingredientsFromText, mergeIngredients, remapIngredientKeyIn, parsePrepTasks, normalizePrepTask, parseSteps, normalizeStep, +46 more

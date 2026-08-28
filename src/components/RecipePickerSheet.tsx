@@ -23,9 +23,7 @@ import { spacing, radius, font, fontWeight, border, animation, interaction, type
 import { haptics } from '../utils/haptics';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
-import { useSettingsStore } from '../store/useSettingsStore';
 import { rankRecipes, describeRecipe, cleanRecipeName, sortRecipesForDisplay } from '../utils/recipeUtils';
-import { excludeRecipesByTags } from '../utils/recipeTags';
 import { slotLabel } from '../utils/mealPlan';
 import { describeLeftover, liveFreshnessOf, liveLeftovers, mealTitleForLeftover } from '../utils/leftovers';
 // The colour ladder lives with the card that established it rather than in
@@ -162,7 +160,6 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
   const { height: windowHeight } = useWindowDimensions();
 
   const recipes = useRecipeStore(useShallow(s => s.recipes));
-  const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
   const [query, setQuery] = useState('');
   const [slot, setSlot] = useState<MealSlot>(defaultSlot);
@@ -196,17 +193,13 @@ export function RecipePickerSheet({ visible, dayKey, dayLabel, defaultSlot, forc
     const q = query.trim().toLowerCase();
     return q ? live.filter(l => l.title.toLowerCase().includes(q)) : live;
   }, [leftovers, query]);
-  // Excluded tags narrow the *browse* list — the one this sheet is offering
-  // unasked — but not a search that already names something specific. Typing
-  // "quiche" is the cook going and getting it on purpose, which is a
-  // different thing from the app proposing it; see excludeRecipesByTags.
   const matches = useMemo(() => {
     const trimmed = query.trim();
     const ranked = trimmed
       ? rankRecipes(trimmed, recipes)
-      : sortRecipesForDisplay(excludeRecipesByTags(recipes, excludedRecipeTags));
+      : sortRecipesForDisplay(recipes);
     return ranked.slice(0, MAX_ROWS);
-  }, [query, recipes, excludedRecipeTags]);
+  }, [query, recipes]);
 
   // The typed line only earns a row when it isn't just the name of a recipe
   // already offered above it — two rows planning the same dinner, one of them

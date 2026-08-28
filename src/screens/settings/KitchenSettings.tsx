@@ -2,10 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { View, Platform } from 'react-native';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import type { UnitSystem } from '../../utils/unitConvert';
-import { useRecipeStore } from '../../store/useRecipeStore';
 import { useGroceryStore } from '../../store/useGroceryStore';
 import { useShallow } from 'zustand/react/shallow';
-import { allRecipeTags } from '../../utils/recipeTags';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
@@ -56,10 +54,6 @@ export function KitchenSettings() {
   const setUnitSystem = useSettingsStore(s => s.setUnitSystem);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
   const setCurrencySymbol = useSettingsStore(s => s.setCurrencySymbol);
-  const excludedRecipeTags = useSettingsStore(useShallow(s => s.excludedRecipeTags));
-  const setExcludedRecipeTags = useSettingsStore(s => s.setExcludedRecipeTags);
-
-  const recipeTagVocabulary = useRecipeStore(useShallow(s => allRecipeTags(s.recipes)));
 
   // How many substitutes the app is currently applying on its own (#1571) —
   // the count on the Standing swaps row, and the reason it reads as active.
@@ -158,44 +152,6 @@ export function KitchenSettings() {
           />
         </SettingsSection>
       )}
-
-      <SettingsSection
-        label="Recipe suggestions"
-        footer="Only your own recipe tags decide this. Nothing is guessed from ingredients. Tag a dish (however you like: “vegetarian”, “eggy”, whatever the reason is) on its own recipe screen, then pick the tags to leave out here. A dish stays fully editable and plannable by hand; this only keeps it out of what the app proposes."
-      >
-        <SettingsRow
-          entryId="excludedRecipeTags"
-          icon="nutrition-outline"
-          iconColor={excludedRecipeTags.length > 0 ? colors.accent : undefined}
-          label="Tags to avoid"
-          hint={recipeTagVocabulary.length === 0 ? 'Tag a recipe first to pick from here' : undefined}
-          alwaysShowHint={recipeTagVocabulary.length === 0}
-          tight={recipeTagVocabulary.length > 0}
-        />
-        {recipeTagVocabulary.length > 0 && (
-          <View style={styles.pillGroupRow}>
-            <PillGroup
-              noun="tag"
-              options={recipeTagVocabulary.map(tag => ({
-                key: tag,
-                label: tag,
-                selected: excludedRecipeTags.includes(tag),
-                accessibilityLabel: excludedRecipeTags.includes(tag)
-                  ? `${tag}, left out of suggestions. Tap to allow it again.`
-                  : `${tag}. Tap to leave it out of suggestions.`,
-                onPress: () => {
-                  haptics.tap();
-                  setExcludedRecipeTags(
-                    excludedRecipeTags.includes(tag)
-                      ? excludedRecipeTags.filter(t => t !== tag)
-                      : [...excludedRecipeTags, tag]
-                  );
-                },
-              }))}
-            />
-          </View>
-        )}
-      </SettingsSection>
 
       <SettingsSection
         label="Recipe & grocery amounts"
