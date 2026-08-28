@@ -1348,7 +1348,10 @@ interface TaskStore {
     updates: Partial<Task>,
     // skipPostponeCount: this move wasn't the user ducking the task — an engine
     // proposed it, or it's bookkeeping. See utils/postpone.ts.
-    options?: { scope?: 'occurrence' | 'series'; skipPostponeCount?: boolean },
+    // markSeenOnBecomeVisible: the user is looking at this task right now, so
+    // if this write is what makes it visible today, it must not also read as
+    // unseen — see the seenAt-stamping note inside updateTask.
+    options?: { scope?: 'occurrence' | 'series'; skipPostponeCount?: boolean; markSeenOnBecomeVisible?: boolean },
   ) => void;
   /** The live tasks waiting on this one (see utils/blocking's waitingOn). */
   blockedTasksOf: (id: string) => Task[];
@@ -2445,17 +2448,32 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // banner. Stamping seenAt on that transition is the honest answer: they
       // are holding the task right now, so they have seen it.
       //
+      // The same thing happens when the user drags a task's *date* onto today
+      // instead — the editor's Date row, the row's own reschedule picker, and
+      // Drift's "Do it today" all write dueDate/deferUntil straight through
+      // here, and a task pulled forward like that has just as plainly been
+      // looked at as one re-filed into a visible category. Unlike the category
+      // case there's no single field name to key off (dueDate, deferUntil and
+      // timeSegments can each be the one that flips it), and some of the
+      // engine-driven writers of those same fields — an unattended project
+      // drip, the expired-task sweep — deliberately want the opposite: their
+      // whole mechanism is a stale seenAt handing the newly-dated task to the
+      // banner once someone actually looks. So this half is opt-in: only a
+      // caller passing markSeenOnBecomeVisible is claiming "the user is
+      // looking at this task right now", the same claim the category case
+      // gets to make unconditionally because nothing re-files a task on the
+      // app's own initiative.
+      //
       // Only on the transition into new, so a task that was already new keeps
       // its dot through a move (and through the narrow {category} patches the
       // group undos replay), and only when the update doesn't name seenAt
       // itself, which is what lets a full-snapshot undo put the old value back.
-      const recategorizedIntoNew =
-        'category' in updates &&
-        updates.category !== t.category &&
+      const transitionedIntoNew =
         !('seenAt' in updates) &&
         !isTaskNew(t) &&
-        isTaskNew(next);
-      const updated = recategorizedIntoNew
+        isTaskNew(next) &&
+        (('category' in updates && updates.category !== t.category) || !!options?.markSeenOnBecomeVisible);
+      const updated = transitionedIntoNew
         ? { ...next, seenAt: new Date().toISOString() }
         : next;
       dbUpdateTask(updated);
@@ -4005,7 +4023,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // for. The prompt still only ever appears in the date picker, so a task
     // moved in a batch is noted here and mentioned later, not accused now.
     dbTransaction(() => {
-      applied.forEach(m => get().updateTask(m.id, m.updates));
+      applied.forEach(m => get().updateTask(m.id, m.updates, { markSeenOnBecomeVisible: true }));
     });
 
     get().setLastAction({
@@ -4030,7 +4048,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // undated by construction (see findProjectStalls), so there's no earlier
     // date for the rule to compare against anyway. Belt and braces.
     dbTransaction(() => {
-      applied.forEach(m => get().updateTask(m.id, m.updates, { skipPostponeCount: true }));
+      applied.forEach(m => get().updateTask(m.id, m.updates, { skipPostponeCount: true, markSeenOnBecomeVisible: true }));
     });
 
     // This is the direct, user-initiated action that resolves a project's
@@ -6436,6 +6454,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const counts = bulkPostponeCounts(
       get().tasks, ids, { deferUntil }, dayResetTime,
     );
+    // Same rule as updateTask's transitionedIntoNew (markSeenOnBecomeVisible),
+    // which this path doesn't go through: moving a task onto today right now
+    // must not also read as unseen. See the comment there.
+    const staleNew = snapshots
+      .filter(t => !isTaskNew(t) && isTaskNew({ ...t, deferUntil }))
+      .map(t => t.id);
     // Pinning is for today's block specifically — a task actually moving to a
     // different day no longer belongs there (see the row's own reschedule in
     // TaskItem, which does the same check).
@@ -6460,6 +6484,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(counts.get(t.id) ?? {}),
       })),
     }));
+    get().markTasksSeen(staleNew);
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
@@ -6479,6 +6504,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const counts = bulkPostponeCounts(
       get().tasks, ids, { dueDate }, dayResetTime,
     );
+    // Same rule as bulkDefer above, and updateTask's transitionedIntoNew.
+    const staleNew = snapshots
+      .filter(t => !isTaskNew(t) && isTaskNew({ ...t, dueDate, timeSegments }))
+      .map(t => t.id);
     // Same reasoning as bulkDefer above: moving a pinned task to a different
     // day (or clearing its date entirely) drops the pin.
     const newDay = date ? getTaskDayStart(date, dayResetTime).getTime() : null;
@@ -6503,6 +6532,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(counts.get(t.id) ?? {}),
       })),
     }));
+    get().markTasksSeen(staleNew);
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
@@ -6513,7 +6543,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   bulkSetCategory(ids, category) {
     if (ids.length === 0) return;
-    // Same rule as updateTask's recategorizedIntoNew, which this path doesn't
+    // Same rule as updateTask's transitionedIntoNew, which this path doesn't
     // go through: the move itself must not turn a task "new". See the comment
     // there for why a suppressed category leaves a stale seenAt behind.
     const staleNew = get().tasks
@@ -6712,7 +6742,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const affectedTaskIds = get().tasks.filter(t => t.category === name).map(t => t.id);
     const affectedGroupIds = useTaskGroupStore.getState().groups.filter(g => g.category === name).map(g => g.id);
 
-    // Same rule as updateTask's recategorizedIntoNew: losing a category the
+    // Same rule as updateTask's transitionedIntoNew: losing a category the
     // task never chose to leave must not turn it "new" either. A deleted
     // category takes its excludeFromNewTasksBanner and its schedule with it,
     // so without this every task it was suppressing arrives in the banner at

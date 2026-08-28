@@ -3098,7 +3098,13 @@ export const TaskItem = React.memo(function TaskItem({
               return prev ? getTaskDayStart(new Date(prev)).getTime() : null;
             })();
             const moved = task.pinned && (picked?.getTime() ?? null) !== previousDay;
-            updateTask(task.id, moved ? { ...baseUpdates, pinned: false } : baseUpdates);
+            // The user just picked this date, so a task pulled onto today by
+            // it must not read as unseen — see updateTask's transitionedIntoNew.
+            updateTask(
+              task.id,
+              moved ? { ...baseUpdates, pinned: false } : baseUpdates,
+              { markSeenOnBecomeVisible: true },
+            );
             setLastAction({
               label: 'Task rescheduled',
               undo: () => updateTask(snapshot.id, snapshot),
