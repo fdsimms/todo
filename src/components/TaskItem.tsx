@@ -65,6 +65,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { MEAL_PLAN_NUDGE_SLOT_COUNT, mealPlanNudgeDayKey } from '../utils/mealPlanNudge';
 import { activeMealSlotStepId, mealSlotOf, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { calendarReviewEventsFor } from '../utils/calendarReviewTasks';
+import { isNoticeTask } from '../utils/generatedTasks';
 import { useCalendarStore } from '../store/useCalendarStore';
 import type { BusyEvent } from '../utils/calendarBusy';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -844,6 +845,34 @@ export const TaskItem = React.memo(function TaskItem({
     [task, calendarReviewRawEvents]
   );
 
+  // A notice rather than a piece of work: something the app is telling you,
+  // with a tick box on it. Which kinds are one, and why the rest aren't, is
+  // in `GeneratedKindSpec.notice` — here it only decides what the row offers.
+  // Everything it drops is task management (reschedule, duplicate, pin, Edit,
+  // renaming, adding subtasks); the checkbox, the meta chips and the link
+  // button are untouched, because those are how a notice is read and answered.
+  const notice = isNoticeTask(task);
+  // A notice offers no subtasks, but one that somehow has them still lists
+  // them — only the "Add subtask" field goes. Hiding a row somebody put there
+  // would be losing it, not simplifying it.
+  const showSubtaskSection = !notice || subtasks.length > 0;
+  // Sections in the expanded panel each draw a border above themselves, which
+  // has been unconditional since the subtask section started always rendering.
+  // A notice drops that section, so the first thing below it must not draw a
+  // border above nothing. One boolean rather than a running count because the
+  // sections a notice can actually reach are its notes and its own inline
+  // block: no notice kind is timed, recurring, chained or in a series. A
+  // notice kind that grew any of those would need this to become a count.
+  const panelSectionAbove = showSubtaskSection || task.notes.length > 0;
+  // What's left in a notice's panel once task management is gone: its notes,
+  // any subtasks it already had, and the kind's own inline block. With none of
+  // those the panel is empty, so the row doesn't expand at all rather than
+  // animating open onto nothing (the meal-plan nudge, whose detail is the Meal
+  // Plan screen its link button opens).
+  const noticeHasPanel =
+    task.notes.length > 0 || subtasks.length > 0 || calendarReviewEvents.length > 0;
+  const expandable = !notice || noticeHasPanel;
+
   // A "Shop for Tue ragù" row's own answer: how many lines are still to buy,
   // right now — never stored on the task, since the number moves as the
   // list and the plan do (see mealShortfallTasks.ts). Same gate shape as
@@ -982,7 +1011,11 @@ export const TaskItem = React.memo(function TaskItem({
 
   const handleContentPress = () => {
     if (isNew) markTaskSeen(task.id);
-    if (selectionMode) { onSelect?.(task.id); } else { onPress(rowId); }
+    if (selectionMode) { onSelect?.(task.id); return; }
+    // A notice whose panel would be empty has nothing to open — see
+    // `expandable`. Marking it seen above still counts: it was read.
+    if (!expandable) return;
+    onPress(rowId);
   };
   // A recurring task showing early in Later (its day hasn't arrived yet)
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
@@ -1733,10 +1766,15 @@ export const TaskItem = React.memo(function TaskItem({
         // wins it back (later sibling, so hit-testing reaches this first).
         hitSlop={{ top: 14, bottom: 14, left: 0, right: 10 }}
         accessibilityRole={selectionMode ? 'checkbox' : 'button'}
-        accessibilityState={selectionMode ? { checked: selected } : { expanded }}
+        // A row that doesn't expand says neither of the two things an
+        // expandable one says — no `expanded` state and no hint offering a
+        // gesture that does nothing.
+        accessibilityState={
+          selectionMode ? { checked: selected } : expandable ? { expanded } : {}
+        }
         accessibilityLabel={displayTitle}
         accessibilityHint={
-          selectionMode
+          selectionMode || !expandable
             ? undefined
             : expanded
               ? 'Double tap to collapse details'
@@ -1767,8 +1805,10 @@ export const TaskItem = React.memo(function TaskItem({
                 {stepNumber}
               </Text>
             )}
-            {expanded ? (
+            {expanded && !notice ? (
               // Only tappable for edit when already expanded — avoids intercepting expand taps.
+              // A notice is never renameable: its title is the question the
+              // generator asks, and the next sweep writes the same one again.
               // Editing always edits the task's own title, not the chain step's
               // (handleTitleTap/saveTitle), even though the displayed text here
               // is the step's while one is active — matching the collapsed row.
@@ -2248,7 +2288,7 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
-      {!selectionMode && showActions && showPin && (
+      {!selectionMode && showActions && showPin && !notice && (
         <TouchableOpacity
           onPress={() => {
             haptics.tap();
@@ -2308,10 +2348,13 @@ export const TaskItem = React.memo(function TaskItem({
               <Text style={styles.expandNotes}>{task.notes}</Text>
             )}
 
-            {/* Unconditional now — the always-visible "Add subtask" field
-                below needs somewhere to live even when the list is empty, so
-                this can't stay gated on subtasks.length like the rows below
-                it still are. */}
+            {/* Unconditional except on a notice — the always-visible "Add
+                subtask" field below needs somewhere to live even when the list
+                is empty, so this can't stay gated on subtasks.length like the
+                rows below it still are. A notice has no field to house, so it
+                renders this only for subtasks it already has (see
+                showSubtaskSection). */}
+            {showSubtaskSection && (
             <View style={[
               styles.expandSection,
               styles.subtaskSection,
@@ -2420,9 +2463,11 @@ export const TaskItem = React.memo(function TaskItem({
                   }}
                 />
               )}
-              {/* Always here, mirroring the editor's own always-visible field
-                  — adding a subtask from the row shouldn't need a trip into
-                  the full editor (see commitNewSubtask). */}
+              {/* Always here on an ordinary task, mirroring the editor's own
+                  always-visible field — adding a subtask from the row
+                  shouldn't need a trip into the full editor (see
+                  commitNewSubtask). A notice offers no subtasks at all. */}
+              {!notice && (
               <View style={[styles.subtaskRow, styles.subtaskRowLast]}>
                 <View style={styles.subtaskCheck} />
                 <TextInput
@@ -2439,15 +2484,18 @@ export const TaskItem = React.memo(function TaskItem({
                   onBlur={commitNewSubtask}
                 />
               </View>
+              )}
             </View>
+            )}
 
             {task.recurrenceType !== 'none' && (
               <View style={[
                 styles.recurrenceRow,
-                // The subtask section above always renders now (it always
-                // carries the add-subtask field), so there's always
-                // something above this row to divide from.
-                styles.sectionDivider,
+                // The subtask section above always renders (it always carries
+                // the add-subtask field), so there's normally something above
+                // this row to divide from — see panelSectionAbove for the one
+                // row treatment that drops it.
+                panelSectionAbove && styles.sectionDivider,
               ]}>
                 <Ionicons name="repeat" size={12} color={colors.textSecondary} />
                 <Text style={styles.expandMeta}>{describeTaskRecurrence(task)}</Text>
@@ -2466,9 +2514,9 @@ export const TaskItem = React.memo(function TaskItem({
             {otherSeriesDates !== '' && (
               <View style={[
                 styles.recurrenceRow,
-                // The subtask section always renders now (see above), so this
-                // always has something above it.
-                styles.sectionDivider,
+                // The subtask section always renders (see above), so this
+                // normally has something above it.
+                panelSectionAbove && styles.sectionDivider,
               ]}>
                 <Ionicons name="calendar-number-outline" size={12} color={colors.textSecondary} />
                 <Text style={styles.expandMeta}>Also on {otherSeriesDates}</Text>
@@ -2479,7 +2527,7 @@ export const TaskItem = React.memo(function TaskItem({
               <TouchableOpacity
                 style={[
                   styles.recurrenceRow,
-                  styles.sectionDivider,
+                  panelSectionAbove && styles.sectionDivider,
                 ]}
                 onPress={() => { haptics.tap(); setChainStepsExpanded(v => !v); }}
                 activeOpacity={interaction.activeOpacity}
@@ -2549,13 +2597,14 @@ export const TaskItem = React.memo(function TaskItem({
             )}
 
             {/* The task's own answer, read live off the calendar store — see
-                the calendarReviewEvents comment above. The subtask section
-                above always renders now, so this always has something above
-                it to divide from. */}
+                the calendarReviewEvents comment above. This is the whole of a
+                review task's panel now (the subtask section and the action row
+                are both gone on a notice), which is why the divider asks
+                whether anything is actually above it. */}
             {task.generatedKind === 'calendarReview' && calendarReviewEvents.length > 0 && (
               <View style={[
                 styles.expandSection,
-                styles.sectionDivider,
+                panelSectionAbove && styles.sectionDivider,
               ]}>
                 {calendarReviewEvents.map(event => (
                   <View key={event.id} style={styles.calendarReviewEventRow}>
@@ -2573,8 +2622,9 @@ export const TaskItem = React.memo(function TaskItem({
             {timed && (
               <View style={[
                 styles.countdownRow,
-                // The subtask section always renders above now.
-                styles.sectionDivider,
+                // The subtask section normally renders above (see
+                // panelSectionAbove).
+                panelSectionAbove && styles.sectionDivider,
               ]}>
                 <View style={styles.countdownHeader}>
                   <Ionicons
@@ -2602,8 +2652,9 @@ export const TaskItem = React.memo(function TaskItem({
             {task.actualMinutes != null && (
               <View style={[
                 styles.recurrenceRow,
-                // The subtask section always renders above now.
-                styles.sectionDivider,
+                // The subtask section normally renders above (see
+                // panelSectionAbove).
+                panelSectionAbove && styles.sectionDivider,
               ]}>
                 <Ionicons name="timer-outline" size={12} color={colors.textSecondary} />
                 {editingTimed ? (
@@ -2673,11 +2724,17 @@ export const TaskItem = React.memo(function TaskItem({
               </View>
             )}
 
-            {onEdit && (
+            {/* Every control in here is task management — the reschedule
+                chip, duplicate, Edit, and the timer/skip/chain buttons on the
+                left — so a notice drops the row rather than emptying it out
+                (see `notice`). Nothing a notice kind has reaches the left half
+                anyway: none of them is timed, a quota, recurring or chained. */}
+            {onEdit && !notice && (
               <View style={[
                 styles.editSection,
-                // The subtask section always renders above now.
-                styles.sectionDivider,
+                // The subtask section normally renders above (see
+                // panelSectionAbove).
+                panelSectionAbove && styles.sectionDivider,
               ]}>
                 <View style={styles.editSectionLeft}>
                   {showActions && timed && (
@@ -2995,7 +3052,10 @@ export const TaskItem = React.memo(function TaskItem({
                 onSelect: () => onSwipeSelect(task.id),
                 accessibilityLabel: `Select ${task.title}`,
               } : undefined}
-              whenAction={{
+              // No reschedule panel on a notice: there's nothing a later date
+              // would mean for it, and the button that opens the same picker
+              // is gone from its panel for that reason (see `notice`).
+              whenAction={notice ? undefined : {
                 onAction: () => setShowWhenPicker(true),
                 accessibilityLabel: `Reschedule ${task.title}`,
               }}
