@@ -318,6 +318,10 @@ beforeEach(() => {
   mockUseUpLeadDays = 1;
   mockUseUpCategory = null;
   seed([]);
+  // Every test starts with an empty history. Undo used to null a single slot,
+  // so a test that ended on an undo left one behind that looked clean; a stack
+  // resurfaces whatever was under it in the next test instead.
+  useGroceryStore.getState().clearUndoHistory();
 });
 
 // ─── initialize ──────────────────────────────────────────────────────────────

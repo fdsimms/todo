@@ -22,20 +22,11 @@ import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 
-/**
- * Mirrors useTaskStore/useGroceryStore/useMealPlanStore's UndoableAction — see
- * useGroceryStore's doc comment. A fourth independent queue rather than
- * folding into any of those: a leftover isn't a task, a catalog row or a
- * plan entry, and useShakeToUndo/UndoBar just add a fourth candidate to the
- * freshest-wins comparison they already do between the other three.
- */
-interface UndoableAction {
-  label: string;
-  undo: () => void;
-  at?: number;
-  /** See useTaskStore's UndoableAction — same flag, same UndoBar. */
-  destructive?: boolean;
-}
+import {
+  UndoableAction,
+  UndoHistoryActions,
+  undoHistoryActions,
+} from '../utils/undoHistory';
 
 export interface LeftoverDraft {
   title: string;
@@ -68,7 +59,7 @@ export interface LeftoverDraft {
  *
  * Thin on purpose — the logic lives in utils/leftovers where jest can reach it.
  */
-interface LeftoverStore {
+interface LeftoverStore extends UndoHistoryActions {
   /** Every leftover, live and closed out, most urgent first. */
   leftovers: Leftover[];
   initialized: boolean;
@@ -97,9 +88,10 @@ interface LeftoverStore {
   setPendingFinishLeftover: (id: string | null) => void;
 
   /** The most recent undoable action — see UndoableAction and useTaskStore's twin. */
+  /** The top of `undoStack`, mirrored. See useTaskStore's own note. */
   lastAction: UndoableAction | null;
-  setLastAction: (action: UndoableAction | null) => void;
-  undoLastAction: () => void;
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
 
   /**
    * Rides useTaskStore.initialize's fan-out for the same reason groceries,
@@ -254,6 +246,9 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
   pendingUseUpLeftoverId: null,
   pendingFinishLeftoverId: null,
   lastAction: null,
+  undoStack: [],
+  redoStack: [],
+  ...undoHistoryActions(set, get),
 
   initialize() {
     set({
@@ -270,21 +265,6 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
 
   setPendingFinishLeftover(id) {
     set({ pendingFinishLeftoverId: id });
-  },
-
-  setLastAction(action) {
-    set({ lastAction: action ? { ...action, at: Date.now() } : null });
-  },
-
-  undoLastAction() {
-    const action = get().lastAction;
-    if (!action) return;
-    try {
-      action.undo();
-    } catch (e) {
-      console.error('undoLastAction failed', e);
-    }
-    set({ lastAction: null });
   },
 
   logLeftover(draft) {
@@ -411,6 +391,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // task dropped above.
     get().setLastAction({
       label: outcome === 'tossed' ? `Threw out "${leftover.title}"` : `Finished "${leftover.title}"`,
+      redo: () => get().finishLeftover(id, outcome),
       undo: () => get().reopenLeftover(id),
     });
   },
@@ -432,6 +413,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
       get().setLastAction({
         label: `Deleted "${leftover.title}"`,
         destructive: true,
+        redo: () => get().deleteLeftover(id),
         undo: () => {
           dbInsertLeftover(leftover);
           set(s => ({ leftovers: sortLeftovers([...s.leftovers, leftover]) }));

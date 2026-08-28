@@ -179,7 +179,8 @@ beforeEach(() => {
   useGroceryStore.setState({ items: [] });
   useMealPlanStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, addedToListAt: {}, initialized: false,
-    lastAction: null, cookRecap: null, plannedSlotCounts: {}, cookingCounts: null,
+    lastAction: null, undoStack: [], redoStack: [],
+    cookRecap: null, plannedSlotCounts: {}, cookingCounts: null,
   });
 });
 

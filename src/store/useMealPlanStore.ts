@@ -60,20 +60,11 @@ import { addDays } from 'date-fns/addDays';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { setHours } from 'date-fns/setHours';
 
-/**
- * Mirrors useTaskStore/useGroceryStore's UndoableAction — see
- * useGroceryStore's doc comment. A third independent queue rather than
- * folding into either of those: meal plan entries aren't tasks or catalog
- * rows, and useShakeToUndo just adds a third candidate to the freshest-wins
- * comparison it already does between the other two.
- */
-interface UndoableAction {
-  label: string;
-  undo: () => void;
-  at?: number;
-  /** See useTaskStore's UndoableAction — same flag, same UndoBar. */
-  destructive?: boolean;
-}
+import {
+  UndoableAction,
+  UndoHistoryActions,
+  undoHistoryActions,
+} from '../utils/undoHistory';
 
 export interface MealPlanDraft {
   date: string;
@@ -156,7 +147,7 @@ export interface CookRecap {
   scale: number;
 }
 
-interface MealPlanStore {
+interface MealPlanStore extends UndoHistoryActions {
   /** Exactly the loaded window, in reading order. Never a superset. */
   entries: MealPlanEntry[];
   /** The inclusive day-key window `entries` covers; null before the first load. */
@@ -165,9 +156,10 @@ interface MealPlanStore {
   initialized: boolean;
 
   /** The most recent undoable meal-plan mutation — see useShakeToUndo. */
+  /** The top of `undoStack`, mirrored. See useTaskStore's own note. */
   lastAction: UndoableAction | null;
-  setLastAction: (action: UndoableAction | null) => void;
-  undoLastAction: () => void;
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
 
   /**
    * The meal just marked cooked — the subject of the post-cook sheet
@@ -637,25 +629,13 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
   cookHistory: null,
   initialized: false,
   lastAction: null,
+  undoStack: [],
+  redoStack: [],
+  ...undoHistoryActions(set, get),
   cookRecap: null,
 
   clearCookRecap() {
     set({ cookRecap: null });
-  },
-
-  setLastAction(action) {
-    set({ lastAction: action ? { ...action, at: Date.now() } : null });
-  },
-
-  undoLastAction() {
-    const action = get().lastAction;
-    if (!action) return;
-    try {
-      action.undo();
-    } catch (e) {
-      console.error('undoLastAction failed', e);
-    }
-    set({ lastAction: null });
   },
 
   initialize() {
@@ -875,6 +855,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     reconcileMealEvent(moved);
     get().setLastAction({
       label: `Moved "${entry.title}"`,
+      redo: () => get().moveEntry(id, to),
       undo: () => {
         dbUpdateMealPlanEntry(entry);
         set(s => ({ entries: sortMealEntries(s.entries.filter(e => e.id !== id)) }));
@@ -900,6 +881,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       get().setLastAction({
         label: `Removed "${entry.title}"`,
         destructive: true,
+        redo: () => get().removeEntry(id),
         undo: () => {
           dbInsertMealPlanEntry(entry);
           patchInRange(set, get, entry);
@@ -1060,6 +1042,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       if (undo) {
         get().setLastAction({
           label: `Cooked "${titleForEntry(entry, recipeIndex(recipes))}"`,
+          redo: () => get().finishCookForRecipe(recipeId),
           undo,
         });
       }
@@ -1075,6 +1058,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     if (!before) return;
     get().setLastAction({
       label: `Cooked "${recipe.name}"`,
+      redo: () => get().finishCookForRecipe(recipeId),
       undo: () => useRecipeStore.getState().restoreCookStats(recipeId, before),
     });
   },
@@ -1094,7 +1078,12 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
     // lastAction: null — see the doc comment. The delete registers no undo of
     // its own *and* takes the slot away from whatever was in it, so a shake
     // after this can't offer an unrelated action the user has moved on from.
-    set(s => ({ entries: s.entries.filter(e => !idSet.has(e.id)), lastAction: null }));
+    set(s => ({ entries: s.entries.filter(e => !idSet.has(e.id)) }));
+    // Through the store action rather than a `lastAction: null` in the set
+    // above: with a stack behind it, taking the slot away means clearing the
+    // history, not just its top — nothing under a step that can't be undone
+    // can be undone either, or the steps replay out of order.
+    get().clearUndoHistory();
     // After the delete, never before: reconcileMealSlot reads the slot's
     // current contents off this same `entries` array, and a reconcile run
     // before the filter above still sees the just-removed meal as planned —
@@ -1138,6 +1127,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
 
     get().setLastAction({
       label: `${moved.length} meal${moved.length === 1 ? '' : 's'} moved`,
+      redo: () => get().bulkMoveEntries(ids, to),
       undo: () => {
         originals.forEach(dbUpdateMealPlanEntry);
         set(s => ({ entries: sortMealEntries(s.entries.filter(e => !movedIds.has(e.id))) }));
@@ -1208,6 +1198,7 @@ export const useMealPlanStore = create<MealPlanStore>((set, get) => ({
       label: cooked
         ? `${toUpdate.length} meal${toUpdate.length === 1 ? '' : 's'} marked cooked`
         : `${toUpdate.length} meal${toUpdate.length === 1 ? '' : 's'} marked not cooked`,
+      redo: () => get().bulkSetCooked(ids, cooked),
       undo: () => {
         toUpdate.forEach(dbUpdateMealPlanEntry);
         const originalById = new Map(toUpdate.map(e => [e.id, e]));

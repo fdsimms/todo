@@ -256,6 +256,39 @@ describe('demo mode', () => {
     expect(useTaskStore.getState().tasks.map(t => t.title)).toEqual(realTasks);
   });
 
+  // An undo closure holds row snapshots and writes them back by id, so it only
+  // means anything against the database it was captured from. Carried across
+  // the swap it does exactly what demo mode exists to prevent, in both
+  // directions, and every db call keeps succeeding while it happens.
+  it('drops the undo history in both directions, so no closure outlives its database', () => {
+    useTaskStore.getState().addTask({ title: 'Real private task', category: 'Finance' });
+    const realId = useTaskStore.getState().tasks[0].id;
+    useTaskStore.getState().deleteTask(realId);
+    expect(useTaskStore.getState().lastAction?.label).toBe('Task deleted');
+
+    useDemoStore.getState().enterDemoMode();
+
+    // Nothing armed inside the demo, so a shake here can't write the real row
+    // into the scratch database.
+    expect(useTaskStore.getState().lastAction).toBeNull();
+    expect(useTaskStore.getState().undoStack).toHaveLength(0);
+    expect(useTaskStore.getState().redoStack).toHaveLength(0);
+    expect(useGroceryStore.getState().undoStack).toHaveLength(0);
+    expect(useMealPlanStore.getState().undoStack).toHaveLength(0);
+    expect(useLeftoverStore.getState().undoStack).toHaveLength(0);
+
+    // And a delete performed inside the demo doesn't follow the user out.
+    const demoId = useTaskStore.getState().tasks[0].id;
+    useTaskStore.getState().deleteTask(demoId);
+    expect(useTaskStore.getState().undoStack).toHaveLength(1);
+
+    useDemoStore.getState().exitDemoMode();
+
+    expect(useTaskStore.getState().lastAction).toBeNull();
+    expect(useTaskStore.getState().undoStack).toHaveLength(0);
+    expect(useGroceryStore.getState().undoStack).toHaveLength(0);
+  });
+
   it('hides real categories, tags, projects and stacks too, not just tasks', () => {
     useTaskStore.getState().addCategory('Therapy');
     useTaskStore.getState().addTag('confidential');

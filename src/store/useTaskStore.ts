@@ -176,24 +176,11 @@ import { weatherSourceId, parseWeatherSourceId, ruleMatchesToday } from '../util
 import { isTimedTask, timerElapsed } from '../utils/timer';
 import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
 
-interface UndoableAction {
-  label: string;
-  undo: () => void;
-  /**
-   * When the action happened, stamped centrally by setLastAction — call
-   * sites never pass it. Shake-to-undo uses it to refuse actions old enough
-   * that offering to undo them would be a surprise rather than a rescue
-   * (see UNDO_ACTION_MAX_AGE_MS in utils/shakeDetect.ts).
-   */
-  at?: number;
-  /**
-   * Marks an action irreversible-feeling enough to warrant the transient
-   * UndoBar (src/components/UndoBar.tsx), not just the shake gesture — a
-   * delete or a clear, not an add or a reschedule. See UndoBar's own doc
-   * comment for the full rule; this flag is the only thing it reads.
-   */
-  destructive?: boolean;
-}
+import {
+  UndoableAction,
+  UndoHistoryActions,
+  undoHistoryActions,
+} from '../utils/undoHistory';
 
 // Fields that silently carry forward to the next occurrence today (spread
 // via `...task` in completeTask). These are the only fields "this task only"
@@ -1279,11 +1266,18 @@ function rankFor(
   return hit ? { pinnedOrder: hit.pinnedOrder } : {};
 }
 
-interface TaskStore {
+interface TaskStore extends UndoHistoryActions {
   tasks: Task[];
   tagRegistry: string[];
   initialized: boolean;
+  /**
+   * The top of `undoStack`, mirrored — not a field of its own. Kept because
+   * the whole app reads it: both undo consumers, the batch actions below that
+   * capture a child action's undo, and TitleRulesSheet's identity check.
+   */
   lastAction: UndoableAction | null;
+  undoStack: UndoableAction[];
+  redoStack: UndoableAction[];
   // Ids of tasks completed within the last COMPLETION_HOLD_MS — see
   // withHeldCompletions above.
   completionHoldIds: string[];
@@ -1395,8 +1389,6 @@ interface TaskStore {
   seriesRowsOf: (seriesId: string) => Task[];
   markTaskSeen: (id: string) => void;
   markTasksSeen: (ids: string[]) => void;
-  setLastAction: (action: UndoableAction | null) => void;
-  undoLastAction: () => void;
   /**
    * `skipGeneratedOptOut` is for a delete the app performs on its own behalf —
    * see dropGeneratedTask. A user's delete is an instruction to the source and
@@ -1722,6 +1714,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   tagRegistry: [],
   initialized: false,
   lastAction: null,
+  undoStack: [],
+  redoStack: [],
+  ...undoHistoryActions(set, get),
   completionHoldIds: [],
   completionCollapseIds: [],
   quotaHoldIds: [],
@@ -2110,6 +2105,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: live.length === 1 ? 'Task deleted' : `${live.length} dates deleted`,
       destructive: true,
+      redo: () => get().deleteSeries(seriesId),
       undo: () => {
         [...live, ...subtasks].forEach(t => {
           dbInsertTask(t);
@@ -2615,21 +2611,6 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({ tasks: patchTasks(s.tasks, ids, { seenAt: now }) }));
   },
 
-  setLastAction(action) {
-    set({ lastAction: action ? { ...action, at: Date.now() } : null });
-  },
-
-  undoLastAction() {
-    const action = get().lastAction;
-    if (!action) return;
-    try {
-      action.undo();
-    } catch (e) {
-      console.error('undoLastAction failed', e);
-    }
-    set({ lastAction: null });
-  },
-
   deleteTask(id, opts = {}) {
     const task = get().tasks.find(t => t.id === id);
     if (!task) return;
@@ -2668,6 +2649,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Task deleted',
       destructive: true,
+      redo: () => get().deleteTask(id, opts),
       undo: () => {
         dbInsertTask(task);
         scheduleTaskReminder(task);
@@ -3517,6 +3499,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         : finishedRecurrence
           ? 'Last one, this won\'t repeat again'
           : 'Task completed',
+      redo: () => get().completeTask(id, options),
       undo: () => {
         if (autoCompletedProjectId) {
           useProjectStore.getState().applyProjectCompleted(autoCompletedProjectId, false);
@@ -3630,6 +3613,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // off "now" instead of reproducing what was actually undone.
     get().setLastAction({
       label: 'Task uncompleted',
+      redo: () => get().uncompleteTask(id),
       undo: () => {
         dbUpdateTask(original);
         [...followUps, ...followUpSubtasks].forEach(t => {
@@ -3938,6 +3922,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().updateTask(id, { deferUntil: until.toISOString() });
     get().setLastAction({
       label: 'Task rescheduled',
+      redo: () => get().deferTask(id, until),
       undo: () => get().updateTask(snapshot.id, snapshot),
     });
   },
@@ -4010,6 +3995,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     get().setLastAction({
       label: `${applied.length} task${applied.length === 1 ? '' : 's'} moved`,
+      redo: () => get().deloadTasks(moves),
       undo: () => snapshots.forEach(s =>
         get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil, postponeCount: s.postponeCount })
       ),
@@ -4040,6 +4026,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
     get().setLastAction({
       label: `${applied.length} task${applied.length === 1 ? '' : 's'} pulled in`,
+      redo: () => get().pullProjectTasks(moves),
       undo: () => snapshots.forEach(s =>
         get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil }, { skipPostponeCount: true })
       ),
@@ -5320,6 +5307,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     set(s => ({ tasks: patchTasks(s.tasks, ids, { timeSegments: segments }) }));
     get().setLastAction({
       label: changing.length === 1 ? 'Task rescheduled' : `${changing.length} tasks rescheduled`,
+      redo: () => get().setCategoryTimeSegments(category, segments),
       undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
     });
     return changing.length;
@@ -5573,6 +5561,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Subtask deleted',
       destructive: true,
+      redo: () => get().deleteSubtask(id),
       undo: () => {
         dbInsertTask(subtask);
         set(s => ({ tasks: [...s.tasks, subtask] }));
@@ -5836,11 +5825,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (completedIds.length === 0) return;
     get().setLastAction({
       label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
+      redo: () => get().completeGroup(groupId, options),
       undo: () => completedIds.forEach(id => get().uncompleteTask(id)),
     });
   },
 
   uncompleteGroup(groupId) {
+    // The stack as it was before the children below register theirs, so the
+    // one entry filed for this batch replaces them rather than sitting on top.
+    const historyBefore = get().undoStack;
     // The group's checkbox is a live readout (see TaskGroupHeader), not its
     // own stored field — so unchecking it can only mean "uncomplete
     // whichever children are currently done." Each uncompleteTask call sets
@@ -5862,8 +5855,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
     get().setLastAction({
       label: `${children.length} task${children.length === 1 ? '' : 's'} uncompleted`,
+      redo: () => get().uncompleteGroup(groupId),
       undo: () => undos.forEach(fn => fn()),
-    });
+    }, { replacing: historyBefore });
   },
 
   // Roster-scoped: deferring or pinning a stack must not write to the
@@ -5891,6 +5885,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   },
 
   deleteGroup(groupId, opts) {
+    // The stack as it was before the children below register theirs, so the
+    // one entry filed for this batch replaces them rather than sitting on top.
+    const historyBefore = get().undoStack;
     const children = get().groupChildrenOf(groupId);
     const group = useTaskGroupStore.getState().getGroupById(groupId);
     const undos: Array<() => void> = [];
@@ -5937,6 +5934,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: opts.cascade ? 'Stack and its tasks deleted' : 'Stack deleted',
       destructive: true,
+      redo: () => get().deleteGroup(groupId, opts),
       undo: () => {
         useTaskGroupStore.getState().restoreGroup(group);
         undos.forEach(fn => fn());
@@ -5944,13 +5942,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           if (!doomed.has(child.id)) get().addExistingToGroup(child.id, groupId);
         });
       },
-    });
+    }, { replacing: historyBefore });
   },
 
   // Same one-entry-per-batch rule as bulkDeleteProjects; the ids are filtered
   // to rows that exist first, so a stale id can't leave the previous action's
   // undo in the batch below.
   bulkDeleteGroups(groupIds, opts) {
+    // The stack as it was before the children below register theirs, so the
+    // one entry filed for this batch replaces them rather than sitting on top.
+    const historyBefore = get().undoStack;
     const groupStore = useTaskGroupStore.getState();
     const ids = groupIds.filter(id => groupStore.getGroupById(id) !== null);
     if (ids.length === 0) return;
@@ -5963,8 +5964,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: `${ids.length} stack${ids.length === 1 ? '' : 's'}${opts.cascade ? ' and their tasks' : ''} deleted`,
       destructive: true,
+      redo: () => get().bulkDeleteGroups(groupIds, opts),
       undo: () => undos.forEach(fn => fn()),
-    });
+    }, { replacing: historyBefore });
   },
 
   bulkSetGroupCategory(groupIds, category) {
@@ -6010,6 +6012,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: `Category "${name}" deleted`,
       destructive: true,
+      redo: () => get().deleteProjectCategory(name),
       undo: () => {
         // The row first, so the projects are re-filed into a category that
         // exists — the picker reads the pool, not the names on the rows.
@@ -6077,6 +6080,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // isn't a request to lose data, so the only cascade this offers is the
   // reversible one. Undo restores both the project and every task it archived.
   completeProject(projectId, opts) {
+    // The stack as it was before the children below register theirs, so the
+    // one entry filed for this batch replaces them rather than sitting on top.
+    const historyBefore = get().undoStack;
     const project = useProjectStore.getState().getProjectById(projectId);
     if (!project || project.completed) return;
     const members = get().tasks.filter(
@@ -6097,11 +6103,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: opts.archiveRemaining && members.length > 0
         ? 'Project completed, remaining tasks archived'
         : 'Project completed',
+      redo: () => get().completeProject(projectId, opts),
       undo: () => {
         useProjectStore.getState().applyProjectCompleted(projectId, false);
         undos.forEach(fn => fn());
       },
-    });
+    }, { replacing: historyBefore });
   },
 
   uncompleteProject(projectId) {
@@ -6111,11 +6118,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useProjectStore.getState().applyProjectCompleted(projectId, false);
     get().setLastAction({
       label: 'Project restored to active',
+      redo: () => get().uncompleteProject(projectId),
       undo: () => useProjectStore.getState().applyProjectCompleted(projectId, true, completedAt),
     });
   },
 
   deleteProject(projectId, opts) {
+    // The stack as it was before the children below register theirs, so the
+    // one entry filed for this batch replaces them rather than sitting on top.
+    const historyBefore = get().undoStack;
     const members = get().tasks.filter(t => t.projectId === projectId);
     const project = useProjectStore.getState().getProjectById(projectId);
     const undos: Array<() => void> = [];
@@ -6144,6 +6155,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: opts.cascade ? 'Project and its tasks deleted' : 'Project deleted',
       destructive: true,
+      redo: () => get().deleteProject(projectId, opts),
       undo: () => {
         useProjectStore.getState().restoreProject(project);
         if (opts.cascade) {
@@ -6152,7 +6164,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           members.forEach(member => get().addExistingToProject(member.id, projectId));
         }
       },
-    });
+    }, { replacing: historyBefore });
   },
 
   // Bulk deletes go one project at a time — deleteProject already knows how to
@@ -6162,6 +6174,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // be the only one a shake brings back. So each undo is collected and the
   // batch registers a single entry that runs all of them.
   bulkDeleteProjects(projectIds, opts) {
+    // The stack as it was before the children below register theirs, so the
+    // one entry filed for this batch replaces them rather than sitting on top.
+    const historyBefore = get().undoStack;
     const store = useProjectStore.getState();
     // Filtered to rows that exist, so a stale id can't leave the previous
     // action's undo in the batch below.
@@ -6176,8 +6191,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: `${ids.length} project${ids.length === 1 ? '' : 's'} deleted`,
       destructive: true,
+      redo: () => get().bulkDeleteProjects(projectIds, opts),
       undo: () => undos.forEach(fn => fn()),
-    });
+    }, { replacing: historyBefore });
   },
 
   bulkSetProjectArchived(projectIds, archived) {
@@ -6206,6 +6222,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Template deleted',
       destructive: true,
+      redo: () => get().deleteTemplate(id),
       undo: () => useTemplateStore.getState().restoreTemplate(template),
     });
   },
@@ -6221,6 +6238,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: `${templates.length} template${templates.length === 1 ? '' : 's'} deleted`,
       destructive: true,
+      redo: () => get().bulkDeleteTemplates(ids),
       undo: () => templates.forEach(t => useTemplateStore.getState().restoreTemplate(t)),
     });
   },
@@ -6273,6 +6291,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: 'Streaks reset',
       destructive: true,
+      redo: () => get().resetAllStreaks(),
       undo: () => {
         snapshot.forEach(({ id, streakCount, streakDate }) => {
           const task = get().tasks.find(t => t.id === id);
@@ -6301,6 +6320,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (completedIds.length === 0) return;
     get().setLastAction({
       label: `${completedIds.length} task${completedIds.length === 1 ? '' : 's'} completed`,
+      redo: () => get().bulkCompleteTasks(ids),
       undo: () => completedIds.forEach(id => get().uncompleteTask(id)),
     });
   },
@@ -6322,6 +6342,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (missedIds.length === 0) return;
     get().setLastAction({
       label: `${missedIds.length} task${missedIds.length === 1 ? '' : 's'} marked missed`,
+      redo: () => get().bulkMarkMissed(ids),
       undo: () => missedIds.forEach(id => get().uncompleteTask(id)),
     });
   },
@@ -6333,6 +6354,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // an undo that puts its own row back exactly as it was, so this collects
   // those closures and replays them as one action (same trick as clearLogbook).
   bulkUncompleteTasks(ids) {
+    // The stack as it was before the children below register theirs, so the
+    // one entry filed for this batch replaces them rather than sitting on top.
+    const historyBefore = get().undoStack;
     if (ids.length === 0) return;
     const undos: Array<() => void> = [];
     dbTransaction(() => {
@@ -6346,8 +6370,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (undos.length === 0) return;
     get().setLastAction({
       label: `${undos.length} task${undos.length === 1 ? '' : 's'} uncompleted`,
+      redo: () => get().bulkUncompleteTasks(ids),
       undo: () => undos.forEach(u => u()),
-    });
+    }, { replacing: historyBefore });
   },
 
   bulkDeleteTasks(ids, opts = {}) {
@@ -6377,6 +6402,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     get().setLastAction({
       label: `${ids.length} task${ids.length === 1 ? '' : 's'} deleted`,
       destructive: true,
+      redo: () => get().bulkDeleteTasks(ids, opts),
       undo: () => {
         deleted.forEach(t => {
           dbInsertTask(t);
@@ -6392,12 +6418,23 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // bulkDeleteTasks, then relabels the undo it already set up — the same
   // snapshot-and-reinsert undo bulkDeleteTasks gives any other bulk delete.
   clearLogbook() {
+    // The stack as it was before the children below register theirs, so the
+    // one entry filed for this batch replaces them rather than sitting on top.
+    const historyBefore = get().undoStack;
     const ids = get().completedTasks().map(t => t.id);
     if (ids.length === 0) return;
     get().bulkDeleteTasks(ids);
     const undo = get().lastAction?.undo;
     if (undo) {
-      get().setLastAction({ label: 'Logbook cleared', destructive: true, undo });
+      get().setLastAction({
+        label: 'Logbook cleared',
+        destructive: true,
+        undo,
+        // The ids it actually cleared, not a second call to this action: a
+        // redo re-runs against the logbook as it stands now, and anything
+        // completed since the undo is not part of the clear being replayed.
+        redo: () => get().bulkDeleteTasks(ids),
+      }, { replacing: historyBefore });
     }
   },
 
@@ -6463,6 +6500,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
+        redo: () => get().bulkDefer(ids, until),
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
       });
     }
@@ -6506,6 +6544,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (snapshots.length > 0) {
       get().setLastAction({
         label: snapshots.length === 1 ? 'Task rescheduled' : `${snapshots.length} tasks rescheduled`,
+        redo: () => get().bulkSetWhen(ids, date, timeSegments),
         undo: () => snapshots.forEach(snapshot => get().updateTask(snapshot.id, snapshot)),
       });
     }

@@ -6,6 +6,28 @@ import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
 import { useSharedLinkStore } from './useSharedLinkStore';
 import { useStepTimerStore } from './useStepTimerStore';
+import { useGroceryStore } from './useGroceryStore';
+import { useMealPlanStore } from './useMealPlanStore';
+import { useLeftoverStore } from './useLeftoverStore';
+
+/**
+ * Drops every undo and redo entry in all four stores that keep a history.
+ *
+ * An undo closure holds row snapshots and writes them back by id, so it is
+ * only meaningful against the database it was captured from. Carried across
+ * the swap it does the thing demo mode exists to prevent, in both directions:
+ * undo a real delete from inside the demo and the real row is written into the
+ * scratch file, where it leaves with it; undo a demo delete after exiting and
+ * invented rows land in the user's own database. Nothing warns you either way,
+ * because every db function keeps working and simply answers about whichever
+ * file the handle points at.
+ */
+function clearUndoHistories(): void {
+  useTaskStore.getState().clearUndoHistory();
+  useGroceryStore.getState().clearUndoHistory();
+  useMealPlanStore.getState().clearUndoHistory();
+  useLeftoverStore.getState().clearUndoHistory();
+}
 
 // Demo mode replaces the app's entire data source with a throwaway one, so
 // handing someone the phone shows them a believable task list and none of
@@ -51,6 +73,10 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // and cancel an alarm the cook is relying on.
     useStepTimerStore.getState().reload();
     seedDemoData();
+    // After the seed, not before: the seed builds its rows through the normal
+    // store actions, so it registers undo entries of its own on the way past.
+    // Clearing here drops both those and the real history the swap invalidated.
+    clearUndoHistories();
     set({ active: true });
   },
 
@@ -70,6 +96,9 @@ export const useDemoStore = create<DemoStore>((set, get) => ({
     // with the rest of the scratch database.
     useSharedLinkStore.getState().reload();
     useStepTimerStore.getState().reload();
+    // And the demo's own history leaves with the scratch database, rather than
+    // staying armed to write invented rows into the user's real one.
+    clearUndoHistories();
     set({ active: false });
   },
 }));
