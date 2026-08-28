@@ -2868,7 +2868,10 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     let count = 0;
     for (const raw of names) {
       const key = groceryNameKey(parseGroceryInput(raw).name);
-      const before = key ? get().items.find(i => i.nameKey === key) : undefined;
+      // The resolution addToPantry itself makes, plural included — read bare,
+      // a row it merely updated would look freshly minted and undo would
+      // delete a catalog row the user already had.
+      const before = catalogItemForKey(key, get().items) ?? undefined;
       const item = get().addToPantry(raw, { registerUndo: false });
       if (!item) continue;
       count++;

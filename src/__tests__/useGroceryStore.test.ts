@@ -3950,6 +3950,20 @@ describe('addManyToPantry', () => {
     expect(items[0]).toEqual(milk);
   });
 
+  // Read bare, the plural row addToPantry updates looks like one this batch
+  // minted, and the undo above deletes a row the user already had.
+  it('undo restores a row reached through its plural rather than deleting it', () => {
+    const peppers = makeItem({ name: 'Serrano peppers', onHandUntil: null, onList: true });
+    seed([peppers]);
+
+    useGroceryStore.getState().addManyToPantry(['serrano pepper']);
+    useGroceryStore.getState().undoLastAction();
+
+    const items = useGroceryStore.getState().items;
+    expect(items).toHaveLength(1);
+    expect(items[0]).toEqual(peppers);
+  });
+
   it('freezes only the names passed in frozenNames, matched exactly', () => {
     seed([]);
 
