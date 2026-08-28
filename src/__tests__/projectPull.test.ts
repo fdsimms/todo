@@ -87,6 +87,7 @@ const BASE: Task = {
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  priorBestStreak: 0,
   showStreak: false,
   streakRequiresWindow: false,
   reminderTime: null,
@@ -156,6 +157,7 @@ const PROJECT_BASE: Project = {
   nudgeOptIn: true,
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
+  kind: 'project' as const,
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({ ...PROJECT_BASE, ...overrides });

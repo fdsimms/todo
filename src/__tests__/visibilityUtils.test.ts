@@ -128,6 +128,7 @@ const baseTask: Task = {
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  priorBestStreak: 0,
   showStreak: false,
   streakRequiresWindow: false,
   recurrenceFromCompletion: false,
@@ -1375,6 +1376,7 @@ describe('isTaskNew when a hold comes off', () => {
       nudgeOptIn: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
+      kind: 'project' as const,
       groupId: null,
       personIds: [],
     };
@@ -1619,6 +1621,18 @@ describe('quota tasks', () => {
 
     it('owes nothing for a task that is not a quota', () => {
       expect(quotaExpectedByNow(baseTask)).toBe(0);
+    });
+
+    it('ramps across an overnight active-hours span instead of reading as instantly past due', () => {
+      // A night owl's active hours, "20:00–08:00", used to make the pace mark
+      // read as maxed out the instant the day began — the span looked closed
+      // before it opened, so quotaExpectedByNow read it as already shut.
+      mockSettingsState.activeHoursStart = '20:00';
+      mockSettingsState.activeHoursEnd = '08:00';
+      jest.setSystemTime(new Date(2025, 5, 10, 22, 0, 0)); // 2h into a 12h overnight span
+      expect(quotaExpectedByNow(quotaTask)).toBe(2);
+      mockSettingsState.activeHoursStart = '08:00';
+      mockSettingsState.activeHoursEnd = '22:00';
     });
   });
 
@@ -2087,6 +2101,7 @@ describe('isSequenceBlocked', () => {
       nudgeOptIn: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
+      kind: 'project' as const,
       groupId: null,
       personIds: [],
     }]);

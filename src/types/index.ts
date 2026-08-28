@@ -564,7 +564,53 @@ export interface Project {
    * from `src/utils`.
    */
   backfillDismissedFields: string[];
+  /**
+   * How this project's own screen is drawn: an ordinary project, or a list.
+   *
+   * **It changes presentation, never behaviour.** A list's members are
+   * ordinary tasks in an ordinary project, and every rule about them is
+   * unchanged — `projectProgress` counts them, `isTaskVisible` places them,
+   * completing one behaves exactly as completing any task does. Nothing reads
+   * this outside the two Projects screens, and nothing about scheduling,
+   * visibility, sync or search branches on it.
+   *
+   * That narrowness is the whole design, and it's what the alternative got
+   * wrong. A "list of things with no date" was first built as its own entity —
+   * two tables, a store, two screens, a drawer row, its own search source —
+   * on the premise that a task drags the visibility model along with it. That
+   * premise was false: `isVisibleApartFromVacation` already refuses a project
+   * task with no `dueDate`, and `projectId == null` is a condition of both
+   * `isInboxTask` and `isUnscheduledTask`. **An undated task in a project is
+   * already absent from Today, Inbox and Unscheduled**, which is exactly the
+   * behaviour the separate entity existed to obtain. Everything else it needed
+   * was here too: progress is `projectProgress`, the recorded answer is
+   * `deliverableValue` read back by `projectDecisions`, and ordering, archive,
+   * sync, backup and search were all already wired.
+   *
+   * So what a list actually needed was a way to *look* like one: an add field
+   * that takes a line of text and keeps focus, and the scheduling affordances
+   * out of the way. That is this field, and it should stay that small. If
+   * something here ever wants to change what a task *does*, it belongs on the
+   * task.
+   *
+   * A list item is a plain task by default — in particular it gets no
+   * `deliverableKind`. Recording what the doctor said is worth having and is
+   * one tap away in the editor, but a list where every line demands an answer
+   * on completion is a form, not a list.
+   */
+  kind: ProjectKind;
 }
+
+/**
+ * `'project'` for work that finishes; `'list'` for a running list of things to
+ * remember that never gets scheduled — doctor questions, a wish list, packing.
+ *
+ * Persisted verbatim in `projects.kind`, so these are storage values: adding a
+ * third means an older build has to keep drawing rows carrying it, which is why
+ * `rowToProject` reads anything unrecognised as `'project'` rather than
+ * throwing.
+ */
+export type ProjectKind = 'project' | 'list';
 
 // Fallback cadence for a project row written before the nudge columns existed,
 // and the default for a newly created project. Never, deliberately: being asked
@@ -1385,6 +1431,30 @@ export interface Task {
   previousStreakCount: number;
   previousStreakDate: string | null;
 
+  /**
+   * The longest run this task reached **before the current one** — the record
+   * a live streak is measured against. Zero until a run has ended.
+   *
+   * Deliberately not the all-time best, which is what you would reach for
+   * first and what makes the feature announce itself every day. A running
+   * maximum is raised by the streak that is setting it, so "am I past my
+   * record" is true again on every completion once you have passed it: pass 34
+   * and day 35 beats 34, day 36 beats 35, for ever. Excluding the current run
+   * is what makes overtaking happen exactly once, on the day it happens.
+   *
+   * The all-time figure is still what gets *shown*, and it is derived rather
+   * than stored — `bestStreakOf` is max(this, streakCount), because a run in
+   * progress that is past this is itself the record. `src/utils/streakRecord.ts`
+   * owns all three reads and the fold.
+   *
+   * Folded only when a run ends, by the one rule in `nextStreakRecord`: the
+   * streak going *down* is a run ending, whether that is a break to 0, a
+   * gap restarting it at 1, or a manual reset. Rides onto the successor row
+   * alongside streakCount, since the streak lives on whichever row is
+   * currently running it.
+   */
+  priorBestStreak: number;
+
   // Opt-in per task: surface the streak as a chip on the collapsed row rather
   // than only in the expanded panel. Off by default — a flame on every
   // recurring row is noise, but a habit you're deliberately tracking is worth
@@ -1636,7 +1706,7 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
 // extraTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"
@@ -2885,29 +2955,26 @@ export interface Shop {
 }
 
 /**
- * Whether a store's receipt can be read, and what to offer when it can't.
- *
- * Three values rather than a flag, because two different things go wrong and
- * they want different answers:
+ * Whether a store's receipt is worth photographing.
  *
  * - `itemized` — an ordinary receipt with names on it. Scan it.
- * - `opaque` — it prints prices but not names ("GROCERIES ... 4.18"). There is
- *   nothing for the extractor to match on, so reading it is a waste of a
- *   request. But the *prices* are real, and they are the one thing a barcode
- *   can't know, so this offers pairing instead: what you scanned in one column,
- *   what you were charged in the other.
- * - `none` — no useful paper at all. Offers nothing, because a store that hands
- *   you nothing has no prices to pair either.
+ * - `none` — nothing an extractor can use. Either the store hands you no paper
+ *   at all, or what it prints has no item names on it ("GROCERIES ... 4.18").
+ *   Both spend a request to learn nothing, so the sheet refuses and says why
+ *   rather than reading it anyway.
  *
- * `opaque` and `none` both skip extraction, which is why the pair looks
- * collapsible. They must not be: the difference is whether there is a column of
- * prices to work with, and collapsing them would either offer an empty pairing
- * screen at a store with no receipt or hide pairing at the store it was built
- * for.
+ * A third value, `opaque`, used to split that second case out: a receipt with
+ * prices but no names still carries *real prices*, so instead of extraction it
+ * offered pairing — what the trip bought in one column, what the paper charged
+ * in the other, tap one then the other. It was removed because the pairing had
+ * no information to work from (`autoPairing` could only ever decide the forced
+ * cases, so the assignment was the user's to do by hand, row by row), and a
+ * store that prints no names is now simply a store whose receipt can't be
+ * read. Stores already marked `opaque` migrate to `none` in `initDatabase`.
  */
-export type ReceiptStyle = 'itemized' | 'opaque' | 'none';
+export type ReceiptStyle = 'itemized' | 'none';
 
-export const RECEIPT_STYLES: ReceiptStyle[] = ['itemized', 'opaque', 'none'];
+export const RECEIPT_STYLES: ReceiptStyle[] = ['itemized', 'none'];
 
 export function isReceiptStyle(value: unknown): value is ReceiptStyle {
   return RECEIPT_STYLES.includes(value as ReceiptStyle);

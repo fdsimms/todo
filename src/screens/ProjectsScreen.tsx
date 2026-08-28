@@ -342,7 +342,7 @@ export function ProjectsScreen() {
     // The draft carries the seeded category; only the placement is let go of.
     closeQuickAdd();
     animateLayout();
-    const project = createProject(draft.title, draft.deadline);
+    const project = createProject(draft.title, draft.deadline, draft.kind);
     if (draft.category) updateProject(project.id, { category: draft.category });
     newProjectIdRef.current = project.id;
     setEditingProject({ ...project, category: draft.category });
@@ -648,7 +648,11 @@ function ProjectRow({
           activeOpacity={interaction.activeOpacity}
           accessibilityRole={selectionMode ? 'checkbox' : 'button'}
           accessibilityState={selectionMode ? { checked: selected } : undefined}
-          accessibilityLabel={`${project.title}, ${progress.done} of ${progress.total} done`}
+          accessibilityLabel={
+            // The list glyph beside the title is decorative, so the kind has to
+            // be said here or a screen reader can't tell the two apart.
+            `${project.title}${project.kind === 'list' ? ', list' : ''}, ${progress.done} of ${progress.total} done`
+          }
           accessibilityHint={
             selectionMode
               ? 'Double tap to select project'
@@ -657,6 +661,13 @@ function ProjectRow({
         >
           <View style={styles.projectInfo}>
             <View style={styles.projectTitleRow}>
+              {/* A glyph rather than a separate section: lists and projects sit
+                  in the same category order the user arranged, and splitting
+                  them would make that order answer to something they didn't
+                  choose. See Project.kind. */}
+              {project.kind === 'list' && (
+                <Ionicons name="checkbox-outline" size={14} color={colors.textTertiary} />
+              )}
               <Text style={styles.projectName} numberOfLines={1}>{project.title}</Text>
               {/* Nothing a row can do to itself while a selection is being
                   built — each of these acts on one project and would fight the

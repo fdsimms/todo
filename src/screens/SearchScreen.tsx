@@ -18,6 +18,8 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore, projectProgress } from '../store/useProjectStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { useShallow } from 'zustand/react/shallow';
 import { TaskEditor, type TaskDraft } from '../components/TaskEditor';
 import { QuickAddModal } from '../components/QuickAddModal';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
@@ -419,6 +421,10 @@ export function SearchScreen() {
   // like the row vanished rather than like it got done. Dropped when the query
   // moves on: those are new results, and nothing is being held in them.
   const [heldIds, setHeldIds] = useState<ReadonlySet<string>>(new Set());
+  const recentSearches = useSettingsStore(useShallow(s => s.recentSearches));
+  const pushRecentSearch = useSettingsStore(s => s.pushRecentSearch);
+  const clearRecentSearches = useSettingsStore(s => s.clearRecentSearches);
+
   const hold = useCallback(
     (taskId: string) => setHeldIds(prev => new Set(prev).add(taskId)),
     []
@@ -493,12 +499,21 @@ export function SearchScreen() {
     // heldIds too: it's what decides which section a completed row sits in.
   }, [results, groupResults, projectResults, heldIds]);
 
+  // A query is worth keeping once it has actually found something: recorded
+  // when a result is opened, and when the field is submitted. Deliberately not
+  // on every keystroke — the field is debounced but still runs a search per
+  // character, and storing those would fill the list with the prefixes of one
+  // word ("m", "mi", "mil", "milk") instead of the searches themselves.
+  const rememberQuery = () => pushRecentSearch(query);
+
   const openTask = (task: Task) => {
+    rememberQuery();
     setEditingTask(task);
     setEditorVisible(true);
   };
 
   const openGroup = (group: TaskGroup) => {
+    rememberQuery();
     setEditingGroup(group);
     setGroupEditorVisible(true);
   };
@@ -532,7 +547,10 @@ export function SearchScreen() {
       return (
         <ProjectResultItem
           result={item.result}
-          onPress={() => (navigation as any).navigate('ProjectDetail', { projectId: item.result.project.id })}
+          onPress={() => {
+            rememberQuery();
+            (navigation as any).navigate('ProjectDetail', { projectId: item.result.project.id });
+          }}
           styles={styles}
           colors={colors}
         />
@@ -563,6 +581,7 @@ export function SearchScreen() {
         placeholder="Search tasks"
         value={query}
         onChangeText={setQuery}
+        onSubmitEditing={rememberQuery}
       />
 
       {/* EmptyState centers its "Create task" button vertically in whatever
@@ -588,7 +607,36 @@ export function SearchScreen() {
             bottomOffset={tabBarHeight}
           />
         ) : query.trim().length === 0 ? (
-          <EmptyState key="prompt" icon="search-outline" title="Find any task" subtitle="Search active tasks, completed tasks, stacks and projects" bottomOffset={tabBarHeight} />
+          recentSearches.length > 0 ? (
+            <View key="recents" style={styles.recents}>
+              <View style={styles.recentsHeader}>
+                <Text style={styles.sectionHeaderText}>Recent</Text>
+                <TouchableOpacity
+                  onPress={clearRecentSearches}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear recent searches"
+                >
+                  <Text style={styles.recentsClear}>Clear</Text>
+                </TouchableOpacity>
+              </View>
+              {recentSearches.map(q => (
+                <TouchableOpacity
+                  key={q}
+                  style={styles.recentRow}
+                  onPress={() => setQuery(q)}
+                  activeOpacity={interaction.activeOpacity}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Search again for ${q}`}
+                >
+                  <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+                  <Text style={styles.recentText} numberOfLines={1}>{q}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : (
+            <EmptyState key="prompt" icon="search-outline" title="Find any task" subtitle="Search active tasks, completed tasks, stacks and projects" bottomOffset={tabBarHeight} />
+          )
         ) : (
           <FlatList
             data={listData}
@@ -648,6 +696,41 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: fontWeight.semibold,
     textTransform: 'uppercase',
     letterSpacing: 0.8,
+  },
+
+  // The empty-field state: what you searched for last, offered back. Rows keep
+  // the same inset-grouped footprint as a result row so the list reads as the
+  // same kind of thing, one line each because a query is one line.
+  recents: {
+    paddingTop: spacing.xs,
+  },
+  recentsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.xs,
+  },
+  recentsClear: {
+    color: colors.accent,
+    fontSize: font.sm,
+  },
+  recentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginVertical: 2,
+    borderRadius: radius.md,
+    paddingVertical: 12,
+    paddingHorizontal: spacing.md,
+    gap: spacing.sm,
+  },
+  recentText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
   },
 
   // Same inset-grouped card footprint as TaskItem rows.

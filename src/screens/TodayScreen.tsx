@@ -34,8 +34,7 @@ import { format } from 'date-fns/format';
 import type { ContextRow, Task, TaskGroup, TaskTemplate, Category, TimeOfDay } from '../types';
 import { isTaskNew, isTaskVisible, isUnscheduledTask, isInboxTask, isDismissedToday, isRelevantToGroupToday, groupRoster } from '../utils/visibilityUtils';
 import { type CreatedTaskDestination } from '../utils/createdTaskPlacement';
-import { isRealCompletion } from '../utils/missed';
-import { isToday } from 'date-fns/isToday';
+import { completedOnDay, describeAllClear } from '../utils/allClear';
 import {
   makeCategoryGroups,
   resolveDrop,
@@ -133,7 +132,7 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { dayKeyOf, getDayStart } from '../utils/dateUtils';
+import { dayKeyOf, getDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
@@ -3046,6 +3045,18 @@ export function TodayScreen() {
     </>
   );
 
+  // What the day has actually finished, for the empty state's own line and for
+  // the header's "done" figure below (see completedTodayLabel).
+  //
+  // Scoped by logical day rather than by calendar day: this used to ask
+  // date-fns `isToday`, which drops the day's completions at midnight even
+  // where dayResetTime says the day runs to 4am, so anyone with a late reset
+  // watched "40m done" go back to nothing hours before their day was over.
+  const completedToday = useMemo(
+    () => completedOnDay(allTasks, getLogicalDayKey(new Date(), dayResetTime), dayResetTime),
+    [allTasks, dayResetTime],
+  );
+
   // Nothing to say when the list is empty only because the user just hid it —
   // "All clear" over a screen of pinned tasks would be flatly wrong, and the
   // eye that emptied it is right there to undo it.
@@ -3062,7 +3073,10 @@ export function TodayScreen() {
     <EmptyState
       icon="checkmark-circle"
       title="All clear"
-      subtitle={activeFilterCount > 0 ? 'No tasks match these filters' : 'Nothing to do right now'}
+      subtitle={describeAllClear({
+        filtered: activeFilterCount > 0,
+        doneToday: completedToday.length,
+      })}
       bottomOffset={tabBarHeight}
     />
   );
@@ -3248,16 +3262,14 @@ export function TodayScreen() {
     return minutes > 0 ? formatDuration(minutes) : undefined;
   }, [visibleTasks]);
 
-  // Same estimate machinery, scoped to what's already been finished today —
-  // paired with plannedLabel so the header reads "done · planned" instead of
-  // planned alone.
+  // Same estimate machinery as plannedLabel, scoped to what the day finished —
+  // paired with it so the header reads "done · planned" instead of planned
+  // alone. (completedToday itself is computed above, where the empty state
+  // needs it too.)
   const completedTodayLabel = useMemo(() => {
-    const completedToday = allTasks.filter(
-      t => !t.parentId && isRealCompletion(t) && t.completedAt && isToday(new Date(t.completedAt)),
-    );
     const minutes = sumEstimatedMinutes(completedToday);
     return minutes > 0 ? formatDuration(minutes) : undefined;
-  }, [allTasks]);
+  }, [completedToday]);
 
   // Dropped by simplified mode: "40m done · 2h 15m planned" is a reading of the
   // day rather than a part of it, and it needs the effort ratings that mode

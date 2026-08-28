@@ -679,9 +679,9 @@ export function initDatabase(): void {
     // meant to drop out of suggestions. Same naming convention as
     // categories' exclude_from_pin_suggestions.
     'ALTER TABLE grocery_shops ADD COLUMN exclude_from_suggestions INTEGER NOT NULL DEFAULT 0',
-    // See ReceiptStyle. Text rather than an integer flag because it is three
-    // states and will read back as itself in a sqlite browser; 'itemized' for
-    // every existing row, which is what they have all been treated as.
+    // See ReceiptStyle. Text rather than an integer flag because it reads back
+    // as itself in a sqlite browser; 'itemized' for every existing row, which
+    // is what they have all been treated as.
     "ALTER TABLE grocery_shops ADD COLUMN receipt_style TEXT NOT NULL DEFAULT 'itemized'",
     // Null for every existing recipe — splits the old single sourceName
     // attribution into author/source (#1266). Not backfilled from
@@ -1196,6 +1196,12 @@ export function initDatabase(): void {
     'ALTER TABLE people ADD COLUMN reach_out_offer_declined_at TEXT',
     // A physical place the task is about — see Task.location in types/index.ts.
     'ALTER TABLE tasks ADD COLUMN location TEXT',
+    // 0 for every existing row, and there is no better backfill available: a
+    // task's past runs aren't recoverable from the tombstones (retention
+    // purges them, and a run is a gap calculation rather than a count). 0
+    // reads as "no record set yet", so an install upgrading into this column
+    // starts measuring from whatever run it is on. See Task.priorBestStreak.
+    'ALTER TABLE tasks ADD COLUMN prior_best_streak INTEGER NOT NULL DEFAULT 0',
     // Same mechanism as tasks/categories/projects/people.backfill_dismissed_fields
     // above, for the Backfill screen's item pool (variety, substitutes). Empty
     // on every existing row, which reads as "nothing dismissed yet" — the only
@@ -1214,6 +1220,21 @@ export function initDatabase(): void {
     // a stack built from a project's own screen gets an id here, so it can sit
     // on that project's page before it has any members. See TaskGroup.projectId.
     'ALTER TABLE task_groups ADD COLUMN project_id TEXT',
+    // 'project' for every existing row, which is what they all are. This column
+    // only changes how a project's own screen is drawn, never what its tasks
+    // do, so an install upgrading into it reads exactly as it did. See
+    // Project.kind.
+    "ALTER TABLE projects ADD COLUMN kind TEXT NOT NULL DEFAULT 'project'",
+    // The one statement here that isn't an ADD COLUMN. 'opaque' is gone from
+    // ReceiptStyle, and a store that prints prices without item names is now a
+    // store whose receipt can't be read: 'none', not 'itemized'. Left to
+    // rowToShop's fallback they would come back as 'itemized' and the sheet
+    // would offer to spend a request reading paper with nothing on it to match.
+    // Idempotent like the ALTERs around it, so it costs a no-op UPDATE on every
+    // later launch rather than needing a schema version to guard it, and it
+    // runs before the sync triggers are installed (below) so it stays a local
+    // repair on each device rather than a change to push.
+    "UPDATE grocery_shops SET receipt_style = 'none' WHERE receipt_style = 'opaque'",
     // Empty on a session already in flight when the app upgrades into this
     // column: what its earlier steps cost was never recorded, and inventing a
     // figure for them would put a made-up number into Stats on the very first
@@ -2091,6 +2112,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     seriesMonthDays: JSON.parse((row.series_month_days as string) ?? '[]') as number[],
     seriesRepeatMonths: (row.series_repeat_months as number) ?? 1,
     previousStreakCount: (row.previous_streak_count as number) ?? 0,
+    priorBestStreak: (row.prior_best_streak as number) ?? 0,
     previousStreakDate: (row.previous_streak_date as string) ?? null,
     showStreak: Boolean(row.show_streak),
     streakRequiresWindow: Boolean(row.streak_requires_window),
@@ -2142,8 +2164,9 @@ export function dbInsertTask(task: Task): void {
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
-      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, location
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, location,
+      prior_best_streak
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2210,6 +2233,7 @@ export function dbInsertTask(task: Task): void {
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
       task.location ?? null,
+      task.priorBestStreak,
     ]
   );
 }
@@ -2235,7 +2259,8 @@ export function dbUpdateTask(task: Task): void {
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
-      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, location=?
+      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, location=?,
+      prior_best_streak=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2303,6 +2328,7 @@ export function dbUpdateTask(task: Task): void {
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
       task.location ?? null,
+      task.priorBestStreak,
       task.id,
     ]
   );
@@ -3543,6 +3569,12 @@ function rowToShop(row: Record<string, unknown>): Shop {
     // predates the column gets: an ordinary receipt is the overwhelming default
     // and the only value that costs nothing to be wrong about (you scan, and it
     // works or it doesn't).
+    //
+    // Retired 'opaque' rows don't rely on this — the migration above rewrites
+    // them to 'none' first, which is the honest answer for a store that prints
+    // no names. One can still arrive here from a device that hasn't updated,
+    // via sync; it reads as 'itemized' for that session and the next launch's
+    // migration settles it.
     receiptStyle: isReceiptStyle(row.receipt_style) ? row.receipt_style : 'itemized',
   };
 }
@@ -4583,6 +4615,10 @@ function rowToProject(row: Record<string, unknown>): Project {
     nudgeOptIn: Boolean(row.nudge_opt_in),
     reviewDeclinedAt: (row.review_declined_at as string) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
+    // Anything unrecognised reads as an ordinary project rather than throwing:
+    // a column added later, or a row from a peer on a newer build, must not
+    // make somebody's project undrawable. See Project.kind.
+    kind: row.kind === 'list' ? 'list' : 'project',
   };
 }
 
@@ -4593,26 +4629,26 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at, backfill_dismissed_fields) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at, backfill_dismissed_fields, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.createdAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
-      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields),
+      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=?, kind=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
-      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.id,
+      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind, project.id,
     ]
   );
 }
