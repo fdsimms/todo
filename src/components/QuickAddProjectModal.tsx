@@ -26,13 +26,14 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { formatDeadlineDate } from '../utils/dateUtils';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { TITLE_MAX_LENGTH, type Project } from '../types';
+import { TITLE_MAX_LENGTH, type Project, type ProjectKind } from '../types';
 
 /** The in-progress project the quick-add hands off to the full editor. */
 export interface ProjectDraft {
   title: string;
   category: string | null;
   deadline: string | null;
+  kind: ProjectKind;
 }
 
 interface Props {
@@ -88,6 +89,7 @@ export function QuickAddProjectModal({
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
+  const [kind, setKind] = useState<ProjectKind>('project');
   const [activePanel, setActivePanel] = useState<ActivePanel>(null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
@@ -128,6 +130,7 @@ export function QuickAddProjectModal({
     setCategory(seedRef.current?.category ?? null);
     setSeedActive(!!seedRef.current);
     setDeadline(null);
+    setKind('project');
     setActivePanel(null);
     setAddingCategory(false);
     setNewCategory('');
@@ -175,7 +178,7 @@ export function QuickAddProjectModal({
     haptics.success();
     animateLayout();
     const resolvedCategory = resolveCategory();
-    const project = createProject(finalTitle, deadline ? deadline.toISOString() : null);
+    const project = createProject(finalTitle, deadline ? deadline.toISOString() : null, kind);
     if (resolvedCategory) updateProject(project.id, { category: resolvedCategory });
     // createProject doesn't take a category, so hand the caller the row as it
     // now stands rather than the one it returned a line ago.
@@ -217,6 +220,7 @@ export function QuickAddProjectModal({
       title: title.trim(),
       category: resolveCategory(),
       deadline: deadline ? deadline.toISOString() : null,
+      kind,
     });
   };
 
@@ -319,6 +323,28 @@ export function QuickAddProjectModal({
             >
               <Ionicons name="folder-outline" size={13} color={category ? colors.accent : colors.textTertiary} />
               {category !== null && <Text style={[styles.toolChipText, styles.toolChipTextSet]}>{category}</Text>}
+            </TouchableOpacity>
+
+            {/*
+              A toggle rather than a segmented control: there are two kinds and
+              one of them is the default, so this is "make it a list", not a
+              question every new project has to answer. Set, it reads as one of
+              the other chips does. See Project.kind.
+            */}
+            <TouchableOpacity
+              style={[styles.toolChip, kind === 'list' && styles.toolChipSet]}
+              onPress={() => { haptics.tap(); setKind(k => (k === 'list' ? 'project' : 'list')); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="switch"
+              accessibilityState={{ checked: kind === 'list' }}
+              accessibilityLabel="Keep it as a list"
+            >
+              <Ionicons
+                name="checkbox-outline"
+                size={13}
+                color={kind === 'list' ? colors.accent : colors.textTertiary}
+              />
+              {kind === 'list' && <Text style={[styles.toolChipText, styles.toolChipTextSet]}>List</Text>}
             </TouchableOpacity>
 
             <TouchableOpacity

@@ -1,8 +1,9 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
+  TextInput,
   FlatList,
   StyleSheet,
   Modal,
@@ -49,6 +50,7 @@ import { spacing, font, fontWeight, radius, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import type { Task, Project, TaskGroup, TaskTemplate } from '../types';
+import { TITLE_MAX_LENGTH } from '../types';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
 import { SearchField } from '../components/SearchField';
 import { DetailHeader } from '../components/DetailHeader';
@@ -88,6 +90,7 @@ export function ProjectDetailScreen() {
   const allTasks = useTaskStore(s => s.tasks);
   const allTags = useTaskStore(useShallow(s => s.allTags()));
   const addExistingToProject = useTaskStore(s => s.addExistingToProject);
+  const addTask = useTaskStore(s => s.addTask);
   const bulkRemoveFromProject = useTaskStore(s => s.bulkRemoveFromProject);
   const reorderProjectItems = useTaskStore(s => s.reorderProjectItems);
   const bulkCompleteTasks = useTaskStore(s => s.bulkCompleteTasks);
@@ -143,6 +146,8 @@ export function ProjectDetailScreen() {
   // stop scrolling for the duration (see TaskItem.onSubtaskDragStateChange).
   const [draggingSubtask, setDraggingSubtask] = useState(false);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
+  const [listDraft, setListDraft] = useState('');
+  const listInputRef = useRef<TextInput>(null);
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [suggestionsVisible, setSuggestionsVisible] = useState(false);
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
@@ -208,6 +213,9 @@ export function ProjectDetailScreen() {
   // Matches liveProjectSteps, which is what the visibility gate ranks.
   const steps = incompleteProjectTasks.filter(t => !t.archived);
   const sequential = project?.sequential ?? false;
+  // Presentation only — see Project.kind. Read once into a local and spent in a
+  // handful of places, the same shape `sequential` above already uses.
+  const isList = project?.kind === 'list';
   const completedProjectTasks = projectTasks
     .filter(t => t.completed)
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
@@ -436,6 +444,31 @@ export function ProjectDetailScreen() {
   // expand-for-subtasks); only the drag source and the indent differ.
   // `indented` rows are already under their stack's header, so the inline
   // stack chip (`showGroup`) would just repeat it.
+  /**
+   * A list's add field: one line, straight into the project, and the keyboard
+   * stays up for the next one.
+   *
+   * The FAB stays for a project and goes for a list. Its menu offers Add
+   * existing / Stack / Template / New task, and the first three are answers to
+   * questions nobody asks of a doctor-questions list — while the one that is
+   * wanted costs a tap, a modal and a dismissal per line. Writing five
+   * questions in a row is the whole activity here, so the field is the surface
+   * and there is nothing to open.
+   *
+   * No date, no category, no title rules: a line typed here is exactly what it
+   * says. `skipTitleRules` matters — a rule rewriting "Ask about the MRI
+   * results" would be editing the user's own note back at them.
+   */
+  const handleListAdd = () => {
+    const title = listDraft.trim();
+    if (!title || !project) return;
+    animateLayout();
+    addTask({ title, projectId: project.id }, undefined, { skipTitleRules: true });
+    haptics.tap();
+    setListDraft('');
+    listInputRef.current?.focus();
+  };
+
   const renderProjectTaskItem = (
     task: Task,
     opts: { drag?: () => void; isActive?: boolean; indented?: boolean } = {},
@@ -462,9 +495,14 @@ export function ProjectDetailScreen() {
         onSelect={toggleSelection}
         onSwipeSelect={handleRowSwipeSelect}
         indented={opts.indented}
-        showCategory
+        showCategory={!isList}
         showGroup={!opts.indented}
-        showDate
+        // A list's members are undated by construction, so the date affordance
+        // is an empty control on every row. Turning it off is most of what
+        // makes a list look like one rather than like a project with a lot of
+        // blank fields — the task still has the field, and the editor still
+        // offers it, for the line that turns out to be a real errand.
+        showDate={!isList}
         showPin={false}
         highlighted={task.id === flashTaskId}
       />
@@ -648,10 +686,29 @@ export function ProjectDetailScreen() {
             // these rows aren't selectable, and a tap that opened a sheet
             // mid-selection would be the odd one out.
             ListHeaderComponent={
-              <ProjectDecisions
-                decisions={decisions}
-                onPress={selectionMode ? undefined : task => setAnswerTaskId(task.id)}
-              />
+              <>
+                {isList && !selectionMode && (
+                  <View style={styles.listAddRow}>
+                    <Ionicons name="add" size={18} color={colors.textTertiary} />
+                    <TextInput
+                      ref={listInputRef}
+                      style={styles.listAddInput}
+                      value={listDraft}
+                      onChangeText={setListDraft}
+                      onSubmitEditing={handleListAdd}
+                      placeholder="e.g. Ask about the MRI results"
+                      placeholderTextColor={colors.textTertiary}
+                      maxLength={TITLE_MAX_LENGTH}
+                      returnKeyType="done"
+                      blurOnSubmit={false}
+                    />
+                  </View>
+                )}
+                <ProjectDecisions
+                  decisions={decisions}
+                  onPress={selectionMode ? undefined : task => setAnswerTaskId(task.id)}
+                />
+              </>
             }
             renderItem={({ item, drag, isActive }) => {
               if (item.type === 'group') {
@@ -866,12 +923,14 @@ export function ProjectDetailScreen() {
           </View>
         </Modal>
 
-        <FabMenu
-          items={addMenuItems}
-          onSelect={handleAddMenuSelect}
-          bottom={insets.bottom + spacing.xl}
-          accessibilityLabel="Add task to project"
-        />
+        {!isList && (
+          <FabMenu
+            items={addMenuItems}
+            onSelect={handleAddMenuSelect}
+            bottom={insets.bottom + spacing.xl}
+            accessibilityLabel="Add task to project"
+          />
+        )}
 
         <TaskGroupEditor
           visible={groupEditorVisible}
@@ -967,6 +1026,25 @@ export function ProjectDetailScreen() {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  listAddRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    // A height rather than lineHeight, which RN maps onto the iOS paragraph
+    // style with no baseline compensation and draws the glyphs low in the box.
+    minHeight: 44,
+  },
+  listAddInput: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
+    paddingVertical: 10,
+  },
   detailRoot: {
     flex: 1,
     backgroundColor: colors.bg,

@@ -465,7 +465,53 @@ export interface Project {
    * from `src/utils`.
    */
   backfillDismissedFields: string[];
+  /**
+   * How this project's own screen is drawn: an ordinary project, or a list.
+   *
+   * **It changes presentation, never behaviour.** A list's members are
+   * ordinary tasks in an ordinary project, and every rule about them is
+   * unchanged — `projectProgress` counts them, `isTaskVisible` places them,
+   * completing one behaves exactly as completing any task does. Nothing reads
+   * this outside the two Projects screens, and nothing about scheduling,
+   * visibility, sync or search branches on it.
+   *
+   * That narrowness is the whole design, and it's what the alternative got
+   * wrong. A "list of things with no date" was first built as its own entity —
+   * two tables, a store, two screens, a drawer row, its own search source —
+   * on the premise that a task drags the visibility model along with it. That
+   * premise was false: `isVisibleApartFromVacation` already refuses a project
+   * task with no `dueDate`, and `projectId == null` is a condition of both
+   * `isInboxTask` and `isUnscheduledTask`. **An undated task in a project is
+   * already absent from Today, Inbox and Unscheduled**, which is exactly the
+   * behaviour the separate entity existed to obtain. Everything else it needed
+   * was here too: progress is `projectProgress`, the recorded answer is
+   * `deliverableValue` read back by `projectDecisions`, and ordering, archive,
+   * sync, backup and search were all already wired.
+   *
+   * So what a list actually needed was a way to *look* like one: an add field
+   * that takes a line of text and keeps focus, and the scheduling affordances
+   * out of the way. That is this field, and it should stay that small. If
+   * something here ever wants to change what a task *does*, it belongs on the
+   * task.
+   *
+   * A list item is a plain task by default — in particular it gets no
+   * `deliverableKind`. Recording what the doctor said is worth having and is
+   * one tap away in the editor, but a list where every line demands an answer
+   * on completion is a form, not a list.
+   */
+  kind: ProjectKind;
 }
+
+/**
+ * `'project'` for work that finishes; `'list'` for a running list of things to
+ * remember that never gets scheduled — doctor questions, a wish list, packing.
+ *
+ * Persisted verbatim in `projects.kind`, so these are storage values: adding a
+ * third means an older build has to keep drawing rows carrying it, which is why
+ * `rowToProject` reads anything unrecognised as `'project'` rather than
+ * throwing.
+ */
+export type ProjectKind = 'project' | 'list';
 
 // Fallback cadence for a project row written before the nudge columns existed,
 // and the default for a newly created project. Never, deliberately: being asked
@@ -1279,6 +1325,30 @@ export interface Task {
   previousStreakCount: number;
   previousStreakDate: string | null;
 
+  /**
+   * The longest run this task reached **before the current one** — the record
+   * a live streak is measured against. Zero until a run has ended.
+   *
+   * Deliberately not the all-time best, which is what you would reach for
+   * first and what makes the feature announce itself every day. A running
+   * maximum is raised by the streak that is setting it, so "am I past my
+   * record" is true again on every completion once you have passed it: pass 34
+   * and day 35 beats 34, day 36 beats 35, for ever. Excluding the current run
+   * is what makes overtaking happen exactly once, on the day it happens.
+   *
+   * The all-time figure is still what gets *shown*, and it is derived rather
+   * than stored — `bestStreakOf` is max(this, streakCount), because a run in
+   * progress that is past this is itself the record. `src/utils/streakRecord.ts`
+   * owns all three reads and the fold.
+   *
+   * Folded only when a run ends, by the one rule in `nextStreakRecord`: the
+   * streak going *down* is a run ending, whether that is a break to 0, a
+   * gap restarting it at 1, or a manual reset. Rides onto the successor row
+   * alongside streakCount, since the streak lives on whichever row is
+   * currently running it.
+   */
+  priorBestStreak: number;
+
   // Opt-in per task: surface the streak as a chip on the collapsed row rather
   // than only in the expanded panel. Off by default — a flame on every
   // recurring row is noise, but a habit you're deliberately tracking is worth
@@ -1530,7 +1600,7 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
 // extraTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"

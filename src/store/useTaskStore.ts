@@ -116,6 +116,7 @@ import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver } from '../utils/quotaSchedule';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from '../utils/taskKinds';
+import { nextStreakRecord } from '../utils/streakRecord';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -436,6 +437,7 @@ function newTaskFromDraft(
     streakDate: null,
     previousStreakCount: 0,
     previousStreakDate: null,
+    priorBestStreak: 0,
     showStreak: draft.showStreak ?? false,
     streakRequiresWindow: draft.streakRequiresWindow ?? false,
     parentId: draft.parentId ?? null,
@@ -2143,6 +2145,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       streakDate: null,
       previousStreakCount: 0,
       previousStreakDate: null,
+      priorBestStreak: 0,
       timerStartedAt: null,
       actualMinutes: null,
       // The duplicate keeps the duration but starts its countdown fresh.
@@ -2828,6 +2831,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Both write through the same previous* snapshot, so uncompleteTask undoes
     // either one without needing to know which happened.
     const streakBreaks = missed && recurs && datesBySchedule;
+    // Named once because the record's fold compares against it (see
+    // nextStreakRecord) and the completed row and its successor must agree.
+    const nextStreak = streakBreaks ? 0 : streakAdvances ? newStreakCount : task.streakCount;
 
     // "Extra task" — every Nth completion adds a separate one-off task (see
     // Task.extraTaskEveryN). The tally is advanced here, not derived from the
@@ -2855,10 +2861,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // immediately — otherwise a pinned row would vanish from the Pinned
       // section instantly instead of getting the same fade-out grace period
       // every other list gives a completed task.
-      streakCount: streakBreaks ? 0 : streakAdvances ? newStreakCount : task.streakCount,
+      streakCount: nextStreak,
       streakDate: streakBreaks ? null : streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
       previousStreakCount: task.streakCount,
       previousStreakDate: task.streakDate,
+      // Folds the run that just ended into the record, if one did — a miss
+      // breaking the streak, or a gap restarting it at 1. See nextStreakRecord
+      // for why the rule is stated over the transition rather than the cause.
+      priorBestStreak: nextStreakRecord(task, nextStreak),
       // Completing a quota task outright (the last unit, a swipe, a bulk
       // action) means the whole quota is done, so the row reads 8/8 rather
       // than being logged as a partial (see isQuotaPartial). A miss keeps
@@ -3051,10 +3061,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // the streak lives on whichever row is currently running it, so
           // resetting only the missed row would hand the next occurrence the
           // old count straight back and the break would never be visible.
-          streakCount: streakBreaks ? 0 : streakAdvances ? newStreakCount : task.streakCount,
+          streakCount: nextStreak,
           streakDate: streakBreaks ? null : streakAdvances ? getCurrentDayStart().toISOString() : task.streakDate,
           previousStreakCount: task.streakCount,
           previousStreakDate: task.streakDate,
+          // Rides onto the successor for the same reason the streak does: the
+          // record belongs to the task, and every occurrence is a fresh row.
+          priorBestStreak: nextStreakRecord(task, nextStreak),
           // Rides onto the successor like the streak does, and for the same
           // reason: every occurrence is a fresh id, so a tally left on the
           // completed row would restart the count from zero every time.
@@ -3800,6 +3813,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         streakDate: null,
         previousStreakCount: task.streakCount,
         previousStreakDate: task.streakDate,
+        // A partial day closes the run out, so the run it ends is a candidate
+        // for the personal best like any other ending.
+        priorBestStreak: nextStreakRecord(task, 0),
       });
       // A series that has run out (recurrenceEndDate/recurrenceCount) gets the
       // partial record but no successor — the schedule is consulted only for
@@ -3829,6 +3845,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         streakDate: null,
         previousStreakCount: 0,
         previousStreakDate: null,
+        // Not 0, unlike everything else reset on this successor: the streak
+        // starts again but the record is the task's history, and this row is
+        // where the task continues.
+        priorBestStreak: nextStreakRecord(task, 0),
         timerStartedAt: null,
         previousOccurrenceId: task.id,
         seriesDefaults: null,
@@ -5262,16 +5282,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Resuming is lossy — it breaks the streak and drops the archived-on
     // stamp — so the undo restores those exact values rather than re-archiving
     // from scratch, which would stamp today and leave the streak at 0.
-    const { archivedAt, streakCount, streakDate } = task;
+    const { archivedAt, streakCount, streakDate, priorBestStreak } = task;
     get().updateTask(id, {
       archived: false,
       archivedAt: null,
       streakCount: 0,
       streakDate: null,
+      // The streak restarts, the record does not: the resume alert promises
+      // history and stats carry over, and a run you actually completed before
+      // filing the task away is history. Folded like any other ending.
+      priorBestStreak: nextStreakRecord(task, 0),
     });
     get().setLastAction({
       label: 'Task resumed',
-      undo: () => get().updateTask(id, { archived: true, archivedAt, streakCount, streakDate }),
+      undo: () => get().updateTask(id, { archived: true, archivedAt, streakCount, streakDate, priorBestStreak }),
     });
   },
 
@@ -5515,6 +5539,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       streakDate: null,
       previousStreakCount: 0,
       previousStreakDate: null,
+      priorBestStreak: 0,
       showStreak: false,
       streakRequiresWindow: false,
       parentId,
@@ -5699,6 +5724,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       streakDate: null,
       previousStreakCount: 0,
       previousStreakDate: null,
+      priorBestStreak: 0,
       showStreak: false,
       streakRequiresWindow: false,
       parentId: null,
@@ -6343,14 +6369,20 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const toReset = get().tasks.filter(t => t.streakCount > 0 || t.streakDate !== null);
     if (toReset.length === 0) return;
 
-    const snapshot = toReset.map(t => ({ id: t.id, streakCount: t.streakCount, streakDate: t.streakDate }));
+    // Records go with them, and the undo puts them back. This is the one
+    // ending that isn't a run finishing on its own terms — it's "start me over"
+    // — and leaving the records behind would mean the next run had to beat an
+    // old best before anything showed for it, which is what was just cleared.
+    const snapshot = toReset.map(t => ({
+      id: t.id, streakCount: t.streakCount, streakDate: t.streakDate, priorBestStreak: t.priorBestStreak,
+    }));
 
     toReset.forEach(t => {
-      dbUpdateTask({ ...t, streakCount: 0, streakDate: null });
+      dbUpdateTask({ ...t, streakCount: 0, streakDate: null, priorBestStreak: 0 });
     });
     set(s => ({
       tasks: s.tasks.map(t =>
-        toReset.some(r => r.id === t.id) ? { ...t, streakCount: 0, streakDate: null } : t
+        toReset.some(r => r.id === t.id) ? { ...t, streakCount: 0, streakDate: null, priorBestStreak: 0 } : t
       ),
     }));
 
@@ -6359,15 +6391,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       destructive: true,
       redo: () => get().resetAllStreaks(),
       undo: () => {
-        snapshot.forEach(({ id, streakCount, streakDate }) => {
+        snapshot.forEach(({ id, streakCount, streakDate, priorBestStreak }) => {
           const task = get().tasks.find(t => t.id === id);
           if (!task) return;
-          dbUpdateTask({ ...task, streakCount, streakDate });
+          dbUpdateTask({ ...task, streakCount, streakDate, priorBestStreak });
         });
         set(s => ({
           tasks: s.tasks.map(t => {
             const r = snapshot.find(x => x.id === t.id);
-            return r ? { ...t, streakCount: r.streakCount, streakDate: r.streakDate } : t;
+            return r ? { ...t, streakCount: r.streakCount, streakDate: r.streakDate, priorBestStreak: r.priorBestStreak } : t;
           }),
         }));
       },

@@ -128,6 +128,7 @@ const baseTask: Task = {
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  priorBestStreak: 0,
   showStreak: false,
   streakRequiresWindow: false,
   recurrenceFromCompletion: false,
@@ -1375,6 +1376,7 @@ describe('isTaskNew when a hold comes off', () => {
       nudgeOptIn: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
+      kind: 'project' as const,
       groupId: null,
       personIds: [],
     };
@@ -2087,6 +2089,7 @@ describe('isSequenceBlocked', () => {
       nudgeOptIn: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
+      kind: 'project' as const,
       groupId: null,
       personIds: [],
     }]);

@@ -87,6 +87,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  priorBestStreak: 0,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -152,6 +153,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   nudgeOptIn: true,
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
+  kind: 'project' as const,
   ...overrides,
 });
 
@@ -687,5 +689,45 @@ describe('removeProjectRow / restoreProject', () => {
     useProjectStore.getState().restoreProject(project);
     expect(dbInsertProject).toHaveBeenCalledWith(project);
     expect(useProjectStore.getState().projects).toContainEqual(project);
+  });
+});
+
+describe('kind', () => {
+  it('creates an ordinary project by default, so nothing existing changes', () => {
+    useProjectStore.setState({ projects: [] });
+    const project = useProjectStore.getState().createProject('Kitchen refresh', null);
+    expect(project.kind).toBe('project');
+    expect(dbInsertProject).toHaveBeenCalledWith(expect.objectContaining({ kind: 'project' }));
+  });
+
+  it('creates a list when asked', () => {
+    useProjectStore.setState({ projects: [] });
+    const project = useProjectStore.getState().createProject('Questions for Dr. Okafor', null, 'list');
+    expect(project.kind).toBe('list');
+  });
+
+  // The escape hatch for a project that turned out to be a list, or the
+  // reverse — otherwise the only way across is delete and retype, which loses
+  // every item. Presentation only, so nothing about the members changes.
+  it('switches an existing project between the two', () => {
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', kind: 'project' })] });
+    useProjectStore.getState().updateProject('p1', { kind: 'list' });
+    expect(useProjectStore.getState().getProjectById('p1')?.kind).toBe('list');
+    useProjectStore.getState().updateProject('p1', { kind: 'project' });
+    expect(useProjectStore.getState().getProjectById('p1')?.kind).toBe('project');
+  });
+
+  // A list is an ordinary project in every respect that isn't drawing: its
+  // members are counted, ordered and completed by exactly the same code.
+  it('leaves progress counting alone', () => {
+    const list = makeProject({ id: 'p1', kind: 'list' });
+    const tasks = [
+      makeTask({ id: 't1', projectId: 'p1', completed: true }),
+      makeTask({ id: 't2', projectId: 'p1' }),
+    ];
+    expect(projectProgress('p1', tasks)).toEqual(
+      expect.objectContaining({ done: 1, total: 2 })
+    );
+    expect(list.kind).toBe('list');
   });
 });
