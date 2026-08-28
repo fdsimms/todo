@@ -89,6 +89,10 @@ See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where 
   than pushed by the ~15 mutators that would each need a line. **An absent count renders no chip**
   — "not looked yet" is a third answer and must not render as 0/3. Full day tints the checkbox with
   the timer's own `circleReady`; nothing ticks a task off by itself (see `timer.ts`).
+- **Those rows are notices** (`notice: true`, see the bullet below): the counter chip and the link
+  to that day on the Meal Plan screen are the whole row, and it carries none of the controls that
+  would reschedule, duplicate, pin or edit it. It's the notice with nothing left in its panel, so
+  it doesn't expand.
 - **Every read of `generatedSourceId` that means one particular kind goes through
   `generatedSourceOf(task, kind)`.** One column where there were three means two generators can
   hand out the same source id; without the kind check, ticking a leftover's task off could mark a
@@ -123,6 +127,35 @@ See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where 
   survives only by pruning to what the Reminders list still holds on every drain. A generic record
   has no equivalent pruning pass unless each generator supplies one, at which point it isn't
   generic. On the source row it's bounded for free — whatever deletes the source deletes the "no".
+- **Two of them are `notice: true`, and that flag is about the row rather than the generator.**
+  `calendarReview` and `mealPlanNudge` ask about a day instead of being a piece of work, so
+  `TaskItem` drops every control that treats one as something to plan: the reschedule chip and the
+  swipe that opens the same picker, duplicate, the pin, Edit, renaming the title in place, and the
+  "Add subtask" field. What stays is the checkbox, the meta chips and the link button, because that
+  is how a notice is read and answered. `isNoticeTask` is the read and `TaskItem` is the only
+  caller — creation, reconciling and the opt-out are untouched by it.
+  - **Being generated is not what makes a row a notice.** The other twelve keep everything. A
+    `pantryReview` deferred to Saturday is that generator working as designed, a `weather` rule's
+    "put on sunscreen" and a `birthdayGift` are ordinary tasks with an unusual author, and
+    deferring a use-up task is the main thing anyone does to one (see the re-dating note above).
+    The test is whether there is anything to decide about the row, not who wrote it. Both of these
+    pass it the same way: day-keyed with no source row, a title that never varies, and nothing a
+    later date could mean — next Monday's nudge is next week's own write, not this one moved.
+  - **The panel can end up empty, and then the row doesn't expand at all.** A review task's panel
+    is its event list and nothing else now; a nudge's is nothing whatsoever, its detail being the
+    Meal Plan screen one tap away on the link button. So `handleContentPress` refuses to expand a
+    notice with no notes, no subtasks and no inline block of its own (`expandable`), rather than
+    animating a card open onto blank space and spotlighting the list to do it. The row still marks
+    itself seen on that tap: it was read.
+  - **A notice that already has subtasks still lists them**; only the add field goes. Nothing
+    creates one, but a row somebody put a subtask on before this treatment existed must not have it
+    hidden, because hidden is lost.
+  - **`panelSectionAbove` is the cost of dropping the subtask section.** Every section in the
+    expanded panel draws its own top border, which was unconditional only because the always-there
+    add-subtask field guaranteed something above it. It is one boolean rather than a running count
+    because a notice's panel can hold only its notes and its own block: no notice kind is timed, a
+    quota, recurring, chained or in a series. A notice kind that grew one of those would need this
+    to become a count.
 - **The settings keys stayed per-generator; only the UI merged.** One "Automatic tasks" section
   (`GeneratedTasksSection`) lists all four, replacing three sections here and one in Notifications.
   (It shipped as "Tasks the app adds" and was renamed in #2155; the patch-notes entries naming the
@@ -321,6 +354,9 @@ See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where 
     store already has rather than triggering a fresh read itself — the same staleness tolerance
     every other `useCalendarStore` reader (`TodayScreen`'s event rows, time-block scheduling)
     already lives with.
+  - **Its row is a notice** (`notice: true`, see the shared bullet above): the events it lists are
+    the whole of its expanded panel, and none of the controls that would reschedule, duplicate, pin
+    or edit it are offered, because there is no version of "tomorrow's calendar, on Thursday".
   - **It's the one generator gated on `isDemoModeActive()`.** Every other generator's qualifying
     condition is a row in the demo's own throwaway database; this one's is the real device calendar,
     which demo mode must never read from or expose the existence of. The demo's own example task is
