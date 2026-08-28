@@ -1032,6 +1032,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
     backgroundColor: colors.bgSecondary,
     marginHorizontal: spacing.md,
+    marginTop: spacing.md,
     marginBottom: spacing.sm,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
