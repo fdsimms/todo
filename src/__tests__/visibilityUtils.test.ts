@@ -1229,6 +1229,182 @@ describe('isTaskNew', () => {
   });
 });
 
+// ─── isTaskNew, for the gate that isn't a clock ───────────────────────────────
+
+// Being held back is the one reason a task is hidden that no day turnover
+// resolves (see isHeldBack), so until getReleasedFromHoldAt it was also the one
+// release nothing marked. Every task here is dated today and seen at 9 AM, an
+// hour before NOW: the day gates have all passed and been acknowledged, so the
+// only thing left that can make a row new is the hold coming off.
+describe('isTaskNew when a hold comes off', () => {
+  const dueToday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
+  const seenAt = new Date(2025, 5, 10, 9, 0, 0).toISOString();
+  const releasedAt = new Date(2025, 5, 10, 9, 30, 0).toISOString();
+
+  const blocker: Task = { ...baseTask, id: 'blocker', title: 'Get the quote' };
+  const waiter: Task = {
+    ...baseTask,
+    id: 'waiter',
+    title: 'Book the plumber',
+    blockedById: 'blocker',
+    dueDate: dueToday,
+    seenAt,
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    registerTaskSource(null);
+    registerProjectSource(null);
+    jest.useRealTimers();
+  });
+
+  it('is false while the blocker is still open, because the waiter is still hidden', () => {
+    registerTaskSource(() => [blocker, waiter]);
+    expect(isTaskNew(waiter)).toBe(false);
+  });
+
+  it('is true once the blocker is completed', () => {
+    registerTaskSource(() => [{ ...blocker, completed: true, completedAt: releasedAt }, waiter]);
+    expect(isTaskNew(waiter)).toBe(true);
+  });
+
+  it('is true once the blocker is archived', () => {
+    registerTaskSource(() => [{ ...blocker, archived: true, archivedAt: releasedAt }, waiter]);
+    expect(isTaskNew(waiter)).toBe(true);
+  });
+
+  it('is false when the blocker was completed before the waiter was last seen', () => {
+    const earlier = new Date(2025, 5, 10, 8, 30, 0).toISOString();
+    registerTaskSource(() => [{ ...blocker, completed: true, completedAt: earlier }, waiter]);
+    expect(isTaskNew(waiter)).toBe(false);
+  });
+
+  // A deleted blocker frees its waiter with no row left to read a moment off —
+  // the trade canBlock makes deliberately, so this marks nothing rather than
+  // guessing.
+  it('is false when the blocker was deleted outright', () => {
+    registerTaskSource(() => [waiter]);
+    expect(isTaskVisible(waiter)).toBe(true);
+    expect(isTaskNew(waiter)).toBe(false);
+  });
+
+  // The undated half, and the reason isTaskNew stopped being Today-only: a
+  // task you can't start yet often carries no date *because* it can't be
+  // started yet, so the release lands it in Inbox or Unscheduled instead.
+  describe('a released task with no date at all', () => {
+    const bare: Task = { ...waiter, id: 'bare', dueDate: null };
+    const freed = { ...blocker, completed: true, completedAt: releasedAt };
+
+    it('is true in the Inbox', () => {
+      registerTaskSource(() => [freed, bare]);
+      expect(isTaskVisible(bare)).toBe(false);
+      expect(isInboxTask(bare)).toBe(true);
+      expect(isTaskNew(bare)).toBe(true);
+    });
+
+    it('is true in Unscheduled', () => {
+      // A priority is enough to make it triaged rather than untriaged, which
+      // is the whole difference between the two views.
+      const sorted: Task = { ...bare, priority: 2 };
+      registerTaskSource(() => [freed, sorted]);
+      expect(isUnscheduledTask(sorted)).toBe(true);
+      expect(isTaskNew(sorted)).toBe(true);
+    });
+
+    // The guard on widening the gate: an ordinary Inbox task has no gate to
+    // have crossed, so nothing in either view is flagged merely for sitting
+    // there.
+    it('is false for an Inbox task that was never held back', () => {
+      const loose = { ...bare, blockedById: null };
+      registerTaskSource(() => [freed, loose]);
+      expect(isInboxTask(loose)).toBe(true);
+      expect(isTaskNew(loose)).toBe(false);
+    });
+
+    // Released, but onto a day that hasn't come: it joined Later's queue
+    // rather than arriving anywhere it can be acted on, and Later flags
+    // nothing.
+    it('is false when the release lands it on a future day', () => {
+      const deferred = { ...bare, deferUntil: new Date(2025, 5, 12, 0, 0, 0).toISOString() };
+      registerTaskSource(() => [freed, deferred]);
+      expect(isTaskDeferred(deferred)).toBe(true);
+      expect(isTaskNew(deferred)).toBe(false);
+    });
+  });
+
+  it('is true once the person a task was waiting on is archived', () => {
+    const dustin = {
+      id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+      archived: true, archivedAt: releasedAt, createdAt: NOW.toISOString(),
+      birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
+      phoneNumber: null, email: null, linkUrl: null,
+      cadenceDays: 0, nudgeOptIn: false, cadenceSetAt: null, reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
+      backfillDismissedFields: [],
+      groupId: null,
+    };
+    const chasing: Task = {
+      ...baseTask, id: 'chase', title: 'Photos from the trip',
+      waitingOnPersonId: 'p1', blockedById: null, dueDate: dueToday, seenAt,
+    };
+    registerPersonSource(() => [dustin]);
+    registerTaskSource(() => [chasing]);
+    expect(isTaskNew(chasing)).toBe(true);
+    registerPersonSource(null);
+  });
+
+  describe('a sequential project advancing', () => {
+    const project = {
+      id: 'p1',
+      title: 'Repaint the hallway',
+      notes: '',
+      deadline: null,
+      category: null,
+      sortOrder: 1,
+      archived: false,
+      archivedAt: null,
+      completed: false,
+      completedAt: null,
+      createdAt: '2025-01-01T00:00:00.000Z',
+      nudgeCadenceDays: 0,
+      autoSchedule: false,
+      sequential: true,
+      nudgeOptIn: false,
+      reviewDeclinedAt: null,
+      backfillDismissedFields: [],
+      groupId: null,
+      personIds: [],
+    };
+    const first: Task = {
+      ...baseTask, id: 'first', sortOrder: 1, projectId: 'p1', dueDate: dueToday, seenAt,
+      completed: true, completedAt: releasedAt,
+    };
+    const second: Task = {
+      ...baseTask, id: 'second', sortOrder: 2, projectId: 'p1', dueDate: dueToday, seenAt,
+    };
+
+    const withProject = (sequential: boolean) => {
+      registerProjectSource(() => [{ ...project, sequential }]);
+      registerTaskSource(() => [first, second]);
+    };
+
+    it('is true for the step the completed one was standing in front of', () => {
+      withProject(true);
+      expect(isTaskNew(second)).toBe(true);
+    });
+
+    // Nothing was holding it, so nothing was released — a completion elsewhere
+    // in the project isn't a reason for an unrelated task to announce itself.
+    it('is false when the project isn’t sequential', () => {
+      withProject(false);
+      expect(isTaskNew(second)).toBe(false);
+    });
+  });
+});
+
 // ─── isHiddenForVacation ──────────────────────────────────────────────────────
 
 describe('isHiddenForVacation', () => {

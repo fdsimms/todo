@@ -876,6 +876,32 @@ export function TodayScreen() {
     flashTimeoutRef.current = setTimeout(() => setFlashTaskId(null), 1200);
   };
 
+  // Scrolls Unscheduled's or Inbox's plain FlatList to a task's row, and says
+  // whether there was one to land on. Shared by the created-task toast's "Go
+  // to it" and by the new-todos banner's own jump, which want the same thing
+  // for different reasons and had no business each indexing these two lists
+  // their own way.
+  const scrollToFlatViewTask = (task: Task, view: 'unscheduled' | 'inbox'): boolean => {
+    if (view === 'unscheduled') {
+      // Indexed against what's actually rendered (filteredUnscheduledTasks) —
+      // with the reminder filter on, a task carrying no reminder has no row to
+      // scroll to at all.
+      const index = filteredUnscheduledTasks.findIndex(t => t.id === task.id);
+      if (index < 0) return false;
+      setPendingUnscheduledJump({ index, n: jumpCount.current++ });
+      return true;
+    }
+    // A task filed into a stack (a drag onto a stack row — see
+    // placeCreatedInboxTask) is a member rather than a loose row, so jump to
+    // the stack's own row: the member itself isn't independently indexed here.
+    const index = task.groupId
+      ? inboxData.findIndex(item => item.type === 'group' && item.group.id === task.groupId)
+      : inboxData.findIndex(item => item.type === 'task' && item.task.id === task.id);
+    if (index < 0) return false;
+    setPendingInboxJump({ index, n: jumpCount.current++ });
+    return true;
+  };
+
   // Switches to whichever sub-view the task got jumped to and scrolls/flashes
   // its row there — the part of landing a new task off Today that's common to
   // going there straight away (destination === 'today', in handleTaskCreated)
@@ -895,20 +921,8 @@ export function TodayScreen() {
       // in the data the list is about to scroll.
       setLaterTaskLimit(limit => Math.max(limit, LATER_SETTLED_TASK_LIMIT));
       setPendingLaterJump({ key: task.id, n: jumpCount.current++ });
-    } else if (destination === 'unscheduled') {
-      // Indexed against what's actually rendered (filteredUnscheduledTasks) —
-      // a freshly created task has no reminder yet, so the reminder filter
-      // being on means it has no row to scroll to at all.
-      const index = filteredUnscheduledTasks.findIndex(t => t.id === task.id);
-      if (index >= 0) setPendingUnscheduledJump({ index, n: jumpCount.current++ });
     } else {
-      // A drag onto a stack row (see placeCreatedInboxTask) makes the task a
-      // member rather than a loose row — jump to the stack's own row then,
-      // since the member itself isn't independently indexed in this list.
-      const index = task.groupId
-        ? inboxData.findIndex(item => item.type === 'group' && item.group.id === task.groupId)
-        : inboxData.findIndex(item => item.type === 'task' && item.task.id === task.id);
-      if (index >= 0) setPendingInboxJump({ index, n: jumpCount.current++ });
+      scrollToFlatViewTask(task, destination);
     }
     flashTask(task.id);
   };
@@ -3050,7 +3064,21 @@ export function TodayScreen() {
     />
   );
 
-  const newTasks = useMemo(() => visibleTasks.filter(isTaskNew), [visibleTasks]);
+  // The banner belongs to whichever sub-view is on screen, so it reads that
+  // view's own rows: a task released from a hold lands on Today only if it
+  // carries a date, and in Unscheduled or Inbox when it doesn't (see
+  // isTaskListed). Later has no banner — see the same note for why.
+  //
+  // Sourced from the unfiltered lists, as Today's always has been: the sort
+  // and filter sheet narrows what the *list* shows, and a task that just
+  // appeared is worth naming whether or not it survives that. jumpToTask
+  // opens one it can't scroll to rather than eating the tap.
+  const newTasksSource =
+    viewMode === 'today' ? visibleTasks
+    : viewMode === 'unscheduled' ? unscheduledTasks
+    : viewMode === 'inbox' ? inboxTasks
+    : NO_TASKS;
+  const newTasks = useMemo(() => newTasksSource.filter(isTaskNew), [newTasksSource]);
   const dismissNewTasksBanner = () => {
     animateLayout();
     markTasksSeen(newTasks.map(t => t.id));
@@ -3105,9 +3133,16 @@ export function TodayScreen() {
    */
   const jumpToTask = (task: Task) => {
     markTaskSeen(task.id);
+    // The banner names the rows of whichever sub-view it's sitting over, so
+    // the jump lands in that same list — Today's has folding to open on the
+    // way, the other two are flat and only need scrolling to.
+    const landed =
+      viewMode === 'today' ? revealTaskInToday(task)
+      : viewMode === 'unscheduled' || viewMode === 'inbox' ? scrollToFlatViewTask(task, viewMode)
+      : false;
     // Nothing to land on means a filter is hiding it — open it instead of
     // eating the tap.
-    if (!revealTaskInToday(task)) {
+    if (!landed) {
       openEditor(task);
       return;
     }
@@ -3355,7 +3390,9 @@ export function TodayScreen() {
             not make it look as though it stopped. */}
         {focusSession && <FocusBar onOpen={() => setFocusSessionVisible(true)} />}
 
-        {viewMode === 'today' && newTasks.length > 0 && (
+        {/* No `viewMode` test of its own: newTasks is already empty in the one
+            sub-view that has no banner (see newTasksSource). */}
+        {newTasks.length > 0 && (
           <NewTasksBanner tasks={newTasks} onJumpToTask={jumpToTask} onDismiss={dismissNewTasksBanner} />
         )}
 

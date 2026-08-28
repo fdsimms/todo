@@ -1,0 +1,4 @@
+{
+  "message": "Finishing a task that another one was waiting on now flags the freed task as new, so it turns up in the new todos notice instead of quietly appearing somewhere down the list. Completing a step in a sequential project does the same for the step behind it, and the notice now appears on Unscheduled and Inbox as well as Today, which is where a task with no date lands.",
+  "date": "2026-08-28"
+}
