@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: tasks added by voice, from the Action Button, or from Shortcuts and Spotlight were queued up and never actually appeared in the app. They arrive now, on the next time you open it.",
+  "date": "2026-08-28"
+}

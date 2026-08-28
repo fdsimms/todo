@@ -2825,6 +2825,11 @@ export function dbGetFocusSessionLog(): FocusSessionRecord[] {
  * the same row reconciled and ended again on a later launch) must leave one
  * row, not raise a constraint error inside whatever was ending it.
  */
+export function dbPruneFocusSessionLog(cutoffIso: string): number {
+  const res = db.runSync('DELETE FROM focus_session_log WHERE ended_at < ?', [cutoffIso]);
+  return res.changes ?? 0;
+}
+
 export function dbInsertFocusSessionRecord(record: FocusSessionRecord): void {
   db.runSync(
     `INSERT OR REPLACE INTO focus_session_log

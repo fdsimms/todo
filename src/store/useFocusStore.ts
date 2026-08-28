@@ -5,9 +5,11 @@ import {
   dbGetFocusSession,
   dbGetFocusSessionLog,
   dbInsertFocusSessionRecord,
+  dbPruneFocusSessionLog,
   dbSaveFocusSession,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { selectPurgeableFocusSessionIds } from '../utils/retention';
 import {
   advanceFocusSession,
   buildFocusPlan,
@@ -75,6 +77,12 @@ interface FocusStore {
   syncWithTasks: (tasks: readonly Task[]) => void;
   /** End the session and forget it. */
   endSession: () => void;
+  /**
+   * Drop finished sessions that ended before `cutoff`, returning how many
+   * went. Driven by the completed-task retention window — see
+   * `purgeOldCompletedTasks`, which is the one caller.
+   */
+  purgeHistoryBefore: (cutoff: Date) => number;
 }
 
 /**
@@ -242,5 +250,17 @@ export const useFocusStore = create<FocusStore>((set, get) => ({
   endSession() {
     logFinishedSession(get().session, set, get().history);
     persist(null, set);
+  },
+
+  purgeHistoryBefore(cutoff) {
+    const doomed = new Set(selectPurgeableFocusSessionIds(get().history, cutoff));
+    if (doomed.size === 0) return 0;
+    // The delete is by date rather than by the ids just collected: this store's
+    // copy is what was loaded at launch, and a session logged by another device
+    // and synced in since is equally out of the window. The in-memory filter
+    // then only has to agree about the rows it can see.
+    dbPruneFocusSessionLog(cutoff.toISOString());
+    set({ history: get().history.filter(r => !doomed.has(r.id)) });
+    return doomed.size;
   },
 }));

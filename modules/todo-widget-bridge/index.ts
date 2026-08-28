@@ -4,6 +4,10 @@ interface TodoWidgetBridgeNativeModule {
   // Returns Bool rather than Void deliberately — see TodoWidgetBridgeModule.swift.
   writeSnapshot(jsonString: string): Promise<boolean>;
   drainPendingCompletions(): Promise<string[]>;
+  // Titles queued by AddTaskIntent (the Action Button, Siri, Shortcuts and
+  // Spotlight) — see modules/todo-widget-bridge/ios/AddTaskIntent.swift.
+  // Read-and-clear, same as drainPendingCompletions.
+  drainPendingAddTasks(): Promise<string[]>;
   // Recipe page URLs captured by the share extension (targets/todo-share).
   // Read-and-clear, same as drainPendingCompletions — see
   // src/utils/sharedRecipeLinks.ts.
@@ -27,6 +31,10 @@ export function writeWidgetSnapshot(jsonString: string): Promise<boolean> {
 
 export function drainPendingWidgetCompletions(): Promise<string[]> {
   return TodoWidgetBridge.drainPendingCompletions();
+}
+
+export function drainPendingAddTasks(): Promise<string[]> {
+  return TodoWidgetBridge.drainPendingAddTasks();
 }
 
 export function drainSharedLinks(): Promise<string[]> {

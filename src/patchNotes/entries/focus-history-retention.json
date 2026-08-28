@@ -1,0 +1,4 @@
+{
+  "message": "\"Keep completed tasks for\" now covers finished focus sessions as well, so your history is kept for one length of time rather than two. If you have a window set, the confirmation before shortening it counts the focus sessions it would delete alongside the tasks.",
+  "date": "2026-08-28"
+}

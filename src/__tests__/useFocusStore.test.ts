@@ -20,6 +20,11 @@ jest.mock('../db/database', () => ({
   dbSaveFocusSession: jest.fn((s: FocusSession) => { mockDb.session = s; }),
   dbClearFocusSession: jest.fn(() => { mockDb.session = null; }),
   dbGetFocusSessionLog: jest.fn(() => mockDb.log),
+  dbPruneFocusSessionLog: jest.fn((cutoffIso: string) => {
+    const before = mockDb.log.length;
+    mockDb.log = mockDb.log.filter(r => r.endedAt >= cutoffIso);
+    return before - mockDb.log.length;
+  }),
   dbInsertFocusSessionRecord: jest.fn((r: FocusSessionRecord) => {
     mockDb.log = [r, ...mockDb.log.filter(existing => existing.id !== r.id)];
   }),
@@ -35,7 +40,7 @@ jest.mock('../utils/notifications', () => ({
 
 import { useFocusStore } from '../store/useFocusStore';
 import { currentFocusStep, isFocusRunning, isFocusSessionFinished } from '../utils/focusPlan';
-import { dbSaveFocusSession } from '../db/database';
+import { dbSaveFocusSession, dbPruneFocusSessionLog } from '../db/database';
 
 const OPTIONS: FocusPlanOptions = {
   workCapMinutes: 25,
@@ -75,6 +80,7 @@ beforeEach(() => {
   mockScheduleAlarm.mockClear();
   mockCancelAlarm.mockClear();
   (dbSaveFocusSession as jest.Mock).mockClear();
+  (dbPruneFocusSessionLog as jest.Mock).mockClear();
 });
 
 describe('startSession', () => {
@@ -369,5 +375,45 @@ describe('session history', () => {
     state().endSession();
 
     expect(state().history.filter(r => r.id === session.id)).toHaveLength(1);
+  });
+});
+
+describe('purgeHistoryBefore', () => {
+  const record = (id: string, endedAt: string): FocusSessionRecord => ({
+    id, startedAt: endedAt, endedAt, workedSeconds: 600, restedSeconds: 0,
+    plannedWorkMinutes: 10, steps: [], completedTaskIds: [],
+  });
+
+  const seed = () => {
+    mockDb.log = [
+      record('old', new Date(2026, 6, 1, 10).toISOString()),
+      record('recent', new Date(2026, 7, 25, 10).toISOString()),
+    ];
+    state().initialize([]);
+  };
+
+  it('drops what is outside the window from both the log and the store', () => {
+    seed();
+    expect(state().purgeHistoryBefore(new Date(2026, 7, 20))).toBe(1);
+    expect(state().history.map(r => r.id)).toEqual(['recent']);
+    expect(mockDb.log.map(r => r.id)).toEqual(['recent']);
+  });
+
+  it('writes nothing when everything is inside the window', () => {
+    seed();
+    expect(state().purgeHistoryBefore(new Date(2020, 0, 1))).toBe(0);
+    expect(state().history).toHaveLength(2);
+    expect(dbPruneFocusSessionLog).not.toHaveBeenCalled();
+  });
+
+  it('deletes by date rather than by the ids it happened to load', () => {
+    // The store's copy is what was read at launch; a session synced in from
+    // another device since is equally out of the window, so the SQL is what
+    // decides. Asserted through the argument, since this store cannot see a
+    // row it never loaded.
+    seed();
+    const cutoff = new Date(2026, 7, 20);
+    state().purgeHistoryBefore(cutoff);
+    expect(dbPruneFocusSessionLog).toHaveBeenCalledWith(cutoff.toISOString());
   });
 });

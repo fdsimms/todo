@@ -1879,6 +1879,14 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const cutoff = retentionCutoff(completedRetentionDays, new Date(), dayResetTime);
     if (!cutoff) return 0;
 
+    // Focus history rides the same window — one promise from the user's side,
+    // rather than a second setting that would let the Logbook and the Stats
+    // focus sections disagree about how far back the app remembers. Before the
+    // early return below, since a day with no purgeable tasks can still have
+    // sessions old enough to go. Not added to the returned count, which is
+    // about tasks and is what the caller reports.
+    useFocusStore.getState().purgeHistoryBefore(cutoff);
+
     const ids = selectPurgeableTaskIds(get().tasks, cutoff);
     if (ids.length === 0) return 0;
     const idSet = new Set(ids);

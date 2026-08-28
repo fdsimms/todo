@@ -17,8 +17,10 @@ import {
   recipeImageBasename, readRecipeImageBase64, writeRecipeImageFile,
 } from '../../utils/recipePhoto';
 import {
-  RETENTION_OPTIONS, retentionCutoff, retentionLabel, selectPurgeableTaskIds, type RetentionDays,
+  RETENTION_OPTIONS, retentionCutoff, retentionDeletionSummary, retentionLabel,
+  selectPurgeableFocusSessionIds, selectPurgeableTaskIds, type RetentionDays,
 } from '../../utils/retention';
+import { useFocusStore } from '../../store/useFocusStore';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
@@ -76,6 +78,7 @@ export function DataResetSettings() {
   const resetToDefaults = useSettingsStore(s => s.resetToDefaults);
 
   const allTasks = useTaskStore(useShallow(s => s.tasks));
+  const focusHistory = useFocusStore(useShallow(s => s.history));
   const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
   const resetAllStreaks = useTaskStore(s => s.resetAllStreaks);
 
@@ -185,13 +188,19 @@ export function DataResetSettings() {
     if (days === completedRetentionDays) return;
     const cutoff = retentionCutoff(days, new Date(), dayResetTime);
     const doomed = cutoff ? selectPurgeableTaskIds(allTasks, cutoff) : [];
-    if (doomed.length === 0) {
+    // Finished focus sessions ride the same window, so they have to be in the
+    // count too. The dialog is this feature's whole safety mechanism, and one
+    // that named only the tasks would understate what the tap deletes.
+    const doomedSessions = cutoff ? selectPurgeableFocusSessionIds(focusHistory, cutoff) : [];
+    if (doomed.length === 0 && doomedSessions.length === 0) {
       setCompletedRetentionDays(days);
       return;
     }
+    const summary = retentionDeletionSummary(doomed.length, doomedSessions.length);
+    const window = retentionLabel(days).toLowerCase();
     confirmDelete({
-      title: `Delete ${doomed.length} completed task${doomed.length === 1 ? '' : 's'}?`,
-      message: `${doomed.length === 1 ? 'One task was' : `${doomed.length} tasks were`} completed more than ${retentionLabel(days).toLowerCase()} ago. They'll be deleted now, along with their Logbook entries and their share of Stats, and every completion that ages past ${retentionLabel(days).toLowerCase()} from here on goes the same way. This can't be undone, so export first if you want to keep them.`,
+      title: `Delete ${summary}?`,
+      message: `${summary} fall outside a ${window} window. They'll be deleted now, along with their Logbook entries and their share of Stats, and anything that ages past ${window} from here on goes the same way. This can't be undone, so export first if you want to keep them.`,
       onConfirm: () => {
         setCompletedRetentionDays(days);
         purgeOldCompletedTasks();
@@ -273,7 +282,7 @@ export function DataResetSettings() {
           makes choosing a window here safe. */}
       <SettingsSection
         label="History"
-        footer="A task you repeat daily leaves a completed copy behind every time, and by default those are kept forever. A window trims them permanently, along with their Logbook entries and their share of Stats, so export before shortening one. Streaks aren't affected: a streak count lives on the task still running it. Archived tasks are never touched."
+        footer="A task you repeat daily leaves a completed copy behind every time, and by default those are kept forever. A window trims them permanently, along with their Logbook entries and their share of Stats, so export before shortening one. Finished focus sessions are kept for the same length of time. Streaks aren't affected: a streak count lives on the task still running it. Archived tasks are never touched."
       >
         <SettingsRow
           entryId="retention"
