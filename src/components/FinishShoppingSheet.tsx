@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
-import { Alert, Modal, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
+import { Alert, Modal, Platform, View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
@@ -19,6 +19,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { resolveActiveTrip } from '../utils/activeTrip';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { PillGroup } from './PillGroup';
 import { InlineAction } from './InlineAction';
 import { haptics } from '../utils/haptics';
@@ -640,7 +641,14 @@ export function FinishShoppingSheet({
                           // to avoid, back when a decimal separator had to be
                           // typed by hand.
                           keyboardType="number-pad"
+                          // returnKeyType is inert on the iOS number pad,
+                          // which has no return key at all — the accessory
+                          // bar below is what actually dismisses this, and
+                          // it matters here more than anywhere: the prices
+                          // are a list, so the keyboard is up for the whole
+                          // walk down it and covers the Finish button.
                           returnKeyType="done"
+                          inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                           placeholder={known !== null ? `e.g. ${priceToInput(known)}` : '0.00'}
                           placeholderTextColor={colors.textTertiary}
                           maxLength={PRICE_INPUT_MAX_LENGTH}
@@ -656,6 +664,7 @@ export function FinishShoppingSheet({
           </>
           )}
         </ScrollView>
+        <NumberPadAccessory />
       </View>
     </Modal>
   );
