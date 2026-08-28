@@ -128,6 +128,7 @@ const baseTask: Task = {
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  priorBestStreak: 0,
   showStreak: false,
   streakRequiresWindow: false,
   recurrenceFromCompletion: false,

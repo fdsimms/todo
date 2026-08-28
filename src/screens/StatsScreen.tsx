@@ -19,6 +19,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import { useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, animation, type Colors } from '../theme';
 import { useReduceMotion } from '../utils/useReduceMotion';
@@ -557,9 +558,22 @@ export function StatsScreen() {
                   <View key={t.id} style={[styles.row, i < streaks.length - 1 && styles.rowBorder]}>
                     <Text style={styles.rank}>#{i + 1}</Text>
                     <Text style={styles.rowText} numberOfLines={1}>{t.title}</Text>
+                    {/* Only where there is a longer run to compare against.
+                        A task whose current streak is its best says nothing
+                        extra, since "best 12" beside "12" is the same fact
+                        twice — the flame's own state already carries that. */}
+                    {bestStreakOf(t) > t.streakCount && (
+                      <Text style={styles.streakBest}>best {bestStreakOf(t)}</Text>
+                    )}
                     <View style={styles.badge}>
-                      <Ionicons name="flame" size={13} color={colors.orange} />
-                      <Text style={[styles.badgeText, { color: colors.orange }]}>{t.streakCount}</Text>
+                      <Ionicons
+                        name="flame"
+                        size={13}
+                        color={isStreakAtRecord(t) ? colors.red : colors.orange}
+                      />
+                      <Text style={[styles.badgeText, { color: isStreakAtRecord(t) ? colors.red : colors.orange }]}>
+                        {t.streakCount}
+                      </Text>
                     </View>
                   </View>
                 ))}
@@ -987,6 +1001,13 @@ const makeStyles = (colors: Colors) =>
       borderRadius: radius.full,
     },
     badgeText: { fontSize: font.sm, fontWeight: '700' },
+    // Sits between the title and the badge, quiet enough to read as context
+    // for the number rather than as a second number competing with it.
+    streakBest: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.medium,
+    },
     // A value, not a verdict — textSecondary rather than the green/orange/red
     // the rate rows above use, for the reason the cooking section's own comment
     // gives.

@@ -197,7 +197,11 @@ export function seedDemoData(): void {
     streakRequiresWindow: true,
     effort: 1,
   });
-  updateTask(standup.id, { streakCount: 9, streakDate: subDays(today, 1).toISOString() });
+  // Behind its own record, which is the ordinary state and the one that shows
+  // the editor's "Longest run" line. See Task.priorBestStreak.
+  updateTask(standup.id, {
+    streakCount: 9, streakDate: subDays(today, 1).toISOString(), priorBestStreak: 21,
+  });
 
   const meditate = addTask({
     title: 'Ten minutes of quiet',
@@ -207,7 +211,13 @@ export function seedDemoData(): void {
     vacationPause: true,
     effort: 1,
   });
-  updateTask(meditate.id, { streakCount: 23, streakDate: subDays(today, 1).toISOString() });
+  // Past its own record, so the row's flame shows the state it only takes
+  // while a run has overtaken every run before it — invisible in the seed
+  // otherwise, since it needs two runs' worth of history to mean anything.
+  // showStreak so the chip is actually on the collapsed row.
+  updateTask(meditate.id, {
+    streakCount: 23, streakDate: subDays(today, 1).toISOString(), priorBestStreak: 16, showStreak: true,
+  });
 
   addTask({
     title: 'Read a chapter of the Le Guin',

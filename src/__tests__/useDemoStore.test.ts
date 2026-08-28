@@ -11,6 +11,7 @@
  */
 import { addDays } from 'date-fns/addDays';
 import { useDemoStore } from '../store/useDemoStore';
+import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
@@ -498,6 +499,25 @@ describe('demo mode', () => {
   // The relationship can now be set from either end, so what has to exist in
   // the seed is a live pair: one task carrying the pointer and one that shows
   // as the thing it's waiting on.
+  // The personal best needs two runs' worth of history to say anything, so a
+  // seed with only a live streak reads as a feature that isn't there.
+  it('seeds a streak that has overtaken its own record, and one that hasn’t', () => {
+    useDemoStore.getState().enterDemoMode();
+    const s = useTaskStore.getState();
+
+    const ahead = s.tasks.find(t => t.title === 'Ten minutes of quiet');
+    expect(isStreakAtRecord(ahead!)).toBe(true);
+    // On the row rather than only in the editor, since the chip is the one
+    // place the record state is visible without tapping in.
+    expect(ahead?.showStreak).toBe(true);
+
+    const behind = s.tasks.find(t => t.title === 'Morning standup');
+    expect(isStreakAtRecord(behind!)).toBe(false);
+    expect(bestStreakOf(behind!)).toBeGreaterThan(behind!.streakCount);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   it('seeds a task held back by another', () => {
     useDemoStore.getState().enterDemoMode();
     const s = useTaskStore.getState();

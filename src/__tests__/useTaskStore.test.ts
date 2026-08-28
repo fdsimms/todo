@@ -1,3 +1,4 @@
+import { isStreakAtRecord } from '../utils/streakRecord';
 import { useTaskStore } from '../store/useTaskStore';
 import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
 import { isMissed, isRealCompletion } from '../utils/missed';
@@ -316,6 +317,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  priorBestStreak: 0,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -2266,6 +2268,84 @@ describe('completeTask', () => {
       const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
       expect(completed?.previousStreakCount).toBe(3);
       expect(completed?.previousStreakDate).toBe(yesterdayStart);
+    });
+
+    // The personal best (Task.priorBestStreak). The column holds the longest
+    // run *before* the live one, which is what makes overtaking a single event
+    // rather than something true every day after — see utils/streakRecord.ts.
+    describe('the personal best', () => {
+      const yesterday = () => new Date(2025, 5, 9, 0, 0, 0).toISOString();
+      const twoDaysAgo = () => new Date(2025, 5, 8, 0, 0, 0).toISOString();
+
+      it('leaves the record alone while a run is climbing', () => {
+        const task = makeTask({
+          recurrenceType: 'daily', streakCount: 12, streakDate: yesterday(), priorBestStreak: 5,
+        });
+        useTaskStore.setState({ tasks: [task] });
+        useTaskStore.getState().completeTask(task.id);
+        const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
+        expect(completed?.streakCount).toBe(13);
+        expect(completed?.priorBestStreak).toBe(5);
+      });
+
+      it('takes the run that ended when a missed day restarts it', () => {
+        const task = makeTask({
+          recurrenceType: 'daily', streakCount: 12, streakDate: twoDaysAgo(), priorBestStreak: 5,
+        });
+        useTaskStore.setState({ tasks: [task] });
+        useTaskStore.getState().completeTask(task.id);
+        const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
+        expect(completed?.streakCount).toBe(1);
+        expect(completed?.priorBestStreak).toBe(12);
+      });
+
+      it('keeps the older record when the run that ended was shorter', () => {
+        const task = makeTask({
+          recurrenceType: 'daily', streakCount: 3, streakDate: twoDaysAgo(), priorBestStreak: 20,
+        });
+        useTaskStore.setState({ tasks: [task] });
+        useTaskStore.getState().completeTask(task.id);
+        expect(useTaskStore.getState().tasks.find(t => t.id === task.id)?.priorBestStreak).toBe(20);
+      });
+
+      it('takes the run a miss breaks', () => {
+        const task = makeTask({
+          recurrenceType: 'daily', streakCount: 12, streakDate: yesterday(), priorBestStreak: 5,
+        });
+        useTaskStore.setState({ tasks: [task] });
+        useTaskStore.getState().completeTask(task.id, { missed: true });
+        const completed = useTaskStore.getState().tasks.find(t => t.id === task.id);
+        expect(completed?.streakCount).toBe(0);
+        expect(completed?.priorBestStreak).toBe(12);
+      });
+
+      // The record belongs to the task, and every occurrence is a fresh row,
+      // so it has to ride forward exactly as streakCount does.
+      it('rides onto the successor occurrence', () => {
+        const task = makeTask({
+          recurrenceType: 'daily', streakCount: 12, streakDate: yesterday(), priorBestStreak: 30,
+        });
+        useTaskStore.setState({ tasks: [task] });
+        useTaskStore.getState().completeTask(task.id);
+        const successor = useTaskStore.getState().tasks.find(t => t.id !== task.id && !t.completed);
+        expect(successor?.priorBestStreak).toBe(30);
+      });
+
+      // The crossing itself, at store level: the completion that overtakes the
+      // record must not also raise it, or the next one would overtake it again.
+      // (That the whole run stays lit afterwards is pinned in
+      // streakRecord.test.ts, where it needs no scheduling to reproduce.)
+      it('does not raise the record on the completion that overtakes it', () => {
+        const task = makeTask({
+          recurrenceType: 'daily', streakCount: 34, streakDate: yesterday(), priorBestStreak: 34,
+        });
+        useTaskStore.setState({ tasks: [task] });
+        useTaskStore.getState().completeTask(task.id);
+        const live = useTaskStore.getState().tasks.find(t => t.id !== task.id && !t.completed)!;
+        expect(live.streakCount).toBe(35);
+        expect(live.priorBestStreak).toBe(34);
+        expect(isStreakAtRecord(live)).toBe(true);
+      });
     });
 
     // #1255: a task opted into streakRequiresWindow. System time throughout

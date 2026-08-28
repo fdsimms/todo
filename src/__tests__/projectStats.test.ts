@@ -45,7 +45,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   progressCount: 0, tags: [], category: null, sortOrder: 1, pinned: false, pinnedOrder: 0,
   postponeCount: 0, postponeMuted: false, driftingSince: null, priority: 0, effort: 0,
   estimatedMinutes: null, streakCount: 0, streakDate: null, previousStreakCount: 0,
-  previousStreakDate: null, showStreak: false, streakRequiresWindow: false, parentId: null,
+  previousStreakDate: null, priorBestStreak: 0, showStreak: false, streakRequiresWindow: false, parentId: null,
   groupId: null, projectId: null, reminderTime: null, reminderKind: 'notification',
   reminderOffsetDays: null, chainEnabled: false, chainIndex: 0, chainItems: [],
   chainStepOnSchedule: false, extraTaskEveryN: null, extraTaskTitle: null, extraTaskDraft: null,

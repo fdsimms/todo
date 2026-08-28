@@ -1178,6 +1178,12 @@ export function initDatabase(): void {
     'ALTER TABLE people ADD COLUMN reach_out_offer_declined_at TEXT',
     // A physical place the task is about — see Task.location in types/index.ts.
     'ALTER TABLE tasks ADD COLUMN location TEXT',
+    // 0 for every existing row, and there is no better backfill available: a
+    // task's past runs aren't recoverable from the tombstones (retention
+    // purges them, and a run is a gap calculation rather than a count). 0
+    // reads as "no record set yet", so an install upgrading into this column
+    // starts measuring from whatever run it is on. See Task.priorBestStreak.
+    'ALTER TABLE tasks ADD COLUMN prior_best_streak INTEGER NOT NULL DEFAULT 0',
     // Same mechanism as tasks/categories/projects/people.backfill_dismissed_fields
     // above, for the Backfill screen's item pool (variety, substitutes). Empty
     // on every existing row, which reads as "nothing dismissed yet" — the only
@@ -2061,6 +2067,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     seriesMonthDays: JSON.parse((row.series_month_days as string) ?? '[]') as number[],
     seriesRepeatMonths: (row.series_repeat_months as number) ?? 1,
     previousStreakCount: (row.previous_streak_count as number) ?? 0,
+    priorBestStreak: (row.prior_best_streak as number) ?? 0,
     previousStreakDate: (row.previous_streak_date as string) ?? null,
     showStreak: Boolean(row.show_streak),
     streakRequiresWindow: Boolean(row.streak_requires_window),
@@ -2112,8 +2119,9 @@ export function dbInsertTask(task: Task): void {
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
-      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, location
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, location,
+      prior_best_streak
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2180,6 +2188,7 @@ export function dbInsertTask(task: Task): void {
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
       task.location ?? null,
+      task.priorBestStreak,
     ]
   );
 }
@@ -2205,7 +2214,8 @@ export function dbUpdateTask(task: Task): void {
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
-      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, location=?
+      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, location=?,
+      prior_best_streak=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2273,6 +2283,7 @@ export function dbUpdateTask(task: Task): void {
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
       task.location ?? null,
+      task.priorBestStreak,
       task.id,
     ]
   );

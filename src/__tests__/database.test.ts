@@ -215,6 +215,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   streakDate: null,
   previousStreakCount: 0,
   previousStreakDate: null,
+  priorBestStreak: 0,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -856,6 +857,14 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     const [t] = dbGetAllTasks();
     expect(t.previousStreakCount).toBe(4);
     expect(t.previousStreakDate).toBe('2025-06-09T00:00:00.000Z');
+  });
+
+  it('round-trips priorBestStreak', () => {
+    dbInsertTask(makeTask({ id: 'record', streakCount: 12, priorBestStreak: 34 }));
+    const [t] = dbGetAllTasks();
+    expect(t.priorBestStreak).toBe(34);
+    dbUpdateTask({ ...t, priorBestStreak: 40 });
+    expect(dbGetAllTasks()[0].priorBestStreak).toBe(40);
   });
 
   it('round-trips showStreak', () => {
