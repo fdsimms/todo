@@ -6,6 +6,7 @@ import {
   generatedSourceOf,
   generatedTaskCountOf,
   hasAnyGeneratedTask,
+  isNoticeTask,
   isUseUpKind,
   liveGeneratedTask,
   liveGeneratedTasksOfKind,
@@ -211,6 +212,28 @@ describe('generatedBy', () => {
   });
 });
 
+describe('isNoticeTask', () => {
+  it('is true for the two kinds that ask about a day rather than being work', () => {
+    expect(isNoticeTask(from('calendarReview', '2026-08-29'))).toBe(true);
+    expect(isNoticeTask(from('mealPlanNudge', '2026-08-31'))).toBe(true);
+  });
+
+  it('is false for a generated task that is a real piece of work', () => {
+    // Being written by the app is not what makes a row a notice — a pantry
+    // review deferred to Saturday is that generator working as designed, and
+    // "put on sunscreen" is an ordinary task with an unusual author.
+    expect(isNoticeTask(from('pantryReview', '2026-08-29'))).toBe(false);
+    expect(isNoticeTask(from('weather', '2026-08-29:rule-1'))).toBe(false);
+    expect(isNoticeTask(from('groceryUseUp', 'item-1'))).toBe(false);
+    expect(isNoticeTask(from('projectReview', 'project-1'))).toBe(false);
+    expect(isNoticeTask(from('birthdayGift', 'person-1'))).toBe(false);
+  });
+
+  it('is false for a task nobody generated', () => {
+    expect(isNoticeTask(task())).toBe(false);
+  });
+});
+
 describe('isUseUpKind', () => {
   it('is true for the two use-up generators only', () => {
     expect(isUseUpKind('groceryUseUp')).toBe(true);
@@ -308,6 +331,17 @@ describe('the registry', () => {
     // top of Today however the other three were filed.
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).map(s => s.kind))
       .toEqual(['mealSlot', 'groceryUseUp', 'pantryCheck', 'pantryReview', 'leftoverUseUp', 'mealPlanNudge', 'mealShortfall', 'projectReview', 'birthday', 'birthdayGift', 'reachOut', 'weather']);
+  });
+
+  it('marks exactly the two day-shaped questions as notices', () => {
+    // A notice is a row with nothing to decide about it: it says what it is
+    // about, you tick it, and that is the whole interaction (see
+    // GeneratedKindSpec.notice). Both of these are day-keyed with a title that
+    // never varies, and neither has anything a reschedule could mean.
+    expect(GENERATED_KIND_LIST.filter(s => s.notice).map(s => s.kind))
+      .toEqual(['mealPlanNudge', 'calendarReview']);
+    // The retired kind answers too, since a legacy row still carries it.
+    expect(GENERATED_KIND_SPECS.mealCook.notice).toBe(false);
   });
 
   it('shares one default category between planning the week and cooking it', () => {
