@@ -23,8 +23,11 @@ import { PANTRY_CHECK_GRACE_DAYS } from './pantryCheckTasks';
  * it writes nothing the two pantry pills could not already write. "Computed
  * first, corrected second" is the rule; this is the second half, in bulk.
  *
- * Three things keep it from turning back into the inventory it must not be:
+ * Four things keep it from turning back into the inventory it must not be:
  *
+ * - **An answer stands.** `PANTRY_REVIEW_QUIET_DAYS` keeps a row that has just
+ *   been answered out of the next deck, because none of the three answers takes
+ *   the row out of the qualifying set by itself.
  * - **The deck ends.** `MAX_PANTRY_REVIEW_CARDS` bounds it and
  *   `PANTRY_CHECK_GRACE_DAYS` bounds what qualifies at all. Without the second
  *   one the qualifying set is most of the catalog, back to the first trip ever
@@ -59,6 +62,44 @@ export type PantryReviewAnswer = 'have' | 'low' | 'out';
  * is what the app was least unsure about.
  */
 export const MAX_PANTRY_REVIEW_CARDS = 20;
+
+/**
+ * How long an answer stands before the same row is worth a card again.
+ *
+ * **Every answer this deck writes leaves the row still qualifying for it**, and
+ * that was the hole. "Still have it" renews `onHandUntil` and "Running low"
+ * sets `runningLowAt`; both make the row `asserted`, which is a tier the deck
+ * cards on purpose (asked last, but asked). So a pass answered on Tuesday
+ * evening dealt itself back the same twenty cards on Tuesday night, with the
+ * answers as the reason they qualified. Only "Out of it" left, and only because
+ * the sentinel excludes it.
+ *
+ * A week, which is comfortably more than the day an answer obviously has to
+ * survive and less than the fortnight `PANTRY_CHECK_GRACE_DAYS` keeps a lapse
+ * interesting for. The deck is a thing you open now and then rather than daily,
+ * so the window that matters is "not the same cupboard twice in one shop".
+ *
+ * Plain elapsed days rather than logical ones, the same reading every pantry
+ * window takes: how long ago the user said it is a real duration, not a
+ * position in their day.
+ */
+export const PANTRY_REVIEW_QUIET_DAYS = 7;
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Whether an answer already given about this row is still standing.
+ *
+ * An unparseable or missing stamp reads as "nothing said", which is the
+ * generous direction: the worst it costs is one card the user has seen before,
+ * where the other way round loses a row from the deck for good.
+ */
+function answerStillStands(item: GroceryItem, now: Date): boolean {
+  if (!item.pantryReviewedAt) return false;
+  const at = new Date(item.pantryReviewedAt).getTime();
+  if (Number.isNaN(at)) return false;
+  return (now.getTime() - at) / DAY_MS < PANTRY_REVIEW_QUIET_DAYS;
+}
 
 /**
  * How sure the app currently is about one row, worst first. The deck's sort
@@ -105,7 +146,7 @@ export interface PantryReviewDeck {
 /**
  * Every row worth asking about, worst doubt first.
  *
- * Three exclusions, each of which would otherwise put a card in the deck that
+ * Four exclusions, each of which would otherwise put a card in the deck that
  * has no honest answer:
  *
  * - **Staples.** "Always have it" is a standing fact rather than a guess, and
@@ -113,6 +154,9 @@ export interface PantryReviewDeck {
  *   same line for the same reason.
  * - **Rows already marked "Out of it".** The question has been answered; asking
  *   again is the drip's `pantryCheckDeclinedAt` problem in card form.
+ * - **Rows answered recently.** The three answers all leave the row qualifying
+ *   for the deck, so without `PANTRY_REVIEW_QUIET_DAYS` a pass reopened after
+ *   it finished dealt the same cards back — see that constant.
  * - **Rows only a box vouches for.** The three answers write the *item's*
  *   columns, and an item on hand solely because one packet is in the freezer is
  *   a claim about that packet — see `ItemProduct`'s four pantry columns. Saying
@@ -130,6 +174,7 @@ export function buildPantryReviewDeck(
   for (const item of items) {
     if (item.isStaple) continue;
     if (item.onHandUntil === OUT_OF_IT_UNTIL) continue;
+    if (answerStillStands(item, now)) continue;
 
     // The item's own claim, deliberately read without its boxes. A row a box
     // answers for is skipped below rather than carded, so the products are

@@ -1187,6 +1187,10 @@ export function initDatabase(): void {
     // Task.quotaAlwaysVisible. 0 on every existing row: a quota task has
     // always hidden while on pace, and this column only ever turns that off.
     'ALTER TABLE tasks ADD COLUMN quota_always_visible INTEGER NOT NULL DEFAULT 0',
+    // NULL on every existing row — the review deck has never answered for one,
+    // which is exactly what "no answer to keep quiet" means for this column.
+    // See GroceryItem.pantryReviewedAt.
+    'ALTER TABLE grocery_items ADD COLUMN pantry_reviewed_at TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2777,6 +2781,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
       ? null
       : Boolean(row.use_up_task),
     pantryCheckDeclinedAt: (row.pantry_check_declined_at as string) ?? null,
+    pantryReviewedAt: (row.pantry_reviewed_at as string) ?? null,
     // `?? 0` covers a row read before the migration landed, which is the same
     // reading as the column default: nobody has answered for it yet.
     usedUpCount: (row.used_up_count as number) ?? 0,
@@ -2801,10 +2806,10 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       (id, name, name_key, aisle, quantity, quantity_from_recipe, note, on_list, checked, in_catalog, sort_order,
        purchase_count, last_added_at, last_purchased_at, created_at, on_hand_until,
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
-       pantry_check_declined_at, used_up_count, spoiled_count, last_spoiled_at,
+       pantry_check_declined_at, pantry_reviewed_at, used_up_count, spoiled_count, last_spoiled_at,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key,
        backfill_dismissed_fields)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -2815,7 +2820,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
       item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
-      item.pantryCheckDeclinedAt ?? null,
+      item.pantryCheckDeclinedAt ?? null, item.pantryReviewedAt ?? null,
       item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,
@@ -2831,7 +2836,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        sort_order=?, purchase_count=?, last_added_at=?, last_purchased_at=?,
        on_hand_until=?, source_recipe_id=?, source_recipe_title=?, choice_group=?, is_staple=?,
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
-       pantry_check_declined_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
+       pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
        preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?
      WHERE id=?`,
@@ -2845,7 +2850,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.choiceGroup ?? null, item.isStaple ? 1 : 0,
       item.expiresAt ?? null, item.frozenAt ?? null, item.openedAt ?? null, item.runningLowAt ?? null, item.shelfLifeDays ?? null,
       item.useUpTask === null || item.useUpTask === undefined ? null : item.useUpTask ? 1 : 0,
-      item.pantryCheckDeclinedAt ?? null,
+      item.pantryCheckDeclinedAt ?? null, item.pantryReviewedAt ?? null,
       item.usedUpCount, item.spoiledCount, item.lastSpoiledAt ?? null,
       item.lastPriceMinor ?? null, item.lastPricedAt ?? null, item.lastPriceQuantity ?? null,
       item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,

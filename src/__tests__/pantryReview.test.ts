@@ -1,5 +1,6 @@
 import {
   MAX_PANTRY_REVIEW_CARDS,
+  PANTRY_REVIEW_QUIET_DAYS,
   buildPantryReviewDeck,
   describeLastPurchase,
   describePantryDoubt,
@@ -20,6 +21,10 @@ const NOW = new Date('2026-08-22T12:00:00.000Z');
 
 function daysAgo(n: number): string {
   return new Date(NOW.getTime() - n * 86_400_000).toISOString();
+}
+
+function daysFromNow(n: number): string {
+  return daysAgo(-n);
 }
 
 let seq = 0;
@@ -55,6 +60,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
     shelfLifeDays: null,
     useUpTask: null,
     pantryCheckDeclinedAt: null,
+    pantryReviewedAt: null,
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
@@ -142,6 +148,51 @@ describe('buildPantryReviewDeck', () => {
     const item = makeItem({ name: 'Chicken' });
     const deck = buildPantryReviewDeck([item], NOW, [makeProduct({ itemId: item.id })]);
     expect(names(deck)).toEqual(['Chicken']);
+  });
+
+  it('never cards a row answered inside the quiet window', () => {
+    // The bug this window exists for: "Still have it" renews onHandUntil,
+    // which leaves the row asserted rather than absent — so a deck reopened
+    // after a pass dealt the same cards straight back, with the answers as the
+    // reason they qualified.
+    const deck = buildPantryReviewDeck(
+      [makeItem({
+        name: 'Flour',
+        onHandUntil: daysFromNow(100),
+        pantryReviewedAt: daysAgo(PANTRY_REVIEW_QUIET_DAYS - 1),
+      })],
+      NOW
+    );
+    expect(deck.cards).toEqual([]);
+  });
+
+  it('cards it again once the answer has gone quiet', () => {
+    const deck = buildPantryReviewDeck(
+      [makeItem({
+        name: 'Flour',
+        onHandUntil: daysFromNow(100),
+        pantryReviewedAt: daysAgo(PANTRY_REVIEW_QUIET_DAYS + 1),
+      })],
+      NOW
+    );
+    expect(names(deck)).toEqual(['Flour']);
+  });
+
+  it('keeps a "running low" answer quiet too, not just a renewed window', () => {
+    // The other answer that leaves the row qualifying: runningLowAt is an
+    // assertion, and asserted is a tier the deck cards.
+    const deck = buildPantryReviewDeck(
+      [makeItem({ name: 'Flour', runningLowAt: daysAgo(0), pantryReviewedAt: daysAgo(0) })],
+      NOW
+    );
+    expect(deck.cards).toEqual([]);
+  });
+
+  it('cards a row whose stamp is unreadable', () => {
+    // Generous on purpose: the worst a bad stamp costs is one card the user
+    // has seen before, where the other reading loses the row for good.
+    const deck = buildPantryReviewDeck([makeItem({ name: 'Flour', pantryReviewedAt: 'nonsense' })], NOW);
+    expect(names(deck)).toEqual(['Flour']);
   });
 });
 

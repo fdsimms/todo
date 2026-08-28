@@ -351,14 +351,14 @@ exports.
 them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (6.9k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (4.8k),
-`store/useGroceryStore.ts` (4.7k), `screens/TodayScreen.tsx` (4.2k), `types/index.ts` (4.1k),
+`store/useGroceryStore.ts` (4.7k), `screens/TodayScreen.tsx` (4.3k), `types/index.ts` (4.1k),
 `components/TaskItem.tsx` (3.9k), `components/QuickAddModal.tsx` (2.9k),
 `store/useSettingsStore.ts` (2.8k), `utils/demoSeed.ts` (2.7k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **237 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **238 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
