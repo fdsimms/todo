@@ -2299,6 +2299,32 @@ export interface GroceryItem {
    */
   pantryCheckDeclinedAt: string | null;
   /**
+   * When the pantry review deck (`src/utils/pantryReview.ts`) last got an
+   * answer about this row, or null if it never has.
+   *
+   * **The answer already writes a column, so this exists only to stop the deck
+   * asking again the next time it opens.** "Still have it" renews
+   * `onHandUntil` and "Running low" sets `runningLowAt`, and both of those make
+   * the row *asserted* rather than absent — which is a tier the deck
+   * deliberately still cards (the app has been told, so it asks last, but it
+   * does ask). Reopening the deck an hour later therefore dealt the same
+   * twenty cards back, with the pass that had just answered them as the reason
+   * they qualified.
+   *
+   * **A stamp rather than a flag, and read against the clock rather than
+   * against a purchase.** Unlike `pantryCheckDeclinedAt` there is no one
+   * purchase this is spent against: a review answer is about the cupboard as it
+   * stands, not about one till receipt losing credibility, and "out of it" is
+   * the only answer that takes a row out of the deck for good (by the sentinel,
+   * not by this). So it lapses on plain elapsed days —
+   * `PANTRY_REVIEW_QUIET_DAYS` — after which the row is a fair question again.
+   *
+   * Nothing else reads it, and nothing clears it on a purchase: a stamp older
+   * than the quiet window is already spent, so there is no second place to keep
+   * in step.
+   */
+  pantryReviewedAt: string | null;
+  /**
    * How many times the user has said they finished this, and how many times
    * they've said it went bad — the two ways a thing leaves the pantry, counted.
    *
