@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import { Platform, View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import type { Person } from '../types';
 import { TITLE_MAX_LENGTH } from '../types';
@@ -8,6 +8,7 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { PersonGroupEditor } from './PersonGroupEditor';
 import { BirthdayPicker } from './BirthdayPicker';
 import { SheetHeaderButton } from './SheetHeaderButton';
+import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { EditorRow } from './EditorRow';
 import { EditorSheet } from './EditorSheet';
 import { useColors } from '../theme/ThemeContext';
@@ -227,6 +228,10 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
             person={person}
             onClose={() => setShowGroupEditor(false)}
           />
+          {/* For the phone row below. Unlike the task editor's phone field
+              there's no checkmark beside it to commit against, so without
+              this the iOS phone pad has nothing at all to dismiss it. */}
+          <NumberPadAccessory />
         </>
       }
     >
@@ -398,6 +403,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
             placeholder="e.g. 555 123 4567"
             placeholderTextColor={colors.textTertiary}
             keyboardType="phone-pad"
+            inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
           />
         </View>
         <View style={styles.sep} />

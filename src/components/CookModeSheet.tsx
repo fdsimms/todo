@@ -13,6 +13,7 @@ import { DetailHeader } from './DetailHeader';
 import { EmptyState } from './EmptyState';
 import { ProgressBar } from './ProgressBar';
 import { RecipeTimerRow } from './RecipeTimerRow';
+import { NumberPadAccessory } from './NumberPadAccessory';
 import { StepTimerRow } from './StepTimerRow';
 import { InlineAction } from './InlineAction';
 import { useColors } from '../theme/ThemeContext';
@@ -383,6 +384,11 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
             </View>
           )}
         </View>
+        {/* For the cook timer's "or log a time" field. Its own rather than the
+            recipe screen's underneath: a Modal is a separate window, and an
+            accessory bar can only attach to a keyboard in the window it was
+            mounted in. */}
+        <NumberPadAccessory />
       </View>
     </Modal>
   );

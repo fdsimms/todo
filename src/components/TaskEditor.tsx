@@ -4277,8 +4277,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   placeholderTextColor={colors.textTertiary}
                   // No return key on the iOS phone pad, so blur is still the
                   // path that saves — the checkmark below is what makes that
-                  // visible instead of implicit.
+                  // visible instead of implicit. The accessory bar is the
+                  // other half: the checkmark commits, Done puts the keypad
+                  // away, and neither is the only way out of the field.
                   keyboardType="phone-pad"
+                  inputAccessoryViewID={Platform.OS === 'ios' ? NUMBER_PAD_ACCESSORY_ID : undefined}
                   autoCorrect={false}
                   spellCheck={false}
                   autoFocus

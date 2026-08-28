@@ -58,6 +58,7 @@ import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { useStepTimers } from '../hooks/useStepTimers';
 import { RecipeTimerRow } from '../components/RecipeTimerRow';
+import { NumberPadAccessory } from '../components/NumberPadAccessory';
 import { CookModeSheet } from '../components/CookModeSheet';
 import { cookSteps } from '../utils/cookMode';
 import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
@@ -1867,6 +1868,12 @@ export function RecipeDetailScreen() {
           addComponent(recipe.id, component.id);
         }}
       />
+
+      {/* For the "or log a time" field on the prep and cook timer rows, which
+          ask for this bar by nativeID and until now had nothing on this screen
+          answering. Cook mode mounts its own for its copy of the row; both
+          being mounted at once is fine (see NumberPadAccessory). */}
+      <NumberPadAccessory />
     </View>
   );
 }
