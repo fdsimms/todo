@@ -491,9 +491,9 @@ export function quotaExpectedByNow(task: Task): number {
   const { start, end } = getQuotaSpan(task);
   const now = new Date();
   if (now <= start) return 0;
-  // end <= start means active hours are set to a span that doesn't resolve on
-  // one logical day (e.g. crossing midnight) — treat the whole day as past due
-  // rather than dividing by zero below.
+  // end <= start can only mean a zero-length or negative window slipped
+  // through quotaRunSpan (which resolves an overnight span into the next
+  // calendar day) — a dividing-by-zero guard, not a real schedule.
   if (now >= end || end <= start) return target;
   return Math.min(target, Math.ceil((target * (+now - +start)) / (+end - +start)));
 }

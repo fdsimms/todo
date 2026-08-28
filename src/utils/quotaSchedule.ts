@@ -69,7 +69,16 @@ export function quotaRunSpan(input: QuotaSpanInput): QuotaSpan {
   } = input;
 
   const scheduledStart = onDay(dayStart, windowStart ?? activeHoursStart);
-  const end = onDay(dayStart, windowEnd ?? activeHoursEnd);
+  let end = onDay(dayStart, windowEnd ?? activeHoursEnd);
+  // A close time at or before the start doesn't mean the run is already shut
+  // for the day — "22:00–06:00" (active hours set for a night owl) reads as a
+  // span that runs into the small hours of the *next* calendar day, the same
+  // resolution categoryWindowEnd gives an overnight category schedule. Without
+  // this, quotaExpectedByNow's own end-doesn't-resolve guard read it as
+  // already closed and owed the whole target the instant the day started.
+  if (end <= scheduledStart) {
+    end.setDate(end.getDate() + 1);
+  }
 
   const started = quotaStartedAt ? new Date(quotaStartedAt) : null;
   // Only today's stamp counts, and only one that actually falls inside the
