@@ -1,4 +1,5 @@
 import { useTaskStore } from '../store/useTaskStore';
+import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
 import { isMissed, isRealCompletion } from '../utils/missed';
 import { isTaskNew } from '../utils/visibilityUtils';
 import { derivedId, spawnSeed } from '../utils/syncIds';
@@ -413,7 +414,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   (dbGetAllTasks as jest.Mock).mockReturnValue([]);
   useTaskStore.setState({
-    tasks: [], initialized: false, lastAction: null,
+    tasks: [], initialized: false, lastAction: null, undoStack: [], redoStack: [],
     completionHoldIds: [], completionCollapseIds: [], quotaHoldIds: [],
   });
   useTaskGroupStore.setState({ groups: [], initialized: false });
@@ -12319,5 +12320,218 @@ describe('bulkRemoveFromProject', () => {
     useTaskStore.setState({ lastAction: null });
     useTaskStore.getState().bulkRemoveFromProject(['a', 'missing']);
     expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+});
+
+// ─── Multi-level undo and redo ───────────────────────────────────────────────
+//
+// The store used to hold one undo slot, so every case here was previously
+// unrepresentable: undoing twice, going forward again, and the two ways a
+// stack can be left holding entries that no longer describe the database.
+
+describe('undo/redo history', () => {
+  const seedTasks = (...tasks: Task[]) => {
+    useTaskStore.setState({ tasks, undoStack: [], redoStack: [], lastAction: null });
+  };
+
+  it('walks back through several actions one at a time', () => {
+    seedTasks(makeTask({ id: 'a', title: 'Alpha' }), makeTask({ id: 'b', title: 'Beta' }));
+
+    useTaskStore.getState().deleteTask('a');
+    useTaskStore.getState().deleteTask('b');
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['b']);
+
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['a', 'b']);
+    expect(useTaskStore.getState().lastAction).toBeNull();
+  });
+
+  it('mirrors the top of the stack onto lastAction as it drains', () => {
+    seedTasks(makeTask({ id: 'a' }), makeTask({ id: 'b' }));
+    useTaskStore.getState().deleteTask('a');
+    useTaskStore.getState().bulkDeleteTasks(['b']);
+
+    expect(useTaskStore.getState().lastAction?.label).toBe('1 task deleted');
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().lastAction?.label).toBe('Task deleted');
+  });
+
+  it('redoes an undone delete, and puts it back on the undo stack', () => {
+    seedTasks(makeTask({ id: 'a', title: 'Alpha' }));
+
+    useTaskStore.getState().deleteTask('a');
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks).toHaveLength(1);
+
+    useTaskStore.getState().redoLastUndone();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+    expect(useTaskStore.getState().lastAction?.label).toBe('Task deleted');
+
+    // And is undoable again, off the entry the redo just filed.
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['a']);
+  });
+
+  it('walks forward through several undos in the order they were undone', () => {
+    seedTasks(makeTask({ id: 'a' }), makeTask({ id: 'b' }));
+    useTaskStore.getState().deleteTask('a');
+    useTaskStore.getState().deleteTask('b');
+    useTaskStore.getState().undoLastAction();
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks).toHaveLength(2);
+
+    useTaskStore.getState().redoLastUndone();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['b']);
+    useTaskStore.getState().redoLastUndone();
+    expect(useTaskStore.getState().tasks).toHaveLength(0);
+  });
+
+  it('is a no-op with nothing to redo', () => {
+    seedTasks(makeTask({ id: 'a' }));
+    expect(() => useTaskStore.getState().redoLastUndone()).not.toThrow();
+    expect(useTaskStore.getState().tasks).toHaveLength(1);
+  });
+
+  it('discards the redo branch once a new action is taken', () => {
+    seedTasks(makeTask({ id: 'a' }), makeTask({ id: 'b' }));
+    useTaskStore.getState().deleteTask('a');
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().redoStack).toHaveLength(1);
+
+    useTaskStore.getState().deleteTask('b');
+    expect(useTaskStore.getState().redoStack).toHaveLength(0);
+  });
+
+  // An action with no redo closure can't be walked back across, so offering to
+  // redo whatever sat under it would replay the history out of order.
+  it('drops the redo branch when the undone action has no way forward', () => {
+    seedTasks(makeTask({ id: 'a' }));
+    useTaskStore.getState().deleteTask('a');
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().redoStack).toHaveLength(1);
+
+    useTaskStore.getState().setLastAction({ label: 'One way only', undo: () => {} });
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().redoStack).toHaveLength(0);
+  });
+
+  // The undo closures reach public store actions to do their work, and those
+  // actions register undo entries of their own. Without the replay guard the
+  // stack would refill as fast as it drained.
+  it('registers nothing while an undo closure is running', () => {
+    seedTasks(makeTask({ id: 'a', archived: false }));
+    useTaskStore.getState().archiveTask('a');
+    expect(useTaskStore.getState().undoStack).toHaveLength(1);
+
+    // archiveTask's undo goes through updateTask, which registers on its own.
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().undoStack).toHaveLength(0);
+    expect(useTaskStore.getState().tasks[0].archived).toBe(false);
+  });
+
+  // One entry per batch, however many child actions it was built from —
+  // otherwise undoing the batch strands its children underneath it, each still
+  // offering to undo what the batch already put back.
+  it('files one entry for a batch built out of other actions', () => {
+    seedTasks(
+      makeTask({ id: 'a', completed: true, completedAt: new Date().toISOString() }),
+      makeTask({ id: 'b', completed: true, completedAt: new Date().toISOString() }),
+    );
+
+    useTaskStore.getState().bulkUncompleteTasks(['a', 'b']);
+    expect(useTaskStore.getState().undoStack).toHaveLength(1);
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 tasks uncompleted');
+
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().undoStack).toHaveLength(0);
+    expect(useTaskStore.getState().tasks.every(t => t.completed)).toBe(true);
+  });
+
+  it('files one entry when a stack delete cascades to its tasks', () => {
+    useTaskGroupStore.setState({
+      groups: [{ id: 'g1', title: 'Morning', category: null, sortOrder: 1, completedAt: null }] as never,
+      initialized: true,
+    });
+    seedTasks(makeTask({ id: 'a', groupId: 'g1' }), makeTask({ id: 'b', groupId: 'g1' }));
+
+    useTaskStore.getState().deleteGroup('g1', { cascade: true });
+    expect(useTaskStore.getState().undoStack).toHaveLength(1);
+
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.map(t => t.id).sort()).toEqual(['a', 'b']);
+    expect(useTaskStore.getState().undoStack).toHaveLength(0);
+  });
+
+  // A redo re-performs the action, so the rows it lands on are the ones it
+  // just built, not the ones the first run did. The entry that goes back on
+  // the undo stack is therefore the closure the redo registered, not the one
+  // we were holding. Successor ids happen to be derived here (see syncIds), so
+  // this particular action would survive the stale closure; the rule is about
+  // not depending on that.
+  it('keeps the closure the redo registered, not the one it was holding', () => {
+    seedTasks(makeTask({
+      id: 'r1',
+      title: 'Water plants',
+      recurrenceType: 'daily',
+      dueDate: new Date().toISOString(),
+    }));
+
+    useTaskStore.getState().completeTask('r1');
+    const originalUndo = useTaskStore.getState().lastAction!.undo;
+
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['r1']);
+
+    useTaskStore.getState().redoLastUndone();
+    expect(useTaskStore.getState().lastAction!.undo).not.toBe(originalUndo);
+    expect(useTaskStore.getState().lastAction!.label).toBe('Task completed');
+
+    // And it still walks all the way back, with no successor left orphaned.
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual(['r1']);
+    expect(useTaskStore.getState().tasks[0].completed).toBe(false);
+  });
+
+  it('keeps the label of the entry the user redid, not the one the action files', () => {
+    seedTasks(
+      makeTask({ id: 'a', completed: true, completedAt: new Date().toISOString() }),
+      makeTask({ id: 'b', completed: true, completedAt: new Date().toISOString() }),
+    );
+    (dbGetAllTasks as jest.Mock).mockReturnValue([]);
+
+    useTaskStore.getState().clearLogbook();
+    expect(useTaskStore.getState().lastAction?.label).toBe('Logbook cleared');
+
+    useTaskStore.getState().undoLastAction();
+    useTaskStore.getState().redoLastUndone();
+    // clearLogbook files its own delete as "N tasks deleted"; the entry the
+    // user is walking through is still the clear.
+    expect(useTaskStore.getState().lastAction?.label).toBe('Logbook cleared');
+    expect(useTaskStore.getState().undoStack).toHaveLength(1);
+  });
+
+  it('stops growing at the stack limit, keeping the most recent steps', () => {
+    seedTasks(...Array.from({ length: UNDO_STACK_LIMIT + 4 }, (_, i) => makeTask({ id: `t${i}` })));
+    for (let i = 0; i < UNDO_STACK_LIMIT + 4; i++) useTaskStore.getState().deleteTask(`t${i}`);
+
+    expect(useTaskStore.getState().undoStack).toHaveLength(UNDO_STACK_LIMIT);
+    useTaskStore.getState().undoLastAction();
+    expect(useTaskStore.getState().tasks.map(t => t.id)).toEqual([`t${UNDO_STACK_LIMIT + 3}`]);
+  });
+
+  // setLastAction(null) is how a store says "there is nothing safe to undo
+  // here", and that covers the steps underneath it too.
+  it('clears the whole history when an action refuses to register one', () => {
+    seedTasks(makeTask({ id: 'a' }), makeTask({ id: 'b' }));
+    useTaskStore.getState().deleteTask('a');
+    useTaskStore.getState().deleteTask('b');
+    expect(useTaskStore.getState().undoStack).toHaveLength(2);
+
+    useTaskStore.getState().setLastAction(null);
+    expect(useTaskStore.getState().undoStack).toHaveLength(0);
+    expect(useTaskStore.getState().redoStack).toHaveLength(0);
   });
 });
