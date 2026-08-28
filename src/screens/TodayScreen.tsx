@@ -881,7 +881,14 @@ export function TodayScreen() {
   // going there straight away (destination === 'today', in handleTaskCreated)
   // and going there later from the created-task toast's "Go to it".
   const goToCreatedTask = (task: Task, destination: CreatedTaskDestination) => {
-    if (destination !== viewMode) setViewMode(destination);
+    if (destination !== viewMode) {
+      setViewMode(destination);
+      // A row left spotlighted on the view being switched away from has no
+      // match in the destination's rows, so the dimmed backdrop would stay
+      // up with nothing lit — same reset the view-mode pills do on a manual
+      // switch (see the pill row's onPress below).
+      setExpandedTaskId(null);
+    }
     if (destination === 'later') {
       // Later pages itself in behind a task budget (see laterTaskLimit) — jump
       // it straight to the settled size so the new row's section is actually
@@ -967,7 +974,10 @@ export function TodayScreen() {
     }
 
     if (destination === 'today') {
-      if (destination !== viewMode) setViewMode(destination);
+      if (destination !== viewMode) {
+        setViewMode(destination);
+        setExpandedTaskId(null);
+      }
       revealTaskInToday(task);
       flashTask(task.id);
       return;
