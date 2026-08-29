@@ -760,7 +760,7 @@ Today, Later, Unscheduled and Inbox are **not** separate screens — they're fou
   this has already shipped wrong (`CalendarPicker` under a decision task's date question, #1502)
   more than once, and each fix means finding and swapping a call site after the fact instead of
   writing it right the first time.
-- `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount.
+- `EmptyState` (`src/components/EmptyState.tsx`) — every empty list: tinted icon circle + title + subtitle + optional CTA, animates in on mount. **When rendering inside a `ScrollView`, the ScrollView must have `flex: 1` and its `contentContainerStyle` must use `flexGrow: 1`**, so the content container expands to fill available space and the centered view can actually center vertically. Without that, the empty state content sits at the top of the sheet — the flex:1 on the centered view has nothing to fill. See `EventImportSheet.tsx` for the pattern.
 - `PinIcon` (`src/components/PinIcon.tsx`) — the pin glyph everywhere pinning is shown or toggled
   (task row, bulk bar, editor's Pin row, category pin-all, Pinned Tasks header),
   and the **one** icon in the app that isn't an Ionicons name. Ionicons has no thumbtack: its `pin`
