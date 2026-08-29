@@ -386,6 +386,7 @@ export function EventImportSheet({ visible, onClose, onImported }: Props) {
         </View>
         <ScrollView
           ref={keyboardScroll.ref}
+          style={styles.scroll}
           contentContainerStyle={styles.body}
           keyboardShouldPersistTaps="handled"
           {...keyboardScroll.props}
@@ -412,7 +413,8 @@ function makeStyles(colors: Colors) {
     headerTitleWrap: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
     headerTitle: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
     headerSpacer: { minWidth: 64 },
-    body: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
+    scroll: { flex: 1 },
+    body: { flexGrow: 1, padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.md },
     loadingText: { color: colors.textSecondary, fontSize: font.md, textAlign: 'center' },
     intro: { color: colors.textTertiary, fontSize: font.sm, lineHeight: font.sm * 1.4 },
