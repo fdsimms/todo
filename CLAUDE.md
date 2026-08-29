@@ -61,10 +61,13 @@ an audience that isn't there. Anything worth remembering once the PR merges has 
 as a thing, not as a sentence: either fixed now, or filed as a real GitHub issue (apply the four
 labels from the scheme below same as any other issue).
 
-**Never file an issue without asking first.** Filing is a decision, same as fixing is, and it's
-the user's to make — issues pile up unread otherwise, and "I filed it so it's handled" is exactly
-the false comfort this rule exists to prevent. This holds even when filing feels like the obviously
-right call, and even for a follow-up you noticed yourself rather than one the user raised.
+**Never file an issue without asking first,** unless you explicitly ask and the user says yes (or
+gives a direct request like "File this" or "Create an issue about X"). Filing is a decision, same
+as fixing is, and it's the user's to make — issues pile up unread otherwise, and "I filed it so
+it's handled" is exactly the false comfort this rule exists to prevent. This holds even when filing
+feels like the obviously right call, and even for a follow-up you noticed yourself rather than one
+the user raised. When they ask directly, just create it and use reasonable defaults for the four
+labels (enhancement / area:app-wide / model:haiku / effort:low) unless they specify otherwise.
 
 When finishing a task turns up adjacent work you've decided not to do — a related surface, a
 follow-up feature, a design question you scoped out, a sharp edge you noticed along the way —
