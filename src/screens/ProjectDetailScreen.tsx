@@ -230,6 +230,13 @@ export function ProjectDetailScreen() {
   const completedProjectTasks = projectTasks
     .filter(t => t.completed)
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
+  // Clears the FAB under the last row, the same amount `detailFooter` below
+  // reserves — but only when that footer isn't already on screen to provide
+  // it. With completed tasks present, ListFooterComponent renders and carries
+  // its own bottom padding; stacking this on top of it would double the gap.
+  const baseListBottomPadding = completedProjectTasks.length === 0
+    ? insets.bottom + FAB_SIZE + spacing.lg
+    : undefined;
   // Same identity-grouped count the Projects list badges its quick-complete
   // action with — a recurring member never reads done here either. Memoized
   // because it filters the whole task list and walks a previousOccurrenceId
@@ -639,7 +646,13 @@ export function ProjectDetailScreen() {
             // none, it's top-only padding inside the flexGrow:1 box the empty
             // state centers in, which pushes that centering down off true
             // middle. Same reasoning as ListFooterComponent below.
-            contentContainerStyle={[{ flexGrow: 1 }, incompleteProjectTasks.length > 0 && { paddingTop: spacing.sm }, selectionListPadding !== undefined && { paddingBottom: selectionListPadding }]}
+            contentContainerStyle={[
+              { flexGrow: 1 },
+              incompleteProjectTasks.length > 0 && { paddingTop: spacing.sm },
+              selectionListPadding !== undefined
+                ? { paddingBottom: selectionListPadding }
+                : baseListBottomPadding !== undefined && { paddingBottom: baseListBottomPadding },
+            ]}
             onHoverChange={haptics.dragTick}
             // A stack hands over its own id, never its children's: it holds a
             // slot in this order itself (see buildProjectListItems), and its

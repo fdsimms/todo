@@ -1,4 +1,4 @@
 {
-  "message": "In a project's task list, the bulk selection bar no longer sits behind the Add button, and Stack is now a bulk action there too, for grouping selected tasks into a new stack",
+  "message": "In a project's task list, the bulk selection bar no longer sits behind the Add button, the last task no longer sits flush against the bottom of the screen, and Stack is now a bulk action there too, for grouping selected tasks into a new stack",
   "date": "2026-08-28"
 }
