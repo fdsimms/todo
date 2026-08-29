@@ -109,6 +109,7 @@ export function ProjectDetailScreen() {
   const bulkSetWhen = useTaskStore(s => s.bulkSetWhen);
   const bulkSetCategory = useTaskStore(s => s.bulkSetCategory);
   const bulkAddTags = useTaskStore(s => s.bulkAddTags);
+  const groupTasks = useTaskStore(s => s.groupTasks);
   const setDeliverableValue = useTaskStore(s => s.setDeliverableValue);
   const completeProject = useTaskStore(s => s.completeProject);
   const createTaskGroup = useTaskGroupStore(s => s.createGroup);
@@ -863,8 +864,6 @@ export function ProjectDetailScreen() {
         </View>
 
         {selectionMode && (
-          // No onGroup: stacks are a Today/Later concept, and BulkActionBar
-          // hides the action when the prop is absent.
           <BulkActionBar
             selectedCount={selectedIds.size}
             totalCount={selectableTasks.length}
@@ -876,6 +875,24 @@ export function ProjectDetailScreen() {
             onAddTags={tags => { bulkAddTags(Array.from(selectedIds), tags); exitSelection(); }}
             onSetPriority={p => { bulkSetPriority(Array.from(selectedIds), p); exitSelection(); }}
             onMarkMissed={() => { bulkMarkMissed(Array.from(selectedIds)); exitSelection(); }}
+            // Same majority-category rule TodayScreen's onGroup uses: the new
+            // stack takes the category its members most often already have,
+            // since groupTasks cascades that category onto every member.
+            onGroup={title => {
+              const ids = Array.from(selectedIds);
+              const tally = new Map<string | null, number>();
+              for (const id of ids) {
+                const c = allTasks.find(t => t.id === id)?.category ?? null;
+                tally.set(c, (tally.get(c) ?? 0) + 1);
+              }
+              let category: string | null = null;
+              let best = 0;
+              for (const [c, n] of tally) {
+                if (n > best) { best = n; category = c; }
+              }
+              groupTasks(ids, title, category);
+              exitSelection();
+            }}
             // The other half of "Add existing task", which this screen has had
             // its own picker for since the start while taking one back out was
             // reachable from nowhere on it (see BulkActionBar's own note).
@@ -950,12 +967,14 @@ export function ProjectDetailScreen() {
           </View>
         </Modal>
 
-        <FabMenu
-          items={addMenuItems}
-          onSelect={handleAddMenuSelect}
-          bottom={insets.bottom + spacing.xl}
-          accessibilityLabel="Add task to project"
-        />
+        {!selectionMode && (
+          <FabMenu
+            items={addMenuItems}
+            onSelect={handleAddMenuSelect}
+            bottom={insets.bottom + spacing.xl}
+            accessibilityLabel="Add task to project"
+          />
+        )}
 
         <TaskGroupEditor
           visible={groupEditorVisible}
