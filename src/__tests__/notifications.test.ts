@@ -78,6 +78,7 @@ import {
   getNotificationPermission,
   upcomingReminders,
   pendingReminderStats,
+  nonReminderSlots,
   MAX_PENDING_REMINDERS,
   scheduleDailyAgenda,
   cancelDailyAgenda,
@@ -1622,5 +1623,225 @@ describe('quotaNudgeTasks', () => {
       paced({ id: 'filed', archived: true }),
       paced({ id: 'plain', targetCount: null }),
     ])).toEqual([]);
+  });
+});
+
+// ─── nonReminderSlots ─────────────────────────────────────────────────────────
+
+// The 64-slot budget as a whole, rather than the two kinds of it that used to
+// be counted. Every case below was a slot the old arithmetic got wrong: either
+// reserved and never spent (a nudge that quiet hours drops, a run part-way
+// through its day, a task hidden for a vacation), or spent and never reserved
+// (timer alarms, the agenda, the trip reminder, event reminders — all four
+// scheduled *after* the reminders had already been given the whole cap).
+describe('nonReminderSlots', () => {
+  const paced = (overrides: Partial<Task> = {}): Task =>
+    makeTask({
+      id: 'eyes',
+      title: 'Look 20 feet away',
+      targetCount: 24,
+      quotaIntervalMinutes: 20,
+      quotaReminders: true,
+      windowStart: '09:00',
+      windowEnd: '17:00',
+      recurrenceType: 'daily',
+      ...overrides,
+    });
+
+  // 09:05 inside an 09:00–17:00 window: the grid is every 20 minutes, so the
+  // next six instants are 09:20 through 11:00.
+  const NOW = new Date(2026, 7, 26, 9, 5, 0);
+
+  // The clock is pinned rather than only passed in: a timer's remaining time
+  // and the fixtures built from `new Date()` (the agenda's due date, a trip's
+  // start) read the real one, so a floating clock would put them on a different
+  // day from the `now` under test.
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('charges a nudging run for the instants it will actually schedule', () => {
+    expect(nonReminderSlots([paced()], NOW).nudges).toBe(MAX_QUOTA_NUDGES_AHEAD);
+  });
+
+  it('charges only the instants that survive quiet hours', () => {
+    // 09:30–12:00 quiet swallows every instant but the first (09:20). The flat
+    // reserve charged six regardless, so five reminders were dropped to make
+    // room for nudges that were never scheduled.
+    mockSettings.quietHoursStart = '09:30';
+    mockSettings.quietHoursEnd = '12:00';
+    expect(nonReminderSlots([paced()], NOW).nudges).toBe(1);
+  });
+
+  it('charges nothing for a run whose window has already closed', () => {
+    expect(nonReminderSlots([paced()], new Date(2026, 7, 26, 18, 0, 0)).nudges).toBe(0);
+  });
+
+  it('charges nothing for a run hidden by vacation mode, which quotaNudgeTasks still names', () => {
+    mockSettings.vacationMode = true;
+    const away = paced({ vacationPause: true });
+    // The discrepancy in one assertion: the rebuild list still holds it (it
+    // filters on the toggle and the target, not on visibility), but
+    // scheduleQuotaNudges refuses it — so a flat per-task reserve charged six
+    // slots for a task that schedules none.
+    expect(quotaNudgeTasks([away])).toHaveLength(1);
+    expect(nonReminderSlots([away], NOW).nudges).toBe(0);
+  });
+
+  it('counts a running timer alarm', () => {
+    const running = makeTask({
+      id: 'stew', timedMinutes: 15, timerStartedAt: NOW.toISOString(),
+    });
+    expect(nonReminderSlots([running], NOW).timerAlarms).toBe(1);
+  });
+
+  it('does not count a timer that is paused, finished, or silenced by quiet hours', () => {
+    const paused = makeTask({ id: 'paused', timedMinutes: 15, timerStartedAt: null });
+    const done = makeTask({
+      id: 'done', timedMinutes: 15, timerStartedAt: NOW.toISOString(), completed: true,
+    });
+    expect(nonReminderSlots([paused, done], NOW).timerAlarms).toBe(0);
+
+    mockSettings.quietHoursStart = '09:00';
+    mockSettings.quietHoursEnd = '12:00';
+    const quiet = makeTask({
+      id: 'quiet', timedMinutes: 15, timerStartedAt: NOW.toISOString(),
+    });
+    expect(nonReminderSlots([quiet], NOW).timerAlarms).toBe(0);
+  });
+
+  it('counts the daily agenda only when it has something to say', () => {
+    mockSettings.dailyAgendaEnabled = true;
+    expect(nonReminderSlots([dueOnAgendaDay()]).dailyAgenda).toBe(1);
+    // Nothing dated for the morning it covers, so nothing is scheduled and
+    // nothing should be reserved.
+    expect(nonReminderSlots([]).dailyAgenda).toBe(0);
+    mockSettings.dailyAgendaEnabled = false;
+    expect(nonReminderSlots([dueOnAgendaDay()]).dailyAgenda).toBe(0);
+  });
+
+  it('counts a live trip reminder, and nothing for a trip that has expired', () => {
+    mockSettings.tripReminderEnabled = true;
+    const costco = makeShop();
+    const startedAt = new Date().toISOString();
+    const live = { shopId: costco.id, startedAt, shops: [costco] };
+    expect(nonReminderSlots([], new Date(), { trip: live }).tripReminder).toBe(1);
+
+    // Past the two-hour mark, so scheduleTripReminder cancels instead.
+    const stale = {
+      shopId: costco.id,
+      startedAt: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(),
+      shops: [costco],
+    };
+    expect(nonReminderSlots([], new Date(), { trip: stale }).tripReminder).toBe(0);
+    expect(nonReminderSlots([], new Date(), {}).tripReminder).toBe(0);
+  });
+
+  it('counts the event reminders that will actually fire', () => {
+    const soon = makeEventReminder({ key: 'a' });
+    const gone = makeEventReminder({ key: 'b', eventStart: new Date().toISOString(), offsetMinutes: 30 });
+    expect(
+      nonReminderSlots([], new Date(), { eventReminders: [soon, gone] }).eventReminders
+    ).toBe(1);
+  });
+
+  it('totals every kind, which is what the reminders do not get', () => {
+    mockSettings.dailyAgendaEnabled = true;
+    const running = makeTask({ id: 'stew', timedMinutes: 15, timerStartedAt: NOW.toISOString() });
+    const slots = nonReminderSlots([paced(), running, dueOnAgendaDay()], NOW, {
+      eventReminders: [makeEventReminder()],
+    });
+    expect(slots.total).toBe(
+      slots.nudges + slots.timerAlarms + slots.dailyAgenda + slots.tripReminder + slots.eventReminders
+    );
+    expect(slots.total).toBe(MAX_QUOTA_NUDGES_AHEAD + 1 + 1 + 0 + 1);
+  });
+});
+
+// ─── the budget the whole queue shares ───────────────────────────────────────
+
+describe('pendingReminderStats counts the whole queue', () => {
+  const NOW = new Date(2026, 7, 26, 9, 5, 0);
+  const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000).toISOString();
+  const nUpcoming = (n: number) =>
+    Array.from({ length: n }, (_, i) => makeTask({ id: `t${i}`, reminderTime: at(i + 1) }));
+
+  // Same reason as the block above: the timer and agenda fixtures read the
+  // real clock, so it has to be the one being asked about.
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('gives reminders back the slots a quiet-hours nudge run never spends', () => {
+    mockSettings.quietHoursStart = '09:30';
+    mockSettings.quietHoursEnd = '12:00';
+    const paced = makeTask({
+      id: 'eyes', targetCount: 24, quotaIntervalMinutes: 20, quotaReminders: true,
+      windowStart: '09:00', windowEnd: '17:00', recurrenceType: 'daily',
+    });
+    // One nudge is really scheduled, so 63 reminders fit. The flat reserve of
+    // MAX_QUOTA_NUDGES_AHEAD said 58.
+    const stats = pendingReminderStats([...nUpcoming(MAX_PENDING_REMINDERS), paced], NOW);
+    expect(stats.scheduled).toBe(MAX_PENDING_REMINDERS - 1);
+    expect(stats.dropped).toBe(1);
+  });
+
+  it('reports the reminders a timer alarm and an agenda push out of the queue', () => {
+    mockSettings.dailyAgendaEnabled = true;
+    const running = makeTask({ id: 'stew', timedMinutes: 15, timerStartedAt: NOW.toISOString() });
+    const stats = pendingReminderStats(
+      [...nUpcoming(MAX_PENDING_REMINDERS), running, dueOnAgendaDay()],
+      NOW
+    );
+    // Both kinds used to be scheduled after the reminders had been handed the
+    // whole cap, so Settings reported nothing dropped while two requests were
+    // going over it.
+    expect(stats.scheduled).toBe(MAX_PENDING_REMINDERS - 2);
+    expect(stats.dropped).toBe(2);
+  });
+
+  it('counts an active trip and event reminders when the caller passes them', () => {
+    mockSettings.tripReminderEnabled = true;
+    const costco = makeShop();
+    const stats = pendingReminderStats(nUpcoming(MAX_PENDING_REMINDERS), NOW, {
+      trip: { shopId: costco.id, startedAt: new Date().toISOString(), shops: [costco] },
+      eventReminders: [makeEventReminder({ key: 'a' }), makeEventReminder({ key: 'b' })],
+    });
+    expect(stats.dropped).toBe(3);
+  });
+});
+
+describe('rescheduleAllReminders leaves room for the rest of the queue', () => {
+  const NOW = new Date(2026, 7, 26, 9, 5, 0);
+  const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000).toISOString();
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+  afterEach(() => jest.useRealTimers());
+
+  it('stops short of the cap so the agenda and a timer alarm still fit', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    const reminders = Array.from({ length: MAX_PENDING_REMINDERS }, (_, i) =>
+      makeTask({ id: `t${i}`, reminderTime: at(i + 1) })
+    );
+    const running = makeTask({ id: 'stew', timedMinutes: 15, timerStartedAt: NOW.toISOString() });
+    await rescheduleAllReminders([...reminders, running, dueOnAgendaDay()]);
+
+    const scheduled = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls
+      .map(([arg]) => arg.identifier as string);
+    // The whole queue fits inside the cap, rather than the reminders taking all
+    // 64 and the other kinds going over it.
+    expect(scheduled).toHaveLength(MAX_PENDING_REMINDERS);
+    expect(scheduled).toContain('timer:stew');
+    expect(scheduled).toContain('daily-agenda');
+    // `/^t\d+$/` rather than a `t` prefix: the timer alarm's own id is
+    // `timer:stew`, which a prefix match would count as a reminder.
+    expect(scheduled.filter(id => /^t\d+$/.test(id))).toHaveLength(MAX_PENDING_REMINDERS - 2);
   });
 });

@@ -1576,6 +1576,7 @@ describe('Projects', () => {
     archivedAt: null,
     completed: false,
     completedAt: null,
+    ongoing: false,
     createdAt: '2025-01-01T00:00:00.000Z',
     nudgeCadenceDays: 14,
     autoSchedule: false,
@@ -1601,6 +1602,14 @@ describe('Projects', () => {
     const p = dbGetAllProjects().find(row => row.id === 'p-done');
     expect(p?.completed).toBe(true);
     expect(p?.completedAt).toBe('2026-01-05T00:00:00.000Z');
+  });
+
+  it('round-trips ongoing as a real boolean, both on insert and on update', () => {
+    dbInsertProject(makeProject({ id: 'p-ongoing', ongoing: true }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-ongoing')?.ongoing).toBe(true);
+
+    dbUpdateProject(makeProject({ id: 'p-ongoing', ongoing: false }));
+    expect(dbGetAllProjects().find(row => row.id === 'p-ongoing')?.ongoing).toBe(false);
   });
 
   it('orders by sort_order', () => {
@@ -1766,6 +1775,7 @@ describe('backup and restore', () => {
     dbInsertProject({
       id: 'p1', title: 'Summer list', notes: '', deadline: null,
       category: null, sortOrder: 1, archived: false, archivedAt: null, completed: false, completedAt: null,
+      ongoing: false,
       createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false, sequential: false,
       nudgeOptIn: true,
       reviewDeclinedAt: null,

@@ -130,8 +130,16 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
   handledLoaded: false,
 
   async refresh() {
-    const { calendarReadEnabled, calendarIds, dayResetTime } = useSettingsStore.getState();
-    if (!calendarReadEnabled || calendarIds.length === 0 || Platform.OS !== 'ios') {
+    const { calendarReadEnabled, calendarIds, vacationMode, vacationHiddenCalendarIds, dayResetTime } =
+      useSettingsStore.getState();
+    // While on vacation, a calendar picked here can still be left out of the
+    // read — a work calendar you want gone for the trip without un-picking
+    // it for good. Off vacation, every picked calendar reads exactly as
+    // before; vacationHiddenCalendarIds is never consulted at all.
+    const readIds = vacationMode
+      ? calendarIds.filter(id => !vacationHiddenCalendarIds.includes(id))
+      : calendarIds;
+    if (!calendarReadEnabled || readIds.length === 0 || Platform.OS !== 'ios') {
       set({
         events: [], perCalendar: {}, calendarsById: {},
         windowStart: null, windowEnd: null, loaded: false,
@@ -142,7 +150,7 @@ export const useCalendarStore = create<CalendarState>((set, get) => ({
     // reads "today" the way every other list in the app does.
     const start = getDayStart(new Date(), dayResetTime);
     const end = addDays(start, CALENDAR_WINDOW_DAYS);
-    const result = await fetchEvents(calendarIds, start, end);
+    const result = await fetchEvents(readIds, start, end);
     if (result === null) {
       // A failed read leaves the previous window (and per-calendar status) in
       // place rather than blanking it: yesterday's answer is better than a
