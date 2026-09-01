@@ -143,3 +143,61 @@ describe('removeLog', () => {
     expect(state().logs).toHaveLength(0);
   });
 });
+
+describe('renameSymptom', () => {
+  it('rewrites the name on every entry carrying it', () => {
+    state().addLog(3, [{ name: 'headche', severity: 1 }]);
+    state().addLog(2, [{ name: 'headche', severity: 2 }, { name: 'Nausea', severity: 1 }]);
+    state().addLog(4, []);
+
+    expect(state().renameSymptom('headche', 'Headache')).toBe(2);
+
+    const names = state().logs.flatMap(l => l.symptoms.map(s => s.name));
+    expect(names).toContain('Headache');
+    expect(names).not.toContain('headche');
+    // Untouched entries are left alone, and the other symptom on a rewritten
+    // entry survives.
+    expect(names).toContain('Nausea');
+    expect(dbUpdateMoodLog).toHaveBeenCalledTimes(2);
+  });
+
+  it('merges when renamed onto a name that already exists, keeping the worse severity', () => {
+    // Merging is the same operation as renaming, not a second one: typing an
+    // existing name is exactly the claim that the two are one complaint.
+    state().addLog(3, [
+      { name: 'head ache', severity: 1 },
+      { name: 'Headache', severity: 3 },
+    ]);
+
+    state().renameSymptom('head ache', 'Headache');
+
+    expect(state().logs[0].symptoms).toEqual([{ name: 'Headache', severity: 3 }]);
+  });
+
+  it('matches the old name case-insensitively', () => {
+    state().addLog(3, [{ name: 'Headache', severity: 1 }]);
+    expect(state().renameSymptom('HEADACHE', 'Migraine')).toBe(1);
+    expect(state().logs[0].symptoms[0].name).toBe('Migraine');
+  });
+
+  it('does nothing for a blank new name, or a rename to itself', () => {
+    state().addLog(3, [{ name: 'Headache', severity: 1 }]);
+    jest.clearAllMocks();
+    expect(state().renameSymptom('Headache', '   ')).toBe(0);
+    expect(state().renameSymptom('Headache', 'Headache')).toBe(0);
+    expect(dbUpdateMoodLog).not.toHaveBeenCalled();
+  });
+
+  it('still rewrites when only the casing changes, since that is a real correction', () => {
+    state().addLog(3, [{ name: 'headache', severity: 1 }]);
+    expect(state().renameSymptom('headache', 'Headache')).toBe(1);
+    expect(state().logs[0].symptoms[0].name).toBe('Headache');
+  });
+
+  it('shrugs at a name nothing uses', () => {
+    state().addLog(3, [{ name: 'Headache', severity: 1 }]);
+    jest.clearAllMocks();
+    expect(state().renameSymptom('Nausea', 'Sickness')).toBe(0);
+    expect(dbUpdateMoodLog).not.toHaveBeenCalled();
+  });
+});

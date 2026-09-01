@@ -369,6 +369,46 @@ export function lowMoodRun(days: readonly MoodDay[], todayKey: string): number {
   return run;
 }
 
+/**
+ * The chart, said out loud.
+ *
+ * **One sentence for the whole chart rather than a label per bar**, which is
+ * the choice worth recording. Labelling each column is the obvious move and
+ * makes the chart fourteen stops in the swipe order, in the middle of a screen
+ * whose entry list already carries every day in full and in words. The shape a
+ * chart conveys at a glance is a summary, so the spoken version is a summary
+ * too, and the detail stays where a screen reader can already reach it.
+ *
+ * Says how many days are missing rather than skipping them: a gap is the one
+ * thing the visual version conveys with a flat line and no other cue, so it is
+ * exactly what would be lost.
+ */
+export function describeMoodChart(
+  days: readonly { dayKey: string; mood: number | null }[],
+): string {
+  if (days.length === 0) return 'Mood chart. Nothing logged.';
+  const logged = days.filter(d => d.mood !== null) as { dayKey: string; mood: number }[];
+  const missing = days.length - logged.length;
+  const missingPart = missing === 0
+    ? ''
+    : ` ${missing} ${missing === 1 ? 'day' : 'days'} not logged.`;
+  if (logged.length === 0) {
+    return `Mood chart, last ${days.length} days. Nothing logged.`;
+  }
+  const avg = logged.reduce((sum, d) => sum + d.mood, 0) / logged.length;
+  const best = logged.reduce((a, b) => (b.mood > a.mood ? b : a));
+  const worst = logged.reduce((a, b) => (b.mood < a.mood ? b : a));
+  const spokenDay = (key: string) => format(new Date(`${key}T00:00:00`), 'EEEE d MMMM');
+  const range = best.mood === worst.mood
+    // One flat fortnight: naming a highest and a lowest that are the same
+    // number reads as two findings where there is none.
+    ? `Every logged day at ${best.mood}.`
+    : `Highest ${spokenDay(best.dayKey)} at ${best.mood}, lowest ${spokenDay(worst.dayKey)} at ${worst.mood}.`;
+  return `Mood chart, last ${days.length} days. `
+    + `${logged.length} logged, average ${avg.toFixed(1)} out of 5. `
+    + `${range}${missingPart}`;
+}
+
 export interface MoodSummary {
   /** Days with at least one entry. */
   loggedDays: number;

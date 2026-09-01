@@ -60,6 +60,23 @@ interface MoodStore {
   ) => MoodLog | null;
   updateLog: (id: string, patch: MoodLogPatch) => void;
   removeLog: (id: string) => void;
+  /**
+   * Call a symptom something else, everywhere it has ever been logged.
+   *
+   * The correction path the freeform vocabulary needs. `symptomVocabulary` is
+   * derived from the entries rather than stored (see `moodLog.ts`), so there
+   * is no registry row to edit: the only way to fix a typo, or to say that two
+   * spellings are one complaint, is to rewrite the entries themselves.
+   *
+   * **Merging is the same operation, not a second one.** Renaming onto a name
+   * that already exists is exactly "these are the same thing", and an entry
+   * that ends up carrying both keeps the worse severity — the same rule
+   * `daySymptoms` follows for one day, for the same reason: the worst it got
+   * is the honest summary, and averaging two reports invents a third.
+   *
+   * Returns how many entries changed, so the caller can say so.
+   */
+  renameSymptom: (from: string, to: string) => number;
 }
 
 export const useMoodStore = create<MoodStore>((set, get) => ({
@@ -116,6 +133,33 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
   removeLog(id) {
     dbDeleteMoodLog(id);
     set({ logs: get().logs.filter(l => l.id !== id) });
+  },
+
+  renameSymptom(from, to) {
+    const trimmed = to.trim();
+    if (!trimmed) return 0;
+    const fromKey = symptomKey(from);
+    if (!fromKey) return 0;
+    // Renaming something to itself, or to a different casing of itself, is a
+    // no-op rather than a rewrite of every row it appears on.
+    if (fromKey === symptomKey(trimmed) && from.trim() === trimmed) return 0;
+
+    let changed = 0;
+    const next = get().logs.map(log => {
+      if (!log.symptoms.some(sym => symptomKey(sym.name) === fromKey)) return log;
+      // cleanSymptoms does the merge: two entries under one key collapse to
+      // the worse severity, which is what makes rename-onto-an-existing-name a
+      // merge rather than a duplicate.
+      const renamed = cleanSymptoms(
+        log.symptoms.map(sym => (symptomKey(sym.name) === fromKey ? { ...sym, name: trimmed } : sym))
+      );
+      const updated: MoodLog = { ...log, symptoms: renamed };
+      dbUpdateMoodLog(updated);
+      changed++;
+      return updated;
+    });
+    if (changed > 0) set({ logs: next });
+    return changed;
   },
 }));
 

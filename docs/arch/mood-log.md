@@ -203,6 +203,52 @@ things it deliberately is not:
 It needs no settings switch of its own: it appears only if you have been logging,
 only inside a menu you opened, and it adds no row anywhere.
 
+## Correcting the vocabulary
+
+Names are freeform, and `symptomVocabulary` derives the list from the entries
+rather than storing one, so there is no registry row a typo could be fixed in.
+`renameSymptom` rewrites the name on every entry carrying it, reached from the
+Mood screen's header (`SymptomManagerSheet`).
+
+**Rename and merge are one control.** Typing a name that already exists is
+exactly the statement "these two are the same complaint", which is the thing
+`symptomKey` deliberately refuses to guess. The user is allowed to say it; the
+app is not allowed to assume it. An entry that ends up carrying both keeps the
+worse severity, the same rule `daySymptoms` follows for one day and for the
+same reason.
+
+The confirm says how many entries will change, and a merge says it cannot be
+undone by renaming back: once two names are one, the entries that were already
+the target are indistinguishable from the ones that just arrived. Counts are
+entries rather than days, because that is the number of rows about to be
+rewritten.
+
+## Reading the history back
+
+The entry list is filtered by two independent controls, because they answer
+different questions: a symptom filter is "show me the days this happened", a
+query is "I know I wrote something about this". `filterMoodLogs` holds both.
+The query matches symptom names as well as the note, since somebody typing
+"headache" into a search box means the days they had one.
+
+Tapping a symptom row in the contrasts is the main way in: the screen was
+otherwise in the odd position of reporting that mood is worse on headache days
+while offering no way to look at them. The list pages rather than capping, which
+it originally did at 20 with nothing past it.
+
+## Accessibility
+
+**The chart is one accessibility element, not fourteen.** `describeMoodChart`
+says in a sentence what the bars say at a glance, including how many days are
+missing, since a gap is the one thing the visual version conveys with a flat
+line and no other cue. Labelling each column is the obvious move and makes the
+chart fourteen stops in the swipe order, in the middle of a screen whose entry
+list already carries every day in words.
+
+The stat tiles and contrast rows are each one element too. Read as their raw
+`Text` nodes they are "3.2" then "Average mood", and "headache" then
+"1.8 vs 3.9", which says nothing about what is being compared.
+
 ## It syncs, and it hides
 
 `mood_logs` is in `SYNC_TRACKED_TABLES`. Half a person's health record on each

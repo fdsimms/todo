@@ -3,6 +3,8 @@ import {
   LOW_MOOD_AT_OR_BELOW,
   dayMoodAverage,
   daySymptoms,
+  filterMoodLogs,
+  symptomEntryCount,
   hasLogOnDay,
   logsOnDay,
   moodEmoji,
@@ -148,5 +150,54 @@ describe('an entry summary', () => {
 
   it('falls back to the note for an entry that is only a note', () => {
     expect(moodLogSummary(log({ mood: null, note: 'Slept badly' }))).toBe('Slept badly');
+  });
+});
+
+describe('finding entries', () => {
+  const logs = [
+    log({ id: 'a', dayKey: '2026-08-17', symptoms: [{ name: 'Headache', severity: 2 }], note: 'Slept badly' }),
+    log({ id: 'b', dayKey: '2026-08-18', symptoms: [{ name: 'Nausea', severity: 1 }], note: null }),
+    log({ id: 'c', dayKey: '2026-08-19', symptoms: [], note: 'Busy afternoon' }),
+  ];
+
+  it('returns everything when nothing is being looked for', () => {
+    expect(filterMoodLogs(logs)).toHaveLength(3);
+    expect(filterMoodLogs(logs, { symptom: null, query: '' })).toHaveLength(3);
+  });
+
+  it('narrows to the days a symptom was logged, matching case-insensitively', () => {
+    expect(filterMoodLogs(logs, { symptom: 'headache' }).map(l => l.id)).toEqual(['a']);
+  });
+
+  it('searches the note', () => {
+    expect(filterMoodLogs(logs, { query: 'busy' }).map(l => l.id)).toEqual(['c']);
+  });
+
+  it('searches symptom names too, since that is what typing one means', () => {
+    // Making somebody discover that only the note is searched would be a
+    // distinction only the code makes.
+    expect(filterMoodLogs(logs, { query: 'nausea' }).map(l => l.id)).toEqual(['b']);
+  });
+
+  it('applies both narrowings together', () => {
+    expect(filterMoodLogs(logs, { symptom: 'Headache', query: 'slept' }).map(l => l.id)).toEqual(['a']);
+    expect(filterMoodLogs(logs, { symptom: 'Headache', query: 'busy' })).toEqual([]);
+  });
+
+  it('ignores surrounding space in the query', () => {
+    expect(filterMoodLogs(logs, { query: '   busy  ' }).map(l => l.id)).toEqual(['c']);
+  });
+});
+
+describe('counting entries for a symptom', () => {
+  it('counts entries, not days', () => {
+    // This is the number a rename is about to rewrite, so it has to be rows.
+    const logs = [
+      log({ id: 'a', dayKey: '2026-08-17', symptoms: [{ name: 'Headache', severity: 1 }] }),
+      log({ id: 'b', dayKey: '2026-08-17', symptoms: [{ name: 'headache', severity: 3 }] }),
+      log({ id: 'c', dayKey: '2026-08-18', symptoms: [] }),
+    ];
+    expect(symptomEntryCount(logs, 'HEADACHE')).toBe(2);
+    expect(symptomEntryCount(logs, 'nausea')).toBe(0);
   });
 });
