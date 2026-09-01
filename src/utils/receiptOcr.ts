@@ -222,16 +222,26 @@ function visionBridge(): typeof import('todo-vision-bridge') {
 /**
  * Whether this device can read a receipt on its own.
  *
- * What the receipt scanner's entry points are gated on when there is no API
- * key: with Vision there is still an offline reading worth offering, and
- * without it there is nothing at all behind the button.
+ * Fed to `routeForFeature` as `visionAvailable`, which is what decides whether
+ * the scanner's entry points render at all when there is no API key.
+ *
+ * Cached after the first call, deliberately unlike `useOnDeviceAvailability`,
+ * which re-reads on every foreground. That hook exists because two of the
+ * language model's unavailable reasons are temporary and one is fixed in the
+ * Settings app. This has no such states: either the module is linked and Vision
+ * is there or it isn't, and neither changes while the app is running.
  */
+let visionAvailable: boolean | null = null;
+
 export function canReadReceiptOnDevice(): boolean {
-  try {
-    return visionBridge().isVisionAvailable();
-  } catch {
-    return false;
+  if (visionAvailable === null) {
+    try {
+      visionAvailable = visionBridge().isVisionAvailable();
+    } catch {
+      visionAvailable = false;
+    }
   }
+  return visionAvailable;
 }
 
 /**
@@ -255,18 +265,4 @@ export async function readReceipt(uri: string): Promise<OcrReceipt | null> {
     console.warn('[receiptOcr] on-device read failed', error);
     return null;
   }
-}
-
-/**
- * Whether the receipt scanner has anything behind it.
- *
- * The rule lives here rather than at each of its three entry points (the
- * list's own button, the finish sheet's action, the pantry's) because what it
- * says changed: the scanner used to be gated on an API key on the grounds that
- * "the read is the whole feature", and with an on-device read that is no longer
- * true. Three copies of a reason are three chances for one of them to go on
- * saying the old one.
- */
-export function receiptScanAvailable(hasApiKey: boolean): boolean {
-  return hasApiKey || canReadReceiptOnDevice();
 }

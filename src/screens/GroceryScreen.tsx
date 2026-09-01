@@ -69,7 +69,6 @@ import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet
 import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { receiptScanAvailable } from '../utils/receiptOcr';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { describeListEstimate, estimateListTotal, lastPriceFor, pricedSince, priceToInput } from '../utils/groceryPrice';
@@ -307,17 +306,14 @@ export function GroceryScreen() {
   // Every AI affordance is gated on this, so a user without a key never sees
   // an entry point — the offline lexicon carries the feature on its own.
   //
-  // Two exceptions now, taking different routes to the same place. Aisle
-  // sorting can be answered by the on-device *language* model, so it asks
-  // `aisleSortRoute`. Receipt scanning can be *read* on the device by Vision
-  // even though naming what was read still wants a key, so it asks
-  // `receiptScanAvailable`. What is left gated on a key outright is what needs
-  // world knowledge, or a photograph the device can't make sense of on its own.
+  // Two exceptions now, and both go through `useAiRoute` rather than reading
+  // this: aisle sorting can be answered by the on-device language model, and
+  // receipt scanning can be *read* by Vision even though naming what was read
+  // still wants a key. What is left gated on a key outright is what needs world
+  // knowledge, or a photograph the device can't make sense of on its own.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
-  // Resolved once: the native capability behind it cannot change while the
-  // app is running.
-  const canScanReceipt = useMemo(() => receiptScanAvailable(!!anthropicApiKey), [anthropicApiKey]);
   const aisleSortRoute = useAiRoute('groceryAisles');
+  const receiptRoute = useAiRoute('receiptImport');
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
@@ -1370,7 +1366,7 @@ export function GroceryScreen() {
                 paper, and without one Vision still reads it on device. With
                 neither, the button would open a sheet that can only
                 apologise. */}
-            {canScanReceipt && listCount > 0 && !featureHidden('receiptImport', simpleMode) && (
+            {receiptRoute !== 'unavailable' && listCount > 0 && !featureHidden('receiptImport', simpleMode) && (
               <View style={styles.clearWrap}>
                 <InlineAction
                   label="Scan a receipt"
@@ -1476,7 +1472,7 @@ export function GroceryScreen() {
         // Gated for the reason the list's own button is: with neither a key
         // nor an on-device read, the action opens a sheet that can only
         // apologise.
-        onScanReceipt={canScanReceipt && !featureHidden('receiptImport', simpleMode)
+        onScanReceipt={receiptRoute !== 'unavailable' && !featureHidden('receiptImport', simpleMode)
           ? () => setReceiptOpen(true)
           : undefined}
         onClose={() => {

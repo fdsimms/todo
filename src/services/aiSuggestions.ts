@@ -25,6 +25,7 @@ import {
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 import { routeForFeature, type AiRoute } from '../utils/aiRouting';
+import { canReadReceiptOnDevice } from '../utils/receiptOcr';
 import {
   isOnDeviceReady, runOnDevice, describeOnDeviceError, isOnDeviceErrorMessage,
   type OnDeviceSchema,
@@ -527,6 +528,11 @@ function groceryAisleRoute(): AiRoute {
     hasApiKey: !!anthropicApiKey,
     onDeviceEnabled: onDeviceAiEnabled,
     onDeviceAvailable: isOnDeviceReady(),
+    // Never consulted for this feature, which routes to the language model.
+    // Passed because the input describes the install rather than the feature,
+    // and a required field is what stops a Vision feature's call site
+    // forgetting it.
+    visionAvailable: canReadReceiptOnDevice(),
   });
 }
 

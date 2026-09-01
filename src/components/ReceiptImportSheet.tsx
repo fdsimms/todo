@@ -35,6 +35,7 @@ import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { extractReceipt, describeAIError, type ExtractedReceipt } from '../services/aiSuggestions';
 import { readReceipt } from '../utils/receiptOcr';
 import { extractReceiptOffline } from '../utils/receiptOffline';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import type { OcrReceipt } from '../utils/receiptOcr';
 import {
   acceptedByDefault,
@@ -215,7 +216,11 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const rememberAliases = useGroceryStore(s => s.rememberAliases);
   const aliasItemFor = useGroceryStore(s => s.aliasItemFor);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  /**
+   * Which engine reads this receipt. The same rule the entry points that got
+   * here are gated on, so the sheet cannot be open for a route that can't run.
+   */
+  const receiptRoute = useAiRoute('receiptImport');
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const [loading, setLoading] = useState(false);
@@ -275,13 +280,13 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
       // bridge, an unreadable file, a read too thin to be a receipt — so that
       // path can only ever cost the upload it usually saves.
       const ocr = await readReceipt(photo.sourceUri);
-      // Without a key there is no fallback and no second opinion: the reading
-      // is the whole answer, or there isn't one.
-      if (!anthropicApiKey && !ocr) {
+      // On the device path there is no fallback and no second opinion: the
+      // reading is the whole answer, or there isn't one.
+      if (receiptRoute === 'onDevice' && !ocr) {
         setError('That photo could not be read on this device. Try again with the whole receipt in frame and more light on it.');
         return;
       }
-      const offline = !anthropicApiKey;
+      const offline = receiptRoute === 'onDevice';
       const result = offline
         ? extractReceiptOffline(ocr as OcrReceipt)
         : await extractReceipt(ocr?.text ?? photo);
@@ -311,7 +316,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     } finally {
       setLoading(false);
     }
-  }, [photo, items, shops, aliasItemFor, pantry, anthropicApiKey]);
+  }, [photo, items, shops, aliasItemFor, pantry, receiptRoute]);
 
   /**
    * What arrives checked, re-decided whenever the reading or the named store

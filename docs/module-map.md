@@ -17,7 +17,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/accessoryStack.ts` — registerAccessory, unregisterAccessory, topAccessory, isTopAccessory, subscribeAccessories, resetAccessoryStacks
 - `src/utils/activeTrip.ts` — TRIP_MAX_MS, isTripLive, TRIP_STALE_MS, isTripStale, describeTripElapsed, resolveActiveTrip, TripMarkerKind, TripMarker, tripMarkerFor, describeTripMarker, +1 more
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, AiFeatureConfig, +2 more
-- `src/utils/aiRouting.ts` — AiRoute, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
+- `src/utils/aiRouting.ts` — AiRoute, OnDeviceEngine, onDeviceEngineFor, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
@@ -167,7 +167,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring
 - `src/utils/reachOutTasks.ts` — MAX_REACH_OUT_TASKS, REACH_OUT_DECLINE_DAYS, declineHoldDays, declinedRecently, offerDeclinedRecently, reachOutPersonId, reachOutTitle, reachOutsHandledRecently, ReachOutWant, ReachOutCandidate, +7 more
 - `src/utils/receiptMatch.ts` — ReceiptMatchConfidence, ReceiptMatch, receiptMatchConfidence, AliasResolver, ReceiptScope, matchReceiptLines, matchReceiptShop, ReceiptCaution, receiptCautionsFor, acceptedByDefault, +1 more
-- `src/utils/receiptOcr.ts` — OcrReceiptRow, OcrReceipt, groupRecognizedRows, splitRowPrice, reconstructReceipt, shouldUseOcrText, canReadReceiptOnDevice, readReceipt, receiptScanAvailable
+- `src/utils/receiptOcr.ts` — OcrReceiptRow, OcrReceipt, groupRecognizedRows, splitRowPrice, reconstructReceipt, shouldUseOcrText, canReadReceiptOnDevice, readReceipt
 - `src/utils/receiptOffline.ts` — isNonItemRow, findPrintedDate, findPrintedTotal, guessStoreName, extractReceiptOffline
 - `src/utils/recentSearches.ts` — RECENT_SEARCH_LIMIT, addRecentSearch, parseRecentSearches
 - `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, parseRecipeChoices, makeComponent, ChoiceResolution, choiceGroupKey, activeComponents, activeIngredients, recipeMap, ResolvedComponent, +19 more
