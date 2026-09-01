@@ -17,6 +17,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/accessoryStack.ts` — registerAccessory, unregisterAccessory, topAccessory, isTopAccessory, subscribeAccessories, resetAccessoryStacks
 - `src/utils/activeTrip.ts` — TRIP_MAX_MS, isTripLive, TRIP_STALE_MS, isTripStale, describeTripElapsed, resolveActiveTrip, TripMarkerKind, TripMarker, tripMarkerFor, describeTripMarker, +1 more
 - `src/utils/aiFeatures.ts` — AiFeatureId, AI_FEATURE_IDS, AiModelId, DEFAULT_AI_MODEL, AI_MODEL_OPTIONS, isAiModelId, AiFeatureMeta, AI_FEATURES, aiFeaturesFor, AiFeatureConfig, +2 more
+- `src/utils/aiRouting.ts` — AiRoute, ON_DEVICE_FEATURES, supportsOnDevice, AiRouteInput, routeForFeature
 - `src/utils/alarmChain.ts` — ALARM_RING_INTERVAL_MINUTES, ALARM_MAX_RINGS, alarmChainTimes, taskAlarmUuid, alarmChainIds, stepTimerAlarmUuid
 - `src/utils/allClear.ts` — completedOnDay, describeAllClear
 - `src/utils/appLock.ts` — APP_LOCK_GRACE_OPTIONS, DEFAULT_APP_LOCK_GRACE_SECONDS, graceLabel, parseGraceSeconds, shouldLockOnResume, biometryLabel
@@ -294,6 +295,7 @@ render, so listing them adds lines without adding answers.
 - `src/hooks/useKeyboardInsetScroll.ts` — ScrollHandle, useKeyboardInsetScroll
 - `src/hooks/useMealPlanNudgeProgress.ts` — useMealPlanNudgeProgress
 - `src/hooks/useNowTick.ts` — useNowTick
+- `src/hooks/useOnDeviceAi.ts` — useOnDeviceAvailability, useAiRoute
 - `src/hooks/usePendingEdits.ts` — PendingEdits, usePendingEdits, useRegisterPendingEdit
 - `src/hooks/usePlanMeal.ts` — usePlanMeal
 - `src/hooks/useRecipeComponentImports.ts` — ComponentImportState, useRecipeComponentImports
@@ -317,6 +319,7 @@ render, so listing them adds lines without adding answers.
 ## `src/services`
 
 - `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, MAX_RECIPE_CHARS, suggestGroceryAisles, RecipeGroceryItem, +17 more
+- `src/services/onDeviceModel.ts` — isOnDeviceReady, onDeviceAvailability, describeOnDeviceAvailability, isOnDeviceErrorMessage, describeOnDeviceError, runOnDevice
 - `src/services/productLookup.ts` — ProductRecord, ProductLookupError, describeLookupError, lookupGtin
 - `src/services/recipePage.ts` — RecipePageErrorCode, RecipePageError, recipePageError, isRecipePageError, describeImportError, isRetryableImportError, FetchedRecipePage, fetchRecipePage
 - `src/services/weatherLookup.ts` — WeatherSnapshot, fetchWeatherSnapshot

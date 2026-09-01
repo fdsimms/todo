@@ -24,6 +24,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
+import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
@@ -1912,6 +1913,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(aisleOrder).not.toContain('Personal Care');
     expect(items.some(i => i.aisle === 'Bulk bins')).toBe(true);
     expect(aisleOrder.indexOf('Frozen')).toBeGreaterThan(aisleOrder.indexOf('Pantry'));
+
+    // A pile in "Other" the offline lexicon couldn't place, which is what the
+    // "Sort N into aisles" action at the foot of the list is offered for. With
+    // none, that entry point never renders in demo mode and aisle sorting
+    // reads as a feature the app hasn't got — on-device, Claude or otherwise.
+    expect(items.filter(i => i.aisle === OTHER_AISLE).length).toBeGreaterThan(0);
 
     // …and enough of them on the seeded list for ShoppingTripSheet to open
     // with a real pre-selected suggestion rather than an empty one — that's

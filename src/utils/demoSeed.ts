@@ -1908,6 +1908,12 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     'Frozen peas', 'Ice cream', 'Almonds', 'Chips',
     // Household
     'Paper towels', 'Toilet paper', 'Dish soap',
+    // Deliberately *not* in the offline lexicon, so they land in "Other" and
+    // the "Sort N into aisles" action at the foot of the list has something to
+    // offer. Without a pile in Other that entry point never renders, and the
+    // whole aisle-sorting feature — offline lexicon, on-device model and
+    // Claude alike — reads as something the app doesn't do.
+    'Miso paste', 'Halloumi', 'Capers',
   ];
   CATALOG.forEach(name => addByName(name, undefined, undefined, { registerUndo: false }));
 
