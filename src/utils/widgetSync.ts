@@ -118,6 +118,13 @@ async function processPendingAddTasks(): Promise<void> {
 // notion of a stack to collapse them into instead, so they're left off
 // entirely; the stack is still one tap away inside the app.
 function isWidgetWorthy(task: Task): boolean {
+  // A negative habit's only control is "I slipped", and the widget has one
+  // control: a checkbox that queues a completion. That completion is refused
+  // (see the polarity guard in completeTask), so shipping the row would put a
+  // checkbox on the home screen that does nothing at all when tapped — and the
+  // one thing it *looks* like it would do is the opposite of what the task
+  // means. Until the widget can draw a shield, it doesn't carry these.
+  if (task.polarity === 'negative') return false;
   return task.generatedKind !== 'mealPlanNudge';
 }
 

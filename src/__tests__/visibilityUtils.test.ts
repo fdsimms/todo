@@ -128,6 +128,9 @@ const baseTask: Task = {
   previousStreakCount: 0,
   previousStreakDate: null,
   priorBestStreak: 0,
+  polarity: 'positive',
+  slipCount: 0,
+  slipDate: null,
   showStreak: false,
   streakRequiresWindow: false,
   recurrenceFromCompletion: false,
@@ -1426,6 +1429,53 @@ describe('isVisibleApartFromVacation', () => {
   it('still hides a task with no date signal', () => {
     mockSettingsState.vacationMode = true;
     expect(isVisibleApartFromVacation({ ...baseTask, vacationPause: true })).toBe(false);
+  });
+});
+
+// ─── negative habits ─────────────────────────────────────────────────────────
+
+// A negative habit is a standing commitment rather than work waiting for its
+// moment, so it sits on Today all day and none of the ordinary gates apply. The
+// three lenses over dateless tasks are disjoint by design, so it also has to
+// stay out of Inbox and Unscheduled — otherwise one habit shows up in all three.
+describe('a negative habit', () => {
+  const avoid: Task = { ...baseTask, polarity: 'negative' };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockSettingsState.vacationMode = false;
+  });
+
+  it('is visible with no date signal at all, where an ordinary task is not', () => {
+    expect(isVisibleApartFromVacation(baseTask)).toBe(false);
+    expect(isVisibleApartFromVacation(avoid)).toBe(true);
+  });
+
+  it('stays visible past a defer date and outside its own window', () => {
+    const deferUntil = new Date(2025, 5, 20, 12, 0, 0).toISOString();
+    expect(isVisibleApartFromVacation({ ...avoid, deferUntil })).toBe(true);
+    expect(isVisibleApartFromVacation({ ...avoid, windowStart: '23:00' })).toBe(true);
+  });
+
+  it('is hidden once archived', () => {
+    expect(isVisibleApartFromVacation({ ...avoid, archived: true })).toBe(false);
+  });
+
+  // The one intended way to pause tracking one, short of archiving it.
+  it('is hidden by vacation mode like anything else', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isTaskVisible({ ...avoid, vacationPause: true })).toBe(false);
+  });
+
+  it('is neither an inbox task nor an unscheduled one', () => {
+    expect(isInboxTask(baseTask)).toBe(true);
+    expect(isInboxTask(avoid)).toBe(false);
+    expect(isUnscheduledTask({ ...avoid, category: 'Health' })).toBe(false);
   });
 });
 

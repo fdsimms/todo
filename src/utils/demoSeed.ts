@@ -223,6 +223,35 @@ export function seedDemoData(): void {
     streakCount: 23, streakDate: subDays(today, 1).toISOString(), priorBestStreak: 16, showStreak: true,
   });
 
+  // Both polarities of the negative habit, because either alone reads as the
+  // whole feature. A clean one shows the state the row sits in almost all the
+  // time; a broken one is the only way to see what a slip actually does, and it
+  // is not a state the seed can reach by tapping.
+  const noPhone = addTask({
+    title: 'No phone in bed',
+    notes: 'Never completed. It stays here every day and counts the nights you get through. Tap the shield to record a slip.',
+    category: 'Health',
+    polarity: 'negative',
+    effort: 1,
+  });
+  updateTask(noPhone.id, {
+    streakCount: 11, streakDate: subDays(today, 1).toISOString(), priorBestStreak: 6,
+  });
+
+  const noSnacking = addTask({
+    title: 'No snacking after dinner',
+    notes: 'Slipped today, so the shield is red and the count is back to nothing. It stays on the list either way.',
+    category: 'Health',
+    polarity: 'negative',
+    effort: 1,
+  });
+  updateTask(noSnacking.id, {
+    slipCount: 1, slipDate: today.toISOString(),
+    streakCount: 0, streakDate: today.toISOString(),
+    previousStreakCount: 4, previousStreakDate: subDays(today, 1).toISOString(),
+    priorBestStreak: 4,
+  });
+
   addTask({
     title: 'Read a chapter of the Le Guin',
     notes: 'Open-ended, so it stays out of suggested pins and focus sessions.',
