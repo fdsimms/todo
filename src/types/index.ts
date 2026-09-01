@@ -513,6 +513,12 @@ export interface Project {
   // as archiving any other project.
   completed: boolean;
   completedAt: string | null;
+  // Never offer the "Mark Complete" banner, however many of its tasks are
+  // done — a running list (groceries you keep restocking, a recurring
+  // errand list) has no finish line to reach. Independent of `completed`:
+  // manual completion through ProjectEditor still works exactly as it does
+  // for any other project, this only silences the automatic offer.
+  ongoing: boolean;
   createdAt: string;
   // Days of quiet before this project offers up its next task (see
   // utils/projectPull.ts). 0 = never ask, for a project deliberately parked.

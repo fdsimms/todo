@@ -728,7 +728,9 @@ export function seedDemoData(): void {
   // nudgeOptIn defaults to false, so it still never trips the gone-quiet nudge
   // or shows up in "Pull from projects". See Project.nudgeOptIn.
   const giftIdeas = createProject('Gift ideas', null, 'list');
-  updateProject(giftIdeas.id, { category: 'Ideas' });
+  // A running list nobody expects to finish — see Project.ongoing. Never
+  // offers to mark itself complete, however many ideas on it get used.
+  updateProject(giftIdeas.id, { category: 'Ideas', ongoing: true });
   ['Something for Mom\'s birthday', 'Housewarming idea for the Chens', 'Stocking stuffers'].forEach(title => {
     const t = addTask({ title });
     addExistingToProject(t.id, giftIdeas.id);

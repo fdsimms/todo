@@ -398,7 +398,11 @@ export function ProjectsScreen() {
     const selected = selectedIds.has(project.id);
     // Only the active list needs this — completed projects already show their
     // own restore affordance, and an archived one is filed away regardless.
-    const allDone = projectFilter === 'active' && progress.total > 0 && progress.done === progress.total;
+    // An ongoing project (see Project.ongoing) never reads as done here
+    // either, however many of its current tasks are — it has no finish line
+    // for "every task done" to mean anything against.
+    const allDone = projectFilter === 'active' && !project.ongoing
+      && progress.total > 0 && progress.done === progress.total;
     return (
       <ProjectRow
         project={project}

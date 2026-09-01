@@ -55,6 +55,7 @@ import { haptics } from '../utils/haptics';
 import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
 import { mailtoUrl } from '../utils/email';
+import { directionsUrl } from '../utils/maps';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
@@ -396,6 +397,19 @@ export const TaskItem = React.memo(function TaskItem({
     try {
       // Same reasoning as call/link: no canOpenURL check needed for mailto:.
       await Linking.openURL(emailUrl);
+    } catch {
+      // silently ignore — no toast infra for this row-level action
+    }
+  };
+  // Same sanitise-at-render, null-hides-the-button pattern as callUrl/emailUrl
+  // above — see maps.ts for why an https: directions link needs no
+  // canOpenURL check either, same as TodayEventsSheet's own openDirections.
+  const mapsUrl = directionsUrl(task.location);
+  const handleDirections = async () => {
+    if (!mapsUrl) return;
+    haptics.tap();
+    try {
+      await Linking.openURL(mapsUrl);
     } catch {
       // silently ignore — no toast infra for this row-level action
     }
@@ -2299,6 +2313,18 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
+      {!selectionMode && showActions && mapsUrl && (
+        <TouchableOpacity
+          onPress={handleDirections}
+          hitSlop={8}
+          style={styles.mapBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Get directions to ${task.location} for ${task.title}`}
+        >
+          <Ionicons name="navigate-outline" size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
       {!selectionMode && showActions && showPin && !notice && (
         <TouchableOpacity
           onPress={() => {
@@ -3598,6 +3624,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: 4,
   },
   emailBtn: {
+    padding: 4,
+  },
+  mapBtn: {
     padding: 4,
   },
   pinBtn: {

@@ -105,6 +105,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [nudgeMode, setNudgeMode] = useState<NudgeMode>('never');
   const [nudgeCadenceDays, setNudgeCadenceDays] = useState(FALLBACK_CADENCE_DAYS);
   const [autoSchedule, setAutoSchedule] = useState(false);
+  const [ongoing, setOngoing] = useState(false);
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   useEffect(() => {
@@ -116,6 +117,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setNudgeMode(nudgeModeOf(project));
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
+    setOngoing(project.ongoing);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -164,6 +166,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       // managed. The drip's own gate stays in 'nudge' mode for the same reason
       // (see dripCandidate) — this just means it is never asked.
       autoSchedule: nudgeMode === 'scheduled' && autoSchedule,
+      ongoing,
     });
     onClose();
   };
@@ -427,6 +430,30 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         list-outline toggle in ProjectDetailScreen's header, right where its
         effect shows — not here. See Project.kind.
       */}
+
+      <View style={[styles.card, { marginTop: spacing.xl }]}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setOngoing(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Ongoing"
+          accessibilityState={{ checked: ongoing }}
+        >
+          <Ionicons name="infinite-outline" size={18} color={ongoing ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Ongoing</Text>
+            <Text style={styles.optionHint}>
+              {ongoing
+                ? "Never offered as complete, however many tasks are done"
+                : "Offers to mark complete once every task is done"}
+            </Text>
+          </View>
+          <View style={[styles.toggle, ongoing && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, ongoing && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+      </View>
 
       <View style={[styles.card, { marginTop: spacing.xl }]}>
         <TouchableOpacity

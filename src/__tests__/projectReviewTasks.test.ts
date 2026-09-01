@@ -38,6 +38,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   archivedAt: null,
   completed: false,
   completedAt: null,
+  ongoing: false,
   createdAt: subDays(new Date(), 60).toISOString(),
   nudgeCadenceDays: 14,
   autoSchedule: false,

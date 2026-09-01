@@ -373,6 +373,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['events', 'booked', 'busy', 'free', 'google'] },
   { id: 'calendarSyncNow', groupId: 'capture', label: 'Sync now', section: 'Calendar',
     keywords: ['refresh', 'force', 'manual', 'reload', 'events', 'stale'] },
+  { id: 'calendarVacationHidden', groupId: 'capture', label: 'Hide during vacation', section: 'Calendar',
+    keywords: ['away', 'exclude', 'work calendar', 'trip'] },
   { id: 'calendarEventCategory', groupId: 'capture', label: 'Show events under', section: 'Calendar',
     keywords: ['category', 'section', 'today', 'events on today', 'hide events', 'file', 'where'] },
   { id: 'reminderMeetingNudge', groupId: 'capture', label: 'Move reminders out of meetings', section: 'Calendar',

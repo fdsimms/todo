@@ -148,6 +148,7 @@ const PROJECT_BASE: Project = {
   archivedAt: null,
   completed: false,
   completedAt: null,
+  ongoing: false,
   // Old enough that the default cadence is comfortably exceeded unless a test
   // says otherwise.
   createdAt: subDays(new Date(), 60).toISOString(),
