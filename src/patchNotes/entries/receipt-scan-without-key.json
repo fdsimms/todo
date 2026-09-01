@@ -1,0 +1,4 @@
+{
+  "message": "You can now scan a receipt without an Anthropic API key. The read happens on your device, so each line shows the receipt's own shorthand instead of what it stands for, and the prices and total still come through",
+  "date": "2026-09-01"
+}

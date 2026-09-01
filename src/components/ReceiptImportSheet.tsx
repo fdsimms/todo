@@ -33,7 +33,9 @@ import { WhenPicker } from './WhenPicker';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { extractReceipt, describeAIError, type ExtractedReceipt } from '../services/aiSuggestions';
-import { readReceiptText } from '../utils/receiptOcr';
+import { readReceipt } from '../utils/receiptOcr';
+import { extractReceiptOffline } from '../utils/receiptOffline';
+import type { OcrReceipt } from '../utils/receiptOcr';
 import {
   acceptedByDefault,
   isPlausibleReceiptDate,
@@ -213,6 +215,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const rememberAliases = useGroceryStore(s => s.rememberAliases);
   const aliasItemFor = useGroceryStore(s => s.aliasItemFor);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
 
   const [loading, setLoading] = useState(false);
@@ -229,6 +232,13 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
   const [datePickerOpen, setDatePickerOpen] = useState(false);
   /** "Left alone" rows opted in to "Add as bought", by index into `unclaimed` (#1805). */
   const [addAsBought, setAddAsBought] = useState<Set<number>>(new Set());
+  /**
+   * Whether this reading came off the device alone, with no API key to spend.
+   * Only shown, never acted on: an offline reading is the same
+   * `ExtractedReceipt` and goes through the same matcher, and the whole point
+   * of that is that nothing downstream branches on where it came from.
+   */
+  const [readOffline, setReadOffline] = useState(false);
 
   const input = useRecipeImportSource('photo', 'read a receipt');
   const { photo, reset: resetInput } = input;
@@ -244,6 +254,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     setDateImplausible(false);
     setDatePickerOpen(false);
     setAddAsBought(new Set());
+    setReadOffline(false);
     resetInput();
   }, [resetInput]);
 
@@ -259,12 +270,22 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     setLoading(true);
     setError(null);
     try {
-      // Read it on device first and send the recognised rows instead of the
-      // photo. Falls back to the photo for every kind of not-working — no
-      // bridge, an unreadable file, a read too thin to be a receipt — so this
-      // can only ever cost the upload it usually saves.
-      const ocrText = await readReceiptText(photo.sourceUri);
-      const result = await extractReceipt(ocrText ?? photo);
+      // Read it on device first. With a key the recognised rows are what gets
+      // sent, and the photo is the fallback for every kind of not-working — no
+      // bridge, an unreadable file, a read too thin to be a receipt — so that
+      // path can only ever cost the upload it usually saves.
+      const ocr = await readReceipt(photo.sourceUri);
+      // Without a key there is no fallback and no second opinion: the reading
+      // is the whole answer, or there isn't one.
+      if (!anthropicApiKey && !ocr) {
+        setError('That photo could not be read on this device. Try again with the whole receipt in frame and more light on it.');
+        return;
+      }
+      const offline = !anthropicApiKey;
+      const result = offline
+        ? extractReceiptOffline(ocr as OcrReceipt)
+        : await extractReceipt(ocr?.text ?? photo);
+      setReadOffline(offline);
       setReceipt(result);
       // The store has to be resolved before the lines are, since an alias is
       // scoped to the printer that produced the text.
@@ -290,7 +311,7 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     } finally {
       setLoading(false);
     }
-  }, [photo, items, shops, aliasItemFor, pantry]);
+  }, [photo, items, shops, aliasItemFor, pantry, anthropicApiKey]);
 
   /**
    * What arrives checked, re-decided whenever the reading or the named store
@@ -690,6 +711,17 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
             : ''}
           . Nothing is recorded until you {pantry ? 'tap Add' : 'finish shopping'}.
         </Text>
+
+        {/* Said once, above the rows, because it changes how to read every one
+            of them: the names are the paper's own shorthand rather than what it
+            stands for. */}
+        {readOffline && (
+          <Text style={styles.hint}>
+            Read on this device without an API key, so each line shows the receipt's own
+            shorthand instead of what it stands for. Match anything it missed by hand, or add
+            an API key in Settings to have the abbreviations read for you.
+          </Text>
+        )}
 
         {storePicker()}
         {/* Shopping only. The pantry writes no purchase date — see `context`. */}

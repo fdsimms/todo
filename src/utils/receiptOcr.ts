@@ -220,22 +220,53 @@ function visionBridge(): typeof import('todo-vision-bridge') {
 }
 
 /**
- * Reads the receipt at `uri` on device and returns the text to send in place of
- * the photo, or null to send the photo instead.
+ * Whether this device can read a receipt on its own.
+ *
+ * What the receipt scanner's entry points are gated on when there is no API
+ * key: with Vision there is still an offline reading worth offering, and
+ * without it there is nothing at all behind the button.
+ */
+export function canReadReceiptOnDevice(): boolean {
+  try {
+    return visionBridge().isVisionAvailable();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reads the receipt at `uri` on device, or null when there's nothing worth
+ * having.
  *
  * Null is the answer for every kind of not-working — no bridge, an unreadable
  * file, a read too thin to be a receipt — because the caller's branch is the
- * same in all of them, and because the fallback is the path that works today.
- * Nothing here is allowed to fail a scan: the worst outcome is spending the
- * upload this exists to avoid.
+ * same in all of them. With a key that branch is "send the photo instead",
+ * which is the path that worked before any of this existed; without one it is
+ * "say we couldn't read it", since there is no second opinion to fall back on.
+ * Nothing here is allowed to throw: the worst outcome is spending the upload
+ * this exists to avoid.
  */
-export async function readReceiptText(uri: string): Promise<string | null> {
+export async function readReceipt(uri: string): Promise<OcrReceipt | null> {
   try {
     const lines = await visionBridge().recognizeText(uri);
     const receipt = reconstructReceipt(lines);
-    return shouldUseOcrText(receipt) ? receipt.text : null;
+    return shouldUseOcrText(receipt) ? receipt : null;
   } catch (error) {
-    console.warn('[receiptOcr] on-device read failed; falling back to the photo', error);
+    console.warn('[receiptOcr] on-device read failed', error);
     return null;
   }
+}
+
+/**
+ * Whether the receipt scanner has anything behind it.
+ *
+ * The rule lives here rather than at each of its three entry points (the
+ * list's own button, the finish sheet's action, the pantry's) because what it
+ * says changed: the scanner used to be gated on an API key on the grounds that
+ * "the read is the whole feature", and with an on-device read that is no longer
+ * true. Three copies of a reason are three chances for one of them to go on
+ * saying the old one.
+ */
+export function receiptScanAvailable(hasApiKey: boolean): boolean {
+  return hasApiKey || canReadReceiptOnDevice();
 }
