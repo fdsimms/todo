@@ -39,7 +39,7 @@ import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } 
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
 import { isDateAnchored } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
@@ -1093,8 +1093,21 @@ export const TaskItem = React.memo(function TaskItem({
   // row rendered in Later's Today section, where a partial target ("5/12
   // cups") would otherwise say nothing about when it comes back. Each tap
   // moves it later, being one more logged.
+  // When the next unit falls due, as the row's "· next at …" tail. A weekly
+  // target's next unit is usually days away rather than hours, and a bare
+  // "next at 14:30" on one reads as *today* at 14:30 — the one thing it isn't.
+  // So a due instant on another day is named by its day instead; one that
+  // really is later today still gets the clock time, which is the more useful
+  // of the two whenever it's true.
+  // Carries its own preposition, because the two formats want different ones:
+  // "next at 14:30" but "next Thu". Reading the day out as "next at Thu" is the
+  // giveaway that a clock-shaped label is being asked to do a calendar's job.
   const quotaReturnAt = quotaSettled || isOnPaceQuota(task)
-    ? formatHHMM(dateToHHMM(quotaNextDueAt(task)))
+    ? (() => {
+        const next = quotaNextDueAt(task);
+        const sameDay = getTaskDayStart(next).getTime() === getCurrentDayStart().getTime();
+        return sameDay ? `at ${formatHHMM(dateToHHMM(next))}` : format(next, 'EEE');
+      })()
     : '';
   // A completion that came from the meter keeps it — the fill topping out *is*
   // that row's animation. Bulk selection doesn't take it away either: the row
@@ -2013,7 +2026,7 @@ export const TaskItem = React.memo(function TaskItem({
               <View style={styles.metaChip}>
                 <Ionicons name="speedometer-outline" size={iconSize.xs} color={colors.accent} />
                 <Text style={styles.quotaLabel} numberOfLines={1}>
-                  {quotaProgress}{quotaReturnAt ? ` · next at ${quotaReturnAt}` : ''}
+                  {quotaProgress}{quotaReturnAt ? ` · next ${quotaReturnAt}` : ''}
                 </Text>
               </View>
             )}

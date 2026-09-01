@@ -742,13 +742,35 @@ describe('demo mode', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();
 
-    const alwaysVisible = tasks.find(t => t.quotaAlwaysVisible);
+    // By title rather than by the flag: the weekly target below sets it too,
+    // and this test is about the daily one.
+    const alwaysVisible = tasks.find(t => t.title === 'Stretch');
     expect(alwaysVisible).toBeDefined();
+    expect(alwaysVisible!.quotaAlwaysVisible).toBe(true);
     // On pace (fully met, in fact) is the whole point being demonstrated —
     // an ordinary target in this state would be hidden.
     expect(alwaysVisible!.progressCount).toBe(alwaysVisible!.targetCount);
     expect(isQuotaOnPace(alwaysVisible!)).toBe(true);
     expect(isTaskVisible(alwaysVisible!)).toBe(true);
+  });
+
+  // The same counting mechanism over a week — "three times a week, any days".
+  // Invisible as a capability unless something is actually using it, and a
+  // 0/3 would be indistinguishable from an unstarted daily target.
+  it('seeds a weekly target partway through its week', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const weekly = tasks.find(t => t.quotaPeriod === 'week');
+    expect(weekly).toBeDefined();
+    expect(weekly!.targetCount).toBe(3);
+    expect(weekly!.progressCount).toBeGreaterThan(0);
+    expect(weekly!.progressCount).toBeLessThan(weekly!.targetCount!);
+    // Weekly recurrence, matching the period: on a daily repeat the rollover
+    // would spawn a fresh 0/3 every morning and the target could never be met.
+    expect(weekly!.recurrenceType).toBe('weekly');
+    // Whichever day the demo is entered on, the row is actually on screen.
+    expect(isTaskVisible(weekly!)).toBe(true);
   });
 
   // A timed task can hand its countdown out to its subtasks, and one that

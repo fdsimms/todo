@@ -101,6 +101,57 @@ function onDay(dayStart: Date, hhmm: string): Date {
 }
 
 /**
+ * The logical week `dayStart` falls in, as the day-start instant of its first
+ * day — see `Task.quotaPeriod`.
+ *
+ * Derived by subtracting whole days from the logical day start rather than by
+ * `startOfWeek`, and that is the load-bearing part: `startOfWeek` zeroes the
+ * time, which would put the boundary at calendar midnight and hand every user
+ * with a `dayResetTime` a week that starts hours away from where all their days
+ * do. Subtracting days keeps the reset time exactly as `getCurrentDayStart`
+ * left it, so a week begins when a day does.
+ */
+export function quotaWeekStart(dayStart: Date, weekStartsOn: 0 | 1): Date {
+  const back = (dayStart.getDay() - weekStartsOn + 7) % 7;
+  const start = new Date(dayStart);
+  start.setDate(start.getDate() - back);
+  return start;
+}
+
+/**
+ * The span a weekly target's pace ramps across: its logical week, end to end.
+ *
+ * Deliberately not built from the window/active-hours pair `quotaRunSpan` uses.
+ * Those answer "when in the day am I expected to be doing this", and a weekly
+ * target has no such expectation — any three days will do, which is the whole
+ * point of asking for it by the week. Ramping linearly across the seven days
+ * answers the question it *does* have, which is whether you are going to run
+ * out of week. So Wednesday lunchtime owes you about half of it whatever your
+ * active hours say.
+ *
+ * A hand-started run still moves the start, on the same reasoning
+ * `quotaRunSpan` documents and with the same guard: only a stamp inside this
+ * week counts, so an app left closed doesn't resume last week's run.
+ */
+export function quotaWeekSpan(input: {
+  quotaStartedAt: string | null;
+  dayStart: Date;
+  weekStartsOn: 0 | 1;
+}): QuotaSpan {
+  const scheduledStart = quotaWeekStart(input.dayStart, input.weekStartsOn);
+  const end = new Date(scheduledStart);
+  end.setDate(end.getDate() + 7);
+
+  const started = input.quotaStartedAt ? new Date(input.quotaStartedAt) : null;
+  const startedThisWeek =
+    started && !Number.isNaN(+started) && started >= scheduledStart && started < end
+      ? started
+      : null;
+
+  return { start: startedThisWeek ?? scheduledStart, end };
+}
+
+/**
  * How many units an interval implies across a span, clamped to the range a
  * target is allowed to hold.
  *
