@@ -186,6 +186,7 @@ export function GeneratedTasksSection() {
       case 'screenTime': return s.screenTimeTasks;
       case 'moodLog': return s.moodLogTasks;
       case 'moodNudge': return s.moodNudgeTasks;
+      case 'weekendNudge': return s.weekendNudgeTasks;
     }
   };
 
@@ -210,6 +211,7 @@ export function GeneratedTasksSection() {
       case 'screenTime': s.setScreenTimeTasks(next); break;
       case 'moodLog': s.setMoodLogTasks(next); break;
       case 'moodNudge': s.setMoodNudgeTasks(next); break;
+      case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -245,6 +247,7 @@ export function GeneratedTasksSection() {
       case 'screenTime': return s.screenTimeTaskCategory;
       case 'moodLog': return s.moodLogTaskCategory;
       case 'moodNudge': return s.moodNudgeTaskCategory;
+      case 'weekendNudge': return s.weekendNudgeTaskCategory;
     }
   };
 
@@ -271,6 +274,7 @@ export function GeneratedTasksSection() {
       case 'screenTime': s.setScreenTimeTaskCategory(category); break;
       case 'moodLog': s.setMoodLogTaskCategory(category); break;
       case 'moodNudge': s.setMoodNudgeTaskCategory(category); break;
+      case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
       // Genuinely nothing to write: its task inherits the category of the task
       // whose supply it is about (see checkSupplyReorderTasks), so there is no
       // one global answer to store. categorized: false means the pills that

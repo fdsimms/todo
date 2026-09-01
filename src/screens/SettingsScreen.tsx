@@ -93,6 +93,7 @@ export function SettingsScreen() {
       screenTimeTasks: settings.screenTimeTasks,
       moodLogTasks: settings.moodLogTasks,
       moodNudgeTasks: settings.moodNudgeTasks,
+      weekendNudgeTasks: settings.weekendNudgeTasks,
     }, settings.kitchenEnabled),
     [settings]
   );

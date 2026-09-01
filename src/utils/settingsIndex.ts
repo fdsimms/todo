@@ -223,6 +223,10 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'health', 'journal', 'diary', 'track', 'log', 'generated', 'automatic'],
   moodNudge: ['mood', 'down', 'wellbeing', 'well-being', 'health', 'fun', 'enjoy', 'cheer',
     'generated', 'automatic'],
+  // No 'weekend' or 'empty': both are already in this generator's label, which
+  // the index searches on its own.
+  weekendNudge: ['saturday', 'sunday', 'friday', 'bare', 'free', 'plans',
+    'planning', 'project', 'generated', 'automatic'],
   weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
     'location', 'temperature', 'generated', 'automatic'],
 };

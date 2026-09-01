@@ -20,6 +20,7 @@ const baseProject: Project = {
   nudgeCadenceDays: 0,
   autoSchedule: false,
   nudgeOptIn: false,
+  weekendSource: false,
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
   kind: 'project' as const,

@@ -555,6 +555,16 @@ export interface Project {
   // quiet was nudgeCadenceDays === 0, which only silenced the unprompted
   // surfaces and still showed up the moment someone opened the Pull sheet.
   nudgeOptIn: boolean;
+  // Opt-in: somewhere to look when the weekend nudge finds a bare weekend (see
+  // utils/weekendTasks.ts). Off by default, and deliberately its own field
+  // rather than a reading of `kind` or of the title: nothing may guess which of
+  // somebody's projects are the fun ones, and `kind` is a presentation flag
+  // that is supposed to stay one (see ProjectKind's own note). Separate from
+  // nudgeOptIn above because they answer different questions — that one is
+  // "chase me about this project", this one is "look here when I have a free
+  // weekend", and a wishlist is a good answer to the second and a bad one to
+  // the first.
+  weekendSource: boolean;
   // When the user last deleted this project's review task (see
   // utils/projectReviewTasks.ts) — the per-source opt-out every generated task
   // writes on its source row, and the one that had to be a *date* rather than
@@ -1024,7 +1034,14 @@ export type GeneratedKind =
   // birthday: one pair, two lead-ins, and the second is the only generator in
   // the app whose trigger is a *trend* in the user's own data rather than a
   // date, a row or a threshold crossed once.
-  | 'moodNudge';
+  | 'moodNudge'
+  // A weekend with nothing on it becomes a task to make plans for it — see
+  // src/utils/weekendTasks.ts. Its source id is the weekend's *Saturday* day
+  // key, which is the same "square on the calendar, not a row" position
+  // calendarReview is in, one unit wider: three days named by one of them. So
+  // writeGeneratedOptOut has nothing to write for it either, and what stops a
+  // swiped-away row coming straight back is weekendNudgeLastWeekendKey.
+  | 'weekendNudge';
 
 export interface Task {
   id: string;

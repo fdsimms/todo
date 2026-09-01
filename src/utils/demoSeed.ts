@@ -35,6 +35,12 @@ import { birthdayGiftTitle, personLinkUrl } from './birthdayTasks';
 import { giftIdeasText } from './personNotes';
 import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
+import {
+  WEEKEND_NUDGE_TITLE,
+  upcomingWeekend,
+  weekendNudgeLinkUrl,
+  weekendNudgeNotes,
+} from './weekendTasks';
 import { weatherSourceId, defaultWeatherRules } from './weatherTasks';
 import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
@@ -887,6 +893,39 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Calendar Events',
     ...generatedBy('calendarReview', dayKeyOf(addDays(today, 1))),
+  });
+
+  // The bare-weekend nudge — off by default, and seeded directly for the
+  // reason the calendar review above is: checkWeekendNudgeTasks weighs the real
+  // device calendar and refuses to run in demo mode at all (see
+  // isDemoModeActive there), and it only fires on a Thursday or Friday, which
+  // this fictional day is not guaranteed to be.
+  //
+  // Both halves of the feature are shown, since either alone reads as a
+  // different feature: a project nominated as somewhere to look
+  // (Project.weekendSource, invisible until something quotes it — exactly the
+  // kind of capability the demo has to make visible), and the row quoting it.
+  const dayTrips = createProject('Day trips', null);
+  updateProject(dayTrips.id, { category: 'Ideas', ongoing: true, weekendSource: true });
+  ['Drive out to the coast', 'Walk the ridge trail', 'That bakery two towns over'].forEach(title => {
+    const t = addTask({ title });
+    addExistingToProject(t.id, dayTrips.id);
+  });
+  addCategory('Personal');
+  setCategoryEmoji('Personal', '🌤️');
+  useSettingsStore.getState().setWeekendNudgeTaskCategory('Personal');
+  const weekend = upcomingWeekend(today);
+  addTask({
+    title: WEEKEND_NUDGE_TITLE,
+    notes: weekendNudgeNotes({
+      projectId: dayTrips.id,
+      projectTitle: 'Day trips',
+      candidateTitle: 'Drive out to the coast',
+    }),
+    dueDate: today.toISOString(),
+    linkUrl: weekendNudgeLinkUrl(dayTrips.id),
+    category: 'Personal',
+    ...generatedBy('weekendNudge', weekend.saturdayKey),
   });
 
   // A weather task — off by default, same reasoning as the two generators

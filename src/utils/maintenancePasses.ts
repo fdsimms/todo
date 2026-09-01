@@ -144,6 +144,14 @@ export function catchUpPasses(): MaintenanceStep[] {
     // a background run: the daily check-in is on the list before the phone is
     // unlocked, which is the whole point of a daily check-in.
     ['check mood tasks', () => tasks().checkMoodTasks()],
+    // Beside it, same trigger: which weekend is next rolls over purely by time
+    // passing. After initSettings for the reason the meal pass is — which day
+    // is Friday is a question about the logical day. It reads the calendar
+    // store for the busy half, which no cold-launch step fills in, so like
+    // checkCalendarReviewTasks it does its real work on the foreground sweep
+    // and is close to a no-op here; the task half is answered either way, and
+    // an unreadable calendar is deliberately not a reason to stay silent.
+    ['check weekend nudge tasks', () => tasks().checkWeekendNudgeTasks()],
     // Birthdays, which share the same trigger — a date arriving rather than a
     // source changing — and read the people initTasks' fan-out has loaded.
     // After initSettings for the same reason the meal pass is: the day a task
