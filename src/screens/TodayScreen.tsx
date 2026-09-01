@@ -647,6 +647,7 @@ export function TodayScreen() {
     selectAll,
     deselectAll,
     handleBulkDelete,
+    completableCount,
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
@@ -4180,6 +4181,7 @@ export function TodayScreen() {
             totalCount={visibleForMode.length}
             existingTags={useTaskStore.getState().allTags()}
             onComplete={handleBulkComplete}
+            completableCount={completableCount}
             onDelete={handleBulkDelete}
             onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
             onSetCategory={category => { bulkSetCategory(Array.from(selectedIds), category); exitSelection(); }}

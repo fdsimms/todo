@@ -75,6 +75,7 @@ export function CategoryDetailScreen() {
     selectAll,
     deselectAll,
     handleBulkDelete,
+    completableCount,
     painting,
     paintProps,
   } = useTaskSelection(allTasks);
@@ -280,6 +281,7 @@ export function CategoryDetailScreen() {
             totalCount={categoryTasks.length}
             existingTags={allTags}
             onComplete={handleBulkComplete}
+            completableCount={completableCount}
             onDelete={handleBulkDelete}
             onSetWhen={(date, segs) => { bulkSetWhen(Array.from(selectedIds), date, segs); exitSelection(); }}
             onSetCategory={cat => { bulkSetCategory(Array.from(selectedIds), cat); exitSelection(); }}

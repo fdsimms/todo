@@ -68,8 +68,23 @@ export function useTaskSelection(allTasks: Task[]) {
     );
   };
 
+  // How many of the selected tasks a bulk Complete would actually complete.
+  // Negative habits are never completed (see the polarity guard in
+  // completeTask), so a selection made entirely of them would otherwise offer a
+  // green Complete button that does nothing at all — and the one thing it looks
+  // like it would do is the opposite of what those tasks mean.
+  //
+  // A count rather than a boolean because a mixed selection is a real case and
+  // completing the rest is the right behaviour there: the bar hides the action
+  // only when there is nothing at all for it to do.
+  const completableCount = Array.from(selectedIds).filter(id => {
+    const t = allTasks.find(x => x.id === id);
+    return t ? t.polarity !== 'negative' : false;
+  }).length;
+
   return {
     ...selection,
     handleBulkDelete,
+    completableCount,
   };
 }
