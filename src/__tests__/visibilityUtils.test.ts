@@ -32,6 +32,7 @@ import {
   displayTitleFor,
   sameTimeSegments,
   isCompletionOnTime,
+  isCategoryScheduledDay,
 } from '../utils/visibilityUtils';
 import { registerTaskSource, registerProjectSource } from '../utils/blockerRegistry';
 import { registerPersonSource } from '../utils/peopleRegistry';
@@ -148,7 +149,7 @@ const baseTask: Task = {
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null,
+  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -973,6 +974,43 @@ describe('category schedule — isTaskVisible', () => {
 
   it('shows task in a different category not in work schedule', () => {
     expect(isTaskVisible({ ...baseTask, category: 'Personal', dueDate: dueToday })).toBe(true);
+  });
+});
+
+describe('isCategoryScheduledDay', () => {
+  afterEach(() => mockCategorySchedule(null));
+
+  it('is true for a scheduled weekday', () => {
+    mockCategorySchedule(workCategory);
+    // Tuesday June 10, 2025
+    expect(isCategoryScheduledDay('Work', new Date(2025, 5, 10))).toBe(true);
+  });
+
+  it('is false for a weekend the schedule excludes', () => {
+    mockCategorySchedule(workCategory);
+    // Saturday June 14, 2025
+    expect(isCategoryScheduledDay('Work', new Date(2025, 5, 14))).toBe(false);
+  });
+
+  it('ignores the hour-of-day window, unlike isCategoryScheduleActive', () => {
+    mockCategorySchedule(workCategory);
+    // Tuesday at 3am — well outside 09:00–18:00, but still a scheduled day.
+    expect(isCategoryScheduledDay('Work', new Date(2025, 5, 10, 3, 0, 0))).toBe(true);
+  });
+
+  it('is true for no category', () => {
+    mockCategorySchedule(workCategory);
+    expect(isCategoryScheduledDay(null, new Date(2025, 5, 14))).toBe(true);
+  });
+
+  it('is true for a category with no schedule', () => {
+    mockCategorySchedule(null);
+    expect(isCategoryScheduledDay('Work', new Date(2025, 5, 14))).toBe(true);
+  });
+
+  it('is true for a category not in the schedule (e.g. a different one)', () => {
+    mockCategorySchedule(workCategory);
+    expect(isCategoryScheduledDay('Personal', new Date(2025, 5, 14))).toBe(true);
   });
 });
 

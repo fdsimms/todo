@@ -446,7 +446,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   sep: { height: border.hairline, backgroundColor: colors.separator, marginLeft: spacing.md },
   applyBtn: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     borderRadius: radius.md,
     margin: spacing.md,
     paddingVertical: 14,

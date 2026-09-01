@@ -40,6 +40,7 @@ export function useNotificationTapSync(): void {
       } else if (response.actionIdentifier === SNOOZE_ACTION_IDENTIFIER) {
         useTaskStore.getState().updateTask(taskId, {
           reminderTime: new Date(Date.now() + SNOOZE_MINUTES * 60 * 1000).toISOString(),
+          reminderUtcOffsetMinutes: new Date().getTimezoneOffset(),
         });
       }
       resetToToday();

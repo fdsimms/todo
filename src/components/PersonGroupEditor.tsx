@@ -248,7 +248,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginTop: spacing.md,
     paddingVertical: 12,
     borderRadius: radius.md,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     alignItems: 'center',
   },
   createButtonDisabled: { opacity: 0.5 },

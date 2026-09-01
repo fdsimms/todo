@@ -388,6 +388,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [reminderTime, setReminderTime] = useState<Date | null>(null);
   const [reminderKind, setReminderKind] = useState<ReminderKind>('notification');
   const [reminderOffsetDays, setReminderOffsetDays] = useState<number | null>(null);
+  const [reminderTimeAnchor, setReminderTimeAnchor] = useState<'wallClock' | 'fixed'>('wallClock');
   // Whether the user has explicitly set or cleared the reminder this session —
   // gates applyDefaultReminderLead below so a pre-filled default never stomps
   // on a choice the user actually made (including "no reminder").
@@ -619,6 +620,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setReminderTime(task.reminderTime ? new Date(task.reminderTime) : null);
       setReminderKind(task.reminderKind ?? 'notification');
       setReminderOffsetDays(task.reminderOffsetDays ?? null);
+      setReminderTimeAnchor(task.reminderTimeAnchor ?? 'wallClock');
       setReminderTouched(false);
       setRecurrenceType(task.recurrenceType); setRecurrenceInterval(task.recurrenceInterval);
       setRecurrenceDays(task.recurrenceDays ?? []);
@@ -651,7 +653,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     } else {
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
-      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTouched(false);
+      setDueDate(initialDraft?.dueDate ?? null); setExtraDates([]); setSeriesRepeats(false); setDeadline(null); setDeadlineOffsetDays(null); setDeadlineMonthDay(null); setDeadlineOnCalendar(false); setTimeSegments(initialDraft?.timeSegments ?? []); setWindowStart(null); setWindowEnd(null); setTargetCount(initialDraft?.targetCount ?? null); setTargetUnit(initialDraft?.targetUnit ?? ''); setAllowOvershoot(initialDraft?.allowOvershoot ?? false); setQuotaIntervalMinutes(initialDraft?.quotaIntervalMinutes ?? null); setQuotaReminders(initialDraft?.quotaReminders ?? false); setQuotaAlwaysVisible(initialDraft?.quotaAlwaysVisible ?? false); setSupplyCount(initialDraft?.supplyCount ?? null); setSupplyUnit(initialDraft?.supplyUnit ?? ''); setSupplyRefillCount(initialDraft?.supplyRefillCount ?? null); setSupplyReorderAt(initialDraft?.supplyReorderAt ?? DEFAULT_SUPPLY_REORDER_AT); setSupplyLeadDays(initialDraft?.supplyLeadDays ?? null); setSupplyGroceryItemId(initialDraft?.supplyGroceryItemId ?? null); setDeferUntil(null); setReminderTime(initialDraft?.reminderTime ?? null); setReminderKind('notification'); setReminderTimeAnchor('wallClock'); setReminderTouched(false);
       setRecurrenceType(initialDraft?.recurrenceType ?? 'none'); setRecurrenceInterval(initialDraft?.recurrenceInterval ?? 1);
       setRecurrenceDays(initialDraft?.recurrenceDays ?? []);
       setRecurrenceMonthDay(initialDraft?.recurrenceMonthDay ?? null);
@@ -731,6 +733,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderTime: task ? (task.reminderTime ?? null) : (initialDraft?.reminderTime?.toISOString() ?? null),
       reminderKind: task?.reminderKind ?? 'notification',
       reminderOffsetDays: task?.reminderOffsetDays ?? null,
+      reminderTimeAnchor: task?.reminderTimeAnchor ?? 'wallClock',
+      // Recomputed from the same instant reminderTime state is seeded with
+      // (getTimezoneOffset of that Date), rather than read off
+      // task.reminderUtcOffsetMinutes directly — a legacy row migrated
+      // before that column existed stores null there even though it has a
+      // reminderTime, and reading it verbatim would make this baseline
+      // disagree with handleCancel's live snapshot (which always recomputes
+      // the same way) on every such task, reporting it dirty on open with
+      // nothing actually changed.
+      reminderUtcOffsetMinutes: task?.reminderTime
+        ? new Date(task.reminderTime).getTimezoneOffset()
+        : (initialDraft?.reminderTime ? initialDraft.reminderTime.getTimezoneOffset() : null),
       recurrenceType: task ? task.recurrenceType : (initialDraft?.recurrenceType ?? 'none'),
       recurrenceInterval: task ? task.recurrenceInterval : (initialDraft?.recurrenceInterval ?? 1),
       recurrenceDays: task ? (task.recurrenceDays ?? []) : (initialDraft?.recurrenceDays ?? []),
@@ -985,6 +999,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
       reminderOffsetDays,
+      reminderTimeAnchor,
+      reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : recurrenceType === 'monthly' && recurrenceWeekOrdinal !== null ? recurrenceDays : [],
       recurrenceMonthDay: recurrenceType === 'monthly' && recurrenceWeekOrdinal === null ? recurrenceMonthDay : null,
@@ -1334,11 +1350,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setPickerMode(mode);
   };
 
-  const confirmPicker = (confirmed: Date, kind?: ReminderKind, offsetDays?: number | null) => {
+  const confirmPicker = (confirmed: Date, kind?: ReminderKind, offsetDays?: number | null, anchor?: 'wallClock' | 'fixed') => {
     if (pickerMode === 'reminder') {
       setReminderTime(confirmed);
       if (kind) setReminderKind(kind);
       setReminderOffsetDays(offsetDays ?? null);
+      if (anchor) setReminderTimeAnchor(anchor);
       setReminderTouched(true);
     }
     setPickerMode('none');
@@ -1515,6 +1532,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       reminderTime: reminderTime?.toISOString() ?? null,
       reminderKind,
       reminderOffsetDays,
+      reminderTimeAnchor,
+      reminderUtcOffsetMinutes: reminderTime ? reminderTime.getTimezoneOffset() : null,
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
@@ -1930,8 +1949,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             kind={reminderKind}
             dueDate={dueDate}
             offsetDays={reminderOffsetDays}
+            anchor={reminderTimeAnchor}
             onConfirm={confirmPicker}
-            onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTouched(true); setPickerMode('none'); } : undefined}
+            onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTimeAnchor('wallClock'); setReminderTouched(true); setPickerMode('none'); } : undefined}
             onCancel={() => setPickerMode('none')}
           />
           <WhenPicker
@@ -3155,7 +3175,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                 ? `Actually sends at ${formatTimeOfDay(reminderNudge.time, use24HourTime)}, moved past ${reminderNudge.meetingTitle ? `"${reminderNudge.meetingTitle}"` : 'a calendar event'}`
                 : undefined}
               onPress={() => openPicker('reminder')}
-              onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTouched(true); } : undefined}
+              onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTimeAnchor('wallClock'); setReminderTouched(true); } : undefined}
             />
               </>
             ),
@@ -4608,7 +4628,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: radius.md,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   scheduleBannerText: {
     color: colors.onAccent,

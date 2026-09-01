@@ -178,7 +178,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   selectAction: {
     width: ACTION_WIDTH,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

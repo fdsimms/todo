@@ -597,7 +597,7 @@ function makeStyles(colors: Colors) {
       opacity: 0.7,
     },
     checkboxSelected: {
-      backgroundColor: colors.accent,
+      backgroundColor: colors.accentFill,
       borderColor: colors.accent,
     },
     tapZone: {

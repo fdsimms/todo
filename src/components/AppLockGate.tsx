@@ -172,7 +172,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   button: {
     marginTop: spacing.sm,
     paddingHorizontal: spacing.lg, paddingVertical: 10,
-    borderRadius: radius.full, backgroundColor: colors.accent,
+    borderRadius: radius.full, backgroundColor: colors.accentFill,
   },
   buttonText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
 });

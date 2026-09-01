@@ -102,7 +102,7 @@ export const makeSettingsStyles = (colors: Colors) => StyleSheet.create({
     flex: 1, paddingVertical: 11, borderRadius: radius.md,
     alignItems: 'center', backgroundColor: colors.bgTertiary,
   },
-  pickerBtnPrimary: { backgroundColor: colors.accent },
+  pickerBtnPrimary: { backgroundColor: colors.accentFill },
   pickerBtnText: { fontSize: font.md, fontWeight: fontWeight.semibold },
 
   // Fixed width so the "Aa" specimens line up down the column even though the

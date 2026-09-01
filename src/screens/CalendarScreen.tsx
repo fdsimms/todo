@@ -584,7 +584,7 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.textSecondary,
     },
     dayCircleSelected: {
-      backgroundColor: colors.accent,
+      backgroundColor: colors.accentFill,
     },
     dayCircleToday: {
       borderWidth: 1.5,

@@ -623,7 +623,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   chipOn: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   chipText: {
     color: colors.text,

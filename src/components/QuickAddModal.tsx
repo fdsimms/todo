@@ -2538,7 +2538,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     width: interaction.pillHeight,
     height: interaction.pillHeight,
     borderRadius: interaction.pillHeight / 2,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2720,7 +2720,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: radius.md,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   tooltipCandidateRow: {
     flexDirection: 'row',
@@ -2731,7 +2731,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingHorizontal: 12,
     paddingVertical: 7,
     borderRadius: radius.md,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   tooltipText: {
     color: colors.onAccent,
@@ -2814,7 +2814,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     maxWidth: '48%',
   },
   presetChipActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   presetChipText: {
     color: colors.textSecondary,
@@ -3008,7 +3008,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   footerAddDisabled: { backgroundColor: colors.bgTertiary },
   footerAddText: {
@@ -3032,7 +3032,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     backgroundColor: colors.bgTertiary,
   },
   linkAppChipActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   linkAppChipText: {
     color: colors.textSecondary,

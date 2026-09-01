@@ -340,7 +340,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
     alignItems: 'center', gap: 2,
   },
-  chipActive: { backgroundColor: colors.accent },
+  chipActive: { backgroundColor: colors.accentFill },
   chipDot: { width: 7, height: 7, borderRadius: 4 },
   chipText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },

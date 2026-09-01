@@ -90,7 +90,7 @@ const makeStyles = (colors: Colors, fabHand: FabHand) => StyleSheet.create({
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.full,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   label: {
     color: colors.onAccent,

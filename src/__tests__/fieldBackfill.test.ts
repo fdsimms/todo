@@ -80,7 +80,7 @@ const baseTask: Task = {
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null,
+  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   parentId: null,
   groupId: null,
   projectId: null,

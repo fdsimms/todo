@@ -244,7 +244,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   saveBtn: {
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     borderRadius: radius.md,
     paddingVertical: 13,
     alignItems: 'center',

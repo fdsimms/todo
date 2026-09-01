@@ -140,7 +140,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
       gap: spacing.xs,
-      backgroundColor: colors.accent,
+      backgroundColor: colors.accentFill,
       paddingHorizontal: spacing.md,
       paddingVertical: 7,
       minHeight: 32,

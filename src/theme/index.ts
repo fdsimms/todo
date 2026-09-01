@@ -28,6 +28,19 @@ export type Colors = {
    * matching each other.
    */
   accentText: string;
+  /**
+   * Accent as a *fill carrying `onAccent` (white) text* — the opposite
+   * problem `accentText` solves, and the mirror-image token for it. `onAccent`
+   * on `accent` measures 3.65:1 in dark and 4.02:1 in light, both under the
+   * 4.5:1 AA bar for normal text, and it's the selected state of every chip,
+   * pill and segment plus the "Add"/"Save" filled buttons (#2196). `accent`
+   * itself stays iOS system blue on purpose — this is a second, slightly
+   * darker blue for exactly the surfaces that carry white text, so the
+   * identity color used for glyphs, borders and bars is untouched. Use this
+   * wherever `onAccent` sits on a filled surface; use `accent` everywhere
+   * else a fill is called for.
+   */
+  accentFill: string;
   green: string;
   orange: string;
   red: string;
@@ -64,6 +77,7 @@ export const darkColors: Colors = {
   accent: '#0A84FF',
   accentSubtle: 'rgba(10, 132, 255, 0.15)',
   accentText: '#3D9BFF',
+  accentFill: '#0970D9',
   green: '#4C9A76',
   orange: '#FF9F0A',
   red: '#FF453A',
@@ -99,6 +113,7 @@ export const darkPurpleColors: Colors = {
   accent: '#0A84FF',
   accentSubtle: 'rgba(10, 132, 255, 0.15)',
   accentText: '#3D9BFF',
+  accentFill: '#0970D9',
   green: '#4C9A76',
   orange: '#FF9F0A',
   red: '#FF453A',
@@ -132,6 +147,7 @@ export const lightColors: Colors = {
   accent: '#007AFF',
   accentSubtle: 'rgba(0, 122, 255, 0.12)',
   accentText: '#0B69D0',
+  accentFill: '#0068D9',
   green: '#3D8563',
   orange: '#FF9500',
   red: '#FF3B30',

@@ -112,6 +112,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
 });

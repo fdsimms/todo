@@ -46,7 +46,11 @@ interface Props {
   // from without one.
   dueDate?: Date | null;
   offsetDays?: number | null;
-  onConfirm: (date: Date, kind: ReminderKind, offsetDays: number | null) => void;
+  // Whether this reminder tracks the device's current timezone or stays fixed
+  // to the instant it was set for — see Task.reminderTimeAnchor. Defaults to
+  // 'wallClock', same as a new task with no reminder yet.
+  anchor?: 'wallClock' | 'fixed';
+  onConfirm: (date: Date, kind: ReminderKind, offsetDays: number | null, anchor: 'wallClock' | 'fixed') => void;
   onClear?: () => void;
   onCancel: () => void;
 }
@@ -61,7 +65,7 @@ const alarmKitAvailable = isAlarmKitAvailable();
 const BEFORE_DAYS_MIN = 1;
 const BEFORE_DAYS_MAX = 60;
 
-export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDays = null, onConfirm, onClear, onCancel }: Props) {
+export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDays = null, anchor = 'wallClock', onConfirm, onClear, onCancel }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   // Reactive, unlike the width above: read once at module load, a stale
@@ -81,6 +85,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
   const [nlText, setNlText] = useState('');
   const [pickerReady, setPickerReady] = useState(false);
   const [selectedKind, setSelectedKind] = useState<ReminderKind>(kind);
+  const [selectedAnchor, setSelectedAnchor] = useState<'wallClock' | 'fixed'>(anchor);
   // 'before' is only ever the opening mode when there's an offset already set
   // on the task and a due date to count it from — otherwise there's nothing
   // to switch to it from, so it isn't even offered (see the toggle below).
@@ -100,6 +105,7 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
     setTimeDate(t);
     setNlText('');
     setSelectedKind(kind);
+    setSelectedAnchor(anchor);
     setMode(offsetDays !== null && dueDate ? 'before' : 'date');
     setBeforeDays(offsetDays ?? 1);
   }, [visible]);
@@ -139,13 +145,13 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
       if (!dueDate) return;
       const result = getReminderOffsetDate(dueDate, beforeDays);
       result.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
-      onConfirm(result, selectedKind, beforeDays);
+      onConfirm(result, selectedKind, beforeDays, selectedAnchor);
       return;
     }
     if (!selectedDate) return;
     const result = new Date(selectedDate);
     result.setHours(timeDate.getHours(), timeDate.getMinutes(), 0, 0);
-    onConfirm(result, selectedKind, null);
+    onConfirm(result, selectedKind, null, selectedAnchor);
   };
 
   const canConfirm = mode === 'before' ? !!dueDate : !!selectedDate;
@@ -347,6 +353,28 @@ export function RemindMePicker({ visible, value, kind, dueDate = null, offsetDay
 
             <View style={styles.sectionGap} />
 
+            {/* Whether this reminder follows the device across timezones or
+                stays fixed to the instant it was set for — see
+                Task.reminderTimeAnchor. */}
+            <View style={styles.anchorSection}>
+              <SegmentedControl<'wallClock' | 'fixed'>
+                label="Anchor"
+                value={selectedAnchor}
+                onChange={setSelectedAnchor}
+                options={[
+                  { value: 'wallClock', label: 'Local time' },
+                  { value: 'fixed', label: 'Exact moment' },
+                ]}
+              />
+              <Text style={styles.anchorHint}>
+                {selectedAnchor === 'wallClock'
+                  ? 'Fires at this time of day wherever your device is, even after you change timezones.'
+                  : 'Fires at this exact moment, unaffected by a timezone change.'}
+              </Text>
+            </View>
+
+            <View style={styles.sectionGap} />
+
             {/* Alarm vs notification — only offered where AlarmKit can actually ring one */}
             {alarmKitAvailable && (
               <>
@@ -518,6 +546,14 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
   modeSection: {
     marginHorizontal: spacing.md,
   },
+  anchorSection: {
+    marginHorizontal: spacing.md,
+  },
+  anchorHint: {
+    color: colors.textSecondary,
+    fontSize: font.xs,
+    marginTop: spacing.xs + 2,
+  },
   beforeSection: {
     marginHorizontal: spacing.md,
     backgroundColor: colors.bgTertiary,
@@ -599,7 +635,7 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     justifyContent: 'center',
   },
   dayCircleSelected: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   dayCircleToday: {
     borderWidth: 1.5,
@@ -656,7 +692,7 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
   },
   kindOptionSelected: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   kindLabel: {
     color: colors.textSecondary,
@@ -673,7 +709,7 @@ const makeStyles = (colors: Colors, windowHeight: number) => StyleSheet.create({
   },
   doneBtn: {
     marginHorizontal: spacing.md,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     borderRadius: radius.md,
     paddingVertical: 13,
     alignItems: 'center',

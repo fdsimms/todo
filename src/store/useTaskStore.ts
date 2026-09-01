@@ -111,13 +111,13 @@ import {
   supplyReorderSourceId,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver } from '../utils/quotaSchedule';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -448,6 +448,8 @@ function newTaskFromDraft(
     reminderTime: draft.reminderTime ?? null,
     reminderKind: draft.reminderKind ?? 'notification',
     reminderOffsetDays: draft.reminderOffsetDays ?? null,
+    reminderTimeAnchor: draft.reminderTimeAnchor ?? 'wallClock',
+    reminderUtcOffsetMinutes: draft.reminderUtcOffsetMinutes ?? captureReminderOffset(draft.reminderTime ?? null),
     chainEnabled: draft.chainEnabled ?? false,
     chainIndex: draft.chainIndex ?? 0,
     chainItems: draft.chainItems ?? [],
@@ -858,13 +860,20 @@ function calendarDayKey(d: Date): string {
 // reminder, onto the day `offsetDays` before it — see
 // Task.reminderOffsetDays), keeping its time of day. A set of dates shares an
 // hour, not a moment — copying the source row's reminderTime verbatim would
-// fire every date's notification on the first one.
-function reanchorReminder(reminderTime: string | null, date: Date, offsetDays: number | null = null): string | null {
-  if (!reminderTime) return null;
+// fire every date's notification on the first one. Also recaptures
+// reminderUtcOffsetMinutes for the moved instant, since a reminder re-anchored
+// onto a different day may cross a DST boundary and land under a different
+// UTC offset than the one its source row had — see #1205.
+function reanchorReminder(
+  reminderTime: string | null,
+  date: Date,
+  offsetDays: number | null = null
+): { reminderTime: string | null; reminderUtcOffsetMinutes: number | null } {
+  if (!reminderTime) return { reminderTime: null, reminderUtcOffsetMinutes: null };
   const original = new Date(reminderTime);
   const next = new Date(offsetDays !== null ? getReminderOffsetDate(date, offsetDays) : date);
   next.setHours(original.getHours(), original.getMinutes(), 0, 0);
-  return next.toISOString();
+  return { reminderTime: next.toISOString(), reminderUtcOffsetMinutes: next.getTimezoneOffset() };
 }
 
 // The fields whose arrival in an `updates` patch means the user is writing the
@@ -999,7 +1008,7 @@ function buildSeriesRow(
         : base.deadlineMonthDay !== null
           ? getDeadlineFromMonthDay(date, base.deadlineMonthDay).toISOString()
           : base.deadline,
-    reminderTime: reanchorReminder(base.reminderTime, date, base.reminderOffsetDays),
+    ...reanchorReminder(base.reminderTime, date, base.reminderOffsetDays),
   };
 }
 
@@ -1415,8 +1424,15 @@ interface TaskStore extends UndoHistoryActions {
    * every non-interactive caller does and is always allowed — bulk complete,
    * the stack cascade, the widget queue and the overshoot sweep have nobody to
    * ask, and a completion may never be blocked on an answer.
+   *
+   * `neutral` closes the occurrence without the streak moving either way —
+   * for a quota day-close sweep finding today wasn't a scheduled day for the
+   * task's category (see #2201, isCategoryScheduledDay): the day didn't
+   * count as work, so it shouldn't count as a miss either. Mutually
+   * exclusive with `missed` in practice (nothing passes both); `missed`
+   * still wins if it somehow were, since a miss is the more specific claim.
    */
-  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null }) => void;
+  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null; neutral?: boolean }) => void;
   uncompleteTask: (id: string) => void;
   /**
    * Writes (or clears) the answer on an already-completed task — the Logbook's
@@ -1447,6 +1463,18 @@ interface TaskStore extends UndoHistoryActions {
   rolloverQuotas: () => void;
   /** Opt-in counterpart to rolloverQuotas for allowOvershoot tasks — see its doc comment. */
   sweepOvershootQuotas: () => void;
+  /**
+   * Re-expresses every 'wallClock' reminder's stored instant under the
+   * device's current timezone, so a reminder set for "9am" still fires at
+   * 9am after the device has moved zones instead of at whatever 9am-in-the-
+   * old-zone now reads as here. Run on launch (initialize) and on every
+   * foreground (TodayScreen's AppState listener), since a phone left closed
+   * never sees a cold start and a timezone change while backgrounded is
+   * exactly the case this exists for. A 'fixed' reminder, or a task with no
+   * captured reminderUtcOffsetMinutes (a pre-migration row nobody has
+   * touched yet), is left alone. See #1205.
+   */
+  reanchorWallClockReminders: () => void;
   /**
    * Closes out interval quotas whose run has ended, at whatever count they
    * reached — see its doc comment. The third quota day-close, and the only one
@@ -1819,9 +1847,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     useFocusStore.getState().initialize(tasks);
 
     set({ tasks, tagRegistry, initialized: true });
+    // The device's timezone can have changed while the app was shut — a cold
+    // start is the only chance to notice, since nothing runs while it's
+    // closed. Reanchoring has to happen before rescheduling the native
+    // notifications below, or they'd be scheduled against the stale instant;
+    // re-reading get().tasks afterward (rather than reusing the local
+    // `tasks` from above) is what makes that ordering actually take effect.
+    // See #1205.
+    get().reanchorWallClockReminders();
     const { tripShopId, tripStartedAt, shops } = useGroceryStore.getState();
     const eventReminders = Object.values(useEventReminderStore.getState().remindersByKey);
-    rescheduleAllReminders(tasks, { shopId: tripShopId, startedAt: tripStartedAt, shops }, eventReminders);
+    rescheduleAllReminders(get().tasks, { shopId: tripShopId, startedAt: tripStartedAt, shops }, eventReminders);
     // Deliberately after the set() above, not inside useLeftoverStore's own
     // initialize(): reconciling reads useTaskStore.getState().tasks to find
     // each leftover's live task, and at the point leftovers load (just above)
@@ -2588,13 +2624,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             // reanchored onto the offset-relative day when reminderOffsetDays
             // is part of what's being fanned out, same as buildSeriesRow.
             ...('reminderTime' in fanOut
-              ? {
-                  reminderTime: reanchorReminder(
-                    fanOut.reminderTime ?? null,
-                    new Date(t.dueDate!),
-                    'reminderOffsetDays' in fanOut ? fanOut.reminderOffsetDays ?? null : t.reminderOffsetDays
-                  ),
-                }
+              ? reanchorReminder(
+                  fanOut.reminderTime ?? null,
+                  new Date(t.dueDate!),
+                  'reminderOffsetDays' in fanOut ? fanOut.reminderOffsetDays ?? null : t.reminderOffsetDays
+                )
               : {}),
             // A set shares one blocker, but no row can wait on itself. Picking
             // a later date of this same set as the blocker would otherwise
@@ -2743,6 +2777,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   completeTask(id, options) {
     const missed = options?.missed ?? false;
+    const neutral = options?.neutral ?? false;
     // The row's animation is over whatever this call decides, so release it
     // from the collapse batch before the guards below — a completion that
     // turns out to be a no-op would otherwise hold the batch down for good.
@@ -2844,7 +2879,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // own cadence, so a 5-step daily rotation advancing its streak once per
     // cycle would show a 5-day gap against an expected 1 and read as 'reset'
     // every single time round: a streak that can never exceed 1.
-    const streakAdvances = !missed && recurs && datesBySchedule;
+    const streakAdvances = !missed && !neutral && recurs && datesBySchedule;
     // A missed occurrence breaks the streak where a completed one advances it.
     // Both write through the same previous* snapshot, so uncompleteTask undoes
     // either one without needing to know which happened.
@@ -2863,7 +2898,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // bit. A miss doesn't count either — the rule counts completions, and
     // markMissed comes through here too.
     const extraRule = extraTaskRule(task);
-    const extraAdvance = extraRule && !missed && advancesBySchedule
+    const extraAdvance = extraRule && !missed && !neutral && advancesBySchedule
       ? advanceExtraTaskTally(task.extraTaskTally, extraRule.everyN)
       : null;
     const nextExtraTally = extraAdvance ? extraAdvance.tally : task.extraTaskTally;
@@ -2989,6 +3024,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           : null;
         const effectiveDue = answeredDue ?? nextDue ?? midChainDue;
         let nextReminderTime: string | null = effective.reminderTime;
+        let nextReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
         if (effectiveDue && effective.reminderTime) {
           const original = new Date(effective.reminderTime);
           const next = new Date(
@@ -2998,6 +3034,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           );
           next.setHours(original.getHours(), original.getMinutes(), 0, 0);
           nextReminderTime = next.toISOString();
+          nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
         }
         const nextChainIndex = chainAdvances
           ? (atChainEnd ? 0 : task.chainIndex + 1)
@@ -3092,6 +3129,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           extraTaskTally: nextExtraTally,
           previousExtraTaskTally: task.extraTaskTally,
           reminderTime: nextReminderTime,
+          reminderUtcOffsetMinutes: nextReminderUtcOffsetMinutes,
           chainIndex: nextChainIndex,
           recurrenceCount:
             advancesBySchedule && task.recurrenceCount !== null ? task.recurrenceCount - 1 : task.recurrenceCount,
@@ -3819,21 +3857,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const spawned: Task[] = [];
     const now = new Date().toISOString();
     for (const task of stale) {
+      const ownDayStart = getTaskDayStart(new Date(task.dueDate!), dayResetTime);
       // Stamped at the end of the day it belonged to, not now — the partial
       // is a record of *that* day, and the Logbook groups by completedAt.
-      const ownDayEnd = new Date(+getTaskDayStart(new Date(task.dueDate!), dayResetTime) + 24 * 60 * 60 * 1000 - 1);
+      const ownDayEnd = new Date(+ownDayStart + 24 * 60 * 60 * 1000 - 1);
+      // A day the task's own category schedule doesn't cover (see #2201,
+      // isCategoryScheduledDay) wasn't a work day, so it closes as a no-op
+      // rather than a shortfall — neither advancing nor breaking the streak.
+      // `nextStreak` reused for both fields the same way completeTask does,
+      // so nextStreakRecord folds nothing when it's unchanged.
+      const neutral = !isCategoryScheduledDay(task.category, ownDayStart);
+      const nextStreak = neutral ? task.streakCount : 0;
       closed.push({
         ...task,
         completed: true,
         completedAt: ownDayEnd.toISOString(),
         // progressCount deliberately left as-is — that's the record.
-        streakCount: 0,
-        streakDate: null,
+        streakCount: nextStreak,
+        streakDate: neutral ? task.streakDate : null,
         previousStreakCount: task.streakCount,
         previousStreakDate: task.streakDate,
         // A partial day closes the run out, so the run it ends is a candidate
         // for the personal best like any other ending.
-        priorBestStreak: nextStreakRecord(task, 0),
+        priorBestStreak: nextStreakRecord(task, nextStreak),
       });
       // A series that has run out (recurrenceEndDate/recurrenceCount) gets the
       // partial record but no successor — the schedule is consulted only for
@@ -3859,14 +3905,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // Same as completeTask's successor: the count resets, the mute carries.
         postponeCount: 0,
         driftingSince: null,
-        streakCount: 0,
-        streakDate: null,
+        // A neutral close (see nextStreak above) carries the live streak
+        // forward exactly as it stood — a non-work day never happened, so
+        // the successor picking it up must not read as day one either.
+        streakCount: nextStreak,
+        streakDate: neutral ? task.streakDate : null,
         previousStreakCount: 0,
         previousStreakDate: null,
         // Not 0, unlike everything else reset on this successor: the streak
         // starts again but the record is the task's history, and this row is
         // where the task continues.
-        priorBestStreak: nextStreakRecord(task, 0),
+        priorBestStreak: nextStreakRecord(task, nextStreak),
         timerStartedAt: null,
         previousOccurrenceId: task.id,
         seriesDefaults: null,
@@ -3881,6 +3930,49 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const closedById = new Map(closed.map(t => [t.id, t]));
     set(s => ({
       tasks: [...s.tasks.map(t => closedById.get(t.id) ?? t), ...spawned],
+    }));
+  },
+
+  reanchorWallClockReminders() {
+    const updated: Task[] = [];
+    for (const task of get().tasks) {
+      if (
+        task.reminderTimeAnchor !== 'wallClock' ||
+        task.reminderTime === null ||
+        task.reminderUtcOffsetMinutes === null ||
+        task.completed ||
+        task.archived
+      ) {
+        continue;
+      }
+      const reanchored = reanchorReminderToWallClock(task.reminderTime, task.reminderUtcOffsetMinutes);
+      // The device hasn't actually moved zones since this was last captured —
+      // nothing to write.
+      if (reanchored === task.reminderTime) continue;
+      updated.push({
+        ...task,
+        reminderTime: reanchored,
+        // The offset now in effect here, correct going forward until the
+        // device moves again.
+        reminderUtcOffsetMinutes: new Date().getTimezoneOffset(),
+      });
+    }
+    if (updated.length === 0) return;
+
+    // This is the app moving the row itself, not a user edit or a schedule
+    // move — same low-level write updateTask's own side effects (series
+    // fan-out, postpone bumps, seriesDefaults handling) aren't wanted for,
+    // same as rolloverQuotas above. The notification has to be rescheduled
+    // here explicitly: the launch call path chains into
+    // rescheduleAllReminders right after this, but the foreground listener
+    // doesn't, so this is the only place that would ever correct it there.
+    updated.forEach(t => {
+      dbUpdateTask(t);
+      scheduleTaskReminder(t);
+    });
+    const updatedById = new Map(updated.map(t => [t.id, t]));
+    set(s => ({
+      tasks: s.tasks.map(t => updatedById.get(t.id) ?? t),
     }));
   },
 
@@ -3925,7 +4017,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       t.dueDate !== null &&
       getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
     );
-    stale.forEach(t => get().completeTask(t.id));
+    // neutral on a day the task's own category schedule didn't cover — see
+    // #2201, isCategoryScheduledDay, and rolloverQuotas' own note above.
+    stale.forEach(t => get().completeTask(t.id, {
+      neutral: !isCategoryScheduledDay(t.category, getTaskDayStart(new Date(t.dueDate!), dayResetTime)),
+    }));
   },
 
   startQuotaRun(id) {
@@ -3981,7 +4077,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // an overdue row per day for the one routine most likely to go untapped.
     // A completion here is what it says — the run finished — and the count
     // beside it is the record of how much of it you took.
-    finished.forEach(t => get().completeTask(t.id));
+    //
+    // neutral on a day the task's own category schedule didn't cover — see
+    // #2201, isCategoryScheduledDay, and rolloverQuotas' own note above.
+    finished.forEach(t => get().completeTask(t.id, {
+      neutral: !isCategoryScheduledDay(t.category, getTaskDayStart(new Date(t.dueDate!), dayResetTime)),
+    }));
   },
 
   deferTask(id, until) {
@@ -5318,6 +5419,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         return;
       }
       let stepReminderTime: string | null = effective.reminderTime;
+      let stepReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
       if (effective.reminderTime) {
         const original = new Date(effective.reminderTime);
         const next = new Date(
@@ -5325,6 +5427,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         );
         next.setHours(original.getHours(), original.getMinutes(), 0, 0);
         stepReminderTime = next.toISOString();
+        stepReminderUtcOffsetMinutes = next.getTimezoneOffset();
       }
       get().updateTask(id, {
         ...contentReset,
@@ -5332,6 +5435,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         dueDate: stepDue.toISOString(),
         deferUntil: null,
         reminderTime: stepReminderTime,
+        reminderUtcOffsetMinutes: stepReminderUtcOffsetMinutes,
       }, SKIP_POSTPONE);
       return;
     }
@@ -5343,6 +5447,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const nextDue = getNextDueDate(task, dayResetTime, { catchUp: true });
     if (!nextDue) return;
     let nextReminderTime: string | null = effective.reminderTime;
+    let nextReminderUtcOffsetMinutes: number | null = effective.reminderUtcOffsetMinutes;
     if (effective.reminderTime) {
       const original = new Date(effective.reminderTime);
       const next = new Date(
@@ -5350,6 +5455,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       );
       next.setHours(original.getHours(), original.getMinutes(), 0, 0);
       nextReminderTime = next.toISOString();
+      nextReminderUtcOffsetMinutes = next.getTimezoneOffset();
     }
     const nextChainIndex = chainAdvances ? 0 : task.chainIndex;
     get().updateTask(id, {
@@ -5357,6 +5463,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dueDate: nextDue.toISOString(),
       deferUntil: null,
       reminderTime: nextReminderTime,
+      reminderUtcOffsetMinutes: nextReminderUtcOffsetMinutes,
       chainIndex: nextChainIndex,
       recurrenceCount: task.recurrenceCount !== null ? task.recurrenceCount - 1 : null,
     }, SKIP_POSTPONE);
@@ -5661,6 +5768,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
+      reminderTimeAnchor: 'wallClock',
+      reminderUtcOffsetMinutes: null,
       chainEnabled: false,
       chainIndex: 0,
       chainItems: [],
@@ -5846,6 +5955,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
+      reminderTimeAnchor: 'wallClock',
+      reminderUtcOffsetMinutes: null,
       chainEnabled: false,
       chainIndex: 0,
       chainItems: [],

@@ -214,7 +214,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   linkButton: {
     alignSelf: 'flex-start',
     marginTop: spacing.xs,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,

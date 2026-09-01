@@ -147,7 +147,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgQuaternary,
   },
   primaryAction: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   primaryLabel: {
     color: colors.onAccent,

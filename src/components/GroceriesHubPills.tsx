@@ -148,7 +148,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
-  pillActive: { backgroundColor: colors.accent },
+  pillActive: { backgroundColor: colors.accentFill },
   pillText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   pillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   pillBadge: {
@@ -157,7 +157,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     // Accent, not red: the Groceries badge is a plain "N to buy" count, not
     // something urgent — the MealPlan pill overrides this per-row with
     // freshnessColor since that one *is* reporting something time-sensitive.
-    backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: colors.accentFill, alignItems: 'center', justifyContent: 'center',
   },
   pillBadgeActive: {
     backgroundColor: colors.orange,

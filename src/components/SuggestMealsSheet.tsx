@@ -1028,7 +1028,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: spacing.sm,
     backgroundColor: colors.bgSecondary,
   },
-  filterChipActive: { backgroundColor: colors.accent },
+  filterChipActive: { backgroundColor: colors.accentFill },
   filterChipText: { fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.textSecondary },
   filterChipTextActive: { color: colors.onAccent },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },

@@ -67,7 +67,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   dayActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   dayText: {
     color: colors.text,

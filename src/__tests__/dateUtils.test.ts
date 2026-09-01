@@ -11,6 +11,8 @@ import {
   describeDeadlineOffset,
   getReminderOffsetDate,
   describeReminderOffset,
+  captureReminderOffset,
+  reanchorReminderToWallClock,
   getLogicalToday,
   getLogicalTomorrow,
   getLogicalNow,
@@ -97,7 +99,7 @@ const baseTask: Task = {
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null,
+  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   parentId: null,
   groupId: null,
   projectId: null,
@@ -1311,6 +1313,50 @@ describe('describeReminderOffset', () => {
 
   it('singularises one day', () => {
     expect(describeReminderOffset(1)).toBe('1 day before due');
+  });
+});
+
+describe('captureReminderOffset', () => {
+  it('returns null when there is no reminder', () => {
+    expect(captureReminderOffset(null)).toBeNull();
+  });
+
+  it('returns the timezone offset in effect at the given instant', () => {
+    const iso = '2026-01-15T09:00:00.000Z';
+    expect(captureReminderOffset(iso)).toBe(new Date(iso).getTimezoneOffset());
+  });
+});
+
+describe('reanchorReminderToWallClock', () => {
+  it('is a no-op when the offset passed in matches the current environment', () => {
+    const iso = new Date(2026, 0, 15, 9, 0, 0).toISOString();
+    const offset = captureReminderOffset(iso)!;
+    expect(reanchorReminderToWallClock(iso, offset)).toBe(iso);
+  });
+
+  it('re-expresses the same wall-clock reading under a new timezone', () => {
+    // This repo's Jest config carries no explicit TZ (Intl resolves to
+    // 'UTC'), but a Date constructed with local params still picks up
+    // process.env.TZ changed just before construction — verified above and
+    // in reanchorReminderToWallClock's own doc comment.
+    const originalTz = process.env.TZ;
+    try {
+      process.env.TZ = 'America/New_York';
+      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
+      const offset = captureReminderOffset(nineAm.toISOString())!;
+
+      process.env.TZ = 'Asia/Tokyo';
+      const reanchored = new Date(reanchorReminderToWallClock(nineAm.toISOString(), offset));
+
+      expect(reanchored.getFullYear()).toBe(2026);
+      expect(reanchored.getMonth()).toBe(0);
+      expect(reanchored.getDate()).toBe(15);
+      expect(reanchored.getHours()).toBe(9);
+      expect(reanchored.getMinutes()).toBe(0);
+    } finally {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    }
   });
 });
 

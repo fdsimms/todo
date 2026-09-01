@@ -3679,7 +3679,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   rowTimerBtnRunning: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   rowTimerGlyphPlay: {
     marginLeft: 2,
@@ -3696,7 +3696,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     borderRadius: radius.sm,
     paddingHorizontal: 6,
     paddingVertical: 3,
@@ -3894,7 +3894,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.green,
   },
   chainStepListDotActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   chainStepListDotText: {
     color: colors.textSecondary,

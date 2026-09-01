@@ -530,7 +530,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   pillActiveNeutral: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   pillText: {
     color: colors.text,

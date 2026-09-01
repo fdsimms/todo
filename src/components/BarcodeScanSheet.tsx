@@ -646,7 +646,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                       style={[
                         styles.check,
                         styles.rowControl,
-                        row.included && { backgroundColor: colors.accent, borderColor: colors.accent },
+                        row.included && { backgroundColor: colors.accentFill, borderColor: colors.accent },
                       ]}
                       activeOpacity={interaction.activeOpacity}
                       disabled={!row.name.trim()}

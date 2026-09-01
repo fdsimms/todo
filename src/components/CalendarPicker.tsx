@@ -391,7 +391,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
   },
   dayCircleSelected: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   dayCircleToday: {
     borderWidth: 1.5,

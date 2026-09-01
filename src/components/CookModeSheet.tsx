@@ -595,7 +595,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.xs,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     borderRadius: radius.md,
     paddingVertical: 18,
   },

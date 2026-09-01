@@ -406,7 +406,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   chipOn: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   chipText: {
     color: colors.text,
@@ -421,7 +421,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     borderRadius: radius.md,
     paddingVertical: 14,
     marginHorizontal: spacing.md,

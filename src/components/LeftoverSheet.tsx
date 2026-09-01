@@ -765,7 +765,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full,
     backgroundColor: colors.bgTertiary,
   },
-  chipOn: { backgroundColor: colors.accent },
+  chipOn: { backgroundColor: colors.accentFill },
   chipText: {
     color: colors.text,
     fontSize: font.sm,

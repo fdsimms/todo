@@ -53,7 +53,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/createdTaskPlacement.ts` — CreatedTaskDestination, describeCreatedTaskPlacement
 - `src/utils/dailyAgenda.ts` — AgendaCounts, agendaCounts, agendaBody, nextAgendaTime
 - `src/utils/dailyAgendaSync.ts` — useDailyAgendaSync
-- `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, getTaskDayStart, formatHHMM, formatTimeOfDay, getWeekStart, getLogicalToday, +21 more
+- `src/utils/dateUtils.ts` — getDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyOf, dayKeyToDate, getTaskDayStart, formatHHMM, formatTimeOfDay, getWeekStart, getLogicalToday, +23 more
 - `src/utils/dayContextRows.ts` — eventContextRows, mealContextRows, KITCHEN_ROW_LIMIT, plannedUsesToday, kitchenContextRows, insertContextRows, withoutContextRows
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, describeDayLoad
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
@@ -242,7 +242,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/useShakeToUndo.ts` — useShakeToUndo
 - `src/utils/useSyncOnForeground.ts` — useSyncOnForeground
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
-- `src/utils/visibilityUtils.ts` — isTaskBlocked, isSequenceBlocked, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, sameTimeSegments, hasDayArrived, effectiveWindowEnd, isCompletionOnTime, +32 more
+- `src/utils/visibilityUtils.ts` — isTaskBlocked, isSequenceBlocked, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, isCategoryScheduledDay, sameTimeSegments, hasDayArrived, effectiveWindowEnd, +33 more
 - `src/utils/weatherCondition.ts` — classifyWeather
 - `src/utils/weatherLocation.ts` — LocationPermission, getLocationPermission, requestLocationPermission, DeviceLocation, getCurrentLocation
 - `src/utils/weatherTasks.ts` — WEATHER_RULE_TITLE_MAX_LENGTH, WEATHER_CONDITIONS, weatherConditionLabel, defaultWeatherRules, parseWeatherRules, weatherSourceId, parseWeatherSourceId, weatherRuleIdOf, ruleMatchesToday

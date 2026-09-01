@@ -194,6 +194,23 @@ function isCategoryScheduleActive(category: string | null): boolean {
   return now >= onLogicalDay(dayStart, cat.scheduleStart) && now < categoryWindowEnd(dayStart, cat);
 }
 
+/**
+ * Whether `day` falls on one of a category's scheduled days, ignoring the
+ * hour-of-day window `isCategoryScheduleActive` also checks — see #2201. The
+ * quota day-close sweeps in useTaskStore (`rolloverQuotas`,
+ * `sweepOvershootQuotas`, `sweepFinishedQuotaRuns`) close out a whole day
+ * rather than a specific hour, so "was this a work day for this category" is
+ * the question, not "is the window open right now." A category with no
+ * schedule (or an unrecognised one) is unrestricted, same as
+ * `isCategoryScheduleActive`.
+ */
+export function isCategoryScheduledDay(category: string | null, day: Date): boolean {
+  if (!category) return true;
+  const cat = useCategoryStore.getState().getCategoryByName(category);
+  if (!cat || !cat.scheduleDays || !cat.scheduleStart || !cat.scheduleEnd) return true;
+  return cat.scheduleDays.includes(day.getDay());
+}
+
 function getNextCategoryWindowStart(cat: Category): Date | null {
   if (!cat.scheduleDays || !cat.scheduleStart || !cat.scheduleEnd) return null;
 

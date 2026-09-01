@@ -161,7 +161,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   clockDone: { color: colors.orange },
   button: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     width: 32,
     height: 32,
     alignItems: 'center',
