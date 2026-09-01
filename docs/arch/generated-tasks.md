@@ -1,10 +1,10 @@
-# Generated tasks: the fifteen things that write a task unattended
+# Generated tasks: the seventeen things that write a task unattended
 
 The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
 project reviews, pantry checks and the pantry review, supply reorders, the
 daily calendar review, birthdays, the reach-out nudge and weather-matched
 tasks.
-Read this before adding a fifteenth generator: the whole point of the refactor
+Read this before adding an eighteenth generator: the whole point of the refactor
 it describes is that a new one costs a rules module and a registry entry, not a
 column.
 
@@ -22,7 +22,7 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the fifteen things that write a task unattended
+## Generated tasks — the seventeen things that write a task unattended
 
 Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
@@ -48,6 +48,21 @@ staleness rule is the creation predicate re-run, rather than a list of mutations
 the section below. `birthdayGift` is the eleventh, and costs no rules module of its own at all —
 it lives beside `birthday` in the same file and reuses every rule but the lead time and the title.
 See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where `birthday` ships on.
+
+`moodLog` and `moodNudge` are the sixteenth and seventeenth, and they share a
+file (`src/utils/moodTasks.ts`) and a firing pass the way `birthday` and
+`birthdayGift` share theirs — one subject, two lead-ins, read together in
+Settings. Both are day-keyed with no source row, so both use a settings-level
+mark rather than a stamp on anything (`moodLogLastDayKey`,
+`moodNudgeLastDayKey`), the position `calendarReview` is already in.
+
+**`moodNudge` is the first generator whose trigger is a trend in the user's own
+answers** rather than a date, a row, or a threshold crossed once — which makes
+it the only one that can be wrong about a *person* rather than about their data.
+It never names a feeling back at the user, it fires at most once a week, and it
+counts only logged days, so a fortnight away neither builds a run nor breaks
+one. Those three rules and the reasoning behind them are in
+`docs/arch/mood-log.md`; don't relax one without reading it.
 
 - **`Task.generatedKind` + `Task.generatedSourceId` replaced `mealEntryId`/`groceryItemId`/
   `leftoverId`.** Those three columns are still on the table, backfilled from and then left

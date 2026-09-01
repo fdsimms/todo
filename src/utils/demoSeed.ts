@@ -9,6 +9,7 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
+import { useMoodStore } from '../store/useMoodStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -20,7 +21,7 @@ import { supplyReorderTitle } from './supply';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
-import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, Recipe, Shop, TemplateItem } from '../types';
+import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, Recipe, Shop, SymptomSeverity, TemplateItem } from '../types';
 import { dbGetFocusSessionLog, dbInsertFocusSessionRecord } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
@@ -1169,6 +1170,11 @@ export function seedDemoData(): void {
   }
 
   seedPeople(today);
+  // Last, and unlike the people it needs no generator pass afterwards: both
+  // mood generators ship off, so a demo relying on them would show the feature
+  // only to somebody who had already found it. The history itself is what
+  // there is to see.
+  seedMoodLog(today);
 }
 
 // ---------------------------------------------------------------------------
@@ -1321,6 +1327,71 @@ function seedPeople(today: Date): void {
   // exactly one person opted in, so demo mode opens with one catch-up row
   // rather than a screen of them.
   useTaskStore.getState().checkReachOutTasks();
+}
+
+// ---------------------------------------------------------------------------
+// The mood log
+// ---------------------------------------------------------------------------
+
+/**
+ * Eighteen days of mood and symptom entries — see `src/utils/moodLog.ts`.
+ *
+ * **The length is the point, not padding.** `moodInsights.ts` refuses to
+ * compare anything below `MIN_PAIRED_DAYS` (10), which is exactly the rule
+ * that keeps it from inventing findings out of noise — so a seed of two or
+ * three entries would render the Mood screen with every insight card saying
+ * "keep logging". The half of this feature worth showing somebody is the half
+ * that reads the log against their tasks, and that half is invisible until
+ * there is a fortnight of it.
+ *
+ * The pattern is deliberate rather than random: a low patch in the middle
+ * with headaches through it, better days either side. That gives the screen a
+ * real correlation to report and a real symptom contrast, which is what the
+ * feature claims to do. Random moods would average out to "no clear pattern",
+ * which is honest of the code and useless as a demo.
+ *
+ * Goes through `addLog` like everything else here, using its `at` parameter
+ * rather than raw db inserts, so a seeded entry cannot drift from the type.
+ */
+function seedMoodLog(today: Date): void {
+  const { addLog } = useMoodStore.getState();
+
+  // Day offset back from today -> that day's mood, and what was going on.
+  // Read bottom-up: 17 days ago at the top, yesterday at the end. Today is
+  // deliberately left unlogged, so demo mode opens with the daily check-in
+  // still worth answering and the sheet one tap from the Today list.
+  const history: { back: number; mood: MoodLevel; symptoms?: [string, SymptomSeverity][]; note?: string }[] = [
+    { back: 17, mood: 4 },
+    { back: 16, mood: 4, note: 'Good week so far' },
+    { back: 15, mood: 5 },
+    { back: 14, mood: 3, symptoms: [['Poor sleep', 2]] },
+    { back: 13, mood: 4 },
+    { back: 12, mood: 3 },
+    { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]] },
+    { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch' },
+    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]] },
+    { back: 8, mood: 2, symptoms: [['Headache', 1]] },
+    { back: 7, mood: 3 },
+    { back: 6, mood: 3, symptoms: [['Poor sleep', 1]] },
+    { back: 5, mood: 4, note: 'Back to it' },
+    { back: 4, mood: 4 },
+    { back: 3, mood: 5 },
+    { back: 2, mood: 4, symptoms: [['Poor sleep', 1]] },
+    { back: 1, mood: 4 },
+  ];
+
+  for (const day of history) {
+    const at = subDays(today, day.back);
+    // Mid-evening, so every entry lands in one time-of-day bucket and the
+    // "mood by time of day" card has something coherent to show.
+    at.setHours(20, 30, 0, 0);
+    addLog(
+      day.mood,
+      (day.symptoms ?? []).map(([name, severity]) => ({ name, severity })),
+      day.note ?? null,
+      at,
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

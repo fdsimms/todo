@@ -135,6 +135,12 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // should meet the other, since "rules that add a task" is one idea and
   // reading them apart is how you learn only half of it.
   'screenTime',
+  // The sixteenth and seventeenth, appended as a pair for the reason birthday
+  // and birthdayGift sit together: one subject with two lead-ins. Nothing else
+  // here reads the mood log, so there is no existing generator either belongs
+  // beside.
+  'moodLog',
+  'moodNudge',
 ];
 
 /**
@@ -185,7 +191,9 @@ export type GeneratedEnabledKey =
   | 'reachOutTasks'
   | 'pantryReviewTasks'
   | 'weatherTasks'
-  | 'screenTimeTasks';
+  | 'screenTimeTasks'
+  | 'moodLogTasks'
+  | 'moodNudgeTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -584,6 +592,51 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Screen Time',
+  },
+  // Ships off, like pantryCheck, mealShortfall and birthdayGift, and for the
+  // reason all three do: it adds a surface nobody had rather than replacing one
+  // that was already on screen. There is no recorded intent it could point at
+  // either — nobody has a mood log until they start one.
+  moodLog: {
+    kind: 'moodLog',
+    enabledKey: 'moodLogTasks',
+    label: 'Daily mood check-in',
+    onHint: 'Adds one task a day to log how you\'re feeling',
+    offHint: 'No daily task to log how you\'re feeling',
+    icon: 'happy-outline',
+    // Its source id is the day key it asks about, which names a square on the
+    // calendar rather than a row anything could be written back to — the same
+    // position calendarReview is in, and the reason writeGeneratedOptOut has
+    // nothing to write for it. What stops a swiped-away one coming back is
+    // moodLogLastDayKey.
+    sourced: false,
+    // Not a notice, unlike calendarReview beside it. Logging is the work rather
+    // than something the app is telling you, and pushing the check-in to the
+    // evening is the single most obvious thing anybody would do to this row —
+    // which is exactly the control a notice drops.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
+  },
+  // Off for the reasons above and one of its own: this is the only generator
+  // that fires on a trend in the user's own answers, so the person it lands on
+  // is by construction having a bad week. Opting in is the whole permission it
+  // has. See src/utils/moodTasks.ts for the three rules holding it in place.
+  moodNudge: {
+    kind: 'moodNudge',
+    enabledKey: 'moodNudgeTasks',
+    label: 'Nudge after low days',
+    onHint: 'Adds a task to plan something you enjoy after a run of low-mood days',
+    offHint: 'A run of low-mood days adds no task',
+    icon: 'sunny-outline',
+    // The day key the nudge was raised on — same square-on-the-calendar
+    // position as moodLog above it.
+    sourced: false,
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
   },
 };
 

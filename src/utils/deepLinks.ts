@@ -15,6 +15,7 @@ import {
   resetToMealPlan,
   resetToKitchen,
   resetToPeople,
+  resetToMood,
   resetToProjectPull,
   resetToFocusSession,
   openQuickAddFromShortcut,
@@ -297,6 +298,24 @@ export function isPeopleUrl(url: string): boolean {
   return typeof url === 'string' && PEOPLE_RE.test(url.trim());
 }
 
+// `dundundun://mood[?log=1]` — what the daily check-in task carries, so the
+// row asking how you're doing opens the sheet that answers it rather than only
+// offering a tick box. The bare link lands on the history.
+const MOOD_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?mood\\/?(?:\\?(.*))?$`, 'i');
+
+export function isMoodUrl(url: string): boolean {
+  return typeof url === 'string' && MOOD_RE.test(url.trim());
+}
+
+/** Does a mood link ask for the logging sheet on arrival? */
+export function moodUrlWantsLog(url: string): boolean {
+  if (typeof url !== 'string') return false;
+  const match = MOOD_RE.exec(url.trim());
+  if (!match) return false;
+  const value = (parseQuery(match[1] ?? '').log ?? '').trim();
+  return value === '1' || value.toLowerCase() === 'true';
+}
+
 /** The person a people link asks to open, or null for the bare link. */
 export function peopleUrlPersonId(url: string): string | null {
   if (typeof url !== 'string') return null;
@@ -443,6 +462,7 @@ export function linkIconFor(url: string | null | undefined): string {
   if (isKitchenUrl(url)) return 'nutrition-outline';
   if (isGroceriesUrl(url)) return 'cart-outline';
   if (isPeopleUrl(url)) return 'people-outline';
+  if (isMoodUrl(url)) return 'happy-outline';
   if (isProjectsUrl(url)) return 'briefcase-outline';
   return 'link';
 }
@@ -485,6 +505,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isPeopleUrl(url)) {
     resetToPeople(peopleUrlPersonId(url));
+    return true;
+  }
+  if (isMoodUrl(url)) {
+    resetToMood(moodUrlWantsLog(url));
     return true;
   }
   if (isProjectsUrl(url)) {

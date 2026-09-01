@@ -59,6 +59,9 @@ import { sharedLinkLabel } from '../utils/sharedRecipeLinks';
 import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRemaining } from '../utils/stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
+import { useMoodStore } from '../store/useMoodStore';
+import { buildMoodDays, moodCompletionInsight, symptomMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
@@ -1441,6 +1444,42 @@ describe('demo seed — people', () => {
     const dated = usePersonNoteStore.getState().notes.filter(n => n.relevantOn !== null);
     expect(dated.some(n => !isStaleNote(n, today))).toBe(true);
     expect(dated.some(n => isStaleNote(n, today))).toBe(true);
+  });
+
+  it('seeds enough mood history for the insights to actually say something', () => {
+    // The length is the feature, not padding: moodInsights refuses to compare
+    // anything below MIN_PAIRED_DAYS, so a shorter seed would render every
+    // card on the Mood screen as "keep logging" — which reads as an app that
+    // can't do the thing it says it does.
+    const logs = useMoodStore.getState().logs;
+    const days = buildMoodDays(logs, useTaskStore.getState().tasks, '00:00');
+    const insight = moodCompletionInsight(days);
+    expect(insight.dayCount).toBeGreaterThanOrEqual(MIN_PAIRED_DAYS);
+  });
+
+  it('seeds symptoms, at more than one severity and on more than one day', () => {
+    const logs = useMoodStore.getState().logs;
+    expect(symptomVocabulary(logs).length).toBeGreaterThan(1);
+    const severities = new Set(logs.flatMap(l => l.symptoms.map(s => s.severity)));
+    expect(severities.size).toBeGreaterThan(1);
+  });
+
+  it('seeds a low patch, so the symptom contrast has something to report', () => {
+    // A flat history averages out to "no clear pattern", which is honest of
+    // the code and useless as a demo of what the code is for.
+    const days = buildMoodDays(useMoodStore.getState().logs, [], '00:00');
+    expect(symptomMoodContrasts(days).length).toBeGreaterThan(0);
+  });
+
+  it('leaves today unlogged, so the check-in is still worth answering', () => {
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    expect(useMoodStore.getState().logs.some(l => l.dayKey === todayKey)).toBe(false);
+  });
+
+  it('seeds no mood-generated tasks, since both generators ship off', () => {
+    const generated = useTaskStore.getState().tasks
+      .filter(t => t.generatedKind === 'moodLog' || t.generatedKind === 'moodNudge');
+    expect(generated).toHaveLength(0);
   });
 
   it('seeds a food note on somebody who is a guest at a seeded meal', () => {

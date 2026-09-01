@@ -137,6 +137,13 @@ export function catchUpPasses(): MaintenanceStep[] {
     // crossings it reads are only ever drained by useScreenTimeSync's own
     // effect, which has not run yet on the very first pass.
     ['check screen time tasks', () => tasks().checkScreenTimeTasks()],
+    // Beside them, same trigger — a day rolls over and a run of low days
+    // lengthens purely by time passing. Unlike the three above it this one
+    // reads a store the fan-out has already loaded rather than a snapshot some
+    // foreground effect fills in, so it does real work at cold launch *and* in
+    // a background run: the daily check-in is on the list before the phone is
+    // unlocked, which is the whole point of a daily check-in.
+    ['check mood tasks', () => tasks().checkMoodTasks()],
     // Birthdays, which share the same trigger — a date arriving rather than a
     // source changing — and read the people initTasks' fan-out has loaded.
     // After initSettings for the same reason the meal pass is: the day a task

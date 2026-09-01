@@ -62,6 +62,13 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   { name: 'projects', key: ['id'] },
   { name: 'people', key: ['id'] },
   { name: 'person_notes', key: ['id'] },
+  // Mood entries. They have to travel or the Mood screen reports a different
+  // history on each phone — the same reading nobody wants that focus_session_log
+  // is tracked to avoid, and worse here: half a person's health record on each
+  // device, with every correlation on the screen computed off whichever half.
+  // Ids are base36 from generateId(), and an entry is written once and rarely
+  // edited, so last-writer-wins is a no-op on almost every row.
+  { name: 'mood_logs', key: ['id'] },
   { name: 'person_groups', key: ['id'] },
   { name: 'categories', key: ['id'] },
   { name: 'project_categories', key: ['id'] },

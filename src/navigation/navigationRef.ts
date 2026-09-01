@@ -176,6 +176,23 @@ export function resetToFocusSession(): void {
  * uses: the detail screen is pushed on top of the list, so arriving from a
  * link and arriving from a row land in the same place with the same way back.
  */
+/**
+ * Where `dundundun://mood[?log=1]` lands — carried by the daily check-in task,
+ * so the row asking you to log opens the thing that logs.
+ *
+ * `log=1` opens the sheet on arrival, stamped like resetToPeople's own param
+ * so a second tap on the same row re-opens it rather than being read as no
+ * change. Without it the link lands on the history, which is what a tap from
+ * anywhere else should do.
+ */
+export function resetToMood(openLog = false): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({
+    name: 'Mood',
+    params: openLog ? { openLog: Date.now() } : undefined,
+  });
+}
+
 export function resetToPeople(personId?: string | null): void {
   if (!navigationRef.isReady()) return;
   // The list first, always, so the back chevron on the detail screen has

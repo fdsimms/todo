@@ -219,6 +219,10 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   pantryReview: ['cupboard', 'stock', 'take stock', 'swipe', 'deck', 'still have', 'grocery',
     'kitchen', 'generated', 'automatic'],
   screenTime: ['phone', 'usage', 'distraction', 'social media', 'doomscroll', 'limit', 'apps'],
+  moodLog: ['symptom', 'symptoms', 'feeling', 'feelings', 'wellbeing', 'well-being',
+    'health', 'journal', 'diary', 'track', 'log', 'generated', 'automatic'],
+  moodNudge: ['mood', 'down', 'wellbeing', 'well-being', 'health', 'fun', 'enjoy', 'cheer',
+    'generated', 'automatic'],
   weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
     'location', 'temperature', 'generated', 'automatic'],
 };

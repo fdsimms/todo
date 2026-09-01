@@ -87,6 +87,10 @@ import {
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
+import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
+import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
+import { hasLogOnDay } from '../utils/moodLog';
+import { useMoodStore } from './useMoodStore';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, TaskGroup } from '../types';
@@ -1599,6 +1603,21 @@ interface TaskStore extends UndoHistoryActions {
   checkWeatherTasks: () => void;
   checkScreenTimeTasks: () => void;
   /**
+   * Once a day, a task to log how you're feeling — and, after a run of low
+   * days, one to plan something you enjoy. See src/utils/moodTasks.ts.
+   */
+  checkMoodTasks: () => void;
+  /**
+   * Tick off today's "Log how you're feeling" task, if one is live.
+   *
+   * Called by the logging sheet once an entry is saved — logging *is* the task,
+   * so leaving it on the list after the thing it asks for has been done would
+   * be the app not listening. Completed rather than deleted: it is a real
+   * record of something done, it belongs in the Logbook and in Stats like any
+   * other completion, and the tick is the feedback that the entry landed.
+   */
+  completeMoodLogTaskForToday: () => void;
+  /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook, streak left exactly as it was.
    *
@@ -1823,6 +1842,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // left pointed at the previous database would name people who don't
     // exist in the new one.
     usePersonGroupStore.getState().initialize();
+    // On the same fan-out as everything else here, and for the same
+    // swap-the-database reason: a mood history left pointed at the previous
+    // database would show a demo session's invented entries as the real
+    // person's own record, or the reverse — and this is the one store where
+    // that mistake is a claim about somebody's health.
+    useMoodStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
@@ -5414,6 +5439,116 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Spent whether or not they produced anything — a crossing held back
     // would be re-examined against the same rule and same day for ever.
     if (fired.size > 0) useScreenTimeStore.getState().consume([...fired]);
+  },
+
+  /**
+   * The mood log's two generators, fired together — see
+   * `src/utils/moodTasks.ts` for the rules and the three that keep the second
+   * one honest.
+   *
+   * One pass rather than two because they read the same data and answer in the
+   * same breath: the check-in asks "has today been logged", the nudge asks
+   * "how have the logged days been going", and splitting them would mean
+   * rebuilding the day series twice on every foreground.
+   *
+   * Both are day-keyed with no source row, the position `calendarReview` is in,
+   * so neither has a per-source stamp to decline onto and both use a
+   * settings-level mark instead (`moodLogLastDayKey`, `moodNudgeLastDayKey`).
+   */
+  checkMoodTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.moodLogTasks && !settings.moodNudgeTasks) return;
+    // The mood log is the user's own data and demo mode swaps the database
+    // under it, so a demo session's entries are fiction and a task written
+    // from them would persist in the demo database as a claim about the real
+    // person. Same refusal every other time-triggered generator makes.
+    if (isDemoModeActive()) return;
+
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const logs = useMoodStore.getState().logs;
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    if (settings.moodLogTasks && settings.moodLogTaskCategory) {
+      // Clear yesterday's check-in before deciding today's — the same
+      // clear-first-create-second ordering checkCalendarReviewTasks uses. An
+      // unanswered check-in is a question about a day that has gone, not a
+      // task still owed.
+      liveGeneratedTasksOfKind(get().tasks, 'moodLog')
+        .filter(task => moodLogDayKey(task) !== todayKey)
+        .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+      // Recorded before the "already logged" check below and unconditionally,
+      // for the reason calendarReviewLastDayKey is: a day already decided must
+      // not be re-diagnosed on every later sweep, or a check-in swiped away at
+      // breakfast comes straight back at lunch.
+      if (settings.moodLogLastDayKey !== todayKey) {
+        settings.setMoodLogLastDayKey(todayKey);
+        // Nothing to ask if the day is already logged. Someone who opened the
+        // sheet before the app got round to firing has answered the question,
+        // and a task asking it again is the app not listening.
+        if (!hasLogOnDay(logs, todayKey)) {
+          reconcileGeneratedTask({
+            kind: 'moodLog',
+            sourceId: todayKey,
+            wanted: true,
+            // The title never varies, so nothing to chase.
+            drift: () => null,
+            draft: () => ({
+              title: MOOD_LOG_TITLE,
+              dueDate: dueDate.toISOString(),
+              category: settings.moodLogTaskCategory,
+              // The row's link button opens the sheet that answers it. Without
+              // this the only thing to do with a check-in is tick it, which
+              // completes the task without logging anything — the question
+              // marked answered and no answer recorded.
+              linkUrl: 'dundundun://mood?log=1',
+              ...generatedBy('moodLog', todayKey),
+            }),
+          });
+        }
+      }
+    }
+
+    if (settings.moodNudgeTasks && settings.moodNudgeTaskCategory) {
+      // Built off the mood entries alone — the task half of a MoodDay is not
+      // read here, so the tasks argument is deliberately empty rather than the
+      // whole store. `lowMoodRun` looks only at `mood`, and handing it every
+      // task in the app would rebuild a categories index on every foreground
+      // for nothing.
+      const days = buildMoodDays(logs, [], settings.dayResetTime);
+      if (wantsMoodNudge(days, todayKey, settings.moodNudgeAfterDays, settings.moodNudgeLastDayKey)) {
+        // Stamped before the create, like the check-in's mark above: a nudge
+        // swiped away must not return on the next foreground of the same bad
+        // day, which is the one place in the app where handing the row back
+        // would be actively unkind.
+        settings.setMoodNudgeLastDayKey(todayKey);
+        const run = lowMoodRun(days, todayKey);
+        reconcileGeneratedTask({
+          kind: 'moodNudge',
+          sourceId: todayKey,
+          wanted: true,
+          drift: () => null,
+          draft: () => ({
+            title: MOOD_NUDGE_TITLE,
+            notes: moodNudgeNotes(run),
+            dueDate: dueDate.toISOString(),
+            category: settings.moodNudgeTaskCategory,
+            ...generatedBy('moodNudge', todayKey),
+          }),
+        });
+      }
+    }
+    // No setLastAction, same reasoning as the other unattended passes: this is
+    // not something the user just did.
+  },
+
+  completeMoodLogTaskForToday() {
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const task = liveGeneratedTasksOfKind(get().tasks, 'moodLog')
+      .find(t => moodLogDayKey(t) === todayKey);
+    if (!task) return;
+    get().completeTask(task.id);
   },
 
   skipNextRecurrence(id) {

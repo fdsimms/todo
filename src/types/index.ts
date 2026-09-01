@@ -853,7 +853,95 @@ export interface PersonNote {
 }
 
 /**
- * Which of the app's fourteen unattended generators wrote a task — see
+ * How you felt, on the one scale every mood read in the app shares.
+ *
+ * **Fixed 1..5, deliberately, and this is the decision issue #1223 left open.**
+ * The freeform half of that question is answered one field down, on
+ * `LoggedSymptom.name` — a symptom is whatever you call it, because "brain
+ * fog" is not a thing a fixed list could have guessed. Mood is the opposite:
+ * its entire value here is that it is *comparable*, both against your own
+ * other days and against what you got done on them. A user-defined scale
+ * ("1-10", "terrible..great", three faces) makes every number in
+ * `moodInsights.ts` incomparable across the very axis the feature exists to
+ * read, and the define-your-own-scale UI is most of the build. So the scale is
+ * the app's, the vocabulary is yours.
+ *
+ * Stored as the number, so these are storage values — the labels in
+ * `MOOD_LEVELS` (`src/utils/moodLog.ts`) can be reworded freely, the integers
+ * cannot be renumbered.
+ */
+export type MoodLevel = 1 | 2 | 3 | 4 | 5;
+
+/** How bad a symptom was. Fixed for the reason `MoodLevel` is, at a coarser grain. */
+export type SymptomSeverity = 1 | 2 | 3;
+
+/**
+ * One symptom on one log entry, by whatever name you gave it.
+ *
+ * Nested in the entry's JSON rather than being rows of its own, the same call
+ * `Task.tags` makes: a symptom has no lifecycle apart from the entry holding
+ * it, is never pointed at, and is only ever read as part of the entry. The
+ * vocabulary that accumulates from these is derived by reading the entries
+ * (`symptomVocabulary`), not stored — so unlike `tag_registry` there is no
+ * second copy of it to drift, and a symptom you logged once and never again
+ * stops being offered on its own rather than needing a prune.
+ */
+export interface LoggedSymptom {
+  /** Trimmed, stored in the user's own casing; matched case-insensitively. */
+  name: string;
+  severity: SymptomSeverity;
+}
+
+/**
+ * How you were doing at one moment — see `src/utils/moodLog.ts` for the rules
+ * and `src/utils/moodInsights.ts` for what a pile of these can be read to mean.
+ *
+ * Its own entity rather than a `Task`, which is what #1223 concluded and is
+ * worth not re-deriving: there is nothing here to complete, nothing to
+ * schedule, and nothing to defer. It is not a quota either — `targetCount` /
+ * `progressCount` count *toward* a target within a day, where this records an
+ * arbitrary value with no target to reach. What it is closest to is a Logbook
+ * row: a record of something that happened, read in aggregate rather than
+ * worked through.
+ *
+ * **Several a day is the normal case, not an edge one.** Mood moves through a
+ * day, and an app that allowed one entry per day would be asking you to
+ * average your own morning and evening before typing anything. So the entity
+ * is stamped with an instant, and every daily read collapses the day's entries
+ * itself (`dayMoodAverage`) rather than the schema pretending there is one.
+ */
+export interface MoodLog {
+  id: string;
+  /** The instant it was logged. ISO, like every other date in the app. */
+  loggedAt: string;
+  /**
+   * The logical day it counts toward (`2026-08-17`), stamped at write time
+   * from `dayResetTime` rather than derived from `loggedAt` on read.
+   *
+   * Stored rather than computed because `dayResetTime` is a setting the user
+   * can change: derive it on every read and moving your day boundary to 02:00
+   * silently rewrites which day last month's late-night entries belong to,
+   * shifting every correlation in `moodInsights.ts` under a feature whose only
+   * job is to be a truthful record. Stamped once, an entry stays on the day it
+   * was actually made — the same reasoning `completedAt` follows.
+   */
+  dayKey: string;
+  /**
+   * How you felt, or null for an entry that only logs symptoms.
+   *
+   * Nullable because "my knee hurts" is a complete thing to record on a day
+   * you have no particular opinion about your mood, and forcing a number would
+   * make every symptom entry carry an invented one straight into the averages.
+   */
+  mood: MoodLevel | null;
+  /** Empty is the common case and means no symptoms, never "not asked". */
+  symptoms: LoggedSymptom[];
+  /** Whatever you wanted to say about it. Null rather than empty string. */
+  note: string | null;
+}
+
+/**
+ * Which of the app's unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
  *
@@ -924,7 +1012,19 @@ export type GeneratedKind =
   // the same `${dayKey}#${ruleId}` shape weather uses and for the same reason:
   // the source is a rule in settings, not a row a decline could be stamped on,
   // so writeGeneratedOptOut has nothing to write for it either.
-  | 'screenTime';
+  | 'screenTime'
+  // Once a day, a task to write down how you are doing — see
+  // src/utils/moodTasks.ts. Its source id is the day key it is asking about,
+  // the same "square on the calendar, not a row" position calendarReview is
+  // in, and for the same reason writeGeneratedOptOut has nothing to write for
+  // it: the day it names is not a row a decline could be stamped on.
+  | 'moodLog'
+  // A run of low-mood days becomes a task to do something you enjoy — see
+  // src/utils/moodTasks.ts. Beside 'moodLog' the way birthdayGift sits beside
+  // birthday: one pair, two lead-ins, and the second is the only generator in
+  // the app whose trigger is a *trend* in the user's own data rather than a
+  // date, a row or a threshold crossed once.
+  | 'moodNudge';
 
 export interface Task {
   id: string;

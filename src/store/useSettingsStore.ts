@@ -51,6 +51,7 @@ import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
+import { DEFAULT_MOOD_NUDGE_AFTER_DAYS } from '../utils/moodTasks';
 import type { LastTipShown } from '../utils/tips';
 
 export type PatchNoteQaStatus = 'pass' | 'fail';
@@ -922,6 +923,32 @@ interface SettingsStore {
   // out of DEFAULT_SETTINGS for the same mechanical reason weatherRules is,
   // and each carries its own idempotency mark the same way.
   screenTimeRules: ScreenTimeRule[];
+  // The daily "log how you're feeling" task (see src/utils/moodTasks.ts). Off
+  // by default, the same call pantryCheck and birthdayGift make: it adds a
+  // surface nobody had, and there is no recorded intent to point at — nobody
+  // has a mood log until they start one.
+  moodLogTasks: boolean;
+  // Which category the daily check-in files itself under, by name, or null.
+  moodLogTaskCategory: string | null;
+  // The last logical day this generator considered. Its idempotency mark, in
+  // the position calendarReviewLastDayKey holds and for the identical reason:
+  // the source is a day key rather than a row, so there is nothing to stamp a
+  // decline onto, and without this a swiped-away check-in would come straight
+  // back on the next foreground.
+  moodLogLastDayKey: string | null;
+  // Whether a run of low-mood days adds a task to plan something you enjoy.
+  // Off by default and deliberately harder to reach than the rest: it is the
+  // only generator that fires on a trend in the user's own answers, so opting
+  // in is the whole permission it has. See src/utils/moodTasks.ts.
+  moodNudgeTasks: boolean;
+  moodNudgeTaskCategory: string | null;
+  // How many low days in a row before the nudge is offered. Its own setting
+  // rather than a constant because what counts as a run worth noticing is a
+  // thing only the person logging can answer.
+  moodNudgeAfterDays: number;
+  // When the last nudge fired, so a long low patch produces one task a week
+  // rather than one a day — see MOOD_NUDGE_COOLDOWN_DAYS.
+  moodNudgeLastDayKey: string | null;
   // The opt-in "plan meals for the week" nudge (#1121) — a real Task,
   // auto-created once a week, off by default so an existing install sees no
   // new task until this is turned on. See src/utils/mealPlanNudge.ts for the
@@ -1119,6 +1146,13 @@ interface SettingsStore {
   setScreenTimeTasks: (on: boolean) => void;
   setScreenTimeTaskCategory: (category: string | null) => void;
   setScreenTimeRules: (rules: ScreenTimeRule[]) => void;
+  setMoodLogTasks: (on: boolean) => void;
+  setMoodLogTaskCategory: (category: string | null) => void;
+  setMoodLogLastDayKey: (dayKey: string | null) => void;
+  setMoodNudgeTasks: (on: boolean) => void;
+  setMoodNudgeTaskCategory: (category: string | null) => void;
+  setMoodNudgeAfterDays: (days: number) => void;
+  setMoodNudgeLastDayKey: (dayKey: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
   setMealPlanNudgeWeekday: (weekday: number) => void;
@@ -1586,6 +1620,13 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   screenTimeTasks: false,
   screenTimeTaskCategory: null,
   screenTimeRules: [],
+  moodLogTasks: false,
+  moodLogTaskCategory: null,
+  moodLogLastDayKey: null,
+  moodNudgeTasks: false,
+  moodNudgeTaskCategory: null,
+  moodNudgeAfterDays: DEFAULT_MOOD_NUDGE_AFTER_DAYS,
+  moodNudgeLastDayKey: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
   mealPlanNudgeEnabled: false,
@@ -1879,6 +1920,16 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // even an explicitly emptied list ('[]'), always wins.
     const storedWeatherRules = dbGetSetting('weatherRules');
     const weatherRules = storedWeatherRules ? parseWeatherRules(storedWeatherRules) : defaultWeatherRules();
+    const moodLogTasks = dbGetSetting('moodLogTasks') === 'true';
+    const moodLogTaskCategory = dbGetSetting('moodLogTaskCategory') || null;
+    const moodLogLastDayKey = dbGetSetting('moodLogLastDayKey') || null;
+    const moodNudgeTasks = dbGetSetting('moodNudgeTasks') === 'true';
+    const moodNudgeTaskCategory = dbGetSetting('moodNudgeTaskCategory') || null;
+    const storedMoodNudgeAfterDays = parseInt(dbGetSetting('moodNudgeAfterDays') ?? '', 10);
+    const moodNudgeAfterDays = Number.isFinite(storedMoodNudgeAfterDays) && storedMoodNudgeAfterDays >= 1
+      ? storedMoodNudgeAfterDays
+      : DEFAULT_MOOD_NUDGE_AFTER_DAYS;
+    const moodNudgeLastDayKey = dbGetSetting('moodNudgeLastDayKey') || null;
     const screenTimeTasks = dbGetSetting('screenTimeTasks') === 'true';
     const screenTimeTaskCategory = dbGetSetting('screenTimeTaskCategory') || null;
     const storedScreenTimeRules = dbGetSetting('screenTimeRules');
@@ -1964,7 +2015,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2352,6 +2403,45 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setScreenTimeRules(rules: ScreenTimeRule[]) {
     dbSetSetting('screenTimeRules', serializeScreenTimeRules(rules));
     set({ screenTimeRules: rules });
+  },
+
+  setMoodLogTasks(on: boolean) {
+    dbSetSetting('moodLogTasks', on ? 'true' : 'false');
+    set({ moodLogTasks: on });
+  },
+
+  setMoodLogTaskCategory(category: string | null) {
+    dbSetSetting('moodLogTaskCategory', category ?? '');
+    set({ moodLogTaskCategory: category });
+  },
+
+  // Stored as '' for "nothing decided yet", matching calendarReviewLastDayKey.
+  setMoodLogLastDayKey(dayKey: string | null) {
+    dbSetSetting('moodLogLastDayKey', dayKey ?? '');
+    set({ moodLogLastDayKey: dayKey });
+  },
+
+  setMoodNudgeTasks(on: boolean) {
+    dbSetSetting('moodNudgeTasks', on ? 'true' : 'false');
+    set({ moodNudgeTasks: on });
+  },
+
+  setMoodNudgeTaskCategory(category: string | null) {
+    dbSetSetting('moodNudgeTaskCategory', category ?? '');
+    set({ moodNudgeTaskCategory: category });
+  },
+
+  // Floored at 1: a nudge after zero low days would fire on any day with a
+  // mood on it at all, which is not what any answer to this question means.
+  setMoodNudgeAfterDays(days: number) {
+    const clamped = Math.max(1, Math.round(days));
+    dbSetSetting('moodNudgeAfterDays', String(clamped));
+    set({ moodNudgeAfterDays: clamped });
+  },
+
+  setMoodNudgeLastDayKey(dayKey: string | null) {
+    dbSetSetting('moodNudgeLastDayKey', dayKey ?? '');
+    set({ moodNudgeLastDayKey: dayKey });
   },
 
   setAutoRemoveExpiredTasks(days: ExpiredTaskGraceDays) {

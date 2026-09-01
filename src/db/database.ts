@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Cookbook, DeliverableKind, GeneratedKind, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { Cookbook, DeliverableKind, GeneratedKind, LoggedSymptom, MoodLevel, MoodLog, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -288,6 +288,21 @@ export function initDatabase(): void {
       relevant_on TEXT,
       archived_at TEXT,
       sort_order REAL NOT NULL DEFAULT 0
+    );
+
+    -- How you were doing at one moment — see MoodLog in types/index.ts and
+    -- src/utils/moodLog.ts. Several rows a day is the normal case, which is why
+    -- day_key is an ordinary indexed column rather than the primary key: the
+    -- day is a thing entries are grouped *by* on read, not a slot they occupy.
+    CREATE TABLE IF NOT EXISTS mood_logs (
+      id TEXT PRIMARY KEY NOT NULL,
+      logged_at TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      -- Nullable: an entry that only records a symptom has no mood to state,
+      -- and a default would put an invented number into every average.
+      mood INTEGER,
+      symptoms TEXT NOT NULL DEFAULT '[]',
+      note TEXT
     );
 
     CREATE TABLE IF NOT EXISTS template_categories (
@@ -656,6 +671,9 @@ export function initDatabase(): void {
     // Every read is "this person's notes" — the detail screen, the birthday
     // task's gift ideas, a meal's guests — so the person is the index.
     'CREATE INDEX IF NOT EXISTS idx_person_notes_person ON person_notes(person_id)',
+    // Every insight read groups by day (see src/utils/moodInsights.ts), and the
+    // logging sheet asks for one day's entries on open.
+    'CREATE INDEX IF NOT EXISTS idx_mood_logs_day ON mood_logs(day_key)',
     // Null for every existing row is exactly right: nothing predating this has
     // been asserted as on hand. See GroceryItem.onHandUntil.
     'ALTER TABLE grocery_items ADD COLUMN on_hand_until TEXT',
@@ -1603,6 +1621,9 @@ export const BACKUP_TABLES = [
   // After people: a note points at one, so restoring the people first means a
   // restored note never names somebody who isn't there yet.
   'person_notes',
+  // Points at nothing at all — a mood entry is a standalone record of a moment,
+  // so its position here is only about keeping related rows together.
+  'mood_logs',
   'task_groups',
   'grocery_shops',
   // Before grocery_items: an entry points at one, so restoring the lists first
@@ -4387,6 +4408,81 @@ export function dbDeletePersonNote(id: string): void {
  */
 export function dbDeletePersonNotesFor(personId: string): void {
   db.runSync('DELETE FROM person_notes WHERE person_id = ?', [personId]);
+}
+
+/**
+ * One mood entry, mapped off its row.
+ *
+ * A `mood` outside 1..5 reads as null rather than being clamped or kept: the
+ * scale is fixed (see `MoodLevel`), so an out-of-range number is corrupt data
+ * rather than an opinion, and putting it into an average is worse than the
+ * entry having no mood on it. Its symptoms and note survive either way, which
+ * is the same "a row that renders wrong is recoverable, one that vanishes is
+ * not" call `rowToPersonNote` makes one field over.
+ */
+function rowToMoodLog(row: Record<string, unknown>): MoodLog {
+  const rawMood = row.mood;
+  const mood = typeof rawMood === 'number' && rawMood >= 1 && rawMood <= 5
+    ? (Math.round(rawMood) as MoodLevel)
+    : null;
+  let symptoms: LoggedSymptom[] = [];
+  try {
+    const parsed = JSON.parse((row.symptoms as string) ?? '[]');
+    if (Array.isArray(parsed)) symptoms = parsed as LoggedSymptom[];
+  } catch {
+    // Same shrug the other JSON columns take: a malformed blob costs the
+    // symptoms on one entry, not the entry.
+  }
+  return {
+    id: row.id as string,
+    loggedAt: row.logged_at as string,
+    dayKey: row.day_key as string,
+    mood,
+    symptoms,
+    note: (row.note as string) || null,
+  };
+}
+
+/**
+ * Every mood entry, most recent first.
+ *
+ * Read wholesale, the same call `dbGetAllPersonNotes` and
+ * `dbGetFocusSessionLog` make. These are a handful of small rows a day at the
+ * very most, and the insights screen wants several different cuts of the whole
+ * history at once — scoping the read to a window would mean a query per
+ * section on a screen that already holds the lot, and every correlation on it
+ * is defined over "all the days we have".
+ */
+export function dbGetAllMoodLogs(): MoodLog[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM mood_logs ORDER BY logged_at DESC'
+  );
+  return rows.map(rowToMoodLog);
+}
+
+export function dbInsertMoodLog(log: MoodLog): void {
+  db.runSync(
+    `INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, note)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      log.id, log.loggedAt, log.dayKey, log.mood,
+      JSON.stringify(log.symptoms), log.note,
+    ]
+  );
+}
+
+export function dbUpdateMoodLog(log: MoodLog): void {
+  db.runSync(
+    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, symptoms=?, note=? WHERE id=?`,
+    [
+      log.loggedAt, log.dayKey, log.mood,
+      JSON.stringify(log.symptoms), log.note, log.id,
+    ]
+  );
+}
+
+export function dbDeleteMoodLog(id: string): void {
+  db.runSync('DELETE FROM mood_logs WHERE id = ?', [id]);
 }
 
 export function dbGetMealPlanEntry(id: string): MealPlanEntry | null {

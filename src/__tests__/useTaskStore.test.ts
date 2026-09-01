@@ -1,5 +1,6 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { useTaskStore } from '../store/useTaskStore';
+import { useMoodStore } from '../store/useMoodStore';
 import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
 import { isMissed, isRealCompletion } from '../utils/missed';
 import { isTaskNew } from '../utils/visibilityUtils';
@@ -82,6 +83,10 @@ jest.mock('../db/database', () => ({
   dbBatchUpdateProjectSortOrders: jest.fn(),
   dbGetAllPeople: jest.fn().mockReturnValue([]),
   dbGetAllPersonNotes: jest.fn().mockReturnValue([]),
+  dbGetAllMoodLogs: jest.fn().mockReturnValue([]),
+  dbInsertMoodLog: jest.fn(),
+  dbUpdateMoodLog: jest.fn(),
+  dbDeleteMoodLog: jest.fn(),
   dbInsertPersonNote: jest.fn(),
   dbUpdatePersonNote: jest.fn(),
   dbDeletePersonNote: jest.fn(),
@@ -4455,6 +4460,221 @@ describe('checkCalendarReviewTasks', () => {
 });
 
 // ─── checkMealPlanNudge ─────────────────────────────────────────────────────
+
+describe('checkMoodTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  // Aug 25 2026 9am, so today's day key (2026-08-25) is deterministic whenever
+  // the suite runs.
+  const NOW = new Date(2026, 7, 25, 9, 0, 0);
+  const TODAY = '2026-08-25';
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    moodLogTasks: true,
+    moodLogTaskCategory: 'Health',
+    moodLogLastDayKey: null as string | null,
+    setMoodLogLastDayKey: jest.fn(),
+    moodNudgeTasks: false,
+    moodNudgeTaskCategory: 'Health',
+    moodNudgeAfterDays: 3,
+    moodNudgeLastDayKey: null as string | null,
+    setMoodNudgeLastDayKey: jest.fn(),
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const entry = (dayKey: string, mood: number | null) => ({
+    id: `m-${dayKey}`,
+    loggedAt: `${dayKey}T09:00:00.000Z`,
+    dayKey,
+    mood,
+    symptoms: [],
+    note: null,
+  });
+
+  /** N consecutive low days ending today. */
+  const lowRun = (count: number) => {
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const d = new Date(2026, 7, 25 - i);
+      const key = `2026-08-${String(d.getDate()).padStart(2, '0')}`;
+      out.push(entry(key, 1));
+    }
+    return out;
+  };
+
+  const setLogs = (logs: unknown[]) => {
+    useMoodStore.setState({ logs: logs as never, initialized: true });
+  };
+
+  const tasksOfKind = (kind: string) =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === kind && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    setLogs([]);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    setLogs([]);
+  });
+
+  describe('the daily check-in', () => {
+    it('writes one for today, filed and linked to the sheet that answers it', () => {
+      useTaskStore.getState().checkMoodTasks();
+
+      const [check] = tasksOfKind('moodLog');
+      expect(check.title).toBe('Log how you\'re feeling');
+      expect(check.generatedSourceId).toBe(TODAY);
+      expect(check.category).toBe('Health');
+      // Without the link the only thing to do with the row is tick it, which
+      // marks the question answered without recording an answer.
+      expect(check.linkUrl).toBe('dundundun://mood?log=1');
+    });
+
+    it('writes nothing when the day has already been logged', () => {
+      setLogs([entry(TODAY, 4)]);
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
+    it('does not hand back one the user swiped away earlier the same day', () => {
+      const store = settings({ moodLogLastDayKey: TODAY });
+      useSettingsStore.getState.mockReturnValue(store);
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
+    it('marks the day considered even when it decides against writing one', () => {
+      const store = settings();
+      useSettingsStore.getState.mockReturnValue(store);
+      setLogs([entry(TODAY, 4)]);
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(store.setMoodLogLastDayKey).toHaveBeenCalledWith(TODAY);
+    });
+
+    it('clears yesterday\'s unanswered check-in', () => {
+      const store = settings({ moodLogLastDayKey: '2026-08-24' });
+      useSettingsStore.getState.mockReturnValue(store);
+      useTaskStore.getState().checkMoodTasks();
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogLastDayKey: '2026-08-24' }));
+
+      // Roll the clock forward a day and run again.
+      jest.setSystemTime(new Date(2026, 7, 26, 9, 0, 0));
+      useTaskStore.getState().checkMoodTasks();
+
+      const live = tasksOfKind('moodLog');
+      expect(live).toHaveLength(1);
+      expect(live[0].generatedSourceId).toBe('2026-08-26');
+    });
+
+    it('writes nothing while switched off', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTasks: false }));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
+    it('writes nothing with no category to file it under', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTaskCategory: null }));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+  });
+
+  describe('the low-mood nudge', () => {
+    const nudgeOn = (overrides: Record<string, unknown> = {}) =>
+      settings({ moodLogTasks: false, moodNudgeTasks: true, ...overrides });
+
+    it('writes one after a run as long as the threshold', () => {
+      useSettingsStore.getState.mockReturnValue(nudgeOn());
+      setLogs(lowRun(3));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      const [nudge] = tasksOfKind('moodNudge');
+      expect(nudge.title).toBe('Plan something you enjoy this week');
+      expect(nudge.notes).toContain('3 days running');
+      expect(nudge.generatedSourceId).toBe(TODAY);
+    });
+
+    it('writes nothing on a run shorter than the threshold', () => {
+      useSettingsStore.getState.mockReturnValue(nudgeOn());
+      setLogs(lowRun(2));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodNudge')).toHaveLength(0);
+    });
+
+    it('holds off within the cooldown, so a long low patch gets one a week', () => {
+      useSettingsStore.getState.mockReturnValue(nudgeOn({ moodNudgeLastDayKey: '2026-08-22' }));
+      setLogs(lowRun(10));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodNudge')).toHaveLength(0);
+    });
+
+    it('offers again once the cooldown has passed', () => {
+      useSettingsStore.getState.mockReturnValue(nudgeOn({ moodNudgeLastDayKey: '2026-08-15' }));
+      setLogs(lowRun(10));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodNudge')).toHaveLength(1);
+    });
+
+    it('stamps the day before writing, so a swiped-away nudge stays away', () => {
+      // The one place in the app where handing a row back would be actively
+      // unkind: the person it lands on is by construction having a bad week.
+      const store = nudgeOn();
+      useSettingsStore.getState.mockReturnValue(store);
+      setLogs(lowRun(4));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(store.setMoodNudgeLastDayKey).toHaveBeenCalledWith(TODAY);
+    });
+
+    it('writes nothing while switched off, however low the run', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodNudgeTasks: false }));
+      setLogs(lowRun(10));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodNudge')).toHaveLength(0);
+    });
+
+    it('writes nothing once the low run has ended', () => {
+      useSettingsStore.getState.mockReturnValue(nudgeOn());
+      setLogs([...lowRun(4).slice(1), entry(TODAY, 5)]);
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodNudge')).toHaveLength(0);
+    });
+  });
+});
+
 
 describe('checkMealPlanNudge', () => {
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
