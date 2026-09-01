@@ -251,7 +251,7 @@ export function ProjectDetailScreen() {
     () => (project ? projectProgress(project.id, allTasks) : { done: 0, total: 0 }),
     [project?.id, allTasks],
   );
-  const allDone = progress.total > 0 && progress.done === progress.total && !project?.completed;
+  const allDone = progress.total > 0 && progress.done === progress.total && !project?.completed && !project?.ongoing;
 
   const handleMarkComplete = () => {
     if (!project) return;

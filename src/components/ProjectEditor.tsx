@@ -106,6 +106,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [nudgeCadenceDays, setNudgeCadenceDays] = useState(FALLBACK_CADENCE_DAYS);
   const [autoSchedule, setAutoSchedule] = useState(false);
   const [sequential, setSequential] = useState(false);
+  const [ongoing, setOngoing] = useState(false);
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   useEffect(() => {
@@ -118,6 +119,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
     setSequential(project.sequential);
+    setOngoing(project.ongoing);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -167,6 +169,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       // (see dripCandidate) — this just means it is never asked.
       autoSchedule: nudgeMode === 'scheduled' && autoSchedule,
       sequential,
+      ongoing,
     });
     onClose();
   };
@@ -457,6 +460,30 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         Drag the tasks on the project's own screen to set the order. A step that isn't open yet
         stays off Today and Later until the one above it is done.
       </Text>
+
+      <View style={[styles.card, { marginTop: spacing.xl }]}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setOngoing(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Ongoing"
+          accessibilityState={{ checked: ongoing }}
+        >
+          <Ionicons name="infinite-outline" size={18} color={ongoing ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Ongoing</Text>
+            <Text style={styles.optionHint}>
+              {ongoing
+                ? "Never offered as complete, however many tasks are done"
+                : "Offers to mark complete once every task is done"}
+            </Text>
+          </View>
+          <View style={[styles.toggle, ongoing && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, ongoing && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+      </View>
 
       <View style={[styles.card, { marginTop: spacing.xl }]}>
         <TouchableOpacity
