@@ -273,6 +273,7 @@ exports.
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |
+| a target logged N times a day, its pace ramp, and the same thing counted per week | `src/utils/quotaSchedule.ts` (the span) + `Task.quotaPeriod`. "Three times a week" is a quota with a week-long span, deliberately not a `RecurrenceType`: a recurrence answers "what date is next" and this has no next date to give. Every reader is written against the span, so widening it is the whole feature |
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
 | a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once) |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
@@ -354,10 +355,10 @@ exports.
 **Read narrowly.** 49 files are over 1,000 lines, 31 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (7.1k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (4.9k),
+`store/useTaskStore.ts` (7.1k), `components/TaskEditor.tsx` (5.1k), `db/database.ts` (5.0k),
 `store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.4k), `types/index.ts` (4.3k),
-`components/TaskItem.tsx` (4.0k), `components/QuickAddModal.tsx` (3.1k),
-`store/useSettingsStore.ts` (2.9k), `utils/demoSeed.ts` (2.9k).
+`components/TaskItem.tsx` (4.1k), `components/QuickAddModal.tsx` (3.1k),
+`utils/demoSeed.ts` (2.9k), `store/useSettingsStore.ts` (2.9k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.

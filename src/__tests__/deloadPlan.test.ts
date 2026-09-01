@@ -56,6 +56,7 @@ const BASE: Task = {
   quotaIntervalMinutes: null,
   quotaReminders: false,
   quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaPeriod: 'day',
   progressCount: 0,
   tags: [],
   sortOrder: 0,

@@ -18,6 +18,12 @@ export type ReminderKind = 'notification' | 'alarm' | 'persistent';
  */
 export type DeliverableKind = 'text' | 'date' | 'number';
 
+/**
+ * The stretch a daily target counts across — see `Task.quotaPeriod`. 'day' is
+ * every quota that predates the field; 'week' is "three times a week".
+ */
+export type QuotaPeriod = 'day' | 'week';
+
 export interface Category {
   id: string;
   name: string;
@@ -1116,6 +1122,34 @@ export interface Task {
   // behavior is switched off. Off by default, so an existing quota task
   // keeps hiding on pace exactly as it always has.
   quotaAlwaysVisible: boolean;
+
+  /**
+   * The stretch of time the target is counted over: one logical day (every
+   * quota that predates this field, and the default) or one logical week.
+   *
+   * `'week'` is what "three times a week, any days" is. It is deliberately not
+   * a recurrence type, though that is where you would first look for it: a
+   * recurrence answers "what date is next", and this has no next date to give —
+   * any three days will do. What it has is a count and a period, which is a
+   * quota, so it is one flag on the mechanism that already counts rather than a
+   * sixth `RecurrenceType` the whole engine would have to learn.
+   *
+   * Everything that made a daily target work still works, because all of it
+   * reads the *span* rather than the day: the pace ramp, the hide-while-ahead,
+   * the meter, the completion that spawns the next occurrence. Only the span
+   * differs (see `quotaWeekSpan`), which is the reason this is affordable at
+   * all. The pace across a week is linear rather than following active hours
+   * each day — by Wednesday lunchtime you are owed about half of it — because a
+   * week-long ramp is answering "am I going to run out of week", and the hour
+   * of the day doesn't change that answer.
+   *
+   * Deliberately only for the plain kind. `allowOvershoot` and interval quotas
+   * (`quotaRidesOutTheDay`) are day-shaped in their own sweeps and stay daily;
+   * the editor won't offer the combination, and the sweeps guard anyway.
+   *
+   * Pairs with weekly recurrence, which is what spawns next week's occupant.
+   */
+  quotaPeriod: QuotaPeriod;
 
   // Supply — how many units of a consumable are left, for a recurring task
   // that spends one every time it's done. Replacing a CPAP filter monthly out
