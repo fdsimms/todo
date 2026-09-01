@@ -297,6 +297,7 @@ exports.
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
 | a separate list for a week away, and a row in two trolleys at once | `src/utils/groceryLists.ts` + `GroceryListEntry` — see `docs/arch/groceries.md` |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
+| which engine answers an AI feature, and the keyless floor under one of them | `src/utils/aiRouting.ts` + `src/services/onDeviceModel.ts` |
 | grocery autocomplete, catalog ranking | `src/utils/grocerySuggest.ts` |
 | which bread — brands, variants, and rating them | `src/utils/groceryProduct.ts` (`ItemProduct`) — see `docs/arch/groceries.md` |
 | two packets of one thing, tracked apart in the pantry | `ItemProduct`'s four pantry columns + `productHaveReason` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
@@ -357,12 +358,12 @@ them source rather than tests. The ten biggest source files:
 `store/useTaskStore.ts` (7.1k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (4.9k),
 `store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.4k), `types/index.ts` (4.3k),
 `components/TaskItem.tsx` (4.0k), `components/QuickAddModal.tsx` (3.0k),
-`utils/demoSeed.ts` (2.9k), `store/useSettingsStore.ts` (2.9k).
+`store/useSettingsStore.ts` (2.9k), `utils/demoSeed.ts` (2.9k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **248 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **250 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -503,6 +504,18 @@ Settings; `src/services/recipePage.ts` fetches a recipe page the user pasted a l
 only one that needs no key**, so "no key, no traffic" stopped being the whole privacy answer when it
 shipped — it carries its own switch (`productLookupEnabled`) instead. Anything else added on those terms
 needs one too.
+
+A fourth thing runs a model and reaches nothing: `src/services/onDeviceModel.ts` puts a prompt
+through Apple's on-device `SystemLanguageModel` (iOS 26+), in-process, with no key and no
+request. `src/utils/aiRouting.ts` decides which engine answers a feature, and only grocery aisle
+sorting is routed there today. Three rules hold it in place and are written up in that file: a
+feature's own switch outranks it (on-device is a floor under the features, never a way past a
+switch), a key still means Claude (nothing has measured on-device latency for a real batch, and
+quietly making a working feature slower is the one outcome this must not have), and the model's
+~4k-token window is why nothing needing vision or long context can join the list. It is also the
+one integration here that needs no demo-mode gate — nothing leaves the process and no queue is
+consumed, so neither half of the rule below applies. That is pinned by a test rather than left
+to be rediscovered.
 
 Stores are initialized once at app startup (`initialize()` on each store). Mutations always write to SQLite first, then update Zustand state.
 

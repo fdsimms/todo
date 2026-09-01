@@ -13,6 +13,8 @@ import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
 import { AI_MODEL_OPTIONS, aiFeaturesFor } from '../../utils/aiFeatures';
+import { describeOnDeviceAvailability } from '../../services/onDeviceModel';
+import { useOnDeviceAvailability } from '../../hooks/useOnDeviceAi';
 
 interface Props {
   /** The host screen's scroll view, so focusing the key field can reveal it. */
@@ -39,6 +41,14 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
   const setGoUpcApiKey = useSettingsStore(s => s.setGoUpcApiKey);
   const aiFeatureConfig = useSettingsStore(s => s.aiFeatureConfig);
   const setAiFeatureConfig = useSettingsStore(s => s.setAiFeatureConfig);
+  const onDeviceAiEnabled = useSettingsStore(s => s.onDeviceAiEnabled);
+  const setOnDeviceAiEnabled = useSettingsStore(s => s.setOnDeviceAiEnabled);
+  // Null when the model is ready, so the row's hint can fall back to saying
+  // what the feature does rather than why it can't. Re-read on foreground by
+  // the hook, which matters here more than anywhere: this row's copy is what
+  // sends someone to the Settings app, and it has to be right when they come
+  // back.
+  const onDeviceReason = describeOnDeviceAvailability(useOnDeviceAvailability());
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
@@ -255,6 +265,42 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
           );
         })}
       </SettingsSection>
+
+      {/* Its own section for the same reason barcode lookups get one below: no
+          Anthropic key, no model to pick, and nothing on the other end. This
+          one goes further than that — there is no other end at all, which is
+          why the footer can say plainly that nothing is sent anywhere.
+
+          Shown even when the model can't run, with the reason in the hint. A
+          row that vanished on an older iPhone would leave someone reading
+          about a feature in the release notes with nowhere to find out why
+          they haven't got it. That is the opposite call from `kitchenEnabled`
+          below, and deliberately: an unavailable model is a question the user
+          will have, while a switched-off groceries area means the only thing
+          this currently routes has no screen to appear on. */}
+      {kitchenEnabled && (
+      <SettingsSection
+        label="On-device suggestions"
+        footer="Uses Apple Intelligence on this iPhone, which needs no key and sends nothing anywhere. It only answers when you haven't added an Anthropic API key above; with a key, those features keep using it."
+      >
+        <SettingsRow
+          entryId="onDeviceAiEnabled"
+          icon="hardware-chip-outline"
+          iconColor={onDeviceAiEnabled && onDeviceReason === null ? colors.purple : undefined}
+          // Named for the mechanism rather than the one feature it currently
+          // powers. "Sort groceries into aisles on this device" says the same
+          // thing and wrapped to two lines at 390pt, which no other settings
+          // row does — and it would have to be rewritten the first time a
+          // second feature routes here. The section label carries "on-device";
+          // the hint carries what it actually does today.
+          label="Use Apple Intelligence"
+          hint={onDeviceReason ?? 'Sorts groceries into aisles when you haven\'t added an API key.'}
+          toggle={onDeviceAiEnabled}
+          onPress={() => setOnDeviceAiEnabled(!onDeviceAiEnabled)}
+          accessibilityLabel="Use Apple Intelligence"
+        />
+      </SettingsSection>
+      )}
 
       {/* Its own section rather than a row among the AI features, because it is
           not one: no Anthropic key, no model to pick, and a different service

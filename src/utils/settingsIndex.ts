@@ -518,6 +518,16 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'useUpTaskCap', groupId: 'generated', label: 'Limit use-up tasks', section: 'Automatic tasks',
     keywords: ['cap', 'how many', 'most', 'too many', 'flood', 'expiry', 'leftovers'], kitchen: true },
 
+  // `kitchen`-gated to match the row itself, which is hidden with the
+  // groceries area: the only feature routed on-device today lives there, so a
+  // result leading to a row that isn't rendered would be a dead end. The
+  // keywords do the heavy lifting — nobody looking for this searches
+  // "on-device".
+  { id: 'onDeviceAiEnabled', groupId: 'privacyAi', label: 'Use Apple Intelligence',
+    section: 'On-device suggestions', kitchen: true,
+    keywords: ['on device', 'offline', 'no key', 'free', 'private', 'foundation models',
+      'grocery', 'aisle', 'sort', 'siri'] },
+
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up scanned barcodes', section: 'Barcode lookups',
     keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy'],
     kitchen: true, simple: true },

@@ -1,0 +1,7 @@
+{
+  "name": "todo-foundation-models",
+  "version": "1.0.0",
+  "description": "Local Expo module that runs a guided-generation prompt against Apple's on-device SystemLanguageModel (Foundation Models, iOS 26+), falling back to unavailable everywhere else.",
+  "main": "index.ts",
+  "private": true
+}

@@ -69,6 +69,7 @@ import { GroceryAISheet, type GroceryAIMode } from '../components/GroceryAISheet
 import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { describeListEstimate, estimateListTotal, lastPriceFor, pricedSince, priceToInput } from '../utils/groceryPrice';
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
@@ -304,7 +305,13 @@ export function GroceryScreen() {
 
   // Every AI affordance is gated on this, so a user without a key never sees
   // an entry point — the offline lexicon carries the feature on its own.
+  //
+  // Aisle sorting is the one exception now: it can also be answered on the
+  // device, so it asks `aisleSortRoute` below rather than reading this
+  // directly. Everything else here still needs a key, because everything else
+  // here is a photograph or wants world knowledge.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  const aisleSortRoute = useAiRoute('groceryAisles');
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
@@ -1341,7 +1348,7 @@ export function GroceryScreen() {
             <View style={{ height: selectionListPadding }} />
           ) : (
           <View>
-            {!!anthropicApiKey && unsortedCount > 0 && (
+            {aisleSortRoute !== 'unavailable' && unsortedCount > 0 && (
               <View style={styles.clearWrap}>
                 <InlineAction
                   label={`Sort ${unsortedCount} into aisles`}
