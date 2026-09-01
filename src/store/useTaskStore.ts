@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -114,7 +114,7 @@ import {
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
-import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver } from '../utils/quotaSchedule';
+import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
@@ -385,6 +385,7 @@ function newTaskFromDraft(
     quotaIntervalMinutes: draft.quotaIntervalMinutes ?? null,
     quotaReminders: draft.quotaReminders ?? false,
     quotaAlwaysVisible: draft.quotaAlwaysVisible ?? false,
+    quotaPeriod: draft.quotaPeriod ?? 'day',
     // Never seeded from a draft: a run is started by tapping "start now" on a
     // task that exists, so a row arriving already mid-run would be claiming a
     // morning nobody had yet.
@@ -3897,8 +3898,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // checkVacationExpiry, it's "time passed while we weren't looking" cleanup,
   // and the app may have been closed for days.
   rolloverQuotas() {
-    const { dayResetTime } = useSettingsStore.getState();
+    const { dayResetTime, weekStartsOn } = useSettingsStore.getState();
     const todayStart = getCurrentDayStart();
+    // Which period a date belongs to, as that period's opening instant. Two
+    // dates compare equal exactly when they share a period, which is the test
+    // this sweep is really making — "has the stretch this row was counting
+    // across finished" — rather than the day comparison it used to make.
+    const periodStartOf = (date: Date, period: QuotaPeriod): number => {
+      const dayStart = getTaskDayStart(date, dayResetTime);
+      return +(period === 'week' ? quotaWeekStart(dayStart, weekStartsOn) : dayStart);
+    };
     const stale = get().tasks.filter(t =>
       isQuotaTask(t) &&
       !t.completed &&
@@ -3923,7 +3932,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // sweepFinishedQuotaRuns, which closes it at the end of its run instead.
       !quotaRidesOutTheDay(t) &&
       t.dueDate !== null &&
-      getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
+      // "Its own period is over", not "its own day is over" — a weekly target
+      // has six days left to run on the morning after it was spawned, and the
+      // day test would close it out short every single night. See
+      // Task.quotaPeriod, and periodStartOf just below for the two readings.
+      periodStartOf(new Date(t.dueDate), t.quotaPeriod) < periodStartOf(todayStart, t.quotaPeriod)
     );
     if (stale.length === 0) return;
 
@@ -3931,9 +3944,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const spawned: Task[] = [];
     const now = new Date().toISOString();
     for (const task of stale) {
-      // Stamped at the end of the day it belonged to, not now — the partial
-      // is a record of *that* day, and the Logbook groups by completedAt.
-      const ownDayEnd = new Date(+getTaskDayStart(new Date(task.dueDate!), dayResetTime) + 24 * 60 * 60 * 1000 - 1);
+      // Stamped at the end of the period it belonged to, not now — the partial
+      // is a record of *that* day (or week), and the Logbook groups by
+      // completedAt.
+      const ownPeriodStart = periodStartOf(new Date(task.dueDate!), task.quotaPeriod);
+      const ownDayEnd = new Date(
+        +ownPeriodStart + (task.quotaPeriod === 'week' ? 7 : 1) * 24 * 60 * 60 * 1000 - 1,
+      );
       closed.push({
         ...task,
         completed: true,
@@ -4035,6 +4052,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       t.progressCount > 0 &&
       !isHiddenForVacation(t) &&
       t.dueDate !== null &&
+      // Weekly targets are deliberately out of scope for the overshoot and
+      // interval kinds (see Task.quotaPeriod), and this is the guard rather
+      // than the rule: if the combination ever arrives from a template, an
+      // import or a synced row, closing it on the day test would end its week
+      // six days early. Left daily, it is merely closed on time.
+      t.quotaPeriod === 'day' &&
       getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
     );
     stale.forEach(t => get().completeTask(t.id));
@@ -5773,6 +5796,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaReminders: false,
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
+      quotaPeriod: 'day',
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
@@ -5961,6 +5985,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaReminders: false,
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
+      quotaPeriod: 'day',
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,

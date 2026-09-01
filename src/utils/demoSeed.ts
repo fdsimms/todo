@@ -446,6 +446,28 @@ export function seedDemoData(): void {
   });
   updateTask(stretch.id, { progressCount: 3 });
 
+  // A weekly target — the same counting mechanism over a week instead of a day
+  // (see Task.quotaPeriod), which is what "three times a week, any days" is.
+  // Seeded partway through so the meter reads as a week in progress: a 0/3
+  // would be indistinguishable from a daily target nobody has started today.
+  const runs = addTask({
+    title: 'Go for a run',
+    notes: 'Three times a week, whichever days suit. The count resets when the week does, not overnight.',
+    category: 'Health',
+    dueDate: today.toISOString(),
+    targetCount: 3,
+    targetUnit: 'runs',
+    quotaPeriod: 'week',
+    // Weekly, to match the period — a daily repeat would spawn a fresh 0/3
+    // every morning and the target could never be finished.
+    recurrenceType: 'weekly',
+    recurrenceInterval: 1,
+    // Otherwise it would be on pace for most of the week and invisible, which
+    // is the right behaviour and the wrong thing for a seed to show.
+    quotaAlwaysVisible: true,
+  });
+  updateTask(runs.id, { progressCount: 1 });
+
   // An extra-task rule. Invisible until it fires, so the seed carries a tally
   // partway through the cycle: the editor's caption then reads as a rule in
   // progress rather than one nobody has started.
@@ -1937,6 +1959,12 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     'Frozen peas', 'Ice cream', 'Almonds', 'Chips',
     // Household
     'Paper towels', 'Toilet paper', 'Dish soap',
+    // Deliberately *not* in the offline lexicon, so they land in "Other" and
+    // the "Sort N into aisles" action at the foot of the list has something to
+    // offer. Without a pile in Other that entry point never renders, and the
+    // whole aisle-sorting feature — offline lexicon, on-device model and
+    // Claude alike — reads as something the app doesn't do.
+    'Miso paste', 'Halloumi', 'Capers',
   ];
   CATALOG.forEach(name => addByName(name, undefined, undefined, { registerUndo: false }));
 

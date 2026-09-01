@@ -4,6 +4,8 @@ import {
   quotaDueTimes,
   quotaDueTimesAfter,
   isQuotaRunOver,
+  quotaWeekStart,
+  quotaWeekSpan,
 } from '../utils/quotaSchedule';
 
 const DAY = new Date('2026-08-26T00:00:00');
@@ -205,5 +207,97 @@ describe('isQuotaRunOver', () => {
   it('is true from the closing instant on', () => {
     expect(isQuotaRunOver(s, at('17:00'))).toBe(true);
     expect(isQuotaRunOver(s, at('23:00'))).toBe(true);
+  });
+});
+
+// A weekly target's span — see Task.quotaPeriod. Aug 26 2026 is a Wednesday,
+// and every case below is stated against that so the day arithmetic is
+// checkable by eye rather than by rerunning the function.
+describe('quotaWeekStart', () => {
+  // 02:00 rather than midnight throughout: the whole reason this subtracts days
+  // instead of calling startOfWeek is that the reset time has to survive.
+  const wed = new Date('2026-08-26T02:00:00');
+
+  it('walks back to Sunday when the week starts on Sunday', () => {
+    expect(quotaWeekStart(wed, 0)).toEqual(new Date('2026-08-23T02:00:00'));
+  });
+
+  it('walks back to Monday when the week starts on Monday', () => {
+    expect(quotaWeekStart(wed, 1)).toEqual(new Date('2026-08-24T02:00:00'));
+  });
+
+  // The bug this exists to avoid: startOfWeek would zero the clock and hand a
+  // 2 AM user a week beginning two hours before all of their days do.
+  it('keeps the day-reset time rather than snapping to midnight', () => {
+    expect(quotaWeekStart(wed, 0).getHours()).toBe(2);
+  });
+
+  it('is a no-op on a day that already is the week start', () => {
+    const sun = new Date('2026-08-23T02:00:00');
+    expect(quotaWeekStart(sun, 0)).toEqual(sun);
+  });
+
+  // Sunday under a Monday-start week is day *seven*, not day zero — the case a
+  // plain subtraction without the +7 modulo gets wrong by a whole week.
+  it('reads Sunday as the last day of a Monday-start week', () => {
+    const sun = new Date('2026-08-23T02:00:00');
+    expect(quotaWeekStart(sun, 1)).toEqual(new Date('2026-08-17T02:00:00'));
+  });
+});
+
+describe('quotaWeekSpan', () => {
+  const wed = new Date('2026-08-26T02:00:00');
+
+  it('runs the seven days from the week start', () => {
+    expect(quotaWeekSpan({ quotaStartedAt: null, dayStart: wed, weekStartsOn: 0 })).toEqual({
+      start: new Date('2026-08-23T02:00:00'),
+      end: new Date('2026-08-30T02:00:00'),
+    });
+  });
+
+  // The invariant the feature rests on: every day of one week agrees on the
+  // span, so the pace ramp a task reads on Thursday is the same one it read on
+  // Sunday and the count doesn't reset underneath it mid-week. (The input is
+  // always a logical day start, never an arbitrary moment — getQuotaSpan hands
+  // it getCurrentDayStart().)
+  it('gives every day of the same week one span', () => {
+    const spans = [23, 24, 25, 26, 27, 28, 29].map(d =>
+      quotaWeekSpan({
+        quotaStartedAt: null,
+        dayStart: new Date(`2026-08-${d}T02:00:00`),
+        weekStartsOn: 0,
+      }),
+    );
+    expect(new Set(spans.map(s => +s.start)).size).toBe(1);
+    expect(spans[0]).toEqual({
+      start: new Date('2026-08-23T02:00:00'),
+      end: new Date('2026-08-30T02:00:00'),
+    });
+  });
+
+  // ...and the next day starts a new one, which is what makes the rollover
+  // sweep's period comparison fire exactly once a week.
+  it('starts a new span on the following week', () => {
+    const sun = new Date('2026-08-30T02:00:00');
+    expect(quotaWeekSpan({ quotaStartedAt: null, dayStart: sun, weekStartsOn: 0 }).start)
+      .toEqual(sun);
+  });
+
+  it('lets a run started this week move the start', () => {
+    const started = '2026-08-25T09:00:00';
+    expect(quotaWeekSpan({ quotaStartedAt: started, dayStart: wed, weekStartsOn: 0 }).start)
+      .toEqual(new Date(started));
+  });
+
+  // Same guard quotaRunSpan keeps for a stale daily stamp, one period up: an
+  // app left closed must not resume last week's run.
+  it('ignores a stamp from an earlier week', () => {
+    expect(quotaWeekSpan({ quotaStartedAt: '2026-08-19T09:00:00', dayStart: wed, weekStartsOn: 0 }).start)
+      .toEqual(new Date('2026-08-23T02:00:00'));
+  });
+
+  it('ignores an unparseable stamp rather than producing an invalid span', () => {
+    expect(quotaWeekSpan({ quotaStartedAt: 'not a date', dayStart: wed, weekStartsOn: 0 }).start)
+      .toEqual(new Date('2026-08-23T02:00:00'));
   });
 });

@@ -199,7 +199,7 @@ jest.mock('../store/useCategoryStore', () => ({
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: jest.fn(() => ({
-      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
       newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
       // The settings that name a category — renaming or deleting one has to
       // carry them with it (see renameCategory/deleteCategory).
@@ -303,7 +303,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, quotaPeriod: 'day',
   tags: [],
   category: null,
   sortOrder: 1,
@@ -432,7 +432,7 @@ beforeEach(() => {
   useTemplateStore.setState({ templates: [], initialized: false });
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
   useSettingsStore.getState.mockReturnValue({
-    dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+    dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
     mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
     calendarEventCategory: null, collapsedCategories: [], titleRules: [],
@@ -921,7 +921,7 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
 
   const withDefaults = (newTaskDefaults: Record<string, unknown>) => {
     useSettingsStore.getState.mockReturnValue({
-      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
       newTaskDefaults,
     });
   };
@@ -9235,7 +9235,7 @@ describe('deleteCategory', () => {
     const setLeftoverUseUpTaskCategory = jest.fn();
     const setCalendarEventCategory = jest.fn();
     useSettingsStore.getState.mockReturnValue({
-      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
       newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
       mealCookTaskCategory: 'Kitchen', groceryUseUpTaskCategory: 'Kitchen', leftoverUseUpTaskCategory: 'Kitchen',
       calendarEventCategory: 'Kitchen', collapsedCategories: [], titleRules: [],
@@ -9908,6 +9908,75 @@ describe('quota tasks', () => {
       const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
       expect(task.completed).toBe(true);
       expect(task.progressCount).toBe(8);
+    });
+  });
+
+  // A weekly target — "three times a week, any days". The clock in this
+  // describe is Tuesday June 10 2025, and the week starts on Sunday (the mock's
+  // weekStartsOn), so the current week runs Sun June 8 to Sat June 14.
+  describe('rolloverQuotas: a weekly target', () => {
+    const weekly = (overrides: Partial<Task> = {}) =>
+      quota({ quotaPeriod: 'week', recurrenceType: 'weekly', targetCount: 3, ...overrides });
+
+    // The bug the period comparison exists to prevent: on the day test this row
+    // is "yesterday's" and would be closed out at 1/3 every single morning,
+    // making a weekly target impossible to actually complete.
+    it('is left alone mid-week, even though its due date is in the past', () => {
+      useTaskStore.setState({
+        tasks: [weekly({ progressCount: 1, dueDate: new Date(2025, 5, 8, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(1);
+    });
+
+    it('is left alone on the last day of its own week', () => {
+      jest.setSystemTime(new Date(2025, 5, 14, 23, 0, 0)); // Sat June 14
+      useTaskStore.setState({
+        tasks: [weekly({ progressCount: 2, dueDate: new Date(2025, 5, 8, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.completed).toBe(false);
+    });
+
+    it('closes out once the week has actually turned', () => {
+      useTaskStore.setState({
+        tasks: [weekly({ progressCount: 2, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const partial = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(partial.completed).toBe(true);
+      expect(partial.progressCount).toBe(2); // the record of that week
+      // Stamped at the end of the week it belonged to (Sun June 1 – Sat June 7),
+      // not today, the same way a daily partial is stamped on its own day.
+      expect(new Date(partial.completedAt!).getDate()).toBe(7);
+    });
+
+    it('spawns next week’s occupant', () => {
+      useTaskStore.setState({
+        tasks: [weekly({ progressCount: 2, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const live = useTaskStore.getState().tasks.filter(t => !t.completed);
+      expect(live).toHaveLength(1);
+      expect(live[0].progressCount).toBe(0);
+      expect(live[0].quotaPeriod).toBe('week');
+    });
+
+    // The regression guard on the other side: making the sweep period-aware
+    // must not stop it closing an ordinary daily target every night.
+    it('still closes a daily target the next day', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 5, dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.completed).toBe(true);
     });
   });
 

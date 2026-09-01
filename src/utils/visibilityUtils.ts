@@ -8,7 +8,7 @@ import { activeChainStep } from './chain';
 import { isBlocked, isWaitingOnPerson } from './blocking';
 import { isSequenceHeld, isSequentialProject, latestProjectCompletionAt, resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
-import { quotaRunSpan } from './quotaSchedule';
+import { quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 import { isNegativeTask } from './negativeHabits';
 
 /**
@@ -471,7 +471,19 @@ export function quotaRidesOutTheDay(task: Task): boolean {
 // twice is a row on Today that disagrees with the notification that sent you
 // to it.
 function getQuotaSpan(task: Task): { start: Date; end: Date } {
-  const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+  const { activeHoursStart, activeHoursEnd, weekStartsOn } = useSettingsStore.getState();
+  // The one branch the whole weekly-target feature needs on this side. Every
+  // reader below — the pace ramp, the hide-while-ahead, the units-to-pace
+  // number, the next-due instant — is written against the span rather than
+  // against the day, so widening the span to a week is all it takes for them to
+  // mean "this week" instead of "today". See Task.quotaPeriod.
+  if (task.quotaPeriod === 'week') {
+    return quotaWeekSpan({
+      quotaStartedAt: task.quotaStartedAt,
+      dayStart: getCurrentDayStart(),
+      weekStartsOn,
+    });
+  }
   return quotaRunSpan({
     windowStart: task.windowStart,
     windowEnd: task.windowEnd,

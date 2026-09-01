@@ -20,7 +20,7 @@ import { isAlarmKitAvailable, requestAlarmAuthorization, scheduleNativeAlarm, ca
 import { ALARM_MAX_RINGS, alarmChainIds, alarmChainTimes, stepTimerAlarmUuid, taskAlarmUuid } from './alarmChain';
 import { isDemoModeActive } from './demoState';
 import { quotaRunSpan, quotaDueTimesAfter } from './quotaSchedule';
-import { getCurrentDayStart } from './dateUtils';
+import { getDayStart } from './dateUtils';
 import { resolveActiveTrip } from './activeTrip';
 import type { Shop } from '../types';
 import type { EventReminder } from './eventReminders';
@@ -294,6 +294,81 @@ export function upcomingReminders(tasks: Task[], now: Date = new Date()): Task[]
     .sort((a, b) => new Date(a.reminderTime!).getTime() - new Date(b.reminderTime!).getTime());
 }
 
+/**
+ * The other things `rescheduleAllReminders` puts in the 64-slot queue, so the
+ * reminders can be given what's actually left rather than the whole cap.
+ *
+ * Reminders are the one elastic kind here: there can be hundreds of them, the
+ * furthest-out ones are the right thing to lose, and Settings already has a
+ * line telling the user when some will not fire. Every kind below is either a
+ * singleton or bounded by something the user is actively doing, so each one
+ * gets its slot and the reminders divide the remainder.
+ *
+ * **Each count comes from the same predicate its scheduler uses**, not from a
+ * re-derivation of it — `quotaNudgeInstants`, `timerAlarmTrigger`,
+ * `agendaRequest`, `tripReminderTrigger` and `eventReminderTrigger` are each
+ * shared with the function that does the scheduling. That is the whole point:
+ * the previous arithmetic reserved a flat `MAX_QUOTA_NUDGES_AHEAD` per nudging
+ * task, which over-charged every run whose instants fell in quiet hours, every
+ * run already part-way through its day, and every task hidden for a vacation
+ * (`quotaNudgeTasks` doesn't filter those, and `scheduleQuotaNudges` refuses
+ * them) — so a task holding one pending nudge reserved six, and five reminders
+ * that would have fit were dropped instead.
+ *
+ * **Two kinds are deliberately outside this**, because they are scheduled
+ * outside the rebuild — by `useFocusStore` and `useStepTimerStore`, which this
+ * file must not import for the same reason it takes `trip` and `eventReminders`
+ * as raw fields. Both are small (a focus session has one step alarm at a time)
+ * and both fire in minutes rather than days, so leaving them uncounted costs at
+ * most a handful of slots at the far end of the queue. Named here rather than
+ * reserved for with a guessed constant.
+ */
+export interface NonReminderSlots {
+  nudges: number;
+  timerAlarms: number;
+  dailyAgenda: number;
+  tripReminder: number;
+  eventReminders: number;
+  /** Every slot above, and so what the reminders don't get. */
+  total: number;
+}
+
+/** The trip/event inputs `rescheduleAllReminders` already takes, for the count. */
+export interface ReminderBudgetExtras {
+  trip?: { shopId: string | null; startedAt: string | null; shops: readonly Shop[] };
+  eventReminders?: readonly EventReminder[];
+}
+
+export function nonReminderSlots(
+  tasks: Task[],
+  now: Date = new Date(),
+  extras?: ReminderBudgetExtras
+): NonReminderSlots {
+  const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+
+  const nudges = quotaNudgeTasks(tasks).reduce(
+    (n, task) => n + quotaNudgeInstants(task, now).length,
+    0
+  );
+  const timerAlarms = tasks.filter(t => timerAlarmTrigger(t, now) !== null).length;
+  const dailyAgenda = agendaRequest(tasks, now) ? 1 : 0;
+  const tripReminder =
+    tripReminderTrigger(extras?.trip?.shopId ?? null, extras?.trip?.startedAt ?? null,
+      extras?.trip?.shops ?? [], now) ? 1 : 0;
+  const eventReminders = (extras?.eventReminders ?? []).filter(
+    r => eventReminderTrigger(r, now, quietHoursStart, quietHoursEnd) !== null
+  ).length;
+
+  return {
+    nudges,
+    timerAlarms,
+    dailyAgenda,
+    tripReminder,
+    eventReminders,
+    total: nudges + timerAlarms + dailyAgenda + tripReminder + eventReminders,
+  };
+}
+
 export interface PendingReminderStats {
   /** Upcoming reminders the user has actually asked for. */
   wanted: number;
@@ -310,19 +385,29 @@ export interface PendingReminderStats {
  * cap, which is the right call — nearer ones matter sooner — but it happens
  * silently, so a user with 80 future reminders has 16 that will never fire and
  * nothing anywhere tells them.
+ *
+ * `extras` is optional and mirrors `rescheduleAllReminders`' own optional
+ * fields: a caller that has the active trip and the event reminders in hand
+ * (Settings does) gets the exact number, and one that doesn't still gets a
+ * count that's right about every task-derived kind.
  */
-export function pendingReminderStats(tasks: Task[], now: Date = new Date()): PendingReminderStats {
+export function pendingReminderStats(
+  tasks: Task[],
+  now: Date = new Date(),
+  extras?: ReminderBudgetExtras
+): PendingReminderStats {
   // AlarmKit alarms don't compete for the 64-notification OS cap — they're a
   // separate subsystem from UNUserNotificationCenter — so they're excluded
   // from the count Settings shows against that cap.
   const wanted = upcomingReminders(tasks, now).filter(t => !usesAlarmKit(t)).length;
-  // Pace nudges do compete for it, and each running target holds up to
-  // MAX_QUOTA_NUDGES_AHEAD of them. Counted against the cap *before* the
+  // Everything else in the queue is counted against the cap *before* the
   // reminders, matching the order rescheduleAllReminders lays them down in, so
   // the "N reminders won't fire" line in Settings stays true rather than
-  // reporting a budget the nudges have already spent.
-  const nudges = quotaNudgeTasks(tasks).length * MAX_QUOTA_NUDGES_AHEAD;
-  const scheduled = Math.min(wanted, Math.max(0, MAX_PENDING_REMINDERS - nudges));
+  // reporting a budget the rest of the queue has already spent.
+  const scheduled = Math.min(
+    wanted,
+    Math.max(0, MAX_PENDING_REMINDERS - nonReminderSlots(tasks, now, extras).total)
+  );
   return { wanted, scheduled, dropped: wanted - scheduled };
 }
 
@@ -350,16 +435,22 @@ export async function rescheduleAllReminders(
     if (usesAlarmKit(task)) await scheduleTaskReminder(task);
   }
 
-  // Nudges first, then reminders against what's left of the budget. The order
-  // is the priority call and it's deliberate: a nudge is the next twenty
-  // minutes and a reminder further down a 64-deep queue is days out, so the
-  // furthest-out reminders are the right thing to lose. pendingReminderStats
-  // counts them in the same order, so Settings reports the same budget this
-  // spends.
-  const nudging = quotaNudgeTasks(tasks);
-  for (const task of nudging) await scheduleQuotaNudges(task);
+  // Everything else first, then reminders against what's left of the budget.
+  // The order is the priority call and it's deliberate: a nudge is the next
+  // twenty minutes, a timer alarm is the next five, and a reminder further down
+  // a 64-deep queue is days out — so the furthest-out reminders are the right
+  // thing to lose. pendingReminderStats counts the same kinds in the same
+  // order, so Settings reports the same budget this spends.
+  //
+  // The budget is taken before any of it is laid down rather than tallied as it
+  // goes, because the reminders have to be *sliced* to fit and that needs the
+  // number up front. nonReminderSlots asks each kind's own trigger function, so
+  // the two can't disagree about what a kind will actually schedule.
+  const slots = nonReminderSlots(tasks, now, { trip, eventReminders });
 
-  const reminderBudget = Math.max(0, MAX_PENDING_REMINDERS - nudging.length * MAX_QUOTA_NUDGES_AHEAD);
+  for (const task of quotaNudgeTasks(tasks)) await scheduleQuotaNudges(task, now);
+
+  const reminderBudget = Math.max(0, MAX_PENDING_REMINDERS - slots.total);
   for (const task of upcoming.filter(t => !usesAlarmKit(t)).slice(0, reminderBudget)) {
     await scheduleTaskReminder(task);
   }
@@ -402,25 +493,37 @@ const DAILY_AGENDA_ID = 'daily-agenda';
  * Nothing is scheduled for a day with nothing on it (see agendaBody) — a daily
  * notification that fires on empty days is the one people turn off.
  */
-export async function scheduleDailyAgenda(tasks: Task[]): Promise<void> {
-  await cancelDailyAgenda();
-  if (isDemoModeActive()) return;
-
+/**
+ * When the next agenda would fire and what it would say, or null for the days
+ * it stays silent on. Shared with `nonReminderSlots` so the budget and the
+ * scheduler agree about whether the agenda is spending a slot at all — an
+ * agenda switched off, or one whose day has nothing on it, costs nothing and
+ * must not be reserved for.
+ */
+function agendaRequest(tasks: Task[], now: Date): { when: Date; body: string } | null {
   const { dailyAgendaEnabled, dailyAgendaTime, dayResetTime } = useSettingsStore.getState();
-  if (!dailyAgendaEnabled) return;
+  if (!dailyAgendaEnabled) return null;
 
-  const when = nextAgendaTime(new Date(), dailyAgendaTime);
+  const when = nextAgendaTime(now, dailyAgendaTime);
   // Vacation-hidden tasks are filtered here rather than inside agendaCounts,
   // which stays free of store reads so it can be tested directly.
   const body = agendaBody(
     agendaCounts(tasks.filter(t => !isHiddenForVacation(t)), when, dayResetTime)
   );
-  if (!body) return;
+  return body ? { when, body } : null;
+}
+
+export async function scheduleDailyAgenda(tasks: Task[]): Promise<void> {
+  await cancelDailyAgenda();
+  if (isDemoModeActive()) return;
+
+  const request = agendaRequest(tasks, new Date());
+  if (!request) return;
 
   await Notifications.scheduleNotificationAsync({
     identifier: DAILY_AGENDA_ID,
-    content: { title: 'Today', body, data: { dailyAgenda: true }, sound: true },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
+    content: { title: 'Today', body: request.body, data: { dailyAgenda: true }, sound: true },
+    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: request.when },
   });
 }
 
@@ -439,22 +542,36 @@ const timerAlarmId = (taskId: string): string => `timer:${taskId}`;
  * doesn't have to sit watching it. Scheduled against the remaining time, so it
  * lands correctly whether the timer was just started or resumed part-way.
  */
-export async function scheduleTimerAlarm(task: Task): Promise<void> {
-  if (isDemoModeActive()) return;
-  await cancelTimerAlarm(task.id);
-  if (task.completed || task.archived) return;
-  if (!isTimedTask(task) || !isTimerRunning(task)) return;
+/**
+ * When a task's timer alarm would fire, or null if it wouldn't. Shared with
+ * `nonReminderSlots`, so a paused timer, one already up, and one landing inside
+ * quiet hours all cost the budget nothing — the same three refusals the
+ * scheduler below makes.
+ */
+function timerAlarmTrigger(task: Task, now: Date): Date | null {
+  if (task.completed || task.archived) return null;
+  if (!isTimedTask(task) || !isTimerRunning(task)) return null;
 
   const remaining = timerRemaining(task);
-  if (remaining <= 0) return; // already up — the row shows it as ready on sight
+  if (remaining <= 0) return null; // already up — the row shows it as ready on sight
 
-  const triggerDate = new Date(Date.now() + remaining * 1000);
+  const triggerDate = new Date(now.getTime() + remaining * 1000);
 
   // Quiet hours suppress rather than defer here, unlike scheduleTaskReminder:
   // a finished timer's "ready to complete" is stale by the time the window
   // ends, and a stack of them all landing at 7am is worse than none.
   const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
-  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return;
+  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return null;
+
+  return triggerDate;
+}
+
+export async function scheduleTimerAlarm(task: Task): Promise<void> {
+  if (isDemoModeActive()) return;
+  await cancelTimerAlarm(task.id);
+
+  const triggerDate = timerAlarmTrigger(task, new Date());
+  if (!triggerDate) return;
 
   await Notifications.scheduleNotificationAsync({
     identifier: timerAlarmId(task.id),
@@ -608,14 +725,27 @@ export async function cancelQuotaNudges(taskId: string): Promise<void> {
  * would stack the rest of the run onto the window's close and deliver six at
  * once at 7am.
  */
-export async function scheduleQuotaNudges(task: Task): Promise<void> {
-  await cancelQuotaNudges(task.id);
-  if (isDemoModeActive()) return;
-  if (!task.quotaReminders || task.completed || task.archived) return;
-  if (task.targetCount === null || task.targetCount < 2) return;
-  if (isHiddenForVacation(task)) return;
+/**
+ * The instants a run's nudges will actually be scheduled at, each with the grid
+ * position it's identified by.
+ *
+ * Pure, and shared with `nonReminderSlots`, because the count is a budget
+ * figure as well as a schedule: reserving a flat `MAX_QUOTA_NUDGES_AHEAD` per
+ * nudging task over-charged the queue every time this returned fewer, which is
+ * most of the day. A run whose remaining instants fall in quiet hours, a run
+ * already past its sixth-from-last unit, and a task hidden for a vacation all
+ * schedule fewer than six (or none), and every slot over-reserved is a reminder
+ * dropped that would have fit.
+ *
+ * **The index is kept rather than re-numbered** after the quiet-hours filter,
+ * so an id still names a position in the day's grid — see `quotaNudgeId`.
+ */
+function quotaNudgeInstants(task: Task, now: Date): { index: number; time: Date }[] {
+  if (!task.quotaReminders || task.completed || task.archived) return [];
+  if (task.targetCount === null || task.targetCount < 2) return [];
+  if (isHiddenForVacation(task)) return [];
 
-  const { activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd } =
+  const { activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, dayResetTime } =
     useSettingsStore.getState();
   const span = quotaRunSpan({
     windowStart: task.windowStart,
@@ -623,15 +753,32 @@ export async function scheduleQuotaNudges(task: Task): Promise<void> {
     quotaStartedAt: task.quotaStartedAt,
     activeHoursStart,
     activeHoursEnd,
-    dayStart: getCurrentDayStart(),
+    // getDayStart(now, …) rather than getCurrentDayStart() so the day the run
+    // is anchored to follows the `now` being asked about — the same logical-day
+    // helper either way, just not pinned to the wall clock.
+    dayStart: getDayStart(now, dayResetTime),
   });
 
-  const times = quotaDueTimesAfter(span, task.targetCount, new Date(), MAX_QUOTA_NUDGES_AHEAD);
+  return quotaDueTimesAfter(span, task.targetCount, now, MAX_QUOTA_NUDGES_AHEAD)
+    .map((time, index) => ({ index, time }))
+    .filter(({ time }) => !isWithinQuietHours(time, quietHoursStart, quietHoursEnd));
+}
+
+/**
+ * `now` is a parameter so `rescheduleAllReminders` can hand down the instant it
+ * took the budget at. Counting and scheduling off two different `new Date()`s
+ * lets a grid instant fall between them, which reserves a slot this then
+ * doesn't spend — an off-by-one in the direction of dropping a reminder that
+ * would have fit. Every other caller wants the wall clock and takes the default.
+ */
+export async function scheduleQuotaNudges(task: Task, now: Date = new Date()): Promise<void> {
+  await cancelQuotaNudges(task.id);
+  if (isDemoModeActive()) return;
+
   const title = displayTitleFor(task) || 'Daily target';
-  for (let i = 0; i < times.length; i++) {
-    if (isWithinQuietHours(times[i], quietHoursStart, quietHoursEnd)) continue;
+  for (const { index, time } of quotaNudgeInstants(task, now)) {
     await Notifications.scheduleNotificationAsync({
-      identifier: quotaNudgeId(task.id, i),
+      identifier: quotaNudgeId(task.id, index),
       content: {
         title,
         // The notes carry the instruction where there are any — for a routine
@@ -644,7 +791,7 @@ export async function scheduleQuotaNudges(task: Task): Promise<void> {
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: times[i],
+        date: time,
       },
     });
   }
@@ -773,19 +920,45 @@ const TRIP_REMINDER_DELAY_MS = 2 * 60 * 60 * 1000;
  * as the daily agenda: a notification nobody asked for is how people turn
  * notifications off wholesale.
  */
-export async function scheduleTripReminder(shopName: string, startedAt: string): Promise<void> {
-  await cancelTripReminder();
-  if (isDemoModeActive()) return;
-  if (!useSettingsStore.getState().tripReminderEnabled) return;
+/**
+ * When the trip reminder would fire, or null if it wouldn't — the setting off,
+ * no trip resolving, the two hours already gone, or the moment landing inside
+ * quiet hours. Takes the same raw trip fields `rescheduleTripReminder` does, so
+ * `nonReminderSlots` can ask the question without resolving the trip twice.
+ */
+function tripReminderTrigger(
+  shopId: string | null,
+  startedAt: string | null,
+  shops: readonly Shop[],
+  now: Date
+): Date | null {
+  if (!startedAt) return null;
+  if (!resolveActiveTrip(shopId, startedAt, shops, now)) return null;
+  return tripReminderTriggerAt(startedAt, now);
+}
+
+/** The half of the above that a caller already holding a live trip needs. */
+function tripReminderTriggerAt(startedAt: string, now: Date): Date | null {
+  const { tripReminderEnabled, quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
+  if (!tripReminderEnabled) return null;
 
   const triggerDate = new Date(Date.parse(startedAt) + TRIP_REMINDER_DELAY_MS);
-  if (triggerDate <= new Date()) return;
+  if (triggerDate <= now) return null;
 
   // Suppressed rather than deferred, like the timer alarm: "still shopping?"
   // is stale by the time a quiet-hours window ends, and a nudge that arrives
   // hours after the question stopped applying is worse than none.
-  const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
-  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return;
+  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return null;
+
+  return triggerDate;
+}
+
+export async function scheduleTripReminder(shopName: string, startedAt: string): Promise<void> {
+  await cancelTripReminder();
+  if (isDemoModeActive()) return;
+
+  const triggerDate = tripReminderTriggerAt(startedAt, new Date());
+  if (!triggerDate) return;
 
   await Notifications.scheduleNotificationAsync({
     identifier: TRIP_REMINDER_ID,
@@ -840,6 +1013,29 @@ function eventReminderNotificationId(key: string): string {
  * (`useEventReminderStore`). Cancel-then-reschedule, like every other
  * reminder in this file — there is no check-if-already-scheduled path.
  */
+/**
+ * When an event reminder would fire, or null if it wouldn't. Shared with
+ * `nonReminderSlots`; the quiet-hours settings are passed in rather than read
+ * here so counting a whole list costs one store read instead of one per event.
+ */
+function eventReminderTrigger(
+  reminder: EventReminder,
+  now: Date,
+  quietHoursStart: string | null,
+  quietHoursEnd: string | null
+): Date | null {
+  const triggerDate = reminderTriggerDate(reminder);
+  if (triggerDate <= now) return null;
+
+  // Suppressed rather than deferred, like the timer and trip alarms: "starts
+  // in 15 minutes" shown after the event has already started is actively
+  // wrong, not just late, and a same-day meeting reminder landing inside
+  // quiet hours is the common case this guards.
+  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return null;
+
+  return triggerDate;
+}
+
 export async function scheduleEventReminder(reminder: EventReminder): Promise<void> {
   // Same reasoning as scheduleTaskReminder: a real notification is a device
   // side effect, and must never fire for an event a demo session rendered.
@@ -847,15 +1043,9 @@ export async function scheduleEventReminder(reminder: EventReminder): Promise<vo
   const id = eventReminderNotificationId(reminder.key);
   await Notifications.cancelScheduledNotificationAsync(id).catch(() => {});
 
-  const triggerDate = reminderTriggerDate(reminder);
-  if (triggerDate <= new Date()) return;
-
-  // Suppressed rather than deferred, like the timer and trip alarms: "starts
-  // in 15 minutes" shown after the event has already started is actively
-  // wrong, not just late, and a same-day meeting reminder landing inside
-  // quiet hours is the common case this guards.
   const { quietHoursStart, quietHoursEnd } = useSettingsStore.getState();
-  if (isWithinQuietHours(triggerDate, quietHoursStart, quietHoursEnd)) return;
+  const triggerDate = eventReminderTrigger(reminder, new Date(), quietHoursStart, quietHoursEnd);
+  if (!triggerDate) return;
 
   await Notifications.scheduleNotificationAsync({
     identifier: id,

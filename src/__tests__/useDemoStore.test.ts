@@ -25,6 +25,7 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
+import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
@@ -769,13 +770,35 @@ describe('demo mode', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();
 
-    const alwaysVisible = tasks.find(t => t.quotaAlwaysVisible);
+    // By title rather than by the flag: the weekly target below sets it too,
+    // and this test is about the daily one.
+    const alwaysVisible = tasks.find(t => t.title === 'Stretch');
     expect(alwaysVisible).toBeDefined();
+    expect(alwaysVisible!.quotaAlwaysVisible).toBe(true);
     // On pace (fully met, in fact) is the whole point being demonstrated —
     // an ordinary target in this state would be hidden.
     expect(alwaysVisible!.progressCount).toBe(alwaysVisible!.targetCount);
     expect(isQuotaOnPace(alwaysVisible!)).toBe(true);
     expect(isTaskVisible(alwaysVisible!)).toBe(true);
+  });
+
+  // The same counting mechanism over a week — "three times a week, any days".
+  // Invisible as a capability unless something is actually using it, and a
+  // 0/3 would be indistinguishable from an unstarted daily target.
+  it('seeds a weekly target partway through its week', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const weekly = tasks.find(t => t.quotaPeriod === 'week');
+    expect(weekly).toBeDefined();
+    expect(weekly!.targetCount).toBe(3);
+    expect(weekly!.progressCount).toBeGreaterThan(0);
+    expect(weekly!.progressCount).toBeLessThan(weekly!.targetCount!);
+    // Weekly recurrence, matching the period: on a daily repeat the rollover
+    // would spawn a fresh 0/3 every morning and the target could never be met.
+    expect(weekly!.recurrenceType).toBe('weekly');
+    // Whichever day the demo is entered on, the row is actually on screen.
+    expect(isTaskVisible(weekly!)).toBe(true);
   });
 
   // A timed task can hand its countdown out to its subtasks, and one that
@@ -1940,6 +1963,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(aisleOrder).not.toContain('Personal Care');
     expect(items.some(i => i.aisle === 'Bulk bins')).toBe(true);
     expect(aisleOrder.indexOf('Frozen')).toBeGreaterThan(aisleOrder.indexOf('Pantry'));
+
+    // A pile in "Other" the offline lexicon couldn't place, which is what the
+    // "Sort N into aisles" action at the foot of the list is offered for. With
+    // none, that entry point never renders in demo mode and aisle sorting
+    // reads as a feature the app hasn't got — on-device, Claude or otherwise.
+    expect(items.filter(i => i.aisle === OTHER_AISLE).length).toBeGreaterThan(0);
 
     // …and enough of them on the seeded list for ShoppingTripSheet to open
     // with a real pre-selected suggestion rather than an empty one — that's

@@ -262,6 +262,19 @@ interface SettingsStore {
   // one. "Reset settings" also has no business quietly re-enabling a feature
   // someone turned off or changing which model they pay for.
   aiFeatureConfig: AiFeatureConfigMap;
+  // Whether Apple's on-device model may answer the AI features it can carry
+  // (src/utils/aiRouting.ts) when there's no Anthropic key. One switch rather
+  // than a per-feature one, and deliberately not a value inside
+  // aiFeatureConfig: that map's `model` is a picker labelled by Claude model
+  // name, and a non-Claude sentinel in it would read as a lie in the UI and in
+  // Settings search, which maps over the same list.
+  //
+  // Defaults on, for the same reason productLookupEnabled does: a suggestion
+  // that needs a switch found before it can ever appear reads as a feature the
+  // app doesn't have. It costs nothing to leave on — no key, no request, no
+  // data leaving the device — so the switch is here for someone who'd rather
+  // the app didn't run a model at all, not as a consent gate.
+  onDeviceAiEnabled: boolean;
   // Face ID (or the device passcode) in front of the whole app. Both of these
   // stay out of DEFAULT_SETTINGS: "reset settings" must not be a way to turn
   // someone's lock off.
@@ -1010,6 +1023,7 @@ interface SettingsStore {
   setFdcApiKey: (key: string) => void;
   setGoUpcApiKey: (key: string) => void;
   setAiFeatureConfig: (id: AiFeatureId, patch: Partial<AiFeatureConfig>) => void;
+  setOnDeviceAiEnabled: (on: boolean) => void;
   setPostponeCheckEnabled: (on: boolean) => void;
   setPostponeCheckThreshold: (count: number) => void;
   setAppLockEnabled: (on: boolean) => void;
@@ -1174,6 +1188,7 @@ const DEFAULT_SETTINGS = {
   cookRecapEnabled: true,
   restockOfferEnabled: true,
   productLookupEnabled: true,
+  onDeviceAiEnabled: true,
   groceryUseUpTasks: false,
   groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   groceryUseUpTaskCategory: null,
@@ -1508,6 +1523,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   cookRecapEnabled: true,
   restockOfferEnabled: true,
   productLookupEnabled: true,
+  onDeviceAiEnabled: true,
   groceryUseUpTasks: false,
   groceryUseUpLeadDays: GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
   groceryUseUpTaskCategory: null,
@@ -1711,6 +1727,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // Reads `!== 'false'` like the booleans above it, so an install that
     // predates this setting gets the default without a migration.
     const productLookupEnabled = dbGetSetting('productLookupEnabled') !== 'false';
+    // Same `!== 'false'` reading, same reason: defaults on, and an install
+    // that predates the setting gets that default without a migration. It
+    // being on doesn't make the model run — the device still has to have one
+    // (see aiRouting.ts).
+    const onDeviceAiEnabled = dbGetSetting('onDeviceAiEnabled') !== 'false';
     // `=== 'true'`, the safe reading of a missing row: this one defaults OFF,
     // and an install that predates it has a catalog full of items whose next
     // trip would otherwise start writing tasks nobody asked for.
@@ -1930,7 +1951,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, patchNotesQaStatus, aiFeatureConfig, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2119,6 +2140,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       dbSetSetting('aiFeatureConfig', JSON.stringify(next));
       return { aiFeatureConfig: next };
     });
+  },
+
+  // Switching this off doesn't touch aiFeatureConfig. The two answer different
+  // questions — which features you want, and whether the device may answer one
+  // of them itself — and collapsing them would mean turning the on-device path
+  // off silently disabled grocery aisle sorting for anyone with a key.
+  setOnDeviceAiEnabled(on: boolean) {
+    dbSetSetting('onDeviceAiEnabled', on ? 'true' : 'false');
+    set({ onDeviceAiEnabled: on });
   },
 
   setAppLockEnabled(on: boolean) {
