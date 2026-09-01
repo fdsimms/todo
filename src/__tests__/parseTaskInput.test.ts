@@ -202,8 +202,6 @@ describe('parseTaskInput — false positives', () => {
   it.each([
     'discuss may budget',
     'email tuesday the dog',
-    'walk the dog mon', // bare ambiguous abbreviation needs a connector
-    'polish the sun',
     'ask tom',
     'feed the chickens',
     'buy groceries',
@@ -224,6 +222,35 @@ describe('parseTaskInput — false positives', () => {
     const r = parseTaskInput('pick up package on wed', NOW)!;
     expect(r.cleanTitle).toBe('pick up package');
     expectDay(r.schedule.dueDate, 2025, 5, 11);
+  });
+
+  it('accepts any weekday abbreviation as a bare trailing word, not just with a connector', () => {
+    const a = parseTaskInput('call dentist thu', NOW)!;
+    expect(a.cleanTitle).toBe('call dentist');
+    expectDay(a.schedule.dueDate, 2025, 5, 12);
+
+    const b = parseTaskInput('call dentist thur', NOW)!;
+    expectDay(b.schedule.dueDate, 2025, 5, 12);
+
+    const c = parseTaskInput('call dentist thurs', NOW)!;
+    expectDay(c.schedule.dueDate, 2025, 5, 12);
+
+    const d = parseTaskInput('pick up package wed', NOW)!;
+    expect(d.cleanTitle).toBe('pick up package');
+    expectDay(d.schedule.dueDate, 2025, 5, 11);
+
+    const e = parseTaskInput('gym mon', NOW)!;
+    expectDay(e.schedule.dueDate, 2025, 5, 16);
+
+    const f = parseTaskInput('gym fri', NOW)!;
+    expectDay(f.schedule.dueDate, 2025, 5, 13);
+
+    // "sun"/"sat"/"wed" double as ordinary words, but a bare weekday
+    // suggestion is a low-stakes false positive (easy to dismiss/edit), so
+    // they're accepted the same as the rest rather than gated behind "on"/"by".
+    const g = parseTaskInput('polish the sun', NOW)!;
+    expect(g.cleanTitle).toBe('polish the');
+    expectDay(g.schedule.dueDate, 2025, 5, 15);
   });
 
   it('returns null when the whole input is a schedule phrase', () => {
