@@ -205,6 +205,7 @@ export function GeneratedTasksSection() {
       case 'birthdayGift': s.setBirthdayGiftTasks(next); break;
       case 'reachOut': s.setReachOutTasks(next); break;
       case 'weather': s.setWeatherTasks(next); break;
+      case 'screenTime': s.setScreenTimeTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than

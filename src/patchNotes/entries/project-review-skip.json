@@ -1,0 +1,4 @@
+{
+  "message": "Tapping a project review task now opens the pull-from-projects sheet instead of silently completing it. The sheet has a new \"Nothing to pull, mark reviewed\" option for when you've genuinely checked and there's nothing to bring in",
+  "date": "2026-09-01"
+}

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { Animated, Linking, StyleSheet, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns';
 import type { Task } from '../types';
@@ -9,6 +9,7 @@ import { usePlanMeal } from '../hooks/usePlanMeal';
 import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
 import { completionTapFor } from '../utils/completionTap';
+import { openInAppUrl } from '../utils/deepLinks';
 import { isQuotaPartial, quotaFraction } from '../utils/visibilityUtils';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
@@ -138,6 +139,19 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         await haptics.tap();
         setShowMealPicker(true);
         return;
+      case 'review-project':
+        // Same contract again: the tap opens the pull sheet (via the task's
+        // own linkUrl, same as its row's link button) rather than completing
+        // a quiet project's review task unanswered.
+        await haptics.tap();
+        if (task.linkUrl && !openInAppUrl(task.linkUrl)) {
+          try {
+            await Linking.openURL(task.linkUrl);
+          } catch {
+            // silently ignore — no toast infra for this row-level action
+          }
+        }
+        return;
       case 'log-unit':
         await haptics.impactLight();
         scale.setValue(1);
@@ -173,6 +187,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
     action === 'locked' ? `${label}, not due yet`
     : action === 'ask' ? `Complete ${label}, asks for an answer`
     : action === 'pick-meal' ? `${label}, pick a meal`
+    : action === 'review-project' ? `${label}, review what to pull in`
     : action === 'log-unit'
       ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${formatQuotaProgress(task.progressCount, task.targetCount!, task.targetUnit)} done, ${label}`
     : action === 'uncomplete' ? `Mark ${label} as not done`

@@ -67,6 +67,16 @@ export function CalendarSettings() {
   // they're over there — adding the Google account is exactly that.
   const [permission, setPermission] = useState<CalendarPermission | null>(null);
   const [calendars, setCalendars] = useState<DeviceCalendar[] | null>(null);
+  const [syncingNow, setSyncingNow] = useState(false);
+  const syncNow = async () => {
+    haptics.tap();
+    setSyncingNow(true);
+    try {
+      await refreshEvents();
+    } finally {
+      setSyncingNow(false);
+    }
+  };
   const refreshState = React.useCallback(() => {
     getCalendarPermission()
       .then(async result => {
@@ -352,6 +362,22 @@ export function CalendarSettings() {
             label="Today"
             hint={todaySummary()}
             accessibilityLabel={`Today: ${todaySummary()}`}
+          />
+        </>
+      )}
+
+      {calendarReadEnabled && permission === 'granted' && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="calendarSyncNow"
+            icon="refresh-outline"
+            iconColor={colors.accent}
+            label="Sync now"
+            hint="Re-read events from the calendars above"
+            busy={syncingNow}
+            onPress={() => void syncNow()}
+            disabled={syncingNow}
           />
         </>
       )}
