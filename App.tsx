@@ -9,9 +9,6 @@ import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { AppLockGate } from './src/components/AppLockGate';
 import { useTaskStore } from './src/store/useTaskStore';
 import { useSettingsStore } from './src/store/useSettingsStore';
-import { useMealPlanStore } from './src/store/useMealPlanStore';
-import { useLeftoverStore } from './src/store/useLeftoverStore';
-import { useTemplateStore } from './src/store/useTemplateStore';
 import { requestNotificationPermissions, isAlarmKitAvailable, requestAlarmAuthorization } from './src/utils/notifications';
 import { useDailyAgendaSync } from './src/utils/dailyAgendaSync';
 import { useNotificationTapSync } from './src/utils/notificationTapSync';
@@ -32,6 +29,8 @@ import { useFocusShieldSync } from './src/hooks/useFocusShieldSync';
 import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
 import { runStartupSequence, runStartupStep } from './src/utils/startup';
+import { expiryPasses, catchUpPasses, retentionPasses } from './src/utils/maintenancePasses';
+import { useBackgroundRefresh } from './src/utils/backgroundRefresh';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
 import { preloadAppFont } from './src/theme/AppFont';
 import { View } from 'react-native';
@@ -117,29 +116,8 @@ function AppGate() {
 
 function AppRoot() {
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const backgroundRefreshEnabled = useSettingsStore(s => s.backgroundRefreshEnabled);
   const initSecrets = useSettingsStore(s => s.initializeSecrets);
-  const sweepExpiredTasks = useTaskStore(s => s.sweepExpiredTasks);
-  const checkVacationExpiry = useTaskStore(s => s.checkVacationExpiry);
-  const rolloverQuotas = useTaskStore(s => s.rolloverQuotas);
-  const sweepOvershootQuotas = useTaskStore(s => s.sweepOvershootQuotas);
-  const dripStalledProjects = useTaskStore(s => s.dripStalledProjects);
-  const checkMealPlanNudge = useTaskStore(s => s.checkMealPlanNudge);
-  const checkProjectReviewTasks = useTaskStore(s => s.checkProjectReviewTasks);
-  const checkMealSlotTasks = useTaskStore(s => s.checkMealSlotTasks);
-  const checkPantryCheckTasks = useTaskStore(s => s.checkPantryCheckTasks);
-  const checkPantryReviewTasks = useTaskStore(s => s.checkPantryReviewTasks);
-  const checkMealShortfallTasks = useTaskStore(s => s.checkMealShortfallTasks);
-  const checkCalendarReviewTasks = useTaskStore(s => s.checkCalendarReviewTasks);
-  const checkWeatherTasks = useTaskStore(s => s.checkWeatherTasks);
-  const checkScreenTimeTasks = useTaskStore(s => s.checkScreenTimeTasks);
-  const checkBirthdayTasks = useTaskStore(s => s.checkBirthdayTasks);
-  const checkBirthdayGiftTasks = useTaskStore(s => s.checkBirthdayGiftTasks);
-  const checkReachOutTasks = useTaskStore(s => s.checkReachOutTasks);
-  const checkScheduledTemplates = useTemplateStore(s => s.checkScheduledTemplates);
-  const purgeOldCompletedTasks = useTaskStore(s => s.purgeOldCompletedTasks);
-  const purgeOldMealPlanEntries = useMealPlanStore(s => s.purgeOldEntries);
-  const purgeOldLeftovers = useLeftoverStore(s => s.purgeOldLeftovers);
-  const reconcileAllLeftoverTasks = useLeftoverStore(s => s.reconcileAllLeftoverTasks);
 
   useEffect(() => {
     // Every step is isolated (see src/utils/startup.ts): these are independent
@@ -157,117 +135,19 @@ function AppRoot() {
       // by tapping. It also migrates the old plaintext row on the first launch
       // after the update, which needs the DB above to exist.
       ['load API key', initSecrets],
-      // Sweep expired tasks now that settings (vacationMode, dayResetTime,
-      // autoRemoveExpiredTasks) are loaded for real, before vacation expiry
-      // can turn vacationMode back off — see issue #689.
-      ['sweep expired tasks', sweepExpiredTasks],
-      // Turn vacation mode back off if its end date already passed while the
-      // app was closed
-      ['check vacation expiry', checkVacationExpiry],
-      // Close out quota tasks whose day ended unfinished while the app was
-      // closed, so a day you fell short on is logged as a partial instead of
-      // sitting overdue — also needs real settings (dayResetTime) loaded first.
-      ['roll over quotas', rolloverQuotas],
-      // Opt-in counterpart to the pass above: an allowOvershoot task rides
-      // out its whole day instead of auto-completing at target, so it needs
-      // its own end-of-day close — see sweepOvershootQuotas in useTaskStore.ts.
-      ['sweep overshoot quotas', sweepOvershootQuotas],
-      // Let projects the user opted into auto-scheduling date their own next
-      // task if they've run dry. After rolloverQuotas, which can complete and
-      // spawn members and so change what a project counts as scheduled; and
-      // after initSettings, since "quiet" is measured in logical days.
-      ['drip stalled projects', dripStalledProjects],
-      // Opt-in weekly nudge to plan the coming week's meals (#1121) — off by
-      // default. After initSettings, since it reads mealPlanNudge* and
-      // weekStartsOn, and after initTasks, whose fan-out creates the meal
-      // plan tables it queries directly.
-      ['check meal plan nudge', checkMealPlanNudge],
-      // Give quiet projects their "Review X" task, and clear the ones whose
-      // project has since been scheduled. Straight after dripStalledProjects,
-      // which can date a member and so settle whether a project is quiet at
-      // all — running the cheaper pass first means this one never writes a
-      // task the drip is about to make wrong.
-      ['check project review tasks', checkProjectReviewTasks],
-      // Today's meal tasks — one per meal the user says they eat, whose steps
-      // are what's left to decide about it. After initSettings, since the day
-      // it writes for is the *logical* one; after initTasks, whose fan-out
-      // creates the meal plan tables it reads to see what's already planned.
-      ['check meal slot tasks', checkMealSlotTasks],
-      // Ask about anything the pantry has quietly stopped vouching for (off by
-      // default). Grouped with the two passes above because it shares their
-      // trigger — time passing rather than a source mutation — and it reads the
-      // grocery catalog initTasks' fan-out has already loaded.
-      // Before the drip, deliberately: the review offer is what suppresses the
-      // per-item questions (see checkPantryCheckTasks), so running it second
-      // would let both fire in the same sweep the first time a cupboard goes
-      // doubtful enough for the bulk offer.
-      ['check pantry reviews', checkPantryReviewTasks],
-      ['check pantry checks', checkPantryCheckTasks],
-      // And anything planned for the next couple of days that the kitchen
-      // can't currently make (off by default). Straight after the pass above
-      // for the same reason that one sits after checkMealSlotTasks: it reads
-      // both the meal plan and the grocery catalog initTasks' fan-out has
-      // already loaded, and it fires on a meal coming into range, which is time
-      // passing rather than a source mutation.
-      ['check meal shortfall tasks', checkMealShortfallTasks],
-      // Once a day, a task to review tomorrow's calendar — grouped with the two
-      // passes above for the same reason: time passing rather than a source
-      // mutation. In practice this rarely finds anything to do at cold-launch
-      // time, since the calendar window itself is only ever populated by
-      // useCalendarSync's own effect — but a launch that's already warm (the
-      // window still holds yesterday's read) can act on it immediately rather
-      // than waiting for the first foreground.
-      ['check calendar review tasks', checkCalendarReviewTasks],
-      // Beside it, same trigger again — this rarely does anything at
-      // cold-launch time either, since the snapshot it reads is only ever
-      // populated by useWeatherSync's own effect.
-      ['check weather tasks', checkWeatherTasks],
-      // Beside it, same trigger and the same near-no-op at cold launch: the
-      // crossings it reads are only ever drained by useScreenTimeSync's own
-      // effect, which has not run yet on the very first pass.
-      ['check screen time tasks', checkScreenTimeTasks],
-      // Birthdays, which share the same trigger — a date arriving rather than a
-      // source changing — and read the people initTasks' fan-out has loaded.
-      // After initSettings for the same reason the meal pass is: the day a task
-      // lands on is the logical one, and the lead time is a setting.
-      ['check birthday tasks', checkBirthdayTasks],
-      // Beside the birthday pass, sharing its trigger and reading the same
-      // people — off by default, so in practice this rarely does anything
-      // until somebody has switched it on.
-      ['check birthday gift tasks', checkBirthdayGiftTasks],
-      // Beside the birthday pass and for the same reason: the trigger is time
-      // passing rather than a source changing. Does no work at all until
-      // somebody has been opted in.
-      ['check reach-out tasks', checkReachOutTasks],
-      // A leftover can age from "fresh" into "soon" purely by time passing too
-      // — same trigger as the two passes above, and it reads the leftovers
-      // initTasks' fan-out has already loaded. This used to run only on
-      // foreground (TodayScreen's AppState listener), which never fires for a
-      // true cold launch — so a leftover that crossed the threshold while the
-      // app was closed sat with no use-up task until the app was backgrounded
-      // and reopened at least once.
-      ['reconcile leftover use-up tasks', reconcileAllLeftoverTasks],
-      // Apply any template whose schedule came due while the app was closed
-      // (#1781). After initSettings, since "due" is measured in logical days
-      // and gated on vacationMode; after dripStalledProjects for the same
-      // reason that one sits after rolloverQuotas — a run can create tasks a
-      // project counts, so the cheaper pass goes first and sees a settled list.
-      ['check scheduled templates', checkScheduledTemplates],
-      // Enforce the completed-task retention window, if the user set one. Last
-      // of the maintenance passes on purpose: it only ever deletes rows old
-      // enough to be out of every other pass's reach, and running it after
-      // rolloverQuotas means a completion that pass just wrote is judged on the
-      // same footing as any other.
-      ['purge old completed tasks', purgeOldCompletedTasks],
-      // The meal plan's own horizon, alongside it rather than inside it: these
-      // are per-event rows on a fixed 180-day window, deliberately not wired to
-      // completedRetentionDays — that setting is a promise about the Logbook,
-      // and "keep completions forever" must not also mean four years of dinners.
-      ['purge old meal plan entries', purgeOldMealPlanEntries],
-      // And the fridge's, which only ever takes rows the user already closed
-      // out — a container nobody said they finished survives this however old
-      // it is, because that is exactly the one the nudge exists to surface.
-      ['purge old leftovers', purgeOldLeftovers],
+      // The passes whose trigger is a clock rather than an edit, in the order
+      // they have to run in — the same list, spread from the same module, that
+      // the background refresh task runs (src/utils/maintenancePasses.ts). The
+      // per-step reasoning moved there with them; what stays here is where the
+      // three groups sit relative to the launch-only steps around them.
+      //
+      // The expiry sweep is first because it needs settings (vacationMode,
+      // dayResetTime, autoRemoveExpiredTasks) loaded for real, and has to run
+      // before vacation expiry can turn vacationMode back off — see #689.
+      ...expiryPasses(),
+      ...catchUpPasses(),
+      // The purges last, after everything that can write a completion.
+      ...retentionPasses(),
       // Read back any cooking step timer that was still counting down when the
       // app was last closed, and re-arm its alarm (#1712). After initSettings,
       // which opens the database this reads from; before the permission
@@ -282,7 +162,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkPantryReviewTasks, checkMealShortfallTasks, checkBirthdayTasks, checkBirthdayGiftTasks, checkReachOutTasks, checkCalendarReviewTasks, checkWeatherTasks, checkScreenTimeTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initSecrets]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
@@ -321,6 +201,12 @@ function AppRoot() {
 
   // Keeps the iOS Today widget's shared snapshot in sync with the task store.
   useWidgetSync();
+
+  // Keeps the background refresh task registered against the setting — the one
+  // thing the app does while it's closed. Everything it runs also runs above,
+  // so a device iOS never grants a background run to loses nothing but
+  // punctuality. See src/utils/backgroundRefresh.ts.
+  useBackgroundRefresh(backgroundRefreshEnabled);
 
   // Collects recipe pages saved from another app's share sheet (targets/todo-share)
   // into the queue the Recipes screen offers. Same ordering requirement as the

@@ -503,6 +503,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // section is the generator's name for the reason the derived rows' is: four
   // rows read "Show the task", and the group title tells them apart from
   // nothing.
+  // Sits above every generator rather than inside one: it decides when the
+  // whole list gets a chance to run, not what any of them do.
+  { id: 'backgroundRefreshEnabled', groupId: 'generated', label: 'Add tasks while the app is closed',
+    section: 'Automatic tasks',
+    keywords: ['background', 'background refresh', 'overnight', 'away', 'wake',
+      'catch up', 'top up', 'widget', 'stale', 'battery'] },
   { id: 'mealSlotsEnabled', groupId: 'generated', label: 'Meals you eat', section: 'Meal tasks',
     keywords: ['breakfast', 'lunch', 'dinner', 'snack', 'skip', 'which ones'], kitchen: true },
   { id: 'groceryUseUpLeadDays', groupId: 'generated', label: 'Show the task', section: 'Use-up tasks for groceries',
