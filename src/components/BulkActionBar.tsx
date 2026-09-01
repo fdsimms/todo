@@ -25,6 +25,14 @@ interface Props {
   totalCount: number;
   existingTags: string[];
   onComplete: () => void;
+  /**
+   * How many of the selection a Complete would actually complete. The action
+   * hides at 0, which is a selection of nothing but negative habits — those are
+   * never completed, so the button would do nothing. Optional, defaulting to
+   * "there is something": a caller that never lists negative habits needn't
+   * compute it. See useTaskSelection, which derives it for every caller.
+   */
+  completableCount?: number;
   onDelete: () => void;
   onSetWhen: (date: Date | null, timeSegments: TimeOfDay[]) => void;
   /** Where to move the selection. `null` clears the category. Creating a new one happens in the picker. */
@@ -71,6 +79,7 @@ export function BulkActionBar({
   totalCount,
   existingTags,
   onComplete,
+  completableCount,
   onDelete,
   onSetWhen,
   onSetCategory,
@@ -165,13 +174,15 @@ export function BulkActionBar({
               </TouchableOpacity>
             </View>
             <View style={styles.actionRow}>
-              <PressableScale
-                style={styles.actionBtn}
-                onPress={() => { haptics.success(); onComplete(); }}
-              >
-                <Ionicons name="checkmark-circle" size={24} color={colors.green} />
-                <Text style={[styles.actionLabel, { color: colors.green }]}>Complete</Text>
-              </PressableScale>
+              {(completableCount ?? 1) > 0 && (
+                <PressableScale
+                  style={styles.actionBtn}
+                  onPress={() => { haptics.success(); onComplete(); }}
+                >
+                  <Ionicons name="checkmark-circle" size={24} color={colors.green} />
+                  <Text style={[styles.actionLabel, { color: colors.green }]}>Complete</Text>
+                </PressableScale>
+              )}
               <PressableScale
                 style={styles.actionBtn}
                 onPress={() => { haptics.tap(); setWhenVisible(true); }}

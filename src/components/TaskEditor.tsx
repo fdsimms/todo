@@ -40,7 +40,7 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, ExtraTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind } from '../types';
+import type { Task, Priority, Effort, ExtraTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
@@ -466,6 +466,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [streakEditorOpen, setStreakEditorOpen] = useState(false);
   const [streakDraft, setStreakDraft] = useState(0);
   const [showStreak, setShowStreak] = useState(false);
+  const [polarity, setPolarity] = useState<Polarity>('positive');
+  const [quotaPeriod, setQuotaPeriod] = useState<QuotaPeriod>('day');
   const [streakRequiresWindow, setStreakRequiresWindow] = useState(false);
 
   // Every picker section starts collapsed to its current value; opening one is
@@ -636,6 +638,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setVacationPause(task.vacationPause ?? false);
       setExcludeFromSuggestions(task.excludeFromSuggestions ?? false);
       setShowStreak(task.showStreak ?? false);
+      setPolarity(task.polarity ?? 'positive');
+      setQuotaPeriod(task.quotaPeriod ?? 'day');
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setLinkUrl(task.linkUrl ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
@@ -752,6 +756,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       vacationPause: task?.vacationPause ?? false,
       excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
       showStreak: task?.showStreak ?? false,
+      polarity: task?.polarity ?? 'positive',
+      quotaPeriod: task?.quotaPeriod ?? 'day',
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
@@ -970,6 +976,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
       quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
+      // Cleared with the target, same as the flags around it: a period left
+      // behind on a task that stopped being a target would decide the span of a
+      // count that no longer exists.
+      quotaPeriod: targetCount !== null ? quotaPeriod : 'day',
       // A supply counts down by riding onto the successor a completion spawns,
       // so it means nothing on a one-off — cleared with the repeat rather than
       // left to sit at its starting number for ever, the same reset showStreak
@@ -1012,10 +1022,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
         chainEnabled && effectiveChainItems.length >= 2 && recurrenceType !== 'none' && chainStepOnSchedule,
       vacationPause,
       excludeFromSuggestions,
+      polarity,
       // Only a recurring task has a streak to show, and the toggle is only
       // offered there — don't strand a stale `true` on a task that stopped
-      // recurring, or the chip would be waiting if it ever recurs again.
-      showStreak: recurrenceType !== 'none' && showStreak,
+      // recurring, or the chip would be waiting if it ever recurs again. A
+      // negative habit is the exception and keeps its chip either way: it
+      // applies to every day without a rule saying so, and the run of clean days
+      // is the only thing its row ever has to report.
+      showStreak: (recurrenceType !== 'none' || polarity === 'negative') && showStreak,
       // Same reset reasoning as showStreak just above. Left on with no window
       // to be late against is harmless (isCompletionOnTime is vacuously true
       // for such a task), so this doesn't also need timeSegments/windowEnd to
@@ -1295,6 +1309,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setRecurrenceType(baked.recurrenceType);
     setEffort(baked.effort);
     setEstimatedMinutes(baked.estimatedMinutes);
+    // Every kind but the plain one is a shape for *completing* something — a
+    // countdown to finish, a target to reach, steps to work through — and an
+    // avoid-task is never completed at all, so the two can't both be set. The
+    // reset lives here rather than being tolerated downstream: leaving "Daily
+    // target" on a task that can't be logged would be a control that does
+    // nothing, which is the thing the copy rules exist to prevent.
+    if (next !== 'task') setPolarity('positive');
   };
 
   const fieldOpen = (key: FieldKey, fallback = false) => openFields[key] ?? fallback;
@@ -1471,8 +1492,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     return showLocationField && t ? t : location;
   };
 
-  const enableRecurrence = () => {
-    if (recurrenceType === 'none') setRecurrenceType('daily');
+  // A quota only makes sense period to period: the count resets because each
+  // new occurrence starts at zero, so without a repeat there'd be nothing to
+  // reset it. The repeat has to match the period it's counting across — a
+  // weekly target on a daily repeat would spawn a fresh 0/3 every morning.
+  const enableRecurrence = (period: QuotaPeriod = quotaPeriod) => {
+    if (recurrenceType === 'none') setRecurrenceType(period === 'week' ? 'weekly' : 'daily');
   };
 
   const recurrenceEndMode: 'never' | 'date' | 'count' =
@@ -1510,6 +1535,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       quotaIntervalMinutes: targetCount !== null ? quotaIntervalMinutes : null,
       quotaReminders: targetCount !== null ? quotaReminders : false,
       quotaAlwaysVisible: targetCount !== null ? quotaAlwaysVisible : false,
+      // Cleared with the target, same as the flags around it: a period left
+      // behind on a task that stopped being a target would decide the span of a
+      // count that no longer exists.
+      quotaPeriod: targetCount !== null ? quotaPeriod : 'day',
       supplyCount, supplyUnit, supplyRefillCount, supplyReorderAt, supplyLeadDays, supplyGroceryItemId,
       deferUntil: deferUntil?.toISOString() ?? null,
       reminderTime: reminderTime?.toISOString() ?? null,
@@ -1520,6 +1549,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceCount,
       priority, effort, estimatedMinutes, actualMinutes, timedMinutes, pinned, chainEnabled, chainItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
+      polarity,
       showStreak,
       streakRequiresWindow,
       linkUrl,
@@ -2217,6 +2247,37 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </View>
             ),
           },
+          // Only on a plain task: every other kind is a shape for completing
+          // something, and an avoid-task is never completed (see applyKind,
+          // which resets this when the kind moves away).
+          ...(kind === 'task' ? [{
+            key: 'polarity', label: 'Goal', set: polarity === 'negative',
+            keywords: ['avoid', 'negative', 'quit', 'stop', 'habit', 'dont', 'abstain', 'streak'],
+            node: (
+              <View style={styles.kindBlock}>
+                <SegmentedControl
+                  label="Goal"
+                  value={polarity}
+                  onChange={next => {
+                    setPolarity(next);
+                    // The run of clean days is an avoid-task's only feedback, so
+                    // the chip comes on with it rather than being a second thing
+                    // to find. Turning it back off by hand still sticks.
+                    if (next === 'negative') setShowStreak(true);
+                  }}
+                  options={[
+                    { value: 'positive', label: 'Do this', icon: 'checkmark-circle-outline' },
+                    { value: 'negative', label: 'Avoid this', icon: 'shield-checkmark-outline' },
+                  ]}
+                />
+                <Text style={styles.kindHint}>
+                  {polarity === 'negative'
+                    ? 'Never completed. It stays on Today every day and counts the days you get through without it. Tap its shield to record a slip, which resets the count.'
+                    : 'Completed when you do it, like any other task.'}
+                </Text>
+              </View>
+            ),
+          }] : []),
           // The chosen kind's own set-up, moved here verbatim from the three
           // sections it used to be scattered across.
           ...(kind === 'timed' ? [{
@@ -2308,13 +2369,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             </>),
           }] : []),
           ...(kind === 'target' ? [{
-            key: 'dailyTarget', label: 'Daily target', set: true,
-            keywords: ['quota', 'goal', 'times a day', 'count', 'interval', 'cadence', 'every', 'minutes', 'nudge', 'notify', 'break', 'pace'],
+            key: 'dailyTarget', label: quotaPeriod === 'week' ? 'Weekly target' : 'Daily target', set: true,
+            keywords: ['quota', 'goal', 'times a day', 'times a week', 'weekly', 'count', 'interval', 'cadence', 'every', 'minutes', 'nudge', 'notify', 'break', 'pace'],
             node: (<>
               <EditorRow
                 icon="speedometer-outline"
-                label="Daily target"
-                hint="Log it several times a day. The task hides while you're on pace and comes back when you fall behind."
+                label={quotaPeriod === 'week' ? 'Weekly target' : 'Daily target'}
+                hint={quotaPeriod === 'week'
+                  ? "Log it several times a week, on whichever days suit. The task hides while you're on pace and comes back when you fall behind."
+                  : "Log it several times a day. The task hides while you're on pace and comes back when you fall behind."}
                 value={targetCount !== null ? formatQuotaTarget(targetCount, targetUnit) : undefined}
                 expanded={showTargetCount}
                 onPress={() => { animateLayout(); setShowTargetCount(v => !v); }}
@@ -2383,12 +2446,52 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       explain. */}
                   <Text style={styles.targetStepperCaption}>
                     {targetCount === null
-                      ? 'Not a daily target'
+                      ? 'Not a target'
                       : quotaIntervalMinutes !== null
                         ? quotaCadenceCaption
-                        : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a day`}
+                        : `Shows as ${formatQuotaProgress(0, targetCount, targetUnit)} a ${quotaPeriod}`}
                   </Text>
                   {targetCount !== null && (
+                    <>
+                      <View style={styles.sep} />
+                      {/* Which stretch the count is measured over. A track
+                          rather than a pair of pills: two options, closed set,
+                          exactly one chosen. See Task.quotaPeriod. */}
+                      <SegmentedControl
+                        label="Counted over"
+                        value={quotaPeriod}
+                        onChange={next => {
+                          setQuotaPeriod(next);
+                          // The repeat has to match the period, or a weekly
+                          // target on a daily repeat spawns a fresh 0/3 every
+                          // morning and can never be finished.
+                          if (recurrenceType !== 'none') {
+                            setRecurrenceType(next === 'week' ? 'weekly' : 'daily');
+                          } else {
+                            enableRecurrence(next);
+                          }
+                          // A week-long run has no time-of-day shape, so the two
+                          // day-shaped extras go with it rather than sitting
+                          // there set but inert (see Task.quotaPeriod).
+                          if (next === 'week') {
+                            setQuotaIntervalMinutes(null);
+                            setQuotaReminders(false);
+                            setAllowOvershoot(false);
+                          }
+                        }}
+                        options={[
+                          { value: 'day', label: 'A day' },
+                          { value: 'week', label: 'A week' },
+                        ]}
+                      />
+                      <Text style={styles.targetStepperCaption}>
+                        {quotaPeriod === 'week'
+                          ? 'Any days of the week. The count resets when the week does.'
+                          : 'The count resets each day.'}
+                      </Text>
+                    </>
+                  )}
+                  {targetCount !== null && quotaPeriod === 'day' && (
                     <>
                       <View style={styles.sep} />
                       <View style={styles.targetStepperRow}>
@@ -2440,7 +2543,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       does nothing — and its hint would be describing a target
                       as something you can exceed, which is exactly the reading
                       a cadence is not. */}
-                  {targetCount !== null && quotaIntervalMinutes === null && (
+                  {targetCount !== null && quotaIntervalMinutes === null && quotaPeriod === 'day' && (
                     <TouchableOpacity
                       style={styles.optionRow}
                       onPress={() => { haptics.tap(); setAllowOvershoot(v => !v); }}
@@ -2471,7 +2574,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       <Ionicons name="eye-outline" size={18} color={quotaAlwaysVisible ? colors.accent : colors.textSecondary} />
                       <View style={styles.optionContent}>
                         <Text style={styles.optionLabel}>Stay visible even when on pace</Text>
-                        <Text style={styles.optionHint}>Keep showing this on Today all day, instead of hiding it while you're keeping up with it</Text>
+                        <Text style={styles.optionHint}>
+                          {quotaPeriod === 'week'
+                            ? "Keep showing this on Today every day, instead of hiding it while you're keeping up with it"
+                            : "Keep showing this on Today all day, instead of hiding it while you're keeping up with it"}
+                        </Text>
                       </View>
                       <View style={[styles.toggle, quotaAlwaysVisible && styles.toggleOn]}>
                         <View style={[styles.toggleKnob, quotaAlwaysVisible && styles.toggleKnobOn]} />

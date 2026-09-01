@@ -1,0 +1,4 @@
+{
+  "message": "The app can now catch up while it's closed. iOS may wake it in the background to add the automatic tasks you've turned on, top up your reminders and refresh the widget, so a birthday task or a use-up task is already waiting when you open it instead of appearing as you look. iOS decides when this happens and can skip it, so everything still runs when you open the app. There's a switch for it at the top of Automatic tasks in Settings.",
+  "date": "2026-09-01"
+}

@@ -1,0 +1,4 @@
+{
+  "message": "Fixed reminders quietly going missing. iOS holds 64 notifications at a time, and the app was reserving space for pace nudges it never ended up sending, then scheduling timer alarms, the morning summary and event reminders on top of a queue it already thought was full.",
+  "date": "2026-09-01"
+}

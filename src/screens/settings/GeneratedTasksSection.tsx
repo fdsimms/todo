@@ -620,6 +620,19 @@ export function GeneratedTasksSection() {
       // already saying "Automatic tasks" directly above it.
       footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again: the grocery item or the leftover it came from remembers your answer, and a meal task stays gone for the rest of the day."
     >
+      {/* Above the generators rather than inside any one of them, because it
+          applies to all of them at once: it changes when the whole list below
+          gets a chance to run, not what any of them do. */}
+      <SettingsRow
+        entryId="backgroundRefreshEnabled"
+        icon="moon-outline"
+        iconColor={s.backgroundRefreshEnabled ? colors.accent : undefined}
+        label="Add tasks while the app is closed"
+        hint="Lets iOS wake the app in the background to add the tasks below, top up reminders and update the widget, so they're ready when you next open it. iOS decides when this happens and can skip it entirely. Everything below still runs when you open the app."
+        toggle={s.backgroundRefreshEnabled}
+        onPress={() => s.setBackgroundRefreshEnabled(!s.backgroundRefreshEnabled)}
+      />
+      <View style={sectionStyles.groupBreak} />
       {listed.map((spec, i) => {
         const on = enabledOf(spec.kind);
         return (

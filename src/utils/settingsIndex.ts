@@ -507,6 +507,12 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // section is the generator's name for the reason the derived rows' is: four
   // rows read "Show the task", and the group title tells them apart from
   // nothing.
+  // Sits above every generator rather than inside one: it decides when the
+  // whole list gets a chance to run, not what any of them do.
+  { id: 'backgroundRefreshEnabled', groupId: 'generated', label: 'Add tasks while the app is closed',
+    section: 'Automatic tasks',
+    keywords: ['background', 'background refresh', 'overnight', 'away', 'wake',
+      'catch up', 'top up', 'widget', 'stale', 'battery'] },
   { id: 'mealSlotsEnabled', groupId: 'generated', label: 'Meals you eat', section: 'Meal tasks',
     keywords: ['breakfast', 'lunch', 'dinner', 'snack', 'skip', 'which ones'], kitchen: true },
   { id: 'groceryUseUpLeadDays', groupId: 'generated', label: 'Show the task', section: 'Use-up tasks for groceries',
@@ -525,6 +531,16 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // either one's extras — and so its section can't be one generator's name.
   { id: 'useUpTaskCap', groupId: 'generated', label: 'Limit use-up tasks', section: 'Automatic tasks',
     keywords: ['cap', 'how many', 'most', 'too many', 'flood', 'expiry', 'leftovers'], kitchen: true },
+
+  // `kitchen`-gated to match the row itself, which is hidden with the
+  // groceries area: the only feature routed on-device today lives there, so a
+  // result leading to a row that isn't rendered would be a dead end. The
+  // keywords do the heavy lifting — nobody looking for this searches
+  // "on-device".
+  { id: 'onDeviceAiEnabled', groupId: 'privacyAi', label: 'Use Apple Intelligence',
+    section: 'On-device suggestions', kitchen: true,
+    keywords: ['on device', 'offline', 'no key', 'free', 'private', 'foundation models',
+      'grocery', 'aisle', 'sort', 'siri'] },
 
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up scanned barcodes', section: 'Barcode lookups',
     keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy'],

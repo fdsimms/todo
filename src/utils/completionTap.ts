@@ -2,6 +2,7 @@ import type { Task } from '../types';
 import { isQuotaTask, isRecurrenceNotYetDue } from './visibilityUtils';
 import { asksOnCompletion } from './deliverables';
 import { activeMealSlotStepId } from './mealSlotTasks';
+import { isNegativeTask } from './negativeHabits';
 import { projectReviewProjectId } from './projectReviewTasks';
 
 /**
@@ -29,6 +30,8 @@ export type CompletionTap =
   | 'log-unit'
   /** Already done: put it back on the list. */
   | 'uncomplete'
+  /** A negative habit: this tap reports a slip, it doesn't complete anything. */
+  | 'slip'
   /** A recurring task whose day hasn't come round yet; it can't be ticked early. */
   | 'locked';
 
@@ -49,9 +52,14 @@ export type CompletionTap =
  * - `allowOvershoot` never auto-completes at the target — logging past it just
  *   keeps counting, and the rollover sweep closes the task out (see
  *   sweepOvershootQuotas).
+ * - `slip` sits above everything but `uncomplete`, because polarity decides
+ *   what a tap *means* before any of the questions below it are worth asking.
+ *   It is deliberately not below `locked`: a negative habit is never "not due
+ *   yet" — it applies every day — so there is nothing for that gate to refuse.
  */
 export function completionTapFor(task: Task): CompletionTap {
   if (task.completed) return 'uncomplete';
+  if (isNegativeTask(task)) return 'slip';
   if (isRecurrenceNotYetDue(task)) return 'locked';
   if (isQuotaTask(task)) {
     const reachesTarget = !task.allowOvershoot && task.progressCount + 1 >= task.targetCount!;

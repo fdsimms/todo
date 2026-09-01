@@ -88,6 +88,7 @@
           "recordAudioAndroid": false
         }
       ],
+      "expo-background-task",
       "expo-asset",
       "expo-font",
       "expo-splash-screen",
@@ -103,6 +104,7 @@
       "./plugins/withWidgetExtension",
       "./plugins/withShareExtension",
       "./plugins/withAlarmKit",
+      "./plugins/withFoundationModels",
       "./plugins/withCloudKit",
       "./plugins/withSiriShortcuts",
       "./plugins/withFamilyControls",

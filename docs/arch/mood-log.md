@@ -116,6 +116,15 @@ position `calendarReview` is in), both firing from one pass
 
 `moodLog` is ordinary: once a day, a task to write it down, cleared when the
 day is already logged and completed by logging (`completeMoodLogTaskForToday`).
+
+The pass lives in `catchUpPasses()` (`src/utils/maintenancePasses.ts`), so it
+runs at launch, on foreground, **and in a background refresh** — which is the
+right group for it and worth stating: a daily check-in whose whole value is
+being on the list when you first look at your phone should not wait for you to
+open the app. It reads a store rather than a snapshot some foreground effect
+fills in, so unlike the calendar, weather and screen-time passes beside it, it
+does real work in a background run. `useTaskStore.initialize()`'s fan-out loads
+the mood log, which is what makes that true.
 It carries `dundundun://mood?log=1` so the row opens the sheet that answers it —
 without that the only thing to do with a check-in is tick it, which marks the
 question answered while recording no answer.
