@@ -13,7 +13,6 @@ import {
   dbBatchUpdateProjectSortOrders,
 } from '../db/database';
 import { generateId } from '../utils/id';
-import { registerProjectSource } from '../utils/blockerRegistry';
 import { deliverableKindFor } from '../utils/deliverables';
 
 /**
@@ -173,7 +172,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, deadline: string | null, kind?: ProjectKind) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'sequential' | 'nudgeOptIn' | 'reviewDeclinedAt' | 'backfillDismissedFields' | 'kind'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'reviewDeclinedAt' | 'backfillDismissedFields' | 'kind'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -234,7 +233,6 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // default in Settings later never touches a project already created.
       ...nudgeFieldsFor(defaultCadenceDays > 0 ? 'scheduled' : 'never', defaultCadenceDays),
       autoSchedule: false,
-      sequential: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
       // Presentation only — a list's members are ordinary tasks in an ordinary
@@ -327,8 +325,3 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set(s => ({ projects: [...s.projects, project] }));
   },
 }));
-
-// Lets visibilityUtils see which projects are sequential without importing this
-// store — same pull-based registry, and the same reason, as the task source
-// registered at the bottom of useTaskStore. See utils/blockerRegistry.
-registerProjectSource(() => useProjectStore.getState().projects);

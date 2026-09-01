@@ -524,12 +524,6 @@ export interface Project {
   // than global — silently rescheduling is a bigger promise than suggesting,
   // and it's the right call for a chore list and the wrong one for a wishlist.
   autoSchedule: boolean;
-  // Opt-in: the project's hand-sorted order is a sequence, not a preference —
-  // each step is held back until the one above it is done (see
-  // utils/projectOrder.ts). Off by default, because a list of tasks that all
-  // happen to share a project is the normal case and gating it would hide work
-  // the user never asked to have hidden.
-  sequential: boolean;
   // Off by default: a project has to be explicitly opted in before it can
   // appear in ANY nudge surface — the gone-quiet banner, the auto-schedule
   // drip, and even the manually-opened "Pull from projects" sheet (see

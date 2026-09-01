@@ -105,7 +105,6 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [nudgeMode, setNudgeMode] = useState<NudgeMode>('never');
   const [nudgeCadenceDays, setNudgeCadenceDays] = useState(FALLBACK_CADENCE_DAYS);
   const [autoSchedule, setAutoSchedule] = useState(false);
-  const [sequential, setSequential] = useState(false);
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   useEffect(() => {
@@ -117,7 +116,6 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setNudgeMode(nudgeModeOf(project));
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
-    setSequential(project.sequential);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -166,7 +164,6 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       // managed. The drip's own gate stays in 'nudge' mode for the same reason
       // (see dripCandidate) — this just means it is never asked.
       autoSchedule: nudgeMode === 'scheduled' && autoSchedule,
-      sequential,
     });
     onClose();
   };
@@ -430,33 +427,6 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         list-outline toggle in ProjectDetailScreen's header, right where its
         effect shows — not here. See Project.kind.
       */}
-      <View style={[styles.card, { marginTop: spacing.xl }]}>
-        <TouchableOpacity
-          style={styles.optionRow}
-          onPress={() => { haptics.tap(); setSequential(v => !v); }}
-          activeOpacity={interaction.activeOpacity}
-          accessibilityRole="switch"
-          accessibilityLabel="Do these in order"
-          accessibilityState={{ checked: sequential }}
-        >
-          <Ionicons name="list-outline" size={18} color={sequential ? colors.accent : colors.textSecondary} />
-          <View style={styles.optionContent}>
-            <Text style={styles.optionLabel}>Do these in order</Text>
-            <Text style={styles.optionHint}>
-              {sequential
-                ? 'Only the top task is open. The rest unlock as you finish'
-                : 'Any task in this project can be done whenever'}
-            </Text>
-          </View>
-          <View style={[styles.toggle, sequential && styles.toggleOn]}>
-            <View style={[styles.toggleKnob, sequential && styles.toggleKnobOn]} />
-          </View>
-        </TouchableOpacity>
-      </View>
-      <Text style={styles.sectionFooter}>
-        Drag the tasks on the project's own screen to set the order. A step that isn't open yet
-        stays off Today and Later until the one above it is done.
-      </Text>
 
       <View style={[styles.card, { marginTop: spacing.xl }]}>
         <TouchableOpacity

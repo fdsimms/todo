@@ -18,7 +18,6 @@ import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
-import { liveProjectSteps } from '../utils/projectOrder';
 import { isHeldBack, isQuotaOnPace, isTaskVisible } from '../utils/visibilityUtils';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
@@ -1122,21 +1121,6 @@ describe('demo mode', () => {
     projects.forEach(p => {
       if (p.category !== null) expect(categories).toContain(p.category);
     });
-  });
-
-  it('seeds a sequential project, with its later steps actually held back', () => {
-    // Project.sequential is invisible on a project of one live step: the
-    // padlock, the step numbers and the "In order" caption all need a second
-    // step that is genuinely blocked, not merely further down the list.
-    useDemoStore.getState().enterDemoMode();
-
-    const passport = useProjectStore.getState().projects.find(p => p.title === 'Renew my passport');
-    expect(passport?.sequential).toBe(true);
-
-    const steps = liveProjectSteps(passport!.id, useTaskStore.getState().tasks);
-    expect(steps.length).toBeGreaterThan(1);
-    expect(isHeldBack(steps[0])).toBe(false);
-    expect(steps.slice(1).every(t => isHeldBack(t))).toBe(true);
   });
 
   it('seeds a project carrying a deadline', () => {

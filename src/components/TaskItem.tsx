@@ -224,10 +224,6 @@ interface Props {
   onApplyImport?: (id: string) => void;
   /** Drop that suggestion and leave the task as dictated. */
   onDismissImport?: (id: string) => void;
-  /** This row's place in its project's order, shown as a leading step number. Only passed by a sequential project's own screen, where the order is the instruction rather than a preference. */
-  stepNumber?: number | null;
-  /** Held back by an earlier step of a sequential project: the checkbox becomes a lock and completing is refused, the same way a recurrence that isn't due yet refuses. */
-  locked?: boolean;
 }
 
 /**
@@ -273,8 +269,6 @@ export const TaskItem = React.memo(function TaskItem({
   onApplyImport,
   onDismissImport,
   onSubtaskDragStateChange,
-  stepNumber = null,
-  locked = false,
 }: Props) {
   // What a press reports back: this row, not necessarily this task (see the
   // prop's note). Everything else about the row still speaks in task ids.
@@ -1021,11 +1015,9 @@ export const TaskItem = React.memo(function TaskItem({
   // A recurring task showing early in Later (its day hasn't arrived yet)
   // can't be completed ahead of schedule — see isRecurrenceNotYetDue.
   const recurrenceNotYetDue = isRecurrenceNotYetDue(task);
-  // The two reasons this row's checkbox refuses a tap. They read the same to
-  // the finger — an error haptic and nothing happening — and differ only in
-  // what the circle shows and what it says out loud, so everything that just
-  // needs "can this be ticked" asks this one.
-  const completionLocked = recurrenceNotYetDue || locked;
+  // Why this row's checkbox refuses a tap — an error haptic and nothing
+  // happening — so everything that just needs "can this be ticked" asks this.
+  const completionLocked = recurrenceNotYetDue;
 
   // A decision task asks for a value on the way out (see Task.deliverableKind),
   // so its box carries a "?" instead of sitting empty — the tap is about to
@@ -1650,8 +1642,6 @@ export const TaskItem = React.memo(function TaskItem({
         accessibilityLabel={
           selectionMode
             ? (selected ? `Deselect ${task.title}` : `Select ${task.title}`)
-            : locked
-              ? `${task.title}, waiting for the step before it`
             : recurrenceNotYetDue
               ? `${task.title}, not due yet`
               : completing
@@ -1761,9 +1751,6 @@ export const TaskItem = React.memo(function TaskItem({
           {!completing && recurrenceNotYetDue && (
             <Ionicons name="repeat" size={iconSize.sm} color={colors.textSecondary} />
           )}
-          {!completing && !recurrenceNotYetDue && locked && (
-            <Ionicons name="lock-closed" size={iconSize.xs} color={colors.textSecondary} />
-          )}
           {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource) && (
             // xs like the lock, not sm like the repeat: a "?" is tall where
             // the repeat glyph is wide and short, so the same nominal size
@@ -1820,14 +1807,6 @@ export const TaskItem = React.memo(function TaskItem({
         ) : (
           <View style={styles.titleRow}>
             {isNew && <View style={styles.newDot} />}
-            {stepNumber !== null && (
-              // The order *is* the instruction in a sequential project, so it's
-              // written down rather than left implied by row position — and the
-              // step that's actually open is the one tinted.
-              <Text style={[styles.stepNumber, !locked && styles.stepNumberOpen]}>
-                {stepNumber}
-              </Text>
-            )}
             {expanded && !notice ? (
               // Only tappable for edit when already expanded — avoids intercepting expand taps.
               // A notice is never renameable: its title is the question the
@@ -1848,7 +1827,7 @@ export const TaskItem = React.memo(function TaskItem({
               <HighlightedText
                 text={displayTitle}
                 ranges={titleMentionRanges}
-                style={[styles.title, styles.titleFlex, locked && styles.titleLocked]}
+                style={[styles.title, styles.titleFlex]}
                 highlightStyle={styles.titleMention}
                 numberOfLines={2}
                 ellipsizeMode="tail"
@@ -3476,25 +3455,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     margin: 0,
     includeFontPadding: false,
   },
-  titleLocked: {
-    color: colors.textSecondary,
-  },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-  },
-  // Tabular-ish by hand: a fixed minimum so the titles of steps 9 and 10 still
-  // start at the same x.
-  stepNumber: {
-    minWidth: 14,
-    color: colors.textSecondary,
-    fontSize: font.sm,
-    lineHeight: lineHeight.md,
-    fontWeight: fontWeight.semibold,
-  },
-  stepNumberOpen: {
-    color: colors.accent,
   },
   titleFlex: {
     flexShrink: 1,

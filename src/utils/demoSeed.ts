@@ -755,19 +755,6 @@ export function seedDemoData(): void {
     addExistingToProject(t.id, doctor.id);
   });
 
-  // A project whose order is mandatory: only the top step is open, the rest
-  // wear a padlock and stay off Today and Later until it's done (see
-  // Project.sequential and utils/projectOrder). Its own project rather than a
-  // flag on one of the others — sequential hides every step but the first, and
-  // turning it on for the kitchen would have taken "Book the installer" out of
-  // Later, which is where that row is seeded to be seen.
-  const passport = createProject('Renew my passport', null);
-  updateProject(passport.id, { sequential: true });
-  ['Fill in the application form', 'Get new photos taken', 'Post it, recorded delivery'].forEach(title => {
-    const t = addTask({ title, category: 'Errands' });
-    addExistingToProject(t.id, passport.id);
-  });
-
   // A project that has gone quiet, and the task the app writes about it.
   //
   // Opted in and past its cadence with nothing scheduled, which is the exact

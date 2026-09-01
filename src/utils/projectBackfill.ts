@@ -15,7 +15,7 @@ import type { Project } from '../types';
  * same "meaningless until a sibling is already set" shape that kept
  * `streakRequiresWindow` off the task-side list.
  */
-export type ProjectBackfillFieldId = 'nudge' | 'sequential';
+export type ProjectBackfillFieldId = 'nudge';
 
 export interface ProjectBackfillFieldDef {
   id: ProjectBackfillFieldId;
@@ -35,11 +35,6 @@ export const PROJECT_BACKFILL_FIELDS: ProjectBackfillFieldDef[] = [
     label: 'Bring this up',
     hint: 'How long a project can sit with nothing scheduled before it gets a review task.',
   },
-  {
-    id: 'sequential',
-    label: 'Do these in order',
-    hint: 'Only the top task is open; the rest unlock as you finish it.',
-  },
 ];
 
 /** Whether `project` still has `fieldId` at its default (off) — the backfill queue's inclusion test. */
@@ -51,8 +46,6 @@ export function isProjectFieldMissing(project: Project, fieldId: ProjectBackfill
     // still "missing" this field until it's deliberately opted in.
     case 'nudge':
       return !project.nudgeOptIn;
-    case 'sequential':
-      return !project.sequential;
   }
 }
 
@@ -80,7 +73,7 @@ export function projectBackfillCandidates(projects: Project[], fieldId: ProjectB
 
 /** How many projects are still at the default for each field, for the field-picker step's counts. */
 export function projectBackfillFieldCounts(projects: Project[]): Record<ProjectBackfillFieldId, number> {
-  const counts = { nudge: 0, sequential: 0 } as Record<ProjectBackfillFieldId, number>;
+  const counts = { nudge: 0 } as Record<ProjectBackfillFieldId, number>;
   for (const p of projects) {
     if (p.archived || p.completed) continue;
     for (const field of PROJECT_BACKFILL_FIELDS) {

@@ -3,7 +3,6 @@ import type { Project, Task } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS } from '../types';
 import { getCurrentDayStart, getDayStart } from './dateUtils';
 import { hasNoDateSignal, isHeldBack } from './visibilityUtils';
-import { liveProjectSteps } from './projectOrder';
 import { scoreTask, type PinContext } from './pinSuggest';
 import { computeSnoozeSuggestion } from './snoozeEngine';
 import { sumEstimatedMinutes } from './effort';
@@ -267,11 +266,10 @@ function classifyProject(
   if (members.length === 0) return { reason: 'no-live-tasks' };
 
   // A held-back member is invisible everywhere a date could put it, so it can
-  // neither rescue the project from being quiet nor be the thing pulled in —
-  // this is the same argument the sequential slice below already makes, applied
-  // to both ways a task can be held (see visibilityUtils.isHeldBack). Without
-  // it the drip dates a waiting task unattended, which then reads as a schedule
-  // the project hasn't got and silences the nudge until its blocker is done.
+  // neither rescue the project from being quiet nor be the thing pulled in
+  // (see visibilityUtils.isHeldBack). Without it the drip dates a waiting task
+  // unattended, which then reads as a schedule the project hasn't got and
+  // silences the nudge until its blocker is done.
   const actionable = members.filter(t => !isHeldBack(t));
   if (actionable.length === 0) return { reason: 'all-waiting' };
 
@@ -280,16 +278,7 @@ function classifyProject(
   // "nothing in here can appear anywhere".
   if (!actionable.every(hasNoDateSignal)) return { reason: 'has-schedule' };
 
-  // A sequential project has exactly one task available to bring into play,
-  // whatever else is sitting in it: dating a step further down the order lands
-  // it on a day it still can't appear on (isSequenceBlocked), so the sheet
-  // would be offering a task that then goes nowhere — and auto-schedule would
-  // do it unattended. Ranked over every live member rather than over
-  // `actionable`, so a held first step refuses rather than promoting step two.
-  const available = project.sequential
-    ? liveProjectSteps(project.id, members).slice(0, 1).filter(t => !isHeldBack(t))
-    : actionable;
-  const pullable = available.filter(isPullable);
+  const pullable = actionable.filter(isPullable);
   if (pullable.length === 0) return { reason: 'no-pullable' };
 
   // Nudge-mode only, for the same reason the cadence is: this answers "should I
