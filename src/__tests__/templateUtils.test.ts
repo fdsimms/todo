@@ -50,6 +50,7 @@ const makeItem = (overrides: Partial<TemplateItem> = {}): TemplateItem => ({
   category: null,
   priority: 0,
   effort: 0,
+  polarity: 'positive',
   recurrenceType: 'none',
   recurrenceInterval: 1,
   recurrenceDays: [],

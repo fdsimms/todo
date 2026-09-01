@@ -48,6 +48,10 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     category: raw.category ?? null,
     priority: raw.priority ?? 0,
     effort: raw.effort ?? 0,
+    // Anything but the one known alternative reads as 'positive' — the same way
+    // round rowToTask takes it, and for the same reason: a stored blob from an
+    // older build has no polarity, and an ordinary task is the safe misreading.
+    polarity: raw.polarity === 'negative' ? 'negative' : 'positive',
     recurrenceType: raw.recurrenceType ?? 'none',
     recurrenceInterval: raw.recurrenceInterval ?? 1,
     recurrenceDays: raw.recurrenceDays ?? [],
@@ -173,6 +177,7 @@ export function buildDraftsFromTemplate(
       recurrenceCount: item.recurrenceCount,
       vacationPause: item.vacationPause,
       excludeFromSuggestions: item.excludeFromSuggestions,
+      polarity: item.polarity,
       estimatedMinutes: item.estimatedMinutes,
       // The question only — createTask never reads a draft's deliverableValue,
       // so an applied item always starts with the decision still to make.

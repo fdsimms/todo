@@ -9,6 +9,7 @@ import { isBlocked, isWaitingOnPerson } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
 import { quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
+import { isNegativeTask } from './negativeHabits';
 
 /**
  * True while this task is waiting on another task that isn't done yet — the
@@ -599,6 +600,15 @@ export function isVisibleApartFromVacation(task: Task): boolean {
   if (task.completed) return false;
   if (task.archived) return false;
 
+  // A negative habit is a standing commitment, not a piece of work waiting for
+  // its moment, so none of the gates below apply to it: it sits on Today all
+  // day, every day, in its clean state. That is the feature rather than an
+  // exemption from it — the row *is* the reminder, and one that disappeared
+  // while you were doing well would be missing at exactly the moment it earns
+  // its place. Archiving is how you stop tracking one, and vacation mode (the
+  // caller's own check, above this) is how you pause it.
+  if (isNegativeTask(task)) return true;
+
   // Ahead of the time gates deliberately: being blocked isn't a "not yet" that
   // a clock resolves, so it shouldn't rank below one.
   if (isHeldBack(task)) return false;
@@ -736,6 +746,10 @@ export function isInboxTask(task: Task): boolean {
     // instruction there is ("after that one"), it just has no date to show for
     // it. It waits on the Waiting screen, not here.
     !isTaskBlocked(task) &&
+    // A negative habit carries no date signal and would otherwise land in every
+    // dateless lens at once. It's already on Today (see
+    // isVisibleApartFromVacation), and Today and Inbox are disjoint by design.
+    !isNegativeTask(task) &&
     task.projectId == null &&
     task.category == null &&
     task.tags.length === 0 &&
@@ -777,6 +791,9 @@ export function isUnscheduledTask(task: Task): boolean {
     // Unscheduled means "could be done any time"; blocked means "can't be done
     // yet". Same absence of a date, opposite availability.
     !isTaskBlocked(task) &&
+    // Same reason as isInboxTask's exclusion: a negative habit has no date
+    // because it applies to every day, not because it's waiting to be given one.
+    !isNegativeTask(task) &&
     task.projectId == null &&
     hasNoDateSignal(task) &&
     !isInboxTask(task)

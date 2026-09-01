@@ -72,6 +72,9 @@ const baseTask = {
   previousStreakCount: 0,
   previousStreakDate: null,
   priorBestStreak: 0,
+  polarity: 'positive',
+  slipCount: 0,
+  slipDate: null,
   showStreak: false,
   streakRequiresWindow: false,
   recurrenceFromCompletion: false,
@@ -226,6 +229,32 @@ describe('completionTapFor', () => {
 
   it('lets a blocked task be ticked, the same as its row does', () => {
     expect(completionTapFor({ ...baseTask, blockedById: 'other-task' })).toBe('complete');
+  });
+
+  // Polarity decides what the control *is*, so it is asked before any of the
+  // questions about how a completion should behave.
+  describe('a negative habit', () => {
+    const avoid = { ...baseTask, polarity: 'negative' } as Task;
+
+    it('reports a slip rather than completing', () => {
+      expect(completionTapFor(avoid)).toBe('slip');
+    });
+
+    // It applies to every day, so there is no day it can be early for — the
+    // lock below it has nothing to refuse.
+    it('is never locked by a recurrence that has not come round', () => {
+      expect(completionTapFor({
+        ...avoid,
+        recurrenceType: 'daily',
+        dueDate: new Date(2025, 5, 20).toISOString(),
+      } as Task)).toBe('slip');
+    });
+
+    // The combination is refused by the editor, but a template or a synced row
+    // can still carry both, and a meter under a shield would be uncountable.
+    it('outranks a stray daily target', () => {
+      expect(completionTapFor({ ...avoid, targetCount: 8, targetUnit: 'glasses' } as Task)).toBe('slip');
+    });
   });
 
   describe('a meal-slot task', () => {

@@ -12,6 +12,7 @@
 import { addDays } from 'date-fns/addDays';
 import { useDemoStore } from '../store/useDemoStore';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
+import { isCleanToday } from '../utils/negativeHabits';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
@@ -557,6 +558,33 @@ describe('demo mode', () => {
     const behind = s.tasks.find(t => t.title === 'Morning standup');
     expect(isStreakAtRecord(behind!)).toBe(false);
     expect(bestStreakOf(behind!)).toBeGreaterThan(behind!.streakCount);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  // Both states, because either alone reads as half a feature: clean is where
+  // the row sits almost always, and broken is the only way to see what the tap
+  // does — and it isn't a state the seed can reach by tapping.
+  it('seeds a negative habit in both its clean and its broken state', () => {
+    useDemoStore.getState().enterDemoMode();
+    const s = useTaskStore.getState();
+
+    const clean = s.tasks.find(t => t.title === 'No phone in bed');
+    expect(clean?.polarity).toBe('negative');
+    expect(clean?.streakCount).toBeGreaterThan(0);
+    expect(isCleanToday(clean!, getCurrentDayStart())).toBe(true);
+    // On by default for this polarity — the run is the only feedback the row
+    // ever gives, since it is never completed.
+    expect(clean?.showStreak).toBe(true);
+
+    const broken = s.tasks.find(t => t.title === 'No snacking after dinner');
+    expect(broken?.polarity).toBe('negative');
+    expect(isCleanToday(broken!, getCurrentDayStart())).toBe(false);
+    expect(broken?.streakCount).toBe(0);
+
+    // Neither is ever completed, which is the whole shape of the polarity.
+    expect(clean?.completed).toBe(false);
+    expect(broken?.completed).toBe(false);
 
     useDemoStore.getState().exitDemoMode();
   });

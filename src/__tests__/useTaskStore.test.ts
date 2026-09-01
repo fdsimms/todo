@@ -320,6 +320,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakCount: 0,
   previousStreakDate: null,
   priorBestStreak: 0,
+  polarity: 'positive',
+  slipCount: 0,
+  slipDate: null,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -12921,5 +12924,187 @@ describe('undo/redo history', () => {
     useTaskStore.getState().setLastAction(null);
     expect(useTaskStore.getState().undoStack).toHaveLength(0);
     expect(useTaskStore.getState().redoStack).toHaveLength(0);
+  });
+});
+
+// Negative habits — the polarity that is never completed. The day arithmetic
+// itself is pinned down in negativeHabits.test.ts; these are the store's own
+// three jobs: refusing the completion path, writing a slip, and crediting the
+// days the clock has gone past.
+describe('negative habits', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 10, 10, 0, 0)); // Sat Jan 10 2026
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const avoid = (over: Partial<Task> = {}) =>
+    makeTask({ id: 'smoke', title: "Don't smoke", polarity: 'negative', ...over });
+
+  const seed = (...tasks: Task[]) => useTaskStore.setState({ tasks });
+  const get = (id = 'smoke') => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  describe('completeTask refuses it', () => {
+    // The guard is at the funnel rather than at each caller precisely because
+    // of how many of them there are — the bulk bar, a stack cascade, a focus
+    // session, a widget tap all end up here.
+    it('leaves the task alone', () => {
+      seed(avoid({ streakCount: 4 }));
+      useTaskStore.getState().completeTask('smoke');
+      expect(get().completed).toBe(false);
+      expect(get().completedAt).toBeNull();
+      expect(get().streakCount).toBe(4);
+    });
+
+    it('spawns no successor', () => {
+      seed(avoid({ recurrenceType: 'daily' }));
+      useTaskStore.getState().completeTask('smoke');
+      expect(useTaskStore.getState().tasks).toHaveLength(1);
+    });
+
+    it('still completes an ordinary task', () => {
+      seed(makeTask({ id: 'ordinary' }));
+      useTaskStore.getState().completeTask('ordinary');
+      expect(get('ordinary').completed).toBe(true);
+    });
+  });
+
+  describe('logSlip', () => {
+    it('breaks the run and records the slip', () => {
+      seed(avoid({ streakCount: 12, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().logSlip('smoke');
+      expect(get().streakCount).toBe(0);
+      expect(get().slipCount).toBe(1);
+    });
+
+    it('keeps counting repeat slips on the same day', () => {
+      seed(avoid());
+      useTaskStore.getState().logSlip('smoke');
+      useTaskStore.getState().logSlip('smoke');
+      useTaskStore.getState().logSlip('smoke');
+      expect(get().slipCount).toBe(3);
+    });
+
+    it('offers an undo that gives the run back', () => {
+      seed(avoid({ streakCount: 12, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().logSlip('smoke');
+      expect(useTaskStore.getState().lastAction?.label).toBe('Streak reset (was 12)');
+      useTaskStore.getState().lastAction!.undo();
+      expect(get().streakCount).toBe(12);
+      expect(get().slipCount).toBe(0);
+    });
+
+    it('ignores a positive task', () => {
+      seed(makeTask({ id: 'ordinary' }));
+      useTaskStore.getState().logSlip('ordinary');
+      expect(get('ordinary').slipCount).toBe(0);
+    });
+  });
+
+  describe('rolloverNegativeStreaks', () => {
+    it('credits the clean days that have gone by', () => {
+      seed(avoid({ streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(5); // Jan 6..9 are four whole clean days
+    });
+
+    it('is a no-op on the second call the same day', () => {
+      seed(avoid({ streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(5);
+    });
+
+    it('leaves positive tasks alone', () => {
+      seed(makeTask({ id: 'ordinary', streakCount: 3, streakDate: new Date(2026, 0, 1).toISOString() }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get('ordinary').streakCount).toBe(3);
+    });
+
+    it('leaves an archived habit alone', () => {
+      seed(avoid({ archived: true, streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(1);
+    });
+
+    // A slip today and the pass on a later day have to compose: the run picks
+    // back up from the break, not from where the streak was anchored before it.
+    it('picks the run back up after a slip', () => {
+      seed(avoid({ streakCount: 12, streakDate: new Date(2026, 0, 1).toISOString() }));
+      useTaskStore.getState().logSlip('smoke');
+      jest.setSystemTime(new Date(2026, 0, 13, 10, 0, 0));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(2); // Jan 11 and 12
+    });
+  });
+});
+
+// Converting between the polarities. The two count different things, so the run
+// restarts rather than carrying across — and the dates are the dangerous half.
+describe('changing a task’s polarity', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 10, 10, 0, 0));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const get = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  // The bug this guards: a task last completed in October carries a streakDate
+  // from October, and the first rollover after the switch would read the whole
+  // gap as clean days and hand over a ninety-day run nobody earned.
+  it('restarts the run instead of inheriting a stale streak date', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'walk', recurrenceType: 'daily',
+        streakCount: 30, streakDate: new Date(2025, 9, 12).toISOString(), priorBestStreak: 30,
+      })],
+    });
+
+    useTaskStore.getState().updateTask('walk', { polarity: 'negative' });
+    expect(get('walk').streakCount).toBe(0);
+
+    useTaskStore.getState().rolloverNegativeStreaks();
+    expect(get('walk').streakCount).toBe(0);
+  });
+
+  it('clears any slips when switching back to an ordinary task', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'smoke', polarity: 'negative',
+        slipCount: 2, slipDate: new Date(2026, 0, 10).toISOString(), streakCount: 0,
+      })],
+    });
+
+    useTaskStore.getState().updateTask('smoke', { polarity: 'positive' });
+    expect(get('smoke').slipCount).toBe(0);
+    expect(get('smoke').slipDate).toBeNull();
+  });
+
+  // The whole-snapshot undo path: a patch naming the count itself is restoring
+  // recorded history, not making the change this rule exists for.
+  it('lets an explicit streakCount in the same patch win', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'x', polarity: 'negative', streakCount: 0 })],
+    });
+    useTaskStore.getState().updateTask('x', { polarity: 'positive', streakCount: 7 });
+    expect(get('x').streakCount).toBe(7);
+  });
+
+  it('leaves the run alone on a patch that does not touch polarity', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'y', polarity: 'negative', streakCount: 9,
+        streakDate: new Date(2026, 0, 9).toISOString(),
+      })],
+    });
+    useTaskStore.getState().updateTask('y', { title: 'Renamed' });
+    expect(get('y').streakCount).toBe(9);
   });
 });

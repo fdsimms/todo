@@ -40,6 +40,7 @@ import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
 import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
+import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { isDateAnchored } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
@@ -302,6 +303,8 @@ export const TaskItem = React.memo(function TaskItem({
     cancelCompletionAnimation,
     logQuotaUnit,
     unlogQuotaUnit,
+    logSlip,
+    undoSlip,
     startQuotaRun,
     holdQuotaOnToday,
     releaseQuotaHold,
@@ -1040,10 +1043,22 @@ export const TaskItem = React.memo(function TaskItem({
   // those states own the glyph, and both outrank "this one will ask".
   const asksOnComplete = asksOnCompletion(task) && !task.completed;
 
+  // A negative habit has no checkbox at all — its box is a shield, and the tap
+  // reports a slip rather than completing anything (see Task.polarity). It
+  // outranks every other box treatment below because polarity decides what the
+  // control *is*, where the rest decide how a completion behaves.
+  const isNegative = isNegativeTask(task);
+  const slipped = isNegative && !isCleanToday(task, getCurrentDayStart());
+  const slipsLoggedToday = isNegative ? slipsToday(task, getCurrentDayStart()) : 0;
+
   // A quota task is logged a unit at a time rather than ticked off once, so
   // its circle becomes a fill meter and a tap logs one glass/rep/page instead
   // of completing — except the last one, which completes for real.
-  const isQuota = isQuotaTask(task) && !task.completed;
+  // `!isNegative` is a guard rather than a case: the editor won't let the two be
+  // set together (see applyKind), but a template, an import or a synced row can
+  // still arrive carrying both, and a meter drawn under the shield would be a
+  // count nothing can ever log against.
+  const isQuota = isQuotaTask(task) && !task.completed && !isNegative;
   // Only a cadence has a run to start: a plain "8 glasses" target paces across
   // the day whether or not you announce yourself to it, and there'd be nothing
   // for the tap to change. Withdrawn once the run is under way, since starting
@@ -1120,7 +1135,10 @@ export const TaskItem = React.memo(function TaskItem({
   // Opt-in per task (TaskEditor → "Show streak on row"). Shown at zero too, so
   // a habit whose streak just broke doesn't silently lose a chip — the row
   // keeps its height and reads as "back to nothing" rather than "untracked".
-  const showStreakChip = task.showStreak && task.recurrenceType !== 'none';
+  // A negative habit qualifies without a recurrence rule: it applies to every
+  // day by being what it is, so there is nothing for it to repeat *on*, and its
+  // run of clean days is the only feedback the row has to give.
+  const showStreakChip = task.showStreak && (task.recurrenceType !== 'none' || isNegative);
   // Whether the run standing right now has beaten every run before it. False
   // for a first-ever streak however long — see isStreakAtRecord.
   //
@@ -1323,6 +1341,23 @@ export const TaskItem = React.memo(function TaskItem({
   };
 
   // ==== completing, quota taps, and their undos ====
+
+  // The negative-polarity counterpart to handleComplete: this tap reports the
+  // thing the task exists to avoid. Nothing animates out, because the row is
+  // staying — the feedback is the shield going red and the streak chip losing
+  // its run, both of which are already on screen. A long press takes it back
+  // (handleSlipUndo), the same affordance a logged quota unit has.
+  const handleSlip = async () => {
+    await haptics.warning();
+    logSlip(task.id);
+  };
+
+  const handleSlipUndo = async () => {
+    if (slipsLoggedToday === 0) return;
+    await haptics.tap();
+    undoSlip(task.id);
+  };
+
   const handleComplete = async () => {
     if (completingRef.current || pacingOutRef.current) return;
     if (completionLocked) {
@@ -1639,11 +1674,16 @@ export const TaskItem = React.memo(function TaskItem({
       <TouchableOpacity
         onPress={
           selectionMode ? () => onSelect?.(task.id)
+          : isNegative ? handleSlip
           : completing ? (completingRef.current ? handleUndoComplete : handleUncompletePersisted)
           : showQuotaMeter ? handleQuotaTap
           : handleComplete
         }
-        onLongPress={meterInteractive ? handleQuotaUndo : undefined}
+        onLongPress={
+          isNegative ? (slipsLoggedToday > 0 ? handleSlipUndo : undefined)
+          : meterInteractive ? handleQuotaUndo
+          : undefined
+        }
         delayLongPress={interaction.delayLongPress}
         // The circle is 20pt in a 24pt box, so it needs most of this to reach a
         // 44pt target. Left covers the whole leading gutter out to the card edge
@@ -1657,9 +1697,9 @@ export const TaskItem = React.memo(function TaskItem({
         // A meter isn't binary, so it's a button rather than a checkbox — until
         // it tops out, at which point the row is completing and the control is
         // the same "tap to undo" every other completing row offers.
-        accessibilityRole={meterInteractive ? 'button' : 'checkbox'}
+        accessibilityRole={meterInteractive || (isNegative && !selectionMode) ? 'button' : 'checkbox'}
         accessibilityState={
-          meterInteractive
+          meterInteractive || (isNegative && !selectionMode)
             ? { disabled: completionLocked }
             : {
                 checked: selectionMode ? selected : completing,
@@ -1669,6 +1709,10 @@ export const TaskItem = React.memo(function TaskItem({
         accessibilityLabel={
           selectionMode
             ? (selected ? `Deselect ${task.title}` : `Select ${task.title}`)
+            : isNegative
+              ? slipped
+                ? `${task.title}, broken today, log another`
+                : `${task.title}, clean today, log a slip`
             : recurrenceNotYetDue
               ? `${task.title}, not due yet`
               : completing
@@ -1685,7 +1729,11 @@ export const TaskItem = React.memo(function TaskItem({
                       ? `Complete ${task.title}, asks for an answer`
                       : `Complete ${task.title}`
         }
-        accessibilityHint={meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined}
+        accessibilityHint={
+          isNegative
+            ? (slipsLoggedToday > 0 ? 'Double tap and hold to take one back' : undefined)
+            : meterInteractive && task.progressCount > 0 ? 'Double tap and hold to take one back' : undefined
+        }
       >
         {/* Bulk selection deliberately changes nothing about this circle: it's
             the completion checkbox in both modes, and a row that's been picked
@@ -1702,6 +1750,9 @@ export const TaskItem = React.memo(function TaskItem({
           // reader two vocabularies for one idea.
           !completing && !completionLocked && (timerReady || mealPlanReady) && styles.circleReady,
           (showQuotaMeter || quotaPartial) && styles.circleQuota,
+          // Last of the state styles, so a broken day wins the box outright:
+          // it's the one thing on this row that has just gone wrong.
+          slipped && styles.circleSlipped,
           // The ring can only follow the fill once the fill has reached it —
           // swapped rather than animated because this node's transform is on
           // the native driver, and a JS-driven colour on the same node throws.
@@ -1775,7 +1826,16 @@ export const TaskItem = React.memo(function TaskItem({
               <Ionicons name="checkmark" size={12} color={colors.onAccent} />
             </Animated.View>
           )}
-          {!completing && recurrenceNotYetDue && (
+          {isNegative && (
+            // xs like the lock and the "?": a shield is tall rather than wide,
+            // so sm crowds a 20pt circle the way the repeat glyph doesn't.
+            <Ionicons
+              name={slipped ? 'shield' : 'shield-checkmark'}
+              size={iconSize.xs}
+              color={slipped ? colors.onAccent : colors.textSecondary}
+            />
+          )}
+          {!completing && !isNegative && recurrenceNotYetDue && (
             <Ionicons name="repeat" size={iconSize.sm} color={colors.textSecondary} />
           )}
           {!completing && !completionLocked && (asksOnComplete || mealSlotChooseSource) && (
@@ -1977,7 +2037,13 @@ export const TaskItem = React.memo(function TaskItem({
               <View
                 style={[styles.metaChip, styles.streakChip]}
                 accessibilityLabel={
-                  atRecord
+                  // Same number, different thing counted: a negative habit's run
+                  // is days it survived, not times it was done.
+                  isNegative
+                    ? task.streakCount > 0
+                      ? `${task.streakCount} clean ${task.streakCount === 1 ? 'day' : 'days'}${atRecord ? ', the longest this task has had' : ''}`
+                      : 'No clean days yet'
+                  : atRecord
                     ? `${task.streakCount} day streak, the longest this task has had`
                     : task.streakCount > 0
                       ? `${task.streakCount} day streak`
@@ -1998,6 +2064,17 @@ export const TaskItem = React.memo(function TaskItem({
                   numberOfLines={1}
                 >
                   {task.streakCount}
+                </Text>
+              </View>
+            )}
+            {slipsLoggedToday > 0 && (
+              // Without this the second tap of the day changes nothing on the
+              // row: the shield is already red and the streak is already 0, so
+              // frequency logging ("how many, not whether") would be invisible
+              // at exactly the point it starts being the thing being recorded.
+              <View style={styles.metaChip}>
+                <Text style={styles.slipLabel} numberOfLines={1}>
+                  {slipsLoggedToday} slip{slipsLoggedToday === 1 ? '' : 's'} today
                 </Text>
               </View>
             )}
@@ -3430,6 +3507,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   circleQuotaDone: {
     borderColor: colors.green,
   },
+  // A broken day on a negative habit. Filled rather than outlined because it is
+  // the one state on this row that wants to be legible at a glance from the top
+  // of the list, and red rather than the row's own priority colour because it
+  // reports an outcome rather than a ranking.
+  circleSlipped: {
+    backgroundColor: colors.red,
+    borderColor: colors.red,
+  },
   // Height and colour both come from Animated values at the call site — see
   // quotaFill / quotaDone. It's a level in a container, so it's a plain
   // rectangle: the top edge is the water line and must be straight and the
@@ -3598,6 +3683,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   quotaLabel: {
     color: colors.accent,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
+  },
+  // Deliberately textSecondary rather than red: the shield beside it is already
+  // carrying the alarm, and a second red thing on the same row would make one
+  // slip look like two separate problems.
+  slipLabel: {
+    color: colors.textSecondary,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
