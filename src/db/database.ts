@@ -1246,6 +1246,16 @@ export function initDatabase(): void {
     // rather than part of the CREATE for the usual reason: a device that got
     // the table from an earlier build still picks the index up.
     'CREATE INDEX IF NOT EXISTS idx_focus_session_log_ended ON focus_session_log(ended_at)',
+    // 'positive' on every existing row, which is what every task in the app has
+    // always been: something to do. The column only ever adds the opposite kind
+    // (see Task.polarity), so an install upgrading into it reads exactly as it
+    // did.
+    "ALTER TABLE tasks ADD COLUMN polarity TEXT NOT NULL DEFAULT 'positive'",
+    // 0/NULL on every existing row — no task that predates this column has ever
+    // had a slip logged against it, which is exactly what those mean. See
+    // Task.slipCount, and slipsToday() for why the pair travels together.
+    'ALTER TABLE tasks ADD COLUMN slip_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN slip_date TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2116,6 +2126,13 @@ function rowToTask(row: Record<string, unknown>): Task {
     previousStreakDate: (row.previous_streak_date as string) ?? null,
     showStreak: Boolean(row.show_streak),
     streakRequiresWindow: Boolean(row.streak_requires_window),
+    // Anything but the one known alternative reads as 'positive', which is both
+    // the pre-column default and the safe way round: a row misread as positive
+    // is an ordinary task, where one misread as negative would be a task that
+    // can no longer be completed.
+    polarity: row.polarity === 'negative' ? 'negative' : 'positive',
+    slipCount: (row.slip_count as number) ?? 0,
+    slipDate: (row.slip_date as string) ?? null,
     seriesDefaults: row.series_defaults ? (JSON.parse(row.series_defaults as string) as Partial<Task>) : null,
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
@@ -2165,8 +2182,8 @@ export function dbInsertTask(task: Task): void {
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, location,
-      prior_best_streak
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      prior_best_streak, polarity, slip_count, slip_date
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2234,6 +2251,9 @@ export function dbInsertTask(task: Task): void {
       task.quotaAlwaysVisible ? 1 : 0,
       task.location ?? null,
       task.priorBestStreak,
+      task.polarity,
+      task.slipCount,
+      task.slipDate ?? null,
     ]
   );
 }
@@ -2260,7 +2280,7 @@ export function dbUpdateTask(task: Task): void {
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
       quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, location=?,
-      prior_best_streak=?
+      prior_best_streak=?, polarity=?, slip_count=?, slip_date=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2329,6 +2349,9 @@ export function dbUpdateTask(task: Task): void {
       task.quotaAlwaysVisible ? 1 : 0,
       task.location ?? null,
       task.priorBestStreak,
+      task.polarity,
+      task.slipCount,
+      task.slipDate ?? null,
       task.id,
     ]
   );

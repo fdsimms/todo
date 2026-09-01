@@ -10,6 +10,8 @@ import { useColors } from '../theme/ThemeContext';
 import { animation, border, checkboxRadius, iconSize, interaction, spacing, type Colors } from '../theme';
 import { completionTapFor } from '../utils/completionTap';
 import { isQuotaPartial, quotaFraction } from '../utils/visibilityUtils';
+import { isCleanToday } from '../utils/negativeHabits';
+import { getCurrentDayStart } from '../utils/dateUtils';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -66,6 +68,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const completeTask = useTaskStore(s => s.completeTask);
   const uncompleteTask = useTaskStore(s => s.uncompleteTask);
   const logQuotaUnit = useTaskStore(s => s.logQuotaUnit);
+  const logSlip = useTaskStore(s => s.logSlip);
   const planMeal = useMealPlanStore(s => s.planMeal);
   const removeMealPlanEntry = useMealPlanStore(s => s.removeEntry);
   const { offerPrepTasksForEach } = usePlanMeal();
@@ -124,6 +127,14 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
       case 'locked':
         await haptics.error();
         return;
+      case 'slip':
+        // A warning rather than a success: this tap reports the thing the task
+        // exists to avoid, and it costs a run. The row doesn't move — a negative
+        // habit stays on the list either way — so the haptic and the box going
+        // red are the whole of the feedback here.
+        await haptics.warning();
+        logSlip(task.id);
+        return;
       case 'ask':
         // The question comes first and the completion only follows an answer,
         // so backing out of the sheet takes the whole tap back — same contract
@@ -169,8 +180,18 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
   const showMeter = action === 'log-unit' || isQuotaPartial(task);
   const done = task.completed && !showMeter;
 
+  // A negative habit's box says which of two states today is in, and neither of
+  // them is "done" — see Task.polarity. Clean is deliberately quiet rather than
+  // green: it is the state the row sits in all day, every day, and a screenful
+  // of green shields would outshout the completions that green already means.
+  const slipped = action === 'slip' && !isCleanToday(task, getCurrentDayStart());
+
   const a11yLabel =
-    action === 'locked' ? `${label}, not due yet`
+    action === 'slip'
+      ? slipped
+        ? `${label}, broken today, log another`
+        : `${label}, clean today, log a slip`
+    : action === 'locked' ? `${label}, not due yet`
     : action === 'ask' ? `Complete ${label}, asks for an answer`
     : action === 'pick-meal' ? `${label}, pick a meal`
     : action === 'log-unit'
@@ -189,8 +210,9 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
         // target without eating into the title's own tap area.
         hitSlop={{ top: 12, bottom: 12, left: spacing.md, right: 12 }}
         // A meter isn't binary, so it's a button rather than a checkbox — same
-        // call the task row's own box makes.
-        accessibilityRole={action === 'log-unit' ? 'button' : 'checkbox'}
+        // call the task row's own box makes. A slip is a button for a different
+        // reason: there is no state being ticked, only an event being reported.
+        accessibilityRole={action === 'log-unit' || action === 'slip' ? 'button' : 'checkbox'}
         accessibilityState={{
           checked: task.completed,
           disabled: action === 'locked',
@@ -202,6 +224,7 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
             styles.box,
             done && styles.boxDone,
             showMeter && styles.boxMeter,
+            slipped && styles.boxSlipped,
             { transform: [{ scale }] },
           ]}
         >
@@ -221,6 +244,13 @@ export function TaskCheckbox({ task, taskLabel, onTicked }: Props) {
               {done && <Ionicons name="checkmark" size={12} color={colors.onAccent} />}
               {action === 'locked' && (
                 <Ionicons name="repeat" size={iconSize.sm} color={colors.textTertiary} />
+              )}
+              {action === 'slip' && (
+                <Ionicons
+                  name={slipped ? 'shield' : 'shield-checkmark'}
+                  size={iconSize.xs}
+                  color={slipped ? colors.onAccent : colors.textSecondary}
+                />
               )}
               {(action === 'ask' || action === 'pick-meal') && (
                 // xs rather than sm: a "?" is tall where the repeat glyph is wide
@@ -282,6 +312,10 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   boxMeter: {
     borderColor: colors.accent,
     overflow: 'hidden',
+  },
+  boxSlipped: {
+    backgroundColor: colors.red,
+    borderColor: colors.red,
   },
   fill: {
     position: 'absolute',

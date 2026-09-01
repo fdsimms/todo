@@ -18,6 +18,16 @@ export type ReminderKind = 'notification' | 'alarm' | 'persistent';
  */
 export type DeliverableKind = 'text' | 'date' | 'number';
 
+/**
+ * Which direction a task's success runs in — see `Task.polarity`.
+ *
+ * 'positive' is every task that has ever existed here: something to do, and
+ * doing it is the win. 'negative' is the opposite commitment ("don't smoke"),
+ * where the win is the day passing untouched, so it is never completed and its
+ * streak counts clean days rather than completions.
+ */
+export type Polarity = 'positive' | 'negative';
+
 export interface Category {
   id: string;
   name: string;
@@ -1421,9 +1431,62 @@ export interface Task {
   // alone. Resolve-or-shrug like every other cross-row pointer here.
   timeBlockEventId: string | null;
 
-  // Streaks (recurring tasks only)
-  streakCount: number;       // positive = N consecutive completions
-  streakDate: string | null; // logical-day ISO string of last completion
+  /**
+   * Which direction success runs in. 'positive' — do the thing — is every task
+   * that predates this field and the default for every new one.
+   *
+   * A 'negative' task is a commitment *not* to do something, and it inverts
+   * three rules rather than adding a fourth kind of row:
+   *
+   * - **It is never completed.** There is no tap that finishes "don't smoke",
+   *   so `completeTask` refuses one (see the polarity guard there) and the row
+   *   has no checkbox — it has a shield. Keeping it out of the completion path
+   *   is what keeps `completedAt`, the Logbook, Stats and the recurrence engine
+   *   free of special cases, the same trade quota tasks make by going *through*
+   *   completion rather than around it.
+   * - **It stays visible all day** (see isVisibleApartFromVacation), because
+   *   the row is the reminder. A positive task earns its place by being undone;
+   *   an avoid-task that vanished once you were doing well would be missing at
+   *   exactly the moment it is useful.
+   * - **Its streak counts clean days, not completions.** Nothing advances it on
+   *   a tap; the day-rollover pass does (see `rolloverNegativeStreaks`), which
+   *   is the one structural difference the feature actually costs. Tapping is
+   *   the *failure* report, and it breaks the run.
+   */
+  polarity: Polarity;
+
+  /**
+   * Slips logged against a negative task on the day named by `slipDate`, and 0
+   * on any other day.
+   *
+   * Deliberately not `progressCount`, though it counts taps the same way: that
+   * field is read through `isQuotaTask` in a dozen places as progress *toward*
+   * a target, and a slip is the opposite of progress. A negative task with a
+   * target would then read as on-pace for smoking eight cigarettes.
+   *
+   * One field covers both shapes the issue asked for. A binary avoid-task
+   * ("don't smoke") is one that goes 0 → 1 and stops mattering, since the
+   * streak is already broken; a frequency-logged one ("count the cigarettes")
+   * keeps incrementing, and the extra taps are the record. Nothing has to
+   * choose between them up front, so there is no completion_type to set.
+   *
+   * Always read through `slipsToday()` rather than directly — the pair is a
+   * count plus the day it belongs to, and the count alone is stale the moment
+   * the day turns. That is the same discipline `streakDate` imposes on
+   * `streakCount`, and it means a day that rolls over while the app is closed
+   * reads correctly without the rollover pass having run.
+   */
+  slipCount: number;
+  slipDate: string | null; // logical-day ISO string the slips above belong to
+
+  // Streaks
+  //
+  // For a positive task these are consecutive completions, which is what they
+  // have always been. For a negative one they are consecutive clean days, and
+  // every field below means the run either way — which is why polarity is a
+  // flag on the task rather than a second set of columns.
+  streakCount: number;       // positive = N consecutive completions; negative = N clean days
+  streakDate: string | null; // logical-day ISO string of last completion (positive) or last day counted (negative)
 
   // Snapshot of streakCount/streakDate from just before the current
   // completion, so uncompleting (e.g. from the Logbook) can restore the
@@ -1706,7 +1769,7 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
 // extraTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'slipCount' | 'slipDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"
@@ -1818,6 +1881,10 @@ export interface TemplateItem {
   category: string | null;
   priority: Priority;
   effort: Effort;
+  // Seeded onto the task this item creates, like every other behaviour toggle
+  // here. A "quit smoking" template that could only produce positive tasks
+  // would be a template that can't express the one thing it's for.
+  polarity: Polarity;
 
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;

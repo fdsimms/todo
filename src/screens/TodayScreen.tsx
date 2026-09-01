@@ -1046,6 +1046,13 @@ export function TodayScreen() {
       // from the reorder task's own completion prompt, which completeTask
       // already sweeps for. This is the half that catches the clock.
       useTaskStore.getState().checkSupplyReorderTasks();
+      // On focus as well as on foreground below, and this one needs both: a
+      // negative habit's run is credited by the clock rather than by anything
+      // the user does (see rolloverNegativeStreaks), so a cold start the next
+      // morning has to catch it up — and that is exactly the case AppState's
+      // 'active' listener misses, since the app is already active by the time it
+      // is registered. A no-op on all but the first call of each day.
+      useTaskStore.getState().rolloverNegativeStreaks();
       const interval = setInterval(() => {
         // On the tick as well as on foreground, unlike every other maintenance
         // pass, because this is the one whose trigger can arrive while the
@@ -1064,6 +1071,10 @@ export function TodayScreen() {
         if (state === 'active') {
           useTaskStore.getState().checkVacationExpiry();
           useTaskStore.getState().rolloverQuotas();
+          // After checkVacationExpiry: a run that was protected while vacation
+          // was on should start counting again in the same pass vacation ends,
+          // not one day later.
+          useTaskStore.getState().rolloverNegativeStreaks();
           // Opt-in counterpart to rolloverQuotas, for allowOvershoot tasks —
           // see its doc comment in useTaskStore.ts.
           useTaskStore.getState().sweepOvershootQuotas();

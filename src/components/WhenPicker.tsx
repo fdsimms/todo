@@ -63,6 +63,7 @@ const BLANK_SNOOZE_TASK: Task = {
   pendingImport: null,
   backfillDismissedFields: [],
   streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, priorBestStreak: 0, showStreak: false, streakRequiresWindow: false,
+  polarity: 'positive', slipCount: 0, slipDate: null,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false,
   extraTaskEveryN: null, extraTaskTitle: null, extraTaskDraft: null, extraTaskTally: 0, previousExtraTaskTally: 0,

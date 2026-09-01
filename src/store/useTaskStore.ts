@@ -117,6 +117,7 @@ import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepT
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver } from '../utils/quotaSchedule';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
+import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -436,11 +437,25 @@ function newTaskFromDraft(
     estimatedMinutes: draft.estimatedMinutes ?? null,
     backfillDismissedFields: [],
     streakCount: 0,
-    streakDate: null,
+    // A negative habit is anchored at the day it was created, where a positive
+    // one has no anchor until its first completion. The anchor is what
+    // cleanDayPatch counts forward from, and leaving it null would make the
+    // first rollover spend a pass just laying it down — which is harmless but
+    // means a habit created on Monday can't credit Tuesday until Wednesday's
+    // pass has run twice. Today is deliberately the anchor rather than a day
+    // earlier: half of it happened before the commitment existed.
+    streakDate: (draft.polarity ?? 'positive') === 'negative' ? getCurrentDayStart().toISOString() : null,
     previousStreakCount: 0,
     previousStreakDate: null,
     priorBestStreak: 0,
-    showStreak: draft.showStreak ?? false,
+    slipCount: 0,
+    slipDate: null,
+    polarity: draft.polarity ?? 'positive',
+    // On by default for a negative habit and off for everything else. A flame on
+    // every recurring row is noise (the reasoning behind the field), but the run
+    // of clean days is the *only* feedback an avoid-task ever gives: it is never
+    // completed, so without the chip the row never changes at all.
+    showStreak: draft.showStreak ?? (draft.polarity ?? 'positive') === 'negative',
     streakRequiresWindow: draft.streakRequiresWindow ?? false,
     parentId: draft.parentId ?? null,
     groupId: draft.groupId ?? null,
@@ -1439,6 +1454,30 @@ interface TaskStore extends UndoHistoryActions {
    * occurrence to move on to; on a one-off it would just be a delete.
    */
   markMissed: (id: string) => void;
+  /**
+   * Report a slip against a negative habit — the tap that says "I smoked".
+   *
+   * The counterpart to `completeTask` for the other polarity, and deliberately
+   * not a completion: an avoid-task is never finished, so it never leaves the
+   * feed and never spawns a successor. What it does is break the run and record
+   * the event. Repeated taps on the same day keep counting, which is how a
+   * frequency-logged habit ("how many, not whether") works without needing a
+   * second kind of task behind it. See src/utils/negativeHabits.ts.
+   */
+  logSlip: (id: string) => void;
+  /** Takes back a slip logged today, restoring the run it ended. */
+  undoSlip: (id: string) => void;
+  /**
+   * Credits the clean days that have gone by since each negative habit was last
+   * accounted for.
+   *
+   * The one pass in the app that advances a streak without a completion, and it
+   * has to be: a negative streak is made of days on which nothing happened, so
+   * there is no event for the lazy gap check in `completeTask` to measure from.
+   * Runs alongside rolloverQuotas at day rollover and on launch, and is a no-op
+   * on almost every call — see cleanDayPatch.
+   */
+  rolloverNegativeStreaks: () => void;
   logQuotaUnit: (id: string) => void;
   unlogQuotaUnit: (id: string) => void;
   /** Keeps a back-on-pace daily target on Today until releaseQuotaHold. */
@@ -2456,6 +2495,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(!('targetCount' in updates) && QUOTA_SPAN_FIELDS.some(f => f in updates)
           ? { targetCount: derivedTargetCount({ ...t, ...updates }) }
           : {}),
+        // Changing polarity restarts the run, because the two polarities count
+        // different things: a positive streak is completions and a negative one
+        // is days survived, so carrying the number across would relabel history
+        // rather than continue it. The dates matter more than the count — a task
+        // last completed three months ago carries a `streakDate` three months
+        // back, and cleanDayPatch would read that as ninety clean days and hand
+        // them over on the first rollover. Same call unarchiveTask makes when it
+        // resets a streak it can no longer vouch for.
+        //
+        // Shaped like the three rules above: a patch naming `streakCount` itself
+        // wins outright, so a whole-snapshot undo still restores what it
+        // recorded instead of being overruled here.
+        ...('polarity' in updates && updates.polarity !== t.polarity && !('streakCount' in updates)
+          ? {
+              streakCount: 0,
+              streakDate: getCurrentDayStart().toISOString(),
+              previousStreakCount: 0,
+              previousStreakDate: null,
+              slipCount: 0,
+              slipDate: null,
+            }
+          : {}),
       };
 
       // Re-filing a task must not, on its own, make it read as "new".
@@ -2754,6 +2815,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
     let task = get().tasks.find(t => t.id === id);
     if (!task || task.completed) return;
+    // There is no tap that finishes "don't smoke", so a negative habit has no
+    // completion to run — see Task.polarity. Refused here rather than at each
+    // caller because this is the funnel every completion path in the app pours
+    // into: the bulk bar, a stack cascade, the focus session's Done, a widget
+    // tap, the missed sweep. Any one of them reaching a negative habit would
+    // otherwise mark it done, spawn a successor and take it off the feed, which
+    // is precisely the row that is supposed to sit there all day. `logSlip` is
+    // the action this polarity has instead.
+    if (isNegativeTask(task)) return;
     // Recurring tasks shown early in Later (deferred to, or due on, a future
     // day) can't be completed ahead of schedule — doing so would generate the
     // next occurrence off today instead of the task's real day. Non-recurring
@@ -3710,6 +3780,48 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       label: value === null ? 'Answer cleared' : 'Answer saved',
       undo: () => get().setDeliverableValue(id, previous),
     });
+  },
+
+  logSlip(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isNegativeTask(task) || task.archived) return;
+    const updated = { ...task, ...slipPatch(task, getCurrentDayStart()) };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    // A tap here costs a run that may be weeks long, so the undo is offered
+    // rather than buried — the same affordance a logged quota unit gets, for a
+    // mis-tap that is considerably more expensive.
+    get().setLastAction({
+      label: task.streakCount > 0 ? `Streak reset (was ${task.streakCount})` : 'Logged',
+      undo: () => get().undoSlip(id),
+    });
+  },
+
+  undoSlip(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isNegativeTask(task)) return;
+    const patch = undoSlipPatch(task, getCurrentDayStart());
+    if (!patch) return;
+    const updated = { ...task, ...patch };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
+  rolloverNegativeStreaks() {
+    const todayStart = getCurrentDayStart();
+    const patched = get().tasks.flatMap(t => {
+      if (!isNegativeTask(t) || t.archived) return [];
+      // Vacation protects the run rather than growing it, which is the call
+      // every other streak here makes. Read through isHiddenForVacation so a
+      // category paused for vacation covers its habits too, exactly as it does
+      // for the tasks the quota rollover skips.
+      const patch = cleanDayPatch(t, todayStart, { paused: isHiddenForVacation(t) });
+      return patch ? [{ ...t, ...patch }] : [];
+    });
+    if (patched.length === 0) return;
+    patched.forEach(dbUpdateTask);
+    const byId = new Map(patched.map(t => [t.id, t]));
+    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
   },
 
   logQuotaUnit(id) {
@@ -5647,6 +5759,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       priorBestStreak: 0,
       showStreak: false,
       streakRequiresWindow: false,
+      polarity: 'positive',
+      slipCount: 0,
+      slipDate: null,
       parentId,
       groupId: null,
       projectId: null,
@@ -5832,6 +5947,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       priorBestStreak: 0,
       showStreak: false,
       streakRequiresWindow: false,
+      polarity: 'positive',
+      slipCount: 0,
+      slipDate: null,
       parentId: null,
       groupId,
       projectId: null,

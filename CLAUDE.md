@@ -340,6 +340,7 @@ exports.
 | how loaded a day is, and lightening an overloaded one | `src/utils/dayLoad.ts` + `src/utils/deloadPlan.ts` |
 | what lands before a date, and whether it fits | `src/utils/lookAhead.ts` (+ `src/utils/taskMoves.ts`, shared with `deloadPlan`) |
 | a recurring habit and whether it's on track | `src/utils/rhythms.ts` (+ `rhythmsSettings.ts`) |
+| a habit that's about *not* doing something, and the days it survives | `src/utils/negativeHabits.ts` + `Task.polarity` — the one streak in the app advanced by a rollover pass rather than by a completion, because there is no completion to hang it on |
 | what to suggest when a task is snoozed | `src/utils/snoozeEngine.ts` |
 | a task that was missed, and the grace it gets | `src/utils/missed.ts` + `src/utils/expiredTaskGrace.ts` |
 | the iOS Live Activity | `src/utils/liveActivity.ts` (+ `tripLiveActivity.ts`) |
@@ -354,15 +355,15 @@ exports.
 **Read narrowly.** 49 files are over 1,000 lines, 31 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (7.1k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (4.9k),
-`store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.4k), `types/index.ts` (4.3k),
-`components/TaskItem.tsx` (4.0k), `components/QuickAddModal.tsx` (3.0k),
+`store/useTaskStore.ts` (7.2k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (5.0k),
+`store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.4k), `types/index.ts` (4.4k),
+`components/TaskItem.tsx` (4.1k), `components/QuickAddModal.tsx` (3.0k),
 `utils/demoSeed.ts` (2.9k), `store/useSettingsStore.ts` (2.9k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **248 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **249 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
