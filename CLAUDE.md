@@ -359,7 +359,7 @@ them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (7.2k), `components/TaskEditor.tsx` (5.1k), `db/database.ts` (5.0k),
 `store/useGroceryStore.ts` (4.8k), `types/index.ts` (4.4k), `screens/TodayScreen.tsx` (4.4k),
-`components/TaskItem.tsx` (4.2k), `components/QuickAddModal.tsx` (3.1k),
+`components/TaskItem.tsx` (4.1k), `components/QuickAddModal.tsx` (3.1k),
 `utils/demoSeed.ts` (2.9k), `store/useSettingsStore.ts` (2.9k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more

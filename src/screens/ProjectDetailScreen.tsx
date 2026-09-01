@@ -226,13 +226,7 @@ export function ProjectDetailScreen() {
     [incompleteProjectTasks],
   );
   const { copied, copy } = useCopyToClipboard();
-  // The rows the order actually applies to — archived members are filed away,
-  // and holding a sequence open on one nobody can see would strand the rest.
-  // Matches liveProjectSteps, which is what the visibility gate ranks.
-  const steps = incompleteProjectTasks.filter(t => !t.archived);
-  const sequential = project?.sequential ?? false;
-  // Presentation only — see Project.kind. Read once into a local and spent in a
-  // handful of places, the same shape `sequential` above already uses.
+  // Presentation only — see Project.kind.
   const isList = project?.kind === 'list';
   const completedProjectTasks = projectTasks
     .filter(t => t.completed)
@@ -499,14 +493,11 @@ export function ProjectDetailScreen() {
     opts: { drag?: () => void; isActive?: boolean; indented?: boolean } = {},
   ) => {
     const subs = subtasksOf(task.id);
-    const step = steps.indexOf(task);
     return (
       <TaskItem
         task={task}
         drag={selectionMode ? undefined : opts.drag}
         isActive={opts.isActive}
-        stepNumber={sequential && step >= 0 ? step + 1 : null}
-        locked={sequential && step > 0}
         onPress={handleRowPress}
         expanded={expandedTaskId === task.id}
         onEdit={handleRowEdit}
@@ -630,18 +621,6 @@ export function ProjectDetailScreen() {
               {project.notes}
             </Text>
           </TouchableOpacity>
-        )}
-
-        {sequential && steps.length > 1 && (
-          // Says why every row but one is wearing a padlock. Only worth the
-          // line when something is actually held back — a one-step project
-          // looks identical either way.
-          <View style={styles.sequenceNote}>
-            <Ionicons name="lock-closed" size={12} color={colors.textTertiary} />
-            <Text style={styles.sequenceNoteText}>
-              In order · the next step unlocks when you finish this one
-            </Text>
-          </View>
         )}
 
         <View
@@ -1168,24 +1147,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   notesPreviewIcon: {
     // Nudged down to sit on the text's cap height instead of its vertical
-    // center, matching sequenceNote's baseline alignment with a one-line icon.
+    // center.
     marginTop: 2,
   },
   notesPreviewText: {
     flex: 1,
     color: colors.textSecondary,
-    fontSize: font.xs,
-    fontWeight: fontWeight.medium,
-  },
-  sequenceNote: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-  },
-  sequenceNoteText: {
-    color: colors.textTertiary,
     fontSize: font.xs,
     fontWeight: fontWeight.medium,
   },
