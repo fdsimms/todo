@@ -108,3 +108,36 @@ export function canPageToPreviousMonth(displayMonth: Date, earliest: Date | null
   if (!earliest) return true;
   return startOfMonth(displayMonth) > startOfMonth(earliest);
 }
+
+/**
+ * The ceiling half of the three above, mirrored exactly.
+ *
+ * Written as its own trio rather than generalising the floor into a range: the
+ * two are used independently (every existing caller has a floor and no ceiling,
+ * the mood log has a ceiling and no floor), and a single `clampMonthToRange`
+ * would have both callers passing a null they don't care about.
+ */
+
+/** True when `day` falls on a later calendar day than `latest`. */
+export function isDayAfter(day: Date, latest: Date): boolean {
+  return differenceInCalendarDays(day, latest) > 0;
+}
+
+/**
+ * The month a picker should display, pulled back to `latest`'s month when the
+ * date it wanted to open on is past the ceiling — the mirror of
+ * `clampMonthToEarliest`, and for the same reason: a month whose every cell is
+ * refused reads as a broken calendar rather than as a ceiling.
+ */
+export function clampMonthToLatest(month: Date, latest: Date | null): Date {
+  const start = startOfMonth(month);
+  if (!latest) return start;
+  const ceiling = startOfMonth(latest);
+  return start > ceiling ? ceiling : start;
+}
+
+/** Whether the forward chevron has anywhere to go. */
+export function canPageToNextMonth(displayMonth: Date, latest: Date | null): boolean {
+  if (!latest) return true;
+  return startOfMonth(displayMonth) < startOfMonth(latest);
+}

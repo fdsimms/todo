@@ -266,13 +266,14 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (fifteen generators now: `screenTime` is the newest, and the second whose source is a rule the user wrote rather than a row) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (seventeen generators now: `moodLog` and `moodNudge` are the newest, and `moodNudge` is the only one whose trigger is a trend in the user's own answers rather than a date, a row or a one-off threshold) |
 | a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
 | a timed task's countdown, and splitting it across subtasks | `src/utils/timer.ts` + `src/utils/timerSegments.ts` — see `docs/arch/timed-tasks.md` |
 | a stock of something that runs down as a task repeats, and ordering more | `src/utils/supply.ts` — see `docs/arch/supplies.md` |
+| a target logged N times a day, its pace ramp, and the same thing counted per week | `src/utils/quotaSchedule.ts` (the span) + `Task.quotaPeriod`. "Three times a week" is a quota with a week-long span, deliberately not a `RecurrenceType`: a recurrence answers "what date is next" and this has no next date to give. Every reader is written against the span, so widening it is the whole feature |
 | working a queue of tasks one at a time, with breaks | `src/utils/focusPlan.ts` + `src/store/useFocusStore.ts` — see `docs/arch/focus-sessions.md` |
 | a task that asks a question when it's completed | `src/utils/deliverables.ts` (+ `src/utils/bulkCompletion.ts` for the paths that complete several at once) |
 | a task falling on several dates | `seriesId` in `src/store/useTaskStore.ts` (`applyTaskDates`) — see Series below |
@@ -284,12 +285,14 @@ exports.
 | bulk selection | `src/hooks/useTaskSelection.ts` + `src/components/BulkActionBar.tsx` |
 | reminders | `src/utils/notifications.ts` |
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
+| how you're feeling, and what that looks like against your tasks | `src/utils/moodLog.ts` + `src/utils/moodInsights.ts` + `src/utils/moodTasks.ts` — see `docs/arch/mood-log.md` |
 | the people you want to keep up with, and their birthdays | `src/store/usePersonStore.ts` + `src/utils/birthdayTasks.ts` — see `docs/arch/people.md` |
 | filling a person in from the contact book | `src/utils/contactsImport.ts` + `src/utils/contactsAccess.ts` — see `docs/arch/people.md` |
 | what demo mode shows | `src/utils/demoSeed.ts` — see Demo data below |
 | the switch that hides the advanced half of the app | `src/utils/simpleMode.ts` — see `docs/arch/simple-mode.md` |
 | what the widget shows | `src/utils/widgetSync.ts` → `src/utils/widgetBridge.ts` → `modules/todo-widget-bridge` |
 | anything written outside the app's own database (widget, Live Activities, the two queues) | `src/utils/widgetBridge.ts` — the one gate, demo mode included |
+| what the app catches up on because time passed, at launch or in the background | `src/utils/maintenancePasses.ts` — one list, three groups; `src/utils/backgroundRefresh.ts` is the only thing that runs while the app is closed |
 | importing from Apple Reminders (and so voice capture) | `src/utils/remindersImport.ts` (+ `remindersImportSync.ts`) — see `docs/arch/reminders-import.md` |
 | the grocery list and a Reminders list kept in step both ways | `src/utils/groceryReminderMirror.ts` — see `docs/arch/reminders-import.md` |
 | the Face ID app lock | `src/utils/appLock.ts` + `src/store/useAppLockStore.ts` + `src/components/AppLockGate.tsx` — see `docs/arch/app-lock.md` |
@@ -297,6 +300,7 @@ exports.
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
 | a separate list for a week away, and a row in two trolleys at once | `src/utils/groceryLists.ts` + `GroceryListEntry` — see `docs/arch/groceries.md` |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
+| which engine answers an AI feature, and the keyless floor under one of them | `src/utils/aiRouting.ts` + `src/services/onDeviceModel.ts` |
 | grocery autocomplete, catalog ranking | `src/utils/grocerySuggest.ts` |
 | which bread — brands, variants, and rating them | `src/utils/groceryProduct.ts` (`ItemProduct`) — see `docs/arch/groceries.md` |
 | two packets of one thing, tracked apart in the pantry | `ItemProduct`'s four pantry columns + `productHaveReason` in `src/utils/grocerySuggest.ts` — see `docs/arch/groceries.md` |
@@ -308,6 +312,7 @@ exports.
 | going through the whole pantry a card at a time | `src/utils/pantryReview.ts` + `src/components/PantryReviewSheet.tsx` — see `docs/arch/groceries.md` |
 | whether a thing got used up or went bad | `src/utils/itemDisposal.ts` — see `docs/arch/groceries.md` |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
+| reading a receipt's text on the device before it goes to the model | `src/utils/receiptOcr.ts` + `modules/todo-vision-bridge` |
 | remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
 | whether a store's receipt is worth photographing at all | `Shop.receiptStyle` (`itemized` / `none`) + the refusal branch in `ReceiptImportSheet.tsx` |
@@ -340,6 +345,7 @@ exports.
 | how loaded a day is, and lightening an overloaded one | `src/utils/dayLoad.ts` + `src/utils/deloadPlan.ts` |
 | what lands before a date, and whether it fits | `src/utils/lookAhead.ts` (+ `src/utils/taskMoves.ts`, shared with `deloadPlan`) |
 | a recurring habit and whether it's on track | `src/utils/rhythms.ts` (+ `rhythmsSettings.ts`) |
+| a habit that's about *not* doing something, and the days it survives | `src/utils/negativeHabits.ts` + `Task.polarity` — the one streak in the app advanced by a rollover pass rather than by a completion, because there is no completion to hang it on |
 | what to suggest when a task is snoozed | `src/utils/snoozeEngine.ts` |
 | a task that was missed, and the grace it gets | `src/utils/missed.ts` + `src/utils/expiredTaskGrace.ts` |
 | the iOS Live Activity | `src/utils/liveActivity.ts` (+ `tripLiveActivity.ts`) |
@@ -354,15 +360,15 @@ exports.
 **Read narrowly.** 50 files are over 1,000 lines, 32 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (7.2k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (5.0k),
-`store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.4k), `types/index.ts` (4.3k),
-`components/TaskItem.tsx` (4.0k), `components/QuickAddModal.tsx` (3.1k),
-`store/useSettingsStore.ts` (2.9k), `utils/demoSeed.ts` (2.9k).
+`store/useTaskStore.ts` (7.5k), `components/TaskEditor.tsx` (5.1k), `db/database.ts` (5.1k),
+`store/useGroceryStore.ts` (4.8k), `types/index.ts` (4.5k), `screens/TodayScreen.tsx` (4.4k),
+`components/TaskItem.tsx` (4.1k), `components/QuickAddModal.tsx` (3.1k),
+`store/useSettingsStore.ts` (3.0k), `utils/demoSeed.ts` (3.0k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **248 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **260 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -479,6 +485,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/reminders-import.md` | Apple Reminders import, and the data it deletes elsewhere |
 | `docs/arch/app-lock.md` | The Face ID gate and the API key in the keychain |
 | `docs/arch/people.md` | The people layer: why it never scores or ranks anybody, and how birthdays work |
+| `docs/arch/mood-log.md` | The mood/symptom log, what its insights may claim, and the nudge's three rules |
 | `docs/arch/simple-mode.md` | Simplified mode: what the one switch hides, and the two rules that make it safe |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 
@@ -503,6 +510,18 @@ Settings; `src/services/recipePage.ts` fetches a recipe page the user pasted a l
 only one that needs no key**, so "no key, no traffic" stopped being the whole privacy answer when it
 shipped — it carries its own switch (`productLookupEnabled`) instead. Anything else added on those terms
 needs one too.
+
+A fourth thing runs a model and reaches nothing: `src/services/onDeviceModel.ts` puts a prompt
+through Apple's on-device `SystemLanguageModel` (iOS 26+), in-process, with no key and no
+request. `src/utils/aiRouting.ts` decides which engine answers a feature, and only grocery aisle
+sorting is routed there today. Three rules hold it in place and are written up in that file: a
+feature's own switch outranks it (on-device is a floor under the features, never a way past a
+switch), a key still means Claude (nothing has measured on-device latency for a real batch, and
+quietly making a working feature slower is the one outcome this must not have), and the model's
+~4k-token window is why nothing needing vision or long context can join the list. It is also the
+one integration here that needs no demo-mode gate — nothing leaves the process and no queue is
+consumed, so neither half of the rule below applies. That is pinned by a test rather than left
+to be rediscovered.
 
 Stores are initialized once at app startup (`initialize()` on each store). Mutations always write to SQLite first, then update Zustand state.
 

@@ -184,6 +184,8 @@ export function GeneratedTasksSection() {
       case 'reachOut': return s.reachOutTasks;
       case 'weather': return s.weatherTasks;
       case 'screenTime': return s.screenTimeTasks;
+      case 'moodLog': return s.moodLogTasks;
+      case 'moodNudge': return s.moodNudgeTasks;
     }
   };
 
@@ -206,6 +208,8 @@ export function GeneratedTasksSection() {
       case 'reachOut': s.setReachOutTasks(next); break;
       case 'weather': s.setWeatherTasks(next); break;
       case 'screenTime': s.setScreenTimeTasks(next); break;
+      case 'moodLog': s.setMoodLogTasks(next); break;
+      case 'moodNudge': s.setMoodNudgeTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -239,6 +243,8 @@ export function GeneratedTasksSection() {
       case 'reachOut': return s.reachOutTaskCategory;
       case 'weather': return s.weatherTaskCategory;
       case 'screenTime': return s.screenTimeTaskCategory;
+      case 'moodLog': return s.moodLogTaskCategory;
+      case 'moodNudge': return s.moodNudgeTaskCategory;
     }
   };
 
@@ -262,6 +268,24 @@ export function GeneratedTasksSection() {
       case 'calendarReview': s.setCalendarEventCategory(category); break;
       case 'reachOut': s.setReachOutTaskCategory(category); break;
       case 'weather': s.setWeatherTaskCategory(category); break;
+      case 'screenTime': s.setScreenTimeTaskCategory(category); break;
+      case 'moodLog': s.setMoodLogTaskCategory(category); break;
+      case 'moodNudge': s.setMoodNudgeTaskCategory(category); break;
+      // Genuinely nothing to write: its task inherits the category of the task
+      // whose supply it is about (see checkSupplyReorderTasks), so there is no
+      // one global answer to store. categorized: false means the pills that
+      // would call this are never rendered for it.
+      case 'supplyReorder': break;
+      // Exhaustive, unlike the switches above it, which are only exhaustive
+      // because they return a value. This one returns void, so a missing arm is
+      // not a typecheck failure but a silently dead category picker — which is
+      // exactly how screenTime shipped: its pills rendered (categorized: true)
+      // and tapping one did nothing at all. A default arm assigning to `never`
+      // turns the next omission into a compile error.
+      default: {
+        const exhaustive: never = kind;
+        void exhaustive;
+      }
     }
   };
 
@@ -596,6 +620,19 @@ export function GeneratedTasksSection() {
       // already saying "Automatic tasks" directly above it.
       footer="These are the only things that put a task in your list without you typing it. Each one can be turned off here, and deleting a task the app added tells it not to add that one again: the grocery item or the leftover it came from remembers your answer, and a meal task stays gone for the rest of the day."
     >
+      {/* Above the generators rather than inside any one of them, because it
+          applies to all of them at once: it changes when the whole list below
+          gets a chance to run, not what any of them do. */}
+      <SettingsRow
+        entryId="backgroundRefreshEnabled"
+        icon="moon-outline"
+        iconColor={s.backgroundRefreshEnabled ? colors.accent : undefined}
+        label="Add tasks while the app is closed"
+        hint="Lets iOS wake the app in the background to add the tasks below, top up reminders and update the widget, so they're ready when you next open it. iOS decides when this happens and can skip it entirely. Everything below still runs when you open the app."
+        toggle={s.backgroundRefreshEnabled}
+        onPress={() => s.setBackgroundRefreshEnabled(!s.backgroundRefreshEnabled)}
+      />
+      <View style={sectionStyles.groupBreak} />
       {listed.map((spec, i) => {
         const on = enabledOf(spec.kind);
         return (

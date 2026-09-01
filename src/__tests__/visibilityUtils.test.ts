@@ -26,7 +26,6 @@ import {
   isOnPaceQuota,
   isDismissedToday,
   isTaskBlocked,
-  isSequenceBlocked,
   isWaitingTask,
   activeChainStepTitle,
   displayTitleFor,
@@ -34,7 +33,7 @@ import {
   isCompletionOnTime,
   isCategoryScheduledDay,
 } from '../utils/visibilityUtils';
-import { registerTaskSource, registerProjectSource } from '../utils/blockerRegistry';
+import { registerTaskSource } from '../utils/blockerRegistry';
 import { registerPersonSource } from '../utils/peopleRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -130,6 +129,9 @@ const baseTask: Task = {
   previousStreakCount: 0,
   previousStreakDate: null,
   priorBestStreak: 0,
+  polarity: 'positive',
+  slipCount: 0,
+  slipDate: null,
   showStreak: false,
   streakRequiresWindow: false,
   recurrenceFromCompletion: false,
@@ -145,7 +147,7 @@ const baseTask: Task = {
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, quotaPeriod: 'day',
   progressCount: 0,
   reminderTime: null,
   reminderKind: 'notification',
@@ -1297,7 +1299,6 @@ describe('isTaskNew when a hold comes off', () => {
 
   afterEach(() => {
     registerTaskSource(null);
-    registerProjectSource(null);
     jest.useRealTimers();
   });
 
@@ -1395,55 +1396,6 @@ describe('isTaskNew when a hold comes off', () => {
     registerPersonSource(null);
   });
 
-  describe('a sequential project advancing', () => {
-    const project = {
-      id: 'p1',
-      title: 'Repaint the hallway',
-      notes: '',
-      deadline: null,
-      category: null,
-      sortOrder: 1,
-      archived: false,
-      archivedAt: null,
-      completed: false,
-      completedAt: null,
-      ongoing: false,
-      createdAt: '2025-01-01T00:00:00.000Z',
-      nudgeCadenceDays: 0,
-      autoSchedule: false,
-      sequential: true,
-      nudgeOptIn: false,
-      reviewDeclinedAt: null,
-      backfillDismissedFields: [],
-      kind: 'project' as const,
-      groupId: null,
-      personIds: [],
-    };
-    const first: Task = {
-      ...baseTask, id: 'first', sortOrder: 1, projectId: 'p1', dueDate: dueToday, seenAt,
-      completed: true, completedAt: releasedAt,
-    };
-    const second: Task = {
-      ...baseTask, id: 'second', sortOrder: 2, projectId: 'p1', dueDate: dueToday, seenAt,
-    };
-
-    const withProject = (sequential: boolean) => {
-      registerProjectSource(() => [{ ...project, sequential }]);
-      registerTaskSource(() => [first, second]);
-    };
-
-    it('is true for the step the completed one was standing in front of', () => {
-      withProject(true);
-      expect(isTaskNew(second)).toBe(true);
-    });
-
-    // Nothing was holding it, so nothing was released — a completion elsewhere
-    // in the project isn't a reason for an unrelated task to announce itself.
-    it('is false when the project isn’t sequential', () => {
-      withProject(false);
-      expect(isTaskNew(second)).toBe(false);
-    });
-  });
 });
 
 // ─── isHiddenForVacation ──────────────────────────────────────────────────────
@@ -1515,6 +1467,53 @@ describe('isVisibleApartFromVacation', () => {
   it('still hides a task with no date signal', () => {
     mockSettingsState.vacationMode = true;
     expect(isVisibleApartFromVacation({ ...baseTask, vacationPause: true })).toBe(false);
+  });
+});
+
+// ─── negative habits ─────────────────────────────────────────────────────────
+
+// A negative habit is a standing commitment rather than work waiting for its
+// moment, so it sits on Today all day and none of the ordinary gates apply. The
+// three lenses over dateless tasks are disjoint by design, so it also has to
+// stay out of Inbox and Unscheduled — otherwise one habit shows up in all three.
+describe('a negative habit', () => {
+  const avoid: Task = { ...baseTask, polarity: 'negative' };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockSettingsState.vacationMode = false;
+  });
+
+  it('is visible with no date signal at all, where an ordinary task is not', () => {
+    expect(isVisibleApartFromVacation(baseTask)).toBe(false);
+    expect(isVisibleApartFromVacation(avoid)).toBe(true);
+  });
+
+  it('stays visible past a defer date and outside its own window', () => {
+    const deferUntil = new Date(2025, 5, 20, 12, 0, 0).toISOString();
+    expect(isVisibleApartFromVacation({ ...avoid, deferUntil })).toBe(true);
+    expect(isVisibleApartFromVacation({ ...avoid, windowStart: '23:00' })).toBe(true);
+  });
+
+  it('is hidden once archived', () => {
+    expect(isVisibleApartFromVacation({ ...avoid, archived: true })).toBe(false);
+  });
+
+  // The one intended way to pause tracking one, short of archiving it.
+  it('is hidden by vacation mode like anything else', () => {
+    mockSettingsState.vacationMode = true;
+    expect(isTaskVisible({ ...avoid, vacationPause: true })).toBe(false);
+  });
+
+  it('is neither an inbox task nor an unscheduled one', () => {
+    expect(isInboxTask(baseTask)).toBe(true);
+    expect(isInboxTask(avoid)).toBe(false);
+    expect(isUnscheduledTask({ ...avoid, category: 'Health' })).toBe(false);
   });
 });
 
@@ -2000,9 +1999,7 @@ describe('blocking', () => {
     expect(isTaskVisible(waiter)).toBe(false);
   });
 
-  // #2087: the same hiding, with a person on the other end. It earns the same
-  // treatment because the Waiting screen can name what it's waiting on, which
-  // is the test a sequential project fails.
+  // #2087: the same hiding, with a person on the other end.
   it('hides a task waiting on somebody, and frees it when they go', () => {
     const dustin = {
       id: 'p1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
@@ -2107,88 +2104,6 @@ describe('blocking', () => {
   it('blocks nothing when no task source is registered', () => {
     registerTaskSource(null);
     expect(isTaskBlocked(waiter)).toBe(false);
-  });
-});
-
-// ─── a sequential project's order ────────────────────────────────────────────
-
-describe('isSequenceBlocked', () => {
-  const NOW = new Date(2025, 5, 10, 10, 0, 0);
-  const dueToday = new Date(2025, 5, 10, 0, 0, 0).toISOString();
-  const step = (id: string, sortOrder: number): Task => ({
-    ...baseTask, id, sortOrder, projectId: 'p1', dueDate: dueToday,
-  });
-  const first = step('first', 1);
-  const second = step('second', 2);
-
-  const withProject = (sequential: boolean, tasks: Task[]) => {
-    registerProjectSource(() => [{
-      id: 'p1',
-      title: 'Repaint the hallway',
-      notes: '',
-      deadline: null,
-      category: null,
-      sortOrder: 1,
-      archived: false,
-      archivedAt: null,
-      completed: false,
-      completedAt: null,
-      ongoing: false,
-      createdAt: '2025-01-01T00:00:00.000Z',
-      nudgeCadenceDays: 0,
-      autoSchedule: false,
-      sequential,
-      nudgeOptIn: false,
-      reviewDeclinedAt: null,
-      backfillDismissedFields: [],
-      kind: 'project' as const,
-      groupId: null,
-      personIds: [],
-    }]);
-    registerTaskSource(() => tasks);
-  };
-
-  beforeEach(() => {
-    jest.useFakeTimers();
-    jest.setSystemTime(NOW);
-  });
-
-  afterEach(() => {
-    registerTaskSource(null);
-    registerProjectSource(null);
-    jest.useRealTimers();
-  });
-
-  it('changes nothing for a project that isn’t sequential', () => {
-    withProject(false, [first, second]);
-    expect(isSequenceBlocked(second)).toBe(false);
-    expect(isTaskVisible(second)).toBe(true);
-  });
-
-  it('keeps a later step off Today even though it is due today', () => {
-    withProject(true, [first, second]);
-    expect(isTaskVisible(first)).toBe(true);
-    expect(isSequenceBlocked(second)).toBe(true);
-    expect(isTaskVisible(second)).toBe(false);
-  });
-
-  it('keeps it out of Later too — a held step has no moment to sort by', () => {
-    withProject(true, [first, { ...second, dueDate: new Date(2025, 5, 20).toISOString() }]);
-    expect(isTaskDeferred({ ...second, dueDate: new Date(2025, 5, 20).toISOString() })).toBe(false);
-  });
-
-  // Waiting groups its rows under the task each is waiting on, and a sequence
-  // has none to name — see the note on isSequenceBlocked.
-  it('does not put the held steps on the Waiting screen', () => {
-    withProject(true, [first, second]);
-    expect(isWaitingTask(second)).toBe(false);
-    expect(isTaskBlocked(second)).toBe(false);
-  });
-
-  it('releases the next step when the one above it is completed', () => {
-    withProject(true, [{ ...first, completed: true }, second]);
-    expect(isSequenceBlocked(second)).toBe(false);
-    expect(isTaskVisible(second)).toBe(true);
   });
 });
 

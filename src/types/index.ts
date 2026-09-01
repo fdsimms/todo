@@ -18,6 +18,22 @@ export type ReminderKind = 'notification' | 'alarm' | 'persistent';
  */
 export type DeliverableKind = 'text' | 'date' | 'number';
 
+/**
+ * Which direction a task's success runs in — see `Task.polarity`.
+ *
+ * 'positive' is every task that has ever existed here: something to do, and
+ * doing it is the win. 'negative' is the opposite commitment ("don't smoke"),
+ * where the win is the day passing untouched, so it is never completed and its
+ * streak counts clean days rather than completions.
+ */
+export type Polarity = 'positive' | 'negative';
+
+/**
+ * The stretch a daily target counts across — see `Task.quotaPeriod`. 'day' is
+ * every quota that predates the field; 'week' is "three times a week".
+ */
+export type QuotaPeriod = 'day' | 'week';
+
 export interface Category {
   id: string;
   name: string;
@@ -530,12 +546,6 @@ export interface Project {
   // than global — silently rescheduling is a bigger promise than suggesting,
   // and it's the right call for a chore list and the wrong one for a wishlist.
   autoSchedule: boolean;
-  // Opt-in: the project's hand-sorted order is a sequence, not a preference —
-  // each step is held back until the one above it is done (see
-  // utils/projectOrder.ts). Off by default, because a list of tasks that all
-  // happen to share a project is the normal case and gating it would hide work
-  // the user never asked to have hidden.
-  sequential: boolean;
   // Off by default: a project has to be explicitly opted in before it can
   // appear in ANY nudge surface — the gone-quiet banner, the auto-schedule
   // drip, and even the manually-opened "Pull from projects" sheet (see
@@ -843,7 +853,95 @@ export interface PersonNote {
 }
 
 /**
- * Which of the app's fourteen unattended generators wrote a task — see
+ * How you felt, on the one scale every mood read in the app shares.
+ *
+ * **Fixed 1..5, deliberately, and this is the decision issue #1223 left open.**
+ * The freeform half of that question is answered one field down, on
+ * `LoggedSymptom.name` — a symptom is whatever you call it, because "brain
+ * fog" is not a thing a fixed list could have guessed. Mood is the opposite:
+ * its entire value here is that it is *comparable*, both against your own
+ * other days and against what you got done on them. A user-defined scale
+ * ("1-10", "terrible..great", three faces) makes every number in
+ * `moodInsights.ts` incomparable across the very axis the feature exists to
+ * read, and the define-your-own-scale UI is most of the build. So the scale is
+ * the app's, the vocabulary is yours.
+ *
+ * Stored as the number, so these are storage values — the labels in
+ * `MOOD_LEVELS` (`src/utils/moodLog.ts`) can be reworded freely, the integers
+ * cannot be renumbered.
+ */
+export type MoodLevel = 1 | 2 | 3 | 4 | 5;
+
+/** How bad a symptom was. Fixed for the reason `MoodLevel` is, at a coarser grain. */
+export type SymptomSeverity = 1 | 2 | 3;
+
+/**
+ * One symptom on one log entry, by whatever name you gave it.
+ *
+ * Nested in the entry's JSON rather than being rows of its own, the same call
+ * `Task.tags` makes: a symptom has no lifecycle apart from the entry holding
+ * it, is never pointed at, and is only ever read as part of the entry. The
+ * vocabulary that accumulates from these is derived by reading the entries
+ * (`symptomVocabulary`), not stored — so unlike `tag_registry` there is no
+ * second copy of it to drift, and a symptom you logged once and never again
+ * stops being offered on its own rather than needing a prune.
+ */
+export interface LoggedSymptom {
+  /** Trimmed, stored in the user's own casing; matched case-insensitively. */
+  name: string;
+  severity: SymptomSeverity;
+}
+
+/**
+ * How you were doing at one moment — see `src/utils/moodLog.ts` for the rules
+ * and `src/utils/moodInsights.ts` for what a pile of these can be read to mean.
+ *
+ * Its own entity rather than a `Task`, which is what #1223 concluded and is
+ * worth not re-deriving: there is nothing here to complete, nothing to
+ * schedule, and nothing to defer. It is not a quota either — `targetCount` /
+ * `progressCount` count *toward* a target within a day, where this records an
+ * arbitrary value with no target to reach. What it is closest to is a Logbook
+ * row: a record of something that happened, read in aggregate rather than
+ * worked through.
+ *
+ * **Several a day is the normal case, not an edge one.** Mood moves through a
+ * day, and an app that allowed one entry per day would be asking you to
+ * average your own morning and evening before typing anything. So the entity
+ * is stamped with an instant, and every daily read collapses the day's entries
+ * itself (`dayMoodAverage`) rather than the schema pretending there is one.
+ */
+export interface MoodLog {
+  id: string;
+  /** The instant it was logged. ISO, like every other date in the app. */
+  loggedAt: string;
+  /**
+   * The logical day it counts toward (`2026-08-17`), stamped at write time
+   * from `dayResetTime` rather than derived from `loggedAt` on read.
+   *
+   * Stored rather than computed because `dayResetTime` is a setting the user
+   * can change: derive it on every read and moving your day boundary to 02:00
+   * silently rewrites which day last month's late-night entries belong to,
+   * shifting every correlation in `moodInsights.ts` under a feature whose only
+   * job is to be a truthful record. Stamped once, an entry stays on the day it
+   * was actually made — the same reasoning `completedAt` follows.
+   */
+  dayKey: string;
+  /**
+   * How you felt, or null for an entry that only logs symptoms.
+   *
+   * Nullable because "my knee hurts" is a complete thing to record on a day
+   * you have no particular opinion about your mood, and forcing a number would
+   * make every symptom entry carry an invented one straight into the averages.
+   */
+  mood: MoodLevel | null;
+  /** Empty is the common case and means no symptoms, never "not asked". */
+  symptoms: LoggedSymptom[];
+  /** Whatever you wanted to say about it. Null rather than empty string. */
+  note: string | null;
+}
+
+/**
+ * Which of the app's unattended generators wrote a task — see
  * `Task.generatedKind` below, and `src/utils/generatedTasks.ts` for the
  * mechanism they share.
  *
@@ -914,7 +1012,19 @@ export type GeneratedKind =
   // the same `${dayKey}#${ruleId}` shape weather uses and for the same reason:
   // the source is a rule in settings, not a row a decline could be stamped on,
   // so writeGeneratedOptOut has nothing to write for it either.
-  | 'screenTime';
+  | 'screenTime'
+  // Once a day, a task to write down how you are doing — see
+  // src/utils/moodTasks.ts. Its source id is the day key it is asking about,
+  // the same "square on the calendar, not a row" position calendarReview is
+  // in, and for the same reason writeGeneratedOptOut has nothing to write for
+  // it: the day it names is not a row a decline could be stamped on.
+  | 'moodLog'
+  // A run of low-mood days becomes a task to do something you enjoy — see
+  // src/utils/moodTasks.ts. Beside 'moodLog' the way birthdayGift sits beside
+  // birthday: one pair, two lead-ins, and the second is the only generator in
+  // the app whose trigger is a *trend* in the user's own data rather than a
+  // date, a row or a threshold crossed once.
+  | 'moodNudge';
 
 export interface Task {
   id: string;
@@ -1116,6 +1226,34 @@ export interface Task {
   // behavior is switched off. Off by default, so an existing quota task
   // keeps hiding on pace exactly as it always has.
   quotaAlwaysVisible: boolean;
+
+  /**
+   * The stretch of time the target is counted over: one logical day (every
+   * quota that predates this field, and the default) or one logical week.
+   *
+   * `'week'` is what "three times a week, any days" is. It is deliberately not
+   * a recurrence type, though that is where you would first look for it: a
+   * recurrence answers "what date is next", and this has no next date to give —
+   * any three days will do. What it has is a count and a period, which is a
+   * quota, so it is one flag on the mechanism that already counts rather than a
+   * sixth `RecurrenceType` the whole engine would have to learn.
+   *
+   * Everything that made a daily target work still works, because all of it
+   * reads the *span* rather than the day: the pace ramp, the hide-while-ahead,
+   * the meter, the completion that spawns the next occurrence. Only the span
+   * differs (see `quotaWeekSpan`), which is the reason this is affordable at
+   * all. The pace across a week is linear rather than following active hours
+   * each day — by Wednesday lunchtime you are owed about half of it — because a
+   * week-long ramp is answering "am I going to run out of week", and the hour
+   * of the day doesn't change that answer.
+   *
+   * Deliberately only for the plain kind. `allowOvershoot` and interval quotas
+   * (`quotaRidesOutTheDay`) are day-shaped in their own sweeps and stay daily;
+   * the editor won't offer the combination, and the sweeps guard anyway.
+   *
+   * Pairs with weekly recurrence, which is what spawns next week's occupant.
+   */
+  quotaPeriod: QuotaPeriod;
 
   // Supply — how many units of a consumable are left, for a recurring task
   // that spends one every time it's done. Replacing a CPAP filter monthly out
@@ -1446,9 +1584,62 @@ export interface Task {
   // alone. Resolve-or-shrug like every other cross-row pointer here.
   timeBlockEventId: string | null;
 
-  // Streaks (recurring tasks only)
-  streakCount: number;       // positive = N consecutive completions
-  streakDate: string | null; // logical-day ISO string of last completion
+  /**
+   * Which direction success runs in. 'positive' — do the thing — is every task
+   * that predates this field and the default for every new one.
+   *
+   * A 'negative' task is a commitment *not* to do something, and it inverts
+   * three rules rather than adding a fourth kind of row:
+   *
+   * - **It is never completed.** There is no tap that finishes "don't smoke",
+   *   so `completeTask` refuses one (see the polarity guard there) and the row
+   *   has no checkbox — it has a shield. Keeping it out of the completion path
+   *   is what keeps `completedAt`, the Logbook, Stats and the recurrence engine
+   *   free of special cases, the same trade quota tasks make by going *through*
+   *   completion rather than around it.
+   * - **It stays visible all day** (see isVisibleApartFromVacation), because
+   *   the row is the reminder. A positive task earns its place by being undone;
+   *   an avoid-task that vanished once you were doing well would be missing at
+   *   exactly the moment it is useful.
+   * - **Its streak counts clean days, not completions.** Nothing advances it on
+   *   a tap; the day-rollover pass does (see `rolloverNegativeStreaks`), which
+   *   is the one structural difference the feature actually costs. Tapping is
+   *   the *failure* report, and it breaks the run.
+   */
+  polarity: Polarity;
+
+  /**
+   * Slips logged against a negative task on the day named by `slipDate`, and 0
+   * on any other day.
+   *
+   * Deliberately not `progressCount`, though it counts taps the same way: that
+   * field is read through `isQuotaTask` in a dozen places as progress *toward*
+   * a target, and a slip is the opposite of progress. A negative task with a
+   * target would then read as on-pace for smoking eight cigarettes.
+   *
+   * One field covers both shapes the issue asked for. A binary avoid-task
+   * ("don't smoke") is one that goes 0 → 1 and stops mattering, since the
+   * streak is already broken; a frequency-logged one ("count the cigarettes")
+   * keeps incrementing, and the extra taps are the record. Nothing has to
+   * choose between them up front, so there is no completion_type to set.
+   *
+   * Always read through `slipsToday()` rather than directly — the pair is a
+   * count plus the day it belongs to, and the count alone is stale the moment
+   * the day turns. That is the same discipline `streakDate` imposes on
+   * `streakCount`, and it means a day that rolls over while the app is closed
+   * reads correctly without the rollover pass having run.
+   */
+  slipCount: number;
+  slipDate: string | null; // logical-day ISO string the slips above belong to
+
+  // Streaks
+  //
+  // For a positive task these are consecutive completions, which is what they
+  // have always been. For a negative one they are consecutive clean days, and
+  // every field below means the run either way — which is why polarity is a
+  // flag on the task rather than a second set of columns.
+  streakCount: number;       // positive = N consecutive completions; negative = N clean days
+  streakDate: string | null; // logical-day ISO string of last completion (positive) or last day counted (negative)
 
   // Snapshot of streakCount/streakDate from just before the current
   // completion, so uncompleting (e.g. from the Logbook) can restore the
@@ -1731,7 +1922,7 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
 // extraTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'slipCount' | 'slipDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"
@@ -1843,6 +2034,10 @@ export interface TemplateItem {
   category: string | null;
   priority: Priority;
   effort: Effort;
+  // Seeded onto the task this item creates, like every other behaviour toggle
+  // here. A "quit smoking" template that could only produce positive tasks
+  // would be a template that can't express the one thing it's for.
+  polarity: Polarity;
 
   recurrenceType: RecurrenceType;
   recurrenceInterval: number;

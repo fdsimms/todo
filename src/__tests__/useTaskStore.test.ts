@@ -1,5 +1,6 @@
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { useTaskStore } from '../store/useTaskStore';
+import { useMoodStore } from '../store/useMoodStore';
 import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
 import { isMissed, isRealCompletion } from '../utils/missed';
 import { isTaskNew } from '../utils/visibilityUtils';
@@ -82,6 +83,10 @@ jest.mock('../db/database', () => ({
   dbBatchUpdateProjectSortOrders: jest.fn(),
   dbGetAllPeople: jest.fn().mockReturnValue([]),
   dbGetAllPersonNotes: jest.fn().mockReturnValue([]),
+  dbGetAllMoodLogs: jest.fn().mockReturnValue([]),
+  dbInsertMoodLog: jest.fn(),
+  dbUpdateMoodLog: jest.fn(),
+  dbDeleteMoodLog: jest.fn(),
   dbInsertPersonNote: jest.fn(),
   dbUpdatePersonNote: jest.fn(),
   dbDeletePersonNote: jest.fn(),
@@ -199,7 +204,7 @@ jest.mock('../store/useCategoryStore', () => ({
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: jest.fn(() => ({
-      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
       newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
       // The settings that name a category — renaming or deleting one has to
       // carry them with it (see renameCategory/deleteCategory).
@@ -303,7 +308,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, quotaPeriod: 'day',
   tags: [],
   category: null,
   sortOrder: 1,
@@ -320,6 +325,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakCount: 0,
   previousStreakDate: null,
   priorBestStreak: 0,
+  polarity: 'positive',
+  slipCount: 0,
+  slipDate: null,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -394,7 +402,6 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   createdAt: '2025-01-01T00:00:00.000Z',
   nudgeCadenceDays: 14,
   autoSchedule: false,
-  sequential: false,
   nudgeOptIn: true,
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
@@ -429,7 +436,7 @@ beforeEach(() => {
   useTemplateStore.setState({ templates: [], initialized: false });
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
   useSettingsStore.getState.mockReturnValue({
-    dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+    dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
     newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
     mealCookTaskCategory: null, groceryUseUpTaskCategory: null, leftoverUseUpTaskCategory: null,
     calendarEventCategory: null, collapsedCategories: [], titleRules: [],
@@ -918,7 +925,7 @@ describe('newTaskFromDraft: newTaskDefaults', () => {
 
   const withDefaults = (newTaskDefaults: Record<string, unknown>) => {
     useSettingsStore.getState.mockReturnValue({
-      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
       newTaskDefaults,
     });
   };
@@ -4453,6 +4460,221 @@ describe('checkCalendarReviewTasks', () => {
 });
 
 // ─── checkMealPlanNudge ─────────────────────────────────────────────────────
+
+describe('checkMoodTasks', () => {
+  const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
+    useSettingsStore: { getState: jest.Mock };
+  };
+
+  // Aug 25 2026 9am, so today's day key (2026-08-25) is deterministic whenever
+  // the suite runs.
+  const NOW = new Date(2026, 7, 25, 9, 0, 0);
+  const TODAY = '2026-08-25';
+
+  const settings = (overrides: Record<string, unknown> = {}) => ({
+    dayResetTime: '00:00',
+    moodLogTasks: true,
+    moodLogTaskCategory: 'Health',
+    moodLogLastDayKey: null as string | null,
+    setMoodLogLastDayKey: jest.fn(),
+    moodNudgeTasks: false,
+    moodNudgeTaskCategory: 'Health',
+    moodNudgeAfterDays: 3,
+    moodNudgeLastDayKey: null as string | null,
+    setMoodNudgeLastDayKey: jest.fn(),
+    newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
+    titleRules: [],
+    collapsedCategories: [],
+    ...overrides,
+  });
+
+  const entry = (dayKey: string, mood: number | null) => ({
+    id: `m-${dayKey}`,
+    loggedAt: `${dayKey}T09:00:00.000Z`,
+    dayKey,
+    mood,
+    symptoms: [],
+    note: null,
+  });
+
+  /** N consecutive low days ending today. */
+  const lowRun = (count: number) => {
+    const out = [];
+    for (let i = 0; i < count; i++) {
+      const d = new Date(2026, 7, 25 - i);
+      const key = `2026-08-${String(d.getDate()).padStart(2, '0')}`;
+      out.push(entry(key, 1));
+    }
+    return out;
+  };
+
+  const setLogs = (logs: unknown[]) => {
+    useMoodStore.setState({ logs: logs as never, initialized: true });
+  };
+
+  const tasksOfKind = (kind: string) =>
+    useTaskStore.getState().tasks.filter(t => t.generatedKind === kind && !t.completed && !t.archived);
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    useSettingsStore.getState.mockReturnValue(settings());
+    useTaskStore.setState({ tasks: [] });
+    setLogs([]);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    setLogs([]);
+  });
+
+  describe('the daily check-in', () => {
+    it('writes one for today, filed and linked to the sheet that answers it', () => {
+      useTaskStore.getState().checkMoodTasks();
+
+      const [check] = tasksOfKind('moodLog');
+      expect(check.title).toBe('Log how you\'re feeling');
+      expect(check.generatedSourceId).toBe(TODAY);
+      expect(check.category).toBe('Health');
+      // Without the link the only thing to do with the row is tick it, which
+      // marks the question answered without recording an answer.
+      expect(check.linkUrl).toBe('dundundun://mood?log=1');
+    });
+
+    it('writes nothing when the day has already been logged', () => {
+      setLogs([entry(TODAY, 4)]);
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
+    it('does not hand back one the user swiped away earlier the same day', () => {
+      const store = settings({ moodLogLastDayKey: TODAY });
+      useSettingsStore.getState.mockReturnValue(store);
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
+    it('marks the day considered even when it decides against writing one', () => {
+      const store = settings();
+      useSettingsStore.getState.mockReturnValue(store);
+      setLogs([entry(TODAY, 4)]);
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(store.setMoodLogLastDayKey).toHaveBeenCalledWith(TODAY);
+    });
+
+    it('clears yesterday\'s unanswered check-in', () => {
+      const store = settings({ moodLogLastDayKey: '2026-08-24' });
+      useSettingsStore.getState.mockReturnValue(store);
+      useTaskStore.getState().checkMoodTasks();
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogLastDayKey: '2026-08-24' }));
+
+      // Roll the clock forward a day and run again.
+      jest.setSystemTime(new Date(2026, 7, 26, 9, 0, 0));
+      useTaskStore.getState().checkMoodTasks();
+
+      const live = tasksOfKind('moodLog');
+      expect(live).toHaveLength(1);
+      expect(live[0].generatedSourceId).toBe('2026-08-26');
+    });
+
+    it('writes nothing while switched off', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTasks: false }));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+
+    it('writes nothing with no category to file it under', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTaskCategory: null }));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')).toHaveLength(0);
+    });
+  });
+
+  describe('the low-mood nudge', () => {
+    const nudgeOn = (overrides: Record<string, unknown> = {}) =>
+      settings({ moodLogTasks: false, moodNudgeTasks: true, ...overrides });
+
+    it('writes one after a run as long as the threshold', () => {
+      useSettingsStore.getState.mockReturnValue(nudgeOn());
+      setLogs(lowRun(3));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      const [nudge] = tasksOfKind('moodNudge');
+      expect(nudge.title).toBe('Plan something you enjoy this week');
+      expect(nudge.notes).toContain('3 days running');
+      expect(nudge.generatedSourceId).toBe(TODAY);
+    });
+
+    it('writes nothing on a run shorter than the threshold', () => {
+      useSettingsStore.getState.mockReturnValue(nudgeOn());
+      setLogs(lowRun(2));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodNudge')).toHaveLength(0);
+    });
+
+    it('holds off within the cooldown, so a long low patch gets one a week', () => {
+      useSettingsStore.getState.mockReturnValue(nudgeOn({ moodNudgeLastDayKey: '2026-08-22' }));
+      setLogs(lowRun(10));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodNudge')).toHaveLength(0);
+    });
+
+    it('offers again once the cooldown has passed', () => {
+      useSettingsStore.getState.mockReturnValue(nudgeOn({ moodNudgeLastDayKey: '2026-08-15' }));
+      setLogs(lowRun(10));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodNudge')).toHaveLength(1);
+    });
+
+    it('stamps the day before writing, so a swiped-away nudge stays away', () => {
+      // The one place in the app where handing a row back would be actively
+      // unkind: the person it lands on is by construction having a bad week.
+      const store = nudgeOn();
+      useSettingsStore.getState.mockReturnValue(store);
+      setLogs(lowRun(4));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(store.setMoodNudgeLastDayKey).toHaveBeenCalledWith(TODAY);
+    });
+
+    it('writes nothing while switched off, however low the run', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodNudgeTasks: false }));
+      setLogs(lowRun(10));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodNudge')).toHaveLength(0);
+    });
+
+    it('writes nothing once the low run has ended', () => {
+      useSettingsStore.getState.mockReturnValue(nudgeOn());
+      setLogs([...lowRun(4).slice(1), entry(TODAY, 5)]);
+
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodNudge')).toHaveLength(0);
+    });
+  });
+});
+
 
 describe('checkMealPlanNudge', () => {
   const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as {
@@ -9232,7 +9454,7 @@ describe('deleteCategory', () => {
     const setLeftoverUseUpTaskCategory = jest.fn();
     const setCalendarEventCategory = jest.fn();
     useSettingsStore.getState.mockReturnValue({
-      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00',
+      dayResetTime: '00:00', autoCompleteProjectsOnDone: false, activeHoursStart: '08:00', activeHoursEnd: '22:00', weekStartsOn: 0,
       newTaskDefaults: { category: null, priority: null, effort: null, timeSegment: null, destination: 'today', openEditorAfterQuickAdd: false },
       mealCookTaskCategory: 'Kitchen', groceryUseUpTaskCategory: 'Kitchen', leftoverUseUpTaskCategory: 'Kitchen',
       calendarEventCategory: 'Kitchen', collapsedCategories: [], titleRules: [],
@@ -9905,6 +10127,75 @@ describe('quota tasks', () => {
       const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
       expect(task.completed).toBe(true);
       expect(task.progressCount).toBe(8);
+    });
+  });
+
+  // A weekly target — "three times a week, any days". The clock in this
+  // describe is Tuesday June 10 2025, and the week starts on Sunday (the mock's
+  // weekStartsOn), so the current week runs Sun June 8 to Sat June 14.
+  describe('rolloverQuotas: a weekly target', () => {
+    const weekly = (overrides: Partial<Task> = {}) =>
+      quota({ quotaPeriod: 'week', recurrenceType: 'weekly', targetCount: 3, ...overrides });
+
+    // The bug the period comparison exists to prevent: on the day test this row
+    // is "yesterday's" and would be closed out at 1/3 every single morning,
+    // making a weekly target impossible to actually complete.
+    it('is left alone mid-week, even though its due date is in the past', () => {
+      useTaskStore.setState({
+        tasks: [weekly({ progressCount: 1, dueDate: new Date(2025, 5, 8, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const task = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(task.completed).toBe(false);
+      expect(task.progressCount).toBe(1);
+    });
+
+    it('is left alone on the last day of its own week', () => {
+      jest.setSystemTime(new Date(2025, 5, 14, 23, 0, 0)); // Sat June 14
+      useTaskStore.setState({
+        tasks: [weekly({ progressCount: 2, dueDate: new Date(2025, 5, 8, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.completed).toBe(false);
+    });
+
+    it('closes out once the week has actually turned', () => {
+      useTaskStore.setState({
+        tasks: [weekly({ progressCount: 2, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const partial = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(partial.completed).toBe(true);
+      expect(partial.progressCount).toBe(2); // the record of that week
+      // Stamped at the end of the week it belonged to (Sun June 1 – Sat June 7),
+      // not today, the same way a daily partial is stamped on its own day.
+      expect(new Date(partial.completedAt!).getDate()).toBe(7);
+    });
+
+    it('spawns next week’s occupant', () => {
+      useTaskStore.setState({
+        tasks: [weekly({ progressCount: 2, dueDate: new Date(2025, 5, 3, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      const live = useTaskStore.getState().tasks.filter(t => !t.completed);
+      expect(live).toHaveLength(1);
+      expect(live[0].progressCount).toBe(0);
+      expect(live[0].quotaPeriod).toBe('week');
+    });
+
+    // The regression guard on the other side: making the sweep period-aware
+    // must not stop it closing an ordinary daily target every night.
+    it('still closes a daily target the next day', () => {
+      useTaskStore.setState({
+        tasks: [quota({ progressCount: 5, dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString() })],
+      });
+      useTaskStore.getState().rolloverQuotas();
+
+      expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.completed).toBe(true);
     });
   });
 
@@ -13125,5 +13416,187 @@ describe('undo/redo history', () => {
     useTaskStore.getState().setLastAction(null);
     expect(useTaskStore.getState().undoStack).toHaveLength(0);
     expect(useTaskStore.getState().redoStack).toHaveLength(0);
+  });
+});
+
+// Negative habits — the polarity that is never completed. The day arithmetic
+// itself is pinned down in negativeHabits.test.ts; these are the store's own
+// three jobs: refusing the completion path, writing a slip, and crediting the
+// days the clock has gone past.
+describe('negative habits', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 10, 10, 0, 0)); // Sat Jan 10 2026
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const avoid = (over: Partial<Task> = {}) =>
+    makeTask({ id: 'smoke', title: "Don't smoke", polarity: 'negative', ...over });
+
+  const seed = (...tasks: Task[]) => useTaskStore.setState({ tasks });
+  const get = (id = 'smoke') => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  describe('completeTask refuses it', () => {
+    // The guard is at the funnel rather than at each caller precisely because
+    // of how many of them there are — the bulk bar, a stack cascade, a focus
+    // session, a widget tap all end up here.
+    it('leaves the task alone', () => {
+      seed(avoid({ streakCount: 4 }));
+      useTaskStore.getState().completeTask('smoke');
+      expect(get().completed).toBe(false);
+      expect(get().completedAt).toBeNull();
+      expect(get().streakCount).toBe(4);
+    });
+
+    it('spawns no successor', () => {
+      seed(avoid({ recurrenceType: 'daily' }));
+      useTaskStore.getState().completeTask('smoke');
+      expect(useTaskStore.getState().tasks).toHaveLength(1);
+    });
+
+    it('still completes an ordinary task', () => {
+      seed(makeTask({ id: 'ordinary' }));
+      useTaskStore.getState().completeTask('ordinary');
+      expect(get('ordinary').completed).toBe(true);
+    });
+  });
+
+  describe('logSlip', () => {
+    it('breaks the run and records the slip', () => {
+      seed(avoid({ streakCount: 12, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().logSlip('smoke');
+      expect(get().streakCount).toBe(0);
+      expect(get().slipCount).toBe(1);
+    });
+
+    it('keeps counting repeat slips on the same day', () => {
+      seed(avoid());
+      useTaskStore.getState().logSlip('smoke');
+      useTaskStore.getState().logSlip('smoke');
+      useTaskStore.getState().logSlip('smoke');
+      expect(get().slipCount).toBe(3);
+    });
+
+    it('offers an undo that gives the run back', () => {
+      seed(avoid({ streakCount: 12, streakDate: new Date(2026, 0, 9).toISOString() }));
+      useTaskStore.getState().logSlip('smoke');
+      expect(useTaskStore.getState().lastAction?.label).toBe('Streak reset (was 12)');
+      useTaskStore.getState().lastAction!.undo();
+      expect(get().streakCount).toBe(12);
+      expect(get().slipCount).toBe(0);
+    });
+
+    it('ignores a positive task', () => {
+      seed(makeTask({ id: 'ordinary' }));
+      useTaskStore.getState().logSlip('ordinary');
+      expect(get('ordinary').slipCount).toBe(0);
+    });
+  });
+
+  describe('rolloverNegativeStreaks', () => {
+    it('credits the clean days that have gone by', () => {
+      seed(avoid({ streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(5); // Jan 6..9 are four whole clean days
+    });
+
+    it('is a no-op on the second call the same day', () => {
+      seed(avoid({ streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(5);
+    });
+
+    it('leaves positive tasks alone', () => {
+      seed(makeTask({ id: 'ordinary', streakCount: 3, streakDate: new Date(2026, 0, 1).toISOString() }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get('ordinary').streakCount).toBe(3);
+    });
+
+    it('leaves an archived habit alone', () => {
+      seed(avoid({ archived: true, streakCount: 1, streakDate: new Date(2026, 0, 5).toISOString() }));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(1);
+    });
+
+    // A slip today and the pass on a later day have to compose: the run picks
+    // back up from the break, not from where the streak was anchored before it.
+    it('picks the run back up after a slip', () => {
+      seed(avoid({ streakCount: 12, streakDate: new Date(2026, 0, 1).toISOString() }));
+      useTaskStore.getState().logSlip('smoke');
+      jest.setSystemTime(new Date(2026, 0, 13, 10, 0, 0));
+      useTaskStore.getState().rolloverNegativeStreaks();
+      expect(get().streakCount).toBe(2); // Jan 11 and 12
+    });
+  });
+});
+
+// Converting between the polarities. The two count different things, so the run
+// restarts rather than carrying across — and the dates are the dangerous half.
+describe('changing a task’s polarity', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date(2026, 0, 10, 10, 0, 0));
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  const get = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  // The bug this guards: a task last completed in October carries a streakDate
+  // from October, and the first rollover after the switch would read the whole
+  // gap as clean days and hand over a ninety-day run nobody earned.
+  it('restarts the run instead of inheriting a stale streak date', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'walk', recurrenceType: 'daily',
+        streakCount: 30, streakDate: new Date(2025, 9, 12).toISOString(), priorBestStreak: 30,
+      })],
+    });
+
+    useTaskStore.getState().updateTask('walk', { polarity: 'negative' });
+    expect(get('walk').streakCount).toBe(0);
+
+    useTaskStore.getState().rolloverNegativeStreaks();
+    expect(get('walk').streakCount).toBe(0);
+  });
+
+  it('clears any slips when switching back to an ordinary task', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'smoke', polarity: 'negative',
+        slipCount: 2, slipDate: new Date(2026, 0, 10).toISOString(), streakCount: 0,
+      })],
+    });
+
+    useTaskStore.getState().updateTask('smoke', { polarity: 'positive' });
+    expect(get('smoke').slipCount).toBe(0);
+    expect(get('smoke').slipDate).toBeNull();
+  });
+
+  // The whole-snapshot undo path: a patch naming the count itself is restoring
+  // recorded history, not making the change this rule exists for.
+  it('lets an explicit streakCount in the same patch win', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'x', polarity: 'negative', streakCount: 0 })],
+    });
+    useTaskStore.getState().updateTask('x', { polarity: 'positive', streakCount: 7 });
+    expect(get('x').streakCount).toBe(7);
+  });
+
+  it('leaves the run alone on a patch that does not touch polarity', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'y', polarity: 'negative', streakCount: 9,
+        streakDate: new Date(2026, 0, 9).toISOString(),
+      })],
+    });
+    useTaskStore.getState().updateTask('y', { title: 'Renamed' });
+    expect(get('y').streakCount).toBe(9);
   });
 });

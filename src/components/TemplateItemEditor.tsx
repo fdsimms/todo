@@ -18,7 +18,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, DeliverableKind } from '../types';
+import type { Priority, Effort, TimeOfDay, TemplateAnchor, TemplateItem, TemplateItemCondition, RecurrenceType, ChainItem, DeliverableKind, Polarity } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -130,6 +130,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
+  const [polarity, setPolarity] = useState<Polarity>('positive');
   const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
   const [recurrenceInterval, setRecurrenceInterval] = useState(1);
   const [recurrenceDays, setRecurrenceDays] = useState<number[]>([]);
@@ -184,6 +185,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setEstimatedMinutes(item?.estimatedMinutes ?? draft?.estimatedMinutes ?? null);
     setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
     setExcludeFromSuggestions(item?.excludeFromSuggestions ?? draft?.excludeFromSuggestions ?? false);
+    setPolarity(item?.polarity ?? draft?.polarity ?? 'positive');
     setRecurrenceType(item?.recurrenceType ?? draft?.recurrenceType ?? 'none');
     setRecurrenceInterval(item?.recurrenceInterval ?? draft?.recurrenceInterval ?? 1);
     setRecurrenceDays(item?.recurrenceDays ?? draft?.recurrenceDays ?? []);
@@ -294,6 +296,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       estimatedMinutes,
       vacationPause,
       excludeFromSuggestions,
+      polarity,
       recurrenceType,
       recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
@@ -822,6 +825,31 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
           </View>
           <View style={[styles.toggle, excludeFromSuggestions && styles.toggleOn]}>
             <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+        <View style={styles.sep} />
+        {/* The template-side half of Task.polarity. A "quit smoking" template
+            that could only produce ordinary tasks would be missing the one
+            thing it exists to set up. */}
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setPolarity(p => (p === 'negative' ? 'positive' : 'negative')); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Something to avoid"
+          accessibilityState={{ checked: polarity === 'negative' }}
+        >
+          <Ionicons
+            name="shield-checkmark-outline"
+            size={18}
+            color={polarity === 'negative' ? colors.accent : colors.textSecondary}
+          />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Something to avoid</Text>
+            <Text style={styles.optionHint}>Never completed. It stays on Today and counts the days you get through without it</Text>
+          </View>
+          <View style={[styles.toggle, polarity === 'negative' && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, polarity === 'negative' && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
       </View>

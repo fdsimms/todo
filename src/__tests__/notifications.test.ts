@@ -145,6 +145,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   quotaIntervalMinutes: null,
   quotaReminders: false,
   quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaPeriod: 'day',
   progressCount: 0,
   tags: [],
   sortOrder: 1,
@@ -161,6 +162,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakCount: 0,
   previousStreakDate: null,
   priorBestStreak: 0,
+  polarity: 'positive',
+  slipCount: 0,
+  slipDate: null,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -285,6 +289,12 @@ describe('scheduleTaskReminder', () => {
     await scheduleTaskReminder(makeTask({ id: 'task-cat', reminderTime: FUTURE }));
     const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
     expect(arg.content.categoryIdentifier).toBe(TASK_REMINDER_CATEGORY);
+  });
+
+  it('breaks through a Focus — this is a moment the user asked to be interrupted for', async () => {
+    await scheduleTaskReminder(makeTask({ id: 'task-level', reminderTime: FUTURE }));
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.content.interruptionLevel).toBe('timeSensitive');
   });
 
   it('falls back to "Task reminder" when title is empty', async () => {
@@ -576,6 +586,14 @@ describe('scheduleTimerAlarm', () => {
     await scheduleTimerAlarm(makeTask({ ...running, archived: true }));
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
   });
+
+  it('breaks through a Focus — a countdown someone started and is waiting on', async () => {
+    await scheduleTimerAlarm(
+      makeTask({ id: 'task-1', timedMinutes: 15, timerStartedAt: new Date().toISOString() })
+    );
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.content.interruptionLevel).toBe('timeSensitive');
+  });
 });
 
 const makeShop = (overrides: Partial<Shop> = {}): Shop => ({
@@ -607,6 +625,13 @@ describe('scheduleTripReminder', () => {
     expect(call.content.body).toContain('Costco');
     const msOut = new Date(call.trigger.date).getTime() - Date.parse(startedAt);
     expect(msOut).toBe(2 * 60 * 60 * 1000);
+  });
+
+  it('is a gentle backstop, not a moment the user set — passive, not time-sensitive', async () => {
+    mockSettings.tripReminderEnabled = true;
+    await scheduleTripReminder('Costco', new Date().toISOString());
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.content.interruptionLevel).toBe('passive');
   });
 
   it('cancels rather than schedules once the two-hour mark has already passed', async () => {
@@ -664,6 +689,13 @@ describe('scheduleEventReminder', () => {
     const reminder = makeEventReminder();
     await scheduleEventReminder(reminder);
     expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(`event-reminder:${reminder.key}`);
+  });
+
+  it('breaks through a Focus — the user asked for this reminder at this exact moment', async () => {
+    const reminder = makeEventReminder();
+    await scheduleEventReminder(reminder);
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.content.interruptionLevel).toBe('timeSensitive');
   });
 
   it('does not schedule once the trigger moment has already passed', async () => {
@@ -1182,6 +1214,12 @@ describe('scheduleDailyAgenda', () => {
     expect(arg.content.data).toEqual({ dailyAgenda: true });
   });
 
+  it('lands in the notification list without lighting the screen', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    await scheduleDailyAgenda([dueOnAgendaDay()]);
+    expect(agendaCall().content.interruptionLevel).toBe('passive');
+  });
+
   // The feature's central rule: no notification on a day with nothing on it.
   it('schedules nothing when the day is empty', async () => {
     mockSettings.dailyAgendaEnabled = true;
@@ -1392,6 +1430,12 @@ describe('scheduleStepAlarm', () => {
     expect(call.content.data).toEqual({ stepTimerId: 'st1', recipeId: 'r1' });
   });
 
+  it('breaks through a Focus — someone at the stove needs this the moment it fires', async () => {
+    await scheduleStepAlarm(makeStepTimer());
+    const call = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(call.content.interruptionLevel).toBe('timeSensitive');
+  });
+
   it('schedules nothing for a paused timer', async () => {
     await scheduleStepAlarm(makeStepTimer({ startedAt: null, elapsedSeconds: 60 }));
     expect(Notifications.scheduleNotificationAsync).not.toHaveBeenCalled();
@@ -1486,6 +1530,12 @@ describe('scheduleQuotaNudges', () => {
     );
     expect(dates[0]).toEqual(new Date(2026, 7, 26, 9, 20, 0));
     expect(dates[1]).toEqual(new Date(2026, 7, 26, 9, 40, 0));
+  });
+
+  it('is a generated pacing nudge, not a moment the user asked to be interrupted for', async () => {
+    await scheduleQuotaNudges(paced());
+    const arg = (Notifications.scheduleNotificationAsync as jest.Mock).mock.calls[0][0];
+    expect(arg.content.interruptionLevel).toBe('passive');
   });
 
   it('starts from a hand-started run rather than the window', async () => {

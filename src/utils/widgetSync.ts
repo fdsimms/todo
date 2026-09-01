@@ -118,7 +118,26 @@ async function processPendingAddTasks(): Promise<void> {
 // notion of a stack to collapse them into instead, so they're left off
 // entirely; the stack is still one tap away inside the app.
 function isWidgetWorthy(task: Task): boolean {
+  // A negative habit's only control is "I slipped", and the widget has one
+  // control: a checkbox that queues a completion. That completion is refused
+  // (see the polarity guard in completeTask), so shipping the row would put a
+  // checkbox on the home screen that does nothing at all when tapped — and the
+  // one thing it *looks* like it would do is the opposite of what the task
+  // means. Until the widget can draw a shield, it doesn't carry these.
+  if (task.polarity === 'negative') return false;
   return task.generatedKind !== 'mealPlanNudge';
+}
+
+/**
+ * Exported for the background refresh task, which has no store subscription to
+ * ride and needs the snapshot rewritten once, synchronously, at the end of its
+ * run — the debounced path below is for a live app where writes arrive in
+ * bursts. Everything that makes a write safe is already inside it:
+ * `widgetBridge()` answers not-iOS, demo mode and a build with no native half
+ * in one call.
+ */
+export function writeWidgetSnapshotNow(): void {
+  writeSnapshotNow();
 }
 
 function writeSnapshotNow(): void {

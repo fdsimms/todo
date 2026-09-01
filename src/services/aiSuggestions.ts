@@ -24,6 +24,12 @@ import {
 } from '../utils/substituteSuggestions';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
+import { routeForFeature, type AiRoute } from '../utils/aiRouting';
+import { canReadReceiptOnDevice } from '../utils/receiptOcr';
+import {
+  isOnDeviceReady, runOnDevice, describeOnDeviceError, isOnDeviceErrorMessage,
+  type OnDeviceSchema,
+} from './onDeviceModel';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -47,9 +53,13 @@ interface AnthropicResponse {
  */
 function requireFeature(id: AiFeatureId): { apiKey: string; model: AiModelId } {
   const { anthropicApiKey: apiKey, aiFeatureConfig } = useSettingsStore.getState();
-  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
+  // The switch is checked before the key, which matters now that a missing key
+  // is no longer the end of the road for every feature (see aiRouting.ts).
+  // With both off, "add your API key" is the wrong advice: adding one wouldn't
+  // turn the feature back on.
   const { enabled, model } = aiFeatureConfig[id];
   if (!enabled) throw new Error('AI feature disabled');
+  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
   return { apiKey, model };
 }
 
@@ -93,6 +103,11 @@ async function callAnthropic(
 /** Maps an Anthropic request failure to copy safe to show a user. */
 export function describeAIError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
+  // The on-device path shares this function, because a caller can't know which
+  // engine answered it and shouldn't have to. Its failures are checked first:
+  // they aren't network failures, and the fallthrough at the bottom of this
+  // function would tell someone with no connection involved to check theirs.
+  if (isOnDeviceErrorMessage(message)) return describeOnDeviceError(error);
   if (message === 'No API key' || message.startsWith('No API key configured')) {
     return 'Add your Anthropic API key in Settings.';
   }
@@ -388,6 +403,14 @@ export async function suggestSubtasks(
 /** Names per aisle-sort call. A weekly list is well under this; the cap bounds a pathological one. */
 const MAX_AISLE_NAMES = 60;
 /**
+ * Names per *on-device* generation. The whole batch goes to Claude in one
+ * request, but the on-device window is roughly 4k tokens for prompt and
+ * completion together, and the section list is repeated in the schema on every
+ * call — so the full 60 has to be walked in pieces. Small enough to leave room
+ * for a long walk order, large enough that a typical Other pile is one pass.
+ */
+const ON_DEVICE_AISLE_CHUNK = 15;
+/**
  * Characters of recipe text we'll send. Roughly a long recipe including method.
  * Exported because `recipePage.ts` has to trim a fetched page to fit it, and a
  * second copy of the number there is one that goes stale.
@@ -435,10 +458,15 @@ export async function suggestGroceryAisles(
   names: string[],
   availableAisles: string[],
 ): Promise<Record<string, string>> {
-  const { apiKey, model } = requireFeature('groceryAisles');
-
   const wanted = names.map(n => n.trim()).filter(Boolean).slice(0, MAX_AISLE_NAMES);
   if (wanted.length === 0) return {};
+
+  // Routed before the key is demanded, or the on-device path could never be
+  // reached: `requireFeature` throws on a missing key, which is exactly the
+  // state this feature now has an answer for.
+  const route = groceryAisleRoute();
+  if (route === 'onDevice') return suggestGroceryAislesOnDevice(wanted, availableAisles);
+  const { apiKey, model } = requireFeature('groceryAisles');
 
   const data = await callAnthropic({
     max_tokens: 1000,
@@ -483,11 +511,91 @@ export async function suggestGroceryAisles(
   const input = toolUse?.input as { assignments?: Array<{ name?: unknown; aisle?: unknown }> } | undefined;
   if (!input?.assignments) throw new Error('No suggestions returned');
 
+  return matchBackAisles(input.assignments, wanted, availableAisles);
+}
+
+/**
+ * Which engine answers an aisle sort, read at call time.
+ *
+ * Availability is asked of the device on every call rather than cached:
+ * `notReady` resolves itself while the app is open, and a cached "no" taken at
+ * launch would outlive the reason for it.
+ */
+function groceryAisleRoute(): AiRoute {
+  const { anthropicApiKey, aiFeatureConfig, onDeviceAiEnabled } = useSettingsStore.getState();
+  return routeForFeature('groceryAisles', {
+    enabled: aiFeatureConfig.groceryAisles.enabled,
+    hasApiKey: !!anthropicApiKey,
+    onDeviceEnabled: onDeviceAiEnabled,
+    onDeviceAvailable: isOnDeviceReady(),
+    // Never consulted for this feature, which routes to the language model.
+    // Passed because the input describes the install rather than the feature,
+    // and a required field is what stops a Vision feature's call site
+    // forgetting it.
+    visionAvailable: canReadReceiptOnDevice(),
+  });
+}
+
+/**
+ * The same job on Apple's on-device model, for an install with no key.
+ *
+ * Two things differ from the Claude path and both are the model's shape rather
+ * than a preference. The aisle is declared as an `enum` over the real sections
+ * instead of a described string, because guided generation can constrain the
+ * choice outright and a smaller model given a free string will invent
+ * "Refrigerated"; and the batch is chunked, because the window is roughly 4k
+ * tokens for prompt and completion together and 60 names plus 15 section names
+ * plus the reply is not comfortably inside it.
+ *
+ * `canonicalAisle` still runs over the answer even though the enum should make
+ * it impossible to fail — same discipline the rest of this file keeps, and the
+ * enum is a constraint on the decoder rather than a guarantee from the model.
+ */
+async function suggestGroceryAislesOnDevice(
+  wanted: string[],
+  availableAisles: string[],
+): Promise<Record<string, string>> {
+  const schema: OnDeviceSchema = {
+    name: 'AisleAssignment',
+    description: 'One grocery item and the supermarket section it belongs in',
+    fields: [
+      { name: 'name', type: 'string', description: 'The item name, copied exactly as given.' },
+      { name: 'aisle', type: 'enum', choices: availableAisles, description: 'The section it belongs in.' },
+    ],
+  };
+
+  const out: Record<string, string> = {};
+  for (let i = 0; i < wanted.length; i += ON_DEVICE_AISLE_CHUNK) {
+    const chunk = wanted.slice(i, i + ON_DEVICE_AISLE_CHUNK);
+    const rows = await runOnDevice(
+      [
+        'Assign each of these grocery items to the supermarket section where a shopper would find it.',
+        'Use "Other" only when an item genuinely fits none of the rest.',
+        `Items:\n${chunk.map(n => `- ${n}`).join('\n')}`,
+      ].join('\n\n'),
+      schema,
+    );
+    Object.assign(out, matchBackAisles(rows, chunk, availableAisles));
+  }
+  return out;
+}
+
+/**
+ * Turns whatever a model said into a name → aisle map over the names actually
+ * sent. Shared by both paths deliberately: this is the layer that refuses to
+ * trust a returned string as an identifier, and two copies of it would be two
+ * places for that refusal to drift.
+ */
+function matchBackAisles(
+  assignments: Array<{ name?: unknown; aisle?: unknown }>,
+  wanted: string[],
+  availableAisles: string[],
+): Record<string, string> {
   // Match back against what we actually sent, so a hallucinated item can't
   // enter the result and a renamed one can't silently miss.
   const byLower = new Map(wanted.map(n => [n.toLowerCase(), n]));
   const out: Record<string, string> = {};
-  for (const a of input.assignments) {
+  for (const a of assignments) {
     if (typeof a?.name !== 'string') continue;
     const original = byLower.get(a.name.trim().toLowerCase());
     if (!original) continue;
@@ -1474,8 +1582,16 @@ export interface ExtractedReceipt {
 }
 
 /**
- * Reads a photo of a store receipt into the store's name and the lines it
- * charged for.
+ * The longest reconstructed receipt sent as text. Mirrors `MAX_RECIPE_CHARS` —
+ * a till roll long enough to exceed this is one where the tail is the survey
+ * blurb, and a runaway recognition (a photo of a page of prose) should cost a
+ * bounded request rather than an unbounded one.
+ */
+const MAX_RECEIPT_CHARS = 6_000;
+
+/**
+ * Reads a store receipt into the store's name and the lines it charged for,
+ * from a photo or from text already read off one.
  *
  * This is the "what did I actually buy, and what did it cost" half of a trip,
  * which the app could otherwise only learn by someone typing a price per row
@@ -1491,24 +1607,59 @@ export interface ExtractedReceipt {
  * The prompt spends most of its length on what *isn't* an item, because a
  * receipt is mostly not items: totals, tax, tender, change, loyalty numbers,
  * store addresses and a paragraph about a survey. Every one of those read as a
- * line would arrive as an unmatched row for the user to dismiss by hand.
+ * line would arrive as an unmatched row for the user to dismiss by hand. That
+ * half is identical on both paths — it is about what a receipt *is*, not about
+ * how this one arrived.
+ *
+ * **The text path is the preferred one and the photo is the fallback**, which
+ * is the reverse of `extractRecipe`, where a photo of a page is the real
+ * source. Vision reads a receipt on device for free, instantly and at the
+ * photo's own resolution (`src/utils/receiptOcr.ts`), so what reaches here is
+ * usually the printed rows already paired with their prices — and transcription
+ * was never the hard part of this feature. What is left is the part a device
+ * can't do: knowing that "BNLS SKNLS CHKN BRST" is chicken breast, and that
+ * the line under it is a bag fee rather than a thing that was bought.
+ * `ReceiptImportSheet` decides which path a scan takes; see `shouldUseOcrText`
+ * for when a reading is too thin to be worth sending.
  */
-export async function extractReceipt(image: RecipeImage): Promise<ExtractedReceipt> {
+export async function extractReceipt(source: string | RecipeImage): Promise<ExtractedReceipt> {
   const { apiKey, model } = requireFeature('receiptImport');
 
   const empty: ExtractedReceipt = { storeName: '', lines: [], totalMinor: null, date: null };
+  const image = typeof source === 'string' ? null : source;
+  const text = typeof source === 'string' ? source.trim().slice(0, MAX_RECEIPT_CHARS) : '';
   // Same "nothing in, no network call" guard the recipe path uses.
-  if (!image.base64) return empty;
+  if (image ? !image.base64 : !text) return empty;
 
-  const prompt = [
-    'This is a photo of a store receipt. Read it and extract the store\'s name, the date it was printed, and every line it charged for.',
+  // What the two paths don't share is only ever the first paragraph and the
+  // last: what this is, and what to do when it can't be read. Everything
+  // between them is about receipts.
+  const shared = [
     'The date is when the purchase actually happened, not today\'s date — receipts print it in the header or footer, often next to a time or a transaction number. Give it as YYYY-MM-DD. Leave it empty if the receipt does not print one or it is not legible.',
     'Include only lines that are a thing that was bought. Skip subtotals, totals, tax, tender and change, card and authorization details, loyalty and membership numbers, store address and phone, cashier and register numbers, survey invitations, coupons and discount lines, bag fees, and bottle deposits.',
     'For each item give three things: the line exactly as printed including its abbreviations ("GV MLK 2% GAL"); what it plainly is, named the way a shopper would say it and would write it on a shopping list ("milk"); and the amount the line names if it gives one ("1.32 lb", "2").',
     'The price is the amount that line was charged, which on a weighed line is the total for the weight rather than the price per pound. Give it exactly as printed, with a decimal point and no currency symbol ("3.48").',
     'Receipts abbreviate hard and inconsistently. Read the abbreviation as the product it stands for when you can ("BNLS SKNLS CHKN BRST" is "chicken breast", "SHRP CHDR" is "sharp cheddar"). When a line is genuinely unreadable or you cannot tell what it stands for, copy the printed text into both fields rather than inventing a product.',
-    'If the photo is too blurry, too dark, cut off, or is not a receipt at all, return an empty store name and an empty line list rather than guessing.',
-  ].join('\n\n');
+  ];
+
+  const prompt = image
+    ? [
+        'This is a photo of a store receipt. Read it and extract the store\'s name, the date it was printed, and every line it charged for.',
+        ...shared,
+        'If the photo is too blurry, too dark, cut off, or is not a receipt at all, return an empty store name and an empty line list rather than guessing.',
+      ].join('\n\n')
+    : [
+        'Below is the text of a store receipt, read off a photo of it by on-device text recognition. Extract the store\'s name, the date it was printed, and every line it charged for.',
+        'One printed row per line, in the order they were printed. Where an amount was read at the end of a row it is separated from the rest by a tab; a row with no tab is one where nothing was read as a price, which is most of the header and the footer and is occasionally an item whose amount was missed.',
+        // The recogniser transcribes rather than interprets, and is told not to
+        // language-correct (see the Swift module) precisely so that shorthand
+        // arrives intact. The cost of that is character-level noise, which the
+        // model is far better placed to see through than a corrector is.
+        'The recognition is good but not perfect, and it does not correct what it reads: expect confusions between similar characters (0 and O, 1 and l, 5 and S, rn and m), split or joined words, and the occasional dropped character. Read through that the way you would read a smudged receipt. Do not treat a garbled row as a different product than the one it plainly is.',
+        ...shared,
+        'If this is not a receipt, or too little of it came through to tell what was bought, return an empty store name and an empty line list rather than guessing.',
+        `Receipt:\n${text}`,
+      ].join('\n\n');
 
   const data = await callAnthropic({
     max_tokens: 4000,
@@ -1563,15 +1714,21 @@ export async function extractReceipt(image: RecipeImage): Promise<ExtractedRecei
     tool_choice: { type: 'tool', name: 'extract_receipt' },
     messages: [{
       role: 'user',
-      content: [
-        {
-          type: 'image',
-          source: { type: 'base64', media_type: image.mediaType, data: image.base64 },
-        },
-        { type: 'text', text: prompt },
-      ],
+      // The text path sends a bare string, so its request body is the shape
+      // every non-photo extractor in this file already sends — same reasoning
+      // as `extractRecipe`'s two content shapes.
+      content: image
+        ? [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: image.mediaType, data: image.base64 },
+            },
+            { type: 'text', text: prompt },
+          ]
+        : prompt,
     }],
-  }, apiKey, model, IMAGE_REQUEST_TIMEOUT_MS);
+    // Only an upload needs the longer window; text is an ordinary request.
+  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {

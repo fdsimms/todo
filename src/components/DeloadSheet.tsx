@@ -30,6 +30,15 @@ interface Props {
   visible: boolean;
   /** The tasks currently on the day being lightened (TodayScreen's visible list). */
   todaysTasks: readonly Task[];
+  /**
+   * One line saying a low run is going, or null — see `lowMoodDeloadNote`.
+   *
+   * Shown, and nothing more: it does not change which rows come pre-checked.
+   * Those defaults answer "what can move", which is a question about the tasks,
+   * and letting a mood answer it would have the app taking a streak or somebody
+   * else's blocker off the day on the strength of how you said you felt.
+   */
+  lowMoodNote?: string | null;
   onClose: () => void;
 }
 
@@ -56,7 +65,7 @@ const MODES: SegmentOption<DayMode>[] = [
   { value: 'suggested', label: 'Best day', accessibilityLabel: 'Move to the best day' },
   { value: 'tomorrow', label: 'Tomorrow', accessibilityLabel: 'Move to tomorrow' },
 ];
-export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
+export function DeloadSheet({ visible, todaysTasks, lowMoodNote, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -281,6 +290,10 @@ export function DeloadSheet({ visible, todaysTasks, onClose }: Props) {
             </View>
           </View>
 
+          {!!lowMoodNote && (
+            <Text style={styles.moodNote}>{lowMoodNote}</Text>
+          )}
+
           {plan.proposals.length === 0 ? (
             <Text style={styles.emptyHint}>Nothing on today to move.</Text>
           ) : plan.proposals.every(p => p.suggested === null && p.tomorrow === null) ? (
@@ -405,6 +418,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   hint: {
     color: colors.textTertiary,
     fontSize: font.xs,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+  },
+  // Above the mode switch and a step louder than the hint below it: it is the
+  // context for why you are here, rather than an instruction for what to do
+  // next. Same horizontal padding as its neighbours, which the card doesn't
+  // supply for its children.
+  moodNote: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
   },

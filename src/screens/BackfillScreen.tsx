@@ -90,7 +90,6 @@ const CATEGORY_FIELD_ICONS: Record<CategoryBackfillFieldId, { row: keyof typeof 
 // to reach for the way the toggle fields do.
 const PROJECT_FIELD_ICONS: Record<ProjectBackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   nudge: 'notifications-outline',
-  sequential: 'list-outline',
 };
 
 // Neither person field with a value picker has a filled/outline pair to
@@ -592,8 +591,8 @@ export function BackfillScreen() {
   // confirm — registering the snapshot with setLastAction, same as
   // TaskEditor's save, is what makes a mis-tap recoverable via shake-to-undo
   // instead of a trip back into the task editor. Category and project fields
-  // don't go through setLastAction/shake-to-undo yet — see applyCategory,
-  // applySequential and applyNudge below.
+  // don't go through setLastAction/shake-to-undo yet — see applyCategory
+  // and applyNudge below.
   const apply = (patch: Partial<Task>, valueText: string) => {
     if (!currentTask || active?.kind !== 'task') return;
     haptics.tap();
@@ -652,22 +651,6 @@ export function BackfillScreen() {
           case 'newBanner': setCategoryExcludeFromNewTasksBanner(categoryName, false); break;
         }
       },
-    });
-  };
-
-  const applySequential = () => {
-    if (!currentProject) return;
-    haptics.tap();
-    animateLayout();
-    recordVisited();
-    setManualCurrentId(null);
-    const projectId = currentProject.id;
-    updateProject(projectId, { sequential: true });
-    logSession({
-      itemId: projectId,
-      title: currentProject.title,
-      valueText: PROJECT_BACKFILL_FIELDS.find(f => f.id === 'sequential')!.label,
-      undo: () => updateProject(projectId, { sequential: false }),
     });
   };
 
@@ -1747,55 +1730,43 @@ export function BackfillScreen() {
               </View>
             </View>
 
-            {active.id === 'sequential' ? (
+            <View style={styles.cadenceRow}>
+              <View style={styles.cadenceStepperRow}>
+                <CountStepper
+                  value={nudgeDraft.count}
+                  onChange={next => setNudgeDraft(prev => ({ ...prev, count: next }))}
+                  min={1}
+                  max={CADENCE_UNIT_MAX[nudgeDraft.unit]}
+                  label="Review cadence"
+                  describeValue={n => describeCadence(fromCadenceParts({ ...nudgeDraft, count: n }))}
+                />
+              </View>
+              <View style={styles.pillRow}>
+                {CADENCE_UNITS.map(unit => {
+                  const unitSelected = nudgeDraft.unit === unit;
+                  return (
+                    <PressableScale
+                      key={unit}
+                      style={[styles.pill, unitSelected && styles.pillActive]}
+                      onPress={() => { haptics.tap(); setNudgeDraft(prev => withCadenceUnit(prev, unit)); }}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: unitSelected }}
+                    >
+                      <Text style={styles.pillText}>{cadenceUnitLabel(unit)}</Text>
+                    </PressableScale>
+                  );
+                })}
+              </View>
               <PressableScale
                 style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
-                onPress={applySequential}
+                onPress={applyNudge}
                 accessibilityRole="button"
-                accessibilityLabel={projectField.label}
+                accessibilityLabel={`Bring this project up every ${describeCadence(fromCadenceParts(nudgeDraft))}`}
               >
-                <Ionicons name="list" size={iconSize.md} color={colors.onAccent} />
-                <Text style={styles.toggleButtonText}>{projectField.label}</Text>
+                <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
+                <Text style={styles.toggleButtonText}>Bring it up this often</Text>
               </PressableScale>
-            ) : (
-              <View style={styles.cadenceRow}>
-                <View style={styles.cadenceStepperRow}>
-                  <CountStepper
-                    value={nudgeDraft.count}
-                    onChange={next => setNudgeDraft(prev => ({ ...prev, count: next }))}
-                    min={1}
-                    max={CADENCE_UNIT_MAX[nudgeDraft.unit]}
-                    label="Review cadence"
-                    describeValue={n => describeCadence(fromCadenceParts({ ...nudgeDraft, count: n }))}
-                  />
-                </View>
-                <View style={styles.pillRow}>
-                  {CADENCE_UNITS.map(unit => {
-                    const unitSelected = nudgeDraft.unit === unit;
-                    return (
-                      <PressableScale
-                        key={unit}
-                        style={[styles.pill, unitSelected && styles.pillActive]}
-                        onPress={() => { haptics.tap(); setNudgeDraft(prev => withCadenceUnit(prev, unit)); }}
-                        accessibilityRole="button"
-                        accessibilityState={{ selected: unitSelected }}
-                      >
-                        <Text style={styles.pillText}>{cadenceUnitLabel(unit)}</Text>
-                      </PressableScale>
-                    );
-                  })}
-                </View>
-                <PressableScale
-                  style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
-                  onPress={applyNudge}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Bring this project up every ${describeCadence(fromCadenceParts(nudgeDraft))}`}
-                >
-                  <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
-                  <Text style={styles.toggleButtonText}>Bring it up this often</Text>
-                </PressableScale>
-              </View>
-            )}
+            </View>
 
             <View style={styles.actionRow}>
               <PressableScale

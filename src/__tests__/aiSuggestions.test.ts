@@ -11,6 +11,7 @@ import {
   suggestGroceryAisles,
   suggestRecipeGroceries,
   extractRecipe,
+  extractReceipt,
   suggestMealIdeas,
   draftMealRecipe,
   suggestSubstitutes,
@@ -30,16 +31,43 @@ const TEST_AI_FEATURE_CONFIG = {
   recipeExtraction: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   mealIdeas: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   substitutes: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+  receiptImport: { enabled: true, model: 'claude-sonnet-5' },
 };
+
+/**
+ * Mutable so the routing tests at the bottom can take the key away — every
+ * other test in this file wants the default, which is "has a key", and gets it
+ * from the `beforeEach` reset below.
+ */
+let mockSettings: {
+  anthropicApiKey: string;
+  aiFeatureConfig: typeof TEST_AI_FEATURE_CONFIG;
+  onDeviceAiEnabled: boolean;
+};
+
+const resetMockSettings = () => {
+  mockSettings = {
+    anthropicApiKey: 'test-key-does-not-hit-network',
+    aiFeatureConfig: JSON.parse(JSON.stringify(TEST_AI_FEATURE_CONFIG)),
+    onDeviceAiEnabled: true,
+  };
+};
+resetMockSettings();
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
-    getState: () => ({
-      anthropicApiKey: 'test-key-does-not-hit-network',
-      aiFeatureConfig: TEST_AI_FEATURE_CONFIG,
-    }),
+    getState: () => mockSettings,
   },
 }));
+
+const mockOnDeviceAvailable = jest.fn(() => false);
+const mockGenerateOnDevice = jest.fn();
+
+jest.mock('todo-foundation-models', () => ({
+  isOnDeviceModelAvailable: () => mockOnDeviceAvailable(),
+  onDeviceModelAvailability: () => (mockOnDeviceAvailable() ? 'available' : 'unavailable'),
+  generateOnDevice: (prompt: string, schema: unknown) => mockGenerateOnDevice(prompt, schema),
+}), { virtual: true });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,6 +115,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   quotaIntervalMinutes: null,
   quotaReminders: false,
   quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaPeriod: 'day',
   progressCount: 0,
   tags: [],
   category: null,
@@ -104,6 +133,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakCount: 0,
   previousStreakDate: null,
   priorBestStreak: 0,
+  polarity: 'positive',
+  slipCount: 0,
+  slipDate: null,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -169,6 +201,12 @@ function mockFetchOnce(body: object, status = 200) {
 // Setup
 // ---------------------------------------------------------------------------
 
+beforeEach(() => {
+  resetMockSettings();
+  mockOnDeviceAvailable.mockReturnValue(false);
+  mockGenerateOnDevice.mockReset();
+});
+
 afterEach(() => {
   jest.restoreAllMocks();
   jest.useRealTimers();
@@ -188,7 +226,7 @@ describe('suggestTemplateItems', () => {
     jest.spyOn(
       require('../store/useSettingsStore').useSettingsStore,
       'getState',
-    ).mockReturnValueOnce({ anthropicApiKey: '' });
+    ).mockReturnValueOnce({ anthropicApiKey: '', aiFeatureConfig: TEST_AI_FEATURE_CONFIG });
 
     await expect(suggestTemplateItems('Vacation prep', [])).rejects.toThrow('No API key');
   });
@@ -269,7 +307,7 @@ describe('suggestProjectTasks', () => {
     jest.spyOn(
       require('../store/useSettingsStore').useSettingsStore,
       'getState',
-    ).mockReturnValueOnce({ anthropicApiKey: '' });
+    ).mockReturnValueOnce({ anthropicApiKey: '', aiFeatureConfig: TEST_AI_FEATURE_CONFIG });
 
     await expect(suggestProjectTasks('Repaint the hallway', '', [])).rejects.toThrow('No API key');
   });
@@ -508,6 +546,134 @@ describe('suggestGroceryAisles', () => {
     expect(describeAIError(new Error('API error 429'))).toBe(
       'Rate limited by Anthropic. Try again in a moment.'
     );
+  });
+});
+
+// ============================================================================
+// suggestGroceryAisles — the on-device route (#2284)
+// ============================================================================
+
+describe('suggestGroceryAisles on the on-device model', () => {
+  /** No key, model present: the state the whole feature exists for. */
+  const noKeyWithModel = () => {
+    mockSettings.anthropicApiKey = '';
+    mockOnDeviceAvailable.mockReturnValue(true);
+  };
+
+  it('answers with no key and no network at all', async () => {
+    noKeyWithModel();
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    mockGenerateOnDevice.mockResolvedValue([
+      { name: 'nduja', aisle: 'Pantry' },
+      { name: 'kale', aisle: 'Produce' },
+    ]);
+
+    await expect(suggestGroceryAisles(['nduja', 'kale'], AISLES)).resolves.toEqual({
+      nduja: 'Pantry',
+      kale: 'Produce',
+    });
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  // The aisle is an enum over the real walk order rather than a described
+  // string: guided generation can constrain the choice outright, and a smaller
+  // model handed a free string invents "Refrigerated".
+  it('constrains the aisle to the sections the app actually has', async () => {
+    noKeyWithModel();
+    mockGenerateOnDevice.mockResolvedValue([]);
+    await suggestGroceryAisles(['nduja'], AISLES);
+
+    const [, schema] = mockGenerateOnDevice.mock.calls[0];
+    const aisleField = schema.fields.find((f: { name: string }) => f.name === 'aisle');
+    expect(aisleField.type).toBe('enum');
+    expect(aisleField.choices).toEqual(AISLES);
+  });
+
+  // Same refusal the Claude path makes, and the reason it's shared code: the
+  // enum should make this impossible, but the enum constrains the decoder, it
+  // is not a promise from the model.
+  it('still drops an aisle the app does not have', async () => {
+    noKeyWithModel();
+    mockGenerateOnDevice.mockResolvedValue([
+      { name: 'nduja', aisle: 'Charcuterie' },
+      { name: 'kale', aisle: 'Produce' },
+    ]);
+    await expect(suggestGroceryAisles(['nduja', 'kale'], AISLES)).resolves.toEqual({
+      kale: 'Produce',
+    });
+  });
+
+  it('still drops a name it was never given', async () => {
+    noKeyWithModel();
+    mockGenerateOnDevice.mockResolvedValue([
+      { name: 'sourdough', aisle: 'Pantry' },
+      { name: 'kale', aisle: 'Produce' },
+    ]);
+    await expect(suggestGroceryAisles(['kale'], AISLES)).resolves.toEqual({ kale: 'Produce' });
+  });
+
+  // The window is ~4k tokens for prompt and completion together, so the batch
+  // Claude takes in one request has to be walked in pieces.
+  it('walks a long list in chunks rather than one oversized prompt', async () => {
+    noKeyWithModel();
+    const names = Array.from({ length: 32 }, (_, i) => `item ${i}`);
+    mockGenerateOnDevice.mockImplementation((prompt: string) => {
+      const asked = names.filter(n => prompt.includes(`- ${n}\n`) || prompt.endsWith(`- ${n}`));
+      return Promise.resolve(asked.map(n => ({ name: n, aisle: 'Pantry' })));
+    });
+
+    const result = await suggestGroceryAisles(names, AISLES);
+    expect(Object.keys(result)).toHaveLength(32);
+    expect(mockGenerateOnDevice.mock.calls.length).toBeGreaterThan(1);
+    for (const [prompt] of mockGenerateOnDevice.mock.calls) {
+      expect(prompt.split('\n- ').length - 1).toBeLessThanOrEqual(15);
+    }
+  });
+
+  it('prefers the key when there is one', async () => {
+    mockOnDeviceAvailable.mockReturnValue(true);
+    mockFetchOnce(toolUseResponse('assign_aisles', {
+      assignments: [{ name: 'kale', aisle: 'Produce' }],
+    }));
+    await expect(suggestGroceryAisles(['kale'], AISLES)).resolves.toEqual({ kale: 'Produce' });
+    expect(mockGenerateOnDevice).not.toHaveBeenCalled();
+  });
+
+  // On-device is a floor under the features, never a way past a switch.
+  it('does not run when the feature itself is switched off', async () => {
+    noKeyWithModel();
+    mockSettings.aiFeatureConfig.groceryAisles.enabled = false;
+    await expect(suggestGroceryAisles(['kale'], AISLES)).rejects.toThrow('AI feature disabled');
+    expect(mockGenerateOnDevice).not.toHaveBeenCalled();
+  });
+
+  it('does not run when the on-device switch is off', async () => {
+    noKeyWithModel();
+    mockSettings.onDeviceAiEnabled = false;
+    await expect(suggestGroceryAisles(['kale'], AISLES)).rejects.toThrow('No API key configured');
+    expect(mockGenerateOnDevice).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the no-key error when the device has no model', async () => {
+    mockSettings.anthropicApiKey = '';
+    mockOnDeviceAvailable.mockReturnValue(false);
+    await expect(suggestGroceryAisles(['kale'], AISLES)).rejects.toThrow('No API key configured');
+    expect(mockGenerateOnDevice).not.toHaveBeenCalled();
+  });
+
+  // An on-device failure is not a network failure, and the shared error copy
+  // must not tell someone to check a connection nothing used.
+  it('describes its own failures without mentioning the network', async () => {
+    expect(describeAIError(new Error('On-device model unavailable')))
+      .toBe('On-device suggestions aren\'t available on this device.');
+    expect(describeAIError(new Error('On-device model returned malformed output')))
+      .toBe('Nothing came back that could be used. Try again.');
+  });
+
+  it('asks for nothing when the list is empty, on either route', async () => {
+    noKeyWithModel();
+    await expect(suggestGroceryAisles(['  ', ''], AISLES)).resolves.toEqual({});
+    expect(mockGenerateOnDevice).not.toHaveBeenCalled();
   });
 });
 
@@ -1164,7 +1330,7 @@ describe('suggestMealIdeas', () => {
     jest.spyOn(
       require('../store/useSettingsStore').useSettingsStore,
       'getState',
-    ).mockReturnValue({ anthropicApiKey: '' });
+    ).mockReturnValue({ anthropicApiKey: '', aiFeatureConfig: TEST_AI_FEATURE_CONFIG });
 
     await expect(suggestMealIdeas([], [], 3)).rejects.toThrow('No API key');
   });
@@ -1339,7 +1505,7 @@ describe('draftMealRecipe', () => {
     jest.spyOn(
       require('../store/useSettingsStore').useSettingsStore,
       'getState',
-    ).mockReturnValue({ anthropicApiKey: '' });
+    ).mockReturnValue({ anthropicApiKey: '', aiFeatureConfig: TEST_AI_FEATURE_CONFIG });
 
     await expect(draftMealRecipe('Lemon chicken', AISLES, 4)).rejects.toThrow('No API key');
   });
@@ -1596,5 +1762,114 @@ describe('extractRecipe source provenance', () => {
     expect(result.sourceTitle).toBeNull();
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
     expect(body.tools[0].input_schema.properties.sourceTitle).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// extractReceipt
+// ============================================================================
+
+describe('extractReceipt', () => {
+  const PHOTO = { base64: 'QUJD', mediaType: 'image/jpeg' as const };
+  const OCR_TEXT = "TRADER JOE'S #453\nGV MLK 2% GAL\t3.48\nBANANAS\t1.29";
+
+  const bodyOf = (spy: jest.SpyInstance) =>
+    JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+
+  describe('from text read on device', () => {
+    it('sends a bare string rather than an image block', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(OCR_TEXT);
+
+      const content = bodyOf(spy).messages[0].content;
+      expect(typeof content).toBe('string');
+      expect(content).toContain('read off a photo of it by on-device text recognition');
+      expect(content).toContain(`Receipt:\n${OCR_TEXT}`);
+    });
+
+    it('explains the tab that separates a row from its price', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(OCR_TEXT);
+      expect(bodyOf(spy).messages[0].content).toContain('separated from the rest by a tab');
+    });
+
+    it('warns that the recognition is uncorrected rather than clean', async () => {
+      // The recogniser has language correction off on purpose, so shorthand
+      // survives — at the cost of character noise the model has to see past.
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(OCR_TEXT);
+      expect(bodyOf(spy).messages[0].content).toContain('it does not correct what it reads');
+    });
+
+    it('still says what a receipt is, which is the half both paths share', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(OCR_TEXT);
+      const content = bodyOf(spy).messages[0].content;
+      expect(content).toContain('Include only lines that are a thing that was bought');
+      expect(content).toContain('BNLS SKNLS CHKN BRST');
+    });
+
+    it('reads the store, lines and date back the same way the photo path does', async () => {
+      mockFetchOnce(toolUseResponse('extract_receipt', {
+        storeName: "Trader Joe's",
+        total: '4.77',
+        date: '2026-08-30',
+        lines: [{ label: 'GV MLK 2% GAL', name: 'milk', quantity: '1', price: '3.48' }],
+      }));
+      await expect(extractReceipt(OCR_TEXT)).resolves.toEqual({
+        storeName: "Trader Joe's",
+        totalMinor: 477,
+        date: '2026-08-30',
+        lines: [{ label: 'GV MLK 2% GAL', name: 'milk', quantity: '1', priceMinor: 348 }],
+      });
+    });
+
+    it('makes no request at all for an empty reading', async () => {
+      const spy = jest.spyOn(global, 'fetch');
+      await expect(extractReceipt('   ')).resolves.toEqual({
+        storeName: '', lines: [], totalMinor: null, date: null,
+      });
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('caps a runaway reading rather than sending an unbounded request', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt('X'.repeat(9_000));
+      const content = bodyOf(spy).messages[0].content as string;
+      expect(content).toContain('X'.repeat(6_000));
+      expect(content).not.toContain('X'.repeat(6_001));
+    });
+  });
+
+  describe('from a photo', () => {
+    it('still sends the image block ahead of the text block', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(PHOTO);
+
+      const content = bodyOf(spy).messages[0].content;
+      expect(content[0]).toEqual({
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' },
+      });
+      expect(content[1].type).toBe('text');
+      // The photo prompt, not the recognised-text one.
+      expect(content[1].text).toContain('This is a photo of a store receipt');
+      expect(content[1].text).not.toContain('Receipt:\n');
+    });
+
+    it('keeps its own refusal, which is about the photo rather than the text', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(PHOTO);
+      expect(bodyOf(spy).messages[0].content[1].text)
+        .toContain('too blurry, too dark, cut off');
+    });
+
+    it('makes no request at all for an empty photo', async () => {
+      const spy = jest.spyOn(global, 'fetch');
+      await expect(extractReceipt({ base64: '', mediaType: 'image/jpeg' })).resolves.toEqual({
+        storeName: '', lines: [], totalMinor: null, date: null,
+      });
+      expect(spy).not.toHaveBeenCalled();
+    });
   });
 });

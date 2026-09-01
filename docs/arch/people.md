@@ -692,9 +692,8 @@ The same pointer as `blockedById` with a person on the other end, so it inherits
 the Waiting screen whole.
 
 - **It hides the task exactly as a task blocker does**, and it earns that
-  because the Waiting screen can *name* what it is waiting on. That is the test
-  the sequential-project gate fails, which is why that one is a separate
-  predicate rather than a clause inside `isTaskBlocked` and this one is a clause.
+  because the Waiting screen can *name* what it is waiting on — this one is a
+  clause inside `isTaskBlocked` rather than a separate predicate.
 - **Nothing ends it on its own, and that is the whole risk.** A blocker task
   completes and frees its waiters; nobody completes a person. So the clearing
   action is on the row itself (the chip is a button, unlike the blocker chip

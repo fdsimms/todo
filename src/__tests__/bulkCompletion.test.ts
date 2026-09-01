@@ -47,6 +47,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   deadlineOnCalendar: false, calendarEventId: null, timeBlockEventId: null,
   pendingImport: null, backfillDismissedFields: [],
   streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, priorBestStreak: 0,
+  polarity: 'positive',
+  slipCount: 0,
+  slipDate: null,
   showStreak: false, streakRequiresWindow: false,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false,
@@ -58,6 +61,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1, seriesDefaults: null,
   postponeCount: 0, postponeMuted: false, driftingSince: null,
   quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaPeriod: 'day',
   ...overrides,
 });
 

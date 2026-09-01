@@ -1,0 +1,7 @@
+{
+  "name": "todo-datascanner-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module wrapping DataScannerViewController, which reads barcodes and text in one live camera pass, falling back to unavailable everywhere it isn't linked.",
+  "main": "index.ts",
+  "private": true
+}

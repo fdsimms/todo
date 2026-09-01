@@ -200,7 +200,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   allowOvershoot: false,
   quotaIntervalMinutes: null,
   quotaReminders: false,
-  quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaStartedAt: null, quotaAlwaysVisible: false, quotaPeriod: 'day',
   progressCount: 0,
   tags: [],
   category: null,
@@ -218,6 +218,9 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   previousStreakCount: 0,
   previousStreakDate: null,
   priorBestStreak: 0,
+  polarity: 'positive',
+  slipCount: 0,
+  slipDate: null,
   showStreak: false,
   streakRequiresWindow: false,
   parentId: null,
@@ -917,6 +920,32 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(dbGetAllTasks()[0].priorBestStreak).toBe(40);
   });
 
+  it('round-trips polarity and the slip pair', () => {
+    dbInsertTask(makeTask({
+      id: 'avoid', polarity: 'negative', slipCount: 3, slipDate: '2026-01-10T00:00:00.000Z',
+    }));
+    dbInsertTask(makeTask({ id: 'plain' }));
+    const tasks = dbGetAllTasks();
+    const avoid = tasks.find(t => t.id === 'avoid')!;
+    expect(avoid.polarity).toBe('negative');
+    expect(avoid.slipCount).toBe(3);
+    expect(avoid.slipDate).toBe('2026-01-10T00:00:00.000Z');
+    const plain = tasks.find(t => t.id === 'plain')!;
+    expect(plain.polarity).toBe('positive');
+    expect(plain.slipCount).toBe(0);
+    expect(plain.slipDate).toBeNull();
+  });
+
+  it('persists polarity and a slip through an update', () => {
+    dbInsertTask(makeTask({ id: 'avoid-upd' }));
+    const [before] = dbGetAllTasks();
+    dbUpdateTask({ ...before, polarity: 'negative', slipCount: 1, slipDate: '2026-01-11T00:00:00.000Z' });
+    const [after] = dbGetAllTasks();
+    expect(after.polarity).toBe('negative');
+    expect(after.slipCount).toBe(1);
+    expect(after.slipDate).toBe('2026-01-11T00:00:00.000Z');
+  });
+
   it('round-trips showStreak', () => {
     dbInsertTask(makeTask({ id: 'habit', showStreak: true }));
     dbInsertTask(makeTask({ id: 'plain' }));
@@ -1405,6 +1434,7 @@ describe('Templates', () => {
     category: null,
     priority: 0,
     effort: 0,
+    polarity: 'positive',
     recurrenceType: 'none',
     recurrenceInterval: 1,
     recurrenceDays: [],
@@ -1580,7 +1610,6 @@ describe('Projects', () => {
     createdAt: '2025-01-01T00:00:00.000Z',
     nudgeCadenceDays: 14,
     autoSchedule: false,
-    sequential: false,
     nudgeOptIn: true,
     reviewDeclinedAt: null,
     backfillDismissedFields: [],
@@ -1776,7 +1805,7 @@ describe('backup and restore', () => {
       id: 'p1', title: 'Summer list', notes: '', deadline: null,
       category: null, sortOrder: 1, archived: false, archivedAt: null, completed: false, completedAt: null,
       ongoing: false,
-      createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false, sequential: false,
+      createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false,
       nudgeOptIn: true,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],

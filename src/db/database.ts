@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Cookbook, DeliverableKind, GeneratedKind, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { Cookbook, DeliverableKind, GeneratedKind, LoggedSymptom, MoodLevel, MoodLog, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -288,6 +288,21 @@ export function initDatabase(): void {
       relevant_on TEXT,
       archived_at TEXT,
       sort_order REAL NOT NULL DEFAULT 0
+    );
+
+    -- How you were doing at one moment — see MoodLog in types/index.ts and
+    -- src/utils/moodLog.ts. Several rows a day is the normal case, which is why
+    -- day_key is an ordinary indexed column rather than the primary key: the
+    -- day is a thing entries are grouped *by* on read, not a slot they occupy.
+    CREATE TABLE IF NOT EXISTS mood_logs (
+      id TEXT PRIMARY KEY NOT NULL,
+      logged_at TEXT NOT NULL,
+      day_key TEXT NOT NULL,
+      -- Nullable: an entry that only records a symptom has no mood to state,
+      -- and a default would put an invented number into every average.
+      mood INTEGER,
+      symptoms TEXT NOT NULL DEFAULT '[]',
+      note TEXT
     );
 
     CREATE TABLE IF NOT EXISTS template_categories (
@@ -626,9 +641,10 @@ export function initDatabase(): void {
     // a task when this shipped is one the user is presumed to have set, so no
     // row starts out narrating itself. See Task.autoScheduledAt.
     'ALTER TABLE tasks ADD COLUMN auto_scheduled_at TEXT',
-    // 0 for every existing project, and that's the only safe backfill: turning
-    // it on hides every member but the first, and no existing project's order
-    // was ever entered as a sequence.
+    // Was the "do tasks in order" toggle, now removed (users have the waiting
+    // feature for that). The column stays on the table, unread and never
+    // written, the way target_start_date does — dropping one costs a migration
+    // for every install and buys nothing.
     'ALTER TABLE projects ADD COLUMN sequential INTEGER NOT NULL DEFAULT 0',
     // Defaults to 1, and that's the only safe value for an existing install:
     // every row already on a device predates the provisional idea, so all of
@@ -655,6 +671,9 @@ export function initDatabase(): void {
     // Every read is "this person's notes" — the detail screen, the birthday
     // task's gift ideas, a meal's guests — so the person is the index.
     'CREATE INDEX IF NOT EXISTS idx_person_notes_person ON person_notes(person_id)',
+    // Every insight read groups by day (see src/utils/moodInsights.ts), and the
+    // logging sheet asks for one day's entries on open.
+    'CREATE INDEX IF NOT EXISTS idx_mood_logs_day ON mood_logs(day_key)',
     // Null for every existing row is exactly right: nothing predating this has
     // been asserted as on hand. See GroceryItem.onHandUntil.
     'ALTER TABLE grocery_items ADD COLUMN on_hand_until TEXT',
@@ -1262,6 +1281,20 @@ export function initDatabase(): void {
     // guessing one, so an existing reminder keeps behaving exactly as it
     // does today until the user next edits it. See #1205.
     'ALTER TABLE tasks ADD COLUMN reminder_utc_offset_minutes INTEGER',
+    // 'day' on every existing row, which is what every daily target has always
+    // counted across. The column only ever adds the weekly kind (see
+    // Task.quotaPeriod), so an install upgrading into it reads exactly as it did.
+    "ALTER TABLE tasks ADD COLUMN quota_period TEXT NOT NULL DEFAULT 'day'",
+    // 'positive' on every existing row, which is what every task in the app has
+    // always been: something to do. The column only ever adds the opposite kind
+    // (see Task.polarity), so an install upgrading into it reads exactly as it
+    // did.
+    "ALTER TABLE tasks ADD COLUMN polarity TEXT NOT NULL DEFAULT 'positive'",
+    // 0/NULL on every existing row — no task that predates this column has ever
+    // had a slip logged against it, which is exactly what those mean. See
+    // Task.slipCount, and slipsToday() for why the pair travels together.
+    'ALTER TABLE tasks ADD COLUMN slip_count INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE tasks ADD COLUMN slip_date TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1601,6 +1634,9 @@ export const BACKUP_TABLES = [
   // After people: a note points at one, so restoring the people first means a
   // restored note never names somebody who isn't there yet.
   'person_notes',
+  // Points at nothing at all — a mood entry is a standalone record of a moment,
+  // so its position here is only about keeping related rows together.
+  'mood_logs',
   'task_groups',
   'grocery_shops',
   // Before grocery_items: an entry points at one, so restoring the lists first
@@ -2077,6 +2113,11 @@ function rowToTask(row: Record<string, unknown>): Task {
     quotaReminders: Boolean(row.quota_reminders),
     quotaStartedAt: (row.quota_started_at as string | null) ?? null,
     quotaAlwaysVisible: Boolean(row.quota_always_visible),
+    // Anything but the one known alternative reads as 'day', which is both the
+    // pre-column default and the safe way round: a weekly target misread as
+    // daily is merely owed its whole count today, where a daily one misread as
+    // weekly would quietly stop asking for six days.
+    quotaPeriod: row.quota_period === 'week' ? 'week' : 'day',
     supplyCount: (row.supply_count as number | null) ?? null,
     supplyUnit: (row.supply_unit as string | null) ?? null,
     supplyRefillCount: (row.supply_refill_count as number | null) ?? null,
@@ -2134,6 +2175,13 @@ function rowToTask(row: Record<string, unknown>): Task {
     previousStreakDate: (row.previous_streak_date as string) ?? null,
     showStreak: Boolean(row.show_streak),
     streakRequiresWindow: Boolean(row.streak_requires_window),
+    // Anything but the one known alternative reads as 'positive', which is both
+    // the pre-column default and the safe way round: a row misread as positive
+    // is an ordinary task, where one misread as negative would be a task that
+    // can no longer be completed.
+    polarity: row.polarity === 'negative' ? 'negative' : 'positive',
+    slipCount: (row.slip_count as number) ?? 0,
+    slipDate: (row.slip_date as string) ?? null,
     seriesDefaults: row.series_defaults ? (JSON.parse(row.series_defaults as string) as Partial<Task>) : null,
     archived: Boolean(row.archived),
     archivedAt: (row.archived_at as string) ?? null,
@@ -2182,9 +2230,9 @@ export function dbInsertTask(task: Task): void {
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
-      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, location,
-      prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
+      prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2250,10 +2298,14 @@ export function dbInsertTask(task: Task): void {
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
+      task.quotaPeriod,
       task.location ?? null,
       task.priorBestStreak,
       task.reminderTimeAnchor,
       task.reminderUtcOffsetMinutes ?? null,
+      task.polarity,
+      task.slipCount,
+      task.slipDate ?? null,
     ]
   );
 }
@@ -2279,8 +2331,8 @@ export function dbUpdateTask(task: Task): void {
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
-      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, location=?,
-      prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?
+      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
+      prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2347,10 +2399,14 @@ export function dbUpdateTask(task: Task): void {
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
+      task.quotaPeriod,
       task.location ?? null,
       task.priorBestStreak,
       task.reminderTimeAnchor,
       task.reminderUtcOffsetMinutes ?? null,
+      task.polarity,
+      task.slipCount,
+      task.slipDate ?? null,
       task.id,
     ]
   );
@@ -4373,6 +4429,81 @@ export function dbDeletePersonNotesFor(personId: string): void {
   db.runSync('DELETE FROM person_notes WHERE person_id = ?', [personId]);
 }
 
+/**
+ * One mood entry, mapped off its row.
+ *
+ * A `mood` outside 1..5 reads as null rather than being clamped or kept: the
+ * scale is fixed (see `MoodLevel`), so an out-of-range number is corrupt data
+ * rather than an opinion, and putting it into an average is worse than the
+ * entry having no mood on it. Its symptoms and note survive either way, which
+ * is the same "a row that renders wrong is recoverable, one that vanishes is
+ * not" call `rowToPersonNote` makes one field over.
+ */
+function rowToMoodLog(row: Record<string, unknown>): MoodLog {
+  const rawMood = row.mood;
+  const mood = typeof rawMood === 'number' && rawMood >= 1 && rawMood <= 5
+    ? (Math.round(rawMood) as MoodLevel)
+    : null;
+  let symptoms: LoggedSymptom[] = [];
+  try {
+    const parsed = JSON.parse((row.symptoms as string) ?? '[]');
+    if (Array.isArray(parsed)) symptoms = parsed as LoggedSymptom[];
+  } catch {
+    // Same shrug the other JSON columns take: a malformed blob costs the
+    // symptoms on one entry, not the entry.
+  }
+  return {
+    id: row.id as string,
+    loggedAt: row.logged_at as string,
+    dayKey: row.day_key as string,
+    mood,
+    symptoms,
+    note: (row.note as string) || null,
+  };
+}
+
+/**
+ * Every mood entry, most recent first.
+ *
+ * Read wholesale, the same call `dbGetAllPersonNotes` and
+ * `dbGetFocusSessionLog` make. These are a handful of small rows a day at the
+ * very most, and the insights screen wants several different cuts of the whole
+ * history at once — scoping the read to a window would mean a query per
+ * section on a screen that already holds the lot, and every correlation on it
+ * is defined over "all the days we have".
+ */
+export function dbGetAllMoodLogs(): MoodLog[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM mood_logs ORDER BY logged_at DESC'
+  );
+  return rows.map(rowToMoodLog);
+}
+
+export function dbInsertMoodLog(log: MoodLog): void {
+  db.runSync(
+    `INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, note)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      log.id, log.loggedAt, log.dayKey, log.mood,
+      JSON.stringify(log.symptoms), log.note,
+    ]
+  );
+}
+
+export function dbUpdateMoodLog(log: MoodLog): void {
+  db.runSync(
+    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, symptoms=?, note=? WHERE id=?`,
+    [
+      log.loggedAt, log.dayKey, log.mood,
+      JSON.stringify(log.symptoms), log.note, log.id,
+    ]
+  );
+}
+
+export function dbDeleteMoodLog(id: string): void {
+  db.runSync('DELETE FROM mood_logs WHERE id = ?', [id]);
+}
+
 export function dbGetMealPlanEntry(id: string): MealPlanEntry | null {
   const row = db.getFirstSync<Record<string, unknown>>(
     'SELECT * FROM meal_plan_entries WHERE id = ?',
@@ -4634,7 +4765,6 @@ function rowToProject(row: Record<string, unknown>): Project {
     createdAt: row.created_at as string,
     nudgeCadenceDays: (row.nudge_cadence_days as number | null) ?? DEFAULT_NUDGE_CADENCE_DAYS,
     autoSchedule: Boolean(row.auto_schedule),
-    sequential: Boolean(row.sequential),
     nudgeOptIn: Boolean(row.nudge_opt_in),
     reviewDeclinedAt: (row.review_declined_at as string) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
@@ -4652,12 +4782,12 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at, backfill_dismissed_fields, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, review_declined_at, backfill_dismissed_fields, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0, project.createdAt,
-      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
+      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
     ]
   );
@@ -4665,12 +4795,12 @@ export function dbInsertProject(project: Project): void {
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=?, kind=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=?, kind=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0,
-      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
+      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind, project.id,
     ]
   );

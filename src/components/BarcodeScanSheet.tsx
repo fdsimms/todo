@@ -12,6 +12,9 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import {
+  getDataScannerView, isDataScannerAvailable, type DataScannerScan,
+} from 'todo-datascanner-bridge';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -26,6 +29,7 @@ import {
   type Colors,
 } from '../theme';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { InlineAction } from './InlineAction';
@@ -34,6 +38,8 @@ import type { ReceiptAddDraft } from './ReceiptImportSheet';
 import type { ReceiptMatch } from '../utils/receiptMatch';
 import { lookupGtin, describeLookupError } from '../services/productLookup';
 import { formatGtin, normalizeGtin } from '../utils/gtin';
+import { priceNearBarcode } from '../utils/shelfLabel';
+import { formatPrice } from '../utils/groceryPrice';
 import { normalizePlu, pluNameFor } from '../utils/plu';
 import {
   matchScans,
@@ -98,6 +104,16 @@ interface ScanRow extends ScannedItem {
    * carrying a stale yes onto a different row.
    */
   confirmedMatchId: string | null;
+  /**
+   * The shelf price read off the same label as the barcode, in minor units, or
+   * null when nothing near the code read as one.
+   *
+   * Only ever a proposal: it is shown on the row and cleared with a tap, and
+   * nothing is written until Add. It rides `ReceiptAddDraft.priceMinor`, which
+   * already existed for the receipt sheet, so the write on the other side needs
+   * nothing new — this path simply stopped always passing null.
+   */
+  priceMinor: number | null;
 }
 
 interface Props {
@@ -193,6 +209,16 @@ interface Props {
  */
 export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) {
   const colors = useColors();
+  /**
+   * The one-pass scanner, or null where it isn't supported (anything but an
+   * iOS 16+ device with the hardware for it). Resolved once: neither the module
+   * nor the device's capability can change while the app is running.
+   */
+  const currencySymbol = useSettingsStore(s => s.currencySymbol);
+  const DataScanner = useMemo(
+    () => (isDataScannerAvailable() ? getDataScannerView() : null),
+    [],
+  );
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
   const items = useGroceryStore(useShallow(s => s.items));
@@ -243,7 +269,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
    * lookup patches it in place afterwards.
    */
   const addScan = useCallback(
-    async (gtin: string) => {
+    async (gtin: string, priceMinor: number | null = null) => {
       const key = generateId();
       setRows(current => [
         ...current,
@@ -255,6 +281,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           error: null,
           frozen: false,
           confirmedMatchId: null,
+          priceMinor,
         },
       ]);
       try {
@@ -285,6 +312,24 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
       scannedGtinsRef.current.add(gtin);
       haptics.tap();
       void addScan(gtin);
+    },
+    [addScan]
+  );
+
+  /**
+   * The same dedupe and check-digit rules as the plain camera path, plus the
+   * shelf price: `DataScannerViewController` hands over the text in frame
+   * alongside the code, so the price two centimetres from the barcode arrives
+   * with it instead of needing a second capture.
+   */
+  const handleDataScan = useCallback(
+    ({ nativeEvent }: { nativeEvent: DataScannerScan }) => {
+      const gtin = normalizeGtin(nativeEvent.value);
+      if (!gtin) return;
+      if (scannedGtinsRef.current.has(gtin)) return;
+      scannedGtinsRef.current.add(gtin);
+      haptics.tap();
+      void addScan(gtin, priceNearBarcode(nativeEvent, nativeEvent.texts));
     },
     [addScan]
   );
@@ -321,6 +366,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           error: null,
           frozen: false,
           confirmedMatchId: null,
+          priceMinor: null,
         },
       ]);
     } else {
@@ -339,6 +385,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
           error: null,
           frozen: false,
           confirmedMatchId: null,
+          priceMinor: null,
         },
       ]);
     }
@@ -485,7 +532,7 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         brand: row.brand,
         aisle: row.aisle,
         quantity: row.quantity,
-        priceMinor: null,
+        priceMinor: row.priceMinor,
         frozen: row.frozen,
         // Only read for a row this mints — a promoted one was linked above,
         // where its id was already known. See `Props.onApply`.
@@ -568,16 +615,24 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
     }
     return (
       <View style={styles.cameraWrap}>
-        <CameraView
-          style={StyleSheet.absoluteFill}
-          facing="back"
-          barcodeScannerSettings={{
-            // iOS reports a 12-digit UPC-A as an EAN-13 with a leading zero;
-            // normalizeGtin lands both on one key, so listing both is safe.
-            barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'],
-          }}
-          onBarcodeScanned={handleBarcodeScanned}
-        />
+        {/* The one-pass scanner where the device has it, so a shelf label's
+            price is captured with its barcode rather than needing a second
+            trip. Everywhere else this is exactly the view it always was —
+            an upgrade to scanning, not a new requirement for it. */}
+        {DataScanner ? (
+          <DataScanner style={StyleSheet.absoluteFill} onScan={handleDataScan} />
+        ) : (
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            barcodeScannerSettings={{
+              // iOS reports a 12-digit UPC-A as an EAN-13 with a leading zero;
+              // normalizeGtin lands both on one key, so listing both is safe.
+              barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e'],
+            }}
+            onBarcodeScanned={handleBarcodeScanned}
+          />
+        )}
         <View style={styles.reticle} pointerEvents="none" />
       </View>
     );
@@ -684,6 +739,27 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
                           who it is — see `sourceLabelFor`. */}
                       {!!row.label && (
                         <Text style={styles.rowLabel}>{sourceLabelFor(row.label, row.brand)}</Text>
+                      )}
+                      {/* A price read off the shelf label the barcode was on.
+                          Shown as its own line with a way out, because it is a
+                          geometric guess about which price belongs to this
+                          code: two labels overlapping in frame is the case
+                          nothing offline can rule out, and this is where it
+                          gets caught. */}
+                      {row.priceMinor !== null && (
+                        <View style={styles.captionRow}>
+                          <Text style={styles.rowCaption}>
+                            {formatPrice(row.priceMinor, currencySymbol)} on the shelf label
+                          </Text>
+                          <InlineAction
+                            label="Clear"
+                            icon="close-circle-outline"
+                            variant="neutral"
+                            onPress={() => patchRow(row.key, { priceMinor: null })}
+                            accessibilityLabel={`Clear the shelf price for ${row.name || row.label}`}
+                            style={styles.confirmPill}
+                          />
+                        </View>
                       )}
                       {!!caption && (
                         <View style={styles.captionRow}>

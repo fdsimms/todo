@@ -17,6 +17,7 @@ import { SearchScreen } from '../screens/SearchScreen';
 import { ProjectsScreen } from '../screens/ProjectsScreen';
 import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
+import { MoodScreen } from '../screens/MoodScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { BackfillScreen } from '../screens/BackfillScreen';
 import { WaitingScreen } from '../screens/WaitingScreen';
@@ -74,7 +75,7 @@ const EDGE_WIDTH = 20;
 // nobody can see.
 const HIDDEN = { tabBarButton: () => null, tabBarItemStyle: { display: 'none' as const } };
 
-const DRAWER_TABS = new Set(['Search', 'Calendar', 'Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Backfill', 'Waiting', 'Drift', 'Archived', 'Recipes', 'MealPlan', 'Kitchen', 'Cookbooks']);
+const DRAWER_TABS = new Set(['Search', 'Calendar', 'Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Mood', 'Backfill', 'Waiting', 'Drift', 'Archived', 'Recipes', 'MealPlan', 'Kitchen', 'Cookbooks']);
 
 // Every screen it's safe to reopen the app directly on: the visible bottom
 // tabs plus every drawer screen, none of which take a route param. Excludes
@@ -218,6 +219,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Templates" component={TemplatesScreen} options={HIDDEN} />
       <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
       <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
+      <Tab.Screen name="Mood" component={MoodScreen} options={HIDDEN} />
       <Tab.Screen name="Backfill" component={BackfillScreen} options={HIDDEN} />
       <Tab.Screen name="Waiting" component={WaitingScreen} options={HIDDEN} />
       <Tab.Screen name="Drift" component={DriftScreen} options={HIDDEN} />

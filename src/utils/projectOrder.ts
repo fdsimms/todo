@@ -1,12 +1,10 @@
 import type { Task } from '../types';
 
 /**
- * A project's hand-sorted order, and what it means when the project says the
- * order is mandatory (Project.sequential).
+ * A project's hand-sorted order.
  *
  * Everything here is pure and takes its tasks as a parameter, like blocking.ts
- * next door — the registry (blockerRegistry) is what lets visibilityUtils reach
- * it without importing a store.
+ * next door.
  */
 
 /**
@@ -22,30 +20,6 @@ export function liveProjectSteps(projectId: string, tasks: readonly Task[]): Tas
   return tasks
     .filter(t => t.projectId === projectId && t.parentId === null && !t.completed && !t.archived)
     .sort((a, b) => a.sortOrder - b.sortOrder);
-}
-
-/**
- * Index every live member of every project by the step it stands at, 1-based.
- *
- * Built in one pass because both callers want it per row: the registry hands
- * out one map per store change so each row's lookup is O(1) rather than a scan
- * of the whole task list, and the project screen numbers its rows from the same
- * function so the badge and the gate can't disagree about what step 3 is.
- */
-export function stepNumbersByTask(tasks: readonly Task[]): Map<string, number> {
-  const byProject = new Map<string, Task[]>();
-  for (const t of tasks) {
-    if (!t.projectId || t.parentId !== null || t.completed || t.archived) continue;
-    const bucket = byProject.get(t.projectId);
-    if (bucket) bucket.push(t);
-    else byProject.set(t.projectId, [t]);
-  }
-  const steps = new Map<string, number>();
-  for (const members of byProject.values()) {
-    members.sort((a, b) => a.sortOrder - b.sortOrder);
-    members.forEach((t, i) => steps.set(t.id, i + 1));
-  }
-  return steps;
 }
 
 /**

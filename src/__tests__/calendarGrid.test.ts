@@ -3,6 +3,7 @@ import { isSameDay } from 'date-fns/isSameDay';
 import {
   buildCalendarGrid, buildWeekDays, weekdayHeaders,
   canPageToPreviousMonth, clampMonthToEarliest, isDayBefore,
+  canPageToNextMonth, clampMonthToLatest, isDayAfter,
 } from '../utils/calendarGrid';
 
 const iso = (d: Date) => format(d, 'yyyy-MM-dd');
@@ -282,5 +283,29 @@ describe('the floor a picker may not go below', () => {
     it('is always true with no floor', () => {
       expect(canPageToPreviousMonth(day(1998, 4, 3), null)).toBe(true);
     });
+  });
+});
+
+describe('the ceiling half', () => {
+  const day = (iso: string) => new Date(`${iso}T00:00:00`);
+
+  it('spots a day past the ceiling, and lets the ceiling day itself through', () => {
+    expect(isDayAfter(day('2026-08-18'), day('2026-08-17'))).toBe(true);
+    expect(isDayAfter(day('2026-08-17'), day('2026-08-17'))).toBe(false);
+    expect(isDayAfter(day('2026-08-16'), day('2026-08-17'))).toBe(false);
+  });
+
+  it('pulls an opening month back to the ceiling, and leaves an earlier one alone', () => {
+    // Mirror of clampMonthToEarliest: a month whose every cell is refused reads
+    // as a broken calendar rather than as a ceiling.
+    expect(clampMonthToLatest(day('2026-12-04'), day('2026-08-17')).getMonth()).toBe(7);
+    expect(clampMonthToLatest(day('2026-06-04'), day('2026-08-17')).getMonth()).toBe(5);
+    expect(clampMonthToLatest(day('2026-12-04'), null).getMonth()).toBe(11);
+  });
+
+  it('stops the forward chevron at the ceiling month', () => {
+    expect(canPageToNextMonth(day('2026-07-01'), day('2026-08-17'))).toBe(true);
+    expect(canPageToNextMonth(day('2026-08-01'), day('2026-08-17'))).toBe(false);
+    expect(canPageToNextMonth(day('2026-08-01'), null)).toBe(true);
   });
 });

@@ -23,6 +23,7 @@ import { haptics } from '../utils/haptics';
 import {
   buildCalendarGrid, weekdayHeaders,
   canPageToPreviousMonth, clampMonthToEarliest, isDayBefore,
+  canPageToNextMonth, clampMonthToLatest, isDayAfter,
 } from '../utils/calendarGrid';
 import { dayKeyOf, getLogicalNow, getLogicalToday, getLogicalTomorrow } from '../utils/dateUtils';
 import { parseNaturalDate } from '../utils/parseNaturalDate';
@@ -63,6 +64,7 @@ const BLANK_SNOOZE_TASK: Task = {
   pendingImport: null,
   backfillDismissedFields: [],
   streakCount: 0, streakDate: null, previousStreakCount: 0, previousStreakDate: null, priorBestStreak: 0, showStreak: false, streakRequiresWindow: false,
+  polarity: 'positive', slipCount: 0, slipDate: null,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false,
   extraTaskEveryN: null, extraTaskTitle: null, extraTaskDraft: null, extraTaskTally: 0, previousExtraTaskTally: 0,
@@ -72,6 +74,7 @@ const BLANK_SNOOZE_TASK: Task = {
   seriesId: null, seriesMonthDays: [], seriesRepeatMonths: 1, seriesDefaults: null,
   postponeCount: 0, postponeMuted: false, driftingSince: null,
   quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaPeriod: 'day',
 };
 
 interface Props {
@@ -111,6 +114,19 @@ interface Props {
    * moment.
    */
   allowPast?: boolean;
+  /**
+   * Whether days after today may be picked. True for every existing caller,
+   * because a task can of course be scheduled forward. False for a date that
+   * records something that has *already happened*: a mood entry you forgot to
+   * log (MoodLogSheet) has no meaning tomorrow, and picking Thursday would
+   * file a feeling against a day nobody has lived yet.
+   *
+   * The exact mirror of `allowPast` above, flag rather than `maxDate` for the
+   * identical reason: the ceiling has to be the logical today, and a date
+   * parameter invites a call site to pass `new Date()`. Today itself stays
+   * pickable on both sides — each bound is a day, not a moment.
+   */
+  allowFuture?: boolean;
   /**
    * Opts this picker in to the postpone check (see PostponeCheckBanner).
    *
@@ -172,7 +188,7 @@ export function WhenPicker({
   visible, value, timeSegments: initialSegments,
   taskId, taskTitle, taskNotes, taskTags, taskCategory, taskPriority, taskEffort, taskEstimatedMinutes,
   onConfirm, onClear, onCancel,
-  title = 'When?', showTimeOfDay = true, showSuggest = true, allowPast = true,
+  title = 'When?', showTimeOfDay = true, showSuggest = true, allowPast = true, allowFuture = true,
   postponeTaskId, onBreakUp, nlEnabled,
 }: Props) {
   const colors = useColors();
@@ -213,12 +229,16 @@ export function WhenPicker({
   // The floor, or null for no floor — see the allowPast prop. Both quick
   // buttons are on or after it, so neither needs gating.
   const earliestDay = allowPast ? null : today;
+  // The ceiling, or null for none — see the allowFuture prop.
+  const latestDay = allowFuture ? null : today;
 
   useEffect(() => {
     if (visible) {
       // Clamped, so a picker holding a value from before the floor doesn't open
       // on a month whose every cell is refused and whose back chevron is off.
-      setDisplayMonth(clampMonthToEarliest(value ?? new Date(), earliestDay));
+      // Both bounds, floor first: a value outside either end must not open on a
+      // month whose every cell is refused.
+      setDisplayMonth(clampMonthToLatest(clampMonthToEarliest(value ?? new Date(), earliestDay), latestDay));
       setSegments(initialSegments ?? []);
       setNlText('');
       setPendingKey(null);
@@ -253,6 +273,7 @@ export function WhenPicker({
   );
   const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
   const canPageBack = canPageToPreviousMonth(displayMonth, earliestDay);
+  const canPageForward = canPageToNextMonth(displayMonth, latestDay);
 
   /**
    * How full each day of the visible month already is (#1791).
@@ -310,6 +331,7 @@ export function WhenPicker({
   const handleDayPress = (day: Date) => {
     // The cell is already disabled; this is the belt to that pair of braces.
     if (earliestDay && isDayBefore(day, earliestDay)) return;
+    if (latestDay && isDayAfter(day, latestDay)) return;
     // Picking today resolves the task, same as the quick button — only a day
     // after it is a deferral the reach-out offer needs to hear about.
     if (!isSameDay(day, today)) declineReachOutOfferIfShown();
@@ -318,6 +340,9 @@ export function WhenPicker({
 
   const handleToday = () => confirmWithFeedback(noonOf(today), 'today');
   const handleTomorrow = () => { declineReachOutOfferIfShown(); confirmWithFeedback(noonOf(tomorrow), tomorrowKey); };
+  // Offering a quick button for a day the grid refuses would be the one
+  // control in the picker that disagrees with the rest of it.
+  const showTomorrow = latestDay === null;
 
   // As-you-type: just page the grid to what's been typed so far, the same
   // preview CalendarPicker's own nlText gives. Nothing commits until Enter —
@@ -336,6 +361,7 @@ export function WhenPicker({
     const parsed = parseNaturalDate(nlText, getLogicalNow(dayResetTime));
     if (!parsed) return;
     if (earliestDay && isDayBefore(parsed, earliestDay)) return;
+    if (latestDay && isDayAfter(parsed, latestDay)) return;
     if (!isSameDay(parsed, today)) declineReachOutOfferIfShown();
     confirmWithFeedback(noonOf(parsed), isSameDay(parsed, today) ? 'today' : dayKeyOf(parsed));
   };
@@ -579,16 +605,18 @@ export function WhenPicker({
                 popAnim={popAnim}
                 onPress={handleToday}
               />
-              <QuickButton
-                styles={styles}
-                colors={colors}
-                icon="sunny"
-                iconColor={colors.timeMorning}
-                label="Tomorrow"
-                pending={pendingKey === tomorrowKey}
-                popAnim={popAnim}
-                onPress={handleTomorrow}
-              />
+              {showTomorrow && (
+                <QuickButton
+                  styles={styles}
+                  colors={colors}
+                  icon="sunny"
+                  iconColor={colors.timeMorning}
+                  label="Tomorrow"
+                  pending={pendingKey === tomorrowKey}
+                  popAnim={popAnim}
+                  onPress={handleTomorrow}
+                />
+              )}
               {showSuggest && (
                 <TouchableOpacity
                   style={[styles.quickButton, styles.suggestButton]}
@@ -655,12 +683,18 @@ export function WhenPicker({
               <Text style={styles.monthLabel}>{format(displayMonth, 'MMMM yyyy')}</Text>
               <TouchableOpacity
                 onPress={() => setDisplayMonth(m => addMonths(m, 1))}
+                disabled={!canPageForward}
                 hitSlop={8}
                 style={styles.navBtn}
                 accessibilityRole="button"
                 accessibilityLabel="Next month"
+                accessibilityState={{ disabled: !canPageForward }}
               >
-                <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+                <Ionicons
+                  name="chevron-forward"
+                  size={16}
+                  color={canPageForward ? colors.accent : colors.textTertiary}
+                />
               </TouchableOpacity>
             </View>
 
@@ -677,7 +711,9 @@ export function WhenPicker({
                 const inMonth = isSameMonth(day, displayMonth);
                 const isSelected = value ? isSameDay(day, value) : false;
                 const todayDay = isSameDay(day, today);
-                const outOfRange = earliestDay !== null && isDayBefore(day, earliestDay);
+                const outOfRange =
+                  (earliestDay !== null && isDayBefore(day, earliestDay)) ||
+                  (latestDay !== null && isDayAfter(day, latestDay));
                 const key = todayDay ? 'today' : dayKeyOf(day);
                 const isPending = pendingKey === key && pendingRef.current;
                 const isSuggested = suggestion?.key === dayKeyOf(day);

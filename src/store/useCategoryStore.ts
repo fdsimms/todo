@@ -307,6 +307,10 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'weatherTaskCategory', current: s.weatherTaskCategory, assign: s.setWeatherTaskCategory };
     case 'screenTime':
       return { key: 'screenTimeTaskCategory', current: s.screenTimeTaskCategory, assign: s.setScreenTimeTaskCategory };
+    case 'moodLog':
+      return { key: 'moodLogTaskCategory', current: s.moodLogTaskCategory, assign: s.setMoodLogTaskCategory };
+    case 'moodNudge':
+      return { key: 'moodNudgeTaskCategory', current: s.moodNudgeTaskCategory, assign: s.setMoodNudgeTaskCategory };
   }
 }
 
@@ -330,6 +334,8 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'reachOut': return s.reachOutTasks;
     case 'weather': return s.weatherTasks;
     case 'screenTime': return s.screenTimeTasks;
+    case 'moodLog': return s.moodLogTasks;
+    case 'moodNudge': return s.moodNudgeTasks;
   }
 }
 

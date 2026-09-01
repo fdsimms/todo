@@ -12,18 +12,19 @@
 import { addDays } from 'date-fns/addDays';
 import { useDemoStore } from '../store/useDemoStore';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
+import { isCleanToday } from '../utils/negativeHabits';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
-import { liveProjectSteps } from '../utils/projectOrder';
 import { isHeldBack, isQuotaOnPace, isTaskVisible } from '../utils/visibilityUtils';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
+import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
@@ -58,6 +59,9 @@ import { sharedLinkLabel } from '../utils/sharedRecipeLinks';
 import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRemaining } from '../utils/stepTimers';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
+import { useMoodStore } from '../store/useMoodStore';
+import { buildMoodDays, moodCompletionInsight, symptomMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
@@ -561,6 +565,33 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // Both states, because either alone reads as half a feature: clean is where
+  // the row sits almost always, and broken is the only way to see what the tap
+  // does — and it isn't a state the seed can reach by tapping.
+  it('seeds a negative habit in both its clean and its broken state', () => {
+    useDemoStore.getState().enterDemoMode();
+    const s = useTaskStore.getState();
+
+    const clean = s.tasks.find(t => t.title === 'No phone in bed');
+    expect(clean?.polarity).toBe('negative');
+    expect(clean?.streakCount).toBeGreaterThan(0);
+    expect(isCleanToday(clean!, getCurrentDayStart())).toBe(true);
+    // On by default for this polarity — the run is the only feedback the row
+    // ever gives, since it is never completed.
+    expect(clean?.showStreak).toBe(true);
+
+    const broken = s.tasks.find(t => t.title === 'No snacking after dinner');
+    expect(broken?.polarity).toBe('negative');
+    expect(isCleanToday(broken!, getCurrentDayStart())).toBe(false);
+    expect(broken?.streakCount).toBe(0);
+
+    // Neither is ever completed, which is the whole shape of the polarity.
+    expect(clean?.completed).toBe(false);
+    expect(broken?.completed).toBe(false);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   it('seeds a task held back by another', () => {
     useDemoStore.getState().enterDemoMode();
     const s = useTaskStore.getState();
@@ -741,13 +772,35 @@ describe('demo mode', () => {
     useDemoStore.getState().enterDemoMode();
     const { tasks } = useTaskStore.getState();
 
-    const alwaysVisible = tasks.find(t => t.quotaAlwaysVisible);
+    // By title rather than by the flag: the weekly target below sets it too,
+    // and this test is about the daily one.
+    const alwaysVisible = tasks.find(t => t.title === 'Stretch');
     expect(alwaysVisible).toBeDefined();
+    expect(alwaysVisible!.quotaAlwaysVisible).toBe(true);
     // On pace (fully met, in fact) is the whole point being demonstrated —
     // an ordinary target in this state would be hidden.
     expect(alwaysVisible!.progressCount).toBe(alwaysVisible!.targetCount);
     expect(isQuotaOnPace(alwaysVisible!)).toBe(true);
     expect(isTaskVisible(alwaysVisible!)).toBe(true);
+  });
+
+  // The same counting mechanism over a week — "three times a week, any days".
+  // Invisible as a capability unless something is actually using it, and a
+  // 0/3 would be indistinguishable from an unstarted daily target.
+  it('seeds a weekly target partway through its week', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const weekly = tasks.find(t => t.quotaPeriod === 'week');
+    expect(weekly).toBeDefined();
+    expect(weekly!.targetCount).toBe(3);
+    expect(weekly!.progressCount).toBeGreaterThan(0);
+    expect(weekly!.progressCount).toBeLessThan(weekly!.targetCount!);
+    // Weekly recurrence, matching the period: on a daily repeat the rollover
+    // would spawn a fresh 0/3 every morning and the target could never be met.
+    expect(weekly!.recurrenceType).toBe('weekly');
+    // Whichever day the demo is entered on, the row is actually on screen.
+    expect(isTaskVisible(weekly!)).toBe(true);
   });
 
   // A timed task can hand its countdown out to its subtasks, and one that
@@ -1133,21 +1186,6 @@ describe('demo mode', () => {
     });
   });
 
-  it('seeds a sequential project, with its later steps actually held back', () => {
-    // Project.sequential is invisible on a project of one live step: the
-    // padlock, the step numbers and the "In order" caption all need a second
-    // step that is genuinely blocked, not merely further down the list.
-    useDemoStore.getState().enterDemoMode();
-
-    const passport = useProjectStore.getState().projects.find(p => p.title === 'Renew my passport');
-    expect(passport?.sequential).toBe(true);
-
-    const steps = liveProjectSteps(passport!.id, useTaskStore.getState().tasks);
-    expect(steps.length).toBeGreaterThan(1);
-    expect(isHeldBack(steps[0])).toBe(false);
-    expect(steps.slice(1).every(t => isHeldBack(t))).toBe(true);
-  });
-
   it('seeds a project carrying a deadline', () => {
     // The one date a project has, and the "By Oct 10" line on its card. With
     // none seeded that line never renders and the field reads as absent.
@@ -1406,6 +1444,42 @@ describe('demo seed — people', () => {
     const dated = usePersonNoteStore.getState().notes.filter(n => n.relevantOn !== null);
     expect(dated.some(n => !isStaleNote(n, today))).toBe(true);
     expect(dated.some(n => isStaleNote(n, today))).toBe(true);
+  });
+
+  it('seeds enough mood history for the insights to actually say something', () => {
+    // The length is the feature, not padding: moodInsights refuses to compare
+    // anything below MIN_PAIRED_DAYS, so a shorter seed would render every
+    // card on the Mood screen as "keep logging" — which reads as an app that
+    // can't do the thing it says it does.
+    const logs = useMoodStore.getState().logs;
+    const days = buildMoodDays(logs, useTaskStore.getState().tasks, '00:00');
+    const insight = moodCompletionInsight(days);
+    expect(insight.dayCount).toBeGreaterThanOrEqual(MIN_PAIRED_DAYS);
+  });
+
+  it('seeds symptoms, at more than one severity and on more than one day', () => {
+    const logs = useMoodStore.getState().logs;
+    expect(symptomVocabulary(logs).length).toBeGreaterThan(1);
+    const severities = new Set(logs.flatMap(l => l.symptoms.map(s => s.severity)));
+    expect(severities.size).toBeGreaterThan(1);
+  });
+
+  it('seeds a low patch, so the symptom contrast has something to report', () => {
+    // A flat history averages out to "no clear pattern", which is honest of
+    // the code and useless as a demo of what the code is for.
+    const days = buildMoodDays(useMoodStore.getState().logs, [], '00:00');
+    expect(symptomMoodContrasts(days).length).toBeGreaterThan(0);
+  });
+
+  it('leaves today unlogged, so the check-in is still worth answering', () => {
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    expect(useMoodStore.getState().logs.some(l => l.dayKey === todayKey)).toBe(false);
+  });
+
+  it('seeds no mood-generated tasks, since both generators ship off', () => {
+    const generated = useTaskStore.getState().tasks
+      .filter(t => t.generatedKind === 'moodLog' || t.generatedKind === 'moodNudge');
+    expect(generated).toHaveLength(0);
   });
 
   it('seeds a food note on somebody who is a guest at a seeded meal', () => {
@@ -1912,6 +1986,12 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(aisleOrder).not.toContain('Personal Care');
     expect(items.some(i => i.aisle === 'Bulk bins')).toBe(true);
     expect(aisleOrder.indexOf('Frozen')).toBeGreaterThan(aisleOrder.indexOf('Pantry'));
+
+    // A pile in "Other" the offline lexicon couldn't place, which is what the
+    // "Sort N into aisles" action at the foot of the list is offered for. With
+    // none, that entry point never renders in demo mode and aisle sorting
+    // reads as a feature the app hasn't got — on-device, Claude or otherwise.
+    expect(items.filter(i => i.aisle === OTHER_AISLE).length).toBeGreaterThan(0);
 
     // …and enough of them on the seeded list for ShoppingTripSheet to open
     // with a real pre-selected suggestion rather than an empty one — that's

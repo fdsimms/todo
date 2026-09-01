@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -87,6 +87,10 @@ import {
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { generatedBy, generatedSourceOf, generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
+import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
+import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
+import { hasLogOnDay } from '../utils/moodLog';
+import { useMoodStore } from './useMoodStore';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, TaskGroup } from '../types';
@@ -114,9 +118,10 @@ import {
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
-import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver } from '../utils/quotaSchedule';
+import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
+import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
@@ -384,6 +389,7 @@ function newTaskFromDraft(
     quotaIntervalMinutes: draft.quotaIntervalMinutes ?? null,
     quotaReminders: draft.quotaReminders ?? false,
     quotaAlwaysVisible: draft.quotaAlwaysVisible ?? false,
+    quotaPeriod: draft.quotaPeriod ?? 'day',
     // Never seeded from a draft: a run is started by tapping "start now" on a
     // task that exists, so a row arriving already mid-run would be claiming a
     // morning nobody had yet.
@@ -436,11 +442,25 @@ function newTaskFromDraft(
     estimatedMinutes: draft.estimatedMinutes ?? null,
     backfillDismissedFields: [],
     streakCount: 0,
-    streakDate: null,
+    // A negative habit is anchored at the day it was created, where a positive
+    // one has no anchor until its first completion. The anchor is what
+    // cleanDayPatch counts forward from, and leaving it null would make the
+    // first rollover spend a pass just laying it down — which is harmless but
+    // means a habit created on Monday can't credit Tuesday until Wednesday's
+    // pass has run twice. Today is deliberately the anchor rather than a day
+    // earlier: half of it happened before the commitment existed.
+    streakDate: (draft.polarity ?? 'positive') === 'negative' ? getCurrentDayStart().toISOString() : null,
     previousStreakCount: 0,
     previousStreakDate: null,
     priorBestStreak: 0,
-    showStreak: draft.showStreak ?? false,
+    slipCount: 0,
+    slipDate: null,
+    polarity: draft.polarity ?? 'positive',
+    // On by default for a negative habit and off for everything else. A flame on
+    // every recurring row is noise (the reasoning behind the field), but the run
+    // of clean days is the *only* feedback an avoid-task ever gives: it is never
+    // completed, so without the chip the row never changes at all.
+    showStreak: draft.showStreak ?? (draft.polarity ?? 'positive') === 'negative',
     streakRequiresWindow: draft.streakRequiresWindow ?? false,
     parentId: draft.parentId ?? null,
     groupId: draft.groupId ?? null,
@@ -1455,6 +1475,30 @@ interface TaskStore extends UndoHistoryActions {
    * occurrence to move on to; on a one-off it would just be a delete.
    */
   markMissed: (id: string) => void;
+  /**
+   * Report a slip against a negative habit — the tap that says "I smoked".
+   *
+   * The counterpart to `completeTask` for the other polarity, and deliberately
+   * not a completion: an avoid-task is never finished, so it never leaves the
+   * feed and never spawns a successor. What it does is break the run and record
+   * the event. Repeated taps on the same day keep counting, which is how a
+   * frequency-logged habit ("how many, not whether") works without needing a
+   * second kind of task behind it. See src/utils/negativeHabits.ts.
+   */
+  logSlip: (id: string) => void;
+  /** Takes back a slip logged today, restoring the run it ended. */
+  undoSlip: (id: string) => void;
+  /**
+   * Credits the clean days that have gone by since each negative habit was last
+   * accounted for.
+   *
+   * The one pass in the app that advances a streak without a completion, and it
+   * has to be: a negative streak is made of days on which nothing happened, so
+   * there is no event for the lazy gap check in `completeTask` to measure from.
+   * Runs alongside rolloverQuotas at day rollover and on launch, and is a no-op
+   * on almost every call — see cleanDayPatch.
+   */
+  rolloverNegativeStreaks: () => void;
   logQuotaUnit: (id: string) => void;
   unlogQuotaUnit: (id: string) => void;
   /** Keeps a back-on-pace daily target on Today until releaseQuotaHold. */
@@ -1586,6 +1630,21 @@ interface TaskStore extends UndoHistoryActions {
   checkCalendarReviewTasks: () => void;
   checkWeatherTasks: () => void;
   checkScreenTimeTasks: () => void;
+  /**
+   * Once a day, a task to log how you're feeling — and, after a run of low
+   * days, one to plan something you enjoy. See src/utils/moodTasks.ts.
+   */
+  checkMoodTasks: () => void;
+  /**
+   * Tick off today's "Log how you're feeling" task, if one is live.
+   *
+   * Called by the logging sheet once an entry is saved — logging *is* the task,
+   * so leaving it on the list after the thing it asks for has been done would
+   * be the app not listening. Completed rather than deleted: it is a real
+   * record of something done, it belongs in the Logbook and in Stats like any
+   * other completion, and the tick is the feedback that the entry landed.
+   */
+  completeMoodLogTaskForToday: () => void;
   /**
    * Rolls a recurring task onto its next date in place, silently — no record,
    * no history row, nothing in the Logbook, streak left exactly as it was.
@@ -1811,6 +1870,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // left pointed at the previous database would name people who don't
     // exist in the new one.
     usePersonGroupStore.getState().initialize();
+    // On the same fan-out as everything else here, and for the same
+    // swap-the-database reason: a mood history left pointed at the previous
+    // database would show a demo session's invented entries as the real
+    // person's own record, or the reverse — and this is the one store where
+    // that mistake is a claim about somebody's health.
+    useMoodStore.getState().initialize();
     useTemplateCategoryStore.getState().initialize();
     // Groceries ride this fan-out rather than being initialized from App.tsx,
     // and that placement is load-bearing: enterDemoMode/exitDemoMode and
@@ -2492,6 +2557,28 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(!('targetCount' in updates) && QUOTA_SPAN_FIELDS.some(f => f in updates)
           ? { targetCount: derivedTargetCount({ ...t, ...updates }) }
           : {}),
+        // Changing polarity restarts the run, because the two polarities count
+        // different things: a positive streak is completions and a negative one
+        // is days survived, so carrying the number across would relabel history
+        // rather than continue it. The dates matter more than the count — a task
+        // last completed three months ago carries a `streakDate` three months
+        // back, and cleanDayPatch would read that as ninety clean days and hand
+        // them over on the first rollover. Same call unarchiveTask makes when it
+        // resets a streak it can no longer vouch for.
+        //
+        // Shaped like the three rules above: a patch naming `streakCount` itself
+        // wins outright, so a whole-snapshot undo still restores what it
+        // recorded instead of being overruled here.
+        ...('polarity' in updates && updates.polarity !== t.polarity && !('streakCount' in updates)
+          ? {
+              streakCount: 0,
+              streakDate: getCurrentDayStart().toISOString(),
+              previousStreakCount: 0,
+              previousStreakDate: null,
+              slipCount: 0,
+              slipDate: null,
+            }
+          : {}),
       };
 
       // Re-filing a task must not, on its own, make it read as "new".
@@ -2789,6 +2876,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
     let task = get().tasks.find(t => t.id === id);
     if (!task || task.completed) return;
+    // There is no tap that finishes "don't smoke", so a negative habit has no
+    // completion to run — see Task.polarity. Refused here rather than at each
+    // caller because this is the funnel every completion path in the app pours
+    // into: the bulk bar, a stack cascade, the focus session's Done, a widget
+    // tap, the missed sweep. Any one of them reaching a negative habit would
+    // otherwise mark it done, spawn a successor and take it off the feed, which
+    // is precisely the row that is supposed to sit there all day. `logSlip` is
+    // the action this polarity has instead.
+    if (isNegativeTask(task)) return;
     // Recurring tasks shown early in Later (deferred to, or due on, a future
     // day) can't be completed ahead of schedule — doing so would generate the
     // next occurrence off today instead of the task's real day. Non-recurring
@@ -3750,6 +3846,48 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     });
   },
 
+  logSlip(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isNegativeTask(task) || task.archived) return;
+    const updated = { ...task, ...slipPatch(task, getCurrentDayStart()) };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+    // A tap here costs a run that may be weeks long, so the undo is offered
+    // rather than buried — the same affordance a logged quota unit gets, for a
+    // mis-tap that is considerably more expensive.
+    get().setLastAction({
+      label: task.streakCount > 0 ? `Streak reset (was ${task.streakCount})` : 'Logged',
+      undo: () => get().undoSlip(id),
+    });
+  },
+
+  undoSlip(id) {
+    const task = get().tasks.find(t => t.id === id);
+    if (!task || !isNegativeTask(task)) return;
+    const patch = undoSlipPatch(task, getCurrentDayStart());
+    if (!patch) return;
+    const updated = { ...task, ...patch };
+    dbUpdateTask(updated);
+    set(s => ({ tasks: s.tasks.map(t => (t.id === id ? updated : t)) }));
+  },
+
+  rolloverNegativeStreaks() {
+    const todayStart = getCurrentDayStart();
+    const patched = get().tasks.flatMap(t => {
+      if (!isNegativeTask(t) || t.archived) return [];
+      // Vacation protects the run rather than growing it, which is the call
+      // every other streak here makes. Read through isHiddenForVacation so a
+      // category paused for vacation covers its habits too, exactly as it does
+      // for the tasks the quota rollover skips.
+      const patch = cleanDayPatch(t, todayStart, { paused: isHiddenForVacation(t) });
+      return patch ? [{ ...t, ...patch }] : [];
+    });
+    if (patched.length === 0) return;
+    patched.forEach(dbUpdateTask);
+    const byId = new Map(patched.map(t => [t.id, t]));
+    set(s => ({ tasks: s.tasks.map(t => byId.get(t.id) ?? t) }));
+  },
+
   logQuotaUnit(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.completed || !isQuotaTask(task)) return;
@@ -3823,8 +3961,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // checkVacationExpiry, it's "time passed while we weren't looking" cleanup,
   // and the app may have been closed for days.
   rolloverQuotas() {
-    const { dayResetTime } = useSettingsStore.getState();
+    const { dayResetTime, weekStartsOn } = useSettingsStore.getState();
     const todayStart = getCurrentDayStart();
+    // Which period a date belongs to, as that period's opening instant. Two
+    // dates compare equal exactly when they share a period, which is the test
+    // this sweep is really making — "has the stretch this row was counting
+    // across finished" — rather than the day comparison it used to make.
+    const periodStartOf = (date: Date, period: QuotaPeriod): number => {
+      const dayStart = getTaskDayStart(date, dayResetTime);
+      return +(period === 'week' ? quotaWeekStart(dayStart, weekStartsOn) : dayStart);
+    };
     const stale = get().tasks.filter(t =>
       isQuotaTask(t) &&
       !t.completed &&
@@ -3849,7 +3995,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // sweepFinishedQuotaRuns, which closes it at the end of its run instead.
       !quotaRidesOutTheDay(t) &&
       t.dueDate !== null &&
-      getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
+      // "Its own period is over", not "its own day is over" — a weekly target
+      // has six days left to run on the morning after it was spawned, and the
+      // day test would close it out short every single night. See
+      // Task.quotaPeriod, and periodStartOf just below for the two readings.
+      periodStartOf(new Date(t.dueDate), t.quotaPeriod) < periodStartOf(todayStart, t.quotaPeriod)
     );
     if (stale.length === 0) return;
 
@@ -3857,16 +4007,22 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const spawned: Task[] = [];
     const now = new Date().toISOString();
     for (const task of stale) {
-      const ownDayStart = getTaskDayStart(new Date(task.dueDate!), dayResetTime);
-      // Stamped at the end of the day it belonged to, not now — the partial
-      // is a record of *that* day, and the Logbook groups by completedAt.
-      const ownDayEnd = new Date(+ownDayStart + 24 * 60 * 60 * 1000 - 1);
+      // Stamped at the end of the period it belonged to, not now — the partial
+      // is a record of *that* day (or week), and the Logbook groups by
+      // completedAt.
+      const ownPeriodStart = periodStartOf(new Date(task.dueDate!), task.quotaPeriod);
+      const ownDayEnd = new Date(
+        +ownPeriodStart + (task.quotaPeriod === 'week' ? 7 : 1) * 24 * 60 * 60 * 1000 - 1,
+      );
       // A day the task's own category schedule doesn't cover (see #2201,
       // isCategoryScheduledDay) wasn't a work day, so it closes as a no-op
       // rather than a shortfall — neither advancing nor breaking the streak.
+      // Day-period only: a weekly target can still be met on any of the
+      // category's scheduled days within its week, so a single day-of-week
+      // check doesn't say anything about whether the week itself was worked.
       // `nextStreak` reused for both fields the same way completeTask does,
       // so nextStreakRecord folds nothing when it's unchanged.
-      const neutral = !isCategoryScheduledDay(task.category, ownDayStart);
+      const neutral = task.quotaPeriod !== 'week' && !isCategoryScheduledDay(task.category, new Date(ownPeriodStart));
       const nextStreak = neutral ? task.streakCount : 0;
       closed.push({
         ...task,
@@ -4015,6 +4171,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       t.progressCount > 0 &&
       !isHiddenForVacation(t) &&
       t.dueDate !== null &&
+      // Weekly targets are deliberately out of scope for the overshoot and
+      // interval kinds (see Task.quotaPeriod), and this is the guard rather
+      // than the rule: if the combination ever arrives from a template, an
+      // import or a synced row, closing it on the day test would end its week
+      // six days early. Left daily, it is merely closed on time.
+      t.quotaPeriod === 'day' &&
       getTaskDayStart(new Date(t.dueDate), dayResetTime) < todayStart
     );
     // neutral on a day the task's own category schedule didn't cover — see
@@ -5382,6 +5544,116 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (fired.size > 0) useScreenTimeStore.getState().consume([...fired]);
   },
 
+  /**
+   * The mood log's two generators, fired together — see
+   * `src/utils/moodTasks.ts` for the rules and the three that keep the second
+   * one honest.
+   *
+   * One pass rather than two because they read the same data and answer in the
+   * same breath: the check-in asks "has today been logged", the nudge asks
+   * "how have the logged days been going", and splitting them would mean
+   * rebuilding the day series twice on every foreground.
+   *
+   * Both are day-keyed with no source row, the position `calendarReview` is in,
+   * so neither has a per-source stamp to decline onto and both use a
+   * settings-level mark instead (`moodLogLastDayKey`, `moodNudgeLastDayKey`).
+   */
+  checkMoodTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.moodLogTasks && !settings.moodNudgeTasks) return;
+    // The mood log is the user's own data and demo mode swaps the database
+    // under it, so a demo session's entries are fiction and a task written
+    // from them would persist in the demo database as a claim about the real
+    // person. Same refusal every other time-triggered generator makes.
+    if (isDemoModeActive()) return;
+
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const logs = useMoodStore.getState().logs;
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    if (settings.moodLogTasks && settings.moodLogTaskCategory) {
+      // Clear yesterday's check-in before deciding today's — the same
+      // clear-first-create-second ordering checkCalendarReviewTasks uses. An
+      // unanswered check-in is a question about a day that has gone, not a
+      // task still owed.
+      liveGeneratedTasksOfKind(get().tasks, 'moodLog')
+        .filter(task => moodLogDayKey(task) !== todayKey)
+        .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+      // Recorded before the "already logged" check below and unconditionally,
+      // for the reason calendarReviewLastDayKey is: a day already decided must
+      // not be re-diagnosed on every later sweep, or a check-in swiped away at
+      // breakfast comes straight back at lunch.
+      if (settings.moodLogLastDayKey !== todayKey) {
+        settings.setMoodLogLastDayKey(todayKey);
+        // Nothing to ask if the day is already logged. Someone who opened the
+        // sheet before the app got round to firing has answered the question,
+        // and a task asking it again is the app not listening.
+        if (!hasLogOnDay(logs, todayKey)) {
+          reconcileGeneratedTask({
+            kind: 'moodLog',
+            sourceId: todayKey,
+            wanted: true,
+            // The title never varies, so nothing to chase.
+            drift: () => null,
+            draft: () => ({
+              title: MOOD_LOG_TITLE,
+              dueDate: dueDate.toISOString(),
+              category: settings.moodLogTaskCategory,
+              // The row's link button opens the sheet that answers it. Without
+              // this the only thing to do with a check-in is tick it, which
+              // completes the task without logging anything — the question
+              // marked answered and no answer recorded.
+              linkUrl: 'dundundun://mood?log=1',
+              ...generatedBy('moodLog', todayKey),
+            }),
+          });
+        }
+      }
+    }
+
+    if (settings.moodNudgeTasks && settings.moodNudgeTaskCategory) {
+      // Built off the mood entries alone — the task half of a MoodDay is not
+      // read here, so the tasks argument is deliberately empty rather than the
+      // whole store. `lowMoodRun` looks only at `mood`, and handing it every
+      // task in the app would rebuild a categories index on every foreground
+      // for nothing.
+      const days = buildMoodDays(logs, [], settings.dayResetTime);
+      if (wantsMoodNudge(days, todayKey, settings.moodNudgeAfterDays, settings.moodNudgeLastDayKey)) {
+        // Stamped before the create, like the check-in's mark above: a nudge
+        // swiped away must not return on the next foreground of the same bad
+        // day, which is the one place in the app where handing the row back
+        // would be actively unkind.
+        settings.setMoodNudgeLastDayKey(todayKey);
+        const run = lowMoodRun(days, todayKey);
+        reconcileGeneratedTask({
+          kind: 'moodNudge',
+          sourceId: todayKey,
+          wanted: true,
+          drift: () => null,
+          draft: () => ({
+            title: MOOD_NUDGE_TITLE,
+            notes: moodNudgeNotes(run),
+            dueDate: dueDate.toISOString(),
+            category: settings.moodNudgeTaskCategory,
+            ...generatedBy('moodNudge', todayKey),
+          }),
+        });
+      }
+    }
+    // No setLastAction, same reasoning as the other unattended passes: this is
+    // not something the user just did.
+  },
+
+  completeMoodLogTaskForToday() {
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    const task = liveGeneratedTasksOfKind(get().tasks, 'moodLog')
+      .find(t => moodLogDayKey(t) === todayKey);
+    if (!task) return;
+    get().completeTask(task.id);
+  },
+
   skipNextRecurrence(id) {
     const task = get().tasks.find(t => t.id === id);
     if (!task || task.recurrenceType === 'none') return;
@@ -5754,6 +6026,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       priorBestStreak: 0,
       showStreak: false,
       streakRequiresWindow: false,
+      polarity: 'positive',
+      slipCount: 0,
+      slipDate: null,
       parentId,
       groupId: null,
       projectId: null,
@@ -5765,6 +6040,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaReminders: false,
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
+      quotaPeriod: 'day',
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
@@ -5941,6 +6217,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       priorBestStreak: 0,
       showStreak: false,
       streakRequiresWindow: false,
+      polarity: 'positive',
+      slipCount: 0,
+      slipDate: null,
       parentId: null,
       groupId,
       projectId: null,
@@ -5952,6 +6231,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       quotaReminders: false,
       quotaStartedAt: null,
       quotaAlwaysVisible: false,
+      quotaPeriod: 'day',
       reminderTime: null,
       reminderKind: 'notification',
       reminderOffsetDays: null,
