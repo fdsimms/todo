@@ -24,7 +24,6 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   createdAt: '2026-01-01T09:00:00.000Z',
   nudgeCadenceDays: 0,
   autoSchedule: false,
-  sequential: false,
   nudgeOptIn: false,
   reviewDeclinedAt: null,
   backfillDismissedFields: [],

@@ -26,7 +26,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/backup.ts` — BACKUP_FORMAT, REDACTED_SETTING_KEYS, BackupRow, Backup, ParseResult, redactSettings, buildBackup, serializeBackup, parseBackup, projectRow, +3 more
 - `src/utils/backupFile.ts` — writeBackupFile, canShare, shareBackupFile, discardBackupFile, pickBackupFile
 - `src/utils/birthdayTasks.ts` — DEFAULT_BIRTHDAY_LEAD_DAYS, DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS, MAX_BIRTHDAY_LEAD_DAYS, clampBirthdayLeadDays, clampBirthdayGiftLeadDays, parseBirthdayLeadDays, parseBirthdayGiftLeadDays, birthdaySourceId, parseBirthdaySource, parseBirthdayGiftSource, +15 more
-- `src/utils/blockerRegistry.ts` — registerTaskSource, registerProjectSource, resolveBlocker, waitingCountFor, stepNumberOf, latestProjectCompletionAt, isSequentialProject, isSequenceHeld
+- `src/utils/blockerRegistry.ts` — registerTaskSource, resolveBlocker, waitingCountFor
 - `src/utils/blockerStatus.ts` — BlockerWait, describeBlockerWait
 - `src/utils/blocking.ts` — TaskResolver, resolverFor, canBlock, blockerOf, isBlocked, PersonResolver, canWaitOn, personBlockerOf, isWaitingOnPerson, wouldCycle, +9 more
 - `src/utils/bulkCompletion.ts` — tasksAskingOnCompletion, unansweredCompletionCopy
@@ -152,7 +152,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/productCategory.ts` — CATEGORY_AISLES, aisleForProductCategory
 - `src/utils/projectBackfill.ts` — ProjectBackfillFieldId, ProjectBackfillFieldDef, PROJECT_BACKFILL_FIELDS, isProjectFieldMissing, isProjectBackfillDismissed, projectBackfillCandidates, projectBackfillFieldCounts, dismissProjectBackfillField
 - `src/utils/projectGrouping.ts` — ProjectListItem, groupProjectsByCategory, ProjectDropResolution, resolveProjectDrop
-- `src/utils/projectOrder.ts` — liveProjectSteps, stepNumbersByTask, slotUpdates
+- `src/utils/projectOrder.ts` — liveProjectSteps, slotUpdates
 - `src/utils/projectPull.ts` — MAX_PULLED_PROJECTS, MAX_CANDIDATES_PER_PROJECT, PULL_TODAY_BUDGET_MINUTES, StallMode, ProjectStall, PullDate, ProjectPullProposal, PullEmptyReason, PullEmptyState, ProjectPullPlan, +9 more
 - `src/utils/projectReviewTasks.ts` — MAX_PROJECT_REVIEW_TASKS, PROJECT_REVIEW_LINK_URL, projectReviewLinkUrl, projectReviewProjectId, projectReviewTitle, projectQuietDays, describeProjectQuiet, declinedToday, projectsReviewedToday, ProjectReviewWant, +2 more
 - `src/utils/projectStacks.ts` — ProjectListItem, buildProjectListItems
@@ -243,7 +243,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/useShakeToUndo.ts` — useShakeToUndo
 - `src/utils/useSyncOnForeground.ts` — useSyncOnForeground
 - `src/utils/useUpRecipes.ts` — UseUpRecipe, useUpRecipes, describeUseUpRecipe
-- `src/utils/visibilityUtils.ts` — isTaskBlocked, isSequenceBlocked, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, sameTimeSegments, hasDayArrived, effectiveWindowEnd, isCompletionOnTime, +32 more
+- `src/utils/visibilityUtils.ts` — isTaskBlocked, isHeldBack, VisibleAtPass, beginVisibleAtPass, isHiddenForVacation, sameTimeSegments, hasDayArrived, effectiveWindowEnd, isCompletionOnTime, isTaskWindowActive, +31 more
 - `src/utils/weatherCondition.ts` — classifyWeather
 - `src/utils/weatherLocation.ts` — LocationPermission, getLocationPermission, requestLocationPermission, DeviceLocation, getCurrentLocation
 - `src/utils/weatherTasks.ts` — WEATHER_RULE_TITLE_MAX_LENGTH, WEATHER_CONDITIONS, weatherConditionLabel, defaultWeatherRules, parseWeatherRules, weatherSourceId, parseWeatherSourceId, weatherRuleIdOf, ruleMatchesToday

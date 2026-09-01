@@ -19,7 +19,6 @@ const baseProject: Project = {
   createdAt: '2025-01-01T00:00:00.000Z',
   nudgeCadenceDays: 0,
   autoSchedule: false,
-  sequential: false,
   nudgeOptIn: false,
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
@@ -31,11 +30,6 @@ describe('isProjectFieldMissing', () => {
     expect(isProjectFieldMissing(baseProject, 'nudge')).toBe(true);
     expect(isProjectFieldMissing({ ...baseProject, nudgeCadenceDays: 14 }, 'nudge')).toBe(true);
     expect(isProjectFieldMissing({ ...baseProject, nudgeOptIn: true }, 'nudge')).toBe(false);
-  });
-
-  it('treats sequential false as missing', () => {
-    expect(isProjectFieldMissing(baseProject, 'sequential')).toBe(true);
-    expect(isProjectFieldMissing({ ...baseProject, sequential: true }, 'sequential')).toBe(false);
   });
 });
 
@@ -60,7 +54,7 @@ describe('projectBackfillCandidates', () => {
   it('excludes a project dismissed for that field, but not for another', () => {
     const projects: Project[] = [
       { ...baseProject, id: 'a', backfillDismissedFields: ['nudge'] },
-      { ...baseProject, id: 'b', backfillDismissedFields: ['sequential'] },
+      { ...baseProject, id: 'b', backfillDismissedFields: [] },
     ];
     expect(projectBackfillCandidates(projects, 'nudge').map(p => p.id)).toEqual(['b']);
   });
@@ -78,8 +72,8 @@ describe('isProjectBackfillDismissed / dismissProjectBackfillField', () => {
   });
 
   it('preserves other dismissed fields already on the project', () => {
-    const project = { ...baseProject, backfillDismissedFields: ['sequential'] };
-    expect(dismissProjectBackfillField(project, 'nudge').backfillDismissedFields).toEqual(['sequential', 'nudge']);
+    const project = { ...baseProject, backfillDismissedFields: ['other'] };
+    expect(dismissProjectBackfillField(project, 'nudge').backfillDismissedFields).toEqual(['other', 'nudge']);
   });
 
   it('dismissing twice does not duplicate the entry', () => {
@@ -92,10 +86,10 @@ describe('projectBackfillFieldCounts', () => {
   it('counts each field independently, skipping completed/archived', () => {
     const projects: Project[] = [
       { ...baseProject, id: 'a', nudgeOptIn: true },
-      { ...baseProject, id: 'b', sequential: true },
+      { ...baseProject, id: 'b' },
       { ...baseProject, id: 'c', completed: true },
     ];
-    expect(projectBackfillFieldCounts(projects)).toEqual({ nudge: 1, sequential: 1 });
+    expect(projectBackfillFieldCounts(projects)).toEqual({ nudge: 1 });
   });
 
   it('covers every declared backfillable field', () => {
@@ -107,6 +101,6 @@ describe('projectBackfillFieldCounts', () => {
 
   it('does not count a project dismissed for that field', () => {
     const project = { ...baseProject, backfillDismissedFields: ['nudge'] };
-    expect(projectBackfillFieldCounts([project])).toEqual({ nudge: 0, sequential: 1 });
+    expect(projectBackfillFieldCounts([project])).toEqual({ nudge: 0 });
   });
 });
