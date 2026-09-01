@@ -25,6 +25,7 @@ import {
 import { useTaskStore } from '../store/useTaskStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { projectReviewProjectId } from '../utils/projectReviewTasks';
 import { WhenPicker } from './WhenPicker';
 import { SheetScrim } from './SheetScrim';
 import type { Task } from '../types';
@@ -78,6 +79,16 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
   const pullProjectTasks = useTaskStore(s => s.pullProjectTasks);
   const forgivVacationStreaks = useTaskStore(s => s.forgivVacationStreaks);
   const setVacationMode = useSettingsStore(s => s.setVacationMode);
+  const completeTask = useTaskStore(s => s.completeTask);
+
+  // The one review task this opening is answering, when it's scoped to a
+  // single project — i.e. opened from that project's own "Review X" task
+  // rather than the board-wide "..." menu. Skip below marks *this* task
+  // reviewed; a board-wide opening has no one task to mark and gets no
+  // Skip button at all.
+  const reviewTaskId = scopeProjectIds?.length === 1
+    ? allTasks.find(t => projectReviewProjectId(t) === scopeProjectIds[0])?.id ?? null
+    : null;
 
   // The plan is computed once per opening, not derived live: it's a snapshot
   // the user is deciding on, and re-running it as the store changes underneath
@@ -243,6 +254,17 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
     }));
     animateLayout();
     pullProjectTasks(moves);
+    dismiss();
+  };
+
+  // "I looked and there's nothing to pull" — completes the review task
+  // without pulling anything in, the same bookkeeping a pull would leave
+  // behind (projectsReviewedToday), but as a deliberate choice rather than
+  // whatever a direct tap on the task's own checkbox used to do silently.
+  const handleSkip = () => {
+    if (!reviewTaskId) return;
+    haptics.success();
+    completeTask(reviewTaskId);
     dismiss();
   };
 
@@ -435,6 +457,18 @@ export function ProjectPullSheet({ visible, todaysTasks, scopeProjectIds, onClos
                 : `Pull in ${selected.length} task${selected.length === 1 ? '' : 's'}`}
             </Text>
           </TouchableOpacity>
+
+          {reviewTaskId && (
+            <TouchableOpacity
+              style={styles.skipBtn}
+              onPress={handleSkip}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel="Nothing to pull, mark this project reviewed"
+            >
+              <Text style={styles.skipBtnText}>Nothing to pull, mark reviewed</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
         <TouchableOpacity style={styles.cancelCard} onPress={dismiss} activeOpacity={interaction.activeOpacity}>
@@ -566,6 +600,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   applyBtnDisabled: { backgroundColor: colors.bgTertiary },
   applyBtnText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
   applyBtnTextDisabled: { color: colors.textTertiary },
+  skipBtn: {
+    alignItems: 'center',
+    paddingBottom: spacing.md,
+  },
+  skipBtnText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   cancelCard: {
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.lg,

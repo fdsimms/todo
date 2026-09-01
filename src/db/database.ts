@@ -1246,6 +1246,9 @@ export function initDatabase(): void {
     // rather than part of the CREATE for the usual reason: a device that got
     // the table from an earlier build still picks the index up.
     'CREATE INDEX IF NOT EXISTS idx_focus_session_log_ended ON focus_session_log(ended_at)',
+    // See Project.ongoing — a running list with no finish line, so the
+    // "Mark Complete" banner never offers itself for it.
+    'ALTER TABLE projects ADD COLUMN ongoing INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4608,6 +4611,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     archivedAt: (row.archived_at as string) ?? null,
     completed: Boolean(row.completed),
     completedAt: (row.completed_at as string) ?? null,
+    ongoing: Boolean(row.ongoing),
     createdAt: row.created_at as string,
     nudgeCadenceDays: (row.nudge_cadence_days as number | null) ?? DEFAULT_NUDGE_CADENCE_DAYS,
     autoSchedule: Boolean(row.auto_schedule),
@@ -4629,11 +4633,11 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at, backfill_dismissed_fields, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at, backfill_dismissed_fields, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
-      project.completed ? 1 : 0, project.completedAt, project.createdAt,
+      project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0, project.createdAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
     ]
@@ -4642,11 +4646,11 @@ export function dbInsertProject(project: Project): void {
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=?, kind=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=?, kind=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
-      project.completed ? 1 : 0, project.completedAt,
+      project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind, project.id,
     ]

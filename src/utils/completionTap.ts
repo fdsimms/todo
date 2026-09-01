@@ -2,6 +2,7 @@ import type { Task } from '../types';
 import { isQuotaTask, isRecurrenceNotYetDue } from './visibilityUtils';
 import { asksOnCompletion } from './deliverables';
 import { activeMealSlotStepId } from './mealSlotTasks';
+import { projectReviewProjectId } from './projectReviewTasks';
 
 /**
  * What a tap on a task's checkbox should do, for the surfaces that show a
@@ -22,6 +23,8 @@ export type CompletionTap =
   | 'ask'
   /** A meal-slot task's own "Choose <meal>" step — open the meal picker, not the checkmark. */
   | 'pick-meal'
+  /** A quiet project's review task — open the pull sheet, not the checkmark. */
+  | 'review-project'
   /** A daily target below its count: this tap logs one unit, not the lot. */
   | 'log-unit'
   /** Already done: put it back on the list. */
@@ -58,6 +61,7 @@ export function completionTapFor(task: Task): CompletionTap {
   // ticking it, it's answered by putting something in the slot — see
   // mealSlotChain in mealSlotTasks.ts.
   if (activeMealSlotStepId(task)?.endsWith('-choose')) return 'pick-meal';
+  if (projectReviewProjectId(task)) return 'review-project';
   if (asksOnCompletion(task)) return 'ask';
   return 'complete';
 }

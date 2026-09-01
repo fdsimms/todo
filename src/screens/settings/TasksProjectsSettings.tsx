@@ -4,6 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns/format';
 import { useSettingsStore, type MealsOnToday } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
+import { useCalendarStore } from '../../store/useCalendarStore';
 import { useCategoryStore } from '../../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../../theme/ThemeContext';
@@ -722,6 +723,10 @@ export function TasksProjectsSettings() {
             } else {
               setVacationMode(true);
             }
+            // Any calendar in vacationHiddenCalendarIds joins or leaves the
+            // read right on the toggle, rather than waiting on the next
+            // focus of a screen that happens to call refresh() itself.
+            void useCalendarStore.getState().refresh();
           }}
         />
         {vacationMode && (

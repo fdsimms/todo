@@ -55,6 +55,7 @@ import { haptics } from '../utils/haptics';
 import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
 import { telUrl, smsUrl } from '../utils/phone';
 import { mailtoUrl } from '../utils/email';
+import { directionsUrl } from '../utils/maps';
 import { animateLayout } from '../utils/layoutAnimation';
 import { nextMeasuredHeight } from '../utils/measuredHeight';
 import { describePendingImport } from '../utils/remindersImport';
@@ -402,6 +403,19 @@ export const TaskItem = React.memo(function TaskItem({
     try {
       // Same reasoning as call/link: no canOpenURL check needed for mailto:.
       await Linking.openURL(emailUrl);
+    } catch {
+      // silently ignore — no toast infra for this row-level action
+    }
+  };
+  // Same sanitise-at-render, null-hides-the-button pattern as callUrl/emailUrl
+  // above — see maps.ts for why an https: directions link needs no
+  // canOpenURL check either, same as TodayEventsSheet's own openDirections.
+  const mapsUrl = directionsUrl(task.location);
+  const handleDirections = async () => {
+    if (!mapsUrl) return;
+    haptics.tap();
+    try {
+      await Linking.openURL(mapsUrl);
     } catch {
       // silently ignore — no toast infra for this row-level action
     }
@@ -871,7 +885,7 @@ export const TaskItem = React.memo(function TaskItem({
   // animating open onto nothing (the meal-plan nudge, whose detail is the Meal
   // Plan screen its link button opens).
   const noticeHasPanel =
-    task.notes.length > 0 || subtasks.length > 0 || calendarReviewEvents.length > 0;
+    task.notes.length > 0 || subtasks.length > 0 || task.generatedKind === 'calendarReview';
   const expandable = !notice || noticeHasPanel;
 
   // A "Shop for Tue ragù" row's own answer: how many lines are still to buy,
@@ -1317,6 +1331,16 @@ export const TaskItem = React.memo(function TaskItem({
     if (mealSlotChooseSource) {
       await haptics.tap();
       setShowMealPicker(true);
+      return;
+    }
+    // A quiet project's review task isn't answered by ticking it either —
+    // completing it that way used to count as a full, silent "reviewed" with
+    // nothing actually pulled (see docs/arch/generated-tasks.md). The tap
+    // opens the same pull sheet the task's own link button does, which now
+    // carries its own Skip for "I looked, there's nothing to bring in".
+    if (reviewProjectId) {
+      await haptics.tap();
+      handleOpenLink();
       return;
     }
     // The question comes before the animation, not after it: the row has to
@@ -2310,6 +2334,18 @@ export const TaskItem = React.memo(function TaskItem({
         </TouchableOpacity>
       )}
 
+      {!selectionMode && showActions && mapsUrl && (
+        <TouchableOpacity
+          onPress={handleDirections}
+          hitSlop={8}
+          style={styles.mapBtn}
+          accessibilityRole="button"
+          accessibilityLabel={`Get directions to ${task.location} for ${task.title}`}
+        >
+          <Ionicons name="navigate-outline" size={iconSize.sm} color={colors.accent} />
+        </TouchableOpacity>
+      )}
+
       {!selectionMode && showActions && showPin && !notice && (
         <TouchableOpacity
           onPress={() => {
@@ -2623,21 +2659,38 @@ export const TaskItem = React.memo(function TaskItem({
                 review task's panel now (the subtask section and the action row
                 are both gone on a notice), which is why the divider asks
                 whether anything is actually above it. */}
-            {task.generatedKind === 'calendarReview' && calendarReviewEvents.length > 0 && (
+            {task.generatedKind === 'calendarReview' && (
               <View style={[
                 styles.expandSection,
                 panelSectionAbove && styles.sectionDivider,
               ]}>
-                {calendarReviewEvents.map(event => (
-                  <View key={event.id} style={styles.calendarReviewEventRow}>
-                    <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
-                    <Text style={styles.expandMeta} numberOfLines={1}>
-                      {event.allDay ? 'All day' : formatTimeOfDay(new Date(event.start))}
-                      {' · '}
-                      {event.title || 'Event'}
-                    </Text>
-                  </View>
-                ))}
+                {calendarReviewEvents.length > 0 ? (
+                  calendarReviewEvents.map(event => (
+                    <View key={event.id} style={styles.calendarReviewEventRow}>
+                      <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
+                      <Text style={styles.expandMeta} numberOfLines={1}>
+                        {event.allDay ? 'All day' : formatTimeOfDay(new Date(event.start))}
+                        {' · '}
+                        {event.title || 'Event'}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.expandMeta}>No events found</Text>
+                )}
+                {/* Forces a fresh read off the device calendar right from the
+                    review task, rather than only whatever's already sitting
+                    in the store — see useCalendarStore's own refresh(). */}
+                <TouchableOpacity
+                  onPress={() => { haptics.tap(); useCalendarStore.getState().refresh(); }}
+                  style={styles.calendarReviewSyncRow}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sync calendar now"
+                >
+                  <Ionicons name="refresh-outline" size={12} color={colors.accent} />
+                  <Text style={[styles.expandMeta, { color: colors.accent }]}>Sync now</Text>
+                </TouchableOpacity>
               </View>
             )}
 
@@ -3609,6 +3662,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   emailBtn: {
     padding: 4,
   },
+  mapBtn: {
+    padding: 4,
+  },
   pinBtn: {
     padding: 4,
   },
@@ -3788,6 +3844,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
+  },
+  calendarReviewSyncRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: spacing.xs,
   },
   timedEditAction: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
   timedEditActionDisabled: { color: colors.textTertiary },
