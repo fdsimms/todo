@@ -1,0 +1,7 @@
+{
+  "name": "todo-vision-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module that reads text off a photo on device with Vision's VNRecognizeTextRequest, falling back to unavailable everywhere it isn't linked.",
+  "main": "index.ts",
+  "private": true
+}

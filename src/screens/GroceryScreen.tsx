@@ -306,12 +306,14 @@ export function GroceryScreen() {
   // Every AI affordance is gated on this, so a user without a key never sees
   // an entry point — the offline lexicon carries the feature on its own.
   //
-  // Aisle sorting is the one exception now: it can also be answered on the
-  // device, so it asks `aisleSortRoute` below rather than reading this
-  // directly. Everything else here still needs a key, because everything else
-  // here is a photograph or wants world knowledge.
+  // Two exceptions now, and both go through `useAiRoute` rather than reading
+  // this: aisle sorting can be answered by the on-device language model, and
+  // receipt scanning can be *read* by Vision even though naming what was read
+  // still wants a key. What is left gated on a key outright is what needs world
+  // knowledge, or a photograph the device can't make sense of on its own.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const aisleSortRoute = useAiRoute('groceryAisles');
+  const receiptRoute = useAiRoute('receiptImport');
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
@@ -1359,10 +1361,12 @@ export function GroceryScreen() {
               </View>
             )}
             {/* At the foot of the list for the same reason Clear is: you
-                reach for it when you're done, not mid-shop. Gated on a key
-                because the read is the whole feature — without one the button
-                would open a sheet that can only apologise. */}
-            {!!anthropicApiKey && listCount > 0 && !featureHidden('receiptImport', simpleMode) && (
+                reach for it when you're done, not mid-shop. Gated on there
+                being *some* read available: with an API key the model reads the
+                paper, and without one Vision still reads it on device. With
+                neither, the button would open a sheet that can only
+                apologise. */}
+            {receiptRoute !== 'unavailable' && listCount > 0 && !featureHidden('receiptImport', simpleMode) && (
               <View style={styles.clearWrap}>
                 <InlineAction
                   label="Scan a receipt"
@@ -1465,9 +1469,10 @@ export function GroceryScreen() {
         seedPriceText={receiptSeed?.priceText}
         seedPurchasedAt={receiptSeed?.purchasedAt}
         seedStamp={receiptSeed?.stamp}
-        // Gated on a key for the reason the list's own button is: without one
-        // the action opens a sheet that can only apologise.
-        onScanReceipt={anthropicApiKey && !featureHidden('receiptImport', simpleMode)
+        // Gated for the reason the list's own button is: with neither a key
+        // nor an on-device read, the action opens a sheet that can only
+        // apologise.
+        onScanReceipt={receiptRoute !== 'unavailable' && !featureHidden('receiptImport', simpleMode)
           ? () => setReceiptOpen(true)
           : undefined}
         onClose={() => {
