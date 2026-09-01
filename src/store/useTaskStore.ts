@@ -5718,7 +5718,15 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       dropGeneratedTask('weekendNudge', weekendNudgeWeekendKey(task));
     }
 
-    if (!wantsWeekendNudge(today, window, bare, settings.weekendNudgeLastWeekendKey)) return;
+    // Rule 6: the mood nudge already asked for the same thing, off a more
+    // specific signal. Read here rather than from a settings flag because what
+    // suppresses is a *live row*, not the generator being switched on — a nudge
+    // ticked off this morning stops standing in the way.
+    const moodNudgeLive = liveGeneratedTasksOfKind(tasks, 'moodNudge').length > 0;
+    if (!wantsWeekendNudge(today, window, bare, settings.weekendNudgeLastWeekendKey, {
+      leadDays: settings.weekendNudgeLeadDays,
+      moodNudgeLive,
+    })) return;
     // Marked before the row is written, the order every day-keyed generator
     // uses: with no source row to stamp a decline onto, this is the only thing
     // standing between a swiped-away nudge and an identical one on the next

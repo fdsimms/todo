@@ -699,8 +699,37 @@ in the mechanism.
   nothing about that mutation knows a row is sitting on Today asking for it.
   Same split `staleProjectReviewTasks` draws, and the same `dropGeneratedTask` so
   the app's own tidying up never writes an opt-out.
+- **It stands down while a `moodNudge` row is live.** That generator's task is
+  "Plan something you enjoy this week", which is this offer with a more specific
+  reason behind it, so a low week with a bare weekend would otherwise put two
+  rows on Today asking for one thing. This one yields, because the other fired
+  off something the user recorded about themselves where this fired off three
+  empty days. Structurally it is `checkPantryCheckTasks` standing down while a
+  `pantryReview` row is live, and it copies both halves of that: it suppresses
+  the **create half only** (a weekend nudge already raised, possibly deferred, is
+  the user's, and the stale pass clears it on its own terms), and `checkMoodTasks`
+  runs **first** at both call sites so the suppression lands in the same sweep
+  rather than one behind it. The read is of a *live row*, deliberately, not of
+  `moodNudgeTasks` — a nudge ticked off this morning stops standing in the way.
+- **The lead window is a setting, and its floor is in the predicate rather than
+  only in the clamp.** `weekendNudgeLeadDays` (default 2, so Thursday and Friday)
+  can be narrowed to the Friday alone or widened back to the Monday, which is
+  `moodNudgeAfterDays`' argument one shelf over: how much warning you want about
+  a bare weekend is a thing only the person planning it can answer. What it may
+  never buy is a way into the Saturday or the Sunday — `isWeekendNudgeLeadDay`
+  bounds below at 1 as well as above at 5, so a stored 0, a negative, or a value
+  from a peer on a different build cannot cross rule 2. The ceiling is the Monday
+  because a sixth day runs into the previous weekend.
 - **It ships off**, like every generator that adds a surface rather than
   replacing one already on screen, and it is gated on `isDemoModeActive()` for
   `calendarReview`'s reason rather than the general one: the busy half of its
   reading is the real device calendar. The demo's own example row is seeded
   directly in `demoSeed.ts`.
+- **`Project.weekendSource` is in the Backfill walkthrough**, unlike
+  `autoSchedule`, which that module leaves out for being meaningless until a
+  sibling is already set. This one has no such dependency: it is a plain flag
+  whose whole meaning is itself, so "missing" is just "off". It is the first
+  project field there that is a toggle rather than a value picker, which is why
+  `BackfillScreen`'s project step now branches on the field id instead of always
+  rendering the cadence stepper. Dismissal stays per field, so "never chase me
+  about this project" is not also "never suggest it for a weekend".

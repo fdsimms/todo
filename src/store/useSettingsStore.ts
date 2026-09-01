@@ -8,6 +8,9 @@ import {
   CURRENCY_SYMBOL_MAX_LENGTH,
   MEAL_SLOTS,
   GROCERY_USE_UP_LEAD_DAYS_DEFAULT,
+  WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
+  WEEKEND_NUDGE_LEAD_DAYS_MAX,
+  WEEKEND_NUDGE_LEAD_DAYS_MIN,
   GROCERY_USE_UP_LEAD_DAYS_MAX,
   GROCERY_USE_UP_LEAD_DAYS_MIN,
   MEAL_SHORTFALL_LEAD_DAYS_DEFAULT,
@@ -954,6 +957,11 @@ interface SettingsStore {
   // one. See src/utils/weekendTasks.ts.
   weekendNudgeTasks: boolean;
   weekendNudgeTaskCategory: string | null;
+  // How many days before the Saturday the offer may first be raised. Its own
+  // setting rather than a constant for the reason moodNudgeAfterDays is one:
+  // how much warning you want about a bare weekend is a thing only the person
+  // planning it can answer. See DEFAULT_WEEKEND_NUDGE_LEAD_DAYS.
+  weekendNudgeLeadDays: number;
   // The Saturday day key of the last weekend an offer was raised for. The whole
   // of the "once per weekend" promise, and — like calendarReviewLastDayKey —
   // written before the weekend is judged rather than after, since there is no
@@ -1166,6 +1174,7 @@ interface SettingsStore {
   setMoodNudgeLastDayKey: (dayKey: string | null) => void;
   setWeekendNudgeTasks: (on: boolean) => void;
   setWeekendNudgeTaskCategory: (category: string | null) => void;
+  setWeekendNudgeLeadDays: (days: number) => void;
   setWeekendNudgeLastWeekendKey: (weekendKey: string | null) => void;
   setDefaultProjectNudgeCadenceDays: (days: number) => void;
   setMealPlanNudgeEnabled: (on: boolean) => void;
@@ -1643,6 +1652,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   moodNudgeLastDayKey: null,
   weekendNudgeTasks: false,
   weekendNudgeTaskCategory: null,
+  weekendNudgeLeadDays: WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
   weekendNudgeLastWeekendKey: null,
   patchNotesQaStatus: {},
   defaultProjectNudgeCadenceDays: 0,
@@ -1952,6 +1962,12 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // on-by-default form and why this generator is not one.
     const weekendNudgeTasks = dbGetSetting('weekendNudgeTasks') === 'true';
     const weekendNudgeTaskCategory = dbGetSetting('weekendNudgeTaskCategory') || null;
+    // Clamped on read as well as on write: a value can arrive from a peer on a
+    // different build, and a 0-day window is a generator that can never fire.
+    const storedWeekendLead = parseInt(dbGetSetting('weekendNudgeLeadDays') ?? '', 10);
+    const weekendNudgeLeadDays = Number.isFinite(storedWeekendLead)
+      ? Math.max(WEEKEND_NUDGE_LEAD_DAYS_MIN, Math.min(WEEKEND_NUDGE_LEAD_DAYS_MAX, storedWeekendLead))
+      : WEEKEND_NUDGE_LEAD_DAYS_DEFAULT;
     const weekendNudgeLastWeekendKey = dbGetSetting('weekendNudgeLastWeekendKey') || null;
     const screenTimeTasks = dbGetSetting('screenTimeTasks') === 'true';
     const screenTimeTaskCategory = dbGetSetting('screenTimeTaskCategory') || null;
@@ -2038,7 +2054,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLastWeekendKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2475,6 +2491,15 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setWeekendNudgeTaskCategory(category: string | null) {
     dbSetSetting('weekendNudgeTaskCategory', category ?? '');
     set({ weekendNudgeTaskCategory: category });
+  },
+
+  setWeekendNudgeLeadDays(days: number) {
+    const clamped = Math.max(
+      WEEKEND_NUDGE_LEAD_DAYS_MIN,
+      Math.min(WEEKEND_NUDGE_LEAD_DAYS_MAX, Math.round(days)),
+    );
+    dbSetSetting('weekendNudgeLeadDays', String(clamped));
+    set({ weekendNudgeLeadDays: clamped });
   },
 
   setWeekendNudgeLastWeekendKey(weekendKey: string | null) {

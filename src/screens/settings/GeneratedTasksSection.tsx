@@ -23,6 +23,9 @@ import {
   MEAL_SHORTFALL_LEAD_DAYS_MIN,
   USE_UP_TASK_CAP_MAX,
   USE_UP_TASK_CAP_MIN,
+  WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
+  WEEKEND_NUDGE_LEAD_DAYS_MAX,
+  WEEKEND_NUDGE_LEAD_DAYS_MIN,
   type TimeOfDay,
 } from '../../types';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
@@ -35,6 +38,7 @@ import {
   DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS,
   MAX_BIRTHDAY_LEAD_DAYS,
 } from '../../utils/birthdayTasks';
+import { describeWeekendNudgeLead } from '../../utils/weekendTasks';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
@@ -415,6 +419,33 @@ export function GeneratedTasksSection() {
               the task's deadline, so changing this never moves anybody's
               birthday, and it deliberately doesn't re-date a row already on the
               list — see birthdayDrift. */}
+        </>
+      );
+    }
+
+    if (kind === 'weekendNudge') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="weekendNudgeLeadDays"
+            icon="calendar-outline"
+            label="Show the task"
+            hint="Which day the task appears on. It never appears once the weekend has started."
+            value={describeWeekendNudgeLead(s.weekendNudgeLeadDays)}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.weekendNudgeLeadDays}
+              onChange={next => s.setWeekendNudgeLeadDays(next ?? WEEKEND_NUDGE_LEAD_DAYS_DEFAULT)}
+              min={WEEKEND_NUDGE_LEAD_DAYS_MIN}
+              max={WEEKEND_NUDGE_LEAD_DAYS_MAX}
+              format={n => `${n}d`}
+              label="Days before Saturday"
+              describeValue={n => describeWeekendNudgeLead(n ?? WEEKEND_NUDGE_LEAD_DAYS_DEFAULT)}
+            />
+          </View>
         </>
       );
     }

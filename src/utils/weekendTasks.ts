@@ -1,4 +1,12 @@
 import type { Project, Task, TimeOfDay } from '../types';
+// From types rather than declared here, so useSettingsStore can read them
+// without importing this module: that would close a cycle through dateUtils,
+// which is exactly why the grocery lead-days trio lives there too.
+import {
+  WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
+  WEEKEND_NUDGE_LEAD_DAYS_MAX,
+  WEEKEND_NUDGE_LEAD_DAYS_MIN,
+} from '../types';
 import type { DayBucket } from './calendarMonth';
 import type { DayLoad } from './dayLoad';
 import { dayKeyOf } from './dateUtils';
@@ -22,7 +30,7 @@ import { projectReviewLinkUrl } from './projectReviewTasks';
  * and the fact that the thing it offers to fill the weekend with comes from a
  * project the user nominated.
  *
- * Five rules worth not re-deriving:
+ * Six rules worth not re-deriving:
  *
  * 1. **Friday counts from the evening, and only from the evening.** A weekend
  *    that starts at midnight on Saturday is not the one anybody actually has.
@@ -32,9 +40,13 @@ import { projectReviewLinkUrl } from './projectReviewTasks';
  *    is a workday task, and reading it as a plan would silence the nudge for
  *    everybody who works Fridays.
  * 2. **It asks before the weekend, never during it.** `isWeekendNudgeLeadDay`
- *    is Thursday and Friday. On Saturday there is nothing left to plan ahead
- *    for, and a row saying "make plans for the weekend" on Saturday afternoon is
- *    the app telling somebody their weekend is going badly.
+ *    is Thursday and Friday by default, and the user can widen it back to the
+ *    Monday (`weekendNudgeLeadDays`) — but never past the Friday, because on
+ *    Saturday there is nothing left to plan ahead for, and a row saying "make
+ *    plans for the weekend" on Saturday afternoon is the app telling somebody
+ *    their weekend is going badly. That floor is in the predicate rather than
+ *    only in the setting's clamp, so no stored value can buy a way into the two
+ *    days this must stay off.
  * 3. **The stamp is the weekend, not the day** (`weekendNudgeLastWeekendKey`,
  *    holding the Saturday's day key). One offer per weekend falls out of that
  *    with no cooldown arithmetic at all: Thursday's firing marks the weekend,
@@ -57,6 +69,17 @@ import { projectReviewLinkUrl } from './projectReviewTasks';
  *    they look. Several nominated projects break the tie on `sortOrder`, the
  *    hand drag on the Projects screen, for the reason `reachOut` breaks its own
  *    tie there: it is the only ranking of these the user actually made.
+ * 6. **It stands down while a mood nudge is live.** `moodNudge`'s task is "Plan
+ *    something you enjoy this week", which is this offer with a different reason
+ *    behind it, so a low week with a bare weekend would otherwise produce two
+ *    rows asking for one thing. This one yields because the other is the more
+ *    specific claim: it fired off something the user recorded about themselves,
+ *    where this fired off three empty days. Same shape as `checkPantryCheckTasks`
+ *    standing down while a `pantryReview` row is live, including that it is the
+ *    **create half only** — a weekend nudge already raised, possibly deferred, is
+ *    the user's, and the stale pass clears it on its own terms. And like that
+ *    pair, the passes are ordered so the suppression lands in the same sweep
+ *    rather than one behind it: `checkMoodTasks` runs first at both call sites.
  */
 
 /** The row's title. Never varies. */
@@ -80,6 +103,18 @@ export interface WeekendWindow {
 }
 
 /**
+ * How many days from `today` to the weekend's Saturday; negative once past it.
+ *
+ * Sunday is the tail of a weekend already under way, so its Saturday is
+ * yesterday — the one case that has to come out negative rather than as 6, and
+ * the reason both readers below go through this rather than each spelling the
+ * weekday arithmetic out.
+ */
+function daysUntilSaturday(today: Date): number {
+  return today.getDay() === 0 ? -1 : 6 - today.getDay();
+}
+
+/**
  * The weekend `today` is closest to, from any day of the week.
  *
  * Anchored on the Saturday, which is also what the app's own "this weekend"
@@ -96,11 +131,7 @@ export interface WeekendWindow {
 export function upcomingWeekend(today: Date): WeekendWindow {
   const saturday = new Date(today);
   saturday.setHours(12, 0, 0, 0);
-  // Sunday (0) is the tail of the weekend that has already started, so it looks
-  // back a day. Every other weekday looks forward to the Saturday of its own
-  // week, which is 0 days away when it is already Saturday.
-  const offset = today.getDay() === 0 ? -1 : 6 - today.getDay();
-  saturday.setDate(saturday.getDate() + offset);
+  saturday.setDate(saturday.getDate() + daysUntilSaturday(today));
 
   const friday = new Date(saturday);
   friday.setDate(friday.getDate() - 1);
@@ -115,16 +146,47 @@ export function upcomingWeekend(today: Date): WeekendWindow {
 }
 
 /**
- * Whether today is a day the offer may be raised on — Thursday or Friday.
+ * Whether today is a day the offer may be raised on.
  *
- * Two days rather than one because the pass only runs when the app is opened,
- * and a Thursday-only offer is silent for anybody who does not open it that day.
- * The weekend stamp is what keeps the pair from firing twice (rule 3).
+ * Bounded below at 1 as well as above: on the Saturday and Sunday themselves
+ * there is nothing left to plan ahead for (rule 2), and no lead setting may buy
+ * a way into those two days.
  */
-export function isWeekendNudgeLeadDay(today: Date): boolean {
-  const day = today.getDay();
-  return day === 4 || day === 5;
+export function isWeekendNudgeLeadDay(
+  today: Date,
+  leadDays: number = WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
+): boolean {
+  const until = daysUntilSaturday(today);
+  return until >= 1 && until <= clampWeekendNudgeLeadDays(leadDays);
 }
+
+/**
+ * A stored lead setting read back as a usable one.
+ *
+ * Its own function rather than a clamp at the setter alone, for the reason
+ * `parseGroceryUseUpLeadDays` is: a value can reach this module from a stored
+ * string or a peer on a different build, and a window of 0 days would be a
+ * generator that can never fire rather than one that fires less.
+ */
+export function clampWeekendNudgeLeadDays(days: number): number {
+  if (!Number.isFinite(days)) return WEEKEND_NUDGE_LEAD_DAYS_DEFAULT;
+  return Math.max(
+    WEEKEND_NUDGE_LEAD_DAYS_MIN,
+    Math.min(WEEKEND_NUDGE_LEAD_DAYS_MAX, Math.round(days)),
+  );
+}
+
+/** How the lead window reads in Settings, and in the stepper's own caption. */
+export function describeWeekendNudgeLead(days: number): string {
+  const clamped = clampWeekendNudgeLeadDays(days);
+  return clamped === 1
+    ? 'On Friday'
+    : `From ${WEEKDAY_NAMES[(6 - clamped + 7) % 7]}`;
+}
+
+const WEEKDAY_NAMES = [
+  'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday',
+] as const;
 
 /** The weekend a nudge task speaks for, or null for any other task. */
 export function weekendNudgeWeekendKey(
@@ -226,8 +288,12 @@ export function wantsWeekendNudge(
   window: WeekendWindow,
   bare: boolean,
   lastWeekendKey: string | null,
+  options: { leadDays?: number; moodNudgeLive?: boolean } = {},
 ): boolean {
-  if (!isWeekendNudgeLeadDay(today)) return false;
+  const { leadDays = WEEKEND_NUDGE_LEAD_DAYS_DEFAULT, moodNudgeLive = false } = options;
+  // Rule 6 — see the header. The mood nudge already asked for the same thing.
+  if (moodNudgeLive) return false;
+  if (!isWeekendNudgeLeadDay(today, leadDays)) return false;
   if (!bare) return false;
   return lastWeekendKey !== window.saturdayKey;
 }

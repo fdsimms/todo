@@ -2829,6 +2829,18 @@ export interface GroceryItem {
 // evening someone could have cooked with it — the same call needsAttention()
 // makes for a leftover. Zero is still sayable (use it on the day), and the
 // ceiling is generous for the same reason LEFTOVER_KEEP_DAYS_MAX is.
+// How many days before the Saturday the weekend nudge may first be raised.
+// Two, so the window is Thursday and Friday: two days rather than one because
+// the pass only runs when the app is opened, and a Friday-only offer is silent
+// for anybody who does not open it that day. The floor is 1 (the Friday) rather
+// than 0, since zero would put the offer on the Saturday itself, which is the
+// one day the generator exists to stay off; the ceiling is 5 (the Monday),
+// because a sixth day runs into the previous weekend. See
+// src/utils/weekendTasks.ts.
+export const WEEKEND_NUDGE_LEAD_DAYS_DEFAULT = 2;
+export const WEEKEND_NUDGE_LEAD_DAYS_MIN = 1;
+export const WEEKEND_NUDGE_LEAD_DAYS_MAX = 5;
+
 export const GROCERY_USE_UP_LEAD_DAYS_DEFAULT = 1;
 export const GROCERY_USE_UP_LEAD_DAYS_MIN = 0;
 export const GROCERY_USE_UP_LEAD_DAYS_MAX = 14;

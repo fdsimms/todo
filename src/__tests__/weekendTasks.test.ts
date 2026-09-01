@@ -2,7 +2,14 @@ import type { DayBucket, DayMark } from '../utils/calendarMonth';
 import type { DayLoad } from '../utils/dayLoad';
 import type { Project, Task, TimeOfDay } from '../types';
 import {
+  WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
+  WEEKEND_NUDGE_LEAD_DAYS_MAX,
+  WEEKEND_NUDGE_LEAD_DAYS_MIN,
+} from '../types';
+import {
   WEEKEND_NUDGE_TITLE,
+  clampWeekendNudgeLeadDays,
+  describeWeekendNudgeLead,
   isWeekendBare,
   isWeekendEvening,
   isWeekendNudgeLeadDay,
@@ -99,12 +106,42 @@ describe('which weekend is being asked about', () => {
 });
 
 describe('when the offer may be raised', () => {
-  it('is Thursday and Friday only', () => {
+  it('is Thursday and Friday by default', () => {
     expect(isWeekendNudgeLeadDay(at('2026-09-03'))).toBe(true);  // Thursday
     expect(isWeekendNudgeLeadDay(at(FRIDAY))).toBe(true);
     for (const day of ['2026-08-31', '2026-09-01', '2026-09-02', SATURDAY, SUNDAY]) {
       expect(isWeekendNudgeLeadDay(at(day))).toBe(false);
     }
+  });
+
+  it('narrows to the Friday and widens to the Monday on request', () => {
+    expect(isWeekendNudgeLeadDay(at('2026-09-03'), 1)).toBe(false); // Thursday, 1-day window
+    expect(isWeekendNudgeLeadDay(at(FRIDAY), 1)).toBe(true);
+    expect(isWeekendNudgeLeadDay(at('2026-08-31'), 5)).toBe(true);  // Monday, 5-day window
+  });
+
+  it('never lets a lead setting buy a way into the weekend itself', () => {
+    // The floor is in the predicate, not only in the setting's clamp: rule 2 is
+    // what this generator is for, and no stored value may cross it.
+    for (const days of [0, -3, 7, 99]) {
+      expect(isWeekendNudgeLeadDay(at(SATURDAY), days)).toBe(false);
+      expect(isWeekendNudgeLeadDay(at(SUNDAY), days)).toBe(false);
+    }
+  });
+
+  it('clamps a stored lead to a window that can actually fire', () => {
+    // A 0-day window is a generator that can never fire, which is not what any
+    // answer to this question means.
+    expect(clampWeekendNudgeLeadDays(0)).toBe(WEEKEND_NUDGE_LEAD_DAYS_MIN);
+    expect(clampWeekendNudgeLeadDays(99)).toBe(WEEKEND_NUDGE_LEAD_DAYS_MAX);
+    expect(clampWeekendNudgeLeadDays(NaN)).toBe(WEEKEND_NUDGE_LEAD_DAYS_DEFAULT);
+    expect(clampWeekendNudgeLeadDays(2.4)).toBe(2);
+  });
+
+  it('names the day the window opens on', () => {
+    expect(describeWeekendNudgeLead(1)).toBe('On Friday');
+    expect(describeWeekendNudgeLead(2)).toBe('From Thursday');
+    expect(describeWeekendNudgeLead(5)).toBe('From Monday');
   });
 
   it('says nothing once the weekend has started, however bare it is', () => {
@@ -214,6 +251,32 @@ describe('once per weekend', () => {
 
   it('does not fire for a weekend that has something on it', () => {
     expect(wantsWeekendNudge(at(FRIDAY), WINDOW, false, null)).toBe(false);
+  });
+
+  it('honors the lead setting', () => {
+    expect(wantsWeekendNudge(at('2026-09-03'), WINDOW, true, null, { leadDays: 1 })).toBe(false);
+    expect(wantsWeekendNudge(at('2026-08-31'), WINDOW, true, null, { leadDays: 5 })).toBe(true);
+  });
+});
+
+describe('standing down for the mood nudge', () => {
+  it('does not fire while a mood nudge is live', () => {
+    // Rule 6: moodNudge's "Plan something you enjoy this week" is this offer
+    // with a more specific reason behind it, so two rows would be one ask twice.
+    expect(wantsWeekendNudge(at(FRIDAY), WINDOW, true, null, { moodNudgeLive: true })).toBe(false);
+  });
+
+  it('fires again once nothing is live', () => {
+    // The suppression reads a live row rather than the generator's setting, so a
+    // nudge ticked off this morning stops standing in the way.
+    expect(wantsWeekendNudge(at(FRIDAY), WINDOW, true, null, { moodNudgeLive: false })).toBe(true);
+  });
+
+  it('suppresses the create half only, leaving a raised row to the stale pass', () => {
+    // Same split checkPantryCheckTasks draws against a live pantryReview: a row
+    // already raised, possibly deferred, is the user's.
+    const raised = [generated('weekendNudge', SATURDAY)];
+    expect(staleWeekendNudgeTasks(raised, WINDOW, true)).toEqual([]);
   });
 });
 
