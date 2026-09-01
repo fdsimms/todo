@@ -11,6 +11,7 @@ import {
   suggestGroceryAisles,
   suggestRecipeGroceries,
   extractRecipe,
+  extractReceipt,
   suggestMealIdeas,
   draftMealRecipe,
   suggestSubstitutes,
@@ -30,6 +31,7 @@ const TEST_AI_FEATURE_CONFIG = {
   recipeExtraction: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   mealIdeas: { enabled: true, model: 'claude-haiku-4-5-20251001' },
   substitutes: { enabled: true, model: 'claude-haiku-4-5-20251001' },
+  receiptImport: { enabled: true, model: 'claude-sonnet-5' },
 };
 
 jest.mock('../store/useSettingsStore', () => ({
@@ -1596,5 +1598,114 @@ describe('extractRecipe source provenance', () => {
     expect(result.sourceTitle).toBeNull();
     const body = JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
     expect(body.tools[0].input_schema.properties.sourceTitle).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// extractReceipt
+// ============================================================================
+
+describe('extractReceipt', () => {
+  const PHOTO = { base64: 'QUJD', mediaType: 'image/jpeg' as const };
+  const OCR_TEXT = "TRADER JOE'S #453\nGV MLK 2% GAL\t3.48\nBANANAS\t1.29";
+
+  const bodyOf = (spy: jest.SpyInstance) =>
+    JSON.parse((spy.mock.calls[0][1] as RequestInit).body as string);
+
+  describe('from text read on device', () => {
+    it('sends a bare string rather than an image block', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(OCR_TEXT);
+
+      const content = bodyOf(spy).messages[0].content;
+      expect(typeof content).toBe('string');
+      expect(content).toContain('read off a photo of it by on-device text recognition');
+      expect(content).toContain(`Receipt:\n${OCR_TEXT}`);
+    });
+
+    it('explains the tab that separates a row from its price', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(OCR_TEXT);
+      expect(bodyOf(spy).messages[0].content).toContain('separated from the rest by a tab');
+    });
+
+    it('warns that the recognition is uncorrected rather than clean', async () => {
+      // The recogniser has language correction off on purpose, so shorthand
+      // survives — at the cost of character noise the model has to see past.
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(OCR_TEXT);
+      expect(bodyOf(spy).messages[0].content).toContain('it does not correct what it reads');
+    });
+
+    it('still says what a receipt is, which is the half both paths share', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(OCR_TEXT);
+      const content = bodyOf(spy).messages[0].content;
+      expect(content).toContain('Include only lines that are a thing that was bought');
+      expect(content).toContain('BNLS SKNLS CHKN BRST');
+    });
+
+    it('reads the store, lines and date back the same way the photo path does', async () => {
+      mockFetchOnce(toolUseResponse('extract_receipt', {
+        storeName: "Trader Joe's",
+        total: '4.77',
+        date: '2026-08-30',
+        lines: [{ label: 'GV MLK 2% GAL', name: 'milk', quantity: '1', price: '3.48' }],
+      }));
+      await expect(extractReceipt(OCR_TEXT)).resolves.toEqual({
+        storeName: "Trader Joe's",
+        totalMinor: 477,
+        date: '2026-08-30',
+        lines: [{ label: 'GV MLK 2% GAL', name: 'milk', quantity: '1', priceMinor: 348 }],
+      });
+    });
+
+    it('makes no request at all for an empty reading', async () => {
+      const spy = jest.spyOn(global, 'fetch');
+      await expect(extractReceipt('   ')).resolves.toEqual({
+        storeName: '', lines: [], totalMinor: null, date: null,
+      });
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('caps a runaway reading rather than sending an unbounded request', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt('X'.repeat(9_000));
+      const content = bodyOf(spy).messages[0].content as string;
+      expect(content).toContain('X'.repeat(6_000));
+      expect(content).not.toContain('X'.repeat(6_001));
+    });
+  });
+
+  describe('from a photo', () => {
+    it('still sends the image block ahead of the text block', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(PHOTO);
+
+      const content = bodyOf(spy).messages[0].content;
+      expect(content[0]).toEqual({
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' },
+      });
+      expect(content[1].type).toBe('text');
+      // The photo prompt, not the recognised-text one.
+      expect(content[1].text).toContain('This is a photo of a store receipt');
+      expect(content[1].text).not.toContain('Receipt:\n');
+    });
+
+    it('keeps its own refusal, which is about the photo rather than the text', async () => {
+      const spy = mockFetchOnce(toolUseResponse('extract_receipt', { storeName: '', lines: [] }));
+      await extractReceipt(PHOTO);
+      expect(bodyOf(spy).messages[0].content[1].text)
+        .toContain('too blurry, too dark, cut off');
+    });
+
+    it('makes no request at all for an empty photo', async () => {
+      const spy = jest.spyOn(global, 'fetch');
+      await expect(extractReceipt({ base64: '', mediaType: 'image/jpeg' })).resolves.toEqual({
+        storeName: '', lines: [], totalMinor: null, date: null,
+      });
+      expect(spy).not.toHaveBeenCalled();
+    });
   });
 });

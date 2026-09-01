@@ -91,6 +91,7 @@
     "todo-alarmkit-bridge": "file:./modules/todo-alarmkit-bridge",
     "todo-cloudkit-bridge": "file:./modules/todo-cloudkit-bridge",
     "todo-screentime-bridge": "file:./modules/todo-screentime-bridge",
+    "todo-vision-bridge": "file:./modules/todo-vision-bridge",
     "todo-widget-bridge": "file:./modules/todo-widget-bridge",
     "zustand": "^5.0.15"
   },

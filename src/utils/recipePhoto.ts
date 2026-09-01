@@ -45,6 +45,21 @@ export interface RecipePhoto extends RecipeImage {
   mediaType: 'image/jpeg';
   width: number;
   height: number;
+  /**
+   * The picked asset as it came off the camera or out of the library, *before*
+   * the downscale above — a `file://` URI in the app's cache directory.
+   *
+   * Kept because an on-device read of the photo has no reason to pay the
+   * downscale: `MAX_PHOTO_EDGE` exists to keep an *upload* inside the standard
+   * vision tier, and Vision reads a local file at whatever resolution it was
+   * taken at for free. A receipt is the case that cares — long, thin, and set
+   * in small low-contrast thermal print, so the long-edge cut lands hardest on
+   * exactly the rows worth reading. See `src/utils/receiptOcr.ts`.
+   *
+   * It is the picker's own copy, so it lives as long as the cache does. Nothing
+   * should persist it; `pickRecipeImage` below is the path that saves a file.
+   */
+  sourceUri: string;
 }
 
 /**
@@ -154,6 +169,7 @@ export async function pickRecipePhoto(source: RecipePhotoSource): Promise<Recipe
         mediaType: 'image/jpeg',
         width: saved.width,
         height: saved.height,
+        sourceUri: asset.uri,
       },
     };
   } catch (e) {

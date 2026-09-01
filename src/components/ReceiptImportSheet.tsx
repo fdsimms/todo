@@ -33,6 +33,7 @@ import { WhenPicker } from './WhenPicker';
 import { RecipeSourcePicker } from './RecipeSourcePicker';
 import { useRecipeImportSource } from '../hooks/useRecipeImportSource';
 import { extractReceipt, describeAIError, type ExtractedReceipt } from '../services/aiSuggestions';
+import { readReceiptText } from '../utils/receiptOcr';
 import {
   acceptedByDefault,
   isPlausibleReceiptDate,
@@ -258,7 +259,12 @@ export function ReceiptImportSheet({ visible, onClose, onApply, context }: Props
     setLoading(true);
     setError(null);
     try {
-      const result = await extractReceipt(photo);
+      // Read it on device first and send the recognised rows instead of the
+      // photo. Falls back to the photo for every kind of not-working — no
+      // bridge, an unreadable file, a read too thin to be a receipt — so this
+      // can only ever cost the upload it usually saves.
+      const ocrText = await readReceiptText(photo.sourceUri);
+      const result = await extractReceipt(ocrText ?? photo);
       setReceipt(result);
       // The store has to be resolved before the lines are, since an alias is
       // scoped to the printer that produced the text.
