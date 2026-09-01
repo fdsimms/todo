@@ -128,6 +128,18 @@ function isWidgetWorthy(task: Task): boolean {
   return task.generatedKind !== 'mealPlanNudge';
 }
 
+/**
+ * Exported for the background refresh task, which has no store subscription to
+ * ride and needs the snapshot rewritten once, synchronously, at the end of its
+ * run — the debounced path below is for a live app where writes arrive in
+ * bursts. Everything that makes a write safe is already inside it:
+ * `widgetBridge()` answers not-iOS, demo mode and a build with no native half
+ * in one call.
+ */
+export function writeWidgetSnapshotNow(): void {
+  writeSnapshotNow();
+}
+
 function writeSnapshotNow(): void {
   if (Platform.OS !== 'ios') return;
   const { visibleTasks, pinnedTasks } = useTaskStore.getState();
