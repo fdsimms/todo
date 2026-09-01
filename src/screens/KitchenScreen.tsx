@@ -27,6 +27,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import {
   buildKitchenSections,
   describeKitchen,
@@ -158,7 +159,8 @@ export function KitchenScreen() {
   const setProductFrozen = useGroceryStore(s => s.setProductFrozen);
   const shops = useGroceryStore(useShallow(s => s.shops));
   const tripShopId = useGroceryStore(s => s.tripShopId);
-  const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
+  // See GroceryScreen's note: the scanner asks the route, not the key.
+  const receiptRoute = useAiRoute('receiptImport');
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const hideHelpText = useSettingsStore(s => s.hideHelpText);
   const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
@@ -683,11 +685,13 @@ export function KitchenScreen() {
         actions={[
           // Gated on a key for the reason the shopping list's own receipt
           // button is: the reading is the whole feature, and without one this
-          // opens a sheet that can only apologise.
+          // opens a sheet that can only apologise — which now means neither an
+          // API key nor an on-device read, since Vision reads a receipt without
+          // one.
           // Both also go with simplified mode, which drops this screen from the
           // hub pills — a deep link (a use-up task's own link) can still land
           // here, so the actions have to answer for the mode themselves.
-          ...(anthropicApiKey && !featureHidden('receiptImport', simpleMode)
+          ...(receiptRoute !== 'unavailable' && !featureHidden('receiptImport', simpleMode)
             ? [
                 {
                   icon: 'receipt-outline' as const,

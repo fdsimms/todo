@@ -25,6 +25,7 @@ import {
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 import { routeForFeature, type AiRoute } from '../utils/aiRouting';
+import { canReadReceiptOnDevice } from '../utils/receiptOcr';
 import {
   isOnDeviceReady, runOnDevice, describeOnDeviceError, isOnDeviceErrorMessage,
   type OnDeviceSchema,
@@ -527,6 +528,11 @@ function groceryAisleRoute(): AiRoute {
     hasApiKey: !!anthropicApiKey,
     onDeviceEnabled: onDeviceAiEnabled,
     onDeviceAvailable: isOnDeviceReady(),
+    // Never consulted for this feature, which routes to the language model.
+    // Passed because the input describes the install rather than the feature,
+    // and a required field is what stops a Vision feature's call site
+    // forgetting it.
+    visionAvailable: canReadReceiptOnDevice(),
   });
 }
 
@@ -1576,8 +1582,16 @@ export interface ExtractedReceipt {
 }
 
 /**
- * Reads a photo of a store receipt into the store's name and the lines it
- * charged for.
+ * The longest reconstructed receipt sent as text. Mirrors `MAX_RECIPE_CHARS` —
+ * a till roll long enough to exceed this is one where the tail is the survey
+ * blurb, and a runaway recognition (a photo of a page of prose) should cost a
+ * bounded request rather than an unbounded one.
+ */
+const MAX_RECEIPT_CHARS = 6_000;
+
+/**
+ * Reads a store receipt into the store's name and the lines it charged for,
+ * from a photo or from text already read off one.
  *
  * This is the "what did I actually buy, and what did it cost" half of a trip,
  * which the app could otherwise only learn by someone typing a price per row
@@ -1593,24 +1607,59 @@ export interface ExtractedReceipt {
  * The prompt spends most of its length on what *isn't* an item, because a
  * receipt is mostly not items: totals, tax, tender, change, loyalty numbers,
  * store addresses and a paragraph about a survey. Every one of those read as a
- * line would arrive as an unmatched row for the user to dismiss by hand.
+ * line would arrive as an unmatched row for the user to dismiss by hand. That
+ * half is identical on both paths — it is about what a receipt *is*, not about
+ * how this one arrived.
+ *
+ * **The text path is the preferred one and the photo is the fallback**, which
+ * is the reverse of `extractRecipe`, where a photo of a page is the real
+ * source. Vision reads a receipt on device for free, instantly and at the
+ * photo's own resolution (`src/utils/receiptOcr.ts`), so what reaches here is
+ * usually the printed rows already paired with their prices — and transcription
+ * was never the hard part of this feature. What is left is the part a device
+ * can't do: knowing that "BNLS SKNLS CHKN BRST" is chicken breast, and that
+ * the line under it is a bag fee rather than a thing that was bought.
+ * `ReceiptImportSheet` decides which path a scan takes; see `shouldUseOcrText`
+ * for when a reading is too thin to be worth sending.
  */
-export async function extractReceipt(image: RecipeImage): Promise<ExtractedReceipt> {
+export async function extractReceipt(source: string | RecipeImage): Promise<ExtractedReceipt> {
   const { apiKey, model } = requireFeature('receiptImport');
 
   const empty: ExtractedReceipt = { storeName: '', lines: [], totalMinor: null, date: null };
+  const image = typeof source === 'string' ? null : source;
+  const text = typeof source === 'string' ? source.trim().slice(0, MAX_RECEIPT_CHARS) : '';
   // Same "nothing in, no network call" guard the recipe path uses.
-  if (!image.base64) return empty;
+  if (image ? !image.base64 : !text) return empty;
 
-  const prompt = [
-    'This is a photo of a store receipt. Read it and extract the store\'s name, the date it was printed, and every line it charged for.',
+  // What the two paths don't share is only ever the first paragraph and the
+  // last: what this is, and what to do when it can't be read. Everything
+  // between them is about receipts.
+  const shared = [
     'The date is when the purchase actually happened, not today\'s date — receipts print it in the header or footer, often next to a time or a transaction number. Give it as YYYY-MM-DD. Leave it empty if the receipt does not print one or it is not legible.',
     'Include only lines that are a thing that was bought. Skip subtotals, totals, tax, tender and change, card and authorization details, loyalty and membership numbers, store address and phone, cashier and register numbers, survey invitations, coupons and discount lines, bag fees, and bottle deposits.',
     'For each item give three things: the line exactly as printed including its abbreviations ("GV MLK 2% GAL"); what it plainly is, named the way a shopper would say it and would write it on a shopping list ("milk"); and the amount the line names if it gives one ("1.32 lb", "2").',
     'The price is the amount that line was charged, which on a weighed line is the total for the weight rather than the price per pound. Give it exactly as printed, with a decimal point and no currency symbol ("3.48").',
     'Receipts abbreviate hard and inconsistently. Read the abbreviation as the product it stands for when you can ("BNLS SKNLS CHKN BRST" is "chicken breast", "SHRP CHDR" is "sharp cheddar"). When a line is genuinely unreadable or you cannot tell what it stands for, copy the printed text into both fields rather than inventing a product.',
-    'If the photo is too blurry, too dark, cut off, or is not a receipt at all, return an empty store name and an empty line list rather than guessing.',
-  ].join('\n\n');
+  ];
+
+  const prompt = image
+    ? [
+        'This is a photo of a store receipt. Read it and extract the store\'s name, the date it was printed, and every line it charged for.',
+        ...shared,
+        'If the photo is too blurry, too dark, cut off, or is not a receipt at all, return an empty store name and an empty line list rather than guessing.',
+      ].join('\n\n')
+    : [
+        'Below is the text of a store receipt, read off a photo of it by on-device text recognition. Extract the store\'s name, the date it was printed, and every line it charged for.',
+        'One printed row per line, in the order they were printed. Where an amount was read at the end of a row it is separated from the rest by a tab; a row with no tab is one where nothing was read as a price, which is most of the header and the footer and is occasionally an item whose amount was missed.',
+        // The recogniser transcribes rather than interprets, and is told not to
+        // language-correct (see the Swift module) precisely so that shorthand
+        // arrives intact. The cost of that is character-level noise, which the
+        // model is far better placed to see through than a corrector is.
+        'The recognition is good but not perfect, and it does not correct what it reads: expect confusions between similar characters (0 and O, 1 and l, 5 and S, rn and m), split or joined words, and the occasional dropped character. Read through that the way you would read a smudged receipt. Do not treat a garbled row as a different product than the one it plainly is.',
+        ...shared,
+        'If this is not a receipt, or too little of it came through to tell what was bought, return an empty store name and an empty line list rather than guessing.',
+        `Receipt:\n${text}`,
+      ].join('\n\n');
 
   const data = await callAnthropic({
     max_tokens: 4000,
@@ -1665,15 +1714,21 @@ export async function extractReceipt(image: RecipeImage): Promise<ExtractedRecei
     tool_choice: { type: 'tool', name: 'extract_receipt' },
     messages: [{
       role: 'user',
-      content: [
-        {
-          type: 'image',
-          source: { type: 'base64', media_type: image.mediaType, data: image.base64 },
-        },
-        { type: 'text', text: prompt },
-      ],
+      // The text path sends a bare string, so its request body is the shape
+      // every non-photo extractor in this file already sends — same reasoning
+      // as `extractRecipe`'s two content shapes.
+      content: image
+        ? [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: image.mediaType, data: image.base64 },
+            },
+            { type: 'text', text: prompt },
+          ]
+        : prompt,
     }],
-  }, apiKey, model, IMAGE_REQUEST_TIMEOUT_MS);
+    // Only an upload needs the longer window; text is an ordinary request.
+  }, apiKey, model, image ? IMAGE_REQUEST_TIMEOUT_MS : undefined);
 
   const toolUse = data.content?.find(c => c.type === 'tool_use');
   const input = toolUse?.input as {

@@ -12,34 +12,84 @@ import type { AiFeatureId } from './aiFeatures';
 export type AiRoute = 'claude' | 'onDevice' | 'unavailable';
 
 /**
- * The features the on-device model can actually carry.
+ * The two on-device engines, which are not interchangeable and do not answer
+ * the same kind of question.
  *
- * Deliberately a list rather than a flag on `AiFeatureMeta`: the constraint is
- * the model's own (a ~4k-token window shared between prompt and completion,
- * text only), not a property of the feature, and writing it here keeps the
- * reason with the rule. Everything absent from this set needs vision or more
- * context than the window holds — `recipeExtraction` and `receiptImport` are
- * photographs, `calendarImport` can be, and `mealIdeas` wants world knowledge.
+ * - `languageModel` is Apple's on-device Foundation Model: it *reasons* about
+ *   text, inside a ~4k-token window shared between prompt and completion, and
+ *   is switched on and off by the user as "Apple Intelligence".
+ * - `vision` is `VNRecognizeTextRequest`: it *transcribes* a photo and
+ *   understands none of it. No window, no switch, no model.
  *
- * `groceryAisles` is the only member for now, on purpose. It has the best
- * measured gap over the offline lexicon, the smallest input, and a
- * review-then-apply sheet in front of it, so a mediocre answer costs a glance.
- * Adding the next one is a measurement, not a judgement call.
+ * They are both "answered without a key on this device", which is why they
+ * share the one `onDevice` route — what a caller does with that answer is the
+ * feature's own business, and no screen has ever needed to know which engine
+ * is behind it.
  */
-export const ON_DEVICE_FEATURES: ReadonlySet<AiFeatureId> = new Set<AiFeatureId>(['groceryAisles']);
+export type OnDeviceEngine = 'languageModel' | 'vision';
+
+/**
+ * Which engine can carry each feature, where one can at all.
+ *
+ * Deliberately a map here rather than a flag on `AiFeatureMeta`: the constraint
+ * is each engine's own, not a property of the feature, and writing it here
+ * keeps the reason with the rule.
+ *
+ * `groceryAisles` goes to the language model because it has the best measured
+ * gap over the offline lexicon, the smallest input, and a review-then-apply
+ * sheet in front of it, so a mediocre answer costs a glance. Adding another to
+ * *that* engine is a measurement, not a judgement call: everything absent needs
+ * vision or more context than the window holds, since `recipeExtraction` is a
+ * photograph, `calendarImport` can be, and `mealIdeas` wants world knowledge.
+ *
+ * `receiptImport` is a photograph too, and goes to `vision` for exactly that
+ * reason rather than in spite of it. The device transcribes the paper; what it
+ * cannot do is expand the shorthand, so the offline reading is honestly worse
+ * and says so (`src/utils/receiptOffline.ts`). It is here because a worse
+ * reading of a receipt is worth far more than no reading at all.
+ */
+const ON_DEVICE_ENGINE: Partial<Record<AiFeatureId, OnDeviceEngine>> = {
+  groceryAisles: 'languageModel',
+  receiptImport: 'vision',
+};
+
+export function onDeviceEngineFor(id: AiFeatureId): OnDeviceEngine | null {
+  return ON_DEVICE_ENGINE[id] ?? null;
+}
+
+/**
+ * The features Apple's on-device *language model* can carry.
+ *
+ * Still means only that, and not "can be answered without a key" — a feature
+ * routed to `vision` is not in here and must not be, since what constrains this
+ * set is the 4k window and the text-only input.
+ */
+export const ON_DEVICE_FEATURES: ReadonlySet<AiFeatureId> = new Set<AiFeatureId>(
+  (Object.keys(ON_DEVICE_ENGINE) as AiFeatureId[]).filter(
+    id => ON_DEVICE_ENGINE[id] === 'languageModel',
+  ),
+);
 
 export function supportsOnDevice(id: AiFeatureId): boolean {
-  return ON_DEVICE_FEATURES.has(id);
+  return onDeviceEngineFor(id) === 'languageModel';
 }
 
 export interface AiRouteInput {
   /** The feature's own switch in Settings. */
   enabled: boolean;
   hasApiKey: boolean;
-  /** The single on-device switch in Settings. */
+  /** The single on-device switch in Settings. Apple Intelligence only. */
   onDeviceEnabled: boolean;
   /** What the device says right now — see `onDeviceModelAvailability`. */
   onDeviceAvailable: boolean;
+  /**
+   * Whether Vision can read a photo here — see `canReadReceiptOnDevice`.
+   *
+   * Required rather than optional so a new call site cannot forget it and
+   * silently route a `vision` feature to `unavailable`, which would read as the
+   * feature being switched off rather than as a missing field.
+   */
+  visionAvailable: boolean;
 }
 
 /**
@@ -55,13 +105,24 @@ export interface AiRouteInput {
  *    on-device latency for a 60-name batch against a Haiku round trip, and
  *    quietly making an existing, working feature worse is the one outcome this
  *    change must not have. That routing is a follow-up with a number attached.
- * 3. **No key, but a working model, means on-device.** The point of the
- *    exercise.
+ * 3. **No key, but a working engine, means on-device.** The point of the
+ *    exercise. Which engine, and so what has to be true for it to work, is the
+ *    feature's own — see `OnDeviceEngine`. Only the language model answers to
+ *    the Apple Intelligence switch: that setting is about a model that reasons
+ *    about your text, and reading a photo you just took is neither that model
+ *    nor that concern, so gating Vision on it would take receipt scanning away
+ *    from someone who only meant to turn Apple Intelligence off.
  * 4. **Otherwise nothing**, and the caller must not render an entry point.
  */
 export function routeForFeature(id: AiFeatureId, input: AiRouteInput): AiRoute {
   if (!input.enabled) return 'unavailable';
   if (input.hasApiKey) return 'claude';
-  if (supportsOnDevice(id) && input.onDeviceEnabled && input.onDeviceAvailable) return 'onDevice';
-  return 'unavailable';
+  switch (onDeviceEngineFor(id)) {
+    case 'languageModel':
+      return input.onDeviceEnabled && input.onDeviceAvailable ? 'onDevice' : 'unavailable';
+    case 'vision':
+      return input.visionAvailable ? 'onDevice' : 'unavailable';
+    default:
+      return 'unavailable';
+  }
 }
