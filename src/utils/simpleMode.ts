@@ -69,6 +69,7 @@ export type SimpleFeatureId =
   | 'templates'
   | 'calendarScreen'
   | 'statsScreen'
+  | 'moodScreen'
   | 'backfillScreen'
   | 'waitingScreen'
   | 'driftScreen'
@@ -155,6 +156,10 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'people', label: 'People', area: 'screens', screen: 'People', contentScreen: true },
   { id: 'calendarScreen', label: 'Calendar', area: 'screens', screen: 'Calendar' },
   { id: 'statsScreen', label: 'Stats', area: 'screens', screen: 'Stats' },
+  // A content screen like People and Stacks, not a plain hidden one: it holds
+  // mood entries that live nowhere else in the app, so hiding it while it holds
+  // any would strand them with no way back to them.
+  { id: 'moodScreen', label: 'Mood', area: 'screens', screen: 'Mood', contentScreen: true },
   { id: 'backfillScreen', label: 'Backfill', area: 'screens', screen: 'Backfill' },
   { id: 'waitingScreen', label: 'Waiting', area: 'screens', screen: 'Waiting' },
   { id: 'driftScreen', label: 'Drift', area: 'screens', screen: 'Drift' },

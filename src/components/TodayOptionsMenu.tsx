@@ -24,6 +24,11 @@ interface Props {
   /** Summary of the day's planned time, shown as the action's hint. */
   plannedLabel?: string;
   /**
+   * One extra line under "Lighten today" while a low run is going — see
+   * lowMoodDeloadNote. Absent is the normal case and renders exactly as before.
+   */
+  lightenNote?: string | null;
+  /**
    * Opens the "look ahead" sheet — everything landing before a date, and
    * whether it fits. Passed whenever it exists, like onPullFromProjects: an
    * empty today says nothing about the two weeks ahead, which is the whole
@@ -77,6 +82,7 @@ export function TodayOptionsMenu({
   onHideCategoriesChange,
   onLightenDay,
   plannedLabel,
+  lightenNote,
   onLookAhead,
   onPullFromProjects,
   onBatchReachOuts,
@@ -142,6 +148,9 @@ export function TodayOptionsMenu({
                       ? `${plannedLabel} planned. Move some of it to a better day`
                       : 'Move some of today to a better day'}
                   </Text>
+                  {!!lightenNote && (
+                    <Text style={styles.optionNote}>{lightenNote}</Text>
+                  )}
                 </View>
                 <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
               </TouchableOpacity>
@@ -347,6 +356,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   optionLabelActive: { color: colors.text, fontWeight: fontWeight.semibold },
   optionHint: { color: colors.textTertiary, fontSize: font.sm, marginTop: 2 },
+  // Its own style rather than a second optionHint: this line is the reason the
+  // row is worth tapping today, and running it into the hint above would read
+  // as one long sentence about the workload.
+  optionNote: {
+    fontSize: font.xs,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
   toggle: {
     width: 44, height: 26, borderRadius: 13,
     backgroundColor: colors.bgTertiary,

@@ -87,6 +87,11 @@ const MENU_ITEMS: MenuItemWithGate[] = [
   { name: 'Templates', icon: 'copy-outline', label: 'Templates' },
   { name: 'Logbook', icon: 'book-outline', label: 'Logbook' },
   { name: 'Stats', icon: 'bar-chart-outline', label: 'Stats' },
+  // Beside Stats rather than up with the task surfaces: it is a history read in
+  // aggregate, and half of what it shows is that history crossed with the task
+  // one. Somebody who has come here to look at numbers about themselves is in
+  // the right neighbourhood.
+  { name: 'Mood', icon: 'happy-outline', label: 'Mood' },
   // A maintenance tool for the fields already on every task, not a new
   // surface over new data — sits with Stats rather than up with Tasks.
   { name: 'Backfill', icon: 'flash-outline', label: 'Backfill' },

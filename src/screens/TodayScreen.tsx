@@ -124,6 +124,9 @@ import { SortFilterSheet } from '../components/SortFilterSheet';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
 import { DeloadSheet } from '../components/DeloadSheet';
+import { useMoodStore } from '../store/useMoodStore';
+import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
+import { lowMoodDeloadNote } from '../utils/moodTasks';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { useProjectStore } from '../store/useProjectStore';
@@ -1129,6 +1132,9 @@ export function TodayScreen() {
           // Beside it, same trigger — the crossings this checks against are
           // kept current by useScreenTimeSync's own AppState listener.
           useTaskStore.getState().checkScreenTimeTasks();
+          // Beside them, same trigger: which day is "today" rolls over purely
+          // by time passing, and so does the length of a low run.
+          useTaskStore.getState().checkMoodTasks();
           // And any template whose schedule came due while the app sat in the
           // background (#1781) — a weekly run would otherwise wait for the next
           // cold start, which for a phone left open all week never comes. Same
@@ -1249,6 +1255,20 @@ export function TodayScreen() {
   };
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+
+  // The one place the mood log reaches back into Today — one line under
+  // "Lighten today", and only while a run of low days is actually going. See
+  // lowMoodDeloadNote for why it is a line in a menu rather than a banner or a
+  // second task, and why it changes nothing about what the plan proposes.
+  const moodLogs = useMoodStore(s => s.logs);
+  const moodNudgeAfterDays = useSettingsStore(s => s.moodNudgeAfterDays);
+  const lowMoodNote = useMemo(() => {
+    if (moodLogs.length === 0) return null;
+    // Tasks aren't read: lowMoodRun looks only at mood, and handing it the
+    // whole store would rebuild a categories index on every render of Today.
+    const days = buildMoodDays(moodLogs, [], dayResetTime);
+    return lowMoodDeloadNote(lowMoodRun(days, getLogicalDayKey(new Date(), dayResetTime)), moodNudgeAfterDays);
+  }, [moodLogs, dayResetTime, moodNudgeAfterDays]);
 
   // Sort & filter state. Persisted, like hideCategories below — the three are
   // set from the same sheet, and only one of them used to survive a launch.
@@ -4059,6 +4079,7 @@ export function TodayScreen() {
             setDeloadVisible(true);
           } : undefined}
           plannedLabel={plannedLabel}
+          lightenNote={lowMoodNote}
           onLookAhead={featureHidden('lookAhead', simpleMode) ? undefined : () => {
             setOptionsMenuVisible(false);
             setLookAheadVisible(true);
@@ -4102,6 +4123,7 @@ export function TodayScreen() {
         <DeloadSheet
           visible={deloadVisible}
           todaysTasks={visibleTasks}
+          lowMoodNote={lowMoodNote}
           onClose={() => setDeloadVisible(false)}
         />
 

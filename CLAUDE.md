@@ -266,7 +266,7 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (fifteen generators now: `screenTime` is the newest, and the second whose source is a rule the user wrote rather than a row) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (seventeen generators now: `moodLog` and `moodNudge` are the newest, and `moodNudge` is the only one whose trigger is a trend in the user's own answers rather than a date, a row or a one-off threshold) |
 | a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
@@ -284,6 +284,7 @@ exports.
 | bulk selection | `src/hooks/useTaskSelection.ts` + `src/components/BulkActionBar.tsx` |
 | reminders | `src/utils/notifications.ts` |
 | how long completed tasks are kept | `src/utils/retention.ts` + `purgeOldCompletedTasks` in `useTaskStore` |
+| how you're feeling, and what that looks like against your tasks | `src/utils/moodLog.ts` + `src/utils/moodInsights.ts` + `src/utils/moodTasks.ts` — see `docs/arch/mood-log.md` |
 | the people you want to keep up with, and their birthdays | `src/store/usePersonStore.ts` + `src/utils/birthdayTasks.ts` — see `docs/arch/people.md` |
 | filling a person in from the contact book | `src/utils/contactsImport.ts` + `src/utils/contactsAccess.ts` — see `docs/arch/people.md` |
 | what demo mode shows | `src/utils/demoSeed.ts` — see Demo data below |
@@ -354,15 +355,15 @@ exports.
 **Read narrowly.** 49 files are over 1,000 lines, 31 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (7.1k), `components/TaskEditor.tsx` (5.0k), `db/database.ts` (4.9k),
-`store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.4k), `types/index.ts` (4.3k),
+`store/useTaskStore.ts` (7.2k), `db/database.ts` (5.0k), `components/TaskEditor.tsx` (5.0k),
+`store/useGroceryStore.ts` (4.8k), `types/index.ts` (4.4k), `screens/TodayScreen.tsx` (4.4k),
 `components/TaskItem.tsx` (4.0k), `components/QuickAddModal.tsx` (3.1k),
-`store/useSettingsStore.ts` (2.9k), `utils/demoSeed.ts` (2.9k).
+`store/useSettingsStore.ts` (3.0k), `utils/demoSeed.ts` (3.0k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **248 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **252 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -479,6 +480,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/reminders-import.md` | Apple Reminders import, and the data it deletes elsewhere |
 | `docs/arch/app-lock.md` | The Face ID gate and the API key in the keychain |
 | `docs/arch/people.md` | The people layer: why it never scores or ranks anybody, and how birthdays work |
+| `docs/arch/mood-log.md` | The mood/symptom log, what its insights may claim, and the nudge's three rules |
 | `docs/arch/simple-mode.md` | Simplified mode: what the one switch hides, and the two rules that make it safe |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 

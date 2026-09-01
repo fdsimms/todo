@@ -132,6 +132,7 @@ function AppRoot() {
   const checkCalendarReviewTasks = useTaskStore(s => s.checkCalendarReviewTasks);
   const checkWeatherTasks = useTaskStore(s => s.checkWeatherTasks);
   const checkScreenTimeTasks = useTaskStore(s => s.checkScreenTimeTasks);
+  const checkMoodTasks = useTaskStore(s => s.checkMoodTasks);
   const checkBirthdayTasks = useTaskStore(s => s.checkBirthdayTasks);
   const checkBirthdayGiftTasks = useTaskStore(s => s.checkBirthdayGiftTasks);
   const checkReachOutTasks = useTaskStore(s => s.checkReachOutTasks);
@@ -226,6 +227,11 @@ function AppRoot() {
       // crossings it reads are only ever drained by useScreenTimeSync's own
       // effect, which has not run yet on the very first pass.
       ['check screen time tasks', checkScreenTimeTasks],
+      // Beside them, same trigger — a day rolls over and a low run lengthens
+      // purely by time passing. Unlike the three above it this one reads a
+      // store the fan-out has already loaded, so it does real work at cold
+      // launch rather than waiting for the first foreground.
+      ['check mood tasks', checkMoodTasks],
       // Birthdays, which share the same trigger — a date arriving rather than a
       // source changing — and read the people initTasks' fan-out has loaded.
       // After initSettings for the same reason the meal pass is: the day a task
@@ -282,7 +288,7 @@ function AppRoot() {
         if (isAlarmKitAvailable()) requestAlarmAuthorization();
       }],
     ]);
-  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkPantryReviewTasks, checkMealShortfallTasks, checkBirthdayTasks, checkBirthdayGiftTasks, checkReachOutTasks, checkCalendarReviewTasks, checkWeatherTasks, checkScreenTimeTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
+  }, [initSecrets, sweepExpiredTasks, checkVacationExpiry, rolloverQuotas, sweepOvershootQuotas, dripStalledProjects, checkMealPlanNudge, checkProjectReviewTasks, checkMealSlotTasks, checkPantryCheckTasks, checkPantryReviewTasks, checkMealShortfallTasks, checkBirthdayTasks, checkBirthdayGiftTasks, checkReachOutTasks, checkCalendarReviewTasks, checkWeatherTasks, checkScreenTimeTasks, checkMoodTasks, reconcileAllLeftoverTasks, checkScheduledTemplates, purgeOldCompletedTasks, purgeOldMealPlanEntries, purgeOldLeftovers]);
 
   // Handle `dundundun://add?title=…` deep links (e.g. from a "Hey Siri" Shortcut).
   // Runs after the init effect above, so the SQLite DB exists before any
