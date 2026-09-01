@@ -46,6 +46,9 @@ export function CalendarSettings() {
   const setCalendarReadEnabled = useSettingsStore(s => s.setCalendarReadEnabled);
   const calendarIds = useSettingsStore(s => s.calendarIds);
   const setCalendarIds = useSettingsStore(s => s.setCalendarIds);
+  const vacationMode = useSettingsStore(s => s.vacationMode);
+  const vacationHiddenCalendarIds = useSettingsStore(s => s.vacationHiddenCalendarIds);
+  const setVacationHiddenCalendarIds = useSettingsStore(s => s.setVacationHiddenCalendarIds);
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const setReminderMeetingNudgeEnabled = useSettingsStore(s => s.setReminderMeetingNudgeEnabled);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
@@ -103,6 +106,24 @@ export function CalendarSettings() {
     setPickerOpen(!pickerOpen);
   };
 
+  const [vacationPickerOpen, setVacationPickerOpen] = useState(false);
+  const toggleVacationPicker = () => {
+    animateLayout();
+    setVacationPickerOpen(!vacationPickerOpen);
+  };
+  // A calendar left the read entirely (unpicked, or removed from the
+  // device) drops out of this set too, or it would sit here doing nothing
+  // and the count above would lie about how many are actually excluded.
+  const toggleVacationHidden = (id: string) => {
+    haptics.tap();
+    setVacationHiddenCalendarIds(
+      vacationHiddenCalendarIds.includes(id)
+        ? vacationHiddenCalendarIds.filter(hiddenId => hiddenId !== id)
+        : [...vacationHiddenCalendarIds, id]
+    );
+    void refreshEvents();
+  };
+
   const selected = (calendars ?? []).filter(c => calendarIds.includes(c.id));
   const missingCount = calendarIds.length - selected.length;
   const summary =
@@ -113,6 +134,14 @@ export function CalendarSettings() {
     selected.length === 0 ? undefined
     : selected.length === 1 ? `Events in “${selected[0].title}” are read`
     : `Events in ${selected.length} calendars are read`;
+
+  // Stale ids (a calendar unpicked or removed from the device since it was
+  // last hidden) don't count here — see toggleVacationHidden.
+  const vacationHiddenCount = selected.filter(c => vacationHiddenCalendarIds.includes(c.id)).length;
+  const vacationHiddenSummary =
+    vacationHiddenCount === 0 ? 'None'
+    : vacationHiddenCount === selected.length ? 'All'
+    : `${vacationHiddenCount} calendar${vacationHiddenCount === 1 ? '' : 's'}`;
 
   /**
    * Per-calendar read status (#1744) — `fetchEvents` now reads each chosen
@@ -312,6 +341,39 @@ export function CalendarSettings() {
                 const subtitle = calendarStatusSubtitle(option.id);
                 return `Read ${option.title}${subtitle ? `, ${subtitle}` : ''}`;
               }}
+            />
+          )}
+        </>
+      )}
+
+      {/* Picking one calendar to hide out of one being read is just turning
+          the feature off, which the switch above already does — so this
+          only offers a choice once there's actually one to make. */}
+      {calendarReadEnabled && permission === 'granted' && selected.length > 1 && (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="calendarVacationHidden"
+            icon="airplane-outline"
+            iconColor={vacationHiddenCount > 0 ? colors.accent : undefined}
+            label="Hide during vacation"
+            hint={vacationMode
+              ? 'Left out of the read while vacation mode is on'
+              : 'Takes effect once vacation mode is turned on'}
+            value={vacationHiddenSummary}
+            expanded={vacationPickerOpen}
+            onPress={toggleVacationPicker}
+            accessibilityLabel="Choose which calendars to hide during vacation mode"
+          />
+          {vacationPickerOpen && (
+            <SettingsChoiceTray
+              caption="Hide"
+              options={selected.map(c => ({ id: c.id, title: c.title }))}
+              selectedIds={vacationHiddenCalendarIds}
+              onSelect={option => toggleVacationHidden(option.id)}
+              accessibilityLabelFor={option =>
+                `Hide ${option.title} during vacation mode`
+              }
             />
           )}
         </>
