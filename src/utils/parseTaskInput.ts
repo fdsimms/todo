@@ -105,12 +105,12 @@ const DAY_PART_SEGMENT: Record<string, TimeOfDay> = {
 };
 
 // A bare one-word suffix is only trusted when it's unambiguously a schedule
-// word. Short weekday abbreviations ("mon", "sat", "may") and names ("tom")
-// are common English words, so they require a connector ("on sat", "by wed").
-// "thu"/"thur"/"thurs" aren't common English words on their own, so they're
-// safe unabbreviated too, not just as the plural "thursdays".
+// word. Weekday abbreviations ("mon", "sat", "wed") are accepted even though
+// a couple of them double as ordinary words ("sun", "wed", "sat") — a title
+// ending in one of those bare is rare enough that the worst case is an
+// unwanted date suggestion the user dismisses, not a silent wrong schedule.
 const SINGLE_WORD_SAFE =
-  /^(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday|thu|thur|thurs|(?:sun|mon|tues|wednes|thurs|fri|satur)days|today|tomorrow|tonight|tmrw|tmr|daily|weekly|monthly|yearly|annually|\d{1,2}(?::\d{2})?(?:am|pm|a\.m\.?|p\.m\.?))$/;
+  /^(?:sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tue|tues|wed|weds|thu|thur|thurs|fri|sat|(?:sun|mon|tues|wednes|thurs|fri|satur)days|today|tomorrow|tonight|tmrw|tmr|daily|weekly|monthly|yearly|annually|\d{1,2}(?::\d{2})?(?:am|pm|a\.m\.?|p\.m\.?))$/;
 
 /**
  * Which part of the day an hour falls in. Fixed boundaries rather than the
