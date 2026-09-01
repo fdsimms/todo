@@ -226,6 +226,20 @@ describe('parseTaskInput — false positives', () => {
     expectDay(r.schedule.dueDate, 2025, 5, 11);
   });
 
+  it('accepts "thu", "thur" and "thurs" as a bare trailing weekday, unlike other abbreviations', () => {
+    const a = parseTaskInput('call dentist thu', NOW)!;
+    expect(a.cleanTitle).toBe('call dentist');
+    expectDay(a.schedule.dueDate, 2025, 5, 12);
+
+    const b = parseTaskInput('call dentist thur', NOW)!;
+    expectDay(b.schedule.dueDate, 2025, 5, 12);
+
+    const c = parseTaskInput('call dentist thurs', NOW)!;
+    expectDay(c.schedule.dueDate, 2025, 5, 12);
+
+    expect(parseTaskInput('call dentist wed', NOW)).toBeNull();
+  });
+
   it('returns null when the whole input is a schedule phrase', () => {
     expect(parseTaskInput('tomorrow', NOW)).toBeNull();
     expect(parseTaskInput('on tuesday', NOW)).toBeNull();
