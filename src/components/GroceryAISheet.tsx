@@ -64,8 +64,15 @@ interface TidyRow {
  *
  * Nothing here is load-bearing: the offline lexicon files the common shop
  * without a key or a network, and unrecognised items already land in "Other".
- * Both modes are gated on `!!anthropicApiKey` at the call site, so a user
- * without one never sees the entry points at all.
+ * Both modes are gated at the call site, so a user who can't run them never
+ * sees the entry points at all — `recipe` on `!!anthropicApiKey`, and `tidy`
+ * on `useAiRoute('groceryAisles')`, since aisle sorting can also be answered by
+ * the on-device model with no key at all (see `src/utils/aiRouting.ts`).
+ *
+ * Which engine answered is deliberately not shown here. The rows are the same
+ * shape either way and they are reviewed before anything moves, so naming the
+ * engine would be asking the user to hold a distinction that changes nothing
+ * about what they're being asked to check.
  */
 export function GroceryAISheet({ visible, mode, onClose }: Props) {
   const colors = useColors();

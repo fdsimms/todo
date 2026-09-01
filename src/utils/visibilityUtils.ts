@@ -6,9 +6,9 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { activeChainStep } from './chain';
 import { isBlocked, isWaitingOnPerson } from './blocking';
-import { isSequenceHeld, isSequentialProject, latestProjectCompletionAt, resolveBlocker } from './blockerRegistry';
+import { resolveBlocker } from './blockerRegistry';
 import { resolvePerson } from './peopleRegistry';
-import { quotaRunSpan } from './quotaSchedule';
+import { quotaRunSpan, quotaWeekSpan } from './quotaSchedule';
 
 /**
  * True while this task is waiting on another task that isn't done yet — the
@@ -20,32 +20,12 @@ import { quotaRunSpan } from './quotaSchedule';
  */
 export function isTaskBlocked(task: Task): boolean {
   if (task.completed || task.archived) return false;
-  // Either kind of wait, and they hide a task identically — the Waiting screen
-  // can name what each one is waiting on, which is the test the sequential
-  // project gate below fails and why that one is a separate predicate.
   return isBlocked(task, resolveBlocker) || isWaitingOnPerson(task, resolvePerson);
 }
 
-/**
- * True while a sequential project is holding this task back — an earlier step
- * in its project's order isn't done yet (see Project.sequential).
- *
- * The same kind of "not yet" isTaskBlocked describes, and it hides a task from
- * the same lists, but deliberately a separate predicate rather than a second
- * clause inside that one. isTaskBlocked also decides what the Waiting screen
- * shows, and Waiting groups its rows under the task each one is waiting on: a
- * sequence has no such task to name (nothing is stored — the gate is position),
- * and a twenty-step project would put nineteen rows there behind a heading it
- * couldn't write. A held step's home is its project screen, where the order it
- * is waiting on is the thing you are looking at.
- */
-export function isSequenceBlocked(task: Task): boolean {
-  return isSequenceHeld(task);
-}
-
-/** Either reason a task isn't actionable yet — what the daily lists gate on. */
+/** Whether a task isn't actionable yet — what the daily lists gate on. */
 export function isHeldBack(task: Task): boolean {
-  return isTaskBlocked(task) || isSequenceBlocked(task);
+  return isTaskBlocked(task);
 }
 
 /**
@@ -470,7 +450,19 @@ export function quotaRidesOutTheDay(task: Task): boolean {
 // twice is a row on Today that disagrees with the notification that sent you
 // to it.
 function getQuotaSpan(task: Task): { start: Date; end: Date } {
-  const { activeHoursStart, activeHoursEnd } = useSettingsStore.getState();
+  const { activeHoursStart, activeHoursEnd, weekStartsOn } = useSettingsStore.getState();
+  // The one branch the whole weekly-target feature needs on this side. Every
+  // reader below — the pace ramp, the hide-while-ahead, the units-to-pace
+  // number, the next-due instant — is written against the span rather than
+  // against the day, so widening the span to a week is all it takes for them to
+  // mean "this week" instead of "today". See Task.quotaPeriod.
+  if (task.quotaPeriod === 'week') {
+    return quotaWeekSpan({
+      quotaStartedAt: task.quotaStartedAt,
+      dayStart: getCurrentDayStart(),
+      weekStartsOn,
+    });
+  }
   return quotaRunSpan({
     windowStart: task.windowStart,
     windowEnd: task.windowEnd,
@@ -902,10 +894,9 @@ export function getVisibleAt(task: Task, pass: VisibleAtPass = beginVisibleAtPas
 // so it was also the one visibility transition with nothing to mark it: a task
 // waiting on another sat out of every list until the blocker was completed and
 // then simply appeared, wherever its category and sort order happened to put
-// it. Both holds are derived rather than stored (see Task.blockedById and
-// isSequenceHeld), which is deliberate and stays that way — so the release
-// moment is read back off whatever *did* get written: the blocker's own
-// completion, and the project's latest step completion.
+// it. The hold is derived rather than stored (see Task.blockedById), which is
+// deliberate and stays that way — so the release moment is read back off
+// whatever *did* get written: the blocker's own completion.
 //
 // Two releases have no timestamp to read and so mark nothing, which is the
 // honest answer rather than a gap to paper over:
@@ -934,11 +925,6 @@ function getReleasedFromHoldAt(task: Task): Date | null {
   if (task.waitingOnPersonId) {
     const person = resolvePerson(task.waitingOnPersonId);
     if (person?.archived && person.archivedAt) candidates.push(new Date(person.archivedAt));
-  }
-
-  if (task.projectId && isSequentialProject(task.projectId)) {
-    const stamp = latestProjectCompletionAt(task.projectId);
-    if (stamp) candidates.push(new Date(stamp));
   }
 
   if (candidates.length === 0) return null;

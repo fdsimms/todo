@@ -14,7 +14,7 @@ import {
   PULL_TODAY_BUDGET_MINUTES,
   suggestPullDate,
 } from '../utils/projectPull';
-import { registerProjectSource, registerTaskSource } from '../utils/blockerRegistry';
+import { registerTaskSource } from '../utils/blockerRegistry';
 import type { Project, Task } from '../types';
 
 const settingsState = { dayResetTime: '00:00', vacationMode: false, morningStart: '06:00', afternoonStart: '12:00', eveningStart: '18:00', nightStart: '21:00' };
@@ -72,6 +72,7 @@ const BASE: Task = {
   quotaIntervalMinutes: null,
   quotaReminders: false,
   quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaPeriod: 'day',
   progressCount: 0,
   tags: [],
   sortOrder: 0,
@@ -148,12 +149,12 @@ const PROJECT_BASE: Project = {
   archivedAt: null,
   completed: false,
   completedAt: null,
+  ongoing: false,
   // Old enough that the default cadence is comfortably exceeded unless a test
   // says otherwise.
   createdAt: subDays(new Date(), 60).toISOString(),
   nudgeCadenceDays: 14,
   autoSchedule: false,
-  sequential: false,
   nudgeOptIn: true,
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
@@ -233,23 +234,6 @@ describe('findProjectStalls', () => {
     expect(findProjectStalls([makeProject()], tasks)).toHaveLength(1);
   });
 
-  // Dating step 3 of a sequential project lands it on a day it still can't
-  // appear on, so only the open step is ever offered.
-  it('offers only the first step of a sequential project', () => {
-    const tasks = [
-      makeTask({ id: 'c', sortOrder: 30 }),
-      makeTask({ id: 'a', sortOrder: 10 }),
-      makeTask({ id: 'b', sortOrder: 20 }),
-    ];
-
-    const stalls = findProjectStalls([makeProject({ sequential: true })], tasks);
-
-    expect(stalls).toHaveLength(1);
-    expect(stalls[0].pullable.map(t => t.id)).toEqual(['a']);
-    // Membership is unchanged — the project still holds three tasks.
-    expect(stalls[0].members).toHaveLength(3);
-  });
-
   it('excludes archived projects', () => {
     expect(findProjectStalls([makeProject({ archived: true })], [makeTask({ id: 'a' })])).toHaveLength(0);
   });
@@ -291,18 +275,15 @@ describe('findProjectStalls', () => {
   });
 
   // A task waiting on another one can't appear anywhere a date would put it,
-  // so dating it is the one thing the pull must not offer — the same argument
-  // the sequential slice above makes, for the other way a task is held.
+  // so dating it is the one thing the pull must not offer.
   describe('members waiting on another task', () => {
     const blocker = makeTask({ id: 'blocker', projectId: null, dueDate: new Date().toISOString() });
-    const register = (tasks: Task[], projects: Project[] = []) => {
+    const register = (tasks: Task[]) => {
       registerTaskSource(() => [...tasks, blocker]);
-      registerProjectSource(() => projects);
     };
 
     afterEach(() => {
       registerTaskSource(null);
-      registerProjectSource(null);
     });
 
     it('leaves a waiting member out of the pullable set but still counts it', () => {
@@ -333,17 +314,6 @@ describe('findProjectStalls', () => {
       register(tasks);
 
       expect(findProjectStalls([makeProject()], tasks)[0]?.pullable.map(t => t.id)).toEqual(['a']);
-    });
-
-    it('refuses a sequential project whose open step is waiting, rather than offering step two', () => {
-      const project = makeProject({ sequential: true });
-      const tasks = [
-        makeTask({ id: 'a', sortOrder: 10, blockedById: 'blocker' }),
-        makeTask({ id: 'b', sortOrder: 20 }),
-      ];
-      register(tasks, [project]);
-
-      expect(findProjectStalls([project], tasks)).toHaveLength(0);
     });
 
     // The drip dates a task with nobody watching, so a waiting one would be

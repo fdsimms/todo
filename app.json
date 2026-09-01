@@ -103,6 +103,7 @@
       "./plugins/withWidgetExtension",
       "./plugins/withShareExtension",
       "./plugins/withAlarmKit",
+      "./plugins/withFoundationModels",
       "./plugins/withCloudKit",
       "./plugins/withSiriShortcuts",
       "./plugins/withFamilyControls",

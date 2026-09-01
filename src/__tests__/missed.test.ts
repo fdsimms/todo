@@ -43,6 +43,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   quotaIntervalMinutes: null,
   quotaReminders: false,
   quotaStartedAt: null, quotaAlwaysVisible: false,
+  quotaPeriod: 'day',
   tags: [],
   category: null,
   sortOrder: 1,

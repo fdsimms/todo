@@ -14,6 +14,7 @@ import {
   type NotificationPermission,
 } from '../../utils/notifications';
 import { useGroceryStore } from '../../store/useGroceryStore';
+import { useEventReminderStore } from '../../store/useEventReminderStore';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
 import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
@@ -48,7 +49,35 @@ export function NotificationSettings() {
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
 
   const allTasks = useTaskStore(useShallow(s => s.tasks));
-  const reminderStats = useMemo(() => pendingReminderStats(allTasks), [allTasks]);
+  // The active trip and the event reminders are passed in because they spend
+  // the same 64-slot budget the reminders do (see nonReminderSlots): counted
+  // without them, the "N reminders won't fire" line below under-reports by
+  // however many of each the queue is currently holding. Both are subscribed to
+  // rather than read through getState() so the line recomputes when they change.
+  const tripShopId = useGroceryStore(s => s.tripShopId);
+  const tripStartedAt = useGroceryStore(s => s.tripStartedAt);
+  const shops = useGroceryStore(useShallow(s => s.shops));
+  const eventReminders = useEventReminderStore(useShallow(s => Object.values(s.remindersByKey)));
+  // pendingReminderStats reads these out of the store rather than taking them,
+  // so they have to be subscribed to *and* in the dep array below or the line
+  // keeps showing a count taken under the old settings. Quiet hours and the
+  // active hours decide how many pace nudges are really scheduled; the agenda
+  // and trip toggles decide whether those spend a slot at all; dayResetTime
+  // moves the day both are anchored to; vacation mode hides whole runs.
+  const budgetSettings = useSettingsStore(
+    useShallow(s => [
+      s.quietHoursStart, s.quietHoursEnd, s.activeHoursStart, s.activeHoursEnd,
+      s.dailyAgendaEnabled, s.dailyAgendaTime, s.tripReminderEnabled,
+      s.dayResetTime, s.vacationMode,
+    ])
+  );
+  const reminderStats = useMemo(
+    () => pendingReminderStats(allTasks, new Date(), {
+      trip: { shopId: tripShopId, startedAt: tripStartedAt, shops },
+      eventReminders,
+    }),
+    [allTasks, tripShopId, tripStartedAt, shops, eventReminders, budgetSettings]
+  );
 
   // Both ways reminders can quietly not happen. The permission is re-read on
   // focus *and* on foreground: sending someone to the system Settings app to

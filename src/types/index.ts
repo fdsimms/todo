@@ -18,6 +18,12 @@ export type ReminderKind = 'notification' | 'alarm' | 'persistent';
  */
 export type DeliverableKind = 'text' | 'date' | 'number';
 
+/**
+ * The stretch a daily target counts across — see `Task.quotaPeriod`. 'day' is
+ * every quota that predates the field; 'week' is "three times a week".
+ */
+export type QuotaPeriod = 'day' | 'week';
+
 export interface Category {
   id: string;
   name: string;
@@ -513,6 +519,12 @@ export interface Project {
   // as archiving any other project.
   completed: boolean;
   completedAt: string | null;
+  // Never offer the "Mark Complete" banner, however many of its tasks are
+  // done — a running list (groceries you keep restocking, a recurring
+  // errand list) has no finish line to reach. Independent of `completed`:
+  // manual completion through ProjectEditor still works exactly as it does
+  // for any other project, this only silences the automatic offer.
+  ongoing: boolean;
   createdAt: string;
   // Days of quiet before this project offers up its next task (see
   // utils/projectPull.ts). 0 = never ask, for a project deliberately parked.
@@ -524,12 +536,6 @@ export interface Project {
   // than global — silently rescheduling is a bigger promise than suggesting,
   // and it's the right call for a chore list and the wrong one for a wishlist.
   autoSchedule: boolean;
-  // Opt-in: the project's hand-sorted order is a sequence, not a preference —
-  // each step is held back until the one above it is done (see
-  // utils/projectOrder.ts). Off by default, because a list of tasks that all
-  // happen to share a project is the normal case and gating it would hide work
-  // the user never asked to have hidden.
-  sequential: boolean;
   // Off by default: a project has to be explicitly opted in before it can
   // appear in ANY nudge surface — the gone-quiet banner, the auto-schedule
   // drip, and even the manually-opened "Pull from projects" sheet (see
@@ -1110,6 +1116,34 @@ export interface Task {
   // behavior is switched off. Off by default, so an existing quota task
   // keeps hiding on pace exactly as it always has.
   quotaAlwaysVisible: boolean;
+
+  /**
+   * The stretch of time the target is counted over: one logical day (every
+   * quota that predates this field, and the default) or one logical week.
+   *
+   * `'week'` is what "three times a week, any days" is. It is deliberately not
+   * a recurrence type, though that is where you would first look for it: a
+   * recurrence answers "what date is next", and this has no next date to give —
+   * any three days will do. What it has is a count and a period, which is a
+   * quota, so it is one flag on the mechanism that already counts rather than a
+   * sixth `RecurrenceType` the whole engine would have to learn.
+   *
+   * Everything that made a daily target work still works, because all of it
+   * reads the *span* rather than the day: the pace ramp, the hide-while-ahead,
+   * the meter, the completion that spawns the next occurrence. Only the span
+   * differs (see `quotaWeekSpan`), which is the reason this is affordable at
+   * all. The pace across a week is linear rather than following active hours
+   * each day — by Wednesday lunchtime you are owed about half of it — because a
+   * week-long ramp is answering "am I going to run out of week", and the hour
+   * of the day doesn't change that answer.
+   *
+   * Deliberately only for the plain kind. `allowOvershoot` and interval quotas
+   * (`quotaRidesOutTheDay`) are day-shaped in their own sweeps and stay daily;
+   * the editor won't offer the combination, and the sweeps guard anyway.
+   *
+   * Pairs with weekly recurrence, which is what spawns next week's occupant.
+   */
+  quotaPeriod: QuotaPeriod;
 
   // Supply — how many units of a consumable are left, for a recurring task
   // that spends one every time it's done. Replacing a CPAP filter monthly out

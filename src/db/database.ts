@@ -626,9 +626,10 @@ export function initDatabase(): void {
     // a task when this shipped is one the user is presumed to have set, so no
     // row starts out narrating itself. See Task.autoScheduledAt.
     'ALTER TABLE tasks ADD COLUMN auto_scheduled_at TEXT',
-    // 0 for every existing project, and that's the only safe backfill: turning
-    // it on hides every member but the first, and no existing project's order
-    // was ever entered as a sequence.
+    // Was the "do tasks in order" toggle, now removed (users have the waiting
+    // feature for that). The column stays on the table, unread and never
+    // written, the way target_start_date does — dropping one costs a migration
+    // for every install and buys nothing.
     'ALTER TABLE projects ADD COLUMN sequential INTEGER NOT NULL DEFAULT 0',
     // Defaults to 1, and that's the only safe value for an existing install:
     // every row already on a device predates the provisional idea, so all of
@@ -1246,6 +1247,13 @@ export function initDatabase(): void {
     // rather than part of the CREATE for the usual reason: a device that got
     // the table from an earlier build still picks the index up.
     'CREATE INDEX IF NOT EXISTS idx_focus_session_log_ended ON focus_session_log(ended_at)',
+    // See Project.ongoing — a running list with no finish line, so the
+    // "Mark Complete" banner never offers itself for it.
+    'ALTER TABLE projects ADD COLUMN ongoing INTEGER NOT NULL DEFAULT 0',
+    // 'day' on every existing row, which is what every daily target has always
+    // counted across. The column only ever adds the weekly kind (see
+    // Task.quotaPeriod), so an install upgrading into it reads exactly as it did.
+    "ALTER TABLE tasks ADD COLUMN quota_period TEXT NOT NULL DEFAULT 'day'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2061,6 +2069,11 @@ function rowToTask(row: Record<string, unknown>): Task {
     quotaReminders: Boolean(row.quota_reminders),
     quotaStartedAt: (row.quota_started_at as string | null) ?? null,
     quotaAlwaysVisible: Boolean(row.quota_always_visible),
+    // Anything but the one known alternative reads as 'day', which is both the
+    // pre-column default and the safe way round: a weekly target misread as
+    // daily is merely owed its whole count today, where a daily one misread as
+    // weekly would quietly stop asking for six days.
+    quotaPeriod: row.quota_period === 'week' ? 'week' : 'day',
     supplyCount: (row.supply_count as number | null) ?? null,
     supplyUnit: (row.supply_unit as string | null) ?? null,
     supplyRefillCount: (row.supply_refill_count as number | null) ?? null,
@@ -2164,9 +2177,9 @@ export function dbInsertTask(task: Task): void {
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
-      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, location,
+      quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
       prior_best_streak
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2232,6 +2245,7 @@ export function dbInsertTask(task: Task): void {
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
+      task.quotaPeriod,
       task.location ?? null,
       task.priorBestStreak,
     ]
@@ -2259,7 +2273,7 @@ export function dbUpdateTask(task: Task): void {
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
-      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, location=?,
+      quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
       prior_best_streak=?
     WHERE id=?`,
     [
@@ -2327,6 +2341,7 @@ export function dbUpdateTask(task: Task): void {
       task.quotaReminders ? 1 : 0,
       task.quotaStartedAt ?? null,
       task.quotaAlwaysVisible ? 1 : 0,
+      task.quotaPeriod,
       task.location ?? null,
       task.priorBestStreak,
       task.id,
@@ -4608,10 +4623,10 @@ function rowToProject(row: Record<string, unknown>): Project {
     archivedAt: (row.archived_at as string) ?? null,
     completed: Boolean(row.completed),
     completedAt: (row.completed_at as string) ?? null,
+    ongoing: Boolean(row.ongoing),
     createdAt: row.created_at as string,
     nudgeCadenceDays: (row.nudge_cadence_days as number | null) ?? DEFAULT_NUDGE_CADENCE_DAYS,
     autoSchedule: Boolean(row.auto_schedule),
-    sequential: Boolean(row.sequential),
     nudgeOptIn: Boolean(row.nudge_opt_in),
     reviewDeclinedAt: (row.review_declined_at as string) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
@@ -4629,12 +4644,12 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, created_at, nudge_cadence_days, auto_schedule, sequential, nudge_opt_in, review_declined_at, backfill_dismissed_fields, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, review_declined_at, backfill_dismissed_fields, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
-      project.completed ? 1 : 0, project.completedAt, project.createdAt,
-      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
+      project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0, project.createdAt,
+      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
     ]
   );
@@ -4642,12 +4657,12 @@ export function dbInsertProject(project: Project): void {
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, nudge_cadence_days=?, auto_schedule=?, sequential=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=?, kind=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=?, kind=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
-      project.completed ? 1 : 0, project.completedAt,
-      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.sequential ? 1 : 0, project.nudgeOptIn ? 1 : 0,
+      project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0,
+      project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind, project.id,
     ]
   );

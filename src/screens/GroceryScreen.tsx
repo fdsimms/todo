@@ -70,6 +70,7 @@ import { RecipeSourceSheet } from '../components/RecipeSourceSheet';
 import { RecipeToListSheet } from '../components/RecipeToListSheet';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { receiptScanAvailable } from '../utils/receiptOcr';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { describeListEstimate, estimateListTotal, lastPriceFor, pricedSince, priceToInput } from '../utils/groceryPrice';
 import { buildGroceryListShareText, buildGroceryListText } from '../utils/shareText';
@@ -305,10 +306,18 @@ export function GroceryScreen() {
 
   // Every AI affordance is gated on this, so a user without a key never sees
   // an entry point — the offline lexicon carries the feature on its own.
+  //
+  // Two exceptions now, taking different routes to the same place. Aisle
+  // sorting can be answered by the on-device *language* model, so it asks
+  // `aisleSortRoute`. Receipt scanning can be *read* on the device by Vision
+  // even though naming what was read still wants a key, so it asks
+  // `receiptScanAvailable`. What is left gated on a key outright is what needs
+  // world knowledge, or a photograph the device can't make sense of on its own.
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   // Resolved once: the native capability behind it cannot change while the
   // app is running.
   const canScanReceipt = useMemo(() => receiptScanAvailable(!!anthropicApiKey), [anthropicApiKey]);
+  const aisleSortRoute = useAiRoute('groceryAisles');
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
@@ -1345,7 +1354,7 @@ export function GroceryScreen() {
             <View style={{ height: selectionListPadding }} />
           ) : (
           <View>
-            {!!anthropicApiKey && unsortedCount > 0 && (
+            {aisleSortRoute !== 'unavailable' && unsortedCount > 0 && (
               <View style={styles.clearWrap}>
                 <InlineAction
                   label={`Sort ${unsortedCount} into aisles`}

@@ -24,6 +24,11 @@ import {
 } from '../utils/substituteSuggestions';
 import { useSettingsStore } from '../store/useSettingsStore';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
+import { routeForFeature, type AiRoute } from '../utils/aiRouting';
+import {
+  isOnDeviceReady, runOnDevice, describeOnDeviceError, isOnDeviceErrorMessage,
+  type OnDeviceSchema,
+} from './onDeviceModel';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const REQUEST_TIMEOUT_MS = 15_000;
@@ -47,9 +52,13 @@ interface AnthropicResponse {
  */
 function requireFeature(id: AiFeatureId): { apiKey: string; model: AiModelId } {
   const { anthropicApiKey: apiKey, aiFeatureConfig } = useSettingsStore.getState();
-  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
+  // The switch is checked before the key, which matters now that a missing key
+  // is no longer the end of the road for every feature (see aiRouting.ts).
+  // With both off, "add your API key" is the wrong advice: adding one wouldn't
+  // turn the feature back on.
   const { enabled, model } = aiFeatureConfig[id];
   if (!enabled) throw new Error('AI feature disabled');
+  if (!apiKey) throw new Error('No API key configured. Add your Anthropic API key in Settings.');
   return { apiKey, model };
 }
 
@@ -93,6 +102,11 @@ async function callAnthropic(
 /** Maps an Anthropic request failure to copy safe to show a user. */
 export function describeAIError(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
+  // The on-device path shares this function, because a caller can't know which
+  // engine answered it and shouldn't have to. Its failures are checked first:
+  // they aren't network failures, and the fallthrough at the bottom of this
+  // function would tell someone with no connection involved to check theirs.
+  if (isOnDeviceErrorMessage(message)) return describeOnDeviceError(error);
   if (message === 'No API key' || message.startsWith('No API key configured')) {
     return 'Add your Anthropic API key in Settings.';
   }
@@ -388,6 +402,14 @@ export async function suggestSubtasks(
 /** Names per aisle-sort call. A weekly list is well under this; the cap bounds a pathological one. */
 const MAX_AISLE_NAMES = 60;
 /**
+ * Names per *on-device* generation. The whole batch goes to Claude in one
+ * request, but the on-device window is roughly 4k tokens for prompt and
+ * completion together, and the section list is repeated in the schema on every
+ * call — so the full 60 has to be walked in pieces. Small enough to leave room
+ * for a long walk order, large enough that a typical Other pile is one pass.
+ */
+const ON_DEVICE_AISLE_CHUNK = 15;
+/**
  * Characters of recipe text we'll send. Roughly a long recipe including method.
  * Exported because `recipePage.ts` has to trim a fetched page to fit it, and a
  * second copy of the number there is one that goes stale.
@@ -435,10 +457,15 @@ export async function suggestGroceryAisles(
   names: string[],
   availableAisles: string[],
 ): Promise<Record<string, string>> {
-  const { apiKey, model } = requireFeature('groceryAisles');
-
   const wanted = names.map(n => n.trim()).filter(Boolean).slice(0, MAX_AISLE_NAMES);
   if (wanted.length === 0) return {};
+
+  // Routed before the key is demanded, or the on-device path could never be
+  // reached: `requireFeature` throws on a missing key, which is exactly the
+  // state this feature now has an answer for.
+  const route = groceryAisleRoute();
+  if (route === 'onDevice') return suggestGroceryAislesOnDevice(wanted, availableAisles);
+  const { apiKey, model } = requireFeature('groceryAisles');
 
   const data = await callAnthropic({
     max_tokens: 1000,
@@ -483,11 +510,86 @@ export async function suggestGroceryAisles(
   const input = toolUse?.input as { assignments?: Array<{ name?: unknown; aisle?: unknown }> } | undefined;
   if (!input?.assignments) throw new Error('No suggestions returned');
 
+  return matchBackAisles(input.assignments, wanted, availableAisles);
+}
+
+/**
+ * Which engine answers an aisle sort, read at call time.
+ *
+ * Availability is asked of the device on every call rather than cached:
+ * `notReady` resolves itself while the app is open, and a cached "no" taken at
+ * launch would outlive the reason for it.
+ */
+function groceryAisleRoute(): AiRoute {
+  const { anthropicApiKey, aiFeatureConfig, onDeviceAiEnabled } = useSettingsStore.getState();
+  return routeForFeature('groceryAisles', {
+    enabled: aiFeatureConfig.groceryAisles.enabled,
+    hasApiKey: !!anthropicApiKey,
+    onDeviceEnabled: onDeviceAiEnabled,
+    onDeviceAvailable: isOnDeviceReady(),
+  });
+}
+
+/**
+ * The same job on Apple's on-device model, for an install with no key.
+ *
+ * Two things differ from the Claude path and both are the model's shape rather
+ * than a preference. The aisle is declared as an `enum` over the real sections
+ * instead of a described string, because guided generation can constrain the
+ * choice outright and a smaller model given a free string will invent
+ * "Refrigerated"; and the batch is chunked, because the window is roughly 4k
+ * tokens for prompt and completion together and 60 names plus 15 section names
+ * plus the reply is not comfortably inside it.
+ *
+ * `canonicalAisle` still runs over the answer even though the enum should make
+ * it impossible to fail — same discipline the rest of this file keeps, and the
+ * enum is a constraint on the decoder rather than a guarantee from the model.
+ */
+async function suggestGroceryAislesOnDevice(
+  wanted: string[],
+  availableAisles: string[],
+): Promise<Record<string, string>> {
+  const schema: OnDeviceSchema = {
+    name: 'AisleAssignment',
+    description: 'One grocery item and the supermarket section it belongs in',
+    fields: [
+      { name: 'name', type: 'string', description: 'The item name, copied exactly as given.' },
+      { name: 'aisle', type: 'enum', choices: availableAisles, description: 'The section it belongs in.' },
+    ],
+  };
+
+  const out: Record<string, string> = {};
+  for (let i = 0; i < wanted.length; i += ON_DEVICE_AISLE_CHUNK) {
+    const chunk = wanted.slice(i, i + ON_DEVICE_AISLE_CHUNK);
+    const rows = await runOnDevice(
+      [
+        'Assign each of these grocery items to the supermarket section where a shopper would find it.',
+        'Use "Other" only when an item genuinely fits none of the rest.',
+        `Items:\n${chunk.map(n => `- ${n}`).join('\n')}`,
+      ].join('\n\n'),
+      schema,
+    );
+    Object.assign(out, matchBackAisles(rows, chunk, availableAisles));
+  }
+  return out;
+}
+
+/**
+ * Turns whatever a model said into a name → aisle map over the names actually
+ * sent. Shared by both paths deliberately: this is the layer that refuses to
+ * trust a returned string as an identifier, and two copies of it would be two
+ * places for that refusal to drift.
+ */
+function matchBackAisles(
+  assignments: Array<{ name?: unknown; aisle?: unknown }>,
+  wanted: string[],
+  availableAisles: string[],
+): Record<string, string> {
   // Match back against what we actually sent, so a hallucinated item can't
   // enter the result and a renamed one can't silently miss.
   const byLower = new Map(wanted.map(n => [n.toLowerCase(), n]));
   const out: Record<string, string> = {};
-  for (const a of input.assignments) {
+  for (const a of assignments) {
     if (typeof a?.name !== 'string') continue;
     const original = byLower.get(a.name.trim().toLowerCase());
     if (!original) continue;
