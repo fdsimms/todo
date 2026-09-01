@@ -91,4 +91,11 @@ describe.each(PALETTES)('%s palette', (_name, colors) => {
   it('keeps accentText within reach of accent', () => {
     expect(contrast(colors.accentText, colors.accent)).toBeLessThan(2);
   });
+
+  // `accentFill` exists because plain `accent` fails AA under `onAccent` white
+  // text/icons (3.65:1 dark, 4.02:1 light) — see its doc comment in
+  // `src/theme/index.ts`. This is the guarantee that fix rests on.
+  it('reads onAccent on an accentFill button', () => {
+    expect(contrast(colors.onAccent, colors.accentFill)).toBeGreaterThanOrEqual(AA);
+  });
 });

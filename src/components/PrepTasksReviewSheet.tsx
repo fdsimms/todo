@@ -185,7 +185,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  checkboxOn: { backgroundColor: colors.accentFill, borderColor: colors.accent },
   body: { flex: 1, gap: 2 },
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   sources: { fontSize: font.xs, color: colors.textTertiary },

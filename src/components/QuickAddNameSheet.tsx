@@ -255,7 +255,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   addBtn: {
     width: 34, height: 34, borderRadius: 17,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     alignItems: 'center', justifyContent: 'center',
   },
   addBtnDisabled: {

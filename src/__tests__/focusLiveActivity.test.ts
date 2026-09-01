@@ -87,7 +87,7 @@ const BASE: Task = {
   streakRequiresWindow: false,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null,
+  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   parentId: null,
   groupId: null,
   projectId: null,

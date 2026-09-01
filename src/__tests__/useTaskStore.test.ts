@@ -335,7 +335,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   projectId: null,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null,
+  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   chainEnabled: false,
   chainIndex: 0,
   chainItems: [],
@@ -1718,7 +1718,7 @@ describe('completeTask', () => {
       recurrenceInterval: 1,
       dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
       reminderTime: new Date(2025, 5, 10, 9, 30, 0).toISOString(),
-      reminderOffsetDays: null,
+      reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
     });
     useTaskStore.setState({ tasks: [task] });
     useTaskStore.getState().completeTask('recurring');
@@ -10306,6 +10306,224 @@ describe('quota tasks', () => {
       expect(task.completed).toBe(false);
       expect(task.progressCount).toBe(5);
     });
+
+    // #2201: a task whose category restricts it to Mon–Fri still gets a
+    // Saturday-dated occurrence from its own daily recurrence, since the
+    // recurrence itself knows nothing about the category's schedule.
+    describe('a weekday-only category (#2201)', () => {
+      const workCategory = { id: 'cat-work', name: 'Work', scheduleDays: [1, 2, 3, 4, 5], scheduleStart: '09:00', scheduleEnd: '18:00' };
+      const mockWorkCategory = () => {
+        const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+        useCategoryStore.getState.mockReturnValue({
+          categories: [workCategory],
+          getCategoryByName: (name: string) => (name === 'Work' ? workCategory : null),
+        });
+      };
+
+      it('closes a Saturday occurrence without breaking the streak', () => {
+        mockWorkCategory();
+        useTaskStore.setState({
+          tasks: [quota({
+            category: 'Work',
+            progressCount: 3,
+            streakCount: 12,
+            streakDate: new Date(2025, 5, 6).toISOString(),
+            dueDate: new Date(2025, 5, 7, 12, 0, 0).toISOString(), // Saturday
+          })],
+        });
+        useTaskStore.getState().rolloverQuotas();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+        expect(closed.completed).toBe(true);
+        expect(closed.streakCount).toBe(12); // unchanged, not broken to 0
+        expect(closed.priorBestStreak).toBe(0); // no run ended, nothing to fold
+
+        const next = useTaskStore.getState().tasks.find(t => t.id !== 'water')!;
+        // Carried forward, not restarted at 0 — the day didn't count against it.
+        expect(next.streakCount).toBe(12);
+        expect(next.streakDate).toBe(closed.streakDate);
+      });
+
+      it('still breaks the streak on a scheduled work day that fell short', () => {
+        mockWorkCategory();
+        useTaskStore.setState({
+          tasks: [quota({
+            category: 'Work',
+            progressCount: 3,
+            streakCount: 12,
+            streakDate: new Date(2025, 5, 8).toISOString(),
+            dueDate: new Date(2025, 5, 9, 12, 0, 0).toISOString(), // Monday
+          })],
+        });
+        useTaskStore.getState().rolloverQuotas();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+        expect(closed.streakCount).toBe(0);
+        const next = useTaskStore.getState().tasks.find(t => t.id !== 'water')!;
+        expect(next.streakCount).toBe(0);
+      });
+
+      it('still breaks the streak for a task in no category at all', () => {
+        mockWorkCategory();
+        useTaskStore.setState({
+          tasks: [quota({
+            category: null,
+            progressCount: 3,
+            streakCount: 12,
+            streakDate: new Date(2025, 5, 6).toISOString(),
+            dueDate: new Date(2025, 5, 7, 12, 0, 0).toISOString(), // Saturday, but no category restriction
+          })],
+        });
+        useTaskStore.getState().rolloverQuotas();
+
+        expect(useTaskStore.getState().tasks.find(t => t.id === 'water')!.streakCount).toBe(0);
+      });
+    });
+  });
+
+  describe('reanchorWallClockReminders', () => {
+    // A Date constructed with local params picks up process.env.TZ changed
+    // just before construction (verified in dateUtils.test.ts) — so a
+    // "device moved timezones" scenario is: capture a reminder's offset
+    // under one TZ, then switch TZ before calling the action, standing in
+    // for the device's clock having actually moved. Saved/restored per test
+    // so it can't leak into other test files sharing this worker.
+    let originalTz: string | undefined;
+
+    beforeEach(() => {
+      originalTz = process.env.TZ;
+    });
+
+    afterEach(() => {
+      if (originalTz === undefined) delete process.env.TZ;
+      else process.env.TZ = originalTz;
+    });
+
+    it('moves a wallClock reminder to the new zone\'s equivalent local time when the stored offset no longer matches', () => {
+      process.env.TZ = 'America/New_York';
+      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
+      const capturedOffset = nineAm.getTimezoneOffset();
+
+      process.env.TZ = 'Asia/Tokyo';
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 'reminder-wallclock',
+          reminderTimeAnchor: 'wallClock',
+          reminderTime: nineAm.toISOString(),
+          reminderUtcOffsetMinutes: capturedOffset,
+        })],
+      });
+
+      useTaskStore.getState().reanchorWallClockReminders();
+
+      const updated = useTaskStore.getState().tasks.find(t => t.id === 'reminder-wallclock')!;
+      const reminder = new Date(updated.reminderTime!);
+      expect(reminder.getHours()).toBe(9);
+      expect(reminder.getMinutes()).toBe(0);
+      expect(updated.reminderUtcOffsetMinutes).toBe(new Date().getTimezoneOffset());
+    });
+
+    it('leaves a fixed-anchor reminder untouched even with an offset mismatch', () => {
+      process.env.TZ = 'America/New_York';
+      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
+      const capturedOffset = nineAm.getTimezoneOffset();
+      const originalReminderTime = nineAm.toISOString();
+
+      process.env.TZ = 'Asia/Tokyo';
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 'reminder-fixed',
+          reminderTimeAnchor: 'fixed',
+          reminderTime: originalReminderTime,
+          reminderUtcOffsetMinutes: capturedOffset,
+        })],
+      });
+
+      useTaskStore.getState().reanchorWallClockReminders();
+
+      const unchanged = useTaskStore.getState().tasks.find(t => t.id === 'reminder-fixed')!;
+      expect(unchanged.reminderTime).toBe(originalReminderTime);
+      expect(unchanged.reminderUtcOffsetMinutes).toBe(capturedOffset);
+    });
+
+    it('leaves a task with no captured offset (a pre-migration row) untouched, without crashing', () => {
+      process.env.TZ = 'America/New_York';
+      const originalReminderTime = new Date(2026, 0, 15, 9, 0, 0).toISOString();
+
+      process.env.TZ = 'Asia/Tokyo';
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 'reminder-legacy',
+          reminderTimeAnchor: 'wallClock',
+          reminderTime: originalReminderTime,
+          reminderUtcOffsetMinutes: null,
+        })],
+      });
+
+      expect(() => useTaskStore.getState().reanchorWallClockReminders()).not.toThrow();
+
+      const unchanged = useTaskStore.getState().tasks.find(t => t.id === 'reminder-legacy')!;
+      expect(unchanged.reminderTime).toBe(originalReminderTime);
+      expect(unchanged.reminderUtcOffsetMinutes).toBeNull();
+    });
+
+    it('leaves a completed task\'s and an archived task\'s reminders untouched', () => {
+      process.env.TZ = 'America/New_York';
+      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
+      const capturedOffset = nineAm.getTimezoneOffset();
+      const originalReminderTime = nineAm.toISOString();
+
+      process.env.TZ = 'Asia/Tokyo';
+      useTaskStore.setState({
+        tasks: [
+          makeTask({
+            id: 'reminder-completed',
+            completed: true,
+            reminderTimeAnchor: 'wallClock',
+            reminderTime: originalReminderTime,
+            reminderUtcOffsetMinutes: capturedOffset,
+          }),
+          makeTask({
+            id: 'reminder-archived',
+            archived: true,
+            reminderTimeAnchor: 'wallClock',
+            reminderTime: originalReminderTime,
+            reminderUtcOffsetMinutes: capturedOffset,
+          }),
+        ],
+      });
+
+      useTaskStore.getState().reanchorWallClockReminders();
+
+      const tasks = useTaskStore.getState().tasks;
+      expect(tasks.find(t => t.id === 'reminder-completed')!.reminderTime).toBe(originalReminderTime);
+      expect(tasks.find(t => t.id === 'reminder-archived')!.reminderTime).toBe(originalReminderTime);
+    });
+
+    it('is idempotent: calling it twice with no timezone change in between makes no further change', () => {
+      process.env.TZ = 'America/New_York';
+      const nineAm = new Date(2026, 0, 15, 9, 0, 0);
+      const capturedOffset = nineAm.getTimezoneOffset();
+
+      process.env.TZ = 'Asia/Tokyo';
+      useTaskStore.setState({
+        tasks: [makeTask({
+          id: 'reminder-idempotent',
+          reminderTimeAnchor: 'wallClock',
+          reminderTime: nineAm.toISOString(),
+          reminderUtcOffsetMinutes: capturedOffset,
+        })],
+      });
+
+      useTaskStore.getState().reanchorWallClockReminders();
+      const afterFirst = useTaskStore.getState().tasks.find(t => t.id === 'reminder-idempotent')!;
+
+      useTaskStore.getState().reanchorWallClockReminders();
+      const afterSecond = useTaskStore.getState().tasks.find(t => t.id === 'reminder-idempotent')!;
+
+      expect(afterSecond.reminderTime).toBe(afterFirst.reminderTime);
+      expect(afterSecond.reminderUtcOffsetMinutes).toBe(afterFirst.reminderUtcOffsetMinutes);
+    });
   });
 
   describe('sweepOvershootQuotas', () => {
@@ -10401,6 +10619,35 @@ describe('quota tasks', () => {
       const next = tasks.find(t => t.id !== 'water')!;
       expect(next.progressCount).toBe(0);
       expect(next.completed).toBe(false);
+    });
+
+    // #2201: same non-work-day treatment rolloverQuotas gets, routed through
+    // completeTask's own neutral option instead of a manual close.
+    it('closes a Saturday occurrence without breaking the streak', () => {
+      const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+      const workCategory = { id: 'cat-work', name: 'Work', scheduleDays: [1, 2, 3, 4, 5], scheduleStart: '09:00', scheduleEnd: '18:00' };
+      useCategoryStore.getState.mockReturnValue({
+        categories: [workCategory],
+        getCategoryByName: (name: string) => (name === 'Work' ? workCategory : null),
+      });
+      useTaskStore.setState({
+        tasks: [quota({
+          allowOvershoot: true,
+          quotaIntervalMinutes: null,
+          quotaReminders: false,
+          quotaStartedAt: null, quotaAlwaysVisible: false,
+          category: 'Work',
+          progressCount: 5,
+          streakCount: 12,
+          streakDate: new Date(2025, 5, 6).toISOString(),
+          dueDate: new Date(2025, 5, 7, 12, 0, 0).toISOString(), // Saturday
+        })],
+      });
+      useTaskStore.getState().sweepOvershootQuotas();
+
+      const done = useTaskStore.getState().tasks.find(t => t.id === 'water')!;
+      expect(done.completed).toBe(true);
+      expect(done.streakCount).toBe(12); // unchanged, not advanced or broken
     });
   });
 
@@ -10611,6 +10858,31 @@ describe('quota tasks', () => {
         expect(next.progressCount).toBe(0);
         // A late start is a statement about one morning, not about the schedule.
         expect(next.quotaStartedAt).toBeNull();
+      });
+
+      // #2201: same non-work-day treatment the other two sweeps get.
+      it('closes a Saturday run without breaking the streak', () => {
+        const { useCategoryStore } = jest.requireMock('../store/useCategoryStore') as { useCategoryStore: { getState: jest.Mock } };
+        const workCategory = { id: 'cat-work', name: 'Work', scheduleDays: [1, 2, 3, 4, 5], scheduleStart: '09:00', scheduleEnd: '18:00' };
+        useCategoryStore.getState.mockReturnValue({
+          categories: [workCategory],
+          getCategoryByName: (name: string) => (name === 'Work' ? workCategory : null),
+        });
+        jest.setSystemTime(new Date(2025, 5, 7, 17, 0, 0)); // Saturday, window shut
+        useTaskStore.setState({
+          tasks: [run({
+            category: 'Work',
+            progressCount: 18,
+            streakCount: 12,
+            streakDate: new Date(2025, 5, 6).toISOString(),
+            dueDate: new Date(2025, 5, 7, 12, 0, 0).toISOString(),
+          })],
+        });
+        useTaskStore.getState().sweepFinishedQuotaRuns();
+
+        const closed = useTaskStore.getState().tasks.find(t => t.id === 'eyes')!;
+        expect(closed.completed).toBe(true);
+        expect(closed.streakCount).toBe(12); // unchanged
       });
     });
 

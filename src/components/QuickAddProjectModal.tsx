@@ -468,7 +468,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     width: 34,
     height: 34,
     borderRadius: 17,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -524,7 +524,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
   },
   presetChipActive: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   presetChipText: {
     color: colors.textSecondary,

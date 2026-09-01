@@ -1268,6 +1268,19 @@ export function initDatabase(): void {
     // See Project.ongoing — a running list with no finish line, so the
     // "Mark Complete" banner never offers itself for it.
     'ALTER TABLE projects ADD COLUMN ongoing INTEGER NOT NULL DEFAULT 0',
+    // Whether reminder_time is a wall-clock reading that follows the device
+    // across timezones, or a fixed instant — see Task.reminderTimeAnchor.
+    // Defaults to 'wallClock' on every existing row, which is what a bare
+    // reminder_time has always behaved like (it just didn't track a
+    // timezone change before now). See #1205.
+    "ALTER TABLE tasks ADD COLUMN reminder_time_anchor TEXT DEFAULT 'wallClock'",
+    // The UTC offset in effect at reminder_time's own moment when it was
+    // last set — see Task.reminderUtcOffsetMinutes. Null on every existing
+    // row, since no offset was ever captured before this column existed;
+    // reanchorWallClockReminders (useTaskStore.ts) skips a null rather than
+    // guessing one, so an existing reminder keeps behaving exactly as it
+    // does today until the user next edits it. See #1205.
+    'ALTER TABLE tasks ADD COLUMN reminder_utc_offset_minutes INTEGER',
     // 'day' on every existing row, which is what every daily target has always
     // counted across. The column only ever adds the weekly kind (see
     // Task.quotaPeriod), so an install upgrading into it reads exactly as it did.
@@ -2133,6 +2146,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     reminderTime: (row.reminder_time as string) ?? null,
     reminderKind: ((row.reminder_kind as Task['reminderKind']) ?? 'notification'),
     reminderOffsetDays: (row.reminder_offset_days as number | null) ?? null,
+    reminderTimeAnchor: (row.reminder_time_anchor as 'wallClock' | 'fixed' | null) ?? 'wallClock',
+    reminderUtcOffsetMinutes: (row.reminder_utc_offset_minutes as number | null) ?? null,
     // Column names stay cycle_* — this is the pre-rename "Cycle" feature
     // (now "Chain") and renaming the columns would need a data migration
     // for existing installs. The JS-facing field names are the new ones.
@@ -2216,8 +2231,8 @@ export function dbInsertTask(task: Task): void {
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
-      prior_best_streak, polarity, slip_count, slip_date
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2286,6 +2301,8 @@ export function dbInsertTask(task: Task): void {
       task.quotaPeriod,
       task.location ?? null,
       task.priorBestStreak,
+      task.reminderTimeAnchor,
+      task.reminderUtcOffsetMinutes ?? null,
       task.polarity,
       task.slipCount,
       task.slipDate ?? null,
@@ -2315,7 +2332,7 @@ export function dbUpdateTask(task: Task): void {
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
       quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
-      prior_best_streak=?, polarity=?, slip_count=?, slip_date=?
+      prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2385,6 +2402,8 @@ export function dbUpdateTask(task: Task): void {
       task.quotaPeriod,
       task.location ?? null,
       task.priorBestStreak,
+      task.reminderTimeAnchor,
+      task.reminderUtcOffsetMinutes ?? null,
       task.polarity,
       task.slipCount,
       task.slipDate ?? null,

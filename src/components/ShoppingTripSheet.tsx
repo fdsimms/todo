@@ -776,7 +776,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    checkOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+    checkOn: { backgroundColor: colors.accentFill, borderColor: colors.accent },
     rowText: { flex: 1 },
     rowTitle: { color: colors.text, fontSize: font.md },
     rowSub: { color: colors.textTertiary, fontSize: font.sm, marginTop: 1 },

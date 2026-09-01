@@ -804,7 +804,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgTertiary,
   },
   answerPillOn: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   answerPillText: {
     color: colors.textSecondary,
@@ -866,7 +866,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textAlign: 'center',
   },
   applyBtn: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     borderRadius: radius.md,
     margin: spacing.md,
     paddingVertical: 14,

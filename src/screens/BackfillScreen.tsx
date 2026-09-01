@@ -946,9 +946,15 @@ export function BackfillScreen() {
     apply({ effort: minutesToEffort(minutes), estimatedMinutes: minutes }, formatDuration(minutes));
   };
 
-  const applyReminder = (date: Date, kind: ReminderKind, offsetDays: number | null) => {
+  const applyReminder = (date: Date, kind: ReminderKind, offsetDays: number | null, anchor: 'wallClock' | 'fixed') => {
     apply(
-      { reminderTime: date.toISOString(), reminderKind: kind, reminderOffsetDays: offsetDays },
+      {
+        reminderTime: date.toISOString(),
+        reminderKind: kind,
+        reminderOffsetDays: offsetDays,
+        reminderTimeAnchor: anchor,
+        reminderUtcOffsetMinutes: date.getTimezoneOffset(),
+      },
       format(date, 'MMM d, h:mm a')
     );
     setReminderPickerOpen(false);
@@ -1346,7 +1352,7 @@ export function BackfillScreen() {
             </View>
 
             <PressableScale
-              style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+              style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
               onPress={applyCategory}
               accessibilityRole="button"
               accessibilityLabel={categoryField.label}
@@ -1470,7 +1476,7 @@ export function BackfillScreen() {
 
             {active.id === 'birthday' && (
               <PressableScale
-                style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+                style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
                 onPress={() => { haptics.tap(); setBirthdayPickerOpen(true); }}
                 accessibilityRole="button"
                 accessibilityLabel={`Set a birthday for ${displayNameOf(currentPerson)}`}
@@ -1572,7 +1578,7 @@ export function BackfillScreen() {
                   </TouchableOpacity>
                 )}
                 <PressableScale
-                  style={[styles.toggleButton, { backgroundColor: colors.accent }, !cadenceReady && styles.toggleButtonIdle]}
+                  style={[styles.toggleButton, { backgroundColor: colors.accentFill }, !cadenceReady && styles.toggleButtonIdle]}
                   onPress={applyPersonCadence}
                   disabled={!cadenceReady}
                   accessibilityRole="button"
@@ -1602,7 +1608,7 @@ export function BackfillScreen() {
                   accessibilityLabel={`Something to ask ${displayNameOf(currentPerson)} about`}
                 />
                 <PressableScale
-                  style={[styles.toggleButton, { backgroundColor: colors.accent }, !askAboutReady && styles.toggleButtonIdle]}
+                  style={[styles.toggleButton, { backgroundColor: colors.accentFill }, !askAboutReady && styles.toggleButtonIdle]}
                   onPress={applyAskAbout}
                   disabled={!askAboutReady}
                   accessibilityRole="button"
@@ -1752,7 +1758,7 @@ export function BackfillScreen() {
                 })}
               </View>
               <PressableScale
-                style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+                style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
                 onPress={applyNudge}
                 accessibilityRole="button"
                 accessibilityLabel={`Bring this project up every ${describeCadence(fromCadenceParts(nudgeDraft))}`}
@@ -1870,7 +1876,7 @@ export function BackfillScreen() {
             />
           ) : (
             <PressableScale
-              style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+              style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
               onPress={openSubstituteSheet}
               accessibilityRole="button"
               accessibilityLabel={`Add a substitute for ${currentItem.name}`}
@@ -1997,7 +2003,7 @@ function SessionReview({
       />
       <View style={[styles.reviewFooter, { paddingBottom: tabBarHeight + spacing.md }]}>
         <PressableScale
-          style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+          style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
           onPress={onDone}
           accessibilityRole="button"
           accessibilityLabel="Choose another field"
@@ -2203,7 +2209,7 @@ function FieldControl({
   if (field === 'vacation') {
     return (
       <PressableScale
-        style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+        style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
         onPress={onVacation}
         accessibilityRole="button"
         accessibilityLabel="Turn on vacation pause"
@@ -2217,7 +2223,7 @@ function FieldControl({
   if (field === 'reminder') {
     return (
       <PressableScale
-        style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+        style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
         onPress={onReminder}
         accessibilityRole="button"
         accessibilityLabel="Set a reminder"
@@ -2230,7 +2236,7 @@ function FieldControl({
 
   return (
     <PressableScale
-      style={[styles.toggleButton, { backgroundColor: colors.accent }]}
+      style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
       onPress={onSuggestions}
       accessibilityRole="button"
       accessibilityLabel="Skip in suggestions"
@@ -2336,7 +2342,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   customUnitToggle: { width: 104 },
   customSetButton: {
     paddingVertical: 8, paddingHorizontal: spacing.md,
-    borderRadius: radius.sm, backgroundColor: colors.accent,
+    borderRadius: radius.sm, backgroundColor: colors.accentFill,
   },
   customSetText: { color: colors.onAccent, fontSize: font.sm, fontWeight: fontWeight.semibold },
 

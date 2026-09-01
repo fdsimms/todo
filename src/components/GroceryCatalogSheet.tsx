@@ -486,7 +486,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    checkboxOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+    checkboxOn: { backgroundColor: colors.accentFill, borderColor: colors.accent },
     body: { flex: 1 },
     name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     meta: { fontSize: font.xs, color: colors.textTertiary, marginTop: 2 },

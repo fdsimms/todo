@@ -76,6 +76,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     right: 0, bottom: 0,
     width: 12, height: 12, borderRadius: 6,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
 });

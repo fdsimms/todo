@@ -570,7 +570,7 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     alignItems: 'center',
     justifyContent: 'center',
   },
-  checkboxOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+  checkboxOn: { backgroundColor: colors.accentFill, borderColor: colors.accent },
   rowBody: { flex: 1, gap: 2 },
   name: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   reason: { fontSize: font.xs, color: colors.textTertiary },

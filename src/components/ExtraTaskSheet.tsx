@@ -579,7 +579,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     flex: 1, paddingVertical: 7, borderRadius: radius.full,
     backgroundColor: colors.bgTertiary, alignItems: 'center',
   },
-  timePillActive: { backgroundColor: colors.accent },
+  timePillActive: { backgroundColor: colors.accentFill },
   timePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   timePillTextActive: { color: colors.onAccent, fontWeight: '600' },
   subtaskRow: {

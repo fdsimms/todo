@@ -332,7 +332,7 @@ const makeStyles = (colors: Colors, surface: Surface) => {
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm,
     },
-    pillActive: { backgroundColor: colors.accent },
+    pillActive: { backgroundColor: colors.accentFill },
     // Tinted rather than filled: a filled red pill in a grid where filled means
     // "picked" reads as an emphatic selection, which is the wrong half of the
     // meaning. The strike-through on the label is what carries "ruled out".

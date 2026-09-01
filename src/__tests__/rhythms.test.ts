@@ -68,7 +68,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   estimatedMinutes: null,
   reminderTime: null,
   reminderKind: 'notification',
-  reminderOffsetDays: null,
+  reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null,
   streakCount: 0,
   streakDate: null,
   previousStreakCount: 0,

@@ -45,7 +45,7 @@ export function fabCircle(colors: Colors, size: number) {
     width: size,
     height: size,
     borderRadius: size / 2,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
     shadowColor: colors.accent,
@@ -572,7 +572,7 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.lg, height: 52,
     borderRadius: radius.full,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     shadowColor: colors.accent,
   },
   menuItemText: {
@@ -592,7 +592,7 @@ const makeStyles = (colors: Colors, hand: FabHand) => StyleSheet.create({
     height: 32,
     justifyContent: 'center',
     borderRadius: radius.full,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     shadowColor: colors.accent,
   },
   dragLabelText: {

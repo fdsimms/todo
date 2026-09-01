@@ -968,7 +968,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'center',
     },
-    checkOn: { backgroundColor: colors.accent, borderColor: colors.accent },
+    checkOn: { backgroundColor: colors.accentFill, borderColor: colors.accent },
     loading: { alignItems: 'center', paddingVertical: spacing.xl, gap: spacing.sm },
     loadingText: { color: colors.textSecondary, fontSize: font.sm },
     error: { color: colors.red, fontSize: font.sm },

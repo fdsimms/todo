@@ -532,7 +532,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   applyBtnDisabled: {
     backgroundColor: colors.bgTertiary,

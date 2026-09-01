@@ -590,6 +590,56 @@ export function describeReminderOffset(offsetDays: number): string {
   return `${offsetDays} ${unit} before due`;
 }
 
+/**
+ * The UTC offset (minutes, `Date.getTimezoneOffset()`) in effect at
+ * `reminderTime`'s own moment, for a 'wallClock' reminder to compare itself
+ * against later (see reanchorReminderToWallClock and
+ * reanchorWallClockReminders in useTaskStore.ts). Deliberately reads the
+ * offset off `reminderTime` itself rather than `new Date()` — a reminder set
+ * today for a date across a DST boundary needs the offset that will be in
+ * effect on its own target day, not today's. Null input (no reminder) means
+ * nothing to capture. See #1205.
+ */
+export function captureReminderOffset(reminderTime: string | null): number | null {
+  return reminderTime ? new Date(reminderTime).getTimezoneOffset() : null;
+}
+
+/**
+ * Re-expresses a 'wallClock' reminder's stored instant under the device's
+ * *current* timezone, so "9am" still means 9am after a flight instead of
+ * whatever 9am-in-the-old-zone now reads as here.
+ *
+ * `wallMs` reconstructs the original wall-clock reading — the year/month/
+ * day/hour/minute that were on the clock when the reminder was set — by
+ * subtracting the offset that was captured at that exact moment
+ * (originalOffsetMinutes) and reading the result back with the `getUTC*`
+ * getters. That recovers those original wall components losslessly, no
+ * matter what timezone the device is in *now*, because subtracting a
+ * fixed offset and reading UTC fields is just decoding the same instant a
+ * different way. Feeding those components into the **local** `Date`
+ * constructor (`new Date(y, mo, d, h, mi, …)`, no `UTC` in the name) then
+ * makes JS reinterpret them under whichever timezone the device is in at
+ * the moment this function runs — exactly "the same wall-clock reading,
+ * now in the new zone". No IANA timezone name and no timezone database
+ * lookup is needed anywhere in this: this repo has no existing
+ * `Intl.DateTimeFormat` `timeZone` usage and Hermes/RN's ICU support for it
+ * is unverified, so this deliberately avoids depending on it. See #1205.
+ */
+export function reanchorReminderToWallClock(reminderTime: string, originalOffsetMinutes: number): string {
+  const wallMs = new Date(reminderTime).getTime() - originalOffsetMinutes * 60000;
+  const wall = new Date(wallMs);
+  const reanchored = new Date(
+    wall.getUTCFullYear(),
+    wall.getUTCMonth(),
+    wall.getUTCDate(),
+    wall.getUTCHours(),
+    wall.getUTCMinutes(),
+    wall.getUTCSeconds(),
+    wall.getUTCMilliseconds()
+  );
+  return reanchored.toISOString();
+}
+
 export function getDeadlineFromMonthDay(dueDate: Date, day: number): Date {
   return day === -1 ? lastDayOfMonth(dueDate) : setDate(dueDate, Math.min(day, lastDayOfMonth(dueDate).getDate()));
 }

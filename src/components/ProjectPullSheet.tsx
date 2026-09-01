@@ -591,7 +591,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   cycleText: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
   sep: { height: border.hairline, backgroundColor: colors.separator, marginLeft: spacing.md },
   applyBtn: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     borderRadius: radius.md,
     margin: spacing.md,
     paddingVertical: 14,

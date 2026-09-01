@@ -272,7 +272,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 7,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
-  chipActive: { backgroundColor: colors.accent },
+  chipActive: { backgroundColor: colors.accentFill },
   chipText: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
   chipTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
 });

@@ -58,7 +58,7 @@ const BLANK_SNOOZE_TASK: Task = {
   supplyLeadDays: null, supplyDeclinedAtCount: null, supplyGroceryItemId: null,
   targetCount: null, progressCount: 0, targetUnit: null, allowOvershoot: false,
   tags: [], personIds: [], category: null, sortOrder: 0, pinned: false, pinnedOrder: 0, priority: 0, effort: 0,
-  estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null, linkUrl: null, phoneNumber: null, emailAddress: null, location: null, blockedById: null, waitingOnPersonId: null, deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
+  estimatedMinutes: null, reminderTime: null, reminderKind: 'notification', reminderOffsetDays: null, reminderTimeAnchor: 'wallClock', reminderUtcOffsetMinutes: null, linkUrl: null, phoneNumber: null, emailAddress: null, location: null, blockedById: null, waitingOnPersonId: null, deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
   deadlineOnCalendar: false, calendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
@@ -1053,7 +1053,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.textSecondary,
   },
   dayCircleSelected: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   dayCircleToday: {
     borderWidth: 1.5,
@@ -1065,7 +1065,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.purple + '22',
   },
   dayCirclePending: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
   },
   dayText: {
     color: colors.text,

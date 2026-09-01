@@ -1383,6 +1383,25 @@ export interface Task {
   // today's behaviour: a reminder that just tracks the due date's own day.
   reminderOffsetDays: number | null;
 
+  // Whether reminderTime means "this wall-clock reading, wherever the device
+  // currently is" ('wallClock', the default) or "this exact fixed instant,
+  // never touched" ('fixed'). A task/habit app's "9am" overwhelmingly means
+  // 9am local time wherever you happen to be, not a UTC instant that drifts
+  // to noon after a flight — so wallClock reminders are recomputed on every
+  // foreground/launch (see reanchorWallClockReminders in useTaskStore.ts) to
+  // track the device's current timezone. Fixed reminders are left alone.
+  // See #1205.
+  reminderTimeAnchor: 'wallClock' | 'fixed';
+
+  // UTC offset in minutes (Date.getTimezoneOffset()) captured from
+  // reminderTime's own moment the last time reminderTime was set — not from
+  // `new Date()`, because a reminder that crosses a DST boundary before it
+  // fires should still remember the offset that was in effect for its own
+  // target date/time. Used to detect a timezone change and undo it. Null
+  // whenever reminderTime is null, and meaningless (never read) when
+  // reminderTimeAnchor is 'fixed'. See #1205.
+  reminderUtcOffsetMinutes: number | null;
+
   linkUrl: string | null; // URL/deep-link opened by the link button on the task row
 
   // Number dialled by the call button on the task row — "call the doctor" with

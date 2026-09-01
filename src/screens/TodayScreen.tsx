@@ -1074,6 +1074,11 @@ export function TodayScreen() {
       const subscription = AppState.addEventListener('change', state => {
         if (state === 'active') {
           useTaskStore.getState().checkVacationExpiry();
+          // The device's timezone can change while the app sits backgrounded
+          // (a flight lands mid-trip) — a phone left closed never sees a
+          // cold start, so this is the only chance to notice before the
+          // next reminder fires at the wrong local time. See #1205.
+          useTaskStore.getState().reanchorWallClockReminders();
           useTaskStore.getState().rolloverQuotas();
           // After checkVacationExpiry: a run that was protected while vacation
           // was on should start counting again in the same pass vacation ends,
@@ -4284,7 +4289,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.md, paddingVertical: spacing.sm,
     borderRadius: radius.full, backgroundColor: colors.bgSecondary,
   },
-  viewModePillActive: { backgroundColor: colors.accent },
+  viewModePillActive: { backgroundColor: colors.accentFill },
   viewModePillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   viewModePillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   viewModePillBadge: {

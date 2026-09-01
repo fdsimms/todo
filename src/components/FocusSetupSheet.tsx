@@ -712,7 +712,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: 5,
   },
-  windowPillOn: { backgroundColor: colors.accent },
+  windowPillOn: { backgroundColor: colors.accentFill },
   windowPillText: { color: colors.accent, fontSize: font.xs, fontWeight: fontWeight.semibold },
   windowPillTextOn: { color: colors.onAccent },
   suggestedCaption: { flex: 1, color: colors.textTertiary, fontSize: font.xs },
@@ -786,7 +786,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   summaryValue: { color: colors.text, fontWeight: fontWeight.semibold },
   summarySub: { color: colors.textTertiary, fontSize: font.xs },
   confirmBtn: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     borderRadius: radius.md,
     margin: spacing.md,
     paddingVertical: 14,

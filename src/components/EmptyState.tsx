@@ -132,7 +132,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   actionBtn: {
     marginTop: spacing.sm,
     paddingHorizontal: spacing.lg, paddingVertical: 10,
-    borderRadius: radius.full, backgroundColor: colors.accent,
+    borderRadius: radius.full, backgroundColor: colors.accentFill,
   },
   actionText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
 });

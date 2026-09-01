@@ -1121,7 +1121,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.full,
     backgroundColor: colors.bgQuaternary,
   },
-  lensPillActive: { backgroundColor: colors.accent },
+  lensPillActive: { backgroundColor: colors.accentFill },
   lensPillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   lensPillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   filterBarScroll: { flexGrow: 0, flexShrink: 0 },

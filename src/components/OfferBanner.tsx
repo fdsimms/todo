@@ -233,7 +233,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   text: { flex: 1, color: colors.text, fontSize: font.sm, lineHeight: font.sm * 1.35 },
   lead: { fontWeight: fontWeight.bold },
   button: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     borderRadius: radius.full,

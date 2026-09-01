@@ -897,7 +897,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
 
   actionBtn: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentFill,
     borderRadius: radius.md,
     margin: spacing.md,
     paddingVertical: 14,

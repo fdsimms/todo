@@ -143,7 +143,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: spacing.sm,
     borderRadius: radius.full, backgroundColor: colors.bgTertiary,
   },
-  pillOn: { backgroundColor: colors.accent },
+  pillOn: { backgroundColor: colors.accentFill },
   pillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: '500' },
   pillTextOn: { color: colors.onAccent, fontWeight: '600' },
 });
