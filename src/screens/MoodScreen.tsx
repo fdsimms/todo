@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { format } from 'date-fns/format';
 import { useShallow } from 'zustand/react/shallow';
@@ -10,11 +11,12 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { segmentOf } from '../utils/rhythms';
 import {
+  filterMoodLogs,
   moodEmoji,
   moodLabel,
   moodLogSummary,
@@ -25,18 +27,24 @@ import {
 import {
   buildMoodDays,
   categoryMoodContrasts,
+  describeMoodChart,
   moodByTimeOfDay,
   moodCompletionInsight,
   moodSummary,
   symptomMoodContrasts,
   MIN_PAIRED_DAYS,
 } from '../utils/moodInsights';
-import { ScreenHeader } from '../components/ScreenHeader';
+import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
 import { MoodLogSheet } from '../components/MoodLogSheet';
+import { SearchField } from '../components/SearchField';
+import { SymptomManagerSheet } from '../components/SymptomManagerSheet';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
+
+/** How many entries the history shows before "Show more". */
+const PAGE_SIZE = 20;
 
 const BAR_HEIGHT = 90;
 
@@ -73,6 +81,17 @@ export function MoodScreen() {
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<MoodLog | null>(null);
+  // How the history is narrowed. Two independent controls answering different
+  // questions (see filterMoodLogs), so they are two pieces of state rather
+  // than one: picking a symptom off a contrast row must not clear a query
+  // somebody is mid-way through typing.
+  const [symptomFilter, setSymptomFilter] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  // Paged rather than capped. The list used to stop dead at 20 with no way
+  // past it, which after a couple of months put most of the record out of
+  // reach of the screen computing statistics about it.
+  const [shown, setShown] = useState(PAGE_SIZE);
+  const [symptomsOpen, setSymptomsOpen] = useState(false);
 
   // `dundundun://mood?log=1` — the daily check-in task's link button. Stamped
   // with the arrival time rather than a boolean, and tracked against what has
@@ -127,14 +146,14 @@ export function MoodScreen() {
   // logged days together would draw a fortnight of entries out of four.
   const chart = useMemo(() => {
     const byDay = new Map(days.map(d => [d.dayKey, d]));
-    const out: { key: string; label: string; mood: number | null; today: boolean }[] = [];
+    const out: { dayKey: string; label: string; mood: number | null; today: boolean }[] = [];
     const cursor = getCurrentDayStart();
     for (let i = CHART_DAYS - 1; i >= 0; i--) {
       const date = new Date(cursor);
       date.setDate(date.getDate() - i);
       const key = dayKeyOf(date);
       out.push({
-        key,
+        dayKey: key,
         label: format(date, 'EEEEE'),
         mood: byDay.get(key)?.mood ?? null,
         today: key === todayKey,
@@ -143,9 +162,39 @@ export function MoodScreen() {
     return out;
   }, [days, todayKey]);
 
-  const recent = useMemo(() => logs.slice(0, 20), [logs]);
+  const chartLabel = useMemo(() => describeMoodChart(chart), [chart]);
+  const matching = useMemo(
+    () => filterMoodLogs(logs, { symptom: symptomFilter, query }),
+    [logs, symptomFilter, query],
+  );
+  const recent = useMemo(() => matching.slice(0, shown), [matching, shown]);
+
+  // Any change to what is being looked for starts the paging again: keeping a
+  // "showing 60" from the previous filter would silently render a different
+  // amount of two different searches.
+  useEffect(() => { setShown(PAGE_SIZE); }, [symptomFilter, query]);
 
   const openNew = () => { haptics.tap(); setEditing(null); setSheetOpen(true); };
+  const openEditSymptoms = () => { haptics.tap(); setSymptomsOpen(true); };
+
+  // Built as a typed array rather than inline, so the conditional first action
+  // doesn't widen `icon` from Ionicons' glyph union to plain string.
+  const headerActions: ScreenHeaderAction[] = [];
+  // Only once there is a vocabulary to manage: an empty rename sheet is a
+  // control that does nothing, and the header should lead with the thing you
+  // came here to do.
+  if (symptomNames.size > 0) {
+    headerActions.push({
+      icon: 'pricetag-outline',
+      onPress: openEditSymptoms,
+      accessibilityLabel: 'Rename or merge your symptoms',
+    });
+  }
+  headerActions.push({
+    icon: 'add-circle-outline',
+    onPress: openNew,
+    accessibilityLabel: 'Log how you\'re feeling',
+  });
   const openEdit = (log: MoodLog) => { haptics.tap(); setEditing(log); setSheetOpen(true); };
 
   const confirmDelete = (log: MoodLog) => {
@@ -172,11 +221,7 @@ export function MoodScreen() {
         subtitle={summary.loggedDays > 0
           ? `${summary.loggedDays} ${summary.loggedDays === 1 ? 'day' : 'days'} logged`
           : undefined}
-        actions={[{
-          icon: 'add-circle-outline',
-          onPress: openNew,
-          accessibilityLabel: 'Log how you\'re feeling',
-        }]}
+        actions={headerActions}
       />
 
       {logs.length === 0 ? (
@@ -197,16 +242,33 @@ export function MoodScreen() {
               styles={styles}
               value={summary.averageMood === null ? '—' : summary.averageMood.toFixed(1)}
               label="Average mood"
+              spoken={summary.averageMood === null
+                ? 'Average mood: nothing logged yet'
+                : `Average mood ${summary.averageMood.toFixed(1)} out of 5`}
             />
-            <Stat styles={styles} value={String(summary.streak)} label="Day streak" />
-            <Stat styles={styles} value={String(summary.lowDays)} label="Low days" />
+            <Stat
+              styles={styles}
+              value={String(summary.streak)}
+              label="Day streak"
+              spoken={`Logged ${summary.streak} ${summary.streak === 1 ? 'day' : 'days'} running`}
+            />
+            <Stat
+              styles={styles}
+              value={String(summary.lowDays)}
+              label="Low days"
+              spoken={`${summary.lowDays} low ${summary.lowDays === 1 ? 'day' : 'days'} on record`}
+            />
           </View>
 
           <Text style={styles.sectionTitle}>THE LAST TWO WEEKS</Text>
           <View style={styles.card}>
-            <View style={styles.chartInner}>
-              {chart.map(({ key, label, mood, today }) => (
-                <View key={key} style={styles.chartCol}>
+            {/* One accessibility element for the whole chart: `accessible` on
+                the wrapper stops the fourteen columns being fourteen stops in
+                the swipe order, and describeMoodChart says in one sentence
+                what the bars say at a glance. */}
+            <View style={styles.chartInner} accessible accessibilityLabel={chartLabel}>
+              {chart.map(({ dayKey, label, mood, today }) => (
+                <View key={dayKey} style={styles.chartCol}>
                   <View style={styles.barTrack}>
                     <View
                       style={[
@@ -269,12 +331,15 @@ export function MoodScreen() {
               <Text style={styles.sectionTitle}>MOOD BY KIND OF WORK</Text>
               <View style={styles.card}>
                 {categoryRows.map(row => (
-                  <View key={row.label} style={styles.contrastRow}>
-                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
-                    <Text style={styles.contrastValue}>
-                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
-                    </Text>
-                  </View>
+                  <ContrastRow
+                    key={row.label}
+                    styles={styles}
+                    colors={colors}
+                    label={row.label}
+                    moodWith={row.moodWith}
+                    moodWithout={row.moodWithout}
+                    subject="days you finished something in it"
+                  />
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days you finished something in that category, against days you didn't.
@@ -287,14 +352,25 @@ export function MoodScreen() {
             <>
               <Text style={styles.sectionTitle}>MOOD WITH SYMPTOMS</Text>
               <View style={styles.card}>
-                {symptomRows.map(row => (
-                  <View key={row.label} style={styles.contrastRow}>
-                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
-                    <Text style={styles.contrastValue}>
-                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
-                    </Text>
-                  </View>
-                ))}
+                {symptomRows.map(row => {
+                  const active = !!symptomFilter && symptomKey(symptomFilter) === symptomKey(row.label);
+                  return (
+                    <ContrastRow
+                      key={row.label}
+                      styles={styles}
+                      colors={colors}
+                      label={row.label}
+                      moodWith={row.moodWith}
+                      moodWithout={row.moodWithout}
+                      subject="days you logged it"
+                      active={active}
+                      onPress={() => {
+                        haptics.tap();
+                        setSymptomFilter(active ? null : row.label);
+                      }}
+                    />
+                  );
+                })}
                 <Text style={styles.chartCaption}>
                   Your average mood on days you logged it, against days you didn't.
                 </Text>
@@ -306,21 +382,63 @@ export function MoodScreen() {
             <>
               <Text style={styles.sectionTitle}>MOOD BY TIME OF DAY</Text>
               <View style={styles.card}>
-                {timeRows.map(row => (
-                  <View key={row.segment} style={styles.contrastRow}>
-                    <Text style={styles.contrastLabel}>
-                      {row.segment.charAt(0).toUpperCase() + row.segment.slice(1)}
-                    </Text>
-                    <Text style={styles.contrastValue}>
-                      {row.mood.toFixed(1)} · {row.entryCount} {row.entryCount === 1 ? 'entry' : 'entries'}
-                    </Text>
-                  </View>
-                ))}
+                {timeRows.map(row => {
+                  const name = row.segment.charAt(0).toUpperCase() + row.segment.slice(1);
+                  return (
+                    <View
+                      key={row.segment}
+                      style={styles.contrastRow}
+                      accessible
+                      accessibilityLabel={`${name}: average mood ${row.mood.toFixed(1)} across ${row.entryCount} ${row.entryCount === 1 ? 'entry' : 'entries'}`}
+                    >
+                      <Text style={styles.contrastLabel}>{name}</Text>
+                      <Text style={styles.contrastValue}>
+                        {row.mood.toFixed(1)} · {row.entryCount} {row.entryCount === 1 ? 'entry' : 'entries'}
+                      </Text>
+                    </View>
+                  );
+                })}
               </View>
             </>
           )}
 
-          <Text style={styles.sectionTitle}>RECENT ENTRIES</Text>
+          <Text style={styles.sectionTitle}>
+            {symptomFilter || query.trim() ? 'MATCHING ENTRIES' : 'ENTRIES'}
+          </Text>
+
+          <SearchField
+            value={query}
+            onChangeText={setQuery}
+            placeholder="Search notes and symptoms"
+            style={styles.search}
+            accessibilityLabel="Search your mood entries"
+          />
+
+          {!!symptomFilter && (
+            <TouchableOpacity
+              style={styles.filterPill}
+              onPress={() => { haptics.tap(); setSymptomFilter(null); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Showing days with ${symptomFilter}. Tap to show all days`}
+            >
+              <Text style={styles.filterPillText} numberOfLines={1}>{symptomFilter}</Text>
+              <Ionicons name="close" size={iconSize.sm} color={colors.accent} />
+            </TouchableOpacity>
+          )}
+
+          {matching.length === 0 ? (
+            <Text style={styles.noMatches}>
+              Nothing matches. Clear the search to see everything you've logged.
+            </Text>
+          ) : (
+            <Text style={styles.matchCount}>
+              {matching.length === logs.length
+                ? `${logs.length} ${logs.length === 1 ? 'entry' : 'entries'}`
+                : `${matching.length} of ${logs.length}`}
+            </Text>
+          )}
+
           {recent.map(log => (
             <TouchableOpacity
               key={log.id}
@@ -352,6 +470,20 @@ export function MoodScreen() {
               </View>
             </TouchableOpacity>
           ))}
+
+          {matching.length > recent.length && (
+            <TouchableOpacity
+              style={styles.showMore}
+              onPress={() => { haptics.tap(); setShown(n => n + PAGE_SIZE); }}
+              activeOpacity={interaction.activeOpacity}
+              accessibilityRole="button"
+              accessibilityLabel={`Show more entries. ${matching.length - recent.length} still to show`}
+            >
+              <Text style={styles.showMoreText}>
+                Show {Math.min(PAGE_SIZE, matching.length - recent.length)} more
+              </Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       )}
 
@@ -360,17 +492,94 @@ export function MoodScreen() {
         editing={editing}
         onClose={() => { setSheetOpen(false); setEditing(null); }}
       />
+
+      <SymptomManagerSheet
+        visible={symptomsOpen}
+        onClose={() => setSymptomsOpen(false)}
+      />
     </View>
   );
 }
 
-function Stat({ styles, value, label }: {
+/**
+ * One "with it / without it" comparison.
+ *
+ * Shared by the category and symptom blocks, which had shipped as identical
+ * markup twice over. Read raw the two `Text` nodes are "headache" then
+ * "1.8 vs 3.9", which says nothing about what is being compared, so the row is
+ * one accessibility element with the sentence spelled out.
+ *
+ * `onPress` is what makes a symptom row the way into its own days; the
+ * category rows pass nothing and stay plain, since there is no per-category
+ * lens on the history to send anybody to.
+ */
+function ContrastRow({ styles, colors, label, moodWith, moodWithout, subject, onPress, active }: {
+  styles: ReturnType<typeof makeStyles>;
+  colors: Colors;
+  label: string;
+  moodWith: number;
+  moodWithout: number;
+  /** How the comparison reads out loud: "days you logged it". */
+  subject: string;
+  onPress?: () => void;
+  active?: boolean;
+}) {
+  const spoken = `${label}: average mood ${moodWith.toFixed(1)} on ${subject}, `
+    + `${moodWithout.toFixed(1)} on days you didn't`;
+  const body = (
+    <>
+      <Text style={[styles.contrastLabel, active && styles.contrastLabelActive]} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={styles.contrastValue}>
+        {moodWith.toFixed(1)} vs {moodWithout.toFixed(1)}
+      </Text>
+      {!!onPress && (
+        <Ionicons
+          name={active ? 'close-circle' : 'chevron-forward'}
+          size={iconSize.sm}
+          color={active ? colors.accent : colors.textTertiary}
+        />
+      )}
+    </>
+  );
+  if (!onPress) {
+    return (
+      <View style={styles.contrastRow} accessible accessibilityLabel={spoken}>{body}</View>
+    );
+  }
+  return (
+    <TouchableOpacity
+      style={styles.contrastRow}
+      onPress={onPress}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityLabel={active ? `${spoken}. Showing these days` : `${spoken}. Show these days`}
+      accessibilityState={{ selected: !!active }}
+    >
+      {body}
+    </TouchableOpacity>
+  );
+}
+
+/**
+ * One header number.
+ *
+ * `accessible` on the wrapper rather than labels on the two `Text` nodes: read
+ * separately they are "3.2" and "Average mood", two unrelated items in the
+ * swipe order with nothing tying them together. `spoken` exists because the
+ * visible value is often too terse to say out loud on its own, so the caller
+ * hands over the sentence it wants rather than the screen reader assembling
+ * one from a number and a heading.
+ */
+function Stat({ styles, value, label, spoken }: {
   styles: ReturnType<typeof makeStyles>;
   value: string;
   label: string;
+  spoken: string;
 }) {
   return (
-    <View style={styles.statCell}>
+    <View style={styles.statCell} accessible accessibilityLabel={spoken}>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>
@@ -425,6 +634,9 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
   },
   contrastLabel: { flex: 1, fontSize: font.sm, color: colors.text },
+  // Accent while its days are the ones on screen, so the filter and the row
+  // that set it read as the same thing.
+  contrastLabelActive: { color: colors.accent, fontWeight: fontWeight.medium },
   contrastValue: { fontSize: font.sm, color: colors.textSecondary, fontWeight: fontWeight.medium },
   entryRow: {
     flexDirection: 'row',
@@ -441,4 +653,34 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   entryMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
   entrySymptoms: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs },
   entryNote: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },
+  search: { marginBottom: spacing.sm },
+  // Mirrors LogbookScreen's own active-filter pill: what is currently
+  // narrowing the list, shown as the thing that removes it.
+  filterPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.full,
+    backgroundColor: colors.accentSubtle,
+    marginBottom: spacing.sm,
+  },
+  filterPillText: { fontSize: font.sm, color: colors.accent, fontWeight: fontWeight.medium },
+  matchCount: {
+    fontSize: font.xs,
+    color: colors.textSecondary,
+    marginBottom: spacing.sm,
+  },
+  noMatches: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    paddingVertical: spacing.md,
+  },
+  showMore: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  showMoreText: { fontSize: font.sm, color: colors.accent, fontWeight: fontWeight.medium },
 });

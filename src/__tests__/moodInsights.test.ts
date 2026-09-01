@@ -5,6 +5,7 @@ import {
   completionDayKey,
   correlation,
   correlationStrength,
+  describeMoodChart,
   loggingStreak,
   lowMoodRun,
   moodByTimeOfDay,
@@ -295,5 +296,43 @@ describe('the logging streak', () => {
 
   it('is zero with nothing logged at all', () => {
     expect(loggingStreak([], '2026-08-17')).toBe(0);
+  });
+});
+
+describe('the chart, said out loud', () => {
+  const chart = (moods: (number | null)[]) =>
+    moods.map((mood, i) => ({ dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`, mood }));
+
+  it('summarises the whole chart in one sentence rather than per bar', () => {
+    // Deliberately one accessibility element: labelling each column makes the
+    // chart fourteen stops in the swipe order on a screen whose entry list
+    // already carries every day in words.
+    const said = describeMoodChart(chart([2, 4, 5]));
+    expect(said).toContain('last 3 days');
+    expect(said).toContain('average 3.7 out of 5');
+    expect(said).toContain('Highest');
+    expect(said).toContain('lowest');
+  });
+
+  it('says how many days are missing, since a gap is what the bars barely show', () => {
+    const said = describeMoodChart(chart([3, null, null, 4]));
+    expect(said).toContain('2 logged');
+    expect(said).toContain('2 days not logged');
+  });
+
+  it('uses the singular for one missing day', () => {
+    expect(describeMoodChart(chart([3, null]))).toContain('1 day not logged');
+  });
+
+  it('does not report a highest and a lowest that are the same number', () => {
+    // Two findings where there is none.
+    const said = describeMoodChart(chart([3, 3, 3]));
+    expect(said).toContain('Every logged day at 3');
+    expect(said).not.toContain('Highest');
+  });
+
+  it('handles a fortnight with nothing in it, and an empty chart', () => {
+    expect(describeMoodChart(chart([null, null]))).toBe('Mood chart, last 2 days. Nothing logged.');
+    expect(describeMoodChart([])).toBe('Mood chart. Nothing logged.');
   });
 });

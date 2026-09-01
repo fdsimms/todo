@@ -304,6 +304,9 @@ export function GeneratedTasksSection() {
     if (spec.kind === 'mealPlanNudge') {
       return `A task appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)} to plan that week`;
     }
+    if (spec.kind === 'moodLog' && s.moodLogTimeSegment) {
+      return `Adds one task a day, held back until ${s.moodLogTimeSegment}, to log how you're feeling`;
+    }
     if (spec.kind === 'calendarReview' && s.calendarReviewTimeSegment) {
       return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow's events`;
     }
@@ -561,6 +564,37 @@ export function GeneratedTasksSection() {
                 pinned: o.value === null,
                 accessibilityLabel: `Show the task ${o.value === null ? 'any time of day' : `in the ${o.label.toLowerCase()}`}`,
                 onPress: () => { haptics.tap(); s.setCalendarReviewTimeSegment(o.value); },
+              }))}
+            />
+          </View>
+        </>
+      );
+    }
+
+    if (kind === 'moodLog') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="moodLogTimeSegment"
+            icon="time-outline"
+            label="Show the task"
+            hint="Held back until this part of the day arrives, same as a task's own Time of day field."
+            value={
+              timeSegmentChoices.find(o => o.value === s.moodLogTimeSegment)?.label ?? 'Any time'
+            }
+            tight
+          />
+          <View style={styles.pillGroupRow}>
+            <PillGroup
+              noun="time of day"
+              options={timeSegmentChoices.map(o => ({
+                key: String(o.value),
+                label: o.label,
+                selected: o.value === s.moodLogTimeSegment,
+                pinned: o.value === null,
+                accessibilityLabel: `Show the check-in ${o.value === null ? 'any time of day' : `in the ${o.label.toLowerCase()}`}`,
+                onPress: () => { haptics.tap(); s.setMoodLogTimeSegment(o.value); },
               }))}
             />
           </View>

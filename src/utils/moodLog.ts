@@ -187,6 +187,45 @@ export function hasLogOnDay(logs: readonly MoodLog[], dayKey: string): boolean {
 }
 
 /**
+ * The entries a person is looking for, newest first.
+ *
+ * Two independent narrowings, because they answer different questions: a
+ * symptom filter is "show me the days this happened", a query is "I know I
+ * wrote something about this". Both empty is the whole history, which is what
+ * the screen shows by default.
+ *
+ * The query matches the note *and* the symptom names, since somebody typing
+ * "headache" into a search box means the days they had one, and making them
+ * discover that only the note is searched would be the kind of distinction
+ * only the code makes.
+ */
+export function filterMoodLogs(
+  logs: readonly MoodLog[],
+  opts: { symptom?: string | null; query?: string } = {},
+): MoodLog[] {
+  const key = opts.symptom ? symptomKey(opts.symptom) : null;
+  const query = (opts.query ?? '').trim().toLowerCase();
+  return logs.filter(log => {
+    if (key && !log.symptoms.some(s => symptomKey(s.name) === key)) return false;
+    if (!query) return true;
+    if ((log.note ?? '').toLowerCase().includes(query)) return true;
+    return log.symptoms.some(s => s.name.toLowerCase().includes(query));
+  });
+}
+
+/**
+ * How many entries name a symptom, for the vocabulary list.
+ *
+ * Counts *entries* rather than days on purpose: this is what the rename sheet
+ * shows before rewriting them, so it has to be the number of rows about to
+ * change, not a friendlier figure that happens to be smaller.
+ */
+export function symptomEntryCount(logs: readonly MoodLog[], name: string): number {
+  const key = symptomKey(name);
+  return logs.filter(l => l.symptoms.some(s => symptomKey(s.name) === key)).length;
+}
+
+/**
  * A one-line summary of an entry, for a list row.
  *
  * Mood first because it is the thing on a fixed scale, then the symptoms by

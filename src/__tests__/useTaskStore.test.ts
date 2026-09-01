@@ -4477,6 +4477,7 @@ describe('checkMoodTasks', () => {
     moodLogTaskCategory: 'Health',
     moodLogLastDayKey: null as string | null,
     setMoodLogLastDayKey: jest.fn(),
+    moodLogTimeSegment: null as string | null,
     moodNudgeTasks: false,
     moodNudgeTaskCategory: 'Health',
     moodNudgeAfterDays: 3,
@@ -4581,6 +4582,21 @@ describe('checkMoodTasks', () => {
       const live = tasksOfKind('moodLog');
       expect(live).toHaveLength(1);
       expect(live[0].generatedSourceId).toBe('2026-08-26');
+    });
+
+    it('holds the check-in back until the chosen time of day, when one is set', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTimeSegment: 'evening' }));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      const [check] = tasksOfKind('moodLog');
+      expect(check.timeSegments).toEqual(['evening']);
+    });
+
+    it('carries no time segment by default, so an existing install is unchanged', () => {
+      useTaskStore.getState().checkMoodTasks();
+
+      expect(tasksOfKind('moodLog')[0].timeSegments).toEqual([]);
     });
 
     it('writes nothing while switched off', () => {
