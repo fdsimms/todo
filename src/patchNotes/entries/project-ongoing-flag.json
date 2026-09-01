@@ -1,0 +1,4 @@
+{
+  "message": "Added an Ongoing toggle to a project's settings, for a running list with no finish line. Turn it on and the project stops offering to mark itself complete, and stops reading as complete in the projects list, however many of its tasks are done. Manual completion still works if you ever want it",
+  "date": "2026-09-01"
+}

@@ -1110,6 +1110,15 @@ describe('demo mode', () => {
     expect(members.every(t => !t.dueDate)).toBe(true);
   });
 
+  it('seeds a running list that never offers to mark itself complete', () => {
+    // Gift ideas doubles as the demo instance of Project.ongoing — a list
+    // nobody expects to reach a finish line, unlike Kitchen refresh above.
+    useDemoStore.getState().enterDemoMode();
+
+    const giftIdeas = useProjectStore.getState().projects.find(p => p.title === 'Gift ideas');
+    expect(giftIdeas?.ongoing).toBe(true);
+  });
+
   it('seeds a completed project, separate from archived', () => {
     useDemoStore.getState().enterDemoMode();
 

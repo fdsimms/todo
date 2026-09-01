@@ -825,6 +825,22 @@ export function QuickAddModal({
     }
   };
 
+  // Auto-accept a "#word" token the moment it names a real category or tag,
+  // rather than waiting on the tooltip tap — matches how an "@name" mention
+  // resolves live above. The one thing a mention doesn't have to worry about
+  // is that applying this one rewrites the title, so this only fires once
+  // there's text past the matched token (another word, a space, a second
+  // tag): that's the signal the token itself is done growing, not a
+  // still-being-typed prefix a further keystroke would have changed the
+  // meaning of. A token sitting at the very end of the title is still
+  // covered — handleAdd applies it as a fallback right before saving.
+  useEffect(() => {
+    if (categoryTagsParsed && categoryTagsParsed.matchEnd < title.length) {
+      applyCategoryTags();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categoryTagsParsed]);
+
   // Record a pick off the ambiguous-token list. Unlike every other tooltip
   // here, this doesn't touch the title text — matchPersonMentions can't be
   // made to resolve "@sam" on its own no matter what's typed next when two
@@ -992,8 +1008,16 @@ export function QuickAddModal({
   };
   const resolveTags = () => {
     const t = tagInput.trim().toLowerCase();
-    return t && !tags.includes(t) ? [...tags, t] : tags;
+    const base = t && !tags.includes(t) ? [...tags, t] : tags;
+    // Same race, for a "#tag" token still sitting unconfirmed at the very end
+    // of the title — the auto-accept effect only fires once something
+    // follows the token, so hitting Add straight off the last keystroke
+    // needs this fallback too.
+    return categoryTagsParsed?.tags.length
+      ? [...new Set([...base, ...categoryTagsParsed.tags])]
+      : base;
   };
+  const resolveCategory = () => categoryTagsParsed?.category ?? category;
 
   // ==== creating the task ====
   // The burst mode itself. Gated on there being no drop seed, so the toggle is
@@ -1014,7 +1038,7 @@ export function QuickAddModal({
       timeSegments,
       tags: resolveTags(),
       personIds,
-      category,
+      category: resolveCategory(),
       linkUrl: resolveLinkUrl(),
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
@@ -1080,7 +1104,7 @@ export function QuickAddModal({
     // rewriting the field under the cursor is the one way this feature would
     // be unusable. Nothing strips unless a rule asked to, and a strip that
     // would empty the title is refused (see stripMatchedKeywords).
-    const finalTitle = (ruleFill?.cleanTitle ?? title).trim();
+    const finalTitle = (ruleFill?.cleanTitle ?? categoryTagsParsed?.cleanTitle ?? title).trim();
     if (!finalTitle || !canSaveType(type, typeValues)) return;
 
     const archivedMatch = findArchivedMatch(useTaskStore.getState().archivedTasks(), finalTitle);
@@ -1111,14 +1135,14 @@ export function QuickAddModal({
   const handleOpenFull = () => {
     const baked = bakedFields(type, typeValues);
     onOpenFull({
-      title: title.trim(),
+      title: (categoryTagsParsed?.cleanTitle ?? title).trim(),
       priority,
       ...baked,
       dueDate,
       timeSegments,
       tags: resolveTags(),
       personIds,
-      category,
+      category: resolveCategory(),
       linkUrl: resolveLinkUrl(),
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),

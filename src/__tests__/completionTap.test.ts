@@ -290,4 +290,23 @@ describe('completionTapFor', () => {
       ).toBe('complete');
     });
   });
+
+  it('opens the pull sheet on a quiet project\'s review task instead of ticking it', () => {
+    const reviewTask = {
+      ...baseTask,
+      generatedKind: 'projectReview',
+      generatedSourceId: 'p1',
+    } as Task;
+    expect(completionTapFor(reviewTask)).toBe('review-project');
+  });
+
+  it('still uncompletes a review task that was already done', () => {
+    const reviewTask = {
+      ...baseTask,
+      generatedKind: 'projectReview',
+      generatedSourceId: 'p1',
+      completed: true,
+    } as Task;
+    expect(completionTapFor(reviewTask)).toBe('uncomplete');
+  });
 });

@@ -173,7 +173,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, deadline: string | null, kind?: ProjectKind) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'sequential' | 'nudgeOptIn' | 'reviewDeclinedAt' | 'backfillDismissedFields' | 'kind'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'sequential' | 'nudgeOptIn' | 'reviewDeclinedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -229,6 +229,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       archivedAt: null,
       completed: false,
       completedAt: null,
+      ongoing: false,
       createdAt: new Date().toISOString(),
       // Seeded from the global default at creation time only — changing the
       // default in Settings later never touches a project already created.

@@ -1,0 +1,4 @@
+{
+  "message": "Deleting a recurring or meal-plan task now says definitively what will happen, instead of hedging with \"repeat or came from your meal plan\" and \"delete everything\" even when the task's kind is already known",
+  "date": "2026-09-01"
+}

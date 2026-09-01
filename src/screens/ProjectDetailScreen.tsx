@@ -54,6 +54,7 @@ import { TITLE_MAX_LENGTH } from '../types';
 import { SheetHeaderButton } from '../components/SheetHeaderButton';
 import { SearchField } from '../components/SearchField';
 import { DetailHeader } from '../components/DetailHeader';
+import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 
 type RootStackParamList = {
   ProjectDetail: { projectId: string };
@@ -220,6 +221,11 @@ export function ProjectDetailScreen() {
     ? allTasks.filter(t => t.projectId === project.id && t.parentId === null).sort((a, b) => a.sortOrder - b.sortOrder)
     : [];
   const incompleteProjectTasks = projectTasks.filter(t => !t.completed);
+  const copyText = useMemo(
+    () => incompleteProjectTasks.map(t => t.title).join('\n'),
+    [incompleteProjectTasks],
+  );
+  const { copied, copy } = useCopyToClipboard();
   // The rows the order actually applies to — archived members are filed away,
   // and holding a sequence open on one nobody can see would strand the rest.
   // Matches liveProjectSteps, which is what the visibility gate ranks.
@@ -246,7 +252,7 @@ export function ProjectDetailScreen() {
     () => (project ? projectProgress(project.id, allTasks) : { done: 0, total: 0 }),
     [project?.id, allTasks],
   );
-  const allDone = progress.total > 0 && progress.done === progress.total && !project?.completed;
+  const allDone = progress.total > 0 && progress.done === progress.total && !project?.completed && !project?.ongoing;
 
   const handleMarkComplete = () => {
     if (!project) return;
@@ -562,6 +568,16 @@ export function ProjectDetailScreen() {
                   accessibilityLabel={isList ? 'Keep as a list, without dates' : 'Show as a project, with dates'}
                 >
                   <Ionicons name="list-outline" size={20} color={isList ? colors.accent : colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+              {!!copyText && (
+                <TouchableOpacity
+                  onPress={() => copy(copyText)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Copy task names"
+                >
+                  <Ionicons name={copied ? 'checkmark' : 'copy-outline'} size={20} color={colors.textSecondary} />
                 </TouchableOpacity>
               )}
               {!!anthropicApiKey && (

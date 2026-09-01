@@ -42,6 +42,7 @@ beforeEach(() => {
   });
   useSettingsStore.setState({
     calendarReadEnabled: true, calendarIds: ['cal-1'], dayResetTime: '00:00', calendarPeopleHistory: true,
+    vacationMode: false, vacationHiddenCalendarIds: [],
   });
 });
 
@@ -68,6 +69,39 @@ describe('refresh', () => {
 
   it('clears everything with no calendars chosen', async () => {
     useSettingsStore.setState({ calendarIds: [] });
+    await useCalendarStore.getState().refresh();
+    expect(fetchEvents).not.toHaveBeenCalled();
+    expect(useCalendarStore.getState().loaded).toBe(false);
+  });
+
+  it('leaves out a calendar in vacationHiddenCalendarIds while vacation mode is on', async () => {
+    useSettingsStore.setState({
+      calendarIds: ['cal-1', 'cal-2'],
+      vacationMode: true,
+      vacationHiddenCalendarIds: ['cal-2'],
+    });
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult());
+    await useCalendarStore.getState().refresh();
+    expect(fetchEvents).toHaveBeenCalledWith(['cal-1'], expect.any(Date), expect.any(Date));
+  });
+
+  it('ignores vacationHiddenCalendarIds while vacation mode is off', async () => {
+    useSettingsStore.setState({
+      calendarIds: ['cal-1', 'cal-2'],
+      vacationMode: false,
+      vacationHiddenCalendarIds: ['cal-2'],
+    });
+    (fetchEvents as jest.Mock).mockResolvedValue(readResult());
+    await useCalendarStore.getState().refresh();
+    expect(fetchEvents).toHaveBeenCalledWith(['cal-1', 'cal-2'], expect.any(Date), expect.any(Date));
+  });
+
+  it('clears everything when vacation mode hides every chosen calendar', async () => {
+    useSettingsStore.setState({
+      calendarIds: ['cal-1'],
+      vacationMode: true,
+      vacationHiddenCalendarIds: ['cal-1'],
+    });
     await useCalendarStore.getState().refresh();
     expect(fetchEvents).not.toHaveBeenCalled();
     expect(useCalendarStore.getState().loaded).toBe(false);

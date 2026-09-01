@@ -43,9 +43,39 @@ export function useTaskSelection(allTasks: Task[]) {
       return;
     }
     const restIds = ids.filter(id => !missableIds.includes(id));
+    // A single missable task (the common case — this same path now handles
+    // a lone task's delete too) knows definitively which kind it is, and a
+    // uniform multi-select does too once nothing outside the missable set
+    // is along for the ride. Only a genuinely mixed selection still needs
+    // the "or" — see TaskEditor's own single-task delete prompts, which
+    // this mirrors rather than hedging the way this one used to.
+    const missableTasks = missableIds
+      .map(id => allTasks.find(t => t.id === id))
+      .filter((t): t is Task => !!t);
+    const wholeSelectionMissable = restIds.length === 0;
+    const allRecurring = wholeSelectionMissable && missableTasks.every(isLiveRecurring);
+    const allMealPlan = wholeSelectionMissable && !allRecurring && missableTasks.every(isMissableMealPlanTask);
+
+    let message: string;
+    let deleteLabel: string;
+    if (allRecurring) {
+      message = count === 1
+        ? 'This task repeats. Mark just this occurrence missed, or delete it and stop the series?'
+        : 'These tasks repeat. Mark them missed instead, or delete them and stop their series?';
+      deleteLabel = 'Delete and Stop Series';
+    } else if (allMealPlan) {
+      message = count === 1
+        ? 'This came from your meal plan. Mark it missed to keep a record, or delete it outright?'
+        : 'These came from your meal plan. Mark them missed to keep a record, or delete them outright?';
+      deleteLabel = 'Delete';
+    } else {
+      message = 'Some selected tasks repeat or came from your meal plan. Mark those missed, or delete your whole selection anyway?';
+      deleteLabel = 'Delete anyway';
+    }
+
     Alert.alert(
       `Delete ${count} ${plural}?`,
-      'Some selected tasks repeat or came from your meal plan. Mark those missed instead of deleting them, or delete everything? You can undo this by shaking your phone right after.',
+      `${message} You can undo this by shaking your phone right after.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -57,7 +87,7 @@ export function useTaskSelection(allTasks: Task[]) {
           },
         },
         {
-          text: 'Delete everything',
+          text: deleteLabel,
           style: 'destructive',
           onPress: () => {
             bulkDeleteTasks(ids);
