@@ -88,6 +88,7 @@
           "recordAudioAndroid": false
         }
       ],
+      "expo-background-task",
       "expo-asset",
       "expo-font",
       "expo-splash-screen",
