@@ -137,6 +137,22 @@ export const SNOOZE_ACTION_IDENTIFIER = 'snooze';
 // (snoozeEngine.ts).
 export const SNOOZE_MINUTES = 15;
 
+// Every notification this file scheduled used to ship as the implicit
+// `.active` default, so all of them were silenced by any Focus and none were
+// distinguishable from each other by urgency — see #2289. `timeSensitive` is
+// for the reminders/alarms someone is actively waiting on right now (a
+// deadline reminder they set for this moment, a countdown they started and
+// walked away from); `passive` is for the quieter, generated ones that
+// should land in the notification list without lighting the screen — the
+// same ambient/urgent split this file's own comments already draw between
+// "a task reminder" and "a nudge nobody asked to be interrupted for."
+// Needs the `com.apple.developer.usernotifications.
+// time-sensitive` entitlement declared in app.json — Apple grants it
+// automatically, but an undeclared entitlement silently downgrades the
+// request back to `.active`.
+const REMINDER_INTERRUPTION_LEVEL = 'timeSensitive' as const;
+const NUDGE_INTERRUPTION_LEVEL = 'passive' as const;
+
 Notifications.setNotificationCategoryAsync(TASK_REMINDER_CATEGORY, [
   {
     identifier: COMPLETE_ACTION_IDENTIFIER,
@@ -246,6 +262,10 @@ export async function scheduleTaskReminder(task: Task): Promise<void> {
       data: { taskId: task.id },
       sound: true,
       categoryIdentifier: TASK_REMINDER_CATEGORY,
+      // A reminder the user set on this specific task for this specific
+      // moment — the one kind in this file that should break through a
+      // Focus, per REMINDER_INTERRUPTION_LEVEL's own doc comment.
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -419,7 +439,13 @@ export async function scheduleDailyAgenda(tasks: Task[]): Promise<void> {
 
   await Notifications.scheduleNotificationAsync({
     identifier: DAILY_AGENDA_ID,
-    content: { title: 'Today', body, data: { dailyAgenda: true }, sound: true },
+    content: {
+      title: 'Today',
+      body,
+      data: { dailyAgenda: true },
+      sound: true,
+      interruptionLevel: NUDGE_INTERRUPTION_LEVEL,
+    },
     trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: when },
   });
 }
@@ -463,6 +489,9 @@ export async function scheduleTimerAlarm(task: Task): Promise<void> {
       body: `${displayTitleFor(task) || 'Your task'} is ready to complete`,
       data: { taskId: task.id },
       sound: true,
+      // A countdown the user started and is waiting on, same urgency as a
+      // reminder — see REMINDER_INTERRUPTION_LEVEL.
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -543,6 +572,9 @@ export async function scheduleFocusStepAlarm(session: FocusSession | null): Prom
         : 'That stretch is done. Take your break when you’re ready.',
       data: { focusSessionId: session.id },
       sound: true,
+      // Mid-session and actively waiting on this step to end — see
+      // REMINDER_INTERRUPTION_LEVEL.
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -641,6 +673,9 @@ export async function scheduleQuotaNudges(task: Task): Promise<void> {
         data: { taskId: task.id, quotaNudge: true },
         sound: true,
         categoryIdentifier: TASK_REMINDER_CATEGORY,
+        // A generated pacing nudge, not a moment the user asked to be
+        // interrupted for — see NUDGE_INTERRUPTION_LEVEL.
+        interruptionLevel: NUDGE_INTERRUPTION_LEVEL,
       },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -722,6 +757,9 @@ export async function scheduleStepAlarm(timer: StepTimer): Promise<void> {
       body,
       data: { stepTimerId: timer.id, recipeId: timer.recipeId },
       sound: true,
+      // Someone standing at a stove needs this the moment it fires — same
+      // urgency as a reminder, see REMINDER_INTERRUPTION_LEVEL.
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -794,6 +832,9 @@ export async function scheduleTripReminder(shopName: string, startedAt: string):
       body: `Tap to wrap up your trip at ${shopName}`,
       data: { activeTripReminder: true },
       sound: true,
+      // A gentle backstop two hours in, not a moment the user set — see
+      // NUDGE_INTERRUPTION_LEVEL.
+      interruptionLevel: NUDGE_INTERRUPTION_LEVEL,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,
@@ -865,6 +906,9 @@ export async function scheduleEventReminder(reminder: EventReminder): Promise<vo
         ? 'Starting now'
         : `Starts in ${reminder.offsetMinutes < 60 ? `${reminder.offsetMinutes} min` : `${reminder.offsetMinutes / 60} hr`}`,
       sound: true,
+      // A reminder the user set for this exact moment before a meeting —
+      // see REMINDER_INTERRUPTION_LEVEL.
+      interruptionLevel: REMINDER_INTERRUPTION_LEVEL,
     },
     trigger: {
       type: Notifications.SchedulableTriggerInputTypes.DATE,

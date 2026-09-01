@@ -20,6 +20,9 @@
         "NSAlarmKitUsageDescription": "Used to ring reminders as system alarms that break through silent mode.",
         "NSSupportsLiveActivities": true,
         "NSSiriUsageDescription": "Lets you add a task to dundundun by voice, including from the Action Button, without opening the app."
+      },
+      "entitlements": {
+        "com.apple.developer.usernotifications.time-sensitive": true
       }
     },
     "android": {
