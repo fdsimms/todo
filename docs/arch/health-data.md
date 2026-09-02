@@ -1,13 +1,14 @@
 # Reading Apple Health
 
-What is built so far (the bridge, the store and the Settings row), and the four
-rules the rest of it has to be built against.
+What is built so far (the bridge, the store, the Settings section and the row on
+Today), and the four rules the rest of it has to be built against.
 
 Read this before touching `modules/todo-health-bridge/`,
-`src/utils/healthBridge.ts`, `src/store/useHealthStore.ts` or
-`src/screens/settings/HealthSettings.tsx` — and before adding any reader of a
-health figure anywhere else, because three of the four rules below are about
-what a reader is allowed to claim rather than about how to get the number.
+`src/utils/healthBridge.ts`, `src/store/useHealthStore.ts`,
+`src/screens/settings/HealthSettings.tsx` or `healthContextRows` in
+`src/utils/dayContextRows.ts` — and before adding any reader of a health figure
+anywhere else, because three of the four rules below are about what a reader is
+allowed to claim rather than about how to get the number.
 
 The rules here are settled decisions with the reasoning attached. Don't
 re-derive them from the code, and don't re-open one without a reason this note
@@ -111,9 +112,55 @@ database about to be discarded. Nothing is seeded in `demoSeed.ts` for it, and
 that is not an oversight: the feature writes no rows, so there is nothing a seed
 could show, and the honest demo of a health reading is its absence.
 
+## The row on Today, and where it files
+
+The reading is a fourth `ContextRow` kind, beside `event`, `meal` and
+`kitchen`. It is a reading with no tick box, which `DayContextRow` already
+argues for at length, and the strictest case of it: this app cannot write a step,
+so there is nothing a tick could mean, and it is the one kind with no `onPress`
+either. Health holds the detail and sending somebody out to another app for a
+line they have already read is not worth a tap target.
+
+**It has its own category setting (`healthCategory`), and that is what took the
+deciding.** The other three sources either had a category already or could
+borrow one on a subject argument — the kitchen files with the meals because
+`mealCookTaskCategory` is already "where food goes on Today". A step count
+shares a subject with nothing here, and the alternative to a setting is
+`category: null`, which `insertContextRows` puts at the very top of the list
+above every section: the pinned strip this whole mechanism was built to remove.
+So it follows `calendarEventCategory` exactly, `ensureHealthCategory` and all.
+
+That also answers the switch question, which is why there is **no
+`healthOnToday` beside it**. A cleared category is a real answer rather than a
+missing one, so clearing it is how somebody says "read Health, but not onto my
+list", and the reading stays visible in Settings. Two switches would only give
+them a way to contradict each other. `kitchenOnToday` and `mealsOnToday` exist
+because their areas are on by default and have many surfaces; this one is an
+explicit opt-in with exactly one.
+
+**Three inputs draw no row**, and only one of them is a choice:
+
+- No reading, or one from a day that has already turned over. The check every
+  reader of a day-keyed snapshot makes.
+- A null count. Null covers a refusal and an empty day alike, so there is no
+  honest row for it, and "No steps" would be shown to precisely the people who
+  said no.
+- A count of zero. This one is the choice: the bridge keeps a real 0, because a
+  bridge that rounded would be lying, and the row declines to exist for it,
+  because zero steps is not context about a day. Every logical day starts there
+  and stays there until the first samples land, so the alternative is a "0
+  steps" line every morning — a scold to somebody who cannot walk, a bug to
+  everybody else, and in practice indistinguishable from not-synced-yet.
+
+Demo mode needs no gate of its own for the row, and gets one anyway from the
+category: `healthCategory` lives in the database, the demo's copy has never had
+one, so a demo session cannot surface a real reading left in the store by the
+session before it.
+
 ## What is deliberately not built yet
 
-Step count alone, read for today, rendered in one Settings row. The set of read
+Step count alone, read for today, shown in one Settings row and one row on
+Today. The set of read
 types is one list in the Swift module (`readTypes`) because the permission sheet
 is shown once for whatever is asked for, and a type added there is a type the
 sheet will list — so nothing goes in until something reads it.
@@ -121,8 +168,7 @@ sheet will list — so nothing goes in until something reads it.
 The four things this was built to make possible, in the order they are worth
 doing, none of them started:
 
-1. A fourth `ContextRow` kind on Today, beside `event`, `meal` and `kitchen`.
-   `DayContextRow` already argues that a reading gets no tick box.
+1. ~~A fourth `ContextRow` kind on Today.~~ Built, see above.
 2. `sleepHours` and `steps` on `MoodDay`, so the existing correlation and
    contrast readers in `moodInsights.ts` gain a health axis for free.
 3. A `health` generator (kind #18), structurally `screenTime` with the crossing

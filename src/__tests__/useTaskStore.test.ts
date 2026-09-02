@@ -179,6 +179,7 @@ jest.mock('../store/useCategoryStore', () => ({
   // Called by initialize() to give the day's calendar events a section; a
   // no-op here, since this suite's category store is a mock with no rows.
   ensureCalendarEventCategory: jest.fn(),
+  ensureHealthCategory: jest.fn(),
   ensureGeneratedTaskCategories: jest.fn(),
   // Called by checkProjectReviewTasks before it writes its first task — that
   // generator ships on, so nobody flips the switch that would otherwise create

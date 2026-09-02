@@ -61,6 +61,7 @@ import {
   eventContextRows,
   mealContextRows,
   kitchenContextRows,
+  healthContextRows,
   plannedUsesToday,
   insertContextRows,
   withoutContextRows,
@@ -138,6 +139,7 @@ import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
 import { dayKeyOf, getDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useHealthStore } from '../store/useHealthStore';
 import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
@@ -1774,6 +1776,13 @@ export function TodayScreen() {
   // starts, and nothing mutates a store at either moment.
   const calendarEventCategory = useSettingsStore(s => s.calendarEventCategory);
   const mealCookTaskCategory = useSettingsStore(s => s.mealCookTaskCategory);
+  // The Health reading and where it files. Both nullable and both meaning "no
+  // row": the store holds nothing until the read is on and something has been
+  // recorded, and the category is also the row's off switch (see its note in
+  // useSettingsStore). `useHealthSync` in App.tsx is what keeps the reading
+  // current — nothing here fetches, the same split useCalendarStore draws.
+  const healthCategory = useSettingsStore(s => s.healthCategory);
+  const healthToday = useHealthStore(s => s.today);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   // An event the user asked never to be reminded of again — read as the raw
   // map (not the store's own `isHidden`, which closes over `get()` and so
@@ -1825,6 +1834,25 @@ export function TodayScreen() {
 
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
+    // Leads, above the calendar and the food. It is the only one of the four
+    // that is about the day as a whole rather than about a thing in it, and it
+    // is one line at most — `healthContextRows` draws nothing for a null or a
+    // zero, which is most mornings. Its own category by default, so in practice
+    // it leads a section of its own and this ordering only shows once somebody
+    // files it with something else.
+    //
+    // Gated on the category for the reason the events below are: a row with
+    // none goes to the very top of the list, above every section, which is the
+    // pinned strip this whole mechanism replaced. Here it is load-bearing twice
+    // over, because the category is also this row's off switch *and* the demo
+    // database has never had one — so a demo session cannot surface a real step
+    // count left in the store by the session before it.
+    if (healthCategory) {
+      rows.push(...healthContextRows(healthToday, {
+        todayKey: getLogicalDayKey(new Date(), dayResetTime),
+        category: healthCategory,
+      }));
+    }
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
     if (calendarEventCategory) {
@@ -1871,6 +1899,7 @@ export function TodayScreen() {
     isEventHidden,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     kitchenOnToday, kitchenEntries, kitchenPlannedUses,
+    healthToday, healthCategory, dayResetTime,
     minuteTick,
   ]);
 
@@ -2645,6 +2674,13 @@ export function TodayScreen() {
             // Same navigation openMealPlan below makes for a meal row — the
             // Kitchen screen is a hub tab now, not a sheet this screen owns.
             : item.row.kind === 'kitchen' ? () => navigation.navigate('Kitchen' as never)
+            // A health row has nowhere to go, which the prop supports and which
+            // is the honest answer here: the number came from another app, this
+            // one holds no detail behind it, and opening Health would be a task
+            // list throwing you out to a different app for a line you have
+            // already read. The arm is explicit rather than left to fall
+            // through, because the fall-through is the meal plan.
+            : item.row.kind === 'health' ? undefined
             : openMealPlan
           }
           onMarkCooked={

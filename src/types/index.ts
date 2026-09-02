@@ -4399,11 +4399,12 @@ export const MEAL_PLAN_RETENTION_DAYS = 180;
 /**
  * A row on the Today list that isn't a task and never becomes one (#1571).
  *
- * A calendar event, a planned meal and what's about to go off in the kitchen all
+ * A calendar event, a planned meal, what's about to go off in the kitchen and
+ * what Apple Health has recorded today all
  * belong on the day, and none of them can be dragged, selected or edited here —
  * an event is EventKit's row and the app only reads it, a meal is
- * `MealPlanEntry`'s, and a kitchen row is a reading over the catalog and the
- * fridge (#1689). The first two used to sit in two fixed strips above the list;
+ * `MealPlanEntry`'s, a kitchen row is a reading over the catalog and the
+ * fridge (#1689), and a health row is HealthKit's. The first two used to sit in two fixed strips above the list;
  * folding them in needs a row treatment that doesn't bring a second interaction
  * model with it, which is what this is: no drag handle and no `SelectionDot`.
  * That last absence is the signal for bulk edits — every *eligible* row grows a
@@ -4432,6 +4433,15 @@ export const MEAL_PLAN_RETENTION_DAYS = 180;
  * exactly the two-way questions `KitchenScreen` already refuses to guess at with
  * a single glyph. So it opens the kitchen instead of finishing anything.
  *
+ * **A health row is a reading too, and the strictest one.** It is the only kind
+ * whose source this app cannot write to at all — nothing here can add a step —
+ * so there is nothing a tick could mean and nowhere for it to go. It is also
+ * the only kind that will not render its own falsy value: no row is drawn for a
+ * count of null (which covers a refused read as well as an empty day, since
+ * HealthKit does not distinguish them) or of zero, which is the state every
+ * morning starts in. See `healthContextRows` for both rules and
+ * `docs/arch/health-data.md` for why the first one is not the app's choice.
+ *
  * **A view model, computed per render, never stored.** Nothing here is written
  * to SQLite: `src/utils/dayContextRows.ts` builds these from the calendar store
  * and the meal plan on every read, the same way `TripSummary` is derived rather
@@ -4457,9 +4467,12 @@ export interface ContextRow {
    * Empty on the one row that summarizes several — see `kitchenContextRows`,
    * where "3 things to use up" is built from no single source and has none to
    * name. Nothing dereferences it: every kitchen row opens the same sheet.
+   * Empty on a health row too, and there for good: the reading names a day
+   * rather than a row, and there is no record anywhere in this app it could
+   * point at.
    */
   sourceId: string;
-  kind: 'event' | 'meal' | 'kitchen';
+  kind: 'event' | 'meal' | 'kitchen' | 'health';
   title: string;
   /**
    * The caption under the title — "4:15 PM", "All day", "Now", "Dinner", "Use

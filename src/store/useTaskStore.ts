@@ -30,7 +30,7 @@ import {
   dbGetMealPlanEntry,
 } from '../db/database';
 import { useSettingsStore } from './useSettingsStore';
-import { useCategoryStore, ensureCalendarEventCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory } from './useCategoryStore';
+import { useCategoryStore, ensureCalendarEventCategory, ensureHealthCategory, ensureGeneratedTaskCategories, ensureGeneratedTaskCategory } from './useCategoryStore';
 import { useTemplateStore } from './useTemplateStore';
 import { useTaskGroupStore } from './useTaskGroupStore';
 import { useFocusStore } from './useFocusStore';
@@ -1849,6 +1849,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // ensureCalendarEventCategory for why it only ever fills an *absent*
     // answer, never a cleared one).
     ensureCalendarEventCategory();
+    // And the same for the Health reading, which files the same way for the
+    // same reasons.
+    ensureHealthCategory();
     // And the same for the tasks the app writes itself. Both are here rather
     // than in the settings store because they add a category, and the
     // categories have just finished loading.

@@ -204,6 +204,9 @@ export const useCategoryStore = create<CategoryStore>((set, get) => ({
 /** What the events category is called until the user renames it. */
 export const CALENDAR_EVENTS_CATEGORY = 'Calendar Events';
 
+/** Same, for the Apple Health reading. */
+export const HEALTH_CATEGORY = 'Health';
+
 /**
  * Give something the app files into a category one to file into (#1571).
  *
@@ -254,6 +257,32 @@ export function ensureCalendarEventCategory(opts: { force?: boolean } = {}): voi
     CALENDAR_EVENTS_CATEGORY,
     settings.calendarEventCategory,
     settings.setCalendarEventCategory,
+    !!opts.force,
+  );
+}
+
+/**
+ * Make sure today's Health reading has a section to land in.
+ *
+ * `ensureCalendarEventCategory` one shelf over, with the same two callers and
+ * the same reasons: turning the read on (`force`, so the section appears with
+ * the reading rather than a launch later), and app startup, which is how an
+ * install that already had the read on gets one without a migration.
+ *
+ * The `force: false` path is what makes a cleared category stick. `healthCategory`
+ * is also the row's off switch (see its note in `useSettingsStore`), so a
+ * startup pass that refilled it would hand back a row somebody had just turned
+ * off — which is exactly what `ensureCategoryFor`'s "has this setting ever been
+ * written" check is there to prevent.
+ */
+export function ensureHealthCategory(opts: { force?: boolean } = {}): void {
+  const settings = useSettingsStore.getState();
+  if (!settings.healthReadEnabled) return;
+  ensureCategoryFor(
+    'healthCategory',
+    HEALTH_CATEGORY,
+    settings.healthCategory,
+    settings.setHealthCategory,
     !!opts.force,
   );
 }

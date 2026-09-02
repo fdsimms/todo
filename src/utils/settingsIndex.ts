@@ -410,6 +410,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['permission', 'allow', 'authorize', 'grant'] },
   { id: 'healthToday', groupId: 'health', label: 'Steps today', section: 'Apple Health',
     keywords: ['count', 'reading', 'walked'] },
+  { id: 'healthCategory', groupId: 'health', label: 'Show steps under', section: 'Apple Health',
+    keywords: ['category', 'section', 'today', 'where', 'hide', 'nowhere'] },
 
   // ── Tasks & projects ──────────────────────────────────────────────────────
   // In the order the screen renders them, which the registry's own comment

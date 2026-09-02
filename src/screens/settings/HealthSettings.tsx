@@ -4,6 +4,9 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { HealthRequestStatus } from 'todo-health-bridge';
 import { useSettingsStore } from '../../store/useSettingsStore';
 import { useHealthStore } from '../../store/useHealthStore';
+import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryStore';
+import { categoryLabel } from '../../utils/categoryLabel';
+import { PillGroup } from '../../components/PillGroup';
 import { healthBridge, isHealthSupported } from '../../utils/healthBridge';
 import { dayKeyOf, getCurrentDayStart } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
@@ -39,6 +42,9 @@ import { haptics } from '../../utils/haptics';
 export function HealthSettings() {
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
   const setHealthReadEnabled = useSettingsStore(s => s.setHealthReadEnabled);
+  const healthCategory = useSettingsStore(s => s.healthCategory);
+  const setHealthCategory = useSettingsStore(s => s.setHealthCategory);
+  const categories = useCategoryStore(s => s.categories);
   const today = useHealthStore(s => s.today);
   const refreshing = useHealthStore(s => s.refreshing);
   const refresh = useHealthStore(s => s.refresh);
@@ -77,6 +83,10 @@ export function HealthSettings() {
     const next = !healthReadEnabled;
     haptics.tap();
     setHealthReadEnabled(next);
+    // Before the sheet, so the section is there for the reading whichever way
+    // the permission goes. `force` because this is the moment the answer is
+    // being given — see ensureHealthCategory for why the startup pass isn't.
+    if (next) ensureHealthCategory({ force: true });
     // Turning it on is the one moment a person is unambiguously asking, so it
     // is the one moment the sheet may be raised. A sweep never does this.
     if (next && requestStatus === 'shouldRequest') {
@@ -138,7 +148,7 @@ export function HealthSettings() {
         iconColor={healthReadEnabled ? colors.accent : undefined}
         label="Read Apple Health"
         hint={healthReadEnabled
-          ? 'Reads your step count for today'
+          ? "Reads your step count for today, and shows it on Today"
           : 'Nothing is read from Health'}
         toggle={healthReadEnabled}
         onPress={onToggle}
@@ -196,6 +206,34 @@ export function HealthSettings() {
             onPress={() => { haptics.tap(); void refresh(); }}
             accessibilityLabel={`Steps today, ${stepsValue}`}
           />
+
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="healthCategory"
+            icon="pricetag-outline"
+            label="Show steps under"
+            hint={healthCategory
+              ? "Today's step count shows as a row in this category"
+              : "Steps don't show on Today"}
+            value={healthCategory ? categoryLabel(healthCategory, categories) : 'Nowhere'}
+            tight
+          />
+          <View style={styles.pillGroupRow}>
+            <PillGroup
+              noun="category"
+              options={[
+                { value: null, label: 'Nowhere' },
+                ...categories.map(c => ({ value: c.name, label: categoryLabel(c.name, categories) })),
+              ].map(o => ({
+                key: String(o.value),
+                label: o.label,
+                selected: o.value === healthCategory,
+                pinned: o.value === null,
+                accessibilityLabel: `Show steps under: ${o.label}`,
+                onPress: () => { haptics.tap(); setHealthCategory(o.value); },
+              }))}
+            />
+          </View>
         </>
       )}
     </SettingsSection>

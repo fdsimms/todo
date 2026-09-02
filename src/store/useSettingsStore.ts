@@ -778,6 +778,21 @@ interface SettingsStore {
   // renders whatever comes back, including nothing. See
   // `modules/todo-health-bridge/index.ts`.
   healthReadEnabled: boolean;
+
+  // Which category the health reading files under on Today, by name.
+  //
+  // Exactly `calendarEventCategory`'s shape and for its reasons: filing the row
+  // under a real category means placement, collapsing, ordering and renaming
+  // are the category's problem rather than this feature's. Null means the
+  // category hasn't been chosen yet, and `ensureHealthCategory` fills it in the
+  // first time the read is switched on.
+  //
+  // It doubles as the switch for the Today row, which is why there is no
+  // `healthOnToday` beside it: nothing shows while it is null, so clearing it
+  // is how somebody says "read Health, but not onto my list" — the same answer
+  // the calendar's own "Nowhere" gives, and one setting rather than two that
+  // could contradict each other.
+  healthCategory: string | null;
   // Whether a project that has gone quiet gets a "Review X" task (see
   // src/utils/projectReviewTasks.ts). Defaults ON, unlike the other opt-in
   // generators: this replaced the quiet-projects banner rather than adding a
@@ -1123,6 +1138,7 @@ interface SettingsStore {
   setRemindersImportReview: (on: boolean) => void;
   setCalendarReadEnabled: (on: boolean) => void;
   setHealthReadEnabled: (on: boolean) => void;
+  setHealthCategory: (category: string | null) => void;
   setCalendarIds: (ids: string[]) => void;
   setVacationHiddenCalendarIds: (ids: string[]) => void;
   setCalendarEventCategory: (category: string | null) => void;
@@ -1611,6 +1627,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   deadlineCalendarId: null,
   mealCalendarId: null,
   healthReadEnabled: false,
+  healthCategory: null,
   projectReviewTasks: true,
   projectReviewTaskCategory: null,
   birthdayTasks: true,
@@ -1872,6 +1889,10 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const deadlineCalendarId = dbGetSetting('deadlineCalendarId') || null;
     const mealCalendarId = dbGetSetting('mealCalendarId') || null;
     const healthReadEnabled = dbGetSetting('healthReadEnabled') === 'true';
+    // '' persists as "not chosen", matching calendarEventCategory. Nothing
+    // creates the category from here — see ensureHealthCategory, which runs
+    // once the categories themselves have loaded.
+    const healthCategory = dbGetSetting('healthCategory') || null;
     // `!== 'false'`: defaults on, the same reading mealCookTasks takes — see
     // the field note for why this one isn't opt-in like the nudge beside it.
     const projectReviewTasks = dbGetSetting('projectReviewTasks') !== 'false';
@@ -2032,7 +2053,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, healthReadEnabled, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, healthReadEnabled, healthCategory, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2867,6 +2888,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setHealthReadEnabled(on: boolean) {
     dbSetSetting('healthReadEnabled', on ? 'true' : 'false');
     set({ healthReadEnabled: on });
+  },
+
+  setHealthCategory(category: string | null) {
+    dbSetSetting('healthCategory', category ?? '');
+    set({ healthCategory: category });
   },
 
   setCalendarIds(ids: string[]) {
