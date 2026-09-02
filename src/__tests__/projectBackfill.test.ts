@@ -20,6 +20,7 @@ const baseProject: Project = {
   nudgeCadenceDays: 0,
   autoSchedule: false,
   nudgeOptIn: false,
+  weekendSource: false,
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
   kind: 'project' as const,
@@ -89,7 +90,9 @@ describe('projectBackfillFieldCounts', () => {
       { ...baseProject, id: 'b' },
       { ...baseProject, id: 'c', completed: true },
     ];
-    expect(projectBackfillFieldCounts(projects)).toEqual({ nudge: 1 });
+    // 'a' has opted into nudges but neither has been nominated as a weekend
+    // source, so the two fields count different sets of the same projects.
+    expect(projectBackfillFieldCounts(projects)).toEqual({ nudge: 1, weekendSource: 2 });
   });
 
   it('covers every declared backfillable field', () => {
@@ -100,7 +103,17 @@ describe('projectBackfillFieldCounts', () => {
   });
 
   it('does not count a project dismissed for that field', () => {
+    // Dismissal is per field: saying "never chase me about this project" is not
+    // saying "never suggest it for a weekend".
     const project = { ...baseProject, backfillDismissedFields: ['nudge'] };
-    expect(projectBackfillFieldCounts([project])).toEqual({ nudge: 0 });
+    expect(projectBackfillFieldCounts([project])).toEqual({ nudge: 0, weekendSource: 1 });
+  });
+
+  it('reads weekendSource as missing until it is switched on', () => {
+    // The flag is the whole setting, so "missing" is just "off" — there is no
+    // seeded sibling value to distinguish unanswered from declined, which is why
+    // 'nudge' has to read its gate rather than its cadence.
+    expect(isProjectFieldMissing(baseProject, 'weekendSource')).toBe(true);
+    expect(isProjectFieldMissing({ ...baseProject, weekendSource: true }, 'weekendSource')).toBe(false);
   });
 });

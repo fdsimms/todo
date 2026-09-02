@@ -223,6 +223,10 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'health', 'journal', 'diary', 'track', 'log', 'generated', 'automatic'],
   moodNudge: ['mood', 'down', 'wellbeing', 'well-being', 'health', 'fun', 'enjoy', 'cheer',
     'generated', 'automatic'],
+  // No 'weekend' or 'empty': both are already in this generator's label, which
+  // the index searches on its own.
+  weekendNudge: ['saturday', 'sunday', 'friday', 'bare', 'free', 'plans',
+    'planning', 'project', 'generated', 'automatic'],
   weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
     'location', 'temperature', 'generated', 'automatic'],
 };
@@ -521,6 +525,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['days before', 'lead', 'ahead', 'warning', 'shop', 'meal'], kitchen: true },
   { id: 'birthdayLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday reminders',
     keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'weekendNudgeLeadDays', groupId: 'generated', label: 'Show the task', section: 'Nudge for an empty weekend',
+    keywords: ['weekend', 'thursday', 'friday', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'birthdayGiftLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday gift reminders',
     keywords: ['birthday', 'gift', 'present', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'mealPlanNudgeTime', groupId: 'generated', label: 'Nudge me on', section: 'Plan meals for the week',

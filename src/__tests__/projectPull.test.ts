@@ -159,6 +159,7 @@ const PROJECT_BASE: Project = {
   nudgeCadenceDays: 14,
   autoSchedule: false,
   nudgeOptIn: true,
+  weekendSource: false,
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
   kind: 'project' as const,

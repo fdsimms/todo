@@ -106,6 +106,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [nudgeCadenceDays, setNudgeCadenceDays] = useState(FALLBACK_CADENCE_DAYS);
   const [autoSchedule, setAutoSchedule] = useState(false);
   const [ongoing, setOngoing] = useState(false);
+  const [weekendSource, setWeekendSource] = useState(false);
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
   useEffect(() => {
@@ -118,6 +119,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
     setOngoing(project.ongoing);
+    setWeekendSource(project.weekendSource);
     setCategoryOpen(false);
     setCadenceOpen(false);
   }, [project]);
@@ -167,6 +169,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       // (see dripCandidate) — this just means it is never asked.
       autoSchedule: nudgeMode === 'scheduled' && autoSchedule,
       ongoing,
+      weekendSource,
     });
     onClose();
   };
@@ -451,6 +454,28 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           </View>
           <View style={[styles.toggle, ongoing && styles.toggleOn]}>
             <View style={[styles.toggleKnob, ongoing && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setWeekendSource(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Suggest for a free weekend"
+          accessibilityState={{ checked: weekendSource }}
+        >
+          <Ionicons name="sunny-outline" size={18} color={weekendSource ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Suggest for a free weekend</Text>
+            <Text style={styles.optionHint}>
+              {weekendSource
+                ? 'The weekend task names this project when a weekend has nothing on it'
+                : 'The weekend task does not name this project'}
+            </Text>
+          </View>
+          <View style={[styles.toggle, weekendSource && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, weekendSource && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
       </View>

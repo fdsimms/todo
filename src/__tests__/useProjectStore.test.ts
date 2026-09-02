@@ -155,6 +155,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   nudgeCadenceDays: 14,
   autoSchedule: false,
   nudgeOptIn: true,
+  weekendSource: false,
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
   kind: 'project' as const,
@@ -550,6 +551,23 @@ describe('createProject / updateProject / getProjectById', () => {
 
     expect(useProjectStore.getState().getProjectById('p1')?.nudgeOptIn).toBe(true);
     expect(dbUpdateProject).toHaveBeenCalledWith(expect.objectContaining({ nudgeOptIn: true }));
+  });
+
+  it('writes weekendSource through updateProject', () => {
+    // It has to be in updateProject's own allowlist to get this far — the patch
+    // type is a Pick, so a field left out of it is dropped silently.
+    useProjectStore.setState({ projects: [makeProject({ id: 'p1', weekendSource: false })] });
+
+    useProjectStore.getState().updateProject('p1', { weekendSource: true });
+
+    expect(useProjectStore.getState().getProjectById('p1')?.weekendSource).toBe(true);
+    expect(dbUpdateProject).toHaveBeenCalledWith(expect.objectContaining({ weekendSource: true }));
+  });
+
+  it('creates a project with weekendSource off', () => {
+    // Off, like every other opt-in here: the weekend nudge may quote a project
+    // only once somebody has said it is one to quote.
+    expect(useProjectStore.getState().createProject('Day trips', null).weekendSource).toBe(false);
   });
 });
 

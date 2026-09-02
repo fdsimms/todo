@@ -1337,6 +1337,11 @@ export const TaskItem = React.memo(function TaskItem({
       setAwaitingCollapse(true);
       completeTask(task.id, deliverableValue !== undefined ? { deliverableValue } : undefined);
       endQuotaHold();
+      // The row leaves the list via the batched collapse above rather than an
+      // onPress, so the parent's expanded-row state is never told to clear —
+      // collapse it ourselves or the spotlight overlay is stuck dimmed with
+      // no row left to spotlight (same fix as markMissed/skipNextRecurrence).
+      if (expanded) onPress(rowId);
     });
   };
 
