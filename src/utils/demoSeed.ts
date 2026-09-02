@@ -501,11 +501,19 @@ export function seedDemoData(): void {
       effort: 1,
       estimatedMinutes: 5,
       timeSegments: ['evening'],
+      // Upkeep at the music stand is exactly what a week away should not be
+      // adding, so this is where the flag reads as itself.
+      vacationPause: true,
       subtasks: [
         { id: 'demo-rosin-1', title: 'Wipe the strings' },
         { id: 'demo-rosin-2', title: 'Loosen the bow' },
       ],
     },
+    // A second unrosined bow says nothing the first didn't, which is the
+    // reading this flag exists for. Seeded on because both settings are
+    // invisible until the rule fires, and off is what every rule already
+    // looks like.
+    extraTaskOneAtATime: true,
     effort: 2,
   });
   updateTask(violin.id, { extraTaskTally: 2 });

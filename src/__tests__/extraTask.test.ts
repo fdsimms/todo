@@ -9,6 +9,7 @@ import {
   extraTaskDraftIsEmpty,
   extraTaskRule,
   extraTaskSummary,
+  extraTaskSuppressedBy,
   parseExtraTaskDraft,
 } from '@/utils/extraTask';
 
@@ -151,6 +152,7 @@ describe('parseExtraTaskDraft', () => {
       effort: 1,
       estimatedMinutes: 5,
       timeSegments: ['evening'],
+      vacationPause: false,
       subtasks: [{ id: 's1', title: 'Wipe the strings' }],
     };
     expect(parseExtraTaskDraft(JSON.stringify(draft))).toEqual(draft);
@@ -182,12 +184,14 @@ describe('parseExtraTaskDraft', () => {
       effort: -1,
       estimatedMinutes: 'soon',
       timeSegments: ['evening', 'teatime'],
+      vacationPause: false,
       subtasks: [{ id: 's1', title: 'Real' }, { id: 5 }, null, 'nope'],
     }));
     expect(parsed).toEqual({
       ...emptyExtraTaskDraft(),
       tags: ['ok'],
       timeSegments: ['evening'],
+      vacationPause: false,
       subtasks: [{ id: 's1', title: 'Real' }],
     });
   });
@@ -252,5 +256,80 @@ describe('describeExtraTaskDraft', () => {
     // A deleted project the draft still points at — resolve-or-shrug, the
     // house rule for every cross-row pointer here.
     expect(describeExtraTaskDraft({ ...empty, projectId: 'gone', priority: 1 }, null, null)).toBe('Low');
+  });
+});
+
+describe('extraTaskSuppressedBy', () => {
+  const rule = (over: Partial<ExtraTaskDraft> | null = null) => ({
+    everyN: 4,
+    title: 'Rosin the bow',
+    draft: over === null ? null : { ...emptyExtraTaskDraft(), ...over },
+  });
+
+  it('lets a spawn through when nothing is standing in its way', () => {
+    expect(extraTaskSuppressedBy(rule(), false, false, false)).toBeNull();
+  });
+
+  it('suppresses on vacation only when the added task is one vacation hides', () => {
+    expect(extraTaskSuppressedBy(rule({ vacationPause: true }), false, true, false)).toBe('vacation');
+    // The flag is how each rule answers for itself, so a rule that never set
+    // it keeps firing — vacation mode alone is not the gate.
+    expect(extraTaskSuppressedBy(rule({ vacationPause: false }), false, true, false)).toBeNull();
+    // And a rule written before drafts existed carries no draft at all.
+    expect(extraTaskSuppressedBy(rule(null), false, true, false)).toBeNull();
+  });
+
+  it('does not suppress off vacation, however the flag is set', () => {
+    expect(extraTaskSuppressedBy(rule({ vacationPause: true }), false, false, false)).toBeNull();
+  });
+
+  it('suppresses a one-at-a-time rule while one of its own is outstanding', () => {
+    expect(extraTaskSuppressedBy(rule(), true, false, true)).toBe('pending');
+    expect(extraTaskSuppressedBy(rule(), true, false, false)).toBeNull();
+    // Off by default: a rule that never asked for this piles up as it always did.
+    expect(extraTaskSuppressedBy(rule(), false, false, true)).toBeNull();
+  });
+
+  it('names vacation first when both reasons apply', () => {
+    expect(extraTaskSuppressedBy(rule({ vacationPause: true }), true, true, true)).toBe('vacation');
+  });
+});
+
+describe('a suppressed spawn does not consume the tally', () => {
+  // The pairing the store relies on: the advance still reports `spawns`, and
+  // holding the tally at what it was means the *next* completion fires,
+  // rather than another full N-completion wait. See extraTaskSuppressedBy.
+  it('fires on the first completion after the reason passes', () => {
+    const everyN = 4;
+    // What the store does on each completion: advance, then keep the old
+    // tally instead of the advance's when the spawn was suppressed.
+    const complete = (tally: number, suppressed: boolean) => {
+      const advance = advanceExtraTaskTally(tally, everyN);
+      return {
+        tally: suppressed ? tally : advance.tally,
+        spawned: advance.spawns && !suppressed,
+      };
+    };
+
+    // Three showers get it to the brink.
+    let state = complete(0, false);
+    state = complete(state.tally, false);
+    state = complete(state.tally, false);
+    expect(state).toEqual({ tally: 3, spawned: false });
+
+    // A week away. Every completion earns it and every one is held, so the
+    // tally neither resets nor climbs.
+    for (let i = 0; i < 7; i++) {
+      state = complete(state.tally, true);
+      expect(state).toEqual({ tally: 3, spawned: false });
+    }
+
+    // Home again: the very next completion spawns, once.
+    state = complete(state.tally, false);
+    expect(state).toEqual({ tally: 0, spawned: true });
+  });
+
+  it('reads as "1 completion until the next one" throughout the suppression', () => {
+    expect(completionsUntilExtraTask(3, 4)).toBe(1);
   });
 });

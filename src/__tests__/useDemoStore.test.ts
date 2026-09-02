@@ -944,6 +944,16 @@ describe('demo mode', () => {
     expect(withRule[0].recurrenceType).not.toBe('none');
   });
 
+  // Both are invisible until the rule fires, and off is what every rule
+  // already looks like — so a seed that leaves them off shows neither.
+  it('seeds an extra-task rule that stands down on vacation and keeps one at a time', () => {
+    useDemoStore.getState().enterDemoMode();
+    const withRule = useTaskStore.getState().tasks.filter(t => extraTaskRule(t) !== null);
+
+    expect(withRule.some(t => t.extraTaskDraft?.vacationPause === true)).toBe(true);
+    expect(withRule.some(t => t.extraTaskOneAtATime)).toBe(true);
+  });
+
   // A rule that only names its extra task reads as a rule that can only name
   // it — the Details row says "just the title" and nothing hints otherwise.
   it('seeds an extra-task rule that says what the added task looks like', () => {

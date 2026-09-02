@@ -180,6 +180,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskEveryN: null,
   extraTaskTitle: null,
   extraTaskDraft: null,
+  extraTaskOneAtATime: false,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
   category: null,

@@ -163,6 +163,20 @@ export interface ExtraTaskDraft {
   effort: Effort;
   estimatedMinutes: number | null;
   timeSegments: TimeOfDay[];
+  // Same field and meaning as `Task.vacationPause`, and the one field of the
+  // Task slice this spec was missing. It does two jobs rather than one, which
+  // is why it belongs here rather than being a rule-level condition: it marks
+  // the added task as one vacation hides *and*, because of that, stops the
+  // rule adding one at all while vacation mode is on (see the suppression
+  // note in extraTask.ts). Both follow from the same answer — "this is work
+  // that waits until I'm back" — so asking twice would be asking the same
+  // question in two places.
+  //
+  // A vacation starting *after* one has already landed is why the flag is
+  // still written onto the spawned row rather than only consulted at spawn
+  // time: an outstanding wash-cloth task should hide when you leave, the same
+  // as any other paused row.
+  vacationPause: boolean;
   // Title-only stubs, created as real subtask rows alongside the task itself
   // — the same shape TemplateItem.subtasks uses, and for the same reason: a
   // subtask always starts unchecked, so it has no state worth authoring.
@@ -1798,6 +1812,18 @@ export interface Task {
   // extraTaskRule() needs a count and a name, and everything here is optional
   // detail on top of those.
   extraTaskDraft: ExtraTaskDraft | null;
+  // Don't add another while one added by this rule is still outstanding.
+  //
+  // A property of the *rule* rather than of the task it adds, which is why it
+  // sits here and not in ExtraTaskDraft: it decides whether to spawn at all,
+  // and says nothing about what the spawned row looks like.
+  //
+  // Off by default, so every rule written before this behaves exactly as it
+  // did. Both readings are legitimate — a chore you either do or don't
+  // (swapping wash cloths: a second row says nothing the first didn't), and a
+  // count you're meant to keep up with (one row per set of five runs) — so
+  // this is asked rather than assumed.
+  extraTaskOneAtATime: boolean;
   extraTaskTally: number;         // completions since the last one was added
   // Snapshot of extraTaskTally from just before the current completion, so
   // uncompleting restores it — the same device previousStreakCount uses, and

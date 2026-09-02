@@ -147,7 +147,9 @@ import {
   driftingTasks,
   type DriftEntry,
 } from '../utils/postpone';
-import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
+import { extraTaskRule, advanceExtraTaskTally, extraTaskSuppressedBy } from '../utils/extraTask';
+import type { ExtraTaskSuppression } from '../utils/extraTask';
+import { normalizeTitle } from '../utils/taskInstances';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { registerPersonTaskSource } from '../utils/peopleRegistry';
@@ -491,6 +493,7 @@ function newTaskFromDraft(
     extraTaskEveryN: draft.extraTaskEveryN ?? null,
     extraTaskTitle: draft.extraTaskTitle ?? null,
     extraTaskDraft: draft.extraTaskDraft ?? null,
+    extraTaskOneAtATime: draft.extraTaskOneAtATime ?? false,
     vacationPause: draft.vacationPause ?? false,
     excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
@@ -3013,7 +3016,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const extraAdvance = extraRule && !missed && !neutral && advancesBySchedule
       ? advanceExtraTaskTally(task.extraTaskTally, extraRule.everyN)
       : null;
-    const nextExtraTally = extraAdvance ? extraAdvance.tally : task.extraTaskTally;
+    // Why an earned spawn might not happen — vacation, or one of its own
+    // still outstanding. Asked only when the advance actually fires, so the
+    // roster scan below costs nothing on the other N-1 completions.
+    //
+    // "Still outstanding" is matched on the normalized title rather than by
+    // walking back to the root of the previousOccurrenceId chain: the row
+    // that spawned this one is a different occurrence every time, and a
+    // chain root does not survive completedRetentionDays purging a middle
+    // occurrence. Same call cohortKeyOf makes in rhythms.ts, for the same
+    // reason. Renaming the added row therefore reads as a different piece of
+    // work and lets the next one through, which is the right answer anyway.
+    let extraSuppression: ExtraTaskSuppression | null = null;
+    if (extraRule && extraAdvance?.spawns) {
+      const wanted = normalizeTitle(extraRule.title);
+      extraSuppression = extraTaskSuppressedBy(
+        extraRule,
+        task.extraTaskOneAtATime,
+        useSettingsStore.getState().vacationMode,
+        get().tasks.some(t =>
+          !t.parentId && !t.completed && !t.archived && normalizeTitle(t.title) === wanted),
+      );
+    }
+    // A suppressed spawn leaves the tally exactly where it was rather than
+    // taking the reset it earned — see extraTaskSuppressedBy. The advance
+    // tests `>=`, so the first completion after the reason passes fires for
+    // real instead of starting another full N-completion wait.
+    const nextExtraTally = extraAdvance && !extraSuppression
+      ? extraAdvance.tally
+      : task.extraTaskTally;
 
     const completed: Task = {
       ...task,
@@ -3375,7 +3406,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // them.
     let extraTask: Task | null = null;
     let extraSubtasks: Task[] = [];
-    if (extraRule && extraAdvance?.spawns) {
+    if (extraRule && extraAdvance?.spawns && !extraSuppression) {
       const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
       const spec = extraRule.draft;
       extraTask = newTaskFromDraft({
@@ -3393,6 +3424,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         effort: spec?.effort,
         estimatedMinutes: spec?.estimatedMinutes ?? null,
         timeSegments: spec?.timeSegments ?? [],
+        // Written onto the row, not merely consulted at spawn time: a
+        // vacation that starts after this landed should hide it too, the
+        // same as any other paused row. See ExtraTaskDraft.vacationPause.
+        vacationPause: spec?.vacationPause ?? false,
         // Undo comes free: uncompleteTask deletes every uncompleted row
         // pointing back at the completion being undone, which is exactly the
         // scope wanted here — undoing the 4th practice takes the rosin task
@@ -6177,6 +6212,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       extraTaskEveryN: null,
       extraTaskTitle: null,
       extraTaskDraft: null,
+      extraTaskOneAtATime: false,
       extraTaskTally: 0,
       previousExtraTaskTally: 0,
       vacationPause: false,
@@ -6368,6 +6404,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       extraTaskEveryN: null,
       extraTaskTitle: null,
       extraTaskDraft: null,
+      extraTaskOneAtATime: false,
       extraTaskTally: 0,
       previousExtraTaskTally: 0,
       vacationPause: false,
