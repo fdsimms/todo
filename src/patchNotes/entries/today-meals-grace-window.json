@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: if your day starts later than midnight, Today showed the next day's planned meals during the early hours, while the tasks beside them were still on the day you were actually in.",
+  "date": "2026-09-02"
+}

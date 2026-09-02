@@ -45,6 +45,7 @@ import { SettingsSegments } from './SettingsSegments';
 import { InlineTimePicker } from './InlineTimePicker';
 import { WeatherRulesSheet } from '../../components/WeatherRulesSheet';
 import { ScreenTimeRulesSheet } from '../../components/ScreenTimeRulesSheet';
+import { HealthRulesSheet } from '../../components/HealthRulesSheet';
 import { PillGroup, type PillGroupOption } from '../../components/PillGroup';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { makeSettingsStyles } from './settingsStyles';
@@ -151,9 +152,14 @@ export function GeneratedTasksSection() {
   );
 
   const [screenTimeRulesVisible, setScreenTimeRulesVisible] = useState(false);
+  const [healthRulesVisible, setHealthRulesVisible] = useState(false);
   const activeScreenTimeRuleCount = useMemo(
     () => s.screenTimeRules.filter(r => r.enabled).length,
     [s.screenTimeRules],
+  );
+  const activeHealthRuleCount = useMemo(
+    () => s.healthRules.filter(r => r.enabled).length,
+    [s.healthRules],
   );
 
   const weekdaySegmentOptions = useMemo(() => weekdayOptions(s.weekStartsOn), [s.weekStartsOn]);
@@ -188,6 +194,10 @@ export function GeneratedTasksSection() {
       case 'reachOut': return s.reachOutTasks;
       case 'weather': return s.weatherTasks;
       case 'screenTime': return s.screenTimeTasks;
+      // Both switches, for the reason generatorEnabled gives: the pass
+      // cannot run while the app is not allowed to read Health at all, so a
+      // row reading "on" over a closed read would be lying about itself.
+      case 'health': return s.healthTasks && s.healthReadEnabled;
       case 'moodLog': return s.moodLogTasks;
       case 'moodNudge': return s.moodNudgeTasks;
       case 'weekendNudge': return s.weekendNudgeTasks;
@@ -213,6 +223,7 @@ export function GeneratedTasksSection() {
       case 'reachOut': s.setReachOutTasks(next); break;
       case 'weather': s.setWeatherTasks(next); break;
       case 'screenTime': s.setScreenTimeTasks(next); break;
+      case 'health': s.setHealthTasks(next); break;
       case 'moodLog': s.setMoodLogTasks(next); break;
       case 'moodNudge': s.setMoodNudgeTasks(next); break;
       case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
@@ -249,6 +260,7 @@ export function GeneratedTasksSection() {
       case 'reachOut': return s.reachOutTaskCategory;
       case 'weather': return s.weatherTaskCategory;
       case 'screenTime': return s.screenTimeTaskCategory;
+      case 'health': return s.healthTaskCategory;
       case 'moodLog': return s.moodLogTaskCategory;
       case 'moodNudge': return s.moodNudgeTaskCategory;
       case 'weekendNudge': return s.weekendNudgeTaskCategory;
@@ -276,6 +288,7 @@ export function GeneratedTasksSection() {
       case 'reachOut': s.setReachOutTaskCategory(category); break;
       case 'weather': s.setWeatherTaskCategory(category); break;
       case 'screenTime': s.setScreenTimeTaskCategory(category); break;
+      case 'health': s.setHealthTaskCategory(category); break;
       case 'moodLog': s.setMoodLogTaskCategory(category); break;
       case 'moodNudge': s.setMoodNudgeTaskCategory(category); break;
       case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
@@ -667,6 +680,27 @@ export function GeneratedTasksSection() {
       );
     }
 
+    if (kind === 'health') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="healthRules"
+            icon="list-outline"
+            iconColor={activeHealthRuleCount > 0 ? colors.accent : undefined}
+            label="Rules"
+            hint="Which reading falling under which number adds which task."
+            value={
+              activeHealthRuleCount === 0
+                ? 'None'
+                : activeHealthRuleCount === 1 ? '1 rule' : `${activeHealthRuleCount} rules`
+            }
+            onPress={() => { haptics.tap(); setHealthRulesVisible(true); }}
+          />
+        </>
+      );
+    }
+
     return null;
   };
 
@@ -774,6 +808,7 @@ export function GeneratedTasksSection() {
     </SettingsSection>
     <WeatherRulesSheet visible={weatherRulesVisible} onClose={() => setWeatherRulesVisible(false)} />
     <ScreenTimeRulesSheet visible={screenTimeRulesVisible} onClose={() => setScreenTimeRulesVisible(false)} />
+    <HealthRulesSheet visible={healthRulesVisible} onClose={() => setHealthRulesVisible(false)} />
     </>
   );
 }

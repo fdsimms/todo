@@ -19,6 +19,7 @@ const defaults: SettingsSummaryInput = {
   unitSystemLabel: null,
   calendarReadEnabled: false,
   calendarIds: [],
+  healthReadEnabled: false,
   vacationMode: false,
   autoRemoveExpiredTasks: null,
   autoCompleteProjectsOnDone: false,

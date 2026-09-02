@@ -9,6 +9,7 @@ import type { MoodLog } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { useHealthStore, HEALTH_HISTORY_DAYS } from '../store/useHealthStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -25,6 +26,9 @@ import {
 import {
   buildMoodDays,
   categoryMoodContrasts,
+  describeHealthInsight,
+  healthAverage,
+  healthInsight,
   moodByTimeOfDay,
   moodCompletionInsight,
   moodSummary,
@@ -63,6 +67,16 @@ export function MoodScreen() {
   const logs = useMoodStore(s => s.logs);
   const removeLog = useMoodStore(s => s.removeLog);
   const tasks = useTaskStore(s => s.tasks);
+  // Apple Health's trailing window, read on demand rather than on the app's
+  // foreground triggers: it is a wider query than the Today reading and only
+  // this screen wants it. Null until it has been looked for, which is a third
+  // answer and not the same as an empty one.
+  const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
+  const healthHistory = useHealthStore(s => s.history);
+  const refreshHealthHistory = useHealthStore(s => s.refreshHistory);
+  useEffect(() => {
+    if (healthReadEnabled) void refreshHealthHistory();
+  }, [healthReadEnabled, refreshHealthHistory]);
   const settings = useSettingsStore(useShallow(s => ({
     dayResetTime: s.dayResetTime,
     morningStart: s.morningStart,
@@ -89,8 +103,39 @@ export function MoodScreen() {
 
   const todayKey = dayKeyOf(getCurrentDayStart());
   const days = useMemo(
-    () => buildMoodDays(logs, tasks, settings.dayResetTime),
-    [logs, tasks, settings.dayResetTime],
+    () => buildMoodDays(logs, tasks, settings.dayResetTime, healthHistory ?? []),
+    [logs, tasks, settings.dayResetTime, healthHistory],
+  );
+
+  // Every pairing the data can actually speak to, in the order they read: what
+  // you got done first, because that is the join no health app can make, and
+  // mood second even though this is the Mood screen — the card above it already
+  // covers mood against what you finish, so leading with mood here would be the
+  // same sentence twice with a different noun in it.
+  //
+  // A pairing below MIN_PAIRED_DAYS describes as null and drops out, so a
+  // person with steps but no Watch sees one line rather than two empty ones.
+  const healthFindings = useMemo(() => {
+    if (!healthReadEnabled || healthHistory === null) return [];
+    const rows: { key: string; text: string }[] = [];
+    for (const metric of ['steps', 'sleepHours'] as const) {
+      for (const against of ['completed', 'mood'] as const) {
+        const text = describeHealthInsight(healthInsight(days, metric, against));
+        if (text) rows.push({ key: `${metric}-${against}`, text });
+      }
+    }
+    return rows;
+  }, [days, healthReadEnabled, healthHistory]);
+
+  // The two averages, over the days that carry a reading rather than over the
+  // window — an absent day is absent here as everywhere else.
+  const averageSteps = useMemo(
+    () => (healthReadEnabled ? healthAverage(days, 'steps') : null),
+    [days, healthReadEnabled],
+  );
+  const averageSleep = useMemo(
+    () => (healthReadEnabled ? healthAverage(days, 'sleepHours') : null),
+    [days, healthReadEnabled],
   );
   const summary = useMemo(() => moodSummary(days, todayKey), [days, todayKey]);
   const completion = useMemo(() => moodCompletionInsight(days), [days]);
@@ -298,6 +343,44 @@ export function MoodScreen() {
             )}
           </View>
 
+          {(healthFindings.length > 0 || averageSteps !== null || averageSleep !== null) && (
+            <>
+              <Text style={styles.sectionTitle}>MOVEMENT AND SLEEP</Text>
+              <View style={styles.card}>
+                {/* Wrapped rather than putting a margin on `finding` itself:
+                    the card above renders exactly one of those and would gain a
+                    gap it doesn't want above its own split row, which already
+                    carries spacing.md. This card is the only one that stacks
+                    them. */}
+                <View style={styles.findings}>
+                  {healthFindings.map(finding => (
+                    <Text key={finding.key} style={styles.finding}>{finding.text}</Text>
+                  ))}
+                </View>
+                {(averageSteps !== null || averageSleep !== null) && (
+                  <View style={styles.splitRow}>
+                    {averageSteps !== null && (
+                      <View style={styles.splitCell}>
+                        <Text style={styles.splitValue}>{Math.round(averageSteps).toLocaleString()}</Text>
+                        <Text style={styles.splitLabel}>steps a day</Text>
+                      </View>
+                    )}
+                    {averageSleep !== null && (
+                      <View style={styles.splitCell}>
+                        <Text style={styles.splitValue}>{averageSleep.toFixed(1)}</Text>
+                        <Text style={styles.splitLabel}>hours asleep</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+                <Text style={styles.chartCaption}>
+                  From Apple Health, over the last {HEALTH_HISTORY_DAYS} days, counting only the
+                  {' '}days you logged. These are patterns between two numbers, not causes.
+                </Text>
+              </View>
+            </>
+          )}
+
           {categoryRows.length > 0 && (
             <>
               <Text style={styles.sectionTitle}>MOOD BY KIND OF WORK</Text>
@@ -475,6 +558,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   chartCaption: { fontSize: font.xs, color: colors.textTertiary, marginTop: spacing.sm },
   pending: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 20 },
   finding: { fontSize: font.md, color: colors.text, lineHeight: 22 },
+  findings: { gap: spacing.sm },
   splitRow: { flexDirection: 'row', marginTop: spacing.md },
   splitCell: { flex: 1, alignItems: 'center' },
   splitValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },

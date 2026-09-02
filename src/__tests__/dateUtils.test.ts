@@ -122,6 +122,8 @@ const baseTask: Task = {
   timerStartedAt: null,
   timedMinutes: null,
   timerElapsedSeconds: 0,
+  healthMetric: null,
+  healthTarget: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,

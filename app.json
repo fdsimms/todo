@@ -17,6 +17,7 @@
       "bundleIdentifier": "com.fdsimms.dundundun",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSHealthShareUsageDescription": "Lets dundundun read your step count for today, so it can show it beside your tasks. It only reads; nothing is ever written to Health, nothing is sent anywhere, and no copy is kept on this phone.",
         "NSAlarmKitUsageDescription": "Used to ring reminders as system alarms that break through silent mode.",
         "NSSupportsLiveActivities": true,
         "NSSiriUsageDescription": "Lets you add a task to dundundun by voice, including from the Action Button, without opening the app."
@@ -111,6 +112,7 @@
       "./plugins/withCloudKit",
       "./plugins/withSiriShortcuts",
       "./plugins/withFamilyControls",
+      "./plugins/withHealthKit",
       "./plugins/withActivityMonitor",
       [
         "expo-quick-actions",

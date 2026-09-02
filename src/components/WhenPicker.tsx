@@ -75,6 +75,8 @@ const BLANK_SNOOZE_TASK: Task = {
   postponeCount: 0, postponeMuted: false, driftingSince: null,
   quotaIntervalMinutes: null, quotaReminders: false, quotaStartedAt: null, quotaAlwaysVisible: false,
   quotaPeriod: 'day',
+  healthMetric: null,
+  healthTarget: null,
 };
 
 interface Props {

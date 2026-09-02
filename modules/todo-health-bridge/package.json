@@ -1,0 +1,7 @@
+{
+  "name": "todo-health-bridge",
+  "version": "1.0.0",
+  "description": "Local Expo module for reading Apple Health: the authorization request, and the day totals the app consults.",
+  "main": "index.ts",
+  "private": true
+}

@@ -118,6 +118,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   actualMinutes: null,
   timedMinutes: null,
   timerElapsedSeconds: 0,
+  healthMetric: null,
+  healthTarget: null,
   previousOccurrenceId: null,
   seriesDefaults: null,
   ...overrides,

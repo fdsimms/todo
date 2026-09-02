@@ -21,6 +21,8 @@ const values = (over: Partial<TypeValues> = {}): TypeValues => ({
   timedMinutes: null,
   targetCount: null,
   targetUnit: null,
+  healthMetric: null,
+  healthTarget: null,
   chainItems: [],
   recurrenceType: 'none',
   effort: 0,
@@ -202,7 +204,8 @@ describe('QUICK_ADD_CHIP_LABELS', () => {
 
 describe('taskKindOf', () => {
   const shape = (over: Partial<Parameters<typeof taskKindOf>[0]> = {}) => ({
-    chainEnabled: false, targetCount: null, timedMinutes: null, ...over,
+    chainEnabled: false, targetCount: null, timedMinutes: null,
+    healthMetric: null, healthTarget: null, ...over,
   });
 
   it('reads a plain task as standard', () => {
@@ -213,6 +216,7 @@ describe('taskKindOf', () => {
     expect(taskKindOf(shape({ timedMinutes: 15 }))).toBe('timed');
     expect(taskKindOf(shape({ targetCount: 3 }))).toBe('target');
     expect(taskKindOf(shape({ chainEnabled: true }))).toBe('chain');
+    expect(taskKindOf(shape({ healthMetric: 'steps', healthTarget: 8000 }))).toBe('health');
   });
 
   // The >= 2 rule lives at save time, not here: a chain being built up to its
@@ -231,13 +235,14 @@ describe('taskKindOf', () => {
     TASK_KIND_META.forEach(({ key }) => {
       const baked = bakedFields(key, values({
         timedMinutes: 15, targetCount: 3, chainItems: [step('a'), step('b')],
+        healthMetric: 'steps', healthTarget: 8000,
       }));
       expect(taskKindOf(baked)).toBe(key);
     });
   });
 
   it('names every kind', () => {
-    expect(TASK_KIND_META.map(m => m.key)).toEqual(['task', 'timed', 'target', 'chain']);
+    expect(TASK_KIND_META.map(m => m.key)).toEqual(['task', 'timed', 'target', 'health', 'chain']);
     TASK_KIND_META.forEach(m => {
       expect(m.label).toBeTruthy();
       expect(m.hint).toBeTruthy();

@@ -61,6 +61,7 @@ import {
   eventContextRows,
   mealContextRows,
   kitchenContextRows,
+  healthContextRows,
   plannedUsesToday,
   insertContextRows,
   withoutContextRows,
@@ -127,6 +128,7 @@ import { DeloadSheet } from '../components/DeloadSheet';
 import { useMoodStore } from '../store/useMoodStore';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
 import { lowMoodDeloadNote } from '../utils/moodTasks';
+import { shortSleepDeloadNote } from '../utils/healthRules';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { useProjectStore } from '../store/useProjectStore';
@@ -135,9 +137,10 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { dayKeyOf, getDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useHealthStore } from '../store/useHealthStore';
 import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
@@ -1149,6 +1152,11 @@ export function TodayScreen() {
           // Beside it, same trigger — the crossings this checks against are
           // kept current by useScreenTimeSync's own AppState listener.
           useTaskStore.getState().checkScreenTimeTasks();
+          // Beside it, same trigger, and the one that matters most for this
+          // generator: a steps rule cannot be judged until evening, so the
+          // launch pass is usually too early and this is where it actually
+          // fires.
+          useTaskStore.getState().checkHealthTasks();
           // Beside them, same trigger: which day is "today" rolls over purely
           // by time passing, and so does the length of a low run.
           useTaskStore.getState().checkMoodTasks();
@@ -1291,6 +1299,36 @@ export function TodayScreen() {
     const days = buildMoodDays(moodLogs, [], dayResetTime);
     return lowMoodDeloadNote(lowMoodRun(days, getLogicalDayKey(new Date(), dayResetTime)), moodNudgeAfterDays);
   }, [moodLogs, dayResetTime, moodNudgeAfterDays]);
+
+  // The Health reading, and the two settings that decide what may be done with
+  // it. Declared here rather than beside the context rows below because the
+  // deload note wants them first, and one declaration beats two.
+  //
+  // Both the reading and the category are nullable and both mean "no row": the
+  // store holds nothing until the read is on and something has been recorded,
+  // and the category is also the row's off switch (see its note in
+  // useSettingsStore). `useHealthSync` in App.tsx is what keeps the reading
+  // current — nothing here fetches, the same split useCalendarStore draws.
+  const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
+  const healthCategory = useSettingsStore(s => s.healthCategory);
+  const healthToday = useHealthStore(s => s.today);
+
+  // The second line the same menu can carry, and the health feature's only
+  // reach into Today beyond its own row. Gated on the *read* rather than on the
+  // generator: this is a line in a menu somebody opened, not a task, so it
+  // needs no switch of its own — the same argument lowMoodDeloadNote makes for
+  // having none.
+  const shortSleepNote = useMemo(() => {
+    if (!healthReadEnabled) return null;
+    const key = getLogicalDayKey(new Date(), dayResetTime);
+    if (!healthToday || healthToday.dayKey !== key) return null;
+    return shortSleepDeloadNote(healthToday.sleepHours);
+  }, [healthReadEnabled, healthToday, dayResetTime]);
+
+  const deloadNotes = useMemo(
+    () => [lowMoodNote, shortSleepNote].filter((n): n is string => n !== null),
+    [lowMoodNote, shortSleepNote],
+  );
 
   // Sort & filter state. Persisted, like hideCategories below — the three are
   // set from the same sheet, and only one of them used to survive a launch.
@@ -1690,7 +1728,15 @@ export function TodayScreen() {
   // loadRange: the store is range-scoped and the Meal Plan screen owns which
   // week is loaded, so Today shows what's already there instead of fighting it
   // for the window.
-  const todayKey = useMemo(() => dayKeyOf(new Date()), []);
+  // The *logical* day, not the calendar one. `dayKeyOf(new Date())` was the odd
+  // one out on this screen: `getDayStart` a few lines below defaults to the
+  // store's dayResetTime, so between midnight and a 2am reset the events came
+  // from yesterday's logical day while the meals came from tomorrow's calendar
+  // one — two sources rendered as sibling rows in the same list, a day apart.
+  // `checkMealSlotTasks` had already drawn this line for the tasks those meals
+  // sit beside, with a comment naming the same failure. See CLAUDE.md on the
+  // grace window.
+  const todayKey = useMemo(() => getLogicalDayKey(new Date(), dayResetTime), [dayResetTime]);
   const mealEntries = useMealPlanStore(useShallow(s => s.entries));
   const mealRangeStart = useMealPlanStore(s => s.rangeStart);
   const mealRangeEnd = useMealPlanStore(s => s.rangeEnd);
@@ -1830,6 +1876,28 @@ export function TodayScreen() {
 
   const contextRows = useMemo(() => {
     const rows: ContextRow[] = [];
+    // Leads, above the calendar and the food. It is the only one of the four
+    // that is about the day as a whole rather than about a thing in it, and it
+    // is one line at most — `healthContextRows` draws nothing for a null or a
+    // zero, which is most mornings. Its own category by default, so in practice
+    // it leads a section of its own and this ordering only shows once somebody
+    // files it with something else.
+    //
+    // Gated on the category for the reason the events below are: a row with
+    // none goes to the very top of the list, above every section, which is the
+    // pinned strip this whole mechanism replaced. Here it is load-bearing twice
+    // over, because the category is also this row's off switch *and* the demo
+    // database has never had one — so a demo session cannot surface a real step
+    // count left in the store by the session before it.
+    if (healthCategory) {
+      rows.push(...healthContextRows(healthToday, {
+        // Recomputed here rather than reusing `todayKey` above, which is memoized
+      // on mount: this memo already re-runs on `minuteTick`, so a reading is
+      // dropped as soon as the day turns over rather than at the next remount.
+      todayKey: getLogicalDayKey(new Date(), dayResetTime),
+        category: healthCategory,
+      }));
+    }
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
     if (calendarEventCategory) {
@@ -1876,6 +1944,7 @@ export function TodayScreen() {
     isEventHidden,
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     kitchenOnToday, kitchenEntries, kitchenPlannedUses,
+    healthToday, healthCategory, dayResetTime,
     minuteTick,
   ]);
 
@@ -2650,6 +2719,13 @@ export function TodayScreen() {
             // Same navigation openMealPlan below makes for a meal row — the
             // Kitchen screen is a hub tab now, not a sheet this screen owns.
             : item.row.kind === 'kitchen' ? () => navigation.navigate('Kitchen' as never)
+            // A health row has nowhere to go, which the prop supports and which
+            // is the honest answer here: the number came from another app, this
+            // one holds no detail behind it, and opening Health would be a task
+            // list throwing you out to a different app for a line you have
+            // already read. The arm is explicit rather than left to fall
+            // through, because the fall-through is the meal plan.
+            : item.row.kind === 'health' ? undefined
             : openMealPlan
           }
           onMarkCooked={
@@ -4101,7 +4177,7 @@ export function TodayScreen() {
             setDeloadVisible(true);
           } : undefined}
           plannedLabel={plannedLabel}
-          lightenNote={lowMoodNote}
+          lightenNote={deloadNotes[0] ?? null}
           onLookAhead={featureHidden('lookAhead', simpleMode) ? undefined : () => {
             setOptionsMenuVisible(false);
             setLookAheadVisible(true);
@@ -4145,7 +4221,7 @@ export function TodayScreen() {
         <DeloadSheet
           visible={deloadVisible}
           todaysTasks={visibleTasks}
-          lowMoodNote={lowMoodNote}
+          notes={deloadNotes}
           onClose={() => setDeloadVisible(false)}
         />
 

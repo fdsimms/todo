@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { dbGetSetting, dbSetSetting } from '../db/database';
 import type { ThemeMode } from '../theme';
 import { DEFAULT_APP_FONT, isAppFont, pickRandomAppFont, type AppFont } from '../theme/fonts';
-import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, ScreenTimeRule } from '../types';
+import type { SortOption, RecipeSortOption, Priority, Effort, MealSlot, TimeOfDay, TitleRule, WeatherRule, ScreenTimeRule, HealthRule } from '../types';
 import {
   DEFAULT_CURRENCY_SYMBOL,
   CURRENCY_SYMBOL_MAX_LENGTH,
@@ -54,6 +54,7 @@ import { UNIT_SYSTEMS, type UnitSystem } from '../utils/unitConvert';
 import { parseTitleRules } from '../utils/titleRules';
 import { parseWeatherRules, defaultWeatherRules } from '../utils/weatherTasks';
 import { parseScreenTimeRules, defaultScreenTimeRules, serializeScreenTimeRules } from '../utils/screenTimeRules';
+import { parseHealthRules, defaultHealthRules, serializeHealthRules } from '../utils/healthRules';
 import { DEFAULT_MOOD_NUDGE_AFTER_DAYS } from '../utils/moodTasks';
 import type { LastTipShown } from '../utils/tips';
 
@@ -768,6 +769,49 @@ interface SettingsStore {
   // shares it. Writing both into one calendar would put your work deadlines
   // on the family fridge.
   mealCalendarId: string | null;
+
+  // Whether this app may read Apple Health.
+  //
+  // A read switch beside `calendarReadEnabled` above and answering the same
+  // question about a different framework: nothing is written, and the app only
+  // ever looks. What it does *not* have is a permission field beside it, and
+  // that is not an omission — HealthKit deliberately refuses to say whether a
+  // read was allowed, so "you said no" and "there is nothing recorded" are one
+  // state with no way back. This flag is therefore the user's whole answer
+  // about the feature: off means nothing is read, on means the app asks and
+  // renders whatever comes back, including nothing. See
+  // `modules/todo-health-bridge/index.ts`.
+  healthReadEnabled: boolean;
+
+  // Which category the health reading files under on Today, by name.
+  //
+  // Exactly `calendarEventCategory`'s shape and for its reasons: filing the row
+  // under a real category means placement, collapsing, ordering and renaming
+  // are the category's problem rather than this feature's. Null means the
+  // category hasn't been chosen yet, and `ensureHealthCategory` fills it in the
+  // first time the read is switched on.
+  //
+  // It doubles as the switch for the Today row, which is why there is no
+  // `healthOnToday` beside it: nothing shows while it is null, so clearing it
+  // is how somebody says "read Health, but not onto my list" — the same answer
+  // the calendar's own "Nowhere" gives, and one setting rather than two that
+  // could contradict each other.
+  healthCategory: string | null;
+
+  // The `health` generator: whether it runs, where its tasks file, and the
+  // rules themselves. Separate from `healthReadEnabled` above because they are
+  // two different permissions to give — "you may read Health" and "you may
+  // write tasks from it" — and the pass requires both.
+  //
+  // `healthTaskCategory` is its own setting rather than a reuse of
+  // `healthCategory`, even though both default to a category named "Health"
+  // (addCategory is idempotent by name, so out of the box they share one
+  // section). Clearing the reading's category means "don't show my step count
+  // on Today", which is not the same instruction as "don't add health tasks",
+  // and one setting could not tell those apart.
+  healthTasks: boolean;
+  healthTaskCategory: string | null;
+  healthRules: HealthRule[];
   // Whether a project that has gone quiet gets a "Review X" task (see
   // src/utils/projectReviewTasks.ts). Defaults ON, unlike the other opt-in
   // generators: this replaced the quiet-projects banner rather than adding a
@@ -1140,6 +1184,11 @@ interface SettingsStore {
   setGroceryImportTwoWay: (on: boolean) => void;
   setRemindersImportReview: (on: boolean) => void;
   setCalendarReadEnabled: (on: boolean) => void;
+  setHealthReadEnabled: (on: boolean) => void;
+  setHealthCategory: (category: string | null) => void;
+  setHealthTasks: (on: boolean) => void;
+  setHealthTaskCategory: (category: string | null) => void;
+  setHealthRules: (rules: HealthRule[]) => void;
   setCalendarIds: (ids: string[]) => void;
   setVacationHiddenCalendarIds: (ids: string[]) => void;
   setCalendarEventCategory: (category: string | null) => void;
@@ -1284,6 +1333,8 @@ const DEFAULT_SETTINGS = {
   groceryImportTwoWay: false,
   remindersImportReview: true,
   calendarReadEnabled: false,
+  healthReadEnabled: false,
+  healthTasks: false,
   reminderMeetingNudgeEnabled: true,
   calendarPeopleHistory: true,
   defaultProjectNudgeCadenceDays: 0,
@@ -1631,6 +1682,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   calendarPeopleHistory: true,
   deadlineCalendarId: null,
   mealCalendarId: null,
+  healthReadEnabled: false,
+  healthCategory: null,
+  healthTasks: false,
+  healthTaskCategory: null,
+  healthRules: [],
   projectReviewTasks: true,
   projectReviewTaskCategory: null,
   birthdayTasks: true,
@@ -1896,6 +1952,17 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const calendarPeopleHistory = dbGetSetting('calendarPeopleHistory') !== 'false';
     const deadlineCalendarId = dbGetSetting('deadlineCalendarId') || null;
     const mealCalendarId = dbGetSetting('mealCalendarId') || null;
+    const healthReadEnabled = dbGetSetting('healthReadEnabled') === 'true';
+    // '' persists as "not chosen", matching calendarEventCategory. Nothing
+    // creates the category from here — see ensureHealthCategory, which runs
+    // once the categories themselves have loaded.
+    const healthCategory = dbGetSetting('healthCategory') || null;
+    const healthTasks = dbGetSetting('healthTasks') === 'true';
+    const healthTaskCategory = dbGetSetting('healthTaskCategory') || null;
+    // Absent means never answered, so the shipped defaults apply; a stored but
+    // unreadable value salvages what it can. Same pair weatherRules draws.
+    const storedHealthRules = dbGetSetting('healthRules');
+    const healthRules = storedHealthRules ? parseHealthRules(storedHealthRules) : defaultHealthRules();
     // `!== 'false'`: defaults on, the same reading mealCookTasks takes — see
     // the field note for why this one isn't opt-in like the nudge beside it.
     const projectReviewTasks = dbGetSetting('projectReviewTasks') !== 'false';
@@ -2073,7 +2140,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, moodLogTimeSegment, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, healthReadEnabled, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, moodLogTimeSegment, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2934,6 +3001,34 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setCalendarReadEnabled(on: boolean) {
     dbSetSetting('calendarReadEnabled', on ? 'true' : 'false');
     set({ calendarReadEnabled: on });
+  },
+
+  setHealthReadEnabled(on: boolean) {
+    dbSetSetting('healthReadEnabled', on ? 'true' : 'false');
+    set({ healthReadEnabled: on });
+  },
+
+  setHealthCategory(category: string | null) {
+    dbSetSetting('healthCategory', category ?? '');
+    set({ healthCategory: category });
+  },
+
+  setHealthTasks(on: boolean) {
+    dbSetSetting('healthTasks', on ? 'true' : 'false');
+    set({ healthTasks: on });
+  },
+
+  setHealthTaskCategory(category: string | null) {
+    dbSetSetting('healthTaskCategory', category ?? '');
+    set({ healthTaskCategory: category });
+  },
+
+  // Written whole, never patched — the list is one setting, same as
+  // weatherRules and screenTimeRules. Kept out of DEFAULT_SETTINGS for their
+  // mechanical reason: String(value) doesn't round-trip an array.
+  setHealthRules(rules: HealthRule[]) {
+    dbSetSetting('healthRules', serializeHealthRules(rules));
+    set({ healthRules: rules });
   },
 
   setCalendarIds(ids: string[]) {

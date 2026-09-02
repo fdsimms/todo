@@ -20,6 +20,8 @@ const days = (moods: (number | null)[]): MoodDay[] =>
     symptomKeys: [],
     completed: 0,
     categories: [],
+    steps: null,
+    sleepHours: null,
   }));
 
 const generated = (kind: string, sourceId: string): Pick<Task, 'generatedKind' | 'generatedSourceId'> =>

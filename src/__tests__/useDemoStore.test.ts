@@ -235,6 +235,13 @@ jest.mock('../store/useScreenTimeStore', () => ({
   useScreenTimeStore: { getState: () => ({ crossings: [], refreshing: false, consume: () => {} }) },
 }));
 
+// And the third of them, for the identical reason: react-native at module scope
+// for its own AppState sync, and nothing here reads it — the demo's health task
+// is seeded directly, since both the bridge and the pass refuse in demo mode.
+jest.mock('../store/useHealthStore', () => ({
+  useHealthStore: { getState: () => ({ today: null, history: null, refreshing: false }) },
+}));
+
 // ---------------------------------------------------------------------------
 
 function realDbTaskTitles(): string[] {
@@ -2570,6 +2577,44 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     rules.filter(r => r.id !== firedRule!.id).forEach(r => {
       expect(r.lastFiredDayKey).toBeNull();
     });
+  });
+
+  it('seeds a health task and the rules alongside it', () => {
+    const { tasks } = useTaskStore.getState();
+    const settings = useSettingsStore.getState();
+
+    const rules = settings.healthRules;
+    expect(rules.length).toBeGreaterThan(1);
+
+    const task = tasks.find(t => t.generatedKind === 'health');
+    expect(task).toBeDefined();
+    expect(task!.category).toBe('Health');
+    expect(settings.healthTaskCategory).toBe('Health');
+
+    const firedRule = rules.find(r => r.title === task!.title);
+    expect(firedRule).toBeDefined();
+    expect(task!.generatedSourceId).toBe(`${dayKeyOf(getCurrentDayStart())}#${firedRule!.id}`);
+    expect(firedRule!.lastFiredDayKey).toBe(dayKeyOf(getCurrentDayStart()));
+    rules.filter(r => r.id !== firedRule!.id).forEach(r => {
+      expect(r.lastFiredDayKey).toBeNull();
+    });
+  });
+
+  it('seeds a health-target task, the fifth kind', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.healthMetric !== null);
+    expect(task).toBeDefined();
+    expect(task!.healthTarget).toBe(8000);
+    // The kind is derived, never stored, so this is also the assertion that the
+    // pair reads back as the shape it is meant to be.
+    expect(taskKindOf(task!)).toBe('health');
+  });
+
+  it('seeds no health reading, because a demo may never show one', () => {
+    // The seed can show the *shape* of the feature — a task somebody's rule
+    // wrote — but not a reading, which would be a real person's numbers in
+    // front of a fiction. healthReadEnabled stays off in the demo database, so
+    // the Today row and the Mood card have nothing to draw.
+    expect(useSettingsStore.getState().healthReadEnabled).toBe(false);
   });
 
   it('leaves that item free of a use-by date, so it carries one task and not two', () => {

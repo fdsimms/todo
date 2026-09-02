@@ -43,6 +43,7 @@ export type SettingsGroupId =
   | 'capture'
   | 'tasksProjects'
   | 'generated'
+  | 'health'
   | 'kitchen'
   | 'privacyAi'
   | 'dataReset'
@@ -97,6 +98,18 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   // with the kitchen and keep running without it, which is exactly the bug that
   // hiding them behind the area's gate used to cause.
   { id: 'generated', title: 'Automatic tasks', icon: 'sparkles-outline', tint: 'accent' },
+  // Not filed with Reminders & Calendar, even though it is the third thing this
+  // app reads off the device. That group's own note says the two live together
+  // because they share a framework, a platform gate and the same caveat, and
+  // this shares none of them: EventKit tells you plainly whether you have
+  // permission, and HealthKit refuses to, which is a difference the rows have to
+  // explain rather than sit quietly beside. It sits after Automatic tasks
+  // because that is what the readings are ultimately for.
+  //
+  // Red repeats Notifications', four groups up — the same distance Day & time
+  // and Groceries & meals keep between their two oranges, and the rule is only
+  // that a repeat never lands next to its own other instance.
+  { id: 'health', title: 'Apple Health', icon: 'heart-outline', tint: 'red', iosOnly: true },
   { id: 'kitchen', title: 'Groceries & meals', icon: 'cart-outline', tint: 'orange', kitchenOnly: true },
   // Neutral from here down: the tinted groups are things you configure, the grey
   // ones are housekeeping. There are only five tints and seven tinted groups, so
@@ -219,6 +232,7 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
   pantryReview: ['cupboard', 'stock', 'take stock', 'swipe', 'deck', 'still have', 'grocery',
     'kitchen', 'generated', 'automatic'],
   screenTime: ['phone', 'usage', 'distraction', 'social media', 'doomscroll', 'limit', 'apps'],
+  health: ['apple health', 'steps', 'sleep', 'walk', 'fitness', 'activity', 'rest'],
   moodLog: ['symptom', 'symptoms', 'feeling', 'feelings', 'wellbeing', 'well-being',
     'health', 'journal', 'diary', 'track', 'log', 'generated', 'automatic'],
   moodNudge: ['mood', 'down', 'wellbeing', 'well-being', 'health', 'fun', 'enjoy', 'cheer',
@@ -395,6 +409,15 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['all-day', 'event', 'export', 'google', 'sync', 'meal plan', 'dinner', 'share', 'household', 'family'],
     kitchen: true },
 
+  { id: 'healthRead', groupId: 'health', label: 'Read Apple Health', section: 'Apple Health',
+    keywords: ['steps', 'fitness', 'activity', 'healthkit', 'walking', 'watch'] },
+  { id: 'healthAccess', groupId: 'health', label: 'Health access', section: 'Apple Health',
+    keywords: ['permission', 'allow', 'authorize', 'grant'] },
+  { id: 'healthToday', groupId: 'health', label: 'Steps today', section: 'Apple Health',
+    keywords: ['count', 'reading', 'walked'] },
+  { id: 'healthCategory', groupId: 'health', label: 'Show steps under', section: 'Apple Health',
+    keywords: ['category', 'section', 'today', 'where', 'hide', 'nowhere'] },
+
   // ── Tasks & projects ──────────────────────────────────────────────────────
   // In the order the screen renders them, which the registry's own comment
   // promises ("equal-scoring rows come back in the order you'd scroll past
@@ -433,6 +456,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'screenTimeRules', groupId: 'generated', label: 'Rules', section: 'Screen time tasks',
     keywords: ['screen time', 'usage', 'phone', 'apps', 'threshold', 'minutes', 'distraction',
       'social media', 'doomscroll', 'limit', 'screen time rule'] },
+  { id: 'healthRules', groupId: 'generated', label: 'Rules', section: 'Health tasks',
+    keywords: ['apple health', 'steps', 'sleep', 'walk', 'threshold', 'under'] },
   { id: 'simpleTaskForm', groupId: 'tasksProjects', label: 'Show fewer fields', section: 'Task form',
     keywords: ['simple', 'quick add', 'chips', 'declutter', 'basic', 'minimal'] },
   { id: 'hideCategories', groupId: 'tasksProjects', label: 'Hide categories', section: 'Today',

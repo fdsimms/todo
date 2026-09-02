@@ -54,6 +54,9 @@ import {
   MAX_TARGET_COUNT, MIN_TARGET_COUNT, MIN_QUOTA_INTERVAL_MINUTES, MAX_QUOTA_INTERVAL_MINUTES, TASK_KIND_META,
   type TaskKind,
 } from '../utils/taskKinds';
+import { HEALTH_TARGET_RANGES } from '../utils/healthTarget';
+import { healthMetricLabel } from '../utils/healthRules';
+import type { HealthMetric } from '../utils/moodInsights';
 import { featureShown, taskKindsForMode } from '../utils/simpleMode';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
@@ -372,6 +375,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [quotaReminders, setQuotaReminders] = useState(false);
   const [quotaAlwaysVisible, setQuotaAlwaysVisible] = useState(false);
   const [showTargetCount, setShowTargetCount] = useState(false);
+  const [showHealthTarget, setShowHealthTarget] = useState(false);
   const [supplyCount, setSupplyCount] = useState<number | null>(null);
   const [supplyUnit, setSupplyUnit] = useState('');
   const [supplyRefillCount, setSupplyRefillCount] = useState<number | null>(null);
@@ -410,6 +414,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [customEffortUnit, setCustomEffortUnit] = useState<'min' | 'hr'>('min');
   const [actualMinutes, setActualMinutes] = useState<number | null>(null);
   const [timedMinutes, setTimedMinutes] = useState<number | null>(null);
+  const [healthMetric, setHealthMetric] = useState<HealthMetric | null>(null);
+  const [healthTarget, setHealthTarget] = useState<number | null>(null);
   const [durationText, setDurationText] = useState('');
   const [durationUnit, setDurationUnit] = useState<'min' | 'hr'>('min');
   const [pinned, setPinned] = useState(false);
@@ -573,7 +579,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const kindMemory = useRef<{
     timedMinutes: number | null; targetCount: number | null;
     targetUnit: string; chainItems: ChainItem[];
-  }>({ timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [] });
+    healthMetric: HealthMetric | null; healthTarget: number | null;
+  }>({
+    timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [],
+    healthMetric: null, healthTarget: null,
+  });
 
   // ==== effects: loading a task into the draft, and keeping fields in step ====
   useEffect(() => {
@@ -583,7 +593,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     setSearchOpen(false);
     setSearchQuery('');
     // Belongs to the task being edited, not to the sheet.
-    kindMemory.current = { timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [] };
+    kindMemory.current = {
+      timedMinutes: null, targetCount: null, targetUnit: '', chainItems: [],
+      healthMetric: null, healthTarget: null,
+    };
     if (task) {
       setTitle(task.title); titleCaret.resetCaret(task.title); setNotes(task.notes); setCategory(task.category ?? null); setProject(task.projectId ?? null); setTags(task.tags); setPersonIds(task.personIds);
       setGroupId(task.groupId ?? null);
@@ -635,6 +648,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPriority(task.priority); setEffort(task.effort); setEstimatedMinutes(task.estimatedMinutes ?? null); setPinned(task.pinned);
       setActualMinutes(task.actualMinutes ?? null);
       setTimedMinutes(task.timedMinutes ?? null);
+      setHealthMetric(task.healthMetric ?? null);
+      setHealthTarget(task.healthTarget ?? null);
       setChainEnabled(task.chainEnabled); setChainItems(task.chainItems);
       setChainIndex(task.chainIndex);
       setChainStepOnSchedule(task.chainStepOnSchedule ?? false);
@@ -670,6 +685,9 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setPriority(initialDraft?.priority ?? 0); setEffort(initialDraft?.effort ?? 0); setEstimatedMinutes(initialDraft?.estimatedMinutes ?? null); setPinned(false);
       setActualMinutes(null);
       setTimedMinutes(initialDraft?.timedMinutes ?? null);
+      // No initialDraft counterpart: quick add has no Health kind to pass one.
+      setHealthMetric(null);
+      setHealthTarget(null);
       setChainEnabled(initialDraft?.chainEnabled ?? false); setChainItems(initialDraft?.chainItems ?? []); setChainIndex(0);
       setVacationPause(false);
       setExcludeFromSuggestions(false);
@@ -765,6 +783,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       estimatedMinutes: task ? (task.estimatedMinutes ?? null) : (initialDraft?.estimatedMinutes ?? null),
       actualMinutes: task?.actualMinutes ?? null,
       timedMinutes: task ? (task.timedMinutes ?? null) : (initialDraft?.timedMinutes ?? null),
+      healthMetric: task?.healthMetric ?? null,
+      healthTarget: task?.healthTarget ?? null,
       pinned: task?.pinned ?? false,
       chainEnabled: task ? task.chainEnabled : (initialDraft?.chainEnabled ?? false),
       chainItems: task ? task.chainItems : (initialDraft?.chainItems ?? []),
@@ -1024,6 +1044,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceFromCompletion,
       sortOrder: task?.sortOrder ?? 0,
       pinned, priority, effort, estimatedMinutes, actualMinutes, timedMinutes,
+      healthMetric, healthTarget,
       // A chain needs at least 2 steps — activeChainStep() (src/utils/chain.ts)
       // already treats a single-item chain as equivalent to a plain task, so
       // saving with fewer than 2 items quietly turns Chain back off rather
@@ -1257,7 +1278,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
    * arrived from a template, an import or an older build reads as whatever it
    * already is, and there's nothing to migrate or keep in step.
    */
-  const kind = taskKindOf({ chainEnabled, targetCount, timedMinutes });
+  const kind = taskKindOf({ chainEnabled, targetCount, timedMinutes, healthMetric, healthTarget });
 
   // What the supply card reads back: the day the last unit gets spent, and the
   // day an order has to go in to beat it.
@@ -1309,12 +1330,22 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       kindMemory.current.targetUnit = targetUnit;
     }
     if (chainItems.length > 0) kindMemory.current.chainItems = chainItems;
+    if (healthMetric !== null) {
+      kindMemory.current.healthMetric = healthMetric;
+      kindMemory.current.healthTarget = healthTarget;
+    }
 
     const baked = bakedFields(next, {
       timedMinutes: kindMemory.current.timedMinutes ?? DEFAULT_TIMED_MINUTES,
       targetCount: kindMemory.current.targetCount ?? DEFAULT_TARGET_COUNT,
       targetUnit: kindMemory.current.targetUnit,
       chainItems: kindMemory.current.chainItems,
+      // Defaulted the way the other kinds are, so picking Health lands on a
+      // goal rather than on an empty row: steps, because it is the reading
+      // every iPhone has without a Watch.
+      healthMetric: kindMemory.current.healthMetric ?? 'steps',
+      healthTarget: kindMemory.current.healthTarget
+        ?? HEALTH_TARGET_RANGES[kindMemory.current.healthMetric ?? 'steps'].default,
       recurrenceType,
       effort,
       estimatedMinutes,
@@ -1325,6 +1356,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       ? apportionedMinutes(task ? subtasksOf(task.id) : draftSubtasks)
       : null;
     setTimedMinutes(apportioned ?? baked.timedMinutes);
+    setHealthMetric(baked.healthMetric);
+    setHealthTarget(baked.healthTarget);
     setTargetCount(baked.targetCount);
     setTargetUnit(baked.targetUnit ?? '');
     setChainEnabled(baked.chainEnabled);
@@ -1574,7 +1607,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       recurrenceType, recurrenceInterval, recurrenceDays, recurrenceMonthDay, recurrenceWeekOrdinal, recurrenceFromCompletion,
       recurrenceEndDate: recurrenceEndDate?.toISOString() ?? null,
       recurrenceCount,
-      priority, effort, estimatedMinutes, actualMinutes, timedMinutes, pinned, chainEnabled, chainItems, chainIndex, chainStepOnSchedule, vacationPause,
+      priority, effort, estimatedMinutes, actualMinutes, timedMinutes, healthMetric, healthTarget, pinned, chainEnabled, chainItems, chainIndex, chainStepOnSchedule, vacationPause,
       excludeFromSuggestions,
       polarity,
       showStreak,
@@ -2615,6 +2648,66 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     </TouchableOpacity>
                   )}
                 </>
+              )}
+            </>),
+          }] : []),
+          ...(kind === 'health' ? [{
+            key: 'healthTarget', label: 'Health target', set: true,
+            keywords: ['apple health', 'steps', 'sleep', 'walk', 'goal', 'ready', 'number', 'fitness'],
+            node: (<>
+              <EditorRow
+                icon="footsteps-outline"
+                label="Health target"
+                // Says what it will and will not do, in that order, because the
+                // second half is the part somebody would otherwise assume. This
+                // hint is the only in-app documentation the kind has.
+                hint="The task reads as ready once Apple Health reaches this today. It is never checked off for you."
+                value={healthTarget !== null && healthMetric !== null
+                  ? (healthMetric === 'steps'
+                    ? `${healthTarget.toLocaleString()} steps`
+                    : `${healthTarget} ${healthTarget === 1 ? 'hour' : 'hours'} asleep`)
+                  : undefined}
+                expanded={showHealthTarget}
+                onPress={() => { animateLayout(); setShowHealthTarget(v => !v); }}
+              />
+              {showHealthTarget && (
+                <View style={styles.healthTargetControls}>
+                  <SegmentedControl<HealthMetric>
+                    options={[
+                      { value: 'steps', label: healthMetricLabel('steps') },
+                      { value: 'sleepHours', label: healthMetricLabel('sleepHours') },
+                    ]}
+                    value={healthMetric ?? 'steps'}
+                    onChange={next => {
+                      haptics.tap();
+                      setHealthMetric(next);
+                      // Re-defaulted rather than clamped, unlike the rules
+                      // sheet: there the number somebody typed is the rule and
+                      // is worth keeping in range, where here switching from
+                      // 8,000 steps to hours means they have changed their mind
+                      // about the goal, and 12 hours of sleep is not it.
+                      setHealthTarget(HEALTH_TARGET_RANGES[next].default);
+                    }}
+                    label="Reading"
+                    surface="card"
+                  />
+                  <CountStepper
+                    value={healthTarget}
+                    onChange={next => setHealthTarget(
+                      next ?? HEALTH_TARGET_RANGES[healthMetric ?? 'steps'].default,
+                    )}
+                    min={HEALTH_TARGET_RANGES[healthMetric ?? 'steps'].min}
+                    max={HEALTH_TARGET_RANGES[healthMetric ?? 'steps'].max}
+                    step={HEALTH_TARGET_RANGES[healthMetric ?? 'steps'].step}
+                    format={n => (healthMetric === 'sleepHours'
+                      ? `${n} ${n === 1 ? 'hr' : 'hrs'}`
+                      : n.toLocaleString())}
+                    label="Health target"
+                    describeValue={n => (healthMetric === 'sleepHours'
+                      ? `${n} hours asleep`
+                      : `${n} steps`)}
+                  />
+                </View>
               )}
             </>),
           }] : []),
@@ -4884,6 +4977,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   targetStepperRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.xs,
+  },
+  /** The metric track and its stepper, stacked. */
+  healthTargetControls: {
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,
   },
   /** The static words either side of a stepper, e.g. "Every [4th] completion". */
   stepperSentence: { color: colors.textSecondary, fontSize: font.md },

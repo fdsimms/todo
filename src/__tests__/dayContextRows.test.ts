@@ -5,6 +5,7 @@ import {
   eventContextRows,
   mealContextRows,
   kitchenContextRows,
+  healthContextRows,
   plannedUsesToday,
   insertContextRows,
   withoutContextRows,
@@ -471,5 +472,61 @@ describe('plannedUsesToday', () => {
       new Map([[soup.id, soup]]),
     );
     expect(uses.size).toBe(0);
+  });
+});
+
+describe('healthContextRows', () => {
+  const TODAY = '2026-08-13';
+  const opts = { todayKey: TODAY, category: 'Health' };
+
+  it('says the count, captioned as a running total', () => {
+    const rows = healthContextRows({ dayKey: TODAY, steps: 4120 }, opts);
+    expect(rows.map(r => [r.kind, r.title, r.caption]))
+      .toEqual([['health', '4,120 steps', 'So far today']]);
+  });
+
+  it('files under the category it is given, and carries no source', () => {
+    const [row] = healthContextRows({ dayKey: TODAY, steps: 900 }, opts);
+    expect(row.category).toBe('Health');
+    // The reading is about a day, not a row — there is nothing to point at.
+    expect(row.sourceId).toBe('');
+    expect(row.now).toBe(false);
+    expect(row.calendarTag).toBeNull();
+  });
+
+  it('says nothing when there is no reading at all', () => {
+    expect(healthContextRows(null, opts)).toEqual([]);
+  });
+
+  it('says nothing about a reading from another day', () => {
+    // The store holds one day-keyed snapshot, and one taken before the day
+    // turned over is not an answer about this day.
+    expect(healthContextRows({ dayKey: '2026-08-12', steps: 9000 }, opts)).toEqual([]);
+  });
+
+  it('says nothing for a null count, which is also what a refusal looks like', () => {
+    // HealthKit serves a refused read as an empty store, so null covers "you
+    // said no" as well as "nothing recorded". A "No steps" row would be shown
+    // to exactly the people who declined.
+    expect(healthContextRows({ dayKey: TODAY, steps: null }, opts)).toEqual([]);
+  });
+
+  it('says nothing for zero, which is where every morning starts', () => {
+    // The bridge keeps a real 0 truthfully; the row declines to exist for it.
+    // Zero steps is not context about a day, and in practice it is also the
+    // not-synced-yet state.
+    expect(healthContextRows({ dayKey: TODAY, steps: 0 }, opts)).toEqual([]);
+  });
+
+  it('does not say "1 steps"', () => {
+    expect(healthContextRows({ dayKey: TODAY, steps: 1 }, opts)[0].title).toBe('1 step');
+  });
+
+  it('lands in the loose group when no category is set, like every other kind', () => {
+    // The screen drops the row before it gets here in that case — the category
+    // is the row's off switch — but the builder itself stays kind-blind about
+    // it, exactly as eventContextRows does.
+    const [row] = healthContextRows({ dayKey: TODAY, steps: 12 }, { ...opts, category: null });
+    expect(row.category).toBeNull();
   });
 });

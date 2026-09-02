@@ -1295,6 +1295,12 @@ export function initDatabase(): void {
     // Task.slipCount, and slipsToday() for why the pair travels together.
     'ALTER TABLE tasks ADD COLUMN slip_count INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN slip_date TEXT',
+    // NULL on every existing row, which is exactly "not a health-target task" —
+    // the pair travels together and neither means anything alone (see
+    // hasHealthTarget). No default, because a target nobody set is not a target
+    // of zero.
+    'ALTER TABLE tasks ADD COLUMN health_metric TEXT',
+    'ALTER TABLE tasks ADD COLUMN health_target INTEGER',
     // 0 on every existing row, deliberately: nominating a project as somewhere
     // to look for weekend plans is a statement nobody has made yet, and
     // backfilling it true would have the weekend nudge quoting projects at
@@ -2177,6 +2183,13 @@ function rowToTask(row: Record<string, unknown>): Task {
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
     actualMinutes: (row.actual_minutes as number | null) ?? null,
     timedMinutes: (row.timed_minutes as number | null) ?? null,
+    // Narrowed rather than cast: a column holding anything else is a row this
+    // build doesn't understand, and "not a health-target task" is the safe read
+    // of it — the alternative is a task whose readiness nothing can compute.
+    healthMetric: row.health_metric === 'steps' || row.health_metric === 'sleepHours'
+      ? row.health_metric
+      : null,
+    healthTarget: (row.health_target as number | null) ?? null,
     timerElapsedSeconds: (row.timer_elapsed_seconds as number | null) ?? 0,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
     seriesId: (row.series_id as string | null) ?? null,
@@ -2243,8 +2256,9 @@ export function dbInsertTask(task: Task): void {
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
-      prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
+      health_metric, health_target
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2319,6 +2333,8 @@ export function dbInsertTask(task: Task): void {
       task.polarity,
       task.slipCount,
       task.slipDate ?? null,
+      task.healthMetric ?? null,
+      task.healthTarget ?? null,
     ]
   );
 }
@@ -2345,7 +2361,8 @@ export function dbUpdateTask(task: Task): void {
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
       quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
-      prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?
+      prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
+      health_metric=?, health_target=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2421,6 +2438,8 @@ export function dbUpdateTask(task: Task): void {
       task.polarity,
       task.slipCount,
       task.slipDate ?? null,
+      task.healthMetric ?? null,
+      task.healthTarget ?? null,
       task.id,
     ]
   );

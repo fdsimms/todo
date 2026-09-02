@@ -135,6 +135,13 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // should meet the other, since "rules that add a task" is one idea and
   // reading them apart is how you learn only half of it.
   'screenTime',
+  // The eighteenth, beside the two rules that precede it and for their reason:
+  // all three are a list of rules the user wrote against something outside the
+  // app — the forecast, their own phone use, what Health recorded — and
+  // somebody meeting one in Settings should meet the others, since "rules that
+  // add a task" is one idea and reading them apart is how you learn a third of
+  // it.
+  'health',
   // The sixteenth and seventeenth, appended as a pair for the reason birthday
   // and birthdayGift sit together: one subject with two lead-ins. Nothing else
   // here reads the mood log, so there is no existing generator either belongs
@@ -198,6 +205,7 @@ export type GeneratedEnabledKey =
   | 'pantryReviewTasks'
   | 'weatherTasks'
   | 'screenTimeTasks'
+  | 'healthTasks'
   | 'moodLogTasks'
   | 'moodNudgeTasks'
   | 'weekendNudgeTasks';
@@ -599,6 +607,36 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Screen Time',
+  },
+  // The eighteenth, and the third rule-sourced one. Between its two
+  // neighbours: like weather the app holds the reading and decides for itself,
+  // and unlike weather the threshold is per rule, because the number *is* the
+  // rule (six hours and four hours are two different days). See
+  // src/utils/healthRules.ts.
+  //
+  // It needs a second switch on top of this one, which none of the others do:
+  // `healthReadEnabled`, since a generator that fires off Health data cannot
+  // run while the app is not allowed to read any. The rules sheet says so
+  // rather than leaving somebody with a switch that visibly does nothing.
+  //
+  // `categorized: true` with the same default name `ensureHealthCategory` uses,
+  // deliberately: `addCategory` is idempotent by name, so out of the box the
+  // reading and the tasks share one "Health" section, and the two settings stay
+  // independently clearable. Reusing `healthCategory` outright — the
+  // `calendarReview` move — would have coupled them, and "don't show my step
+  // count on Today" is not the same instruction as "don't add health tasks".
+  health: {
+    kind: 'health',
+    enabledKey: 'healthTasks',
+    label: 'Health tasks',
+    onHint: 'A rule adds its task on a day your Health reading falls short of it',
+    offHint: 'Health adds no tasks',
+    icon: 'footsteps-outline',
+    sourced: false,
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Health',
   },
   // Ships off, like pantryCheck, mealShortfall and birthdayGift, and for the
   // reason all three do: it adds a surface nobody had rather than replacing one
