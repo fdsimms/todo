@@ -5600,6 +5600,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             draft: () => ({
               title: MOOD_LOG_TITLE,
               dueDate: dueDate.toISOString(),
+              // Held back until a part of the day, if one is chosen — read
+              // once, here at creation, so changing the setting shapes the
+              // next check-in rather than reaching back to move the one
+              // already on today's list. Same rule checkCalendarReviewTasks
+              // states for calendarReviewTimeSegment.
+              timeSegments: settings.moodLogTimeSegment ? [settings.moodLogTimeSegment] : [],
               category: settings.moodLogTaskCategory,
               // The row's link button opens the sheet that answers it. Without
               // this the only thing to do with a check-in is tick it, which

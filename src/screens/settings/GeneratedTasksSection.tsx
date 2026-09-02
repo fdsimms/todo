@@ -307,8 +307,53 @@ export function GeneratedTasksSection() {
     if (spec.kind === 'calendarReview' && s.calendarReviewTimeSegment) {
       return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow's events`;
     }
+    if (spec.kind === 'moodLog' && s.moodLogTimeSegment) {
+      return `Adds one task a day, held back until ${s.moodLogTimeSegment}, to log how you're feeling`;
+    }
     return spec.onHint;
   };
+
+  /**
+   * The "Show the task" row and its pills, for a generator that holds its task
+   * back until a part of the day.
+   *
+   * Two generators want this and they want it identically, so it is written
+   * once — the copy this replaced had drifted nowhere yet only because it had
+   * just the one instance, and a second hand-rolled copy is how that starts.
+   * It stays a local helper rather than a registry field for the reason the
+   * header states: `extrasFor` is JSX precisely so the knobs one generator has
+   * don't have to be expressible in config.
+   */
+  const timeSegmentExtra = (
+    entryId: string,
+    value: TimeOfDay | null,
+    onChange: (segment: TimeOfDay | null) => void,
+  ): React.ReactNode => (
+    <>
+      <View style={styles.sep} />
+      <SettingsRow
+        entryId={entryId}
+        icon="time-outline"
+        label="Show the task"
+        hint="Held back until this part of the day arrives, same as a task's own Time of day field."
+        value={timeSegmentChoices.find(o => o.value === value)?.label ?? 'Any time'}
+        tight
+      />
+      <View style={styles.pillGroupRow}>
+        <PillGroup
+          noun="time of day"
+          options={timeSegmentChoices.map(o => ({
+            key: String(o.value),
+            label: o.label,
+            selected: o.value === value,
+            pinned: o.value === null,
+            accessibilityLabel: `Show the task ${o.value === null ? 'any time of day' : `in the ${o.label.toLowerCase()}`}`,
+            onPress: () => { haptics.tap(); onChange(o.value); },
+          }))}
+        />
+      </View>
+    </>
+  );
 
   /** The controls only one generator has. Everything else is the same two rows. */
   const extrasFor = (kind: GeneratedKind): React.ReactNode => {
@@ -538,34 +583,11 @@ export function GeneratedTasksSection() {
     }
 
     if (kind === 'calendarReview') {
-      return (
-        <>
-          <View style={styles.sep} />
-          <SettingsRow
-            entryId="calendarReviewTimeSegment"
-            icon="time-outline"
-            label="Show the task"
-            hint="Held back until this part of the day arrives, same as a task's own Time of day field."
-            value={
-              timeSegmentChoices.find(o => o.value === s.calendarReviewTimeSegment)?.label ?? 'Any time'
-            }
-            tight
-          />
-          <View style={styles.pillGroupRow}>
-            <PillGroup
-              noun="time of day"
-              options={timeSegmentChoices.map(o => ({
-                key: String(o.value),
-                label: o.label,
-                selected: o.value === s.calendarReviewTimeSegment,
-                pinned: o.value === null,
-                accessibilityLabel: `Show the task ${o.value === null ? 'any time of day' : `in the ${o.label.toLowerCase()}`}`,
-                onPress: () => { haptics.tap(); s.setCalendarReviewTimeSegment(o.value); },
-              }))}
-            />
-          </View>
-        </>
-      );
+      return timeSegmentExtra('calendarReviewTimeSegment', s.calendarReviewTimeSegment, s.setCalendarReviewTimeSegment);
+    }
+
+    if (kind === 'moodLog') {
+      return timeSegmentExtra('moodLogTimeSegment', s.moodLogTimeSegment, s.setMoodLogTimeSegment);
     }
 
     if (kind === 'weather') {
