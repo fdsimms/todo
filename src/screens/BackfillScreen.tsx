@@ -90,6 +90,9 @@ const CATEGORY_FIELD_ICONS: Record<CategoryBackfillFieldId, { row: keyof typeof 
 // to reach for the way the toggle fields do.
 const PROJECT_FIELD_ICONS: Record<ProjectBackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   nudge: 'notifications-outline',
+  // Matches the generator's own Settings row and the ProjectEditor toggle: one
+  // idea wearing one glyph, rather than a third for the same switch.
+  weekendSource: 'sunny-outline',
 };
 
 // Neither person field with a value picker has a filled/outline pair to
@@ -675,6 +678,26 @@ export function BackfillScreen() {
       itemId: projectId,
       title: currentProject.title,
       valueText: describeCadence(fields.nudgeCadenceDays),
+      undo: () => updateProject(projectId, before),
+    });
+  };
+
+  // A plain flag, so unlike applyNudge above there is no draft to commit and
+  // the undo is the one field. Doesn't call advance() either: setting the value
+  // is what drops the project out of the live queue.
+  const applyWeekendSource = () => {
+    if (!currentProject) return;
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    const projectId = currentProject.id;
+    const before = { weekendSource: currentProject.weekendSource };
+    updateProject(projectId, { weekendSource: true });
+    logSession({
+      itemId: projectId,
+      title: currentProject.title,
+      valueText: 'Suggested for a free weekend',
       undo: () => updateProject(projectId, before),
     });
   };
@@ -1730,43 +1753,61 @@ export function BackfillScreen() {
               </View>
             </View>
 
-            <View style={styles.cadenceRow}>
-              <View style={styles.cadenceStepperRow}>
-                <CountStepper
-                  value={nudgeDraft.count}
-                  onChange={next => setNudgeDraft(prev => ({ ...prev, count: next }))}
-                  min={1}
-                  max={CADENCE_UNIT_MAX[nudgeDraft.unit]}
-                  label="Review cadence"
-                  describeValue={n => describeCadence(fromCadenceParts({ ...nudgeDraft, count: n }))}
-                />
+            {/* `nudge` commits a value, so it needs the stepper and its unit
+                pills; `weekendSource` is a plain flag and gets the one button
+                the task-side toggle fields use. Branching here rather than
+                giving every project field a stepper it has no use for. */}
+            {active.id === 'nudge' ? (
+              <View style={styles.cadenceRow}>
+                <View style={styles.cadenceStepperRow}>
+                  <CountStepper
+                    value={nudgeDraft.count}
+                    onChange={next => setNudgeDraft(prev => ({ ...prev, count: next }))}
+                    min={1}
+                    max={CADENCE_UNIT_MAX[nudgeDraft.unit]}
+                    label="Review cadence"
+                    describeValue={n => describeCadence(fromCadenceParts({ ...nudgeDraft, count: n }))}
+                  />
+                </View>
+                <View style={styles.pillRow}>
+                  {CADENCE_UNITS.map(unit => {
+                    const unitSelected = nudgeDraft.unit === unit;
+                    return (
+                      <PressableScale
+                        key={unit}
+                        style={[styles.pill, unitSelected && styles.pillActive]}
+                        onPress={() => { haptics.tap(); setNudgeDraft(prev => withCadenceUnit(prev, unit)); }}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: unitSelected }}
+                      >
+                        <Text style={styles.pillText}>{cadenceUnitLabel(unit)}</Text>
+                      </PressableScale>
+                    );
+                  })}
+                </View>
+                <PressableScale
+                  style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
+                  onPress={applyNudge}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Bring this project up every ${describeCadence(fromCadenceParts(nudgeDraft))}`}
+                >
+                  <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
+                  <Text style={styles.toggleButtonText}>Bring it up this often</Text>
+                </PressableScale>
               </View>
-              <View style={styles.pillRow}>
-                {CADENCE_UNITS.map(unit => {
-                  const unitSelected = nudgeDraft.unit === unit;
-                  return (
-                    <PressableScale
-                      key={unit}
-                      style={[styles.pill, unitSelected && styles.pillActive]}
-                      onPress={() => { haptics.tap(); setNudgeDraft(prev => withCadenceUnit(prev, unit)); }}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected: unitSelected }}
-                    >
-                      <Text style={styles.pillText}>{cadenceUnitLabel(unit)}</Text>
-                    </PressableScale>
-                  );
-                })}
+            ) : (
+              <View style={styles.cadenceRow}>
+                <PressableScale
+                  style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
+                  onPress={applyWeekendSource}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Let the weekend task name "${currentProject.title}"`}
+                >
+                  <Ionicons name="sunny" size={iconSize.md} color={colors.onAccent} />
+                  <Text style={styles.toggleButtonText}>Suggest it for a free weekend</Text>
+                </PressableScale>
               </View>
-              <PressableScale
-                style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
-                onPress={applyNudge}
-                accessibilityRole="button"
-                accessibilityLabel={`Bring this project up every ${describeCadence(fromCadenceParts(nudgeDraft))}`}
-              >
-                <Ionicons name="notifications" size={iconSize.md} color={colors.onAccent} />
-                <Text style={styles.toggleButtonText}>Bring it up this often</Text>
-              </PressableScale>
-            </View>
+            )}
 
             <View style={styles.actionRow}>
               <PressableScale

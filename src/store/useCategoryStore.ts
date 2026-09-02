@@ -342,6 +342,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'moodLogTaskCategory', current: s.moodLogTaskCategory, assign: s.setMoodLogTaskCategory };
     case 'moodNudge':
       return { key: 'moodNudgeTaskCategory', current: s.moodNudgeTaskCategory, assign: s.setMoodNudgeTaskCategory };
+    case 'weekendNudge':
+      return { key: 'weekendNudgeTaskCategory', current: s.weekendNudgeTaskCategory, assign: s.setWeekendNudgeTaskCategory };
   }
 }
 
@@ -370,6 +372,7 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'health': return s.healthTasks && s.healthReadEnabled;
     case 'moodLog': return s.moodLogTasks;
     case 'moodNudge': return s.moodNudgeTasks;
+    case 'weekendNudge': return s.weekendNudgeTasks;
   }
 }
 

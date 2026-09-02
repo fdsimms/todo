@@ -1301,6 +1301,17 @@ export function initDatabase(): void {
     // of zero.
     'ALTER TABLE tasks ADD COLUMN health_metric TEXT',
     'ALTER TABLE tasks ADD COLUMN health_target INTEGER',
+    // 0 on every existing row, deliberately: nominating a project as somewhere
+    // to look for weekend plans is a statement nobody has made yet, and
+    // backfilling it true would have the weekend nudge quoting projects at
+    // people who never picked one. Same reasoning as nudge_opt_in above.
+    // See Project.weekendSource.
+    'ALTER TABLE projects ADD COLUMN weekend_source INTEGER NOT NULL DEFAULT 0',
+    // 0 on every existing row: an extra-task rule written before this shipped
+    // added one every Nth completion regardless of what was still outstanding,
+    // and backfilling it true would quietly stop rules firing for people who
+    // never asked for that. See Task.extraTaskOneAtATime.
+    'ALTER TABLE tasks ADD COLUMN extra_task_one_at_a_time INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2164,6 +2175,7 @@ function rowToTask(row: Record<string, unknown>): Task {
     extraTaskEveryN: (row.extra_task_every_n as number | null) ?? null,
     extraTaskTitle: (row.extra_task_title as string | null) ?? null,
     extraTaskDraft: parseExtraTaskDraft(row.extra_task_draft as string | null),
+    extraTaskOneAtATime: row.extra_task_one_at_a_time === 1,
     extraTaskTally: (row.extra_task_tally as number) ?? 0,
     previousExtraTaskTally: (row.previous_extra_task_tally as number) ?? 0,
     vacationPause: Boolean(row.vacation_pause),
@@ -2237,7 +2249,7 @@ export function dbInsertTask(task: Task): void {
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, generated_kind,
       generated_source_id, postpone_count, postpone_muted, drifting_since,
-      extra_task_every_n, extra_task_title, extra_task_draft, extra_task_tally, previous_extra_task_tally,
+      extra_task_every_n, extra_task_title, extra_task_draft, extra_task_one_at_a_time, extra_task_tally, previous_extra_task_tally,
       deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id, time_block_event_id,
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
@@ -2246,7 +2258,7 @@ export function dbInsertTask(task: Task): void {
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
       health_metric, health_target
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2289,6 +2301,7 @@ export function dbInsertTask(task: Task): void {
       task.extraTaskEveryN ?? null,
       task.extraTaskTitle ?? null,
       task.extraTaskDraft ? JSON.stringify(task.extraTaskDraft) : null,
+      task.extraTaskOneAtATime ? 1 : 0,
       task.extraTaskTally,
       task.previousExtraTaskTally,
       task.deliverableKind ?? null,
@@ -2341,7 +2354,7 @@ export function dbUpdateTask(task: Task): void {
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, generated_kind=?,
       generated_source_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
-      extra_task_every_n=?, extra_task_title=?, extra_task_draft=?, extra_task_tally=?, previous_extra_task_tally=?,
+      extra_task_every_n=?, extra_task_title=?, extra_task_draft=?, extra_task_one_at_a_time=?, extra_task_tally=?, previous_extra_task_tally=?,
       deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?, time_block_event_id=?,
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
@@ -2393,6 +2406,7 @@ export function dbUpdateTask(task: Task): void {
       task.extraTaskEveryN ?? null,
       task.extraTaskTitle ?? null,
       task.extraTaskDraft ? JSON.stringify(task.extraTaskDraft) : null,
+      task.extraTaskOneAtATime ? 1 : 0,
       task.extraTaskTally,
       task.previousExtraTaskTally,
       task.deliverableKind ?? null,
@@ -4785,6 +4799,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     nudgeCadenceDays: (row.nudge_cadence_days as number | null) ?? DEFAULT_NUDGE_CADENCE_DAYS,
     autoSchedule: Boolean(row.auto_schedule),
     nudgeOptIn: Boolean(row.nudge_opt_in),
+    weekendSource: Boolean(row.weekend_source),
     reviewDeclinedAt: (row.review_declined_at as string) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
     // Anything unrecognised reads as an ordinary project rather than throwing:
@@ -4801,12 +4816,13 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, review_declined_at, backfill_dismissed_fields, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, backfill_dismissed_fields, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0, project.createdAt,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
+      project.weekendSource ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
     ]
   );
@@ -4814,12 +4830,13 @@ export function dbInsertProject(project: Project): void {
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, review_declined_at=?, backfill_dismissed_fields=?, kind=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, backfill_dismissed_fields=?, kind=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
+      project.weekendSource ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind, project.id,
     ]
   );

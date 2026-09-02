@@ -435,6 +435,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [extraTaskEveryN, setExtraTaskEveryN] = useState<number | null>(null);
   const [extraTaskTitle, setExtraTaskTitle] = useState('');
   const [extraTaskDraft, setExtraTaskDraft] = useState<ExtraTaskDraft | null>(null);
+  const [extraTaskOneAtATime, setExtraTaskOneAtATime] = useState(false);
   const [showExtraTaskSheet, setShowExtraTaskSheet] = useState(false);
   const [showExtraTask, setShowExtraTask] = useState(false);
   // Just the blocker's title, for the row's value. Selecting the one task
@@ -669,6 +670,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setExtraTaskEveryN(task.extraTaskEveryN ?? null);
       setExtraTaskTitle(task.extraTaskTitle ?? '');
       setExtraTaskDraft(task.extraTaskDraft ?? null);
+      setExtraTaskOneAtATime(task.extraTaskOneAtATime ?? false);
     } else {
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
@@ -701,6 +703,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setDeliverableKind(null);
       setExtraTaskEveryN(null);
       setExtraTaskTitle('');
+      setExtraTaskOneAtATime(false);
     }
     setShowExtraTask(false);
     setShowBlockerPicker(false);
@@ -803,6 +806,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       extraTaskEveryN: task?.extraTaskEveryN ?? null,
       extraTaskTitle: task?.extraTaskTitle ?? '',
       extraTaskDraft: task?.extraTaskDraft ?? null,
+      extraTaskOneAtATime: task?.extraTaskOneAtATime ?? false,
     });
   }, [visible, task]);
 
@@ -1089,6 +1093,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // rule left there is no task for it to describe, and a draft stranded
       // on the row would come back the moment a count and a name did.
       extraTaskDraft: resolvedExtraTaskTitle && extraTaskEveryN !== null ? extraTaskDraft : null,
+      // Cleared alongside the draft when the rule isn't live, for the same
+      // reason: a condition on a rule that can't fire is a setting that reads
+      // as doing something and isn't.
+      extraTaskOneAtATime: resolvedExtraTaskTitle && extraTaskEveryN !== null ? extraTaskOneAtATime : false,
     };
 
     // The whole set of dates this task falls on, earliest first. A single
@@ -1614,6 +1622,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       extraTaskEveryN,
       extraTaskTitle,
       extraTaskDraft,
+      extraTaskOneAtATime,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -3794,7 +3803,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
           }]),
           {
             key: 'extraTask', label: 'Extra task', set: extraTaskEveryN !== null,
-            keywords: ['every', 'nth', 'occasionally', 'periodic', 'follow-up', 'maintenance'],
+            keywords: ['every', 'nth', 'occasionally', 'periodic', 'follow-up', 'maintenance',
+              'one at a time', 'duplicate', 'pile up', 'vacation', 'away'],
             node: (
               <>
             <EditorRow
@@ -3902,6 +3912,27 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       onPress={() => setShowExtraTaskSheet(true)}
                       onClear={extraTaskDraft ? () => setExtraTaskDraft(null) : undefined}
                     />
+                    <TouchableOpacity
+                      style={[styles.optionRow, styles.extraTaskOptionRow]}
+                      onPress={() => { haptics.tap(); setExtraTaskOneAtATime(v => !v); }}
+                      activeOpacity={interaction.activeOpacity}
+                      accessibilityRole="switch"
+                      accessibilityLabel="Only one at a time"
+                      accessibilityState={{ checked: extraTaskOneAtATime }}
+                    >
+                      <Ionicons
+                        name="layers-outline"
+                        size={18}
+                        color={extraTaskOneAtATime ? colors.accent : colors.textSecondary}
+                      />
+                      <View style={styles.optionContent}>
+                        <Text style={styles.optionLabel}>Only one at a time</Text>
+                        <Text style={styles.optionHint}>Skip it while the last one is outstanding</Text>
+                      </View>
+                      <View style={[styles.toggle, extraTaskOneAtATime && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, extraTaskOneAtATime && styles.toggleKnobOn]} />
+                      </View>
+                    </TouchableOpacity>
                   </View>
                 )}
               </>
@@ -4972,6 +5003,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
    */
   extraTaskDetailsIndent: {
     marginLeft: spacing.md,
+    borderTopWidth: border.hairline, borderTopColor: colors.separator,
+  },
+  // The same hairline the indent carries at its top, rather than the editor's
+  // `sep`: that one insets past the icon to sit under the label, which inside
+  // a block already indented by spacing.md lands the line halfway across the
+  // row.
+  extraTaskOptionRow: {
     borderTopWidth: border.hairline, borderTopColor: colors.separator,
   },
   /**

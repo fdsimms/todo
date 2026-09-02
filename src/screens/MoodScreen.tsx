@@ -172,17 +172,28 @@ export function MoodScreen() {
   // logged days together would draw a fortnight of entries out of four.
   const chart = useMemo(() => {
     const byDay = new Map(days.map(d => [d.dayKey, d]));
-    const out: { key: string; label: string; mood: number | null; today: boolean }[] = [];
+    const out: { key: string; label: string; a11y: string; mood: number | null; today: boolean }[] = [];
     const cursor = getCurrentDayStart();
     for (let i = CHART_DAYS - 1; i >= 0; i--) {
       const date = new Date(cursor);
       date.setDate(date.getDate() - i);
       const key = dayKeyOf(date);
+      const mood = byDay.get(key)?.mood ?? null;
+      const today = key === todayKey;
       out.push({
         key,
         label: format(date, 'EEEEE'),
-        mood: byDay.get(key)?.mood ?? null,
-        today: key === todayKey,
+        // Each column is its own accessibility element, so the value and the
+        // "nothing logged" state — which are a bar height and a 2px baseline on
+        // screen, and so invisible to VoiceOver — are read out per day. Fourteen
+        // elements is the trade: a single summary would lose exactly the two
+        // things the chart is drawn to show. The date is spelled out because a
+        // weekday initial ("W") is what the chart reads as without it.
+        a11y: `${today ? 'Today, ' : ''}${format(date, 'EEEE d MMMM')}, ${
+          mood === null ? 'nothing logged' : `mood ${mood.toFixed(1)} out of 5`
+        }`,
+        mood,
+        today,
       });
     }
     return out;
@@ -242,16 +253,31 @@ export function MoodScreen() {
               styles={styles}
               value={summary.averageMood === null ? '—' : summary.averageMood.toFixed(1)}
               label="Average mood"
+              // The em dash is a drawn placeholder rather than a value, so it is
+              // spoken as the absence it stands for instead of as punctuation.
+              accessibilityLabel={summary.averageMood === null
+                ? 'Average mood, nothing logged yet'
+                : `Average mood, ${summary.averageMood.toFixed(1)} out of 5`}
             />
-            <Stat styles={styles} value={String(summary.streak)} label="Day streak" />
-            <Stat styles={styles} value={String(summary.lowDays)} label="Low days" />
+            <Stat
+              styles={styles}
+              value={String(summary.streak)}
+              label="Day streak"
+              accessibilityLabel={`Day streak, ${summary.streak} ${summary.streak === 1 ? 'day' : 'days'}`}
+            />
+            <Stat
+              styles={styles}
+              value={String(summary.lowDays)}
+              label="Low days"
+              accessibilityLabel={`Low days, ${summary.lowDays}`}
+            />
           </View>
 
           <Text style={styles.sectionTitle}>THE LAST TWO WEEKS</Text>
           <View style={styles.card}>
             <View style={styles.chartInner}>
-              {chart.map(({ key, label, mood, today }) => (
-                <View key={key} style={styles.chartCol}>
+              {chart.map(({ key, label, a11y, mood, today }) => (
+                <View key={key} style={styles.chartCol} accessible accessibilityLabel={a11y}>
                   <View style={styles.barTrack}>
                     <View
                       style={[
@@ -297,11 +323,19 @@ export function MoodScreen() {
             )}
             {completion.completedOnGoodDays !== null && completion.completedOnLowDays !== null && (
               <View style={styles.splitRow}>
-                <View style={styles.splitCell}>
+                <View
+                  style={styles.splitCell}
+                  accessible
+                  accessibilityLabel={`${completion.completedOnGoodDays.toFixed(1)} tasks finished a day when your mood was good`}
+                >
                   <Text style={styles.splitValue}>{completion.completedOnGoodDays.toFixed(1)}</Text>
                   <Text style={styles.splitLabel}>a day when good</Text>
                 </View>
-                <View style={styles.splitCell}>
+                <View
+                  style={styles.splitCell}
+                  accessible
+                  accessibilityLabel={`${completion.completedOnLowDays.toFixed(1)} tasks finished a day when your mood was low`}
+                >
                   <Text style={styles.splitValue}>{completion.completedOnLowDays.toFixed(1)}</Text>
                   <Text style={styles.splitLabel}>a day when low</Text>
                 </View>
@@ -352,7 +386,15 @@ export function MoodScreen() {
               <Text style={styles.sectionTitle}>MOOD BY KIND OF WORK</Text>
               <View style={styles.card}>
                 {categoryRows.map(row => (
-                  <View key={row.label} style={styles.contrastRow}>
+                  <View
+                    key={row.label}
+                    style={styles.contrastRow}
+                    accessible
+                    // "1.8 vs 3.9" says nothing about what is being compared,
+                    // and the caption carrying that is a separate element three
+                    // rows down. Each row states its own comparison instead.
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you finished something in that category, ${row.moodWithout.toFixed(1)} on days you didn't`}
+                  >
                     <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
                     <Text style={styles.contrastValue}>
                       {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
@@ -371,7 +413,12 @@ export function MoodScreen() {
               <Text style={styles.sectionTitle}>MOOD WITH SYMPTOMS</Text>
               <View style={styles.card}>
                 {symptomRows.map(row => (
-                  <View key={row.label} style={styles.contrastRow}>
+                  <View
+                    key={row.label}
+                    style={styles.contrastRow}
+                    accessible
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you logged it, ${row.moodWithout.toFixed(1)} on days you didn't`}
+                  >
                     <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
                     <Text style={styles.contrastValue}>
                       {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
@@ -390,7 +437,12 @@ export function MoodScreen() {
               <Text style={styles.sectionTitle}>MOOD BY TIME OF DAY</Text>
               <View style={styles.card}>
                 {timeRows.map(row => (
-                  <View key={row.segment} style={styles.contrastRow}>
+                  <View
+                    key={row.segment}
+                    style={styles.contrastRow}
+                    accessible
+                    accessibilityLabel={`${row.segment}, average mood ${row.mood.toFixed(1)} across ${row.entryCount} ${row.entryCount === 1 ? 'entry' : 'entries'}`}
+                  >
                     <Text style={styles.contrastLabel}>
                       {row.segment.charAt(0).toUpperCase() + row.segment.slice(1)}
                     </Text>
@@ -447,13 +499,23 @@ export function MoodScreen() {
   );
 }
 
-function Stat({ styles, value, label }: {
+/**
+ * One number and what it counts.
+ *
+ * The two `Text` nodes are a single accessibility element: read separately they
+ * are "3.2" and "Average mood" with nothing joining them, and a row of three
+ * tiles is six unrelated announcements. The caller supplies the sentence rather
+ * than it being stitched from `value` here, because the drawn value is
+ * shorthand — "—" for nothing logged, a bare count for a number of days.
+ */
+function Stat({ styles, value, label, accessibilityLabel }: {
   styles: ReturnType<typeof makeStyles>;
   value: string;
   label: string;
+  accessibilityLabel: string;
 }) {
   return (
-    <View style={styles.statCell}>
+    <View style={styles.statCell} accessible accessibilityLabel={accessibilityLabel}>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statLabel}>{label}</Text>
     </View>

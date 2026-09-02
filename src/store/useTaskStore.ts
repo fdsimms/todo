@@ -89,6 +89,20 @@ import { generatedBy, generatedSourceOf, generatedTaskCountOf, hasAnyGeneratedTa
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
+import {
+  WEEKEND_NUDGE_TITLE,
+  isWeekendBare,
+  staleWeekendNudgeTasks,
+  upcomingWeekend,
+  wantsWeekendNudge,
+  weekendNudgeLinkUrl,
+  weekendNudgeNotes,
+  weekendNudgeWeekendKey,
+  weekendPlanCount,
+  weekendSourceProjects,
+} from '../utils/weekendTasks';
+import { buildDayBuckets } from '../utils/calendarMonth';
+import { buildDayLoads } from '../utils/dayLoad';
 import { hasLogOnDay } from '../utils/moodLog';
 import { useMoodStore } from './useMoodStore';
 import { eventsIn } from '../utils/calendarBusy';
@@ -115,7 +129,7 @@ import {
   supplyReorderSourceId,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
@@ -133,7 +147,9 @@ import {
   driftingTasks,
   type DriftEntry,
 } from '../utils/postpone';
-import { extraTaskRule, advanceExtraTaskTally } from '../utils/extraTask';
+import { extraTaskRule, advanceExtraTaskTally, extraTaskSuppressedBy } from '../utils/extraTask';
+import type { ExtraTaskSuppression } from '../utils/extraTask';
+import { normalizeTitle } from '../utils/taskInstances';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { registerPersonTaskSource } from '../utils/peopleRegistry';
@@ -479,6 +495,7 @@ function newTaskFromDraft(
     extraTaskEveryN: draft.extraTaskEveryN ?? null,
     extraTaskTitle: draft.extraTaskTitle ?? null,
     extraTaskDraft: draft.extraTaskDraft ?? null,
+    extraTaskOneAtATime: draft.extraTaskOneAtATime ?? false,
     vacationPause: draft.vacationPause ?? false,
     excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
@@ -1646,6 +1663,8 @@ interface TaskStore extends UndoHistoryActions {
    * days, one to plan something you enjoy. See src/utils/moodTasks.ts.
    */
   checkMoodTasks: () => void;
+  /** The bare-weekend offer — see src/utils/weekendTasks.ts. */
+  checkWeekendNudgeTasks: () => void;
   /**
    * Tick off today's "Log how you're feeling" task, if one is live.
    *
@@ -3014,7 +3033,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const extraAdvance = extraRule && !missed && !neutral && advancesBySchedule
       ? advanceExtraTaskTally(task.extraTaskTally, extraRule.everyN)
       : null;
-    const nextExtraTally = extraAdvance ? extraAdvance.tally : task.extraTaskTally;
+    // Why an earned spawn might not happen — vacation, or one of its own
+    // still outstanding. Asked only when the advance actually fires, so the
+    // roster scan below costs nothing on the other N-1 completions.
+    //
+    // "Still outstanding" is matched on the normalized title rather than by
+    // walking back to the root of the previousOccurrenceId chain: the row
+    // that spawned this one is a different occurrence every time, and a
+    // chain root does not survive completedRetentionDays purging a middle
+    // occurrence. Same call cohortKeyOf makes in rhythms.ts, for the same
+    // reason. Renaming the added row therefore reads as a different piece of
+    // work and lets the next one through, which is the right answer anyway.
+    let extraSuppression: ExtraTaskSuppression | null = null;
+    if (extraRule && extraAdvance?.spawns) {
+      const wanted = normalizeTitle(extraRule.title);
+      extraSuppression = extraTaskSuppressedBy(
+        extraRule,
+        task.extraTaskOneAtATime,
+        useSettingsStore.getState().vacationMode,
+        get().tasks.some(t =>
+          !t.parentId && !t.completed && !t.archived && normalizeTitle(t.title) === wanted),
+      );
+    }
+    // A suppressed spawn leaves the tally exactly where it was rather than
+    // taking the reset it earned — see extraTaskSuppressedBy. The advance
+    // tests `>=`, so the first completion after the reason passes fires for
+    // real instead of starting another full N-completion wait.
+    const nextExtraTally = extraAdvance && !extraSuppression
+      ? extraAdvance.tally
+      : task.extraTaskTally;
 
     const completed: Task = {
       ...task,
@@ -3379,7 +3426,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // them.
     let extraTask: Task | null = null;
     let extraSubtasks: Task[] = [];
-    if (extraRule && extraAdvance?.spawns) {
+    if (extraRule && extraAdvance?.spawns && !extraSuppression) {
       const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
       const spec = extraRule.draft;
       extraTask = newTaskFromDraft({
@@ -3397,6 +3444,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         effort: spec?.effort,
         estimatedMinutes: spec?.estimatedMinutes ?? null,
         timeSegments: spec?.timeSegments ?? [],
+        // Written onto the row, not merely consulted at spawn time: a
+        // vacation that starts after this landed should hide it too, the
+        // same as any other paused row. See ExtraTaskDraft.vacationPause.
+        vacationPause: spec?.vacationPause ?? false,
         // Undo comes free: uncompleteTask deletes every uncompleted row
         // pointing back at the completion being undone, which is exactly the
         // scope wanted here — undoing the 4th practice takes the rosin task
@@ -5719,6 +5770,12 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             draft: () => ({
               title: MOOD_LOG_TITLE,
               dueDate: dueDate.toISOString(),
+              // Held back until a part of the day, if one is chosen — read
+              // once, here at creation, so changing the setting shapes the
+              // next check-in rather than reaching back to move the one
+              // already on today's list. Same rule checkCalendarReviewTasks
+              // states for calendarReviewTimeSegment.
+              timeSegments: settings.moodLogTimeSegment ? [settings.moodLogTimeSegment] : [],
               category: settings.moodLogTaskCategory,
               // The row's link button opens the sheet that answers it. Without
               // this the only thing to do with a check-in is tick it, which
@@ -5761,6 +5818,114 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         });
       }
     }
+    // No setLastAction, same reasoning as the other unattended passes: this is
+    // not something the user just did.
+  },
+
+  /**
+   * The weekend nudge — see `src/utils/weekendTasks.ts` for the five rules the
+   * pure half holds, which is where anything about *what* a bare weekend is
+   * belongs. This is only the plumbing: read the state, clear what has gone
+   * stale, then create at most one row.
+   *
+   * Clear-then-create, the ordering every generator whose trigger is time
+   * passing uses: a nudge whose weekend has arrived, or whose weekend the user
+   * has since filled, must go before this decides whether to write another, or
+   * the sweep that follows somebody acting on the row would find its own
+   * leftover and do nothing.
+   */
+  checkWeekendNudgeTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.weekendNudgeTasks || !settings.weekendNudgeTaskCategory) return;
+    // Gated like calendarReview, and for its reason rather than the general
+    // one: the busy half of this reading is the *real device calendar*, which
+    // demo mode must never read from or expose the existence of. The demo's own
+    // example row is seeded directly in demoSeed.ts.
+    if (isDemoModeActive()) return;
+
+    const tasks = get().tasks;
+    const today = getCurrentDayStart();
+    const window = upcomingWeekend(today);
+
+    // One walk for all three days, handed to both readings below so they cannot
+    // disagree about what lands on the weekend.
+    const buckets = buildDayBuckets(tasks, {
+      from: dayKeyToDate(window.fridayKey),
+      to: dayKeyToDate(window.sundayKey),
+      dayResetTime: settings.dayResetTime,
+    });
+    const taskById = new Map(tasks.map(t => [t.id, t]));
+    const calendar = useCalendarStore.getState();
+    const loads = buildDayLoads(
+      [dayKeyToDate(window.saturdayKey), dayKeyToDate(window.sundayKey)],
+      buckets,
+      {
+        taskById,
+        busyEvents: settings.calendarReadEnabled && calendar.loaded ? calendar.events : [],
+        busyWindow: calendar.windowStart && calendar.windowEnd
+          ? { start: new Date(calendar.windowStart), end: new Date(calendar.windowEnd) }
+          : null,
+        dayResetTime: settings.dayResetTime,
+      },
+    );
+    const bare = isWeekendBare(window, loads, weekendPlanCount(window, buckets, taskById));
+
+    // dropGeneratedTask rather than deleteGeneratedTaskQuietly, like
+    // projectReview's clear: this is the app tidying up after itself, and
+    // stamping an opt-out for it would be reading the app's own housekeeping as
+    // the user declining something.
+    for (const task of staleWeekendNudgeTasks(tasks, window, bare)) {
+      dropGeneratedTask('weekendNudge', weekendNudgeWeekendKey(task));
+    }
+
+    // Rule 6: the mood nudge already asked for the same thing, off a more
+    // specific signal. Read here rather than from a settings flag because what
+    // suppresses is a *live row*, not the generator being switched on — a nudge
+    // ticked off this morning stops standing in the way.
+    const moodNudgeLive = liveGeneratedTasksOfKind(tasks, 'moodNudge').length > 0;
+    if (!wantsWeekendNudge(today, window, bare, settings.weekendNudgeLastWeekendKey, {
+      leadDays: settings.weekendNudgeLeadDays,
+      moodNudgeLive,
+    })) return;
+    // Marked before the row is written, the order every day-keyed generator
+    // uses: with no source row to stamp a decline onto, this is the only thing
+    // standing between a swiped-away nudge and an identical one on the next
+    // foreground sweep.
+    settings.setWeekendNudgeLastWeekendKey(window.saturdayKey);
+
+    // The nominated project, and the one thing it would have you do. Read
+    // through `dripCandidate` rather than by picking a member off the project,
+    // so the task quoted here is the same one the pull sheet the row links to
+    // will offer first.
+    const nominated = weekendSourceProjects(useProjectStore.getState().projects)[0] ?? null;
+    const suggestion = nominated
+      ? {
+          projectId: nominated.id,
+          projectTitle: nominated.title,
+          candidateTitle: dripCandidate(nominated, tasks)?.title ?? null,
+        }
+      : null;
+
+    // Dated to the Friday rather than to today: the row is about the weekend,
+    // and a Thursday-dated task saying "make plans for the weekend" is one the
+    // user has to move themselves to get it out of Thursday's way.
+    const dueDate = dayKeyToDate(window.fridayKey);
+    dueDate.setHours(12, 0, 0, 0);
+
+    reconcileGeneratedTask({
+      kind: 'weekendNudge',
+      sourceId: window.saturdayKey,
+      wanted: true,
+      drift: () => null,
+      draft: () => ({
+        title: WEEKEND_NUDGE_TITLE,
+        notes: weekendNudgeNotes(suggestion),
+        dueDate: dueDate.toISOString(),
+        category: settings.weekendNudgeTaskCategory,
+        linkUrl: weekendNudgeLinkUrl(suggestion?.projectId ?? null),
+        ...generatedBy('weekendNudge', window.saturdayKey),
+      }),
+    });
     // No setLastAction, same reasoning as the other unattended passes: this is
     // not something the user just did.
   },
@@ -6172,6 +6337,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       extraTaskEveryN: null,
       extraTaskTitle: null,
       extraTaskDraft: null,
+      extraTaskOneAtATime: false,
       extraTaskTally: 0,
       previousExtraTaskTally: 0,
       vacationPause: false,
@@ -6365,6 +6531,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       extraTaskEveryN: null,
       extraTaskTitle: null,
       extraTaskDraft: null,
+      extraTaskOneAtATime: false,
       extraTaskTally: 0,
       previousExtraTaskTally: 0,
       vacationPause: false,

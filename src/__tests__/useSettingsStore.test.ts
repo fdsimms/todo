@@ -752,6 +752,38 @@ describe('calendarReviewTasks', () => {
   });
 });
 
+describe('moodLogTimeSegment', () => {
+  it('defaults to any time, so the check-in does not move for anyone already using it', () => {
+    expect(useSettingsStore.getState().moodLogTimeSegment).toBeNull();
+  });
+
+  it('stores a segment and clears it back to any time through an empty string', () => {
+    useSettingsStore.getState().setMoodLogTimeSegment('evening');
+    expect(useSettingsStore.getState().moodLogTimeSegment).toBe('evening');
+    expect(dbSetSetting).toHaveBeenCalledWith('moodLogTimeSegment', 'evening');
+
+    useSettingsStore.getState().setMoodLogTimeSegment(null);
+    expect(useSettingsStore.getState().moodLogTimeSegment).toBeNull();
+    expect(dbSetSetting).toHaveBeenCalledWith('moodLogTimeSegment', '');
+  });
+
+  it('reads a stored segment back on initialize', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'moodLogTimeSegment' ? 'afternoon' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().moodLogTimeSegment).toBe('afternoon');
+  });
+
+  it('falls back to any time when the stored value is not a segment', () => {
+    (dbGetSetting as jest.Mock).mockImplementation((key: string) =>
+      key === 'moodLogTimeSegment' ? 'lunchtime' : null,
+    );
+    useSettingsStore.getState().initialize();
+    expect(useSettingsStore.getState().moodLogTimeSegment).toBeNull();
+  });
+});
+
 describe('lastVisitedScreen', () => {
   it('defaults to null when nothing is stored', () => {
     useSettingsStore.getState().initialize();

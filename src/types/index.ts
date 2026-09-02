@@ -163,6 +163,20 @@ export interface ExtraTaskDraft {
   effort: Effort;
   estimatedMinutes: number | null;
   timeSegments: TimeOfDay[];
+  // Same field and meaning as `Task.vacationPause`, and the one field of the
+  // Task slice this spec was missing. It does two jobs rather than one, which
+  // is why it belongs here rather than being a rule-level condition: it marks
+  // the added task as one vacation hides *and*, because of that, stops the
+  // rule adding one at all while vacation mode is on (see the suppression
+  // note in extraTask.ts). Both follow from the same answer — "this is work
+  // that waits until I'm back" — so asking twice would be asking the same
+  // question in two places.
+  //
+  // A vacation starting *after* one has already landed is why the flag is
+  // still written onto the spawned row rather than only consulted at spawn
+  // time: an outstanding wash-cloth task should hide when you leave, the same
+  // as any other paused row.
+  vacationPause: boolean;
   // Title-only stubs, created as real subtask rows alongside the task itself
   // — the same shape TemplateItem.subtasks uses, and for the same reason: a
   // subtask always starts unchecked, so it has no state worth authoring.
@@ -595,6 +609,16 @@ export interface Project {
   // quiet was nudgeCadenceDays === 0, which only silenced the unprompted
   // surfaces and still showed up the moment someone opened the Pull sheet.
   nudgeOptIn: boolean;
+  // Opt-in: somewhere to look when the weekend nudge finds a bare weekend (see
+  // utils/weekendTasks.ts). Off by default, and deliberately its own field
+  // rather than a reading of `kind` or of the title: nothing may guess which of
+  // somebody's projects are the fun ones, and `kind` is a presentation flag
+  // that is supposed to stay one (see ProjectKind's own note). Separate from
+  // nudgeOptIn above because they answer different questions — that one is
+  // "chase me about this project", this one is "look here when I have a free
+  // weekend", and a wishlist is a good answer to the second and a bad one to
+  // the first.
+  weekendSource: boolean;
   // When the user last deleted this project's review task (see
   // utils/projectReviewTasks.ts) — the per-source opt-out every generated task
   // writes on its source row, and the one that had to be a *date* rather than
@@ -1070,7 +1094,14 @@ export type GeneratedKind =
   // birthday: one pair, two lead-ins, and the second is the only generator in
   // the app whose trigger is a *trend* in the user's own data rather than a
   // date, a row or a threshold crossed once.
-  | 'moodNudge';
+  | 'moodNudge'
+  // A weekend with nothing on it becomes a task to make plans for it — see
+  // src/utils/weekendTasks.ts. Its source id is the weekend's *Saturday* day
+  // key, which is the same "square on the calendar, not a row" position
+  // calendarReview is in, one unit wider: three days named by one of them. So
+  // writeGeneratedOptOut has nothing to write for it either, and what stops a
+  // swiped-away row coming straight back is weekendNudgeLastWeekendKey.
+  | 'weekendNudge';
 
 export interface Task {
   id: string;
@@ -1827,6 +1858,18 @@ export interface Task {
   // extraTaskRule() needs a count and a name, and everything here is optional
   // detail on top of those.
   extraTaskDraft: ExtraTaskDraft | null;
+  // Don't add another while one added by this rule is still outstanding.
+  //
+  // A property of the *rule* rather than of the task it adds, which is why it
+  // sits here and not in ExtraTaskDraft: it decides whether to spawn at all,
+  // and says nothing about what the spawned row looks like.
+  //
+  // Off by default, so every rule written before this behaves exactly as it
+  // did. Both readings are legitimate — a chore you either do or don't
+  // (swapping wash cloths: a second row says nothing the first didn't), and a
+  // count you're meant to keep up with (one row per set of five runs) — so
+  // this is asked rather than assumed.
+  extraTaskOneAtATime: boolean;
   extraTaskTally: number;         // completions since the last one was added
   // Snapshot of extraTaskTally from just before the current completion, so
   // uncompleting restores it — the same device previousStreakCount uses, and
@@ -2879,6 +2922,18 @@ export interface GroceryItem {
 // evening someone could have cooked with it — the same call needsAttention()
 // makes for a leftover. Zero is still sayable (use it on the day), and the
 // ceiling is generous for the same reason LEFTOVER_KEEP_DAYS_MAX is.
+// How many days before the Saturday the weekend nudge may first be raised.
+// Two, so the window is Thursday and Friday: two days rather than one because
+// the pass only runs when the app is opened, and a Friday-only offer is silent
+// for anybody who does not open it that day. The floor is 1 (the Friday) rather
+// than 0, since zero would put the offer on the Saturday itself, which is the
+// one day the generator exists to stay off; the ceiling is 5 (the Monday),
+// because a sixth day runs into the previous weekend. See
+// src/utils/weekendTasks.ts.
+export const WEEKEND_NUDGE_LEAD_DAYS_DEFAULT = 2;
+export const WEEKEND_NUDGE_LEAD_DAYS_MIN = 1;
+export const WEEKEND_NUDGE_LEAD_DAYS_MAX = 5;
+
 export const GROCERY_USE_UP_LEAD_DAYS_DEFAULT = 1;
 export const GROCERY_USE_UP_LEAD_DAYS_MIN = 0;
 export const GROCERY_USE_UP_LEAD_DAYS_MAX = 14;

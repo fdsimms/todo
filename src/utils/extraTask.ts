@@ -67,6 +67,45 @@ export function advanceExtraTaskTally(tally: number, everyN: number): { tally: n
 }
 
 /**
+ * Why a spawn that was earned isn't happening, or null for "go ahead".
+ *
+ * Two reasons, one rule. Both are the rule standing down for a reason that
+ * will pass, never the rule being off:
+ *
+ * - `vacation` — the added task is one vacation hides (`draft.vacationPause`)
+ *   and vacation mode is on. Follows `checkScheduledTemplates` and
+ *   `checkMealPlanNudge`, which gate the same way and for the same reason: a
+ *   route that writes a task with nobody watching, during a deliberate "hide
+ *   work from me". Deliberately *not* unconditional on vacation mode, because
+ *   what the added task is varies per rule — the same call
+ *   `docs/arch/generated-tasks.md` makes for `weather` and `screenTime`, which
+ *   don't gate at all ("vacation is exactly when somebody might want it"). The
+ *   flag is how each rule answers for itself.
+ * - `pending` — the rule is one-at-a-time (`Task.extraTaskOneAtATime`) and a
+ *   row it added is still outstanding. Off by default; see the field note.
+ *
+ * **Neither consumes the tally**, which is the half worth not re-deriving:
+ * `advanceExtraTaskTally` resets to 0 on the completion that fires, so a
+ * suppressed spawn that still took the reset would silently eat the cycle and
+ * put the next one a full N completions away. The caller instead leaves the
+ * tally exactly as it was, which — because the advance tests `>=` rather than
+ * `===` — means the first completion after the reason passes spawns for real.
+ * Same shape as those two nudges declining to record their period key.
+ */
+export type ExtraTaskSuppression = 'vacation' | 'pending';
+
+export function extraTaskSuppressedBy(
+  rule: ExtraTaskRule,
+  oneAtATime: boolean,
+  onVacation: boolean,
+  hasPendingExtra: boolean,
+): ExtraTaskSuppression | null {
+  if (onVacation && rule.draft?.vacationPause) return 'vacation';
+  if (oneAtATime && hasPendingExtra) return 'pending';
+  return null;
+}
+
+/**
  * How many completions are left before the next one, for the editor's caption.
  * Clamped at 1 — a tally that has somehow outrun N still means "the next one".
  */
@@ -120,6 +159,7 @@ export function emptyExtraTaskDraft(): ExtraTaskDraft {
     effort: 0,
     estimatedMinutes: null,
     timeSegments: [],
+    vacationPause: false,
     subtasks: [],
   };
 }
@@ -151,6 +191,7 @@ export function parseExtraTaskDraft(raw: string | null | undefined): ExtraTaskDr
     timeSegments: Array.isArray(d.timeSegments)
       ? d.timeSegments.filter((t): t is TimeOfDay => TIME_SEGMENTS.includes(t as TimeOfDay))
       : [],
+    vacationPause: d.vacationPause === true,
     subtasks: Array.isArray(d.subtasks)
       ? d.subtasks
           .filter((sub): sub is { id: string; title: string } =>
@@ -190,6 +231,7 @@ export function extraTaskDraftIsEmpty(draft: ExtraTaskDraft | null): boolean {
     && draft.effort === 0
     && draft.estimatedMinutes === null
     && draft.timeSegments.length === 0
+    && !draft.vacationPause
     && draft.subtasks.length === 0;
 }
 
@@ -224,6 +266,7 @@ export function describeExtraTaskDraft(
     parts.push(draft.subtasks.length === 1 ? '1 subtask' : `${draft.subtasks.length} subtasks`);
   }
   if (draft.timeSegments.length > 0) parts.push(capitalize(draft.timeSegments[0]));
+  if (draft.vacationPause) parts.push('Vacation pause');
   if (draft.notes.trim()) parts.push('Notes');
   if (parts.length === 0) return undefined;
   if (parts.length <= DRAFT_NAME_LIMIT) return parts.join(' · ');

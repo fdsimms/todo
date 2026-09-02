@@ -211,8 +211,8 @@ why. Weigh that against what the type buys before extending the list again.
 
 ## The generator, and the line under "Lighten today"
 
-`health` is generator #18 and its own rules live in
-`docs/arch/generated-tasks.md`, which is where a nineteenth generator's author
+`health` is generator #19 and its own rules live in
+`docs/arch/generated-tasks.md`, which is where a twentieth generator's author
 will look. Only the parts that are about *health* rather than about the
 mechanism are here:
 

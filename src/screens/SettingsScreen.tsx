@@ -94,6 +94,7 @@ export function SettingsScreen() {
     healthTasks: settings.healthTasks,
       moodLogTasks: settings.moodLogTasks,
       moodNudgeTasks: settings.moodNudgeTasks,
+      weekendNudgeTasks: settings.weekendNudgeTasks,
     }, settings.kitchenEnabled),
     [settings]
   );

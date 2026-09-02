@@ -23,6 +23,9 @@ import {
   MEAL_SHORTFALL_LEAD_DAYS_MIN,
   USE_UP_TASK_CAP_MAX,
   USE_UP_TASK_CAP_MIN,
+  WEEKEND_NUDGE_LEAD_DAYS_DEFAULT,
+  WEEKEND_NUDGE_LEAD_DAYS_MAX,
+  WEEKEND_NUDGE_LEAD_DAYS_MIN,
   type TimeOfDay,
 } from '../../types';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
@@ -35,6 +38,7 @@ import {
   DEFAULT_BIRTHDAY_GIFT_LEAD_DAYS,
   MAX_BIRTHDAY_LEAD_DAYS,
 } from '../../utils/birthdayTasks';
+import { describeWeekendNudgeLead } from '../../utils/weekendTasks';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
@@ -196,6 +200,7 @@ export function GeneratedTasksSection() {
       case 'health': return s.healthTasks && s.healthReadEnabled;
       case 'moodLog': return s.moodLogTasks;
       case 'moodNudge': return s.moodNudgeTasks;
+      case 'weekendNudge': return s.weekendNudgeTasks;
     }
   };
 
@@ -221,6 +226,7 @@ export function GeneratedTasksSection() {
       case 'health': s.setHealthTasks(next); break;
       case 'moodLog': s.setMoodLogTasks(next); break;
       case 'moodNudge': s.setMoodNudgeTasks(next); break;
+      case 'weekendNudge': s.setWeekendNudgeTasks(next); break;
     }
     // Switching one on gives it somewhere to file, so the "File them under"
     // row that appears directly below already has an answer in it rather than
@@ -257,6 +263,7 @@ export function GeneratedTasksSection() {
       case 'health': return s.healthTaskCategory;
       case 'moodLog': return s.moodLogTaskCategory;
       case 'moodNudge': return s.moodNudgeTaskCategory;
+      case 'weekendNudge': return s.weekendNudgeTaskCategory;
     }
   };
 
@@ -284,6 +291,7 @@ export function GeneratedTasksSection() {
       case 'health': s.setHealthTaskCategory(category); break;
       case 'moodLog': s.setMoodLogTaskCategory(category); break;
       case 'moodNudge': s.setMoodNudgeTaskCategory(category); break;
+      case 'weekendNudge': s.setWeekendNudgeTaskCategory(category); break;
       // Genuinely nothing to write: its task inherits the category of the task
       // whose supply it is about (see checkSupplyReorderTasks), so there is no
       // one global answer to store. categorized: false means the pills that
@@ -320,8 +328,53 @@ export function GeneratedTasksSection() {
     if (spec.kind === 'calendarReview' && s.calendarReviewTimeSegment) {
       return `Adds a task each day, held back until ${s.calendarReviewTimeSegment}, to review tomorrow's events`;
     }
+    if (spec.kind === 'moodLog' && s.moodLogTimeSegment) {
+      return `Adds one task a day, held back until ${s.moodLogTimeSegment}, to log how you're feeling`;
+    }
     return spec.onHint;
   };
+
+  /**
+   * The "Show the task" row and its pills, for a generator that holds its task
+   * back until a part of the day.
+   *
+   * Two generators want this and they want it identically, so it is written
+   * once — the copy this replaced had drifted nowhere yet only because it had
+   * just the one instance, and a second hand-rolled copy is how that starts.
+   * It stays a local helper rather than a registry field for the reason the
+   * header states: `extrasFor` is JSX precisely so the knobs one generator has
+   * don't have to be expressible in config.
+   */
+  const timeSegmentExtra = (
+    entryId: string,
+    value: TimeOfDay | null,
+    onChange: (segment: TimeOfDay | null) => void,
+  ): React.ReactNode => (
+    <>
+      <View style={styles.sep} />
+      <SettingsRow
+        entryId={entryId}
+        icon="time-outline"
+        label="Show the task"
+        hint="Held back until this part of the day arrives, same as a task's own Time of day field."
+        value={timeSegmentChoices.find(o => o.value === value)?.label ?? 'Any time'}
+        tight
+      />
+      <View style={styles.pillGroupRow}>
+        <PillGroup
+          noun="time of day"
+          options={timeSegmentChoices.map(o => ({
+            key: String(o.value),
+            label: o.label,
+            selected: o.value === value,
+            pinned: o.value === null,
+            accessibilityLabel: `Show the task ${o.value === null ? 'any time of day' : `in the ${o.label.toLowerCase()}`}`,
+            onPress: () => { haptics.tap(); onChange(o.value); },
+          }))}
+        />
+      </View>
+    </>
+  );
 
   /** The controls only one generator has. Everything else is the same two rows. */
   const extrasFor = (kind: GeneratedKind): React.ReactNode => {
@@ -424,6 +477,33 @@ export function GeneratedTasksSection() {
               the task's deadline, so changing this never moves anybody's
               birthday, and it deliberately doesn't re-date a row already on the
               list — see birthdayDrift. */}
+        </>
+      );
+    }
+
+    if (kind === 'weekendNudge') {
+      return (
+        <>
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="weekendNudgeLeadDays"
+            icon="calendar-outline"
+            label="Show the task"
+            hint="Which day the task appears on. It never appears once the weekend has started."
+            value={describeWeekendNudgeLead(s.weekendNudgeLeadDays)}
+            tight
+          />
+          <View style={styles.cadenceRow}>
+            <CountStepper
+              value={s.weekendNudgeLeadDays}
+              onChange={next => s.setWeekendNudgeLeadDays(next ?? WEEKEND_NUDGE_LEAD_DAYS_DEFAULT)}
+              min={WEEKEND_NUDGE_LEAD_DAYS_MIN}
+              max={WEEKEND_NUDGE_LEAD_DAYS_MAX}
+              format={n => `${n}d`}
+              label="Days before Saturday"
+              describeValue={n => describeWeekendNudgeLead(n ?? WEEKEND_NUDGE_LEAD_DAYS_DEFAULT)}
+            />
+          </View>
         </>
       );
     }
@@ -551,34 +631,11 @@ export function GeneratedTasksSection() {
     }
 
     if (kind === 'calendarReview') {
-      return (
-        <>
-          <View style={styles.sep} />
-          <SettingsRow
-            entryId="calendarReviewTimeSegment"
-            icon="time-outline"
-            label="Show the task"
-            hint="Held back until this part of the day arrives, same as a task's own Time of day field."
-            value={
-              timeSegmentChoices.find(o => o.value === s.calendarReviewTimeSegment)?.label ?? 'Any time'
-            }
-            tight
-          />
-          <View style={styles.pillGroupRow}>
-            <PillGroup
-              noun="time of day"
-              options={timeSegmentChoices.map(o => ({
-                key: String(o.value),
-                label: o.label,
-                selected: o.value === s.calendarReviewTimeSegment,
-                pinned: o.value === null,
-                accessibilityLabel: `Show the task ${o.value === null ? 'any time of day' : `in the ${o.label.toLowerCase()}`}`,
-                onPress: () => { haptics.tap(); s.setCalendarReviewTimeSegment(o.value); },
-              }))}
-            />
-          </View>
-        </>
-      );
+      return timeSegmentExtra('calendarReviewTimeSegment', s.calendarReviewTimeSegment, s.setCalendarReviewTimeSegment);
+    }
+
+    if (kind === 'moodLog') {
+      return timeSegmentExtra('moodLogTimeSegment', s.moodLogTimeSegment, s.setMoodLogTimeSegment);
     }
 
     if (kind === 'weather') {

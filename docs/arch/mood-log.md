@@ -129,6 +129,19 @@ It carries `dundundun://mood?log=1` so the row opens the sheet that answers it â
 without that the only thing to do with a check-in is tick it, which marks the
 question answered while recording no answer.
 
+`moodLogTimeSegment` holds the check-in back until a part of the day, the same
+setting and the same shape `calendarReviewTimeSegment` has, read once at
+creation so changing it shapes the next check-in rather than moving the one
+already on today's list. "How are you doing?" answered at 7am is a different
+record from the same question in the evening, and the evening is the one most
+people want â€” but it **defaults to any time**, because the generator shipped
+before the setting did and a default that moved the task would change the day
+for everyone already using it. Choosing the evening is one tap in Settings.
+
+**`moodNudge` deliberately has no counterpart.** It asks about the week rather
+than the day and fires at most once a week, so holding it until an hour of the
+day buys nothing.
+
 **`moodNudge` is the one to read before changing.** It's the only generator in
 the app whose trigger is a *trend in the user's own answers* rather than a date,
 a row, or a threshold crossed once, which makes it the only one that can be

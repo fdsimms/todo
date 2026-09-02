@@ -1,10 +1,10 @@
-# Generated tasks: the eighteen things that write a task unattended
+# Generated tasks: the nineteen things that write a task unattended
 
 The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
 project reviews, pantry checks and the pantry review, supply reorders, the
 daily calendar review, birthdays, the reach-out nudge and weather-matched
 tasks.
-Read this before adding a nineteenth generator: the whole point of the refactor
+Read this before adding a twentieth generator: the whole point of the refactor
 it describes is that a new one costs a rules module and a registry entry, not a
 column.
 
@@ -22,7 +22,7 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the eighteen things that write a task unattended
+## Generated tasks — the nineteen things that write a task unattended
 
 Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
@@ -638,7 +638,103 @@ the differences all come from one place: **the app cannot see usage.**
 - **It does not gate on vacation mode**, following `weather` rather than `mealPlanNudge`. A rule
   about your own phone use is sunscreen, not work: vacation is exactly when somebody might want it.
 
-## `health` — the eighteenth, and the third rule the user wrote
+## `weekendNudge` — the eighteenth, and the first that asks about a *span*
+
+A weekend with nothing on it becomes "Make plans for the weekend", raised on the
+Thursday or Friday before it. Structurally it is `projectReview` one shelf over —
+a condition time passing brings about, so it fires from the launch sequence and
+the Today foreground sweep rather than off any mutation, with the same
+clear-then-create ordering and the same stale pass — but its source is neither a
+row nor a single day key, which is what everything below follows from. The rules
+themselves live in `src/utils/weekendTasks.ts`; what belongs here is how it sits
+in the mechanism.
+
+- **Its source id is the weekend's Saturday, and that names three days rather
+  than one.** Every day-keyed generator before it asked about the square its key
+  named; this one asks about Friday evening, Saturday and Sunday, and picks the
+  Saturday to file it under. So it is in `calendarReview`'s position for every
+  purpose the mechanism cares about — unsourced, nothing for
+  `writeGeneratedOptOut` to write, a settings-level mark
+  (`weekendNudgeLastWeekendKey`) in place of a stamp — and the mark buys
+  something the others have to spend a cooldown on. "Once per weekend" is not
+  arithmetic here, it is the identity of the key: Thursday's firing marks the
+  weekend and Friday's pass finds it marked.
+- **The window is asymmetric on purpose, and both halves of that are load
+  bearing.** Friday counts only what the user placed in the *evening*
+  (`timeSegments` carrying `evening` or `night`), because a Friday with six work
+  tasks on it is not a weekend with plans, and reading a bare Friday task as one
+  would silence the offer for everybody who works Fridays. Saturday's and
+  Sunday's calendar events count and Friday's are deliberately not read at all,
+  for the mirror reason: a whole-day busy figure cannot be narrowed to the
+  evening the way the task count can.
+- **It departs from `dayLoad`'s "no cue is never *this day is free*", and that
+  is the one rule here worth arguing with before changing.** A weekend the app
+  cannot see the calendar for still nudges. Held to that rule the feature is
+  inert for everybody with calendar access off, which is most people; and the two
+  failure directions are not symmetrical the way they are for a cue painted on a
+  date picker, where being wrong is read while booking something. Being wrong
+  here costs one task, once a weekend, on a row with a checkbox on it.
+- **`upcomingWeekend` does not roll forward on Saturday and Sunday**, even though
+  nothing can be raised on those days. The stale pass runs on them, and a window
+  that had rolled forward would read Friday's live row as belonging to a weekend
+  that was over and delete it in the middle of the two days it exists to be
+  about. The lead-day gate (`isWeekendNudgeLeadDay`) is what stops it firing
+  during the weekend, not the window.
+- **The project it names is nominated, never inferred** (`Project.weekendSource`,
+  off on everybody). Nothing scores a project for weekend-ishness or reads its
+  title, and it is deliberately *not* a reading of `Project.kind` — that field is
+  presentation only and its own note says it should stay that small, so gating
+  behavior on it would be exactly the thing that note forbids. Several nominated
+  projects break the tie on `sortOrder`, the hand drag on the Projects screen,
+  for the reason `reachOut` breaks its own tie there: it is the only ranking of
+  these the user actually made.
+- **It reuses the pull sheet rather than growing a surface.** The row's `linkUrl`
+  is `projectReviewLinkUrl` — literally that function, not a second spelling of
+  the same URL — so "bring something out of this project and put a date on it" is
+  answered by the sheet that already does it, scoped to the nominated project.
+  The task quoted in the notes comes from `dripCandidate`, so it is the same one
+  that sheet will offer first rather than a second opinion about the project.
+- **Acting on the row is what clears it**, which is the whole reason the check
+  runs on a sweep: pulling a task onto Saturday makes the weekend not bare, and
+  nothing about that mutation knows a row is sitting on Today asking for it.
+  Same split `staleProjectReviewTasks` draws, and the same `dropGeneratedTask` so
+  the app's own tidying up never writes an opt-out.
+- **It stands down while a `moodNudge` row is live.** That generator's task is
+  "Plan something you enjoy this week", which is this offer with a more specific
+  reason behind it, so a low week with a bare weekend would otherwise put two
+  rows on Today asking for one thing. This one yields, because the other fired
+  off something the user recorded about themselves where this fired off three
+  empty days. Structurally it is `checkPantryCheckTasks` standing down while a
+  `pantryReview` row is live, and it copies both halves of that: it suppresses
+  the **create half only** (a weekend nudge already raised, possibly deferred, is
+  the user's, and the stale pass clears it on its own terms), and `checkMoodTasks`
+  runs **first** at both call sites so the suppression lands in the same sweep
+  rather than one behind it. The read is of a *live row*, deliberately, not of
+  `moodNudgeTasks` — a nudge ticked off this morning stops standing in the way.
+- **The lead window is a setting, and its floor is in the predicate rather than
+  only in the clamp.** `weekendNudgeLeadDays` (default 2, so Thursday and Friday)
+  can be narrowed to the Friday alone or widened back to the Monday, which is
+  `moodNudgeAfterDays`' argument one shelf over: how much warning you want about
+  a bare weekend is a thing only the person planning it can answer. What it may
+  never buy is a way into the Saturday or the Sunday — `isWeekendNudgeLeadDay`
+  bounds below at 1 as well as above at 5, so a stored 0, a negative, or a value
+  from a peer on a different build cannot cross rule 2. The ceiling is the Monday
+  because a sixth day runs into the previous weekend.
+- **It ships off**, like every generator that adds a surface rather than
+  replacing one already on screen, and it is gated on `isDemoModeActive()` for
+  `calendarReview`'s reason rather than the general one: the busy half of its
+  reading is the real device calendar. The demo's own example row is seeded
+  directly in `demoSeed.ts`.
+- **`Project.weekendSource` is in the Backfill walkthrough**, unlike
+  `autoSchedule`, which that module leaves out for being meaningless until a
+  sibling is already set. This one has no such dependency: it is a plain flag
+  whose whole meaning is itself, so "missing" is just "off". It is the first
+  project field there that is a toggle rather than a value picker, which is why
+  `BackfillScreen`'s project step now branches on the field id instead of always
+  rendering the cadence stepper. Dismissal stays per field, so "never chase me
+  about this project" is not also "never suggest it for a weekend".
+
+## `health` — the nineteenth, and the third rule the user wrote
 
 "Under six hours of sleep, keep today light." Structurally `weather`
 (`src/utils/healthRules.ts` is `weatherTasks.ts` with the condition swapped for

@@ -236,6 +236,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskEveryN: null,
   extraTaskTitle: null,
   extraTaskDraft: null,
+  extraTaskOneAtATime: false,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
   vacationPause: false, excludeFromSuggestions: false,
@@ -763,6 +764,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       effort: 1 as const,
       estimatedMinutes: 5,
       timeSegments: ['evening' as const],
+      vacationPause: false,
       subtasks: [{ id: 's1', title: 'Wipe the strings' }],
     };
     dbInsertTask(makeTask({ id: 'xd', extraTaskEveryN: 4, extraTaskTitle: 'Rosin', extraTaskDraft: draft }));
@@ -1646,6 +1648,7 @@ describe('Projects', () => {
     nudgeCadenceDays: 14,
     autoSchedule: false,
     nudgeOptIn: true,
+    weekendSource: false,
     reviewDeclinedAt: null,
     backfillDismissedFields: [],
     kind: 'project' as const,
@@ -1703,6 +1706,18 @@ describe('Projects', () => {
 
     dbUpdateProject(makeProject({ nudgeOptIn: false }));
     expect(dbGetAllProjects()[0].nudgeOptIn).toBe(false);
+  });
+
+  it('round-trips weekendSource, defaulting existing rows to false', () => {
+    // The migration backfills 0 deliberately: nominating a project as somewhere
+    // to look for weekend plans is a statement nobody has made yet, and
+    // backfilling true would have the weekend nudge quoting projects at people
+    // who never picked one. See Project.weekendSource.
+    dbInsertProject(makeProject({ weekendSource: true }));
+    expect(dbGetAllProjects()[0].weekendSource).toBe(true);
+
+    dbUpdateProject(makeProject({ weekendSource: false }));
+    expect(dbGetAllProjects()[0].weekendSource).toBe(false);
   });
 
   it('updates fields in place', () => {
@@ -1842,6 +1857,7 @@ describe('backup and restore', () => {
       ongoing: false,
       createdAt: '2025-01-01T00:00:00.000Z', nudgeCadenceDays: 14, autoSchedule: false,
       nudgeOptIn: true,
+      weekendSource: false,
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
       kind: 'project' as const,
