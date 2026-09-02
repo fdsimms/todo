@@ -78,6 +78,7 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
+  const [vacationPause, setVacationPause] = useState(false);
   const [subtasks, setSubtasks] = useState<{ id: string; title: string }[]>([]);
 
   const [openFields, setOpenFields] = useState<Partial<Record<FieldKey, boolean>>>({});
@@ -108,6 +109,7 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
     setEffort(seed.effort);
     setEstimatedMinutes(seed.estimatedMinutes);
     setTimeSegments(seed.timeSegments);
+    setVacationPause(seed.vacationPause);
     setSubtasks(seed.subtasks);
     setOpenFields({});
     setShowTimeOfDay(seed.timeSegments.length > 0);
@@ -152,6 +154,7 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
       effort,
       estimatedMinutes,
       timeSegments,
+      vacationPause,
       subtasks: pendingSubtask
         ? [...subtasks, { id: generateId(), title: pendingSubtask }]
         : subtasks,
@@ -421,6 +424,24 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
             })}
           </View>
         )}
+        <View style={styles.cardSep} />
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setVacationPause(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="Vacation pause"
+          accessibilityState={{ checked: vacationPause }}
+        >
+          <Ionicons name="airplane-outline" size={18} color={vacationPause ? colors.accent : colors.textSecondary} />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>Vacation pause</Text>
+            <Text style={styles.optionHint}>Don't add it while vacation mode is on</Text>
+          </View>
+          <View style={[styles.toggle, vacationPause && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, vacationPause && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.sectionCard}>
@@ -596,5 +617,22 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: colors.accent, paddingVertical: 2,
   },
   /** Lifts an InlineAction off the list it appends to, and keeps it from stretching in a column. */
+  optionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: 13,
+  },
+  optionContent: { flex: 1 },
+  optionLabel: { color: colors.text, fontSize: font.md },
+  optionHint: { color: colors.textSecondary, fontSize: font.xs, marginTop: 1 },
+  toggle: {
+    width: 46, height: 27, borderRadius: 14,
+    backgroundColor: colors.bgQuaternary, justifyContent: 'center', paddingHorizontal: 3,
+  },
+  toggleOn: { backgroundColor: colors.orange },
+  toggleKnob: {
+    width: 21, height: 21, borderRadius: 11,
+    backgroundColor: colors.bg,
+  },
+  toggleKnobOn: { backgroundColor: colors.bg, alignSelf: 'flex-end' },
   addBtnSpacing: { marginTop: spacing.sm, alignSelf: 'flex-start' },
 });

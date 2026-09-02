@@ -6,7 +6,7 @@ import { isMissed, isRealCompletion } from '../utils/missed';
 import { isTaskNew } from '../utils/visibilityUtils';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { emptyExtraTaskDraft } from '../utils/extraTask';
-import type { MealPlanEntry, MealSlot, Recipe } from '../types';
+import type { ExtraTaskDraft, MealPlanEntry, MealSlot, Recipe } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -343,6 +343,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskEveryN: null,
   extraTaskTitle: null,
   extraTaskDraft: null,
+  extraTaskOneAtATime: false,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
   vacationPause: false, excludeFromSuggestions: false,
@@ -12463,6 +12464,135 @@ describe('completeTask: extra task every Nth completion', () => {
     expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(1);
   });
 
+  // ── Reasons an earned spawn stands down (see extraTaskSuppressedBy) ──
+
+  describe('suppression', () => {
+    const settings = () =>
+      (jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } })
+        .useSettingsStore;
+
+    const setVacation = (vacationMode: boolean) => {
+      const store = settings();
+      store.getState.mockReturnValue({ ...store.getState(), vacationMode });
+    };
+
+    const pausedDraft = (): ExtraTaskDraft => ({ ...emptyExtraTaskDraft(), vacationPause: true });
+
+    /**
+     * A run of completions, a day apart. The clock has to move with them for
+     * the same reason the count test above says: a spawned occurrence lands on
+     * the next date and completeTask refuses one that hasn't come round yet.
+     */
+    const completeDays = (id: string, days: number) => {
+      jest.useFakeTimers();
+      let live = id;
+      for (let i = 0; i < days; i++) {
+        jest.setSystemTime(new Date(2025, 5, 10 + i, 10, 0, 0));
+        live = completeOccurrence(live).id;
+      }
+      return useTaskStore.getState().tasks.find(t => t.id === live)!;
+    };
+
+    const liveExtras = () => extras().filter(t => !t.completed);
+
+    it('adds nothing on vacation when the added task is one vacation hides', () => {
+      setVacation(true);
+      useTaskStore.setState({
+        tasks: [practice({ extraTaskTally: 3, extraTaskDraft: pausedDraft() })],
+      });
+
+      const live = completeDays('practice', 1);
+
+      expect(extras()).toHaveLength(0);
+      // Held, not reset: the cycle isn't silently eaten.
+      expect(live.extraTaskTally).toBe(3);
+    });
+
+    it('holds the tally across a whole vacation rather than counting on', () => {
+      setVacation(true);
+      useTaskStore.setState({
+        tasks: [practice({ extraTaskTally: 3, extraTaskDraft: pausedDraft() })],
+      });
+
+      const live = completeDays('practice', 6);
+
+      expect(extras()).toHaveLength(0);
+      expect(live.extraTaskTally).toBe(3);
+    });
+
+    it('adds it on the first completion after vacation ends, without another full wait', () => {
+      setVacation(true);
+      useTaskStore.setState({
+        tasks: [practice({ extraTaskTally: 3, extraTaskDraft: pausedDraft() })],
+      });
+      const away = completeDays('practice', 3);
+      expect(extras()).toHaveLength(0);
+
+      setVacation(false);
+      jest.setSystemTime(new Date(2025, 5, 13, 10, 0, 0));
+      const home = completeOccurrence(away.id);
+
+      expect(extras()).toHaveLength(1);
+      expect(home.extraTaskTally).toBe(0);
+    });
+
+    it('adds it on vacation when the rule never said vacation hides it', () => {
+      setVacation(true);
+      useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+
+      completeDays('practice', 1);
+
+      // Vacation mode alone is not the gate — the flag is how each rule
+      // answers for itself. Same call weather and screenTime make.
+      expect(extras()).toHaveLength(1);
+    });
+
+    it('marks the added task vacation-paused, so a vacation starting later hides it too', () => {
+      useTaskStore.setState({
+        tasks: [practice({ extraTaskTally: 3, extraTaskDraft: pausedDraft() })],
+      });
+
+      completeDays('practice', 1);
+
+      expect(extras()[0].vacationPause).toBe(true);
+    });
+
+    it('adds no second one while the first is outstanding, when the rule says one at a time', () => {
+      useTaskStore.setState({
+        tasks: [practice({ extraTaskTally: 3, extraTaskOneAtATime: true })],
+      });
+
+      // One earns it, then four more each earn one and are held.
+      const live = completeDays('practice', 5);
+
+      expect(liveExtras()).toHaveLength(1);
+      expect(live.extraTaskTally).toBe(3);
+    });
+
+    it('adds the next one once the outstanding one is done', () => {
+      useTaskStore.setState({
+        tasks: [practice({ extraTaskTally: 3, extraTaskOneAtATime: true })],
+      });
+      const live = completeDays('practice', 5);
+      expect(liveExtras()).toHaveLength(1);
+
+      useTaskStore.getState().completeTask(liveExtras()[0].id);
+      jest.setSystemTime(new Date(2025, 5, 16, 10, 0, 0));
+      completeOccurrence(live.id);
+
+      expect(liveExtras()).toHaveLength(1);
+      expect(extras()).toHaveLength(2);
+    });
+
+    it('piles them up as it always did when the rule never asked for one at a time', () => {
+      useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+
+      completeDays('practice', 5);
+
+      expect(liveExtras()).toHaveLength(2);
+    });
+  });
+
   // ── What the added task looks like past its title (Task.extraTaskDraft) ──
 
   describe('the draft the rule carries', () => {
@@ -12481,6 +12611,7 @@ describe('completeTask: extra task every Nth completion', () => {
             effort: 1,
             estimatedMinutes: 5,
             timeSegments: ['evening'],
+            vacationPause: false,
             subtasks: [],
           },
         })],
@@ -12509,6 +12640,7 @@ describe('completeTask: extra task every Nth completion', () => {
           category: 'Music',
           projectId: 'p1',
           extraTaskDraft: { ...emptyExtraTaskDraft(), notes: 'Just a note' },
+          extraTaskOneAtATime: false,
         })],
       });
 

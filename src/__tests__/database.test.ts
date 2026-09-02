@@ -236,6 +236,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskEveryN: null,
   extraTaskTitle: null,
   extraTaskDraft: null,
+  extraTaskOneAtATime: false,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
   vacationPause: false, excludeFromSuggestions: false,
@@ -728,6 +729,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       effort: 1 as const,
       estimatedMinutes: 5,
       timeSegments: ['evening' as const],
+      vacationPause: false,
       subtasks: [{ id: 's1', title: 'Wipe the strings' }],
     };
     dbInsertTask(makeTask({ id: 'xd', extraTaskEveryN: 4, extraTaskTitle: 'Rosin', extraTaskDraft: draft }));

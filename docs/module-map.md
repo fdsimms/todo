@@ -72,7 +72,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/eventReminders.ts` — EventReminder, EVENT_REMINDER_OFFSETS, eventReminderKey, reminderFromEvent, reminderTriggerDate, isReminderStale, pruneStaleReminders, describeEventReminderOffset
 - `src/utils/eventTextParse.ts` — MAX_EVENT_TEXT_CHARS, ParsedEventText, parseEventText
 - `src/utils/expiredTaskGrace.ts` — ExpiredTaskGraceDays, EXPIRED_TASK_GRACE_OPTIONS, expiredTaskGraceLabel, parseExpiredTaskGrace, serializeExpiredTaskGrace
-- `src/utils/extraTask.ts` — MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N, ExtraTaskRule, extraTaskRule, advanceExtraTaskTally, completionsUntilExtraTask, extraTaskSummary, describeExtraTaskRule, emptyExtraTaskDraft, parseExtraTaskDraft, +2 more
+- `src/utils/extraTask.ts` — MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N, ExtraTaskRule, extraTaskRule, advanceExtraTaskTally, ExtraTaskSuppression, extraTaskSuppressedBy, completionsUntilExtraTask, extraTaskSummary, describeExtraTaskRule, +4 more
 - `src/utils/fabDrop.ts` — ScheduleInfo, DropZone, ZoneRect, FabDropIntent, zoneKey, ZONE_HIT_SLOP, TAIL_HIT_SLOP, zoneAtY, DEFAULT_DROP_SLOT, slotAtX, +13 more
 - `src/utils/fieldBackfill.ts` — BackfillFieldId, BackfillFieldDef, BACKFILL_FIELDS, BackfillCandidatesOptions, isFieldMissing, isBackfillDismissed, backfillCandidates, backfillFieldCounts, dismissBackfillField, estimatePatchFor
 - `src/utils/focusLiveActivity.ts` — FocusRun, buildFocusRun, useFocusLiveActivitySync
