@@ -4551,6 +4551,22 @@ describe('checkMoodTasks', () => {
       expect(tasksOfKind('moodLog')).toHaveLength(0);
     });
 
+    it('holds the check-in back until the chosen time of day, when one is set', () => {
+      useSettingsStore.getState.mockReturnValue(settings({ moodLogTimeSegment: 'evening' }));
+
+      useTaskStore.getState().checkMoodTasks();
+
+      const [check] = tasksOfKind('moodLog');
+      expect(check.timeSegments).toEqual(['evening']);
+    });
+
+    it('carries no time-of-day hold-back by default', () => {
+      useTaskStore.getState().checkMoodTasks();
+
+      const [check] = tasksOfKind('moodLog');
+      expect(check.timeSegments).toEqual([]);
+    });
+
     it('does not hand back one the user swiped away earlier the same day', () => {
       const store = settings({ moodLogLastDayKey: TODAY });
       useSettingsStore.getState.mockReturnValue(store);

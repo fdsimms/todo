@@ -35,27 +35,33 @@ const source = readdirSync(SETTINGS_DIR)
  * in the JSX. The template does, and that the two sides agree on the *shape*
  * is what `settingsIndex.test.ts` checks against the registries themselves.
  */
-const TEMPLATED = [
-  { test: (id: string) => id.startsWith('ai:'), template: 'entryId={`ai:${feature.id}`}' },
+const TEMPLATED: { test: (id: string) => boolean; template: (id: string) => string }[] = [
+  { test: id => id.startsWith('ai:'), template: () => 'entryId={`ai:${feature.id}`}' },
   // Day & time's six rows come out of one `segment()` helper keyed by the same
   // strings the index uses, so the id is the loop variable.
   {
-    test: (id: string) => ['dayReset', 'afternoon', 'evening', 'night', 'activeStart', 'activeEnd']
+    test: id => ['dayReset', 'afternoon', 'evening', 'night', 'activeStart', 'activeEnd']
       .includes(id),
-    template: 'entryId={key}',
+    template: () => 'entryId={key}',
   },
   {
-    test: (id: string) => id.startsWith('gen:') && id.endsWith(':category'),
-    template: 'entryId={`gen:${spec.kind}:category`}',
+    test: id => id.startsWith('gen:') && id.endsWith(':category'),
+    template: () => 'entryId={`gen:${spec.kind}:category`}',
   },
-  { test: (id: string) => id.startsWith('gen:'), template: 'entryId={`gen:${spec.kind}`}' },
+  { test: id => id.startsWith('gen:'), template: () => 'entryId={`gen:${spec.kind}`}' },
+  // The two generators that hold their task back until a part of the day share
+  // one `timeSegmentExtra` helper rather than a copy of its row each, so the id
+  // arrives as an argument. This one resolves per id, which makes it stronger
+  // than the interpolated blocks above rather than another blanket exemption:
+  // a second caller that forgot to pass its own id still fails.
+  { test: id => id.endsWith('TimeSegment'), template: id => `timeSegmentExtra('${id}'` },
 ];
 
 describe('settings entry wiring', () => {
   it('renders a row carrying every entry id', () => {
     const missing = SETTINGS_ENTRIES.filter(entry => {
       const templated = TEMPLATED.find(t => t.test(entry.id));
-      if (templated) return !source.includes(templated.template);
+      if (templated) return !source.includes(templated.template(entry.id));
       return !source.includes(`entryId="${entry.id}"`);
     }).map(e => `${e.groupId}/${e.id} (${e.label})`);
 
@@ -65,9 +71,13 @@ describe('settings entry wiring', () => {
   it('has a template in the source for each derived block', () => {
     // Guards the escape hatch above: if a derived block were rewritten to
     // hand-written rows, the check for those ids would pass on a template
-    // string that no longer exists rather than on the rows.
-    for (const { template } of TEMPLATED) {
-      expect(source).toContain(template);
+    // string that no longer exists rather than on the rows. Resolved against a
+    // real entry the block claims, so a block matching nothing in the index
+    // fails here rather than sitting as a dead exemption.
+    for (const { test, template } of TEMPLATED) {
+      const id = SETTINGS_ENTRIES.find(e => test(e.id))?.id;
+      expect(id).toBeDefined();
+      expect(source).toContain(template(id as string));
     }
   });
 
