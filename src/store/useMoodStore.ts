@@ -8,7 +8,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
-import { symptomKey } from '../utils/moodLog';
+import { renameSymptomInLogs, symptomKey } from '../utils/moodLog';
 
 /**
  * The mood/symptom log — see `src/utils/moodLog.ts` for every rule and
@@ -60,6 +60,19 @@ interface MoodStore {
   ) => MoodLog | null;
   updateLog: (id: string, patch: MoodLogPatch) => void;
   removeLog: (id: string) => void;
+  /**
+   * Rename a symptom everywhere it appears, merging into an existing name if
+   * one already matches. Returns how many entries it rewrote.
+   *
+   * The only action here that touches more than one row, and the only one that
+   * edits what a past entry *says*. That is allowed where moving `dayKey` or
+   * `loggedAt` is not, and the line between them is worth stating: a rename
+   * changes what you called something, not which day it happened on, so every
+   * correlation on the Mood screen re-reads the same days afterwards. The
+   * caller still confirms first, with a count — see `renameSymptomInLogs`,
+   * which decides the whole rewrite before any of it is written.
+   */
+  renameSymptom: (fromKey: string, toName: string) => number;
 }
 
 export const useMoodStore = create<MoodStore>((set, get) => ({
@@ -116,6 +129,30 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
   removeLog(id) {
     dbDeleteMoodLog(id);
     set({ logs: get().logs.filter(l => l.id !== id) });
+  },
+
+  renameSymptom(fromKey, toName) {
+    // Recomputed here rather than taken from the caller, so the rows written
+    // are the ones the store holds now — the confirmation the user answered
+    // was built off a snapshot, and an entry could have landed since.
+    const { changes } = renameSymptomInLogs(get().logs, fromKey, toName);
+    if (changes.length === 0) return 0;
+
+    const bySymptoms = new Map(changes.map(c => [c.id, c.symptoms]));
+    const next = get().logs.map(log => {
+      const symptoms = bySymptoms.get(log.id);
+      // cleanSymptoms is a no-op on what renameSymptomInLogs produces — it
+      // collapses the same pair by the same rule — and runs anyway so this
+      // path can't be the one that puts an unclean list in the database.
+      return symptoms ? { ...log, symptoms: cleanSymptoms(symptoms) } : log;
+    });
+    // One row at a time, like renameAisle: there is no bulk mood write, and a
+    // rename touches a handful of entries rather than a table.
+    for (const log of next) {
+      if (bySymptoms.has(log.id)) dbUpdateMoodLog(log);
+    }
+    set({ logs: next });
+    return changes.length;
   },
 }));
 

@@ -46,6 +46,55 @@ does that for a catalog the app is trying to *merge*, where being wrong costs a
 duplicate row on a shopping list. Being wrong here silently folds two complaints
 into one series in a chart somebody may be about to show a doctor.
 
+## Reading the history back
+
+The insights are computed over everything while the list under them showed the
+last 20 entries and nothing else, so the screen could tell you your mood is
+worse on days you log a headache while giving you no way to look at those days.
+Three controls fix that, all local to the Mood screen rather than wired into
+app-wide search — the symptom case is the strongest of the three wants and the
+cheapest to answer where the contrast rows already are.
+
+- **A symptom contrast row is a filter.** Tapping "headache" in MOOD WITH
+  SYMPTOMS narrows the list to the entries carrying it. The row is the obvious
+  entry point because it is the thing that raised the question.
+- **`moodLogMatches` is a substring match, not `fuzzySearch`.** Fuzzy ranks a
+  result list; this decides membership of a filtered one, where a near miss
+  silently dropping a day is the failure that matters. Same reason `symptomKey`
+  refuses to guess: a history is read to check something, so it must not quietly
+  answer about a different set of days than the one asked for.
+- **The date is how "jump to a month" is answered.** `moodLogMatches` searches
+  the entry's date written out in both a long and a short form, so "august"
+  narrows to August and "aug" works too. A date picker over a list that already
+  has a search field would be a second control for one want.
+- **The list pages rather than uncapping.** The screen is a `ScrollView`, not a
+  `FlatList`, so rendering a year of entries at once is a real cost for a
+  surface nobody scrolls to the end of. `MOOD_PAGE` more at a time, and the
+  filter is applied before the page rather than after — paging a filtered list
+  is the whole point, and filtering a page would search the last 20 entries.
+
+## Renaming a symptom
+
+The vocabulary is derived from the entries (below), so there is no registry row
+to correct and a typo would otherwise be permanent: log "headche" once and it is
+in your suggestions forever and is its own series in every contrast.
+
+`renameSymptomInLogs` decides the whole rewrite before anything is written, and
+`useMoodStore.renameSymptom` applies it. Three things hold it:
+
+- **It is the one action that edits what a past entry says**, which is allowed
+  where moving `dayKey` or `loggedAt` is not. The line: a rename changes what
+  you called something, not which day it happened on, so every correlation
+  re-reads the same days afterwards. It still confirms first, with a count —
+  somebody agreeing to rewrite their own history should be told how much of it.
+- **The merge case is the feature, not a side effect.** `symptomKey` must keep
+  refusing to guess that "head ache" and "headache" are one complaint. The
+  honest consequence of refusing to guess is that the user needs a way to say
+  so, and this is it: they are the same when you say they are.
+- **Two names collapsing on one entry keep the worse severity**, the rule
+  `daySymptoms` already applies to a day. One complaint you named twice, at the
+  worst it got, not two.
+
 ## The vocabulary is derived, not a registry
 
 `symptomVocabulary` reads the entries. This is the one place the feature

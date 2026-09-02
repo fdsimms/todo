@@ -7,8 +7,11 @@ import {
   logsOnDay,
   moodEmoji,
   moodLabel,
+  moodLogMatches,
   moodLogSummary,
   severityLabel,
+  renameSymptomInLogs,
+  symptomCounts,
   symptomKey,
   symptomVocabulary,
   withSymptom,
@@ -148,5 +151,124 @@ describe('an entry summary', () => {
 
   it('falls back to the note for an entry that is only a note', () => {
     expect(moodLogSummary(log({ mood: null, note: 'Slept badly' }))).toBe('Slept badly');
+  });
+});
+
+describe('searching the history', () => {
+  it('matches a word in the note', () => {
+    expect(moodLogMatches(log({ note: 'Slept badly, migraine all afternoon' }), 'migraine')).toBe(true);
+    expect(moodLogMatches(log({ note: 'Slept badly' }), 'migraine')).toBe(false);
+  });
+
+  it('matches a symptom by name and by severity', () => {
+    const entry = log({ symptoms: [{ name: 'Headache', severity: 3 }] });
+    expect(moodLogMatches(entry, 'headache')).toBe(true);
+    expect(moodLogMatches(entry, 'severe')).toBe(true);
+  });
+
+  it('matches the mood label', () => {
+    expect(moodLogMatches(log({ mood: 1 }), 'very low')).toBe(true);
+    expect(moodLogMatches(log({ mood: 5 }), 'very low')).toBe(false);
+  });
+
+  // The date is how "jump to a month" is answered, so a month name has to
+  // reach it — there is no date picker over this list.
+  it('matches the entry\'s own date, long form or short', () => {
+    const entry = log({ dayKey: '2026-08-17' });
+    expect(moodLogMatches(entry, 'august')).toBe(true);
+    expect(moodLogMatches(entry, 'aug')).toBe(true);
+    expect(moodLogMatches(entry, '2026')).toBe(true);
+    expect(moodLogMatches(entry, 'monday')).toBe(true);
+    expect(moodLogMatches(entry, 'september')).toBe(false);
+  });
+
+  // A filter decides membership rather than ranking, so an empty query is
+  // every entry rather than none.
+  it('matches everything on an empty or blank query', () => {
+    expect(moodLogMatches(log(), '')).toBe(true);
+    expect(moodLogMatches(log(), '   ')).toBe(true);
+  });
+
+  it('ignores case and surrounding space, the way symptomKey does', () => {
+    expect(moodLogMatches(log({ note: 'Migraine' }), '  MIGRAINE ')).toBe(true);
+  });
+});
+
+describe('renaming a symptom', () => {
+  const history = () => [
+    log({ id: 'a', symptoms: [{ name: 'headche', severity: 1 }] }),
+    log({ id: 'b', symptoms: [{ name: 'Headche', severity: 2 }, { name: 'Nausea', severity: 1 }] }),
+    log({ id: 'c', symptoms: [{ name: 'Nausea', severity: 3 }] }),
+  ];
+
+  it('rewrites the name on every entry carrying it, and no others', () => {
+    const { changes } = renameSymptomInLogs(history(), 'headche', 'Headache');
+    expect(changes.map(c => c.id)).toEqual(['a', 'b']);
+    expect(changes[0].symptoms).toEqual([{ name: 'Headache', severity: 1 }]);
+  });
+
+  it('leaves the other symptoms on a rewritten entry alone', () => {
+    const { changes } = renameSymptomInLogs(history(), 'headche', 'Headache');
+    expect(changes[1].symptoms).toEqual([
+      { name: 'Headache', severity: 2 },
+      { name: 'Nausea', severity: 1 },
+    ]);
+  });
+
+  // The honest consequence of symptomKey refusing to guess that "head ache"
+  // and "headache" are one complaint: the user gets to say so explicitly.
+  it('merges into an existing name, keeping the worse severity', () => {
+    const logs = [
+      log({ id: 'a', symptoms: [{ name: 'head ache', severity: 3 }, { name: 'Headache', severity: 1 }] }),
+    ];
+    const { changes, merges } = renameSymptomInLogs(logs, 'head ache', 'Headache');
+    expect(merges).toBe(true);
+    expect(changes[0].symptoms).toEqual([{ name: 'Headache', severity: 3 }]);
+  });
+
+  it('reports no merge when the new name is one nothing else uses', () => {
+    expect(renameSymptomInLogs(history(), 'headche', 'Headache').merges).toBe(false);
+  });
+
+  it('normalises the target\'s own casing on a merged entry', () => {
+    const logs = [log({ id: 'a', symptoms: [{ name: 'HEADACHE', severity: 1 }, { name: 'head ache', severity: 2 }] })];
+    const { changes } = renameSymptomInLogs(logs, 'head ache', 'Headache');
+    expect(changes[0].symptoms).toEqual([{ name: 'Headache', severity: 2 }]);
+  });
+
+  it('recases a symptom without treating it as a merge', () => {
+    const { changes, merges } = renameSymptomInLogs(history(), 'nausea', 'nausea');
+    expect(merges).toBe(false);
+    expect(changes.map(c => c.id)).toEqual(['b', 'c']);
+    expect(changes[1].symptoms).toEqual([{ name: 'nausea', severity: 3 }]);
+  });
+
+  it('changes nothing for a name nothing carries, or a blank one', () => {
+    expect(renameSymptomInLogs(history(), 'brain fog', 'Brain fog').changes).toEqual([]);
+    expect(renameSymptomInLogs(history(), 'headche', '   ').changes).toEqual([]);
+    expect(renameSymptomInLogs(history(), '', 'Headache').changes).toEqual([]);
+  });
+});
+
+describe('the vocabulary with counts', () => {
+  it('counts entries rather than days, since an entry is what a rename rewrites', () => {
+    const logs = [
+      log({ id: 'a', dayKey: '2026-08-17', symptoms: [{ name: 'Headache', severity: 1 }] }),
+      log({ id: 'b', dayKey: '2026-08-17', symptoms: [{ name: 'headache', severity: 2 }] }),
+      log({ id: 'c', dayKey: '2026-08-18', symptoms: [{ name: 'Nausea', severity: 1 }] }),
+    ];
+    expect(symptomCounts(logs)).toEqual([
+      { name: 'Headache', key: 'headache', count: 2 },
+      { name: 'Nausea', key: 'nausea', count: 1 },
+    ]);
+  });
+
+  it('is the same order symptomVocabulary reports', () => {
+    const logs = [
+      log({ id: 'a', symptoms: [{ name: 'Nausea', severity: 1 }] }),
+      log({ id: 'b', symptoms: [{ name: 'Headache', severity: 1 }] }),
+      log({ id: 'c', symptoms: [{ name: 'Headache', severity: 1 }] }),
+    ];
+    expect(symptomCounts(logs).map(s => s.name)).toEqual(symptomVocabulary(logs));
   });
 });

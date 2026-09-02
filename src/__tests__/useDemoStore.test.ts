@@ -1477,6 +1477,12 @@ describe('demo seed — people', () => {
     expect(useMoodStore.getState().logs.some(l => l.dayKey === todayKey)).toBe(false);
   });
 
+  // The entry list pages at MOOD_PAGE (20), so a history that fits on one page
+  // shows no pager and reads as a list that is still capped at what it shows.
+  it('seeds more mood entries than one page of the history holds', () => {
+    expect(useMoodStore.getState().logs.length).toBeGreaterThan(20);
+  });
+
   it('seeds no mood-generated tasks, since both generators ship off', () => {
     const generated = useTaskStore.getState().tasks
       .filter(t => t.generatedKind === 'moodLog' || t.generatedKind === 'moodNudge');

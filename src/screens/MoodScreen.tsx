@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
@@ -17,6 +18,7 @@ import { segmentOf } from '../utils/rhythms';
 import {
   moodEmoji,
   moodLabel,
+  moodLogMatches,
   moodLogSummary,
   severityLabel,
   symptomKey,
@@ -33,12 +35,29 @@ import {
 } from '../utils/moodInsights';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { EmptyState } from '../components/EmptyState';
+import { InlineAction } from '../components/InlineAction';
+import { SearchField } from '../components/SearchField';
 import { MoodLogSheet } from '../components/MoodLogSheet';
+import { SymptomManagerSheet } from '../components/SymptomManagerSheet';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { animateLayout } from '../utils/layoutAnimation';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
 
 const BAR_HEIGHT = 90;
+
+/**
+ * How many entries the history shows at a time, and adds per "Show more".
+ *
+ * This screen is a `ScrollView` rather than a `FlatList`, so every entry it
+ * lists is mounted — a year of logging is not something to render at once for a
+ * section most visits never scroll to. The cap was 20 with no way past it,
+ * which is the half this fixes; a page is not the same thing as a ceiling.
+ */
+const MOOD_PAGE = 20;
+
+const SEARCH_DEBOUNCE_MS = 180;
 
 /**
  * The mood and symptom log, and what it looks like against your tasks.
@@ -73,6 +92,12 @@ export function MoodScreen() {
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<MoodLog | null>(null);
+  const [symptomsOpen, setSymptomsOpen] = useState(false);
+  // The two ways into the history. The symptom filter holds a `symptomKey`
+  // rather than a display name, because that is what a contrast row is keyed on
+  // and what an entry's own spelling has to be matched through.
+  const [symptomFilter, setSymptomFilter] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
 
   // `dundundun://mood?log=1` — the daily check-in task's link button. Stamped
   // with the arrival time rather than a boolean, and tracked against what has
@@ -108,6 +133,11 @@ export function MoodScreen() {
   const symptomRows = useMemo(
     () => symptomMoodContrasts(days).slice(0, 4).map(row => ({
       ...row,
+      // The contrast's own label is the match key. Kept alongside the display
+      // name because tapping the row filters the history by it, and an entry's
+      // stored spelling has to be matched through the key rather than through
+      // whatever casing this row happens to show.
+      key: row.label,
       label: symptomNames.get(row.label) ?? row.label,
     })),
     [days, symptomNames],
@@ -154,7 +184,35 @@ export function MoodScreen() {
     return out;
   }, [days, todayKey]);
 
-  const recent = useMemo(() => logs.slice(0, 20), [logs]);
+  // The filters are applied to the whole history and the page is taken off the
+  // result, never the other way round: paging a filtered list is the point, and
+  // filtering a page would search the most recent 20 entries and call that the
+  // history.
+  const debouncedQuery = useDebouncedValue(query, SEARCH_DEBOUNCE_MS);
+  const filtered = useMemo(() => {
+    let out: MoodLog[] = logs;
+    if (symptomFilter) {
+      out = out.filter(l => l.symptoms.some(s => symptomKey(s.name) === symptomFilter));
+    }
+    if (debouncedQuery.trim()) out = out.filter(l => moodLogMatches(l, debouncedQuery));
+    return out;
+  }, [logs, symptomFilter, debouncedQuery]);
+
+  // Back to the first page whenever the list underneath changes, so a narrowed
+  // search doesn't arrive already scrolled past its own first result.
+  const [shown, setShown] = useState(MOOD_PAGE);
+  useEffect(() => { setShown(MOOD_PAGE); }, [symptomFilter, debouncedQuery]);
+
+  // A "Show 1 more" stands about as tall as the row it hides, so it costs a tap
+  // to save nothing, and you have to spend the tap to find out it was one thing.
+  // `pillOverflow` makes the same call for the same reason.
+  const visibleEntries = filtered.slice(0, filtered.length - shown === 1 ? shown + 1 : shown);
+  const hidden = filtered.length - visibleEntries.length;
+  const filtering = symptomFilter !== null || debouncedQuery.trim().length > 0;
+
+  const filterLabel = symptomFilter
+    ? symptomNames.get(symptomFilter) ?? symptomFilter
+    : null;
 
   const openNew = () => { haptics.tap(); setEditing(null); setSheetOpen(true); };
   const openEdit = (log: MoodLog) => { haptics.tap(); setEditing(log); setSheetOpen(true); };
@@ -183,11 +241,23 @@ export function MoodScreen() {
         subtitle={summary.loggedDays > 0
           ? `${summary.loggedDays} ${summary.loggedDays === 1 ? 'day' : 'days'} logged`
           : undefined}
-        actions={[{
-          icon: 'add-circle-outline',
-          onPress: openNew,
-          accessibilityLabel: 'Log how you\'re feeling',
-        }]}
+        actions={[
+          // Only offered once there is a vocabulary to correct. A rename is
+          // reached from here rather than from the symptom contrast card,
+          // because that card needs enough days on both sides before it draws
+          // at all — and somebody who logged a typo twice, who is exactly the
+          // person wanting this, has no contrast rows to tap.
+          ...(symptomNames.size > 0 ? [{
+            icon: 'list-outline' as const,
+            onPress: () => { haptics.tap(); setSymptomsOpen(true); },
+            accessibilityLabel: 'Manage symptoms',
+          }] : []),
+          {
+            icon: 'add-circle-outline',
+            onPress: openNew,
+            accessibilityLabel: 'Log how you\'re feeling',
+          },
+        ]}
       />
 
       {logs.length === 0 ? (
@@ -330,20 +400,28 @@ export function MoodScreen() {
               <Text style={styles.sectionTitle}>MOOD WITH SYMPTOMS</Text>
               <View style={styles.card}>
                 {symptomRows.map(row => (
-                  <View
+                  // The row that raised the question is the way to the days
+                  // behind it. Without this the screen could tell you your mood
+                  // is worse when you log a headache while giving you no way to
+                  // look at those days.
+                  <TouchableOpacity
                     key={row.label}
                     style={styles.contrastRow}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => { haptics.tap(); setSymptomFilter(row.key); }}
                     accessible
                     accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you logged it, ${row.moodWithout.toFixed(1)} on days you didn't`}
+                    accessibilityHint="Shows the entries that logged it"
                   >
                     <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
                     <Text style={styles.contrastValue}>
                       {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
                     </Text>
-                  </View>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
                 ))}
                 <Text style={styles.chartCaption}>
-                  Your average mood on days you logged it, against days you didn't.
+                  Your average mood on days you logged it, against days you didn't. Tap one to see those entries.
                 </Text>
               </View>
             </>
@@ -372,8 +450,40 @@ export function MoodScreen() {
             </>
           )}
 
-          <Text style={styles.sectionTitle}>RECENT ENTRIES</Text>
-          {recent.map(log => (
+          <Text style={styles.sectionTitle}>
+            {filtering ? `${filtered.length} ${filtered.length === 1 ? 'ENTRY' : 'ENTRIES'}` : 'ENTRIES'}
+          </Text>
+
+          <SearchField
+            style={styles.searchBar}
+            placeholder="Search notes, symptoms, a month"
+            value={query}
+            onChangeText={setQuery}
+            accessibilityLabel="Search your mood history"
+          />
+
+          {filterLabel !== null && (
+            <View style={styles.filterBar}>
+              <TouchableOpacity
+                style={styles.activePill}
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => { haptics.tap(); animateLayout(); setSymptomFilter(null); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Remove filter ${filterLabel}`}
+              >
+                <Text style={styles.activePillText} numberOfLines={1}>{filterLabel}</Text>
+                <Ionicons name="close" size={13} color={colors.accent} />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {filtered.length === 0 && (
+            <Text style={styles.noMatches}>
+              Nothing matches. Try a symptom, a word from a note, or a month.
+            </Text>
+          )}
+
+          {visibleEntries.map(log => (
             <TouchableOpacity
               key={log.id}
               style={styles.entryRow}
@@ -404,6 +514,18 @@ export function MoodScreen() {
               </View>
             </TouchableOpacity>
           ))}
+
+          {hidden > 0 && (
+            <View style={styles.moreRow}>
+              <InlineAction
+                icon="chevron-down"
+                label={`Show ${Math.min(hidden, MOOD_PAGE)} more`}
+                variant="neutral"
+                surface="page"
+                onPress={() => { haptics.tap(); animateLayout(); setShown(n => n + MOOD_PAGE); }}
+              />
+            </View>
+          )}
         </ScrollView>
       )}
 
@@ -411,6 +533,11 @@ export function MoodScreen() {
         visible={sheetOpen}
         editing={editing}
         onClose={() => { setSheetOpen(false); setEditing(null); }}
+      />
+
+      <SymptomManagerSheet
+        visible={symptomsOpen}
+        onClose={() => setSymptomsOpen(false)}
       />
     </View>
   );
@@ -487,6 +614,34 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     gap: spacing.sm,
   },
   contrastLabel: { flex: 1, fontSize: font.sm, color: colors.text },
+  searchBar: { marginBottom: spacing.sm },
+  // Its own row rather than beside the field, so a long symptom name has the
+  // width and doesn't squeeze the search box it would sit next to.
+  filterBar: { flexDirection: 'row', marginBottom: spacing.sm },
+  activePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    maxWidth: 220,
+    paddingLeft: spacing.md,
+    paddingRight: 10,
+    paddingVertical: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.accent + '33',
+  },
+  activePillText: {
+    fontSize: font.sm,
+    fontWeight: fontWeight.semibold,
+    color: colors.accent,
+    flexShrink: 1,
+  },
+  noMatches: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    paddingVertical: spacing.md,
+    lineHeight: 20,
+  },
+  moreRow: { alignItems: 'flex-start', marginTop: spacing.xs },
   contrastValue: { fontSize: font.sm, color: colors.textSecondary, fontWeight: fontWeight.medium },
   entryRow: {
     flexDirection: 'row',

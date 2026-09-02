@@ -1400,6 +1400,13 @@ function seedMoodLog(today: Date): void {
   // deliberately left unlogged, so demo mode opens with the daily check-in
   // still worth answering and the sheet one tap from the Today list.
   const history: { back: number; mood: MoodLevel; symptoms?: [string, SymptomSeverity][]; note?: string }[] = [
+    // The first four exist to put the history past one page, so demo mode
+    // shows the "Show more" under the entry list rather than a list that
+    // happens to fit — the pager is what says the history is no longer capped.
+    { back: 21, mood: 3 },
+    { back: 20, mood: 4 },
+    { back: 19, mood: 4, symptoms: [['Poor sleep', 1]] },
+    { back: 18, mood: 3 },
     { back: 17, mood: 4 },
     { back: 16, mood: 4, note: 'Good week so far' },
     { back: 15, mood: 5 },
