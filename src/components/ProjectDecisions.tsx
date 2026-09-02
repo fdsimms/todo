@@ -53,7 +53,9 @@ export function ProjectDecisions({ decisions, onPress }: Props) {
             {/* Three lines, not one (#1737): unlike the Logbook/Search rows
                 these same fields also render in, nothing here pins the row to
                 a fixed height, so there's no reason to clip a decision short
-                — a long question or answer just makes its own row taller. */}
+                — a long question or answer just makes its own row taller.
+                Either one wide enough to want the whole line gets it; see the
+                wrap on `row`. */}
             <Text style={styles.title} numberOfLines={3}>{title}</Text>
             <View style={styles.answerPill}>
               <Text style={styles.answer} numberOfLines={3}>{answer}</Text>
@@ -86,10 +88,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   // The same inset-grouped card every list row on this screen wears, so the
   // block reads as part of the same list rather than as a foreign panel.
+  //
+  // It wraps (#2214): a pair that doesn't fit across one line puts the pill on
+  // its own line underneath rather than squeezing the question into a column of
+  // one-word lines. Nothing measures anything — Yoga breaks the line when the
+  // pill's own width won't fit beside the question, so a short pair still sits
+  // side by side and only the rows that need the second line take one.
   row: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     gap: spacing.sm,
+    rowGap: spacing.xs,
     marginHorizontal: spacing.md,
     marginVertical: 2,
     paddingHorizontal: spacing.md,
@@ -97,12 +107,18 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: radius.md,
     backgroundColor: colors.bgSecondary,
   },
-  // Basis 0, so the question gives up its width to a long answer before the
-  // answer starts truncating — the answer is what someone came here to read.
+  // Basis auto rather than 0, and that's the whole fix: with basis 0 the
+  // question had no width of its own to break the line with, so the pill always
+  // fitted beside it and the question shrank to whatever was left — three lines
+  // of "Figure out / who is / coming…" against a full-width answer. Growing
+  // still keeps the pill at the right edge on the rows that share a line.
   title: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: 'auto',
     color: colors.textSecondary,
     fontSize: font.sm,
+    lineHeight: lineHeight.sm,
   },
   answerPill: {
     flexDirection: 'row',
