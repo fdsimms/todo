@@ -143,3 +143,62 @@ describe('removeLog', () => {
     expect(state().logs).toHaveLength(0);
   });
 });
+
+describe('renameSymptom', () => {
+  const history = () => {
+    state().addLog(3, [{ name: 'headche', severity: 1 }]);
+    state().addLog(2, [{ name: 'Headche', severity: 2 }, { name: 'Nausea', severity: 1 }]);
+    state().addLog(4, [{ name: 'Nausea', severity: 3 }]);
+    jest.clearAllMocks();
+  };
+
+  const symptomsOf = (mood: number) =>
+    state().logs.find(l => l.mood === mood)!.symptoms;
+
+  it('rewrites the name on every entry carrying it and reports the count', () => {
+    history();
+    expect(state().renameSymptom('headche', 'Headache')).toBe(2);
+    expect(symptomsOf(3)).toEqual([{ name: 'Headache', severity: 1 }]);
+    expect(symptomsOf(2)).toEqual([
+      { name: 'Headache', severity: 2 },
+      { name: 'Nausea', severity: 1 },
+    ]);
+  });
+
+  it('writes a row for each entry it changed, and none for the others', () => {
+    history();
+    state().renameSymptom('headche', 'Headache');
+    expect(dbUpdateMoodLog).toHaveBeenCalledTimes(2);
+    const written = (dbUpdateMoodLog as jest.Mock).mock.calls.map(c => c[0].mood);
+    expect(written.sort()).toEqual([2, 3]);
+  });
+
+  // A rename changes what you called something, never which day it happened
+  // on — the line that separates it from the edits updateLog refuses.
+  it('leaves loggedAt and dayKey exactly where they were', () => {
+    history();
+    const before = state().logs.map(l => ({ id: l.id, at: l.loggedAt, day: l.dayKey }));
+    state().renameSymptom('headche', 'Headache');
+    expect(state().logs.map(l => ({ id: l.id, at: l.loggedAt, day: l.dayKey }))).toEqual(before);
+  });
+
+  it('merges into an existing name, keeping the worse severity', () => {
+    state().addLog(3, [{ name: 'head ache', severity: 3 }, { name: 'Headache', severity: 1 }]);
+    jest.clearAllMocks();
+    expect(state().renameSymptom('head ache', 'Headache')).toBe(1);
+    expect(symptomsOf(3)).toEqual([{ name: 'Headache', severity: 3 }]);
+  });
+
+  it('does nothing, and writes nothing, for a name nothing carries', () => {
+    history();
+    expect(state().renameSymptom('brain fog', 'Brain fog')).toBe(0);
+    expect(dbUpdateMoodLog).not.toHaveBeenCalled();
+  });
+
+  it('refuses a blank new name rather than emptying the symptom', () => {
+    history();
+    expect(state().renameSymptom('headche', '  ')).toBe(0);
+    expect(dbUpdateMoodLog).not.toHaveBeenCalled();
+    expect(symptomsOf(3)).toEqual([{ name: 'headche', severity: 1 }]);
+  });
+});

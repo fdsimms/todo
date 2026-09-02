@@ -128,7 +128,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/measuredHeight.ts` — HEIGHT_EPSILON, nextMeasuredHeight
 - `src/utils/missed.ts` — isMissed, isRealCompletion, MostMissedGroup, mostMissed
 - `src/utils/moodInsights.ts` — MIN_PAIRED_DAYS, MIN_CONTRAST_DAYS, MoodDay, completionDayKey, buildMoodDays, pairedDays, correlation, CorrelationStrength, correlationStrength, MoodCompletionInsight, +10 more
-- `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, SYMPTOM_SEVERITIES, moodLabel, moodEmoji, severityLabel, symptomKey, withSymptom, withoutSymptom, symptomVocabulary, +5 more
+- `src/utils/moodLog.ts` — MOOD_LEVELS, LOW_MOOD_AT_OR_BELOW, SYMPTOM_SEVERITIES, moodLabel, moodEmoji, severityLabel, symptomKey, withSymptom, withoutSymptom, symptomVocabulary, +10 more
 - `src/utils/moodTasks.ts` — MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, DEFAULT_MOOD_NUDGE_AFTER_DAYS, MOOD_NUDGE_COOLDOWN_DAYS, moodLogDayKey, moodNudgeDayKey, wantsMoodNudge, daysBetweenKeys, lowMoodDeloadNote, moodNudgeNotes
 - `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, isCleanToday, slipPatch, undoSlipPatch, cleanDayPatch
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync

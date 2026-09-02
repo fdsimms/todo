@@ -1,3 +1,4 @@
+import { format } from 'date-fns/format';
 import type { LoggedSymptom, MoodLevel, MoodLog, SymptomSeverity } from '../types';
 
 /**
@@ -122,19 +123,39 @@ export function withoutSymptom(
  * entries arrive newest-first and the first spelling seen for a key wins.
  */
 export function symptomVocabulary(logs: readonly MoodLog[]): string[] {
-  const counts = new Map<string, { name: string; count: number }>();
+  return symptomCounts(logs).map(e => e.name);
+}
+
+/** A symptom in the vocabulary: what it is called, its match key, how often. */
+export interface SymptomCount {
+  name: string;
+  key: string;
+  /** Entries carrying it, not days — an entry is what a rename rewrites. */
+  count: number;
+}
+
+/**
+ * The vocabulary with its counts, most-used first then alphabetical.
+ *
+ * `symptomVocabulary` is this with the counts dropped; they are one function so
+ * the "which spelling wins" rule above is stated once. The counts are what the
+ * symptom list on the Mood screen shows, and what a rename's confirmation
+ * counts — a person agreeing to rewrite their own history should be told how
+ * much of it.
+ */
+export function symptomCounts(logs: readonly MoodLog[]): SymptomCount[] {
+  const counts = new Map<string, SymptomCount>();
   for (const log of logs) {
     for (const symptom of log.symptoms) {
       const key = symptomKey(symptom.name);
       if (!key) continue;
       const seen = counts.get(key);
       if (seen) seen.count++;
-      else counts.set(key, { name: symptom.name.trim(), count: 1 });
+      else counts.set(key, { name: symptom.name.trim(), key, count: 1 });
     }
   }
   return [...counts.values()]
-    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
-    .map(e => e.name);
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 }
 
 /** Every entry on one logical day, oldest first — the order a day reads in. */
@@ -193,6 +214,116 @@ export function hasLogOnDay(logs: readonly MoodLog[], dayKey: string): boolean {
  * name. An entry with neither can still exist (a bare note), and reads as its
  * note rather than as an empty row.
  */
+/**
+ * Whether an entry matches what somebody typed into the history's search field.
+ *
+ * Plain case-insensitive substring, deliberately not `fuzzySearch`: that ranks
+ * a result list, and this decides membership of a filtered list where a near
+ * miss silently dropping a day is the failure that matters. Same reason
+ * `symptomKey` refuses to guess — a history is read to check something, so it
+ * may not quietly answer about a different set of days than the one asked for.
+ *
+ * It searches the note, the symptom names and their severities, the mood label,
+ * and the entry's date written out. **The date is how "jump to a month" is
+ * answered** rather than by a picker: "august" narrows to August, "friday" to
+ * Fridays, "2026" to a year. Both a long and a short form of the date are
+ * matched against, so "aug" works as well as "august".
+ */
+export function moodLogMatches(log: MoodLog, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (log.note && log.note.toLowerCase().includes(q)) return true;
+  if (log.symptoms.some(s =>
+    s.name.toLowerCase().includes(q) || severityLabel(s.severity).toLowerCase().includes(q)
+  )) return true;
+  if (log.mood !== null && moodLabel(log.mood).toLowerCase().includes(q)) return true;
+  const date = dayKeyDate(log.dayKey);
+  return `${format(date, 'EEEE d MMMM yyyy')} ${format(date, 'EEE d MMM yyyy')}`
+    .toLowerCase()
+    .includes(q);
+}
+
+/**
+ * A day key as a Date, at noon.
+ *
+ * Deliberately not `dayKeyToDate` from `dateUtils`, which would be the obvious
+ * reuse: that module reaches `useSettingsStore` for `dayResetTime` and so pulls
+ * SQLite in behind it, and this module is the pure half of the feature —
+ * `moodLog.test.ts` stands it up with no mocks at all, which is the property
+ * worth keeping. Nothing here needs the reset time: a day key already names the
+ * logical day, and this only ever formats it for display. Noon for the reason
+ * every other date the app parks is at noon — midnight can be dragged across
+ * the boundary by a DST hour, and which day it reads as is the whole point.
+ */
+function dayKeyDate(dayKey: string): Date {
+  const [year, month, day] = dayKey.split('-').map(Number);
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
+
+/** What a rename would do, decided before anything is written. */
+export interface SymptomRename {
+  /** One per entry that changes, carrying the symptom list to store. */
+  changes: { id: string; symptoms: LoggedSymptom[] }[];
+  /** True when the new name is already in use, so this folds two into one. */
+  merges: boolean;
+}
+
+/**
+ * Rename a symptom across every entry carrying it, merging into an existing
+ * name when one already matches.
+ *
+ * The vocabulary is derived from the entries rather than stored (see
+ * `symptomVocabulary`), so there is no registry row to edit and correcting a
+ * typo means rewriting history. That is the one thing the store otherwise
+ * refuses to do casually — `updateLog` cannot move `dayKey` or `loggedAt` — so
+ * this is computed whole first, and the caller confirms against
+ * `changes.length` before any of it is written.
+ *
+ * The merge case is the point rather than a side effect. `symptomKey` matches
+ * on case and space only and must keep refusing to guess that "head ache" and
+ * "headache" are one complaint, because being wrong there folds two things
+ * together in a chart somebody may be about to show a doctor. The honest
+ * consequence of refusing to guess is that the user needs a way to say so, and
+ * this is it: they are the same when you say they are.
+ *
+ * Where an entry ends up holding the same symptom twice, the two collapse at
+ * **the worse of the two severities**, the rule `daySymptoms` already applies
+ * to a day — one complaint you named twice, at the worst it got, not two.
+ */
+export function renameSymptomInLogs(
+  logs: readonly MoodLog[],
+  fromKey: string,
+  toName: string,
+): SymptomRename {
+  const trimmed = toName.trim();
+  const toKey = symptomKey(trimmed);
+  const changes: { id: string; symptoms: LoggedSymptom[] }[] = [];
+  if (!fromKey || !toKey) return { changes, merges: false };
+
+  for (const log of logs) {
+    if (!log.symptoms.some(s => symptomKey(s.name) === fromKey)) continue;
+    const symptoms: LoggedSymptom[] = [];
+    for (const symptom of log.symptoms) {
+      const key = symptomKey(symptom.name);
+      if (key !== fromKey && key !== toKey) {
+        symptoms.push(symptom);
+        continue;
+      }
+      // Both the renamed symptom and any existing one under the target name
+      // land here, so the target's own casing is normalised to what was typed
+      // and the pair collapses to one row rather than to two identical ones.
+      const already = symptoms.find(s => symptomKey(s.name) === toKey);
+      if (already) already.severity = Math.max(already.severity, symptom.severity) as SymptomSeverity;
+      else symptoms.push({ name: trimmed, severity: symptom.severity });
+    }
+    changes.push({ id: log.id, symptoms });
+  }
+
+  const merges = toKey !== fromKey
+    && logs.some(l => l.symptoms.some(s => symptomKey(s.name) === toKey));
+  return { changes, merges };
+}
+
 export function moodLogSummary(log: MoodLog): string {
   const parts: string[] = [];
   if (log.mood !== null) parts.push(`${moodEmoji(log.mood)} ${moodLabel(log.mood)}`);
