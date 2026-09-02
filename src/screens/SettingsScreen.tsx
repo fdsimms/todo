@@ -110,6 +110,7 @@ export function SettingsScreen() {
     kitchenEnabled: settings.kitchenEnabled,
     calendarReadEnabled: settings.calendarReadEnabled,
     calendarIds: settings.calendarIds,
+    healthReadEnabled: settings.healthReadEnabled,
     simpleMode: settings.simpleMode,
     generatedOn: generatorCounts.on,
     generatedTotal: generatorCounts.total,

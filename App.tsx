@@ -25,6 +25,7 @@ import { useRemindersImportSync } from './src/utils/remindersImportSync';
 import { useCalendarSync } from './src/store/useCalendarStore';
 import { useWeatherSync } from './src/store/useWeatherStore';
 import { useScreenTimeSync } from './src/store/useScreenTimeStore';
+import { useHealthSync } from './src/store/useHealthStore';
 import { useFocusShieldSync } from './src/hooks/useFocusShieldSync';
 import { useSyncStore } from './src/store/useSyncStore';
 import { useSyncOnForeground } from './src/utils/useSyncOnForeground';
@@ -193,6 +194,11 @@ function AppRoot() {
   // Keeps the OS usage monitor armed against the current rules and drains
   // what it has reported. Inert until screenTimeTasks is switched on.
   useScreenTimeSync();
+  // Keeps today's Health reading current, on the same three triggers. Inert
+  // until healthReadEnabled is switched on, and never raises the permission
+  // sheet itself — that is the Settings row's job, the line useWeatherSync
+  // draws for location.
+  useHealthSync();
   // Blocks the chosen apps while a focus session is actually running, and —
   // the half that matters — lifts a shield left in force by a run that
   // crashed. Inert until focusShieldEnabled is switched on.

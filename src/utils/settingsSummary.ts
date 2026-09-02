@@ -41,6 +41,7 @@ export interface SettingsSummaryInput {
    * the one thing this summary must not say.
    */
   calendarIds: string[];
+  healthReadEnabled: boolean;
   simpleMode: boolean;
   /**
    * How many generators are switched on, and how many are on offer — from
@@ -135,6 +136,14 @@ export function settingsSummaries(s: SettingsSummaryInput): Record<SettingsGroup
     generated: s.generatedOn === 0
       ? `Nothing. ${s.generatedTotal} available`
       : `${s.generatedOn} of ${s.generatedTotal} on`,
+
+    // The switch alone, with no reading named beside it. The number this group
+    // shows is a step count that changes by the minute and is often absent
+    // altogether, and a summary line that said "4,120 steps" would be stale on
+    // the index before it was read — or, worse, would say "No steps" at the one
+    // moment it means "Health isn't sharing", which is the confusion the rows
+    // themselves are written to avoid.
+    health: s.healthReadEnabled ? 'Reading steps' : 'Off. Nothing is read from Health',
 
     kitchen: line(
       s.mealsOnToday && 'Meals on Today',

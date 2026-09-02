@@ -43,6 +43,7 @@ export type SettingsGroupId =
   | 'capture'
   | 'tasksProjects'
   | 'generated'
+  | 'health'
   | 'kitchen'
   | 'privacyAi'
   | 'dataReset'
@@ -97,6 +98,18 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   // with the kitchen and keep running without it, which is exactly the bug that
   // hiding them behind the area's gate used to cause.
   { id: 'generated', title: 'Automatic tasks', icon: 'sparkles-outline', tint: 'accent' },
+  // Not filed with Reminders & Calendar, even though it is the third thing this
+  // app reads off the device. That group's own note says the two live together
+  // because they share a framework, a platform gate and the same caveat, and
+  // this shares none of them: EventKit tells you plainly whether you have
+  // permission, and HealthKit refuses to, which is a difference the rows have to
+  // explain rather than sit quietly beside. It sits after Automatic tasks
+  // because that is what the readings are ultimately for.
+  //
+  // Red repeats Notifications', four groups up — the same distance Day & time
+  // and Groceries & meals keep between their two oranges, and the rule is only
+  // that a repeat never lands next to its own other instance.
+  { id: 'health', title: 'Apple Health', icon: 'heart-outline', tint: 'red', iosOnly: true },
   { id: 'kitchen', title: 'Groceries & meals', icon: 'cart-outline', tint: 'orange', kitchenOnly: true },
   // Neutral from here down: the tinted groups are things you configure, the grey
   // ones are housekeeping. There are only five tints and seven tinted groups, so
@@ -390,6 +403,13 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'mealCalendar', groupId: 'capture', label: 'Write meals to', section: 'Meals on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync', 'meal plan', 'dinner', 'share', 'household', 'family'],
     kitchen: true },
+
+  { id: 'healthRead', groupId: 'health', label: 'Read Apple Health', section: 'Apple Health',
+    keywords: ['steps', 'fitness', 'activity', 'healthkit', 'walking', 'watch'] },
+  { id: 'healthAccess', groupId: 'health', label: 'Health access', section: 'Apple Health',
+    keywords: ['permission', 'allow', 'authorize', 'grant'] },
+  { id: 'healthToday', groupId: 'health', label: 'Steps today', section: 'Apple Health',
+    keywords: ['count', 'reading', 'walked'] },
 
   // ── Tasks & projects ──────────────────────────────────────────────────────
   // In the order the screen renders them, which the registry's own comment

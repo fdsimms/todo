@@ -151,19 +151,28 @@ describe('settings index', () => {
   });
 
   describe('platform gating', () => {
-    it('drops the iOS-only group off iOS', () => {
+    it('drops every iOS-only group off iOS', () => {
       const android = visibleSettingsGroups('android');
-      expect(android.find(g => g.id === 'capture')).toBeUndefined();
-      expect(android.length).toBe(SETTINGS_GROUPS.length - 1);
+      const iosOnly = SETTINGS_GROUPS.filter(g => g.iosOnly);
+      // Asserted against the flag rather than a literal list, so a third
+      // iOS-only group is covered by being marked rather than by being
+      // remembered here.
+      expect(iosOnly.length).toBeGreaterThan(1);
+      for (const group of iosOnly) {
+        expect(android.find(g => g.id === group.id)).toBeUndefined();
+      }
+      expect(android.length).toBe(SETTINGS_GROUPS.length - iosOnly.length);
     });
 
     it('keeps every group on iOS', () => {
       expect(visibleSettingsGroups('ios')).toHaveLength(SETTINGS_GROUPS.length);
     });
 
-    it('takes the hidden group’s entries with it', () => {
+    it('takes the hidden groups’ entries with them', () => {
       const android = visibleSettingsEntries('android');
-      expect(android.some(e => e.groupId === 'capture')).toBe(false);
+      for (const group of SETTINGS_GROUPS.filter(g => g.iosOnly)) {
+        expect(android.some(e => e.groupId === group.id)).toBe(false);
+      }
       expect(visibleSettingsEntries('ios')).toHaveLength(SETTINGS_ENTRIES.length);
     });
   });

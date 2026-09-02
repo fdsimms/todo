@@ -78,3 +78,26 @@ describe('todo-screentime-bridge entry point', () => {
     }
   });
 });
+
+describe('todo-health-bridge entry point', () => {
+  const HEALTH_DIR = join(__dirname, '..', '..', 'modules', 'todo-health-bridge');
+
+  function healthNativeNames(): string[] {
+    const swift = readFileSync(
+      join(HEALTH_DIR, 'ios', 'TodoHealthBridgeModule.swift'), 'utf8',
+    );
+    return [...swift.matchAll(/\bA?(?:sync)?Function\("([^"]+)"\)/g)].map(m => m[1]);
+  }
+
+  it('calls through to every native function', () => {
+    // The third module built this way, and so the third that can fail this way.
+    const source = readFileSync(join(HEALTH_DIR, 'index.ts'), 'utf8');
+    const names = healthNativeNames();
+    // Fewer functions than the other two bridges have, so the floor is lower —
+    // but it still guards the regex, which would otherwise make this vacuous.
+    expect(names).toContain('readSteps');
+    for (const name of names) {
+      expect(source).toContain(`nativeModule!.${name}(`);
+    }
+  });
+});

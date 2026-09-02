@@ -268,6 +268,7 @@ exports.
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
 | a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (seventeen generators now: `moodLog` and `moodNudge` are the newest, and `moodNudge` is the only one whose trigger is a trend in the user's own answers rather than a date, a row or a one-off threshold) |
 | a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
+| anything read out of Apple Health | `src/store/useHealthStore.ts` + `src/utils/healthBridge.ts` + `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. Read it first: three of its four rules are about what a reader may *claim*, and the big one is that a refused read and a day with nothing recorded are one answer |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
@@ -363,12 +364,12 @@ them source rather than tests. The ten biggest source files:
 `store/useTaskStore.ts` (7.5k), `components/TaskEditor.tsx` (5.1k), `db/database.ts` (5.1k),
 `store/useGroceryStore.ts` (4.8k), `types/index.ts` (4.5k), `screens/TodayScreen.tsx` (4.4k),
 `components/TaskItem.tsx` (4.1k), `components/QuickAddModal.tsx` (3.1k),
-`store/useSettingsStore.ts` (3.0k), `utils/demoSeed.ts` (3.0k).
+`store/useSettingsStore.ts` (3.1k), `utils/demoSeed.ts` (3.0k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **260 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **262 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -486,6 +487,7 @@ decided, and the design system every screen is built from. Individual features a
 | `docs/arch/app-lock.md` | The Face ID gate and the API key in the keychain |
 | `docs/arch/people.md` | The people layer: why it never scores or ranks anybody, and how birthdays work |
 | `docs/arch/mood-log.md` | The mood/symptom log, what its insights may claim, and the nudge's three rules |
+| `docs/arch/health-data.md` | Reading Apple Health: why nothing is stored, and why a refusal is invisible |
 | `docs/arch/simple-mode.md` | Simplified mode: what the one switch hides, and the two rules that make it safe |
 | `docs/native-targets.md` | Adding an iOS native target (widget, Watch app, Live Activity) |
 
