@@ -136,7 +136,7 @@ import { mealSlotSourceId } from '../utils/mealSlotTasks';
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
-import { dayKeyOf, getDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHealthStore } from '../store/useHealthStore';
@@ -1687,7 +1687,15 @@ export function TodayScreen() {
   // loadRange: the store is range-scoped and the Meal Plan screen owns which
   // week is loaded, so Today shows what's already there instead of fighting it
   // for the window.
-  const todayKey = useMemo(() => dayKeyOf(new Date()), []);
+  // The *logical* day, not the calendar one. `dayKeyOf(new Date())` was the odd
+  // one out on this screen: `getDayStart` a few lines below defaults to the
+  // store's dayResetTime, so between midnight and a 2am reset the events came
+  // from yesterday's logical day while the meals came from tomorrow's calendar
+  // one — two sources rendered as sibling rows in the same list, a day apart.
+  // `checkMealSlotTasks` had already drawn this line for the tasks those meals
+  // sit beside, with a comment naming the same failure. See CLAUDE.md on the
+  // grace window.
+  const todayKey = useMemo(() => getLogicalDayKey(new Date(), dayResetTime), [dayResetTime]);
   const mealEntries = useMealPlanStore(useShallow(s => s.entries));
   const mealRangeStart = useMealPlanStore(s => s.rangeStart);
   const mealRangeEnd = useMealPlanStore(s => s.rangeEnd);
@@ -1849,7 +1857,10 @@ export function TodayScreen() {
     // count left in the store by the session before it.
     if (healthCategory) {
       rows.push(...healthContextRows(healthToday, {
-        todayKey: getLogicalDayKey(new Date(), dayResetTime),
+        // Recomputed here rather than reusing `todayKey` above, which is memoized
+      // on mount: this memo already re-runs on `minuteTick`, so a reading is
+      // dropped as soon as the day turns over rather than at the next remount.
+      todayKey: getLogicalDayKey(new Date(), dayResetTime),
         category: healthCategory,
       }));
     }
