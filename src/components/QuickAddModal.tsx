@@ -956,6 +956,12 @@ export function QuickAddModal({
     timedMinutes,
     targetCount,
     targetUnit,
+    // Always null here: quick add has no Health kind to pick. The kind picker
+    // deliberately lives in the editor (see taskKinds.ts), and a sheet whose
+    // job is capturing a title in two taps is the wrong place to ask which
+    // Apple Health reading a task should watch.
+    healthMetric: null,
+    healthTarget: null,
     chainItems: resolvedChainItems,
     recurrenceType,
     effort,

@@ -955,6 +955,21 @@ export function seedDemoData(): void {
     ...generatedBy('health', healthSourceId(dayKeyOf(today), sleepRule.id)),
   });
 
+  // A health-target task, the fifth kind. Seeded so the shape is visible even
+  // though the demo can show no reading behind it: the row draws its chip only
+  // once Health has a number, so in demo mode this reads as an ordinary task
+  // with a target set in its editor. That is the honest demo of it — the whole
+  // point of the kind is that the reading is real, and a real one has no
+  // business in a fiction.
+  addTask({
+    title: 'Walk 8,000 steps',
+    dueDate: today.toISOString(),
+    category: 'Health',
+    healthMetric: 'steps',
+    healthTarget: 8000,
+    recurrenceType: 'daily',
+  });
+
   // Marked complete rather than archived — demonstrates Project.completed,
   // which has its own Completed list (see ProjectEditor's Mark complete row)
   // instead of disappearing into Archived the way finishing a project used to.

@@ -200,7 +200,7 @@ import {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'timedMinutes', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress', 'location',
+  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress', 'location',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.
@@ -485,6 +485,8 @@ function newTaskFromDraft(
     actualMinutes: draft.actualMinutes ?? null,
     timedMinutes: draft.timedMinutes ?? null,
     timerElapsedSeconds: draft.timerElapsedSeconds ?? 0,
+    healthMetric: draft.healthMetric ?? null,
+    healthTarget: draft.healthTarget ?? null,
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     generatedKind: draft.generatedKind ?? null,
     generatedSourceId: draft.generatedSourceId ?? null,
@@ -2279,7 +2281,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       priorBestStreak: 0,
       timerStartedAt: null,
       actualMinutes: null,
-      // The duplicate keeps the duration but starts its countdown fresh.
+      // The duplicate keeps the duration but starts its countdown fresh. The
+      // health target is not reset alongside it, and neither is timedMinutes:
+      // the countdown's *progress* is what belongs to the original run, where
+      // the target is part of what the task is.
       timerElapsedSeconds: 0,
       // Same split as actualMinutes above: the copy still asks the question,
       // it just hasn't been answered yet.
@@ -3270,6 +3275,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
               : task.supplyCount,
           timerStartedAt: null, // fresh occurrence isn't running; actualMinutes/estimate carry via ...effective
           timerElapsedSeconds: 0, // countdown restarts from the top; timedMinutes carries via ...effective
+          // healthMetric/healthTarget carry via ...effective too, and need no
+          // reset: readiness is derived against today's reading rather than
+          // stored, so tomorrow's occurrence starts unready on its own.
           // vacationPause carries over so recurring tasks stay paused across occurrences
           // blockedById carries via ...effective too, and harmlessly: for this
           // occurrence to have been completed its blocker was already done, so
@@ -6172,6 +6180,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       actualMinutes: null,
       timedMinutes: null,
       timerElapsedSeconds: 0,
+      healthMetric: null,
+      healthTarget: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
@@ -6363,6 +6373,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       actualMinutes: null,
       timedMinutes: null,
       timerElapsedSeconds: 0,
+      healthMetric: null,
+      healthTarget: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],

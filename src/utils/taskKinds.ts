@@ -1,4 +1,5 @@
 import type { ChainItem, Effort, RecurrenceType } from '../types';
+import type { HealthMetric } from './moodInsights';
 import { formatDuration, minutesToEffort } from './effort';
 import { formatQuotaTarget, normalizeTargetUnit } from './quotaUnit';
 
@@ -23,7 +24,7 @@ import { formatQuotaTarget, normalizeTargetUnit } from './quotaUnit';
  * where you go when a task needs to be more than a line of text, so that's
  * where the choice lives.
  */
-export type TaskKind = 'task' | 'timed' | 'target' | 'chain';
+export type TaskKind = 'task' | 'timed' | 'target' | 'health' | 'chain';
 
 /** Label, glyph and one-line explanation for each kind, in picker order. */
 export const TASK_KIND_META: {
@@ -36,6 +37,10 @@ export const TASK_KIND_META: {
   { key: 'task', label: 'Standard', icon: 'checkbox-outline', hint: 'An ordinary task. Check it off once.' },
   { key: 'timed', label: 'Timed', icon: 'timer-outline', hint: 'Counts down a set time once you start it.' },
   { key: 'target', label: 'Daily target', icon: 'speedometer-outline', hint: 'Log it several times a day.' },
+  // Beside Daily target because the two are easy to confuse and the hints are
+  // where the difference lives: one you log, the other is read for you. Neither
+  // ever ticks itself — see healthTarget.ts.
+  { key: 'health', label: 'Health target', icon: 'footsteps-outline', hint: 'Ready to check off once Apple Health reaches a number.' },
   { key: 'chain', label: 'Chain', icon: 'git-commit-outline', hint: 'Steps through a list one at a time.' },
 ];
 
@@ -58,6 +63,8 @@ export function taskKindOf(v: {
   chainEnabled: boolean;
   targetCount: number | null;
   timedMinutes: number | null;
+  healthMetric: HealthMetric | null;
+  healthTarget: number | null;
 }): TaskKind {
   // `chainEnabled` alone, deliberately, even though a one-item chain doesn't
   // *function* as one anywhere else in the app. That rule belongs at save,
@@ -66,6 +73,12 @@ export function taskKindOf(v: {
   if (v.chainEnabled) return 'chain';
   if (v.targetCount !== null) return 'target';
   if (v.timedMinutes !== null) return 'timed';
+  // Last, because it is the thinnest of the lot: it changes neither what
+  // completing does nor the repeat, only when the row reads as ready. Nothing
+  // in the wild can hold it alongside another shape — the fields are new and
+  // bakedFields has always cleared the others — so the precedence is only here
+  // for a row the editor's independent fields could produce from here on.
+  if (v.healthMetric !== null && v.healthTarget !== null) return 'health';
   return 'task';
 }
 
@@ -117,7 +130,7 @@ export const QUICK_ADD_CHIP_LABELS: Record<QuickAddChip, string> = {
  */
 export const QUICK_ADD_CHIP_LIMIT = 8;
 
-export const TASK_KINDS: readonly TaskKind[] = ['task', 'timed', 'target', 'chain'];
+export const TASK_KINDS: readonly TaskKind[] = ['task', 'timed', 'target', 'health', 'chain'];
 
 /** Duration a Timed task starts at, so the mode is never sitting there empty. */
 export const DEFAULT_TIMED_MINUTES = 15;
@@ -166,6 +179,11 @@ const HIDDEN_CHIPS: Record<TaskKind, readonly QuickAddChip[]> = {
   // A quota resets by spawning its next occurrence, so it is always on a
   // repeat; the editor sets one behind your back for the same reason.
   target: ['repeat'],
+  // Nothing. A health target still wants a date, a category, a repeat and an
+  // effort: the reading says when the task is *ready*, and answers none of the
+  // questions the chips ask. Hiding one it merely doesn't need isn't
+  // simplification, it's a missing feature.
+  health: [],
   // A chain decides the *order* of work, not any of its attributes — Repeat
   // stays because on a chain it means "start the list over", which is a real
   // and separate choice.
@@ -181,6 +199,8 @@ export interface TypeValues {
   timedMinutes: number | null;
   targetCount: number | null;
   targetUnit: string | null;
+  healthMetric: HealthMetric | null;
+  healthTarget: number | null;
   chainItems: ChainItem[];
   recurrenceType: RecurrenceType;
   effort: Effort;
@@ -204,6 +224,13 @@ export function typeSummary(type: TaskKind, v: TypeValues): string | null {
       return v.targetCount != null
         ? `Log it ${formatQuotaTarget(v.targetCount, v.targetUnit)} a day. Repeats daily, and only shows up when you fall behind.`
         : 'Log it several times a day. Repeats daily, and only shows up when you fall behind.';
+    case 'health':
+      // Says "ready to check off" rather than "checks itself off", because the
+      // difference is the whole feature and this line is the only place the app
+      // gets to explain it.
+      return v.healthMetric != null && v.healthTarget != null
+        ? `Ready to check off once Apple Health reaches ${describeHealthGoal(v.healthMetric, v.healthTarget)} today. You still tick it.`
+        : 'Ready to check off once Apple Health reaches a number today. You still tick it.';
     case 'chain':
       return v.chainItems.length > 0
         ? `${v.chainItems.length} step${v.chainItems.length === 1 ? '' : 's'}, one per completion. Finishing one reveals the next.`
@@ -231,6 +258,8 @@ export interface BakedFields {
   timedMinutes: number | null;
   targetCount: number | null;
   targetUnit: string | null;
+  healthMetric: HealthMetric | null;
+  healthTarget: number | null;
   chainEnabled: boolean;
   chainItems: ChainItem[];
   chainIndex: number;
@@ -256,6 +285,11 @@ export function bakedFields(type: TaskKind, v: TypeValues): BakedFields {
     // abandoned by switching type would otherwise ride along on a plain task
     // that has no count for it to sit beside.
     targetUnit: null,
+    // Cleared with the rest, which is what keeps the shapes exclusive: a target
+    // set in Health mode and then abandoned by switching type would otherwise
+    // ride along invisibly, and the row would go on reading as ready.
+    healthMetric: null,
+    healthTarget: null,
     chainEnabled: false,
     chainItems: [],
     chainIndex: 0,
@@ -286,7 +320,16 @@ export function bakedFields(type: TaskKind, v: TypeValues): BakedFields {
         targetUnit: normalizeTargetUnit(v.targetUnit),
         recurrenceType: v.recurrenceType === 'none' ? 'daily' : v.recurrenceType,
       };
+    case 'health':
+      return { ...base, healthMetric: v.healthMetric, healthTarget: v.healthTarget };
     case 'chain':
       return { ...base, chainEnabled: true, chainItems: v.chainItems, chainIndex: 0 };
   }
+}
+
+/** "8,000 steps" / "8 hours of sleep" — the goal, as the type summary says it. */
+function describeHealthGoal(metric: HealthMetric, goal: number): string {
+  return metric === 'steps'
+    ? `${goal.toLocaleString()} steps`
+    : `${goal} ${goal === 1 ? 'hour' : 'hours'} of sleep`;
 }

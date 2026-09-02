@@ -39,11 +39,15 @@ import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } 
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
-import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
+import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { isDateAnchored } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
+import {
+  describeHealthTarget, hasHealthTarget, healthTargetProgress, healthTargetValue, isHealthTargetReady,
+} from '../utils/healthTarget';
+import { useHealthStore } from '../store/useHealthStore';
 import { activeSegment, segmentPhase, segmentRemaining, timerSegments } from '../utils/timerSegments';
 import { isStreakAtRecord } from '../utils/streakRecord';
 import { isTaskWindowActive, isTaskExpired, effectiveWindowEnd, isRecurrenceNotYetDue, isMissableMealPlanTask, isTaskNew, isTaskVisible, isQuotaTask, isQuotaPartial, quotaRidesOutTheDay, isOnPaceQuota, quotaLeavesTodayAfterLog, quotaNextDueAt, quotaFraction, quotaPaceFraction, quotaUnitsToPace, activeChainStepTitle, displayTitleFor } from '../utils/visibilityUtils';
@@ -786,6 +790,22 @@ export const TaskItem = React.memo(function TaskItem({
   // Part-way through but not running. The chip shows what's left rather than the
   // full target, so a task paused at 5 of 15 minutes doesn't read as untouched.
   const timerPaused = timed && !timerRunning && task.timerElapsedSeconds > 0;
+
+  // A health target's readiness, derived against today's reading the same way
+  // the countdown is derived against the clock — nothing is stored, so a row
+  // that mounts after the app was killed shows the truth.
+  //
+  // The selector returns a *number or null* rather than the snapshot object, so
+  // this subscription is nearly free: zustand compares with Object.is, a task
+  // with no target answers null for ever and never re-renders, and one with a
+  // target re-renders only when its own figure actually moves. Selecting
+  // `s.today` instead would put every row on this list through a render on
+  // every foreground refresh, which is exactly what the memo around this
+  // component exists to prevent.
+  const healthValue = useHealthStore(s => healthTargetValue(task, s.today, getLogicalDayKey(new Date())));
+  const healthTargeted = hasHealthTarget(task) && task.parentId === null;
+  const healthReady = healthTargeted && isHealthTargetReady(task, healthValue);
+  const healthLabel = healthTargeted ? describeHealthTarget(task, healthValue) : null;
 
   // One day of the weekly meal-plan nudge (#1585): how many of that day's three
   // meals are planned, and whether that's all of them.
@@ -1721,6 +1741,8 @@ export const TaskItem = React.memo(function TaskItem({
                   ? `Log one of ${task.targetCount}${task.targetUnit ? ` ${task.targetUnit}` : ''}, ${quotaProgress} done, ${task.title}`
                   : timerReady
                     ? `${task.title}, timer done, complete`
+                    : healthReady
+                      ? `${task.title}, health target reached, complete`
                     : mealPlanReady
                       ? `${task.title}, all ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned, complete`
                     : mealSlotChooseSource
@@ -1748,7 +1770,7 @@ export const TaskItem = React.memo(function TaskItem({
           // green already means done-or-ready on this row, and a second colour
           // for a second kind of "you can tick this now" would be teaching the
           // reader two vocabularies for one idea.
-          !completing && !completionLocked && (timerReady || mealPlanReady) && styles.circleReady,
+          !completing && !completionLocked && (timerReady || mealPlanReady || healthReady) && styles.circleReady,
           (showQuotaMeter || quotaPartial) && styles.circleQuota,
           // Last of the state styles, so a broken day wins the box outright:
           // it's the one thing on this row that has just gone wrong.
@@ -1943,7 +1965,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2149,6 +2171,33 @@ export const TaskItem = React.memo(function TaskItem({
                     · {liveSegment.title}
                   </Text>
                 )}
+              </View>
+            )}
+            {/* A health target's progress, read from Apple Health. Green at the
+                target is the same "ready" the timer's chip uses, and it means
+                the same thing: you can tick this now, not that anything has
+                been ticked. Absent entirely when there is no reading — a
+                "0 / 8,000" would be the figure somebody who refused the read
+                would see, and it would be this app telling them they had
+                walked nowhere. */}
+            {healthLabel !== null && (
+              <View
+                style={styles.metaChip}
+                accessibilityLabel={healthReady
+                  ? `${healthLabel}, target reached, ready to complete`
+                  : healthLabel}
+              >
+                <Ionicons
+                  name={healthReady ? 'checkmark-circle' : 'footsteps-outline'}
+                  size={iconSize.xs}
+                  color={healthReady ? colors.green : colors.textSecondary}
+                />
+                <Text
+                  style={[styles.countdownLabel, healthReady && styles.countdownLabelReady]}
+                  numberOfLines={1}
+                >
+                  {healthLabel}
+                </Text>
               </View>
             )}
             {/* One day of the weekly meal-plan nudge: how much of that day is
@@ -2783,6 +2832,35 @@ export const TaskItem = React.memo(function TaskItem({
                   </Text>
                 </View>
                 <ProgressBar progress={countdownProgress} height={4} />
+              </View>
+            )}
+
+            {/* The same shape for a health target, and deliberately so: it is
+                the same idea (a number the row is waiting on) and a second
+                treatment would be two vocabularies for one thing. What differs
+                is the "no reading" state, which the timer cannot have — the
+                bar draws empty and the line says nothing was recorded rather
+                than reporting a zero somebody might have walked. */}
+            {healthTargeted && (
+              <View style={[
+                styles.countdownRow,
+                panelSectionAbove && styles.sectionDivider,
+              ]}>
+                <View style={styles.countdownHeader}>
+                  <Ionicons
+                    name={healthReady ? 'checkmark-circle' : 'footsteps-outline'}
+                    size={12}
+                    color={healthReady ? colors.green : colors.textSecondary}
+                  />
+                  <Text style={styles.expandMeta}>
+                    {healthLabel === null
+                      ? 'Nothing recorded in Apple Health for today yet'
+                      : healthReady
+                        ? `Ready to complete · ${healthLabel}`
+                        : healthLabel}
+                  </Text>
+                </View>
+                <ProgressBar progress={healthTargetProgress(task, healthValue)} height={4} />
               </View>
             )}
 

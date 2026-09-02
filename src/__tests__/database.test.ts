@@ -242,6 +242,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timerStartedAt: null,
   timedMinutes: null,
   timerElapsedSeconds: 0,
+  healthMetric: null,
+  healthTarget: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -592,6 +594,39 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(t.targetCount).toBe(12);
     expect(t.progressCount).toBe(5);
     expect(t.targetUnit).toBe('8oz glasses');
+  });
+
+  it('round-trips a health target', () => {
+    dbInsertTask(makeTask({ id: 'health', healthMetric: 'steps', healthTarget: 8000 }));
+    const [t] = dbGetAllTasks();
+    expect(t.healthMetric).toBe('steps');
+    expect(t.healthTarget).toBe(8000);
+  });
+
+  it('round-trips a health target through an update', () => {
+    // The insert and the update bind their columns separately, so a pair that
+    // saves on create and vanishes on edit is a real and invisible failure.
+    dbInsertTask(makeTask({ id: 'health2' }));
+    dbUpdateTask(makeTask({ id: 'health2', healthMetric: 'sleepHours', healthTarget: 8 }));
+    const [t] = dbGetAllTasks();
+    expect(t.healthMetric).toBe('sleepHours');
+    expect(t.healthTarget).toBe(8);
+  });
+
+  it('reads a task with no health target as having none', () => {
+    dbInsertTask(makeTask({ id: 'plain' }));
+    const [t] = dbGetAllTasks();
+    expect(t.healthMetric).toBeNull();
+    expect(t.healthTarget).toBeNull();
+  });
+
+  it('reads an unrecognised metric as no target rather than as a broken one', () => {
+    // A column holding something this build doesn't understand would otherwise
+    // produce a task whose readiness nothing can compute.
+    dbInsertTask(makeTask({ id: 'odd' }));
+    mockRawDb.prepare("UPDATE tasks SET health_metric='heartRate', health_target=60 WHERE id='odd'").run();
+    const [t] = dbGetAllTasks();
+    expect(t.healthMetric).toBeNull();
   });
 
   it('returns null targetUnit when unset', () => {

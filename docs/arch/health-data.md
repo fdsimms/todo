@@ -263,11 +263,11 @@ doing, none of them started:
 3. ~~A `health` generator (kind #18).~~ Built, see above.
 4. ~~One line under "Lighten today" for a short night.~~ Built, see above.
 
-Two open questions this note does not answer, because they are product calls
-rather than architectural ones: whether a quota task ("Walk 8,000 steps") may
-show the live figure and mark itself ready (`isTimerReady`'s shape, never a
-completion — nothing in this app ticks a task off by itself), and whether sleep
-is worth reading at all given it needs a Watch.
+Both of the product calls this note used to leave open have been made. Sleep is
+read, with the cost of adding a type written down beside `readTypes`. And a task
+*may* show its live figure and mark itself ready — as its own `TaskKind`, in
+`isTimerReady`'s shape, never as a completion. See the section above for why
+that shape and no other.
 
 ## One thing worth knowing before scoping the background half
 

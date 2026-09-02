@@ -2566,6 +2566,15 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     });
   });
 
+  it('seeds a health-target task, the fifth kind', () => {
+    const task = useTaskStore.getState().tasks.find(t => t.healthMetric !== null);
+    expect(task).toBeDefined();
+    expect(task!.healthTarget).toBe(8000);
+    // The kind is derived, never stored, so this is also the assertion that the
+    // pair reads back as the shape it is meant to be.
+    expect(taskKindOf(task!)).toBe('health');
+  });
+
   it('seeds no health reading, because a demo may never show one', () => {
     // The seed can show the *shape* of the feature — a task somebody's rule
     // wrote — but not a reading, which would be a real person's numbers in
