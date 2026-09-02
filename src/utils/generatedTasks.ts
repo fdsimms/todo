@@ -141,6 +141,12 @@ export const GENERATED_KINDS: readonly GeneratedKind[] = [
   // beside.
   'moodLog',
   'moodNudge',
+  // The eighteenth, appended rather than paired. It reads the same project
+  // board projectReview does, so that is the entry it has most in common with —
+  // but the two are not a pair from the list's side the way pantryCheck and
+  // groceryUseUp are: one is about a project going quiet and the other about a
+  // weekend going empty, and somebody meeting one has not half-met the other.
+  'weekendNudge',
 ];
 
 /**
@@ -193,7 +199,8 @@ export type GeneratedEnabledKey =
   | 'weatherTasks'
   | 'screenTimeTasks'
   | 'moodLogTasks'
-  | 'moodNudgeTasks';
+  | 'moodNudgeTasks'
+  | 'weekendNudgeTasks';
 
 export interface GeneratedKindSpec {
   kind: GeneratedKind;
@@ -637,6 +644,32 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
     kitchen: false,
     categorized: true,
     defaultCategory: 'Health',
+  },
+  // Ships off, like every generator that adds a surface rather than replacing
+  // one already on screen. It has a second gate of its own besides — the
+  // project it points at has to be nominated (Project.weekendSource, off on
+  // everybody) — but that one only decides whether the row can *suggest*
+  // anything, not whether it appears, so the setting is the real permission.
+  weekendNudge: {
+    kind: 'weekendNudge',
+    enabledKey: 'weekendNudgeTasks',
+    label: 'Nudge for an empty weekend',
+    onHint: 'Adds a task before a weekend that has nothing scheduled on it',
+    offHint: 'An empty weekend adds no task',
+    icon: 'sunny-outline',
+    // Its source id is the weekend's Saturday day key — a square on the
+    // calendar rather than a row anything could be written back to, the same
+    // position calendarReview and moodNudge are in, and the reason
+    // writeGeneratedOptOut has nothing to write for it. What stops a
+    // swiped-away row coming straight back is weekendNudgeLastWeekendKey.
+    sourced: false,
+    // Not a notice, unlike calendarReview. There is something to decide about
+    // this row — it is an offer to go and plan something, and pushing it from
+    // Thursday to Friday is an ordinary thing to want to do with it.
+    notice: false,
+    kitchen: false,
+    categorized: true,
+    defaultCategory: 'Personal',
   },
 };
 

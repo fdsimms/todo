@@ -1152,6 +1152,11 @@ export function TodayScreen() {
           // Beside them, same trigger: which day is "today" rolls over purely
           // by time passing, and so does the length of a low run.
           useTaskStore.getState().checkMoodTasks();
+          // Beside it, same trigger, and this is the firing that does the real
+          // work: the calendar events it weighs Saturday and Sunday against are
+          // whatever useCalendarSync has read by now, which at cold launch is
+          // nothing.
+          useTaskStore.getState().checkWeekendNudgeTasks();
           // And any template whose schedule came due while the app sat in the
           // background (#1781) — a weekly run would otherwise wait for the next
           // cold start, which for a phone left open all week never comes. Same

@@ -90,6 +90,7 @@ import { probablyHaveReason } from '../utils/grocerySuggest';
 import { describeDisposalHistory, wantsShelfLifePrompt } from '../utils/itemDisposal';
 import { liveGeneratedTask } from '../utils/generatedTasks';
 import { projectQuietDays, wantedProjectReviews } from '../utils/projectReviewTasks';
+import { upcomingWeekend } from '../utils/weekendTasks';
 import { wantedPantryChecks } from '../utils/pantryCheckTasks';
 import { buildPantryReviewDeck } from '../utils/pantryReview';
 import { MIN_PANTRY_REVIEW_CARDS, stalePantryReviewTasks } from '../utils/pantryReviewTasks';
@@ -2490,6 +2491,29 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(review!.category).toBe('Calendar Events');
     expect(useSettingsStore.getState().calendarEventCategory).toBe('Calendar Events');
     expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+  });
+
+  it('seeds the bare-weekend nudge and the project it quotes', () => {
+    const { tasks } = useTaskStore.getState();
+    const { projects } = useProjectStore.getState();
+
+    // Both halves, since either alone reads as a different feature.
+    // Project.weekendSource is invisible until something quotes it, which is
+    // exactly the sort of capability the seed exists to make visible.
+    const source = projects.find(p => p.weekendSource);
+    expect(source).toBeDefined();
+    expect(source!.title).toBe('Day trips');
+
+    const nudge = tasks.find(t => t.generatedKind === 'weekendNudge');
+    expect(nudge).toBeDefined();
+    expect(nudge!.title).toBe('Make plans for the weekend');
+    expect(nudge!.category).toBe('Personal');
+    expect(useSettingsStore.getState().weekendNudgeTaskCategory).toBe('Personal');
+    // It names the nominated project and links to the pull sheet scoped to it.
+    expect(nudge!.notes).toContain('Day trips');
+    expect(nudge!.linkUrl).toBe(`dundundun://projects?pull=${source!.id}`);
+    // The source id is the weekend's Saturday, not the day it was raised on.
+    expect(nudge!.generatedSourceId).toBe(upcomingWeekend(getCurrentDayStart()).saturdayKey);
   });
 
   it('seeds a weather task and the rules alongside it', () => {

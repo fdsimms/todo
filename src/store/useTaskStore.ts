@@ -89,6 +89,20 @@ import { generatedBy, generatedSourceOf, generatedTaskCountOf, hasAnyGeneratedTa
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
+import {
+  WEEKEND_NUDGE_TITLE,
+  isWeekendBare,
+  staleWeekendNudgeTasks,
+  upcomingWeekend,
+  wantsWeekendNudge,
+  weekendNudgeLinkUrl,
+  weekendNudgeNotes,
+  weekendNudgeWeekendKey,
+  weekendPlanCount,
+  weekendSourceProjects,
+} from '../utils/weekendTasks';
+import { buildDayBuckets } from '../utils/calendarMonth';
+import { buildDayLoads } from '../utils/dayLoad';
 import { hasLogOnDay } from '../utils/moodLog';
 import { useMoodStore } from './useMoodStore';
 import { eventsIn } from '../utils/calendarBusy';
@@ -115,7 +129,7 @@ import {
   supplyReorderSourceId,
   wantedSupplyReorders,
 } from '../utils/supply';
-import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
+import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
@@ -1635,6 +1649,8 @@ interface TaskStore extends UndoHistoryActions {
    * days, one to plan something you enjoy. See src/utils/moodTasks.ts.
    */
   checkMoodTasks: () => void;
+  /** The bare-weekend offer — see src/utils/weekendTasks.ts. */
+  checkWeekendNudgeTasks: () => void;
   /**
    * Tick off today's "Log how you're feeling" task, if one is live.
    *
@@ -5642,6 +5658,114 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         });
       }
     }
+    // No setLastAction, same reasoning as the other unattended passes: this is
+    // not something the user just did.
+  },
+
+  /**
+   * The weekend nudge — see `src/utils/weekendTasks.ts` for the five rules the
+   * pure half holds, which is where anything about *what* a bare weekend is
+   * belongs. This is only the plumbing: read the state, clear what has gone
+   * stale, then create at most one row.
+   *
+   * Clear-then-create, the ordering every generator whose trigger is time
+   * passing uses: a nudge whose weekend has arrived, or whose weekend the user
+   * has since filled, must go before this decides whether to write another, or
+   * the sweep that follows somebody acting on the row would find its own
+   * leftover and do nothing.
+   */
+  checkWeekendNudgeTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.weekendNudgeTasks || !settings.weekendNudgeTaskCategory) return;
+    // Gated like calendarReview, and for its reason rather than the general
+    // one: the busy half of this reading is the *real device calendar*, which
+    // demo mode must never read from or expose the existence of. The demo's own
+    // example row is seeded directly in demoSeed.ts.
+    if (isDemoModeActive()) return;
+
+    const tasks = get().tasks;
+    const today = getCurrentDayStart();
+    const window = upcomingWeekend(today);
+
+    // One walk for all three days, handed to both readings below so they cannot
+    // disagree about what lands on the weekend.
+    const buckets = buildDayBuckets(tasks, {
+      from: dayKeyToDate(window.fridayKey),
+      to: dayKeyToDate(window.sundayKey),
+      dayResetTime: settings.dayResetTime,
+    });
+    const taskById = new Map(tasks.map(t => [t.id, t]));
+    const calendar = useCalendarStore.getState();
+    const loads = buildDayLoads(
+      [dayKeyToDate(window.saturdayKey), dayKeyToDate(window.sundayKey)],
+      buckets,
+      {
+        taskById,
+        busyEvents: settings.calendarReadEnabled && calendar.loaded ? calendar.events : [],
+        busyWindow: calendar.windowStart && calendar.windowEnd
+          ? { start: new Date(calendar.windowStart), end: new Date(calendar.windowEnd) }
+          : null,
+        dayResetTime: settings.dayResetTime,
+      },
+    );
+    const bare = isWeekendBare(window, loads, weekendPlanCount(window, buckets, taskById));
+
+    // dropGeneratedTask rather than deleteGeneratedTaskQuietly, like
+    // projectReview's clear: this is the app tidying up after itself, and
+    // stamping an opt-out for it would be reading the app's own housekeeping as
+    // the user declining something.
+    for (const task of staleWeekendNudgeTasks(tasks, window, bare)) {
+      dropGeneratedTask('weekendNudge', weekendNudgeWeekendKey(task));
+    }
+
+    // Rule 6: the mood nudge already asked for the same thing, off a more
+    // specific signal. Read here rather than from a settings flag because what
+    // suppresses is a *live row*, not the generator being switched on — a nudge
+    // ticked off this morning stops standing in the way.
+    const moodNudgeLive = liveGeneratedTasksOfKind(tasks, 'moodNudge').length > 0;
+    if (!wantsWeekendNudge(today, window, bare, settings.weekendNudgeLastWeekendKey, {
+      leadDays: settings.weekendNudgeLeadDays,
+      moodNudgeLive,
+    })) return;
+    // Marked before the row is written, the order every day-keyed generator
+    // uses: with no source row to stamp a decline onto, this is the only thing
+    // standing between a swiped-away nudge and an identical one on the next
+    // foreground sweep.
+    settings.setWeekendNudgeLastWeekendKey(window.saturdayKey);
+
+    // The nominated project, and the one thing it would have you do. Read
+    // through `dripCandidate` rather than by picking a member off the project,
+    // so the task quoted here is the same one the pull sheet the row links to
+    // will offer first.
+    const nominated = weekendSourceProjects(useProjectStore.getState().projects)[0] ?? null;
+    const suggestion = nominated
+      ? {
+          projectId: nominated.id,
+          projectTitle: nominated.title,
+          candidateTitle: dripCandidate(nominated, tasks)?.title ?? null,
+        }
+      : null;
+
+    // Dated to the Friday rather than to today: the row is about the weekend,
+    // and a Thursday-dated task saying "make plans for the weekend" is one the
+    // user has to move themselves to get it out of Thursday's way.
+    const dueDate = dayKeyToDate(window.fridayKey);
+    dueDate.setHours(12, 0, 0, 0);
+
+    reconcileGeneratedTask({
+      kind: 'weekendNudge',
+      sourceId: window.saturdayKey,
+      wanted: true,
+      drift: () => null,
+      draft: () => ({
+        title: WEEKEND_NUDGE_TITLE,
+        notes: weekendNudgeNotes(suggestion),
+        dueDate: dueDate.toISOString(),
+        category: settings.weekendNudgeTaskCategory,
+        linkUrl: weekendNudgeLinkUrl(suggestion?.projectId ?? null),
+        ...generatedBy('weekendNudge', window.saturdayKey),
+      }),
+    });
     // No setLastAction, same reasoning as the other unattended passes: this is
     // not something the user just did.
   },
