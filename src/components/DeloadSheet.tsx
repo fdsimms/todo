@@ -31,14 +31,17 @@ interface Props {
   /** The tasks currently on the day being lightened (TodayScreen's visible list). */
   todaysTasks: readonly Task[];
   /**
-   * One line saying a low run is going, or null — see `lowMoodDeloadNote`.
+   * Lines saying why today might be worth lightening — a run of low moods
+   * (`lowMoodDeloadNote`), a short night (`shortSleepDeloadNote`), or neither.
    *
-   * Shown, and nothing more: it does not change which rows come pre-checked.
-   * Those defaults answer "what can move", which is a question about the tasks,
-   * and letting a mood answer it would have the app taking a streak or somebody
-   * else's blocker off the day on the strength of how you said you felt.
+   * A list rather than one string because there are two sources now and either
+   * can be true on its own. Shown, and nothing more: they do not change which
+   * rows come pre-checked. Those defaults answer "what can move", which is a
+   * question about the tasks, and letting a mood or a night answer it would
+   * have the app taking a streak or somebody else's blocker off the day on the
+   * strength of how you slept.
    */
-  lowMoodNote?: string | null;
+  notes?: readonly string[];
   onClose: () => void;
 }
 
@@ -65,7 +68,7 @@ const MODES: SegmentOption<DayMode>[] = [
   { value: 'suggested', label: 'Best day', accessibilityLabel: 'Move to the best day' },
   { value: 'tomorrow', label: 'Tomorrow', accessibilityLabel: 'Move to tomorrow' },
 ];
-export function DeloadSheet({ visible, todaysTasks, lowMoodNote, onClose }: Props) {
+export function DeloadSheet({ visible, todaysTasks, notes, onClose }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -290,9 +293,9 @@ export function DeloadSheet({ visible, todaysTasks, lowMoodNote, onClose }: Prop
             </View>
           </View>
 
-          {!!lowMoodNote && (
-            <Text style={styles.moodNote}>{lowMoodNote}</Text>
-          )}
+          {notes?.map(note => (
+            <Text key={note} style={styles.moodNote}>{note}</Text>
+          ))}
 
           {plan.proposals.length === 0 ? (
             <Text style={styles.emptyHint}>Nothing on today to move.</Text>

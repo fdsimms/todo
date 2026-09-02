@@ -37,6 +37,7 @@ import { mealShortfallLinkUrl, mealShortfallTitle } from './mealShortfallTasks';
 import { CALENDAR_REVIEW_TITLE } from './calendarReviewTasks';
 import { weatherSourceId, defaultWeatherRules } from './weatherTasks';
 import { screenTimeSourceId, defaultScreenTimeRules } from './screenTimeRules';
+import { healthSourceId, defaultHealthRules } from './healthRules';
 import { dueMealPlanNudge, mealPlanNudgeLinkUrl } from './mealPlanNudge';
 import { groceryNameKey } from './groceryParse';
 import { OUT_OF_IT_UNTIL, defaultOnHandUntil } from './grocerySuggest';
@@ -929,6 +930,29 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Screen Time',
     ...generatedBy('screenTime', screenTimeSourceId(dayKeyOf(today), walkRule.id)),
+  });
+
+  // A health task, seeded directly for the screen-time row's reason: the gate
+  // (healthBridge) and the pass (checkHealthTasks) both refuse in demo mode, so
+  // this could never appear on its own. What is deliberately *not* seeded is a
+  // reading — healthReadEnabled stays off in the demo database, because the
+  // honest demo of a health reading is its absence and nothing may put a real
+  // person's numbers in front of a fiction. The shape is what can be shown: a
+  // task somebody's own rule wrote, filed where health tasks go, with the rule
+  // beside it in the sheet.
+  addCategory('Health');
+  setCategoryEmoji('Health', '\u{1FAC0}');
+  useSettingsStore.getState().setHealthTaskCategory('Health');
+  const [sleepRule, ...otherHealthRules] = defaultHealthRules();
+  useSettingsStore.getState().setHealthRules([
+    { ...sleepRule, lastFiredDayKey: dayKeyOf(today) },
+    ...otherHealthRules,
+  ]);
+  addTask({
+    title: sleepRule.title,
+    dueDate: today.toISOString(),
+    category: 'Health',
+    ...generatedBy('health', healthSourceId(dayKeyOf(today), sleepRule.id)),
   });
 
   // Marked complete rather than archived — demonstrates Project.completed,

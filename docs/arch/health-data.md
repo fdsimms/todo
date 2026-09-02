@@ -1,8 +1,9 @@
 # Reading Apple Health
 
-What is built so far (the bridge, the store, the Settings section, the row on
-Today and the Mood screen's health axis), and the four rules the rest of it has
-to be built against.
+The whole of it: the bridge, the store, the Settings section, the row on Today,
+the Mood screen's health axis, the `health` generator and the short-night line
+under "Lighten today" — and the four rules any further reader has to be built
+against.
 
 Read this before touching `modules/todo-health-bridge/`,
 `src/utils/healthBridge.ts`, `src/store/useHealthStore.ts`,
@@ -208,11 +209,48 @@ this gets no sleep until somebody taps the access row in Settings, and because a
 refused read and an unasked one look identical, nothing can tell them that is
 why. Weigh that against what the type buys before extending the list again.
 
+## The generator, and the line under "Lighten today"
+
+`health` is generator #18 and its own rules live in
+`docs/arch/generated-tasks.md`, which is where a nineteenth generator's author
+will look. Only the parts that are about *health* rather than about the
+mechanism are here:
+
+- **A missing reading never matches a rule.** The same sentence as everywhere
+  else in this file, and this is where getting it wrong would be worst: reading
+  null as zero would fire "Go for a walk" at everybody who declined to share
+  their steps, every single evening, and they would have no way to find out why.
+- **A shortfall needs the day to have happened.** "Under 3,000 steps" is true at
+  7am for everybody not out running. `HEALTH_METRIC_EARLIEST_HOUR` holds a steps
+  rule until evening, and — the part that is easy to get wrong — the idempotency
+  mark is *not* spent before then, or the rule could never fire that day.
+- **The generator needs the read as well as itself.** Two switches, because they
+  are two different permissions to give. The rules sheet says so and turns the
+  read on from there.
+
+`shortSleepDeloadNote` is the health twin of `lowMoodDeloadNote` and lives by
+that one's three rules: not a banner, not a second task, and **not a change to
+what `buildDeloadPlan` pre-checks**. Offering the sheet is help; deciding what
+comes off the day is not the app's call, and a bad night must not break a
+twelve-day streak.
+
+Where it departs from its twin is the wording, and that is this file's own rule
+being cashed. The mood note can say "You've logged a low mood three days
+running" because the person logged it. Nobody logged this: it is a watch's
+guess, and it may be a nap, or a phone left on the nightstand. So the sentence
+attributes the source ("Apple Health recorded…") rather than asserting the fact,
+and says "for today" rather than "last night", since a nap counts toward its own
+day. It is gated on the read alone rather than on the generator, because it is a
+line in a menu somebody opened rather than a task — the same argument
+`lowMoodDeloadNote` makes for needing no switch of its own.
+
 ## What is deliberately not built yet
 
-Steps and sleep, read for today and over a trailing 90 days, shown in one
-Settings row, one row on Today and one card on the Mood screen. Nothing writes a
-task from any of it. The set of read
+Steps and sleep, and nothing else. The read-type list is one place
+(`readTypes`) and the note beside it says what adding to it costs; every metric
+this file rules out — resting heart rate, HRV, weight, glucose, cycle tracking —
+stays ruled out for the reason given there, which is that a generator firing on
+one of them can be wrong about a body rather than about a day. The set of read
 types is one list in the Swift module (`readTypes`) because the permission sheet
 is shown once for whatever is asked for, and a type added there is a type the
 sheet will list — so nothing goes in until something reads it.
@@ -222,12 +260,8 @@ doing, none of them started:
 
 1. ~~A fourth `ContextRow` kind on Today.~~ Built, see above.
 2. ~~`sleepHours` and `steps` on `MoodDay`.~~ Built, see above.
-3. A `health` generator (kind #18), structurally `screenTime` with the crossing
-   replaced by a number the app reads for itself. The threshold is per rule, for
-   `screenTime`'s reason and not `weather`'s: the number *is* the rule.
-4. One line under "Lighten today" for a short night, under the three refusals
-   `lowMoodDeloadNote` already lives by, including that it must **not** change
-   what `buildDeloadPlan` pre-checks.
+3. ~~A `health` generator (kind #18).~~ Built, see above.
+4. ~~One line under "Lighten today" for a short night.~~ Built, see above.
 
 Two open questions this note does not answer, because they are product calls
 rather than architectural ones: whether a quota task ("Walk 8,000 steps") may

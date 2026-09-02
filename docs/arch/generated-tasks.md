@@ -1,10 +1,10 @@
-# Generated tasks: the seventeen things that write a task unattended
+# Generated tasks: the eighteen things that write a task unattended
 
 The shared mechanism behind meal tasks, use-up tasks, the meal-plan nudge,
 project reviews, pantry checks and the pantry review, supply reorders, the
 daily calendar review, birthdays, the reach-out nudge and weather-matched
 tasks.
-Read this before adding an eighteenth generator: the whole point of the refactor
+Read this before adding a nineteenth generator: the whole point of the refactor
 it describes is that a new one costs a rules module and a registry entry, not a
 column.
 
@@ -22,7 +22,7 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the seventeen things that write a task unattended
+## Generated tasks — the eighteen things that write a task unattended
 
 Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
@@ -637,3 +637,73 @@ the differences all come from one place: **the app cannot see usage.**
   run. The demo's own example task is seeded directly in `demoSeed.ts`.
 - **It does not gate on vacation mode**, following `weather` rather than `mealPlanNudge`. A rule
   about your own phone use is sunscreen, not work: vacation is exactly when somebody might want it.
+
+## `health` — the eighteenth, and the third rule the user wrote
+
+"Under six hours of sleep, keep today light." Structurally `weather`
+(`src/utils/healthRules.ts` is `weatherTasks.ts` with the condition swapped for
+a number), and it sits between its two neighbours on every axis that matters.
+
+Read `docs/arch/health-data.md` first. It holds the rules about what a reader of
+a health figure may claim, and they are what shaped every choice below — in
+particular the one this generator would be worst to get wrong.
+
+- **The app has the reading, so it decides.** Unlike `screenTime`, nothing here
+  happens in another process: `useHealthStore` holds today's numbers and the
+  pass compares them against a threshold. So the idempotency mark can be spent
+  ahead of the decision, the way weather spends it, with the one exception
+  below.
+- **The threshold is per rule**, which is `screenTime`'s position rather than
+  weather's. Weather refuses a per-rule number because the title carries the
+  meaning; that move isn't available here, because the number *is* the rule.
+  Six hours and four hours are two different days.
+- **Only "under" is expressible.** Every rule worth writing is a shortfall — a
+  short night, a day spent sitting down — and the mirror describes something
+  that has already happened and needs no task. A comparator would be a control
+  on every row serving nobody.
+- **A rule whose hour has not come is skipped without spending its mark**, and
+  this is the one thing the generator needs that neither neighbour does. Every
+  other day-keyed generator writes its mark ahead of the decision so a swiped-
+  away task cannot come straight back. That order is unavailable for a
+  shortfall: "under 3,000 steps" is true at 7am for everybody who is not out
+  running, so marking the day considered then would mean the rule could never
+  fire. `ruleCanBeJudgedYet` gates the whole consideration, and
+  `HEALTH_METRIC_EARLIEST_HOUR` is a property of the *metric* rather than a
+  per-rule setting — sleep is settled by the time anybody looks, steps are not —
+  which is what keeps a fourth control off every row. 18:00 is round rather than
+  measured, the same admission `weatherCondition.ts` makes about its bands.
+- **The hour is measured into the logical day**, not off the wall clock. With a
+  4am reset, 6pm is fourteen hours in, and reading the clock instead would let a
+  step rule fire two hours early for anybody whose day doesn't start at midnight.
+- **A missing reading never matches**, and that is the rule the whole feature
+  rests on rather than a null guard. HealthKit serves a refused read as an empty
+  store, so null covers "you said no" as well as "nothing recorded" — reading it
+  as zero would fire "Go for a walk" at everybody who declined to share their
+  steps, every single evening.
+- **It needs a second switch none of the others do.** `healthTasks` is the
+  generator's own key, and `healthReadEnabled` gates the pass as well, because a
+  generator that fires off Health data cannot run while the app is not allowed
+  to read any. The rules sheet renders a notice card when the read is off, and
+  turns it on from there — nobody is left with a toggle that visibly does
+  nothing.
+- **Its category is its own** (`healthTaskCategory`), defaulting to the same
+  name `ensureHealthCategory` uses. `addCategory` is idempotent by name, so out
+  of the box the Today reading and the health tasks share one "Health" section
+  while the two settings stay independently clearable. Reusing `healthCategory`
+  outright — the `calendarReview` move — was the tempting version and is wrong
+  here: "don't show my step count on Today" is not the same instruction as
+  "don't add health tasks", and one setting could not tell them apart.
+- **`writeGeneratedOptOut` has nothing to write**, for weather's and
+  screenTime's reason: the source is a rule in settings, not a row a decline
+  could be stamped on.
+- **It ships off**, like weather and screenTime, and wants two more switches on
+  top of its own before anything happens.
+- **It is the third generator gated on `isDemoModeActive()`**, and the sharpest
+  case the rule has had: a reading taken in demo mode is a real person's, and a
+  task written from it would be a claim about their body sitting in a database
+  about to be thrown away. Both halves refuse — `healthBridge()` won't read and
+  `checkHealthTasks` won't run — and the demo's example task is seeded directly.
+  What is deliberately *not* seeded is a reading: the honest demo of one is its
+  absence.
+- **It does not gate on vacation mode**, following `weather` and `screenTime`.
+  A short night is sunscreen, not work.

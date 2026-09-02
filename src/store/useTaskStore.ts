@@ -180,7 +180,9 @@ import { useWeatherStore } from './useWeatherStore';
 import { classifyWeather } from '../utils/weatherCondition';
 import { weatherSourceId, parseWeatherSourceId, ruleMatchesToday } from '../utils/weatherTasks';
 import { useScreenTimeStore } from './useScreenTimeStore';
+import { useHealthStore } from './useHealthStore';
 import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask } from '../utils/screenTimeRules';
+import { healthSourceId, parseHealthSourceId, ruleCanBeJudgedYet, ruleShortfallToday } from '../utils/healthRules';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
 
@@ -637,6 +639,12 @@ function writeGeneratedOptOut(task: Task, value: false | null): void {
       // by checkScreenTimeTasks as it turns a crossing into a task — it can't
       // be spent ahead of the decision the way weather's is, because the
       // deciding is the OS's (see the field's own note).
+      return;
+    case 'health':
+      // The third of them, and the same answer: a rule in settings is not a row
+      // a decline could be stamped on. HealthRule.lastFiredDayKey is the mark,
+      // spent when the rule is considered — which for a steps rule is not until
+      // evening, since a shortfall before then is not a shortfall yet.
       return;
     case 'pantryReview':
       return;
@@ -1630,6 +1638,7 @@ interface TaskStore extends UndoHistoryActions {
   checkCalendarReviewTasks: () => void;
   checkWeatherTasks: () => void;
   checkScreenTimeTasks: () => void;
+  checkHealthTasks: () => void;
   /**
    * Once a day, a task to log how you're feeling — and, after a run of low
    * days, one to plan something you enjoy. See src/utils/moodTasks.ts.
@@ -5545,6 +5554,105 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Spent whether or not they produced anything — a crossing held back
     // would be re-examined against the same rule and same day for ever.
     if (fired.size > 0) useScreenTimeStore.getState().consume([...fired]);
+  },
+
+  /**
+   * Health rules — "under six hours of sleep, keep today light".
+   *
+   * `checkWeatherTasks` one shelf over, because like the forecast the app holds
+   * the reading and does the deciding itself. Two things are its own:
+   *
+   * - **A rule whose hour has not come is skipped without spending its mark.**
+   *   Every other day-keyed generator writes the mark ahead of the decision, so
+   *   a task swiped away cannot come straight back. That order is unavailable
+   *   for a shortfall: "under 3,000 steps" is true at 7am for everybody who is
+   *   not out running, and marking the day considered then would mean the rule
+   *   could never fire. `ruleCanBeJudgedYet` gates the whole consideration, and
+   *   it covers the reading as well as the clock: a sleep rule has no hour to
+   *   wait for, so without that half the pass would judge it at 00:05, find the
+   *   night hasn't happened yet, and retire the rule until tomorrow.
+   * - **It needs the read switched on as well as itself.** A generator that
+   *   fires off Health data cannot run while the app is not allowed to read
+   *   any, so both switches gate the pass — and the rules sheet says so, rather
+   *   than leaving somebody with a toggle that visibly does nothing.
+   *
+   * Reads whatever snapshot `useHealthStore` already has and never fetches, the
+   * split `checkWeatherTasks` draws against `useWeatherStore`: a cold launch
+   * before the first read resolves finds nothing to do, and the foreground
+   * sweep does the real work.
+   */
+  checkHealthTasks() {
+    const settings = useSettingsStore.getState();
+    if (!settings.healthTasks || !settings.healthReadEnabled) return;
+    // The third generator gated on this, and the sharpest case of the rule: a
+    // reading taken in demo mode is a real person's, and a task written from it
+    // would be a claim about their body sitting in a database about to be
+    // thrown away. `healthBridge` refuses the read too; this is the other half.
+    if (isDemoModeActive()) return;
+    if (!settings.healthTaskCategory) return;
+
+    const dayStart = getCurrentDayStart();
+    const todayKey = dayKeyOf(dayStart);
+    const tasks = get().tasks;
+    const activeRuleIds = new Set(settings.healthRules.map(r => r.id));
+    // Clear a task whose rule has since been deleted, or whose day has rolled
+    // over, before deciding today's — the ordering every rule generator uses.
+    liveGeneratedTasksOfKind(tasks, 'health')
+      .filter(task => {
+        const parsed = parseHealthSourceId(task.generatedSourceId);
+        return !parsed || parsed.dayKey !== todayKey || !activeRuleIds.has(parsed.ruleId);
+      })
+      .forEach(task => deleteGeneratedTaskQuietly(task.id));
+
+    const reading = useHealthStore.getState().today;
+    // A reading from a day that has already turned over is not an answer about
+    // this one. Nothing else stands between that and a rule firing on
+    // yesterday's numbers.
+    if (!reading || reading.dayKey !== todayKey) return;
+
+    // How far into the *logical* day it is, which is what a shortfall has to be
+    // judged against: with a 4am reset, 6pm is fourteen hours in, and reading
+    // the wall clock instead would let a step rule fire two hours early for
+    // anybody whose day does not start at midnight.
+    const hoursIntoDay = (Date.now() - dayStart.getTime()) / (60 * 60 * 1000);
+
+    const dueDate = getCurrentDayStart();
+    dueDate.setHours(12, 0, 0, 0);
+
+    let rulesChanged = false;
+    const nextRules = settings.healthRules.map(rule => {
+      // Not yet judgeable — the hour hasn't come, or the number hasn't arrived.
+      // No task, and, the whole point, no mark either: spending it here is what
+      // would silently retire the rule for the rest of the day.
+      if (!ruleCanBeJudgedYet(rule, hoursIntoDay, reading)) return rule;
+      if (rule.lastFiredDayKey === todayKey) return rule;
+
+      if (ruleShortfallToday(rule, reading)) {
+        const sourceId = healthSourceId(todayKey, rule.id);
+        reconcileGeneratedTask({
+          kind: 'health',
+          sourceId,
+          wanted: true,
+          // The title is the rule's own and never varies mid-day.
+          drift: () => null,
+          draft: () => ({
+            title: rule.title,
+            dueDate: dueDate.toISOString(),
+            category: settings.healthTaskCategory,
+            ...generatedBy('health', sourceId),
+          }),
+        });
+      }
+
+      // Spent whether or not it matched, the way checkWeatherTasks spends its
+      // mark: "considered and did not apply" and "considered and fired" both
+      // mean this day has been answered, and without that a task swiped away
+      // comes straight back on the next foreground sweep.
+      rulesChanged = true;
+      return { ...rule, lastFiredDayKey: todayKey };
+    });
+
+    if (rulesChanged) settings.setHealthRules(nextRules);
   },
 
   /**

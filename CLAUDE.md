@@ -266,7 +266,7 @@ exports.
 | a task row — swipes, checkbox, expansion | `src/components/TaskItem.tsx` |
 | quick-add text parsing (`"pay rent tmrw 5p #home"`) | `src/utils/parseTaskInput.ts`, `parseNaturalDate.ts` |
 | what a template asks before it creates anything | `src/utils/templateQuestions.ts` — see `docs/arch/template-questions.md` |
-| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (seventeen generators now: `moodLog` and `moodNudge` are the newest, and `moodNudge` is the only one whose trigger is a trend in the user's own answers rather than a date, a row or a one-off threshold) |
+| a task the app writes unasked, and the quiet-project offer | `src/utils/generatedTasks.ts` + `src/utils/projectReviewTasks.ts` — see `docs/arch/generated-tasks.md` (eighteen generators now: `health` is the newest, and `moodNudge` is the only one whose trigger is a trend in the user's own answers rather than a date, a row or a one-off threshold) |
 | a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | anything read out of Apple Health | `src/store/useHealthStore.ts` + `src/utils/healthBridge.ts` + `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. Read it first: three of its four rules are about what a reader may *claim*, and the big one is that a refused read and a day with nothing recorded are one answer |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
@@ -361,15 +361,15 @@ exports.
 **Read narrowly.** 50 files are over 1,000 lines, 32 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (7.5k), `components/TaskEditor.tsx` (5.1k), `db/database.ts` (5.1k),
-`store/useGroceryStore.ts` (4.8k), `types/index.ts` (4.5k), `screens/TodayScreen.tsx` (4.5k),
+`store/useTaskStore.ts` (7.6k), `components/TaskEditor.tsx` (5.1k), `db/database.ts` (5.1k),
+`store/useGroceryStore.ts` (4.8k), `types/index.ts` (4.6k), `screens/TodayScreen.tsx` (4.5k),
 `components/TaskItem.tsx` (4.1k), `store/useSettingsStore.ts` (3.1k),
 `components/QuickAddModal.tsx` (3.1k), `utils/demoSeed.ts` (3.0k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **262 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **263 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

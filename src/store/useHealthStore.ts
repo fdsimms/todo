@@ -51,6 +51,15 @@ export interface HealthDay {
    * API forces it rather than the design choosing it.
    */
   steps: number | null;
+  /**
+   * Hours asleep recorded for today, or null. Same rules as `steps`.
+   *
+   * Filed under the day the sleeping *ended* in, so this is last night's for
+   * most of the day — but nothing calls it that, because a nap counts toward
+   * its own day too. The honest name for the number is time asleep recorded
+   * against a day.
+   */
+  sleepHours: number | null;
   /** When this was read, for a caller that wants to say how fresh it is. */
   readAt: string;
 }
@@ -107,12 +116,24 @@ export const useHealthStore = create<HealthState>((set, get) => ({
 
     set({ refreshing: true });
     try {
-      const steps = await bridge.readSteps(dayStart.toISOString(), now.toISOString());
-      // Written even when `steps` is null. A null answer is the current truth
-      // rather than a failed read to paper over, and holding the last good
-      // number instead would keep reporting a figure after access was revoked —
-      // which is the one state this feature must not misreport.
-      set({ today: { dayKey, steps, readAt: now.toISOString() } });
+      // One bucket, today's. The same call the history read uses rather than a
+      // second "just today" one: HealthKit has no future samples, so a bucket
+      // running to the end of today is today-so-far, and one query shape means
+      // the source de-duplication rule cannot drift between the two reads.
+      const [reading] = await bridge.readDailyHealth(dayStart.toISOString(), 1);
+      // Written even when the numbers are null, and written as a whole day
+      // rather than merged into the last one. A null answer is the current
+      // truth rather than a failed read to paper over, and holding the last
+      // good number would keep reporting a figure after access was revoked —
+      // the one state this feature must not misreport.
+      set({
+        today: {
+          dayKey,
+          steps: reading?.steps ?? null,
+          sleepHours: reading?.sleepMinutes == null ? null : reading.sleepMinutes / 60,
+          readAt: now.toISOString(),
+        },
+      });
     } finally {
       set({ refreshing: false });
     }

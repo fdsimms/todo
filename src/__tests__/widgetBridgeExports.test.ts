@@ -95,7 +95,7 @@ describe('todo-health-bridge entry point', () => {
     const names = healthNativeNames();
     // Fewer functions than the other two bridges have, so the floor is lower —
     // but it still guards the regex, which would otherwise make this vacuous.
-    expect(names).toContain('readSteps');
+    expect(names).toContain('readDailyHealth');
     for (const name of names) {
       expect(source).toContain(`nativeModule!.${name}(`);
     }

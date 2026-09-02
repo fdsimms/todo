@@ -336,6 +336,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'weatherTaskCategory', current: s.weatherTaskCategory, assign: s.setWeatherTaskCategory };
     case 'screenTime':
       return { key: 'screenTimeTaskCategory', current: s.screenTimeTaskCategory, assign: s.setScreenTimeTaskCategory };
+    case 'health':
+      return { key: 'healthTaskCategory', current: s.healthTaskCategory, assign: s.setHealthTaskCategory };
     case 'moodLog':
       return { key: 'moodLogTaskCategory', current: s.moodLogTaskCategory, assign: s.setMoodLogTaskCategory };
     case 'moodNudge':
@@ -363,6 +365,9 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'reachOut': return s.reachOutTasks;
     case 'weather': return s.weatherTasks;
     case 'screenTime': return s.screenTimeTasks;
+    // Two switches, and both have to be on: a generator that fires off Health
+    // data cannot run while the app is not allowed to read any.
+    case 'health': return s.healthTasks && s.healthReadEnabled;
     case 'moodLog': return s.moodLogTasks;
     case 'moodNudge': return s.moodNudgeTasks;
   }

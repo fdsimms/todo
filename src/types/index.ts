@@ -309,6 +309,46 @@ export interface ScreenTimeRule {
   lastFiredDayKey: string | null;
 }
 
+/**
+ * A rule matching today's Apple Health reading against a threshold the user
+ * wrote — "under six hours of sleep, keep today light".
+ *
+ * Between its two neighbours. Like `WeatherRule` the app holds the reading and
+ * does the deciding itself, so the idempotency mark can be spent before the
+ * decision; like `ScreenTimeRule` the number *is* the rule, so the threshold is
+ * per rule rather than carried by the title. See `src/utils/healthRules.ts` for
+ * both, and `docs/arch/health-data.md` for why a missing reading can never
+ * match.
+ */
+export interface HealthRule {
+  id: string;
+  /** Which reading this rule watches. */
+  metric: 'steps' | 'sleepHours';
+  /**
+   * The number the reading has to fall *under*, in the metric's own unit —
+   * steps, or whole hours asleep.
+   *
+   * Only "under" is expressible. Every rule worth writing here is a shortfall,
+   * and the mirror describes something that has already happened and needs no
+   * task, so a comparator would be a control on every row serving nobody.
+   */
+  threshold: number;
+  /** The task's title, e.g. "Keep today light". */
+  title: string;
+  // Off keeps the rule written down but stops it firing, same as WeatherRule.
+  enabled: boolean;
+  /**
+   * The day key (`dayKeyOf`) this rule last created a task on.
+   *
+   * Written the moment the rule is *considered*, the way `WeatherRule`'s is
+   * rather than `ScreenTimeRule`'s, because the app is what does the deciding
+   * here. The one exception is the whole of `ruleCanBeJudgedYet`: a steps rule
+   * cannot be judged before evening, and spending the mark at 8am would mean
+   * it never fires that day.
+   */
+  lastFiredDayKey: string | null;
+}
+
 // A lightweight, collapsible label for grouping several independent tasks
 // together (e.g. "Take supplements" grouping Coq10/Vitamin D/Iron, each on
 // its own schedule). Deliberately NOT a Task — it has no dueDate, recurrence,
@@ -1013,6 +1053,12 @@ export type GeneratedKind =
   // the source is a rule in settings, not a row a decline could be stamped on,
   // so writeGeneratedOptOut has nothing to write for it either.
   | 'screenTime'
+  // A shortfall against an Apple Health reading the user wrote a rule about
+  // ("under six hours of sleep") — see src/utils/healthRules.ts. Same
+  // `${dayKey}#${ruleId}` source id as weather and screenTime, and
+  // writeGeneratedOptOut has nothing to write for it for their reason: the
+  // source is a rule in settings, not a row a decline could be stamped on.
+  | 'health'
   // Once a day, a task to write down how you are doing — see
   // src/utils/moodTasks.ts. Its source id is the day key it is asking about,
   // the same "square on the calendar, not a row" position calendarReview is

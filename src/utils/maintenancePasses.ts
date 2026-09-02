@@ -137,6 +137,10 @@ export function catchUpPasses(): MaintenanceStep[] {
     // crossings it reads are only ever drained by useScreenTimeSync's own
     // effect, which has not run yet on the very first pass.
     ['check screen time tasks', () => tasks().checkScreenTimeTasks()],
+    // Beside it, same trigger and the same near-no-op at cold launch: the
+    // reading it judges against is only ever taken by useHealthSync's own
+    // effect, which has not run yet on the very first pass.
+    ['check health tasks', () => tasks().checkHealthTasks()],
     // Beside them, same trigger — a day rolls over and a run of low days
     // lengthens purely by time passing. Unlike the three above it this one
     // reads a store the fan-out has already loaded rather than a snapshot some

@@ -128,6 +128,7 @@ import { DeloadSheet } from '../components/DeloadSheet';
 import { useMoodStore } from '../store/useMoodStore';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
 import { lowMoodDeloadNote } from '../utils/moodTasks';
+import { shortSleepDeloadNote } from '../utils/healthRules';
 import { LookAheadSheet } from '../components/LookAheadSheet';
 import { ProjectPullSheet } from '../components/ProjectPullSheet';
 import { useProjectStore } from '../store/useProjectStore';
@@ -1151,6 +1152,11 @@ export function TodayScreen() {
           // Beside it, same trigger — the crossings this checks against are
           // kept current by useScreenTimeSync's own AppState listener.
           useTaskStore.getState().checkScreenTimeTasks();
+          // Beside it, same trigger, and the one that matters most for this
+          // generator: a steps rule cannot be judged until evening, so the
+          // launch pass is usually too early and this is where it actually
+          // fires.
+          useTaskStore.getState().checkHealthTasks();
           // Beside them, same trigger: which day is "today" rolls over purely
           // by time passing, and so does the length of a low run.
           useTaskStore.getState().checkMoodTasks();
@@ -1288,6 +1294,36 @@ export function TodayScreen() {
     const days = buildMoodDays(moodLogs, [], dayResetTime);
     return lowMoodDeloadNote(lowMoodRun(days, getLogicalDayKey(new Date(), dayResetTime)), moodNudgeAfterDays);
   }, [moodLogs, dayResetTime, moodNudgeAfterDays]);
+
+  // The Health reading, and the two settings that decide what may be done with
+  // it. Declared here rather than beside the context rows below because the
+  // deload note wants them first, and one declaration beats two.
+  //
+  // Both the reading and the category are nullable and both mean "no row": the
+  // store holds nothing until the read is on and something has been recorded,
+  // and the category is also the row's off switch (see its note in
+  // useSettingsStore). `useHealthSync` in App.tsx is what keeps the reading
+  // current — nothing here fetches, the same split useCalendarStore draws.
+  const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
+  const healthCategory = useSettingsStore(s => s.healthCategory);
+  const healthToday = useHealthStore(s => s.today);
+
+  // The second line the same menu can carry, and the health feature's only
+  // reach into Today beyond its own row. Gated on the *read* rather than on the
+  // generator: this is a line in a menu somebody opened, not a task, so it
+  // needs no switch of its own — the same argument lowMoodDeloadNote makes for
+  // having none.
+  const shortSleepNote = useMemo(() => {
+    if (!healthReadEnabled) return null;
+    const key = getLogicalDayKey(new Date(), dayResetTime);
+    if (!healthToday || healthToday.dayKey !== key) return null;
+    return shortSleepDeloadNote(healthToday.sleepHours);
+  }, [healthReadEnabled, healthToday, dayResetTime]);
+
+  const deloadNotes = useMemo(
+    () => [lowMoodNote, shortSleepNote].filter((n): n is string => n !== null),
+    [lowMoodNote, shortSleepNote],
+  );
 
   // Sort & filter state. Persisted, like hideCategories below — the three are
   // set from the same sheet, and only one of them used to survive a launch.
@@ -1784,13 +1820,6 @@ export function TodayScreen() {
   // starts, and nothing mutates a store at either moment.
   const calendarEventCategory = useSettingsStore(s => s.calendarEventCategory);
   const mealCookTaskCategory = useSettingsStore(s => s.mealCookTaskCategory);
-  // The Health reading and where it files. Both nullable and both meaning "no
-  // row": the store holds nothing until the read is on and something has been
-  // recorded, and the category is also the row's off switch (see its note in
-  // useSettingsStore). `useHealthSync` in App.tsx is what keeps the reading
-  // current — nothing here fetches, the same split useCalendarStore draws.
-  const healthCategory = useSettingsStore(s => s.healthCategory);
-  const healthToday = useHealthStore(s => s.today);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   // An event the user asked never to be reminded of again — read as the raw
   // map (not the store's own `isHidden`, which closes over `get()` and so
@@ -4143,7 +4172,7 @@ export function TodayScreen() {
             setDeloadVisible(true);
           } : undefined}
           plannedLabel={plannedLabel}
-          lightenNote={lowMoodNote}
+          lightenNote={deloadNotes[0] ?? null}
           onLookAhead={featureHidden('lookAhead', simpleMode) ? undefined : () => {
             setOptionsMenuVisible(false);
             setLookAheadVisible(true);
@@ -4187,7 +4216,7 @@ export function TodayScreen() {
         <DeloadSheet
           visible={deloadVisible}
           todaysTasks={visibleTasks}
-          lowMoodNote={lowMoodNote}
+          notes={deloadNotes}
           onClose={() => setDeloadVisible(false)}
         />
 

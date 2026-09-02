@@ -197,56 +197,6 @@ public class TodoHealthBridgeModule: Module {
 
     // ─── Reading ────────────────────────────────────────────────────────────
 
-    /// Total steps between two instants, as JSON: `{"steps":4120}` or
-    /// `{"steps":null}`.
-    ///
-    /// A JSON string rather than a number because the answer is genuinely
-    /// nullable and there is no honest sentinel: 0 is a real step count for a
-    /// day spent in bed, and -1 is a magic number the JS side would have to
-    /// remember. Same shape `drainCrossings` uses in the Screen Time bridge,
-    /// and the parse lives on the TS side in one place.
-    ///
-    /// The window comes from JS rather than being computed here, because the
-    /// day it should cover is the user's *logical* day and `dayResetTime` lives
-    /// in the settings store. A native `startOfDay` would file a 1am reading
-    /// against the wrong day for anyone whose day starts at 4am — the same
-    /// mistake the Screen Time extension avoids by being handed a day key.
-    AsyncFunction("readSteps") { (startISO: String, endISO: String, promise: Promise) in
-      #if canImport(HealthKit)
-      guard HKHealthStore.isHealthDataAvailable(),
-            let type = HKQuantityType.quantityType(forIdentifier: .stepCount),
-            let start = Self.parseISO(startISO),
-            let end = Self.parseISO(endISO) else {
-        promise.resolve("{\"steps\":null}")
-        return
-      }
-
-      let predicate = HKQuery.predicateForSamples(withStart: start, end: end, options: .strictStartDate)
-      var started = false
-      TodoHealthExceptionCatcher.runCatchingExceptions {
-        let query = HKStatisticsQuery(
-          quantityType: type,
-          quantitySamplePredicate: predicate,
-          // See `bestSum` for why the sum is separated by source.
-          options: [.cumulativeSum, .separateBySource]
-        ) { _, statistics, _ in
-          guard let statistics, let steps = Self.bestSum(statistics) else {
-            // No samples at all in the window. Indistinguishable from a read
-            // that was refused, which is exactly why both answer null.
-            promise.resolve("{\"steps\":null}")
-            return
-          }
-          promise.resolve("{\"steps\":\(Int(steps.rounded()))}")
-        }
-        self.store.execute(query)
-        started = true
-      }
-      if !started { promise.resolve("{\"steps\":null}") }
-      #else
-      promise.resolve("{\"steps\":null}")
-      #endif
-    }
-
     /// One entry per logical day, as JSON:
     /// `[{"start":"…","steps":4120,"sleepMinutes":437}, …]`, either number null.
     ///

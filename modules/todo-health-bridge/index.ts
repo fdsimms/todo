@@ -67,7 +67,6 @@ interface TodoHealthNativeModule {
   isAvailable(): boolean;
   authorizationRequestStatus(): Promise<HealthRequestStatus>;
   requestAuthorization(): Promise<HealthAuthorizationResult>;
-  readSteps(startISO: string, endISO: string): Promise<string>;
   readDailyHealth(anchorISO: string, days: number): Promise<string>;
 }
 
@@ -117,34 +116,6 @@ export function healthRequestStatus(): Promise<HealthRequestStatus> {
  */
 export function requestHealthAuthorization(): Promise<HealthAuthorizationResult> {
   return degradeOnReject(() => nativeModule!.requestAuthorization(), 'unavailable');
-}
-
-/**
- * Steps recorded between two instants, or null when there is no number.
- *
- * Null covers a refused read, a day with no samples, and a device that has
- * never recorded any, and it is not possible to tell them apart — so callers
- * must render "nothing to show" rather than a zero. Treating an absent reading
- * as 0 is the mistake `moodInsights` already has a rule against, and here the
- * API forces it rather than the design choosing it.
- *
- * The window is passed in rather than computed natively because the day it
- * should cover is the user's *logical* day, and `dayResetTime` lives in the
- * settings store. Parsed here so a malformed answer reads as "no number" in
- * one place.
- */
-export async function readSteps(startISO: string, endISO: string): Promise<number | null> {
-  const json = await degradeOnReject(
-    () => nativeModule!.readSteps(startISO, endISO),
-    '{"steps":null}',
-  );
-  try {
-    const parsed = JSON.parse(json) as unknown;
-    if (typeof parsed !== 'object' || parsed === null) return null;
-    return countOrNull((parsed as { steps?: unknown }).steps);
-  } catch {
-    return null;
-  }
 }
 
 /**

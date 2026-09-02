@@ -91,6 +91,7 @@ export function SettingsScreen() {
       reachOutTasks: settings.reachOutTasks,
       weatherTasks: settings.weatherTasks,
       screenTimeTasks: settings.screenTimeTasks,
+    healthTasks: settings.healthTasks,
       moodLogTasks: settings.moodLogTasks,
       moodNudgeTasks: settings.moodNudgeTasks,
     }, settings.kitchenEnabled),
