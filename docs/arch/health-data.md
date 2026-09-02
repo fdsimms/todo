@@ -1,12 +1,14 @@
 # Reading Apple Health
 
-What is built so far (the bridge, the store, the Settings section and the row on
-Today), and the four rules the rest of it has to be built against.
+What is built so far (the bridge, the store, the Settings section, the row on
+Today and the Mood screen's health axis), and the four rules the rest of it has
+to be built against.
 
 Read this before touching `modules/todo-health-bridge/`,
 `src/utils/healthBridge.ts`, `src/store/useHealthStore.ts`,
-`src/screens/settings/HealthSettings.tsx` or `healthContextRows` in
-`src/utils/dayContextRows.ts` — and before adding any reader of a health figure
+`src/screens/settings/HealthSettings.tsx`, `healthContextRows` in
+`src/utils/dayContextRows.ts` or the health half of `src/utils/moodInsights.ts`
+— and before adding any reader of a health figure
 anywhere else, because three of the four rules below are about what a reader is
 allowed to claim rather than about how to get the number.
 
@@ -157,10 +159,60 @@ category: `healthCategory` lives in the database, the demo's copy has never had
 one, so a demo session cannot surface a real reading left in the store by the
 session before it.
 
+## The Mood screen's health axis
+
+`MoodDay` carries `steps` and `sleepHours`, so every reader already in
+`moodInsights.ts` gains a health dimension without learning anything new. The
+argument for putting it here rather than anywhere else is the file's own: every
+number in it is a join between two datasets, and **a join between Health and the
+task history is the one thing a standalone health app can never make.** It knows
+how far somebody walked; only this app knows what they got done.
+
+- **A reading decorates a day; it never creates one.** The single most important
+  line in `buildMoodDays`, because the obvious implementation gets it wrong.
+  HealthKit will answer for ninety days running, and folding those in through
+  `dayFor` would conjure ninety days into the set, each carrying `completed: 0`
+  and `mood: null` — a fortnight of invented zero-completion days for somebody
+  who simply did not open the app. That is rule 3's exact failure mode arriving
+  through the one dataset the user never entered.
+- **One function for all four pairings** (`healthInsight`), not four near-copies.
+  Every rule that makes them honest is the same in each, and written out four
+  times two of them would drift. `moodCompletionInsight` stays separate because
+  it reports the two group averages the screen leads with, which is a claim
+  about mood specifically.
+- **The copy is a tested pure function** (`describeHealthInsight`), for the
+  reason `moodTasks.test.ts` asserts directly that the nudge never names a
+  feeling: copy that must not overclaim should be checkable. A test walks every
+  metric/axis/direction/strength combination and asserts none of it contains
+  advice or a coefficient.
+- **"No clear pattern" gets said.** Hiding it would leave only the findings that
+  happened to land, which is how a screen of associations starts reading as a
+  screen of results.
+- **The window is read on demand, not on the foreground triggers.**
+  `refreshHistory` is a wider query than the Today reading and only this screen
+  wants it, so running it on every foreground would be paying for a chart nobody
+  has open — the split `useMealPlanStore` already draws by letting the screen own
+  which week is loaded. `HEALTH_HISTORY_DAYS` is 90: long enough to clear
+  `MIN_PAIRED_DAYS` for somebody who logs a couple of times a week, short enough
+  to stay one query, and not a setting because nobody has an opinion about it.
+- **Sleep is filed under the day it ends in**, and nothing calls it "last night".
+  A nap counts toward its own day, so the honest name for the number is time
+  asleep recorded against a day. Overlapping sources are handled the way steps
+  are: per source, then the largest, because a phone recording "in bed" and a
+  watch recording stages would otherwise put somebody to sleep twice.
+
+**Adding a read type is not free for people already using the feature.** Sleep
+went into `readTypes` after steps shipped, and the app never re-prompts on its
+own — a sweep must not raise that sheet. So an install that allowed steps before
+this gets no sleep until somebody taps the access row in Settings, and because a
+refused read and an unasked one look identical, nothing can tell them that is
+why. Weigh that against what the type buys before extending the list again.
+
 ## What is deliberately not built yet
 
-Step count alone, read for today, shown in one Settings row and one row on
-Today. The set of read
+Steps and sleep, read for today and over a trailing 90 days, shown in one
+Settings row, one row on Today and one card on the Mood screen. Nothing writes a
+task from any of it. The set of read
 types is one list in the Swift module (`readTypes`) because the permission sheet
 is shown once for whatever is asked for, and a type added there is a type the
 sheet will list — so nothing goes in until something reads it.
@@ -169,8 +221,7 @@ The four things this was built to make possible, in the order they are worth
 doing, none of them started:
 
 1. ~~A fourth `ContextRow` kind on Today.~~ Built, see above.
-2. `sleepHours` and `steps` on `MoodDay`, so the existing correlation and
-   contrast readers in `moodInsights.ts` gain a health axis for free.
+2. ~~`sleepHours` and `steps` on `MoodDay`.~~ Built, see above.
 3. A `health` generator (kind #18), structurally `screenTime` with the crossing
    replaced by a number the app reads for itself. The threshold is per rule, for
    `screenTime`'s reason and not `weather`'s: the number *is* the rule.

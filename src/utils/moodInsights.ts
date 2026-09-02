@@ -59,6 +59,25 @@ export interface MoodDay {
   completed: number;
   /** Categories completed that day, each counted once — the "kind" of work. */
   categories: string[];
+  /**
+   * Steps recorded for that day, or null. Apple Health's, never this app's.
+   *
+   * Null is the normal case and covers every reason at once: the read is off,
+   * the day is before it was turned on, nothing was recorded, or the read was
+   * refused — HealthKit deliberately serves a refusal as an empty store, so the
+   * last two are indistinguishable. Rule 3 already says an absent day is not a
+   * zero; here the API enforces it. See `docs/arch/health-data.md`.
+   */
+  steps: number | null;
+  /** Hours asleep recorded for that day, or null. Same rules as `steps`. */
+  sleepHours: number | null;
+}
+
+/** A health reading the day builder can decorate a day with. */
+export interface HealthDayInput {
+  dayKey: string;
+  steps: number | null;
+  sleepHours: number | null;
 }
 
 /**
@@ -89,12 +108,16 @@ export function buildMoodDays(
   logs: readonly MoodLog[],
   tasks: readonly Task[],
   dayResetTime: string,
+  readings: readonly HealthDayInput[] = [],
 ): MoodDay[] {
   const days = new Map<string, MoodDay>();
   const dayFor = (dayKey: string): MoodDay => {
     let day = days.get(dayKey);
     if (!day) {
-      day = { dayKey, mood: null, symptomKeys: [], completed: 0, categories: [] };
+      day = {
+        dayKey, mood: null, symptomKeys: [], completed: 0, categories: [],
+        steps: null, sleepHours: null,
+      };
       days.set(dayKey, day);
     }
     return day;
@@ -130,6 +153,23 @@ export function buildMoodDays(
   }
   for (const [dayKey, set] of categoriesByDay) {
     dayFor(dayKey).categories = [...set].sort();
+  }
+
+  // Health readings **decorate days that already exist and never create one.**
+  // This is the whole of what keeps the axis honest, and it is worth being
+  // explicit about because the obvious implementation gets it wrong: HealthKit
+  // will happily return ninety days of step counts, and folding those in
+  // through `dayFor` would conjure ninety days into the set, every one of them
+  // carrying `completed: 0` and `mood: null`. That is a fortnight of invented
+  // zero-completion days for somebody who simply didn't open the app — rule 3's
+  // exact failure mode, arriving through the one dataset the user never
+  // entered. A reading says how a day went; it does not say the day was one you
+  // were logging.
+  for (const reading of readings) {
+    const day = days.get(reading.dayKey);
+    if (!day) continue;
+    day.steps = reading.steps;
+    day.sleepHours = reading.sleepHours;
   }
 
   return [...days.values()].sort((a, b) => a.dayKey.localeCompare(b.dayKey));
@@ -315,6 +355,161 @@ function contrastsFor(
  * reading "evenings are worse" can act on it with a control the app already
  * has.
  */
+/** Which Health reading an insight is about. */
+export type HealthMetric = 'steps' | 'sleepHours';
+
+/** What a reading is being compared against. */
+export type HealthAgainst = 'mood' | 'completed';
+
+export interface HealthInsight {
+  metric: HealthMetric;
+  against: HealthAgainst;
+  /** Days carrying both the reading and the thing it is compared against. */
+  dayCount: number;
+  /** Null below `MIN_PAIRED_DAYS`, or when the correlation is undefined. */
+  r: number | null;
+  strength: CorrelationStrength | null;
+  /** "more" means the two rise together. */
+  direction: 'more' | 'fewer' | null;
+}
+
+/** A day's value on one axis, or null when the day cannot speak to it. */
+function axisValue(day: MoodDay, axis: HealthMetric | HealthAgainst): number | null {
+  switch (axis) {
+    case 'steps': return day.steps;
+    case 'sleepHours': return day.sleepHours;
+    case 'mood': return day.mood;
+    // Always a number, and a real zero: a day is only in the set at all
+    // because something was logged or finished on it, so "none finished" is
+    // something that happened rather than something missing.
+    case 'completed': return day.completed;
+  }
+}
+
+/**
+ * Does a Health reading move with how you felt, or with what you finished?
+ *
+ * One function for all four pairings rather than four near-copies, because
+ * every rule that makes this honest is the same in each and writing it out four
+ * times is how two of them would quietly drift apart. `moodCompletionInsight`
+ * above stays its own function on purpose: it reports the two group averages
+ * the screen leads with, which is a claim about mood specifically.
+ *
+ * **The completions pairing is the one a health app cannot make.** That is the
+ * same argument this whole file rests on, pointed at a second dataset: Health
+ * knows how much somebody walked and this app knows what they got done, and
+ * only one program has both. The mood pairings are the smaller half and are
+ * here because the Mood screen is where a person is already reading about
+ * their days.
+ *
+ * All three rules from the file header apply unchanged, and two of them do more
+ * work here than they do above:
+ *
+ * 1. **Nothing below `MIN_PAIRED_DAYS`.** A health axis makes this *easier* to
+ *    breach by accident, because HealthKit can answer for days the user was
+ *    never logging on — which is exactly why `buildMoodDays` refuses to create
+ *    a day from a reading.
+ * 2. **A direction and a strength, never a coefficient.** `r` is on the shape
+ *    for tests and for `correlationStrength`; nothing renders it.
+ * 3. **A day without the reading is absent, not a zero.** Enforced here rather
+ *    than left to the caller, and it is not optional politeness: null covers a
+ *    refused read, and treating that as "walked nowhere" would turn somebody
+ *    declining to share their steps into a finding about their life.
+ *
+ * And the rule this file inherits from `mood-log.md`: an association, never a
+ * cause. "You finish more on the days you move more" is a description of two
+ * numbers. It is not advice, and nothing built on it may become advice.
+ */
+export function healthInsight(
+  days: readonly MoodDay[],
+  metric: HealthMetric,
+  against: HealthAgainst,
+): HealthInsight {
+  const paired = days.filter(
+    d => axisValue(d, metric) !== null && axisValue(d, against) !== null,
+  );
+  const base: HealthInsight = {
+    metric,
+    against,
+    dayCount: paired.length,
+    r: null,
+    strength: null,
+    direction: null,
+  };
+  if (paired.length < MIN_PAIRED_DAYS) return base;
+
+  const r = correlation(
+    paired.map(d => axisValue(d, metric) as number),
+    paired.map(d => axisValue(d, against) as number),
+  );
+  return {
+    ...base,
+    r,
+    strength: r === null ? null : correlationStrength(r),
+    direction: r === null ? null : r >= 0 ? 'more' : 'fewer',
+  };
+}
+
+/**
+ * One line saying what an insight found, or null when it found nothing sayable.
+ *
+ * Here rather than in the screen's JSX because it is the copy that has to not
+ * overclaim, and copy that has to not overclaim should be testable — the same
+ * reason `moodTasks.test.ts` asserts directly that the nudge never names a
+ * feeling. `describeRhythm` is the same shape one file over.
+ *
+ * Three rules, all inherited and none of them decoration:
+ *
+ * - **A description, never advice.** "You finish more on the days you walk
+ *   more" is a statement about two numbers. "Try walking more" is a claim about
+ *   cause and a suggestion about somebody's life, and this app does not make
+ *   either from a correlation.
+ * - **No coefficient.** A strength word and a direction, because `r = 0.42`
+ *   reads as a finding to anybody who last met the word at school.
+ * - **"No clear pattern" is a real answer and gets said.** Hiding it would
+ *   leave only the findings that happened to land, which is how a screen full
+ *   of associations starts looking like a screen full of results.
+ */
+export function describeHealthInsight(insight: HealthInsight): string | null {
+  if (insight.strength === null || insight.direction === null) return null;
+
+  const subject = insight.metric === 'steps' ? 'steps' : 'sleep';
+  const onDays = insight.metric === 'steps'
+    ? 'the days you walk more'
+    : 'the days you sleep more';
+
+  if (insight.strength === 'none') {
+    return insight.against === 'mood'
+      ? `No clear pattern between your ${subject} and your mood.`
+      : `No clear pattern between your ${subject} and what you finish.`;
+  }
+  if (insight.against === 'mood') {
+    return insight.direction === 'more'
+      ? `Your mood runs higher on ${onDays}.`
+      : `Your mood runs lower on ${onDays}.`;
+  }
+  return insight.direction === 'more'
+    ? `You finish more tasks on ${onDays}.`
+    : `You finish fewer tasks on ${onDays}.`;
+}
+
+/**
+ * The metric's own average across the days it was recorded, or null.
+ *
+ * For the one line an insight needs beside its direction: "you averaged 6,400
+ * steps on the days you logged". Absent days are absent, so this is an average
+ * over what is known rather than over the window.
+ */
+export function healthAverage(
+  days: readonly MoodDay[],
+  metric: HealthMetric,
+): number | null {
+  const values = days
+    .map(d => axisValue(d, metric))
+    .filter((v): v is number => v !== null);
+  return values.length > 0 ? mean(values) : null;
+}
+
 export interface TimeOfDayMood {
   segment: TimeOfDay;
   entryCount: number;

@@ -45,11 +45,30 @@ export type HealthRequestStatus = 'unavailable' | 'shouldRequest' | 'unnecessary
  */
 export type HealthAuthorizationResult = 'unavailable' | 'requested' | 'failed';
 
+/**
+ * One logical day's readings, as the daily read hands them back.
+ *
+ * `start` is the instant the day began, not a day key: which day that *is*
+ * depends on `dayResetTime`, which lives in the settings store, so the key is
+ * derived on the app side by the same `getLogicalDayKey` every other reader
+ * uses. One implementation of "which day is this", and it is the one that has
+ * the setting.
+ *
+ * Both numbers are independently nullable, and null is never zero — see the
+ * module note above.
+ */
+export interface HealthDayReading {
+  start: string;
+  steps: number | null;
+  sleepMinutes: number | null;
+}
+
 interface TodoHealthNativeModule {
   isAvailable(): boolean;
   authorizationRequestStatus(): Promise<HealthRequestStatus>;
   requestAuthorization(): Promise<HealthAuthorizationResult>;
   readSteps(startISO: string, endISO: string): Promise<string>;
+  readDailyHealth(anchorISO: string, days: number): Promise<string>;
 }
 
 let nativeModule: TodoHealthNativeModule | null = null;
@@ -122,12 +141,70 @@ export async function readSteps(startISO: string, endISO: string): Promise<numbe
   try {
     const parsed = JSON.parse(json) as unknown;
     if (typeof parsed !== 'object' || parsed === null) return null;
-    const steps = (parsed as { steps?: unknown }).steps;
-    // A negative or non-finite count is a broken answer rather than a small
-    // one, and reads the same way as no answer at all.
-    if (typeof steps !== 'number' || !Number.isFinite(steps) || steps < 0) return null;
-    return steps;
+    return countOrNull((parsed as { steps?: unknown }).steps);
   } catch {
     return null;
+  }
+}
+
+/**
+ * A count that came back over the bridge, or null.
+ *
+ * Shared by both reads so the "absent is not zero" rule has one implementation:
+ * a missing field, a non-number, a non-finite one and a negative one are all
+ * broken answers rather than small ones, and read the same way as no answer.
+ * A real 0 survives, because a day spent in bed is a genuine reading.
+ */
+function countOrNull(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return null;
+  return value;
+}
+
+/**
+ * Steps and sleep for each of `days` logical days starting at `anchorISO`.
+ *
+ * The window is an anchor plus a count rather than a pair of instants, because
+ * a logical day is exactly one calendar day long under any reset time — so the
+ * native side can walk the buckets with `Calendar` and a DST day comes out 23
+ * or 25 hours. What the anchor is stays this side's business, since
+ * `dayResetTime` is a setting.
+ *
+ * Answers `[]` for every reason there is nothing to say: no native half, an
+ * unparseable anchor, a refused read, a person with no Health data. A short
+ * array is normal too — a day is only present if the native side reached it.
+ *
+ * Nothing here is cached. The reasoning is in `docs/arch/health-data.md`: this
+ * app does not keep a copy of anybody's health record, and HealthKit answers a
+ * historical query fast enough that the copy would buy nothing but a backup
+ * file with somebody's sleep in it.
+ */
+export async function readDailyHealth(
+  anchorISO: string,
+  days: number,
+): Promise<HealthDayReading[]> {
+  const json = await degradeOnReject(
+    () => nativeModule!.readDailyHealth(anchorISO, days),
+    '[]',
+  );
+  try {
+    const parsed = JSON.parse(json) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const out: HealthDayReading[] = [];
+    for (const entry of parsed) {
+      if (typeof entry !== 'object' || entry === null) continue;
+      const { start, steps, sleepMinutes } = entry as Record<string, unknown>;
+      // A row with no instant cannot be filed under a day, so it is dropped
+      // rather than guessed at — the same refusal the native side makes when
+      // it cannot work out which bucket a sample belongs in.
+      if (typeof start !== 'string' || start === '') continue;
+      out.push({
+        start,
+        steps: countOrNull(steps),
+        sleepMinutes: countOrNull(sleepMinutes),
+      });
+    }
+    return out;
+  } catch {
+    return [];
   }
 }

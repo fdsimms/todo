@@ -1,7 +1,9 @@
 import { useEffect } from 'react';
 import { AppState, Platform } from 'react-native';
 import { create } from 'zustand';
-import { dayKeyOf, getCurrentDayStart } from '../utils/dateUtils';
+import { addDays } from 'date-fns/addDays';
+import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import type { HealthDayInput } from '../utils/moodInsights';
 import { healthBridge } from '../utils/healthBridge';
 import { useSettingsStore } from './useSettingsStore';
 
@@ -53,17 +55,40 @@ export interface HealthDay {
   readAt: string;
 }
 
+/**
+ * How far back the history read goes.
+ *
+ * Long enough to clear `MIN_PAIRED_DAYS` for somebody who logs their mood a
+ * couple of times a week, which is the point of reading it at all, and short
+ * enough to stay one quick query. It is a window on somebody else's data rather
+ * than a retention setting: nothing here is stored, so making it longer costs a
+ * slower read and nothing else, and making it a preference would be a knob over
+ * a number nobody has an opinion about.
+ */
+export const HEALTH_HISTORY_DAYS = 90;
+
 interface HealthState {
   today: HealthDay | null;
   refreshing: boolean;
+  /**
+   * The last `HEALTH_HISTORY_DAYS` of readings, oldest first, or null for
+   * "not looked yet" — which is a third answer and must not render as an empty
+   * window. Only days HealthKit answered for are present.
+   */
+  history: HealthDayInput[] | null;
+  loadingHistory: boolean;
   /** Re-read today's numbers. A no-op when the gate is closed or a read is already running. */
   refresh: () => Promise<void>;
+  /** Re-read the trailing window. Only the screens that show a trend call this. */
+  refreshHistory: () => Promise<void>;
   clear: () => void;
 }
 
 export const useHealthStore = create<HealthState>((set, get) => ({
   today: null,
   refreshing: false,
+  history: null,
+  loadingHistory: false,
 
   async refresh() {
     // One gate, which is also the demo-mode refusal — see healthBridge.ts.
@@ -93,8 +118,57 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     }
   },
 
+  /**
+   * Read the trailing window, on demand.
+   *
+   * Deliberately not part of `refresh` and not on the foreground triggers: it
+   * is a wider read that only the Mood screen's insights want, and running it
+   * on every foreground would be paying for a chart nobody has open. Same split
+   * `useMealPlanStore` draws by letting the screen own which week is loaded.
+   *
+   * Nothing is persisted, here or anywhere: `docs/arch/health-data.md` explains
+   * why this app never keeps a copy of somebody's health record, and a
+   * historical query is cheap enough that the copy would buy only a backup file
+   * with their sleep in it.
+   */
+  async refreshHistory() {
+    const bridge = healthBridge();
+    if (!bridge) return;
+    if (get().loadingHistory) return;
+
+    // The window ends with today and runs back HEALTH_HISTORY_DAYS - 1 days, so
+    // today is the last bucket rather than a partial one hanging off the end.
+    const anchor = addDays(getCurrentDayStart(), -(HEALTH_HISTORY_DAYS - 1));
+
+    set({ loadingHistory: true });
+    try {
+      const readings = await bridge.readDailyHealth(anchor.toISOString(), HEALTH_HISTORY_DAYS);
+      const history: HealthDayInput[] = [];
+      for (const reading of readings) {
+        const at = new Date(reading.start);
+        if (Number.isNaN(at.getTime())) continue;
+        history.push({
+          // The day key is derived here rather than natively, so there is one
+          // implementation of "which day is this" and it is the one holding
+          // `dayResetTime`. The native side hands back the instant it bucketed
+          // from and says nothing about which day that is.
+          dayKey: getLogicalDayKey(at),
+          steps: reading.steps,
+          // Hours, because that is the unit the insight speaks in; minutes are
+          // what HealthKit's samples measure. Kept unrounded — the screen
+          // decides how many decimals a person should read, and rounding at
+          // the source would quietly change a correlation.
+          sleepHours: reading.sleepMinutes === null ? null : reading.sleepMinutes / 60,
+        });
+      }
+      set({ history });
+    } finally {
+      set({ loadingHistory: false });
+    }
+  },
+
   clear() {
-    set({ today: null });
+    set({ today: null, history: null });
   },
 }));
 
