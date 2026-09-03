@@ -4,7 +4,7 @@ import {
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
-const FULL = { kitchenEnabled: true, simpleMode: false, counts: { stacks: 3, templates: 2, people: 4 } };
+const FULL = { kitchenEnabled: true, simpleMode: false, counts: { stacks: 3, templates: 2, people: 4, mood: 5 } };
 const routesOf = (rows: ReturnType<typeof visibleMenuRows>) => rows.map(rowEntryRoute);
 
 describe('the menu as data', () => {
@@ -84,7 +84,7 @@ describe('simplified mode', () => {
   // screen. This pins that, so a future hub built entirely out of lenses is
   // caught here rather than shipping as a row that opens onto nothing.
   it('leaves every hub standing, on the emptiest install simplified mode allows', () => {
-    const bare = { ...SIMPLE, counts: { stacks: 0, templates: 0, people: 0 } };
+    const bare = { ...SIMPLE, counts: { stacks: 0, templates: 0, people: 0, mood: 0 } };
     for (const hub of NAV_HUBS) {
       expect(`${hub.id}: ${visibleHubMembers(hub, true, bare.counts).length > 0}`).toBe(`${hub.id}: true`);
     }
@@ -93,8 +93,8 @@ describe('simplified mode', () => {
 
   it('keeps a content screen only while it holds something', () => {
     const organize = NAV_HUBS.find(h => h.id === 'organize')!;
-    const full = visibleHubMembers(organize, true, { stacks: 1, templates: 1, people: 1 }).map(m => m.route);
-    const empty = visibleHubMembers(organize, true, { stacks: 0, templates: 0, people: 0 }).map(m => m.route);
+    const full = visibleHubMembers(organize, true, { stacks: 1, templates: 1, people: 1, mood: 1 }).map(m => m.route);
+    const empty = visibleHubMembers(organize, true, { stacks: 0, templates: 0, people: 0, mood: 0 }).map(m => m.route);
     expect(full).toEqual(['Categories', 'Tags', 'People', 'Stacks', 'Templates']);
     expect(empty).toEqual(['Categories', 'Tags']);
   });
@@ -108,6 +108,14 @@ describe('simplified mode', () => {
     expect(SIMPLE_HIDDEN_SCREENS.has('Kitchen')).toBe(true);
     const kitchen = NAV_HUBS.find(h => h.id === 'kitchen')!;
     expect(visibleHubMembers(kitchen, true, FULL.counts).map(m => m.route)).not.toContain('Kitchen');
+  });
+
+  it('drops Mood once it holds nothing, like the other three content screens', () => {
+    const history = NAV_HUBS.find(h => h.id === 'history')!;
+    const withEntries = visibleHubMembers(history, true, { ...FULL.counts, mood: 2 }).map(m => m.route);
+    const without = visibleHubMembers(history, true, { ...FULL.counts, mood: 0 }).map(m => m.route);
+    expect(withEntries).toContain('Mood');
+    expect(without).not.toContain('Mood');
   });
 
   it('opens a hub on its first *surviving* member', () => {
@@ -128,7 +136,8 @@ describe('the subtitle under a hub row', () => {
   it('stays honest when simplified mode takes members away', () => {
     const row = visibleMenuRows({ ...FULL, simpleMode: true }).find(
       r => r.kind === 'hub' && r.hub.id === 'history');
-    // Stats is a lens and goes; Mood stays because it is a content screen.
+    // Stats is a lens and goes unconditionally; Mood is a content screen and
+    // stays only because FULL.counts has entries in it.
     expect(row && row.kind === 'hub' && hubSubtitle(row.hub)).toBe('Logbook, Mood, Archived');
   });
 });

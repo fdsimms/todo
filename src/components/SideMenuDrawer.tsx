@@ -28,6 +28,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { useMoodStore } from '../store/useMoodStore';
 import {
   hubSubtitle, menuDestinations, menuSearchTerms, rowEntryRoute, searchMenu, visibleMenuRows,
   type NavMenuRow, type NavSearchResult,
@@ -92,13 +93,14 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const stackCount = useTaskGroupStore(s => s.groups.length);
   const templateCount = useTemplateStore(s => s.templates.length);
   const peopleCount = usePersonStore(s => s.people.length);
+  const moodCount = useMoodStore(s => s.logs.length);
 
   const [query, setQuery] = useState('');
   const menuOptions = useMemo(() => ({
     kitchenEnabled,
     simpleMode,
-    counts: { stacks: stackCount, templates: templateCount, people: peopleCount },
-  }), [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount]);
+    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount },
+  }), [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount, moodCount]);
   const menuRows = useMemo(() => visibleMenuRows(menuOptions), [menuOptions]);
   const terms = useMemo(() => menuSearchTerms(query), [query]);
   const results = useMemo(

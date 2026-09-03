@@ -41,6 +41,7 @@ export interface NavContentCounts {
   stacks: number;
   templates: number;
   people?: number;
+  mood?: number;
 }
 
 export type NavHubId = 'kitchen' | 'organize' | 'history';

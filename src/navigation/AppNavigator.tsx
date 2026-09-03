@@ -53,6 +53,7 @@ import { NAV_HUBS, NAV_MENU_ROWS } from '../utils/navHubs';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { useMoodStore } from '../store/useMoodStore';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
@@ -264,6 +265,7 @@ function initialScreenFromSettings(): string {
     stacks: useTaskGroupStore.getState().groups.length,
     templates: useTemplateStore.getState().templates.length,
     people: usePersonStore.getState().people.length,
+    mood: useMoodStore.getState().logs.length,
   })) return 'Today';
   return lastVisitedScreen;
 }

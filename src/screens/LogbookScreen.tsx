@@ -36,6 +36,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { SearchField } from '../components/SearchField';
+import { SegmentedControl, type SegmentOption } from '../components/SegmentedControl';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
 import { SimpleBulkBar } from '../components/SimpleBulkBar';
@@ -106,10 +107,22 @@ interface KitchenSection {
  * rather than contradictory: both are read-only rows saying something happened
  * in the kitchen on a day, so not one of the five objections applies to them.
  *
- * Pills rather than a `SegmentedControl`, matching the view-mode row TodayScreen
- * has had all along — that component's own doc rules itself out on a page
- * background, and its track is for setting a value rather than choosing which
- * list you're reading.
+ * A `SegmentedControl` rather than pills, which reverses what this comment used
+ * to say, so here is why. Both halves of the old reasoning have gone: the
+ * "rules itself out on a page background" objection was answered by
+ * `surface="page"` (#1669, the same thing that unblocked `RecipeScaleChips`),
+ * and the row no longer sits alone — the history hub's pill row is now directly
+ * above it, and two pill rows stacked read as one set of eight options instead
+ * of as two separate questions.
+ *
+ * It is deliberately *not* a reversal of the "a filter over a list stays pills"
+ * carve-out in `SegmentedControl`'s own doc. That one is about a row that
+ * narrows what's on screen, where "All" is a reset rather than a value and the
+ * options depend on the user's data. This is a closed set of exactly two, with
+ * no reset and no data behind it, choosing which of two lists you are reading.
+ *
+ * TodayScreen's view-mode row stays pills for now: nothing sits above it, so
+ * the reason this one moved doesn't apply there.
  */
 type LogbookLens = 'tasks' | 'cooking';
 
@@ -119,6 +132,15 @@ const LENS_TITLES: Record<LogbookLens, string> = {
 };
 
 const LENSES: LogbookLens[] = ['tasks', 'cooking'];
+
+// A track, not a row of pills, and the difference is doing real work here: the
+// history hub's pill row now sits directly above this one, and two pill rows
+// stacked read as one set of eight options rather than as two questions. It is
+// also what the design system already asked for — "pick one of a small, closed
+// set" is a `SegmentedControl`, and these two hand-rolled pills predate that
+// rule. See the table in `SegmentedControl`'s own doc comment.
+const LENS_SEGMENTS: SegmentOption<LogbookLens>[] =
+  LENSES.map(mode => ({ value: mode, label: LENS_TITLES[mode] }));
 
 const CHECKBOX_SIZE = 20;
 
@@ -445,24 +467,13 @@ export function LogbookScreen() {
 
       {kitchenEnabled && (
         <View style={styles.lensRow}>
-          {LENSES.map(mode => {
-            const active = activeLens === mode;
-            return (
-              <TouchableOpacity
-                key={mode}
-                style={[styles.lensPill, active && styles.lensPillActive]}
-                onPress={() => switchLens(mode)}
-                activeOpacity={interaction.activeOpacity}
-                accessibilityRole="tab"
-                accessibilityState={{ selected: active }}
-                accessibilityLabel={`${LENS_TITLES[mode]} view`}
-              >
-                <Text style={[styles.lensPillText, active && styles.lensPillTextActive]}>
-                  {LENS_TITLES[mode]}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
+          <SegmentedControl
+            options={LENS_SEGMENTS}
+            value={activeLens}
+            onChange={switchLens}
+            label="What to show"
+            surface="page"
+          />
         </View>
       )}
 
@@ -1107,25 +1118,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     marginHorizontal: spacing.md,
     marginBottom: spacing.sm,
   },
-  // Matching TodayScreen's view-mode pills, which is the app's other
-  // list-screen lens switch — accent-filled for the active one. Two options
-  // fit a 390pt line with room to spare, so unlike Today's this doesn't need
-  // to scroll, and a plain row can't be shrunk by the list below it.
+  // Just the inset for the track; the control draws itself. `spacing.sm` under
+  // it rather than nothing, so the search field below doesn't butt against it
+  // — the stacked-block rule in CLAUDE.md's design-system section.
   lensRow: {
-    flexDirection: 'row',
     paddingHorizontal: spacing.md,
     paddingBottom: spacing.sm,
-    gap: spacing.sm,
   },
-  lensPill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    backgroundColor: colors.bgQuaternary,
-  },
-  lensPillActive: { backgroundColor: colors.accentFill },
-  lensPillText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
-  lensPillTextActive: { color: colors.onAccent, fontWeight: fontWeight.semibold },
   filterBarScroll: { flexGrow: 0, flexShrink: 0 },
   filterBar: {
     flexDirection: 'row',
