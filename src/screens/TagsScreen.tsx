@@ -23,6 +23,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { TaskItem } from '../components/TaskItem';
 import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
@@ -213,6 +214,7 @@ export function TagsScreen() {
           title="Tags"
           subtitle={allTags.length > 0 ? `${allTags.length} ${allTags.length === 1 ? 'tag' : 'tags'}` : undefined}
         />
+        <HubPills hub="organize" active="Tags" />
 
         <FlatList
           data={allTags}

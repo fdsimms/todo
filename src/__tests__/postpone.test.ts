@@ -287,11 +287,11 @@ describe('driftingTaskList', () => {
     ...o,
   } as Task);
 
-  // The whole reason this exists apart from driftingTasks(): DriftScreen
+  // The whole reason this exists apart from driftingTasks(): StuckScreen
   // selects it with useShallow, which only bails out of a re-render when an
   // unchanged input yields elements that are === the previous call's. A
   // fresh {task, count, since} wrapper per task (what driftingTasks() built,
-  // and what DriftScreen used to select directly) fails that check on every
+  // and what StuckScreen used to select directly) fails that check on every
   // call and drove the screen into an infinite render loop (#1626).
   it('returns the same Task references driftingTasks() wraps, filtered and sorted the same way', () => {
     const worst = make({ id: 'worst', postponeCount: 9 });

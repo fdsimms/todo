@@ -187,7 +187,7 @@ Two rules hold it:
   into a range — the two are always used independently.
 
 A backdated entry records **noon** on the picked day, for the reason
-`DriftScreen` parks its dates there: a date on a day boundary can be dragged
+`StuckScreen` parks its dates there: a date on a day boundary can be dragged
 across it by a timezone or a DST hour, and which day it belongs to is the one
 thing this entry must get right. And only a *today* entry completes the daily
 check-in task — filling in the day you missed is not today's check-in.

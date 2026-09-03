@@ -19,7 +19,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { HubPills } from '../components/HubPills';
 import { TipHost } from '../components/TipHost';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { SharedLinkBanner } from '../components/SharedLinkBanner';
@@ -627,7 +627,7 @@ export function RecipesScreen() {
           },
         ] : undefined}
       />
-      <GroceriesHubPills active="Recipes" />
+      <HubPills hub="kitchen" active="Recipes" />
       <TipHost screen="recipes" />
       {!selectionMode && !!activeTripShop && (
         <ActiveTripBanner

@@ -39,7 +39,7 @@ interface Props {
    * Which surface the row is sitting on, which decides the *unselected* chip's
    * fill. It has to be told: `bgTertiary` is `#EFEFF4` against a light theme's
    * `bg` of `#F2F2F7`, so a chip row on a screen background is very nearly
-   * invisible until one is selected — the same reason GroceriesHubPills fills
+   * invisible until one is selected — the same reason HubPills fills
    * its pills with `bgSecondary`. On a card or a raised sheet that inverts, and
    * `bgTertiary` is what separates.
    *

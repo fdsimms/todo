@@ -20,7 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
-import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { HubPills } from '../components/HubPills';
 import { TipHost } from '../components/TipHost';
 import { EmptyState } from '../components/EmptyState';
 import { GroceryAddSheet } from '../components/GroceryAddSheet';
@@ -1268,7 +1268,7 @@ export function GroceryScreen() {
         }
         actions={actions}
       />
-      <GroceriesHubPills active="Groceries" />
+      <HubPills hub="kitchen" active="Groceries" />
       <TipHost screen="groceries" />
       {/* A sibling of the list, not its header: the one thing on screen saying
           why rows have started naming other stores has to still be there when

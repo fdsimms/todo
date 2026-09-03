@@ -34,6 +34,7 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { HubPills } from '../components/HubPills';
 import { SearchField } from '../components/SearchField';
 import { EmptyState } from '../components/EmptyState';
 import { LogbookEntryMenu } from '../components/LogbookEntryMenu';
@@ -440,6 +441,7 @@ export function LogbookScreen() {
           },
         ] : undefined}
       />
+      <HubPills hub="history" active="Logbook" />
 
       {kitchenEnabled && (
         <View style={styles.lensRow}>

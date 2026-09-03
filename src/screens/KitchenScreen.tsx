@@ -49,7 +49,7 @@ import { describeUseUpRecipe, useUpRecipes } from '../utils/useUpRecipes';
 import { groceryNameKey } from '../utils/groceryParse';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { ReorderableList } from '../components/ReorderableList';
-import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { HubPills } from '../components/HubPills';
 import { TipHost } from '../components/TipHost';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { EmptyState } from '../components/EmptyState';
@@ -82,12 +82,12 @@ import { resetToGroceries } from '../navigation/navigationRef';
  * (`utils/kitchenInventory.ts`) with one freshness ladder, and what's about to
  * be wasted sorts to the top of whatever heading it's under.
  *
- * The fourth of the Groceries/Recipes/Meal plan hub (`GroceriesHubPills`),
+ * The fourth of the Groceries/Recipes/Meal plan hub (`HubPills`),
  * rather than a sheet popped over Groceries — see that component's doc
- * comment for why it moved. Displayed as "Pantry" (`GroceriesHubPills`'
+ * comment for why it moved. Displayed as "Pantry" (`HubPills`'
  * label, and this screen's own `ScreenHeader` title) while the route, this
  * file and everything in `kitchenInventory.ts` keep the `Kitchen`/`kitchen*`
- * name — see `GroceriesHubPills`' doc comment for why the two differ.
+ * name — see `HubPills`' doc comment for why the two differ.
  *
  * **The corrections stay where the thing lives.** A catalog row's trailing ✕
  * is the one this screen exists for most — it writes exactly what
@@ -720,7 +720,7 @@ export function KitchenScreen() {
           },
         ]}
       />
-      <GroceriesHubPills active="Kitchen" />
+      <HubPills hub="kitchen" active="Kitchen" />
       <TipHost screen="kitchen" />
       {!!activeTripShop && (
         <ActiveTripBanner

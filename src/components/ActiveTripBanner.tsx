@@ -23,7 +23,7 @@ interface Props {
 /**
  * Shown on all four kitchen screens (Groceries, Recipes, Meal plan, Pantry)
  * while a trip is running — "I'm at this store" — sitting directly below
- * `GroceriesHubPills` on each. There used to also be a `PersistentTripBar`
+ * `HubPills` on each. There used to also be a `PersistentTripBar`
  * floating above the tab bar on every screen app-wide, kitchen or not; it's
  * gone, so a trip now shows nowhere outside these four, and this is the only
  * banner it gets on any of them.
@@ -45,7 +45,7 @@ interface Props {
  * icon has since gone entirely; `StartTripPrompt` grows the same button in the
  * same shape for the other case, a cart ticked up with no trip running.
  *
- * **The count comes from the store, not a prop.** Same shape `GroceriesHubPills`
+ * **The count comes from the store, not a prop.** Same shape `HubPills`
  * and `SideMenuDrawer` already use for the list's own count: a derived scalar,
  * so the banner re-renders when the number changes and not on every unrelated
  * item edit. Threading it through four screens instead would be four filters

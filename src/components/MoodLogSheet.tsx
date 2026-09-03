@@ -156,7 +156,7 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
       updateLog(editing.id, { mood, symptoms, note });
     } else {
       // Today records the actual moment; a backdated day records noon on it.
-      // Noon rather than midnight for the reason DriftScreen parks its dates
+      // Noon rather than midnight for the reason StuckScreen parks its dates
       // there: a date on a day boundary can be dragged across it by a timezone
       // or a DST hour, and the one thing this entry must get right is which
       // day it belongs to.

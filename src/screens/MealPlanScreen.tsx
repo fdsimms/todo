@@ -21,7 +21,7 @@ import { isSameWeek } from 'date-fns/isSameWeek';
 import { isBefore } from 'date-fns/isBefore';
 import { MEAL_SLOTS, type Leftover, type MealPlanEntry, type MealSlot, type Recipe } from '../types';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
-import { GroceriesHubPills } from '../components/GroceriesHubPills';
+import { HubPills } from '../components/HubPills';
 import { TipHost } from '../components/TipHost';
 import { ActiveTripBanner } from '../components/ActiveTripBanner';
 import { InlineAction } from '../components/InlineAction';
@@ -1606,7 +1606,7 @@ export function MealPlanScreen() {
         subtitle={subtitle}
         actions={headerActions}
       />
-      <GroceriesHubPills active="MealPlan" />
+      <HubPills hub="kitchen" active="MealPlan" />
       <TipHost screen="mealPlan" />
       {!selectionMode && !!activeTripShop && (
         <ActiveTripBanner

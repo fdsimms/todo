@@ -14,6 +14,7 @@ import { useTemplateCategoryStore } from '../store/useTemplateCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { Fab, FAB_SIZE, type FabDragHandlers } from '../components/Fab';
@@ -241,6 +242,7 @@ export function TemplatesScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Templates" />
+      <HubPills hub="organize" active="Templates" />
 
       <FabDropZoneProvider
         ref={dropZonesRef}

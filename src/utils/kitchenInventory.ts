@@ -414,7 +414,7 @@ export function useUpEntries(entries: readonly KitchenEntry[]): KitchenEntry[] {
 /**
  * The kitchen in one line — "6 things in the pantry · 2 to use up", or just
  * "6 things in the pantry". "Pantry" because that's the screen's display
- * name (see `GroceriesHubPills`' doc comment); the function itself keeps the
+ * name (see `HubPills`' doc comment); the function itself keeps the
  * `Kitchen` name this whole module uses for the merged pantry-plus-fridge
  * concept.
  *

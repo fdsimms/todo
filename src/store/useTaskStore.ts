@@ -7515,7 +7515,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
   // pushed" means, or a task can be listed here while the picker stays silent
   // about it.
   //
-  // Returns the raw, sorted Task[] — stable references DriftScreen can select
+  // Returns the raw, sorted Task[] — stable references StuckScreen can select
   // with useShallow — rather than driftingTasks()'s DriftEntry[] below, whose
   // freshly-built wrapper objects defeat that comparison every render.
   driftingTaskList() {
