@@ -60,7 +60,7 @@ export type SimpleFeatureId =
   | 'timeWindows'
   | 'timeBlocks'
   | 'blocking'
-  | 'extraTasks'
+  | 'followUpTasks'
   | 'deliverables'
   | 'people'
   | 'stacks'
@@ -144,7 +144,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'timeWindows', label: 'Time windows', area: 'tasks' },
   { id: 'timeBlocks', label: 'Time blocks on your calendar', area: 'tasks' },
   { id: 'blocking', label: 'Waiting on and Blocks', area: 'tasks' },
-  { id: 'extraTasks', label: 'Extra tasks', area: 'tasks' },
+  { id: 'followUpTasks', label: 'Follow-up tasks', area: 'tasks' },
   { id: 'deliverables', label: 'Ask on completion', area: 'tasks' },
   { id: 'stacks', label: 'Stacks', area: 'tasks', screen: 'Stacks', contentScreen: true },
   { id: 'streakOptions', label: 'Streak options', area: 'tasks' },
@@ -288,7 +288,7 @@ export const SIMPLE_EDITOR_ROW_FEATURES: Readonly<Record<string, SimpleFeatureId
   timeBlock: 'timeBlocks',
   waitingOn: 'blocking',
   blocks: 'blocking',
-  extraTask: 'extraTasks',
+  followUpTask: 'followUpTasks',
   deliverable: 'deliverables',
   stack: 'stacks',
   effort: 'effortRating',

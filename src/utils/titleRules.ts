@@ -24,7 +24,7 @@ import { generateId } from './id';
  * straight to the regex engine on every keystroke of every quick add. Whole
  * words plus a keyword list covers the cases people actually describe.
  *
- * Pure and store-free like `extraTask.ts` beside it — the rules are passed
+ * Pure and store-free like `followUpTask.ts` beside it — the rules are passed
  * in, and category/project names arrive already resolved.
  */
 
@@ -254,7 +254,7 @@ function stripMatchedKeywords(
  * list and for the caption quick add shows after applying it.
  *
  * Names up to three things and then falls back to a count, the call
- * `describeExtraTaskDraft` makes and for the same reason: these render
+ * `describeFollowUpTaskDraft` makes and for the same reason: these render
  * `numberOfLines={1}` and a fourth truncates mid-word at 390pt. Category,
  * project and link arrive already resolved to display names — this module
  * holds no store, and a category's emoji (or a link's known-app name) lives
@@ -293,7 +293,7 @@ export function describeTitleRuleTrigger(rule: TitleRule): string {
 
 /**
  * Reads the stored list back, rule by rule and field by field, the way
- * `parseNewTaskDefaults` and `parseExtraTaskDraft` do — a rule written by an
+ * `parseNewTaskDefaults` and `parseFollowUpTaskDraft` do — a rule written by an
  * older build, or left in a bad shape by a hand-edited database, comes back
  * dropped rather than taking the whole list down with it.
  *

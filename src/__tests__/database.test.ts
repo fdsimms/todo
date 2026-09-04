@@ -233,13 +233,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainIndex: 0,
   chainItems: [],
   chainStepOnSchedule: false,
-  extraTaskEveryN: null,
-  extraTaskTitle: null,
-  extraTaskDraft: null,
-  extraTaskOneAtATime: false,
-  extraTaskTally: 0,
-  previousExtraTaskTally: 0,
-  extraTaskSourceTitle: null,
+  followUpTaskEveryN: null,
+  followUpTaskTitle: null,
+  followUpTaskDraft: null,
+  followUpTaskOneAtATime: false,
+  followUpTaskTally: 0,
+  previousFollowUpTaskTally: 0,
+  followUpTaskSourceTitle: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -752,7 +752,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     expect(dbGetAllTasks()[0].pinnedOrder).toBe(0);
   });
 
-  it('round-trips extraTaskDraft through both insert and update', () => {
+  it('round-trips followUpTaskDraft through both insert and update', () => {
     // A JSON blob bound positionally in the middle of both long placeholder
     // lists, so exercise the update path too — a misalignment there writes a
     // neighbouring column's value instead of failing.
@@ -769,21 +769,21 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       subtasks: [{ id: 's1', title: 'Wipe the strings' }],
     };
     dbInsertTask(makeTask({
-      id: 'xd', extraTaskEveryN: 4, extraTaskTitle: 'Rosin', extraTaskDraft: draft,
-      extraTaskSourceTitle: 'Practice violin',
+      id: 'xd', followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin', followUpTaskDraft: draft,
+      followUpTaskSourceTitle: 'Practice violin',
     }));
-    expect(dbGetAllTasks()[0].extraTaskDraft).toEqual(draft);
-    expect(dbGetAllTasks()[0].extraTaskTitle).toBe('Rosin');
-    expect(dbGetAllTasks()[0].extraTaskSourceTitle).toBe('Practice violin');
+    expect(dbGetAllTasks()[0].followUpTaskDraft).toEqual(draft);
+    expect(dbGetAllTasks()[0].followUpTaskTitle).toBe('Rosin');
+    expect(dbGetAllTasks()[0].followUpTaskSourceTitle).toBe('Practice violin');
 
-    dbUpdateTask({ ...dbGetAllTasks()[0], extraTaskDraft: { ...draft, notes: 'Moved' }, title: 'Renamed' });
+    dbUpdateTask({ ...dbGetAllTasks()[0], followUpTaskDraft: { ...draft, notes: 'Moved' }, title: 'Renamed' });
     const [t] = dbGetAllTasks();
-    expect(t.extraTaskDraft?.notes).toBe('Moved');
+    expect(t.followUpTaskDraft?.notes).toBe('Moved');
     expect(t.title).toBe('Renamed');
     // The neighbours it would collide with if a placeholder were dropped.
-    expect(t.extraTaskTally).toBe(0);
-    expect(t.extraTaskEveryN).toBe(4);
-    expect(t.extraTaskSourceTitle).toBe('Practice violin');
+    expect(t.followUpTaskTally).toBe(0);
+    expect(t.followUpTaskEveryN).toBe(4);
+    expect(t.followUpTaskSourceTitle).toBe('Practice violin');
   });
 
   it('reads a row written before the draft column as "just the title"', () => {
@@ -797,8 +797,8 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       )
       .run('legacy', 'Practice violin', '', 0, '2026-01-01T00:00:00.000Z', '[]', null, 1, 0, 0, 0, 'none', 1, '[]', 0, 0, 0, 0, '[]', 0, 0, 0, 4, 'Rosin the bow');
     const [t] = dbGetAllTasks();
-    expect(t.extraTaskTitle).toBe('Rosin the bow');
-    expect(t.extraTaskDraft).toBeNull();
+    expect(t.followUpTaskTitle).toBe('Rosin the bow');
+    expect(t.followUpTaskDraft).toBeNull();
   });
 
   it('round-trips phoneNumber through both insert and update', () => {

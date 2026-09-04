@@ -9,7 +9,7 @@ reasoning, that one is the contract.
 
 ## Why a switch rather than thirty
 
-The app accumulated chains, quotas, timed tasks, blockers, extra tasks, deliverables, series,
+The app accumulated chains, quotas, timed tasks, blockers, follow-up tasks, deliverables, series,
 stacks, focus sessions, drift, backfill, look-ahead, deload, barcode scanning, receipt import,
 product variants, either/or items, standing swaps, composed recipes, scaling and cook mode. Each
 earns its place for whoever uses it. Each costs everybody else a row in a picker, an icon in a

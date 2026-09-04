@@ -895,7 +895,7 @@ export const TaskItem = React.memo(function TaskItem({
   // sections a notice can actually reach are its notes and its own inline
   // block: no notice kind is timed, recurring, chained or in a series. A
   // notice kind that grew any of those would need this to become a count.
-  const panelSectionAbove = showSubtaskSection || task.notes.length > 0 || !!task.extraTaskSourceTitle;
+  const panelSectionAbove = showSubtaskSection || task.notes.length > 0 || !!task.followUpTaskSourceTitle;
   // What's left in a notice's panel once task management is gone: its notes,
   // any subtasks it already had, and the kind's own inline block. With none of
   // those the panel is empty, so the row doesn't expand at all rather than
@@ -1970,7 +1970,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || !!task.extraTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || !!task.followUpTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2025,17 +2025,17 @@ export const TaskItem = React.memo(function TaskItem({
                 </Text>
               </View>
             )}
-            {/* Marks a row added by another task's "extra task" rule.
+            {/* Marks a row added by another task's "follow-up task" rule.
                 Icon-only, no text — same call the notes chip makes just below
                 (see its own comment): the source task's title has no length
                 limit, so naming it here would mean either truncating an
                 arbitrarily long title mid-word or growing the row to fit it.
                 The full sentence lives in the expanded panel instead, where
-                it has room to wrap. `extraTaskSourceTitle` is a snapshot
+                it has room to wrap. `followUpTaskSourceTitle` is a snapshot
                 rather than a live lookup, so this keeps working once the
                 completion that spawned it is purged by retention. */}
-            {!!task.extraTaskSourceTitle && (
-              <View style={styles.metaChip} accessibilityLabel={`Extra task, added from ${task.extraTaskSourceTitle}`}>
+            {!!task.followUpTaskSourceTitle && (
+              <View style={styles.metaChip} accessibilityLabel={`Follow-up task, added from ${task.followUpTaskSourceTitle}`}>
                 <Ionicons name="sparkles" size={iconSize.xs} color={colors.textSecondary} />
               </View>
             )}
@@ -2544,11 +2544,11 @@ export const TaskItem = React.memo(function TaskItem({
                 icon-only (see the notes chip's own note on that trade) and
                 the full sentence lives here instead, where it can wrap freely
                 rather than clipping mid-word next to a date or category chip. */}
-            {!!task.extraTaskSourceTitle && (
-              <View style={[styles.calendarReviewEventRow, styles.extraTaskSourceRow]}>
-                <Ionicons name="sparkles" size={12} color={colors.textSecondary} style={styles.extraTaskSourceIcon} />
-                <Text style={[styles.expandMeta, styles.extraTaskSourceText]}>
-                  Extra task, added when “{task.extraTaskSourceTitle}” was completed
+            {!!task.followUpTaskSourceTitle && (
+              <View style={[styles.calendarReviewEventRow, styles.followUpTaskSourceRow]}>
+                <Ionicons name="sparkles" size={12} color={colors.textSecondary} style={styles.followUpTaskSourceIcon} />
+                <Text style={[styles.expandMeta, styles.followUpTaskSourceText]}>
+                  Follow-up task, added when “{task.followUpTaskSourceTitle}” was completed
                 </Text>
               </View>
             )}
@@ -2567,7 +2567,7 @@ export const TaskItem = React.memo(function TaskItem({
             <View style={[
               styles.expandSection,
               styles.subtaskSection,
-              (task.notes.length > 0 || !!task.extraTaskSourceTitle) && styles.sectionDivider,
+              (task.notes.length > 0 || !!task.followUpTaskSourceTitle) && styles.sectionDivider,
             ]}>
               {subtasks.length > 0 && (
                 <SortableList
@@ -4021,16 +4021,16 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary,
     fontSize: font.xs,
   },
-  extraTaskSourceRow: {
+  followUpTaskSourceRow: {
     alignItems: 'flex-start',
     paddingVertical: spacing.xs,
   },
   // The icon has to sit at the text's cap-height, not centered against
   // however many lines the title wraps to below it.
-  extraTaskSourceIcon: {
+  followUpTaskSourceIcon: {
     marginTop: 2,
   },
-  extraTaskSourceText: {
+  followUpTaskSourceText: {
     flex: 1,
     lineHeight: lineHeight.xs,
   },

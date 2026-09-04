@@ -5,8 +5,8 @@ import { UNDO_STACK_LIMIT } from '../utils/undoHistory';
 import { isMissed, isRealCompletion } from '../utils/missed';
 import { isTaskNew } from '../utils/visibilityUtils';
 import { derivedId, spawnSeed } from '../utils/syncIds';
-import { emptyExtraTaskDraft } from '../utils/extraTask';
-import type { ExtraTaskDraft, MealPlanEntry, MealSlot, Recipe } from '../types';
+import { emptyFollowUpTaskDraft } from '../utils/followUpTask';
+import type { FollowUpTaskDraft, MealPlanEntry, MealSlot, Recipe } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
@@ -341,13 +341,13 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   chainIndex: 0,
   chainItems: [],
   chainStepOnSchedule: false,
-  extraTaskEveryN: null,
-  extraTaskTitle: null,
-  extraTaskDraft: null,
-  extraTaskOneAtATime: false,
-  extraTaskTally: 0,
-  previousExtraTaskTally: 0,
-  extraTaskSourceTitle: null,
+  followUpTaskEveryN: null,
+  followUpTaskTitle: null,
+  followUpTaskDraft: null,
+  followUpTaskOneAtATime: false,
+  followUpTaskTally: 0,
+  previousFollowUpTaskTally: 0,
+  followUpTaskSourceTitle: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -12303,17 +12303,17 @@ describe('completing a use-up task and its meal task for the same leftover', () 
   });
 });
 
-// ─── Extra task (every Nth completion) ───────────────────────────────────────
+// ─── Follow-up task (every Nth completion) ───────────────────────────────────────
 
-describe('completeTask: extra task every Nth completion', () => {
+describe('completeTask: followUp task every Nth completion', () => {
   const practice = (overrides: Partial<Task> = {}) => makeTask({
     id: 'practice',
     title: 'Practice violin',
     recurrenceType: 'daily',
     recurrenceInterval: 1,
     dueDate: new Date(2025, 5, 10, 0, 0, 0).toISOString(),
-    extraTaskEveryN: 4,
-    extraTaskTitle: 'Rosin the bow',
+    followUpTaskEveryN: 4,
+    followUpTaskTitle: 'Rosin the bow',
     ...overrides,
   });
 
@@ -12325,7 +12325,7 @@ describe('completeTask: extra task every Nth completion', () => {
     )!;
   };
 
-  const extras = () =>
+  const followUps = () =>
     useTaskStore.getState().tasks.filter(t => t.title === 'Rosin the bow');
 
   afterEach(() => {
@@ -12336,23 +12336,23 @@ describe('completeTask: extra task every Nth completion', () => {
     useTaskStore.setState({ tasks: [practice()] });
 
     let live = completeOccurrence('practice');
-    expect(live.extraTaskTally).toBe(1);
-    expect(extras()).toHaveLength(0);
+    expect(live.followUpTaskTally).toBe(1);
+    expect(followUps()).toHaveLength(0);
 
     live = completeOccurrence(live.id);
-    expect(live.extraTaskTally).toBe(2);
-    expect(extras()).toHaveLength(0);
+    expect(live.followUpTaskTally).toBe(2);
+    expect(followUps()).toHaveLength(0);
   });
 
   it('adds the task on the Nth completion and starts the count again', () => {
-    useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+    useTaskStore.setState({ tasks: [practice({ followUpTaskTally: 3 })] });
 
     const live = completeOccurrence('practice');
-    expect(extras()).toHaveLength(1);
-    expect(live.extraTaskTally).toBe(0);
+    expect(followUps()).toHaveLength(1);
+    expect(live.followUpTaskTally).toBe(0);
     // The added row names the task it was earned by, for TaskItem's chip.
-    expect(extras()[0].extraTaskSourceTitle).toBe('Practice violin');
-    expect(live.extraTaskSourceTitle).toBeNull();
+    expect(followUps()[0].followUpTaskSourceTitle).toBe('Practice violin');
+    expect(live.followUpTaskSourceTitle).toBeNull();
   });
 
   it('carries the tally across occurrences, since each one is a fresh id', () => {
@@ -12370,29 +12370,29 @@ describe('completeTask: extra task every Nth completion', () => {
       live = completeOccurrence(id);
       id = live.id;
     }
-    expect(extras()).toHaveLength(1);
+    expect(followUps()).toHaveLength(1);
     expect(live.id).not.toBe('practice');
   });
 
   it('dates it with the next occurrence rather than the completion that earned it', () => {
-    useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+    useTaskStore.setState({ tasks: [practice({ followUpTaskTally: 3 })] });
 
     const live = completeOccurrence('practice');
-    expect(extras()[0].dueDate).toBe(live.dueDate);
+    expect(followUps()[0].dueDate).toBe(live.dueDate);
   });
 
   it('makes a top-level task filed where the one that spawned it lives', () => {
     useTaskStore.setState({
-      tasks: [practice({ extraTaskTally: 3, category: 'Music', projectId: 'p1' })],
+      tasks: [practice({ followUpTaskTally: 3, category: 'Music', projectId: 'p1' })],
     });
 
     useTaskStore.getState().completeTask('practice');
-    const extra = extras()[0];
-    expect(extra.parentId).toBeNull();
-    expect(extra.category).toBe('Music');
-    expect(extra.projectId).toBe('p1');
-    expect(extra.recurrenceType).toBe('none');
-    expect(extra.completed).toBe(false);
+    const followUp = followUps()[0];
+    expect(followUp.parentId).toBeNull();
+    expect(followUp.category).toBe('Music');
+    expect(followUp.projectId).toBe('p1');
+    expect(followUp.recurrenceType).toBe('none');
+    expect(followUp.completed).toBe(false);
   });
 
   // Both halves are needed for the rule to be live, so a half-filled one is
@@ -12400,27 +12400,27 @@ describe('completeTask: extra task every Nth completion', () => {
   // and naming the task later picks up from there.
   it('adds nothing and does not count without a title', () => {
     useTaskStore.setState({
-      tasks: [practice({ extraTaskTally: 3, extraTaskTitle: null })],
+      tasks: [practice({ followUpTaskTally: 3, followUpTaskTitle: null })],
     });
 
     const live = completeOccurrence('practice');
     expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(1);
-    expect(live.extraTaskTally).toBe(3);
+    expect(live.followUpTaskTally).toBe(3);
   });
 
   it('does not count a miss — the rule counts completions', () => {
-    useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+    useTaskStore.setState({ tasks: [practice({ followUpTaskTally: 3 })] });
 
     useTaskStore.getState().markMissed('practice');
-    expect(extras()).toHaveLength(0);
+    expect(followUps()).toHaveLength(0);
     const live = useTaskStore.getState().tasks.find(t => !t.completed)!;
-    expect(live.extraTaskTally).toBe(3);
+    expect(live.followUpTaskTally).toBe(3);
   });
 
   it('counts a run through a chain once, not once per step', () => {
     useTaskStore.setState({
       tasks: [practice({
-        extraTaskTally: 3,
+        followUpTaskTally: 3,
         chainEnabled: true,
         chainIndex: 0,
         chainItems: [
@@ -12432,46 +12432,46 @@ describe('completeTask: extra task every Nth completion', () => {
 
     // First step: mid-chain, so the task hasn't been completed yet.
     const midChain = completeOccurrence('practice');
-    expect(extras()).toHaveLength(0);
-    expect(midChain.extraTaskTally).toBe(3);
+    expect(followUps()).toHaveLength(0);
+    expect(midChain.followUpTaskTally).toBe(3);
 
     // Last step finishes the run, which is the completion the rule counts.
     completeOccurrence(midChain.id);
-    expect(extras()).toHaveLength(1);
+    expect(followUps()).toHaveLength(1);
   });
 
   it('takes the task back and restores the tally when the completion is undone', () => {
-    useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+    useTaskStore.setState({ tasks: [practice({ followUpTaskTally: 3 })] });
 
     useTaskStore.getState().completeTask('practice');
-    expect(extras()).toHaveLength(1);
+    expect(followUps()).toHaveLength(1);
 
     useTaskStore.getState().uncompleteTask('practice');
-    expect(extras()).toHaveLength(0);
+    expect(followUps()).toHaveLength(0);
     const restored = useTaskStore.getState().tasks.find(t => t.id === 'practice')!;
-    expect(restored.extraTaskTally).toBe(3);
+    expect(restored.followUpTaskTally).toBe(3);
     expect(restored.completed).toBe(false);
   });
 
   it('restores a mid-cycle tally too, rather than leaving it incremented', () => {
-    useTaskStore.setState({ tasks: [practice({ extraTaskTally: 1 })] });
+    useTaskStore.setState({ tasks: [practice({ followUpTaskTally: 1 })] });
 
     useTaskStore.getState().completeTask('practice');
     useTaskStore.getState().uncompleteTask('practice');
-    expect(useTaskStore.getState().tasks.find(t => t.id === 'practice')!.extraTaskTally).toBe(1);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'practice')!.followUpTaskTally).toBe(1);
   });
 
   it('leaves a task with no rule completely alone', () => {
     useTaskStore.setState({
-      tasks: [practice({ extraTaskEveryN: null, extraTaskTitle: null })],
+      tasks: [practice({ followUpTaskEveryN: null, followUpTaskTitle: null })],
     });
 
     const live = completeOccurrence('practice');
-    expect(live.extraTaskTally).toBe(0);
+    expect(live.followUpTaskTally).toBe(0);
     expect(useTaskStore.getState().tasks.filter(t => !t.completed)).toHaveLength(1);
   });
 
-  // ── Reasons an earned spawn stands down (see extraTaskSuppressedBy) ──
+  // ── Reasons an earned spawn stands down (see followUpTaskSuppressedBy) ──
 
   describe('suppression', () => {
     const settings = () =>
@@ -12483,7 +12483,7 @@ describe('completeTask: extra task every Nth completion', () => {
       store.getState.mockReturnValue({ ...store.getState(), vacationMode });
     };
 
-    const pausedDraft = (): ExtraTaskDraft => ({ ...emptyExtraTaskDraft(), vacationPause: true });
+    const pausedDraft = (): FollowUpTaskDraft => ({ ...emptyFollowUpTaskDraft(), vacationPause: true });
 
     /**
      * A run of completions, a day apart. The clock has to move with them for
@@ -12500,85 +12500,85 @@ describe('completeTask: extra task every Nth completion', () => {
       return useTaskStore.getState().tasks.find(t => t.id === live)!;
     };
 
-    const liveExtras = () => extras().filter(t => !t.completed);
+    const liveExtras = () => followUps().filter(t => !t.completed);
 
     it('adds nothing on vacation when the added task is one vacation hides', () => {
       setVacation(true);
       useTaskStore.setState({
-        tasks: [practice({ extraTaskTally: 3, extraTaskDraft: pausedDraft() })],
+        tasks: [practice({ followUpTaskTally: 3, followUpTaskDraft: pausedDraft() })],
       });
 
       const live = completeDays('practice', 1);
 
-      expect(extras()).toHaveLength(0);
+      expect(followUps()).toHaveLength(0);
       // Held, not reset: the cycle isn't silently eaten.
-      expect(live.extraTaskTally).toBe(3);
+      expect(live.followUpTaskTally).toBe(3);
     });
 
     it('holds the tally across a whole vacation rather than counting on', () => {
       setVacation(true);
       useTaskStore.setState({
-        tasks: [practice({ extraTaskTally: 3, extraTaskDraft: pausedDraft() })],
+        tasks: [practice({ followUpTaskTally: 3, followUpTaskDraft: pausedDraft() })],
       });
 
       const live = completeDays('practice', 6);
 
-      expect(extras()).toHaveLength(0);
-      expect(live.extraTaskTally).toBe(3);
+      expect(followUps()).toHaveLength(0);
+      expect(live.followUpTaskTally).toBe(3);
     });
 
     it('adds it on the first completion after vacation ends, without another full wait', () => {
       setVacation(true);
       useTaskStore.setState({
-        tasks: [practice({ extraTaskTally: 3, extraTaskDraft: pausedDraft() })],
+        tasks: [practice({ followUpTaskTally: 3, followUpTaskDraft: pausedDraft() })],
       });
       const away = completeDays('practice', 3);
-      expect(extras()).toHaveLength(0);
+      expect(followUps()).toHaveLength(0);
 
       setVacation(false);
       jest.setSystemTime(new Date(2025, 5, 13, 10, 0, 0));
       const home = completeOccurrence(away.id);
 
-      expect(extras()).toHaveLength(1);
-      expect(home.extraTaskTally).toBe(0);
+      expect(followUps()).toHaveLength(1);
+      expect(home.followUpTaskTally).toBe(0);
     });
 
     it('adds it on vacation when the rule never said vacation hides it', () => {
       setVacation(true);
-      useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+      useTaskStore.setState({ tasks: [practice({ followUpTaskTally: 3 })] });
 
       completeDays('practice', 1);
 
       // Vacation mode alone is not the gate — the flag is how each rule
       // answers for itself. Same call weather and screenTime make.
-      expect(extras()).toHaveLength(1);
+      expect(followUps()).toHaveLength(1);
     });
 
     it('marks the added task vacation-paused, so a vacation starting later hides it too', () => {
       useTaskStore.setState({
-        tasks: [practice({ extraTaskTally: 3, extraTaskDraft: pausedDraft() })],
+        tasks: [practice({ followUpTaskTally: 3, followUpTaskDraft: pausedDraft() })],
       });
 
       completeDays('practice', 1);
 
-      expect(extras()[0].vacationPause).toBe(true);
+      expect(followUps()[0].vacationPause).toBe(true);
     });
 
     it('adds no second one while the first is outstanding, when the rule says one at a time', () => {
       useTaskStore.setState({
-        tasks: [practice({ extraTaskTally: 3, extraTaskOneAtATime: true })],
+        tasks: [practice({ followUpTaskTally: 3, followUpTaskOneAtATime: true })],
       });
 
       // One earns it, then four more each earn one and are held.
       const live = completeDays('practice', 5);
 
       expect(liveExtras()).toHaveLength(1);
-      expect(live.extraTaskTally).toBe(3);
+      expect(live.followUpTaskTally).toBe(3);
     });
 
     it('adds the next one once the outstanding one is done', () => {
       useTaskStore.setState({
-        tasks: [practice({ extraTaskTally: 3, extraTaskOneAtATime: true })],
+        tasks: [practice({ followUpTaskTally: 3, followUpTaskOneAtATime: true })],
       });
       const live = completeDays('practice', 5);
       expect(liveExtras()).toHaveLength(1);
@@ -12588,11 +12588,11 @@ describe('completeTask: extra task every Nth completion', () => {
       completeOccurrence(live.id);
 
       expect(liveExtras()).toHaveLength(1);
-      expect(extras()).toHaveLength(2);
+      expect(followUps()).toHaveLength(2);
     });
 
     it('piles them up as it always did when the rule never asked for one at a time', () => {
-      useTaskStore.setState({ tasks: [practice({ extraTaskTally: 3 })] });
+      useTaskStore.setState({ tasks: [practice({ followUpTaskTally: 3 })] });
 
       completeDays('practice', 5);
 
@@ -12600,16 +12600,16 @@ describe('completeTask: extra task every Nth completion', () => {
     });
   });
 
-  // ── What the added task looks like past its title (Task.extraTaskDraft) ──
+  // ── What the added task looks like past its title (Task.followUpTaskDraft) ──
 
   describe('the draft the rule carries', () => {
     it('applies every field the draft names', () => {
       useTaskStore.setState({
         tasks: [practice({
-          extraTaskTally: 3,
+          followUpTaskTally: 3,
           category: 'Music',
           projectId: 'p1',
-          extraTaskDraft: {
+          followUpTaskDraft: {
             notes: 'The tin lives in the case pocket',
             category: 'Home',
             projectId: 'p2',
@@ -12626,15 +12626,15 @@ describe('completeTask: extra task every Nth completion', () => {
 
       useTaskStore.getState().completeTask('practice');
 
-      const extra = extras()[0];
-      expect(extra.notes).toBe('The tin lives in the case pocket');
-      expect(extra.category).toBe('Home');
-      expect(extra.projectId).toBe('p2');
-      expect(extra.tags).toEqual(['upkeep']);
-      expect(extra.priority).toBe(3);
-      expect(extra.effort).toBe(1);
-      expect(extra.estimatedMinutes).toBe(5);
-      expect(extra.timeSegments).toEqual(['evening']);
+      const followUp = followUps()[0];
+      expect(followUp.notes).toBe('The tin lives in the case pocket');
+      expect(followUp.category).toBe('Home');
+      expect(followUp.projectId).toBe('p2');
+      expect(followUp.tags).toEqual(['upkeep']);
+      expect(followUp.priority).toBe(3);
+      expect(followUp.effort).toBe(1);
+      expect(followUp.estimatedMinutes).toBe(5);
+      expect(followUp.timeSegments).toEqual(['evening']);
     });
 
     // Null on the draft is "the same as the task that spawned it", not "no
@@ -12643,45 +12643,45 @@ describe('completeTask: extra task every Nth completion', () => {
     it('follows the spawning task where the draft says nothing', () => {
       useTaskStore.setState({
         tasks: [practice({
-          extraTaskTally: 3,
+          followUpTaskTally: 3,
           category: 'Music',
           projectId: 'p1',
-          extraTaskDraft: { ...emptyExtraTaskDraft(), notes: 'Just a note' },
-          extraTaskOneAtATime: false,
+          followUpTaskDraft: { ...emptyFollowUpTaskDraft(), notes: 'Just a note' },
+          followUpTaskOneAtATime: false,
         })],
       });
 
       useTaskStore.getState().completeTask('practice');
 
-      const extra = extras()[0];
-      expect(extra.category).toBe('Music');
-      expect(extra.projectId).toBe('p1');
-      expect(extra.notes).toBe('Just a note');
+      const followUp = followUps()[0];
+      expect(followUp.category).toBe('Music');
+      expect(followUp.projectId).toBe('p1');
+      expect(followUp.notes).toBe('Just a note');
     });
 
     // The behaviour of every rule written before drafts existed.
     it('adds a bare task filed with its parent when there is no draft', () => {
       useTaskStore.setState({
-        tasks: [practice({ extraTaskTally: 3, category: 'Music', tags: ['violin'], priority: 4 })],
+        tasks: [practice({ followUpTaskTally: 3, category: 'Music', tags: ['violin'], priority: 4 })],
       });
 
       useTaskStore.getState().completeTask('practice');
 
-      const extra = extras()[0];
-      expect(extra.category).toBe('Music');
-      expect(extra.notes).toBe('');
+      const followUp = followUps()[0];
+      expect(followUp.category).toBe('Music');
+      expect(followUp.notes).toBe('');
       // Never inherited: they describe the task that spawned it, and this is
       // a different piece of work.
-      expect(extra.tags).toEqual([]);
-      expect(extra.priority).toBe(0);
+      expect(followUp.tags).toEqual([]);
+      expect(followUp.priority).toBe(0);
     });
 
     it('creates the draft\'s subtasks as real rows under it, unchecked and in order', () => {
       useTaskStore.setState({
         tasks: [practice({
-          extraTaskTally: 3,
-          extraTaskDraft: {
-            ...emptyExtraTaskDraft(),
+          followUpTaskTally: 3,
+          followUpTaskDraft: {
+            ...emptyFollowUpTaskDraft(),
             subtasks: [
               { id: 's1', title: 'Wipe the strings' },
               { id: 's2', title: 'Tighten the bow' },
@@ -12692,9 +12692,9 @@ describe('completeTask: extra task every Nth completion', () => {
 
       useTaskStore.getState().completeTask('practice');
 
-      const extra = extras().find(t => t.parentId === null)!;
+      const followUp = followUps().find(t => t.parentId === null)!;
       const subs = useTaskStore.getState().tasks
-        .filter(t => t.parentId === extra.id)
+        .filter(t => t.parentId === followUp.id)
         .sort((a, b) => a.sortOrder - b.sortOrder);
       expect(subs.map(t => t.title)).toEqual(['Wipe the strings', 'Tighten the bow']);
       expect(subs.every(t => !t.completed)).toBe(true);
@@ -12703,9 +12703,9 @@ describe('completeTask: extra task every Nth completion', () => {
     it('takes the subtasks back with the task when the completion is undone', () => {
       useTaskStore.setState({
         tasks: [practice({
-          extraTaskTally: 3,
-          extraTaskDraft: {
-            ...emptyExtraTaskDraft(),
+          followUpTaskTally: 3,
+          followUpTaskDraft: {
+            ...emptyFollowUpTaskDraft(),
             subtasks: [{ id: 's1', title: 'Wipe the strings' }],
           },
         })],
@@ -12715,7 +12715,7 @@ describe('completeTask: extra task every Nth completion', () => {
       expect(useTaskStore.getState().tasks.filter(t => t.title === 'Wipe the strings')).toHaveLength(1);
 
       useTaskStore.getState().uncompleteTask('practice');
-      expect(extras()).toHaveLength(0);
+      expect(followUps()).toHaveLength(0);
       expect(useTaskStore.getState().tasks.filter(t => t.title === 'Wipe the strings')).toHaveLength(0);
     });
 
@@ -12724,9 +12724,9 @@ describe('completeTask: extra task every Nth completion', () => {
     it('gives each subtask an id derived from its stub, not a fresh one', () => {
       const seed = () => useTaskStore.setState({
         tasks: [practice({
-          extraTaskTally: 3,
-          extraTaskDraft: {
-            ...emptyExtraTaskDraft(),
+          followUpTaskTally: 3,
+          followUpTaskDraft: {
+            ...emptyFollowUpTaskDraft(),
             subtasks: [{ id: 's1', title: 'Wipe the strings' }],
           },
         })],
@@ -13222,18 +13222,18 @@ describe('time block reconcile', () => {
 // The one path a user can actually write a draft through — TaskEditor hands
 // the whole form to updateTask, so a field the update path drops is a field
 // the sheet only appears to save.
-describe('updateTask: the extra task draft', () => {
+describe('updateTask: the followUp task draft', () => {
   it('saves a draft onto the task and takes it back off again', () => {
     useTaskStore.setState({
-      tasks: [makeTask({ id: 'practice', extraTaskEveryN: 4, extraTaskTitle: 'Rosin the bow' })],
+      tasks: [makeTask({ id: 'practice', followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin the bow' })],
     });
-    const draft = { ...emptyExtraTaskDraft(), notes: 'In the case pocket', priority: 2 as const };
+    const draft = { ...emptyFollowUpTaskDraft(), notes: 'In the case pocket', priority: 2 as const };
 
-    useTaskStore.getState().updateTask('practice', { extraTaskDraft: draft });
-    expect(useTaskStore.getState().tasks[0].extraTaskDraft).toEqual(draft);
+    useTaskStore.getState().updateTask('practice', { followUpTaskDraft: draft });
+    expect(useTaskStore.getState().tasks[0].followUpTaskDraft).toEqual(draft);
 
-    useTaskStore.getState().updateTask('practice', { extraTaskDraft: null });
-    expect(useTaskStore.getState().tasks[0].extraTaskDraft).toBeNull();
+    useTaskStore.getState().updateTask('practice', { followUpTaskDraft: null });
+    expect(useTaskStore.getState().tasks[0].followUpTaskDraft).toBeNull();
   });
 });
 

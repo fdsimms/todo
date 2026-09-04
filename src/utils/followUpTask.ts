@@ -1,11 +1,11 @@
-import type { Effort, ExtraTaskDraft, Priority, Task, TimeOfDay } from '../types';
+import type { Effort, FollowUpTaskDraft, Priority, Task, TimeOfDay } from '../types';
 import { ordinal } from './ordinal';
 import { EFFORT_LABELS, PRIORITY_LABELS } from '../types';
 
 /**
- * "Extra task" — every Nth completion of a task adds a separate one-off task.
+ * "Follow-up task" — every Nth completion of a task adds a separate one-off task.
  *
- * See the field notes on `Task.extraTaskEveryN`. This module owns the rule
+ * See the field notes on `Task.followUpTaskEveryN`. This module owns the rule
  * (when does it fire, what does the added task get called) and its wording, so
  * the editor's caption, the row's value and the store all say the same thing
  * about the same numbers.
@@ -19,15 +19,15 @@ import { EFFORT_LABELS, PRIORITY_LABELS } from '../types';
  * with one step, not this — and offering it invites the reading that 1 means
  * "off" when null already does.
  */
-export const MIN_EXTRA_TASK_EVERY_N = 2;
+export const MIN_FOLLOW_UP_TASK_EVERY_N = 2;
 /** Same ceiling `CountStepper` gets everywhere else a small integer is picked. */
-export const MAX_EXTRA_TASK_EVERY_N = 99;
+export const MAX_FOLLOW_UP_TASK_EVERY_N = 99;
 
-export interface ExtraTaskRule {
+export interface FollowUpTaskRule {
   everyN: number;
   title: string;
   /** What else the added task looks like, or null for "just the title". */
-  draft: ExtraTaskDraft | null;
+  draft: FollowUpTaskDraft | null;
 }
 
 /**
@@ -38,14 +38,14 @@ export interface ExtraTaskRule {
  * two fields at each call site is what keeps the editor, the store and the
  * caption agreeing on when the rule is live.
  */
-export function extraTaskRule(
-  task: Pick<Task, 'extraTaskEveryN' | 'extraTaskTitle'> & Partial<Pick<Task, 'extraTaskDraft'>>
-): ExtraTaskRule | null {
-  const everyN = task.extraTaskEveryN;
-  const title = task.extraTaskTitle?.trim();
-  if (everyN === null || everyN < MIN_EXTRA_TASK_EVERY_N) return null;
+export function followUpTaskRule(
+  task: Pick<Task, 'followUpTaskEveryN' | 'followUpTaskTitle'> & Partial<Pick<Task, 'followUpTaskDraft'>>
+): FollowUpTaskRule | null {
+  const everyN = task.followUpTaskEveryN;
+  const title = task.followUpTaskTitle?.trim();
+  if (everyN === null || everyN < MIN_FOLLOW_UP_TASK_EVERY_N) return null;
   if (!title) return null;
-  return { everyN, title, draft: task.extraTaskDraft ?? null };
+  return { everyN, title, draft: task.followUpTaskDraft ?? null };
 }
 
 /**
@@ -53,7 +53,7 @@ export function extraTaskRule(
  *
  * Resets to 0 on the completion that fires rather than counting up forever and
  * testing a modulo: the stored number then reads as "completions since the
- * last extra task", which is what the caption promises and what survives the
+ * last follow-up task", which is what the caption promises and what survives the
  * user changing N. A modulo against a lifetime count would silently move the
  * next one when N changed.
  *
@@ -61,7 +61,7 @@ export function extraTaskRule(
  * task that has been running should take effect on the next completion rather
  * than waiting for the count to wrap all the way round again.
  */
-export function advanceExtraTaskTally(tally: number, everyN: number): { tally: number; spawns: boolean } {
+export function advanceFollowUpTaskTally(tally: number, everyN: number): { tally: number; spawns: boolean } {
   const next = Math.max(0, tally) + 1;
   return next >= everyN ? { tally: 0, spawns: true } : { tally: next, spawns: false };
 }
@@ -81,27 +81,27 @@ export function advanceExtraTaskTally(tally: number, everyN: number): { tally: n
  *   `docs/arch/generated-tasks.md` makes for `weather` and `screenTime`, which
  *   don't gate at all ("vacation is exactly when somebody might want it"). The
  *   flag is how each rule answers for itself.
- * - `pending` — the rule is one-at-a-time (`Task.extraTaskOneAtATime`) and a
+ * - `pending` — the rule is one-at-a-time (`Task.followUpTaskOneAtATime`) and a
  *   row it added is still outstanding. Off by default; see the field note.
  *
  * **Neither consumes the tally**, which is the half worth not re-deriving:
- * `advanceExtraTaskTally` resets to 0 on the completion that fires, so a
+ * `advanceFollowUpTaskTally` resets to 0 on the completion that fires, so a
  * suppressed spawn that still took the reset would silently eat the cycle and
  * put the next one a full N completions away. The caller instead leaves the
  * tally exactly as it was, which — because the advance tests `>=` rather than
  * `===` — means the first completion after the reason passes spawns for real.
  * Same shape as those two nudges declining to record their period key.
  */
-export type ExtraTaskSuppression = 'vacation' | 'pending';
+export type FollowUpTaskSuppression = 'vacation' | 'pending';
 
-export function extraTaskSuppressedBy(
-  rule: ExtraTaskRule,
+export function followUpTaskSuppressedBy(
+  rule: FollowUpTaskRule,
   oneAtATime: boolean,
   onVacation: boolean,
-  hasPendingExtra: boolean,
-): ExtraTaskSuppression | null {
+  hasPendingFollowUp: boolean,
+): FollowUpTaskSuppression | null {
   if (onVacation && rule.draft?.vacationPause) return 'vacation';
-  if (oneAtATime && hasPendingExtra) return 'pending';
+  if (oneAtATime && hasPendingFollowUp) return 'pending';
   return null;
 }
 
@@ -109,13 +109,13 @@ export function extraTaskSuppressedBy(
  * How many completions are left before the next one, for the editor's caption.
  * Clamped at 1 — a tally that has somehow outrun N still means "the next one".
  */
-export function completionsUntilExtraTask(tally: number, everyN: number): number {
+export function completionsUntilFollowUpTask(tally: number, everyN: number): number {
   return Math.max(1, everyN - Math.max(0, tally));
 }
 
 /** The editor row's value, and the only place the count is shown on its own. */
-export function extraTaskSummary(everyN: number | null): string | undefined {
-  if (everyN === null || everyN < MIN_EXTRA_TASK_EVERY_N) return undefined;
+export function followUpTaskSummary(everyN: number | null): string | undefined {
+  if (everyN === null || everyN < MIN_FOLLOW_UP_TASK_EVERY_N) return undefined;
   return `Every ${ordinal(everyN)}`;
 }
 
@@ -132,12 +132,12 @@ export function extraTaskSummary(everyN: number | null): string | undefined {
  * triggered it. A task that doesn't repeat has no next occurrence, so it lands
  * on the day it's added.
  */
-export function describeExtraTaskRule(
+export function describeFollowUpTaskRule(
   everyN: number | null,
   title: string | null,
   repeats: boolean
 ): string {
-  if (everyN === null || everyN < MIN_EXTRA_TASK_EVERY_N) return 'No extra task';
+  if (everyN === null || everyN < MIN_FOLLOW_UP_TASK_EVERY_N) return 'No follow-up task';
   if (!title?.trim()) return 'Name the task to add';
   return repeats ? 'Due with the next occurrence' : "Due on the day it's added";
 }
@@ -149,7 +149,7 @@ export function describeExtraTaskRule(
  * the task that spawns this", so saving a draft that only sets, say, a note
  * still files the added task exactly where it was filed before.
  */
-export function emptyExtraTaskDraft(): ExtraTaskDraft {
+export function emptyFollowUpTaskDraft(): FollowUpTaskDraft {
   return {
     notes: '',
     category: null,
@@ -173,13 +173,13 @@ export function emptyExtraTaskDraft(): ExtraTaskDraft {
  * an object at all is no draft, which reads as "just the title" and is the
  * behaviour every rule had before drafts existed.
  */
-export function parseExtraTaskDraft(raw: string | null | undefined): ExtraTaskDraft | null {
+export function parseFollowUpTaskDraft(raw: string | null | undefined): FollowUpTaskDraft | null {
   if (!raw) return null;
   let parsed: unknown;
   try { parsed = JSON.parse(raw); } catch (_) { return null; }
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
-  const d = parsed as Partial<ExtraTaskDraft>;
-  const base = emptyExtraTaskDraft();
+  const d = parsed as Partial<FollowUpTaskDraft>;
+  const base = emptyFollowUpTaskDraft();
   return {
     notes: typeof d.notes === 'string' ? d.notes : base.notes,
     category: typeof d.category === 'string' ? d.category : null,
@@ -221,7 +221,7 @@ function isEffort(v: unknown): v is Effort {
  * carrying a blob of defaults that would then have to be told apart from a
  * real answer.
  */
-export function extraTaskDraftIsEmpty(draft: ExtraTaskDraft | null): boolean {
+export function followUpTaskDraftIsEmpty(draft: FollowUpTaskDraft | null): boolean {
   if (!draft) return true;
   return draft.notes.trim() === ''
     && draft.category === null
@@ -249,12 +249,12 @@ const DRAFT_NAME_LIMIT = 2;
  * module is pure and holds no store, and the emoji on a category label lives
  * on the category row rather than on the id the draft stores.
  */
-export function describeExtraTaskDraft(
-  draft: ExtraTaskDraft | null,
+export function describeFollowUpTaskDraft(
+  draft: FollowUpTaskDraft | null,
   categoryName: string | null,
   projectName: string | null,
 ): string | undefined {
-  if (!draft || extraTaskDraftIsEmpty(draft)) return undefined;
+  if (!draft || followUpTaskDraftIsEmpty(draft)) return undefined;
   const parts: string[] = [];
   if (draft.category && categoryName) parts.push(categoryName);
   if (draft.projectId && projectName) parts.push(projectName);

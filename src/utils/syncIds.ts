@@ -62,7 +62,13 @@ export function isDerivedId(id: string): boolean {
 export const spawnSeed = {
   /** The next occurrence of a recurring or chained task. One per completion. */
   occurrence: (completedTaskId: string) => `occ:${completedTaskId}`,
-  /** The milestone task spawned alongside an occurrence every Nth time. */
+  /**
+   * The follow-up task spawned alongside an occurrence every Nth time. Named
+   * for what the feature used to be called (it shipped as "extra task" and
+   * was renamed); the seed prefix stays `extra:` so a device mid-sync during
+   * the rename still derives the same id for a completion it already saw —
+   * same reasoning as the extra_task_* db columns in database.ts.
+   */
   extra: (completedTaskId: string) => `extra:${completedTaskId}`,
   /** One row per date when a repeating series rolls over to its next set. */
   seriesDate: (completedTaskId: string, date: string) => `series:${completedTaskId}:${date}`,

@@ -49,7 +49,7 @@ import {
 } from '../utils/recipeUtils';
 import { taskKindOf } from '../utils/taskKinds';
 import { apportionedMinutes, timerSegments } from '../utils/timerSegments';
-import { extraTaskDraftIsEmpty, extraTaskRule } from '../utils/extraTask';
+import { followUpTaskDraftIsEmpty, followUpTaskRule } from '../utils/followUpTask';
 import { isDialable } from '../utils/phone';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { useRecipeStore } from '../store/useRecipeStore';
@@ -936,16 +936,16 @@ describe('demo mode', () => {
   });
 
   // A rule nothing has a row for reads as a field that does nothing.
-  it('seeds a task that adds an extra task every Nth completion', () => {
+  it('seeds a task that adds a follow-up task every Nth completion', () => {
     useDemoStore.getState().enterDemoMode();
-    const withRule = useTaskStore.getState().tasks.filter(t => extraTaskRule(t) !== null);
+    const withRule = useTaskStore.getState().tasks.filter(t => followUpTaskRule(t) !== null);
 
     expect(withRule.length).toBeGreaterThan(0);
     // Partway through the cycle, so the editor's caption describes a rule in
     // progress rather than one nobody has started.
-    const rule = extraTaskRule(withRule[0])!;
-    expect(withRule[0].extraTaskTally).toBeGreaterThan(0);
-    expect(withRule[0].extraTaskTally).toBeLessThan(rule.everyN);
+    const rule = followUpTaskRule(withRule[0])!;
+    expect(withRule[0].followUpTaskTally).toBeGreaterThan(0);
+    expect(withRule[0].followUpTaskTally).toBeLessThan(rule.everyN);
     // The tally only advances on a completion that advances the schedule, so a
     // rule on a one-off task could never reach its count.
     expect(withRule[0].recurrenceType).not.toBe('none');
@@ -953,25 +953,25 @@ describe('demo mode', () => {
 
   // Both are invisible until the rule fires, and off is what every rule
   // already looks like — so a seed that leaves them off shows neither.
-  it('seeds an extra-task rule that stands down on vacation and keeps one at a time', () => {
+  it('seeds a follow-up task rule that stands down on vacation and keeps one at a time', () => {
     useDemoStore.getState().enterDemoMode();
-    const withRule = useTaskStore.getState().tasks.filter(t => extraTaskRule(t) !== null);
+    const withRule = useTaskStore.getState().tasks.filter(t => followUpTaskRule(t) !== null);
 
-    expect(withRule.some(t => t.extraTaskDraft?.vacationPause === true)).toBe(true);
-    expect(withRule.some(t => t.extraTaskOneAtATime)).toBe(true);
+    expect(withRule.some(t => t.followUpTaskDraft?.vacationPause === true)).toBe(true);
+    expect(withRule.some(t => t.followUpTaskOneAtATime)).toBe(true);
   });
 
-  // A rule that only names its extra task reads as a rule that can only name
+  // A rule that only names its follow-up task reads as a rule that can only name
   // it — the Details row says "just the title" and nothing hints otherwise.
-  it('seeds an extra-task rule that says what the added task looks like', () => {
+  it('seeds a follow-up task rule that says what the added task looks like', () => {
     useDemoStore.getState().enterDemoMode();
     const withDraft = useTaskStore.getState().tasks
-      .map(t => extraTaskRule(t))
+      .map(t => followUpTaskRule(t))
       .filter((r): r is NonNullable<typeof r> => r !== null && r.draft !== null);
 
     expect(withDraft.length).toBeGreaterThan(0);
     const draft = withDraft[0].draft!;
-    expect(extraTaskDraftIsEmpty(draft)).toBe(false);
+    expect(followUpTaskDraftIsEmpty(draft)).toBe(false);
     // The two that are invisible until the task exists, so a seed is the only
     // way anyone sees they can be set at all.
     expect(draft.subtasks.length).toBeGreaterThan(0);

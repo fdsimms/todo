@@ -476,7 +476,7 @@ export function seedDemoData(): void {
   });
   updateTask(runs.id, { progressCount: 1 });
 
-  // An extra-task rule. Invisible until it fires, so the seed carries a tally
+  // A follow-up task rule. Invisible until it fires, so the seed carries a tally
   // partway through the cycle: the editor's caption then reads as a rule in
   // progress rather than one nobody has started.
   const violin = addTask({
@@ -486,14 +486,14 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     recurrenceType: 'daily',
     recurrenceInterval: 1,
-    extraTaskEveryN: 4,
-    extraTaskTitle: 'Rosin the bow',
+    followUpTaskEveryN: 4,
+    followUpTaskTitle: 'Rosin the bow',
     // The rule says more than the name — the added task is filed, ranked,
     // sized and given its own checklist. Invisible until it fires like the
     // rest of the rule, so the seed's job is the editor's Details row: with
     // no draft it reads "just the title", which is a capability nobody would
     // know to look for.
-    extraTaskDraft: {
+    followUpTaskDraft: {
       notes: 'The tin lives in the case pocket.',
       category: 'Home',
       projectId: null,
@@ -514,10 +514,10 @@ export function seedDemoData(): void {
     // reading this flag exists for. Seeded on because both settings are
     // invisible until the rule fires, and off is what every rule already
     // looks like.
-    extraTaskOneAtATime: true,
+    followUpTaskOneAtATime: true,
     effort: 2,
   });
-  updateTask(violin.id, { extraTaskTally: 2 });
+  updateTask(violin.id, { followUpTaskTally: 2 });
 
   // A decision task — one that completes by recording an answer rather than
   // just being ticked. Seeded live so its checkbox shows the "?" that says it
