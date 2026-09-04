@@ -71,7 +71,7 @@ import { TitleTokenAccessory } from './TitleTokenAccessory';
 import { HighlightedText } from './HighlightedText';
 import { suggestTitles } from '../utils/titleSuggestions';
 import { findArchivedMatch } from '../utils/archiveMatch';
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, matchPersonMentions, findAmbiguousMention, applyMentionOverrides, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, applyMentionOverrides, type ParsedCategoryAndTags } from '../utils/parseTaskInput';
 import { mergeRanges } from '../utils/ranges';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
@@ -626,13 +626,22 @@ export function QuickAddModal({
       : null),
     [title, parsed, categoryTagsParsed, people, personOverrides]
   );
+  // "clean the garage !urgent" — a "!word" token naming a priority
+  // (parsePriorityInput), same single tooltip slot and same sigil-token
+  // shape as the category/tag check above, just checked after the ambiguous
+  // mention so a "@name" two people answer to still gets first claim on the
+  // slot.
+  const priorityParsed = useMemo(
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && title.trim() ? parsePriorityInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention]
+  );
   // Pasted URL/app-link detection — same tooltip mechanism as the schedule
   // parse above, just not suffix-anchored. Only checked when no schedule
-  // phrase, category/tag token, or ambiguous mention matched, so the
-  // tooltips never compete for the same slot.
+  // phrase, category/tag token, ambiguous mention, or priority token
+  // matched, so the tooltips never compete for the same slot.
   const linkParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && title.trim() ? parseLinkInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !priorityParsed && title.trim() ? parseLinkInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, priorityParsed]
   );
   // "call the doctor 555-123-4567" — the same mechanism again, for the number
   // rather than the URL. Checked after the link so a tel: URL someone pasted
@@ -640,8 +649,8 @@ export function QuickAddModal({
   // looksLikePhoneNumber): this one is reading prose full of digits, so a
   // year or a price must not light it up.
   const phoneParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, linkParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !priorityParsed && !linkParsed && title.trim() ? parsePhoneInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, priorityParsed, linkParsed]
   );
   // "email jane@example.com about the invoice" — the same mechanism again,
   // for an address rather than a number. Checked after phone so a title that
@@ -649,8 +658,8 @@ export function QuickAddModal({
   // priority chain, and email addresses don't collide with the phone pattern
   // since "@" and letters aren't dial digits.
   const emailParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, linkParsed, phoneParsed]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !priorityParsed && !linkParsed && !phoneParsed && title.trim() ? parseEmailInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, priorityParsed, linkParsed, phoneParsed]
   );
   // "play violin for 15 minutes" — a duration, not a schedule. Same single
   // tooltip slot, checked last, so a schedule, category/tag token, link or
@@ -661,8 +670,8 @@ export function QuickAddModal({
   // is one. Someone already part-way through a Chain or a Target has said what
   // they're making, and a tooltip shouldn't overrule it.
   const durationParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, linkParsed, phoneParsed, emailParsed, type]
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !priorityParsed && !linkParsed && !phoneParsed && !emailParsed && type === 'task' && title.trim() ? parseDurationInput(title) : null),
+    [title, parsed, categoryTagsParsed, ambiguousMention, priorityParsed, linkParsed, phoneParsed, emailParsed, type]
   );
   // "replace cpap filter 6 filters left" — a stock this task spends, not a
   // schedule. Last in the chain, so everything above still wins the one slot.
@@ -679,10 +688,10 @@ export function QuickAddModal({
   // and the schedule tooltip comes first (it needs the trailing text); tapping
   // it shortens the title, sets the repeat, and this fires on the remainder.
   const supplyParsed = useMemo(
-    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !linkParsed && !phoneParsed && !emailParsed
+    () => (!parsed && !categoryTagsParsed && !ambiguousMention && !priorityParsed && !linkParsed && !phoneParsed && !emailParsed
       && !durationParsed && recurrenceType !== 'none' && title.trim()
       ? parseSupplyInput(title) : null),
-    [title, parsed, categoryTagsParsed, ambiguousMention, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
+    [title, parsed, categoryTagsParsed, ambiguousMention, priorityParsed, linkParsed, phoneParsed, emailParsed, durationParsed, recurrenceType]
   );
   const activeMatch = parsed
     ? { matchStart: parsed.matchStart, matchedText: parsed.matchedText }
@@ -695,6 +704,11 @@ export function QuickAddModal({
         ? {
             matchStart: ambiguousMention.start,
             matchedText: title.slice(ambiguousMention.start, ambiguousMention.end),
+          }
+      : priorityParsed
+        ? {
+            matchStart: priorityParsed.matchStart,
+            matchedText: title.slice(priorityParsed.matchStart, priorityParsed.matchEnd),
           }
       : linkParsed
         ? { matchStart: linkParsed.matchStart, matchedText: linkParsed.url }
@@ -856,6 +870,16 @@ export function QuickAddModal({
   };
 
   // Apply the detected link and strip it from the title.
+  // Apply the detected "!word" priority token and strip it from the title.
+  const applyPriority = () => {
+    if (!priorityParsed) return;
+    haptics.success();
+    animateLayout();
+    setTitle(priorityParsed.cleanTitle);
+    titleCaret.moveCaret(priorityParsed.cleanTitle);
+    setPriority(priorityParsed.priority);
+  };
+
   const applyLink = () => {
     if (!linkParsed) return;
     haptics.success();
@@ -918,6 +942,7 @@ export function QuickAddModal({
   const applyActiveParse = () => {
     if (parsed) applyParse();
     else if (categoryTagsParsed) applyCategoryTags();
+    else if (priorityParsed) applyPriority();
     else if (linkParsed) applyLink();
     else if (phoneParsed) applyPhone();
     else if (emailParsed) applyEmail();
