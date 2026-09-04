@@ -1970,7 +1970,7 @@ export const TaskItem = React.memo(function TaskItem({
             )}
           </View>
         )}
-        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
+        {(isQuota || supplyLabel !== null || timed || healthLabel !== null || mealSlot !== null || plannedMeals !== undefined || quietDays !== null || missingCount !== null || windowActive || windowExpired || showStreakChip || waitingCount > 0 || !!blockerTitle || !!waitingPersonName || autoScheduled || scheduledIso !== null || !!task.extraTaskSourceTitle || (showGroup && groupTitle) || (showProject && projectTitle) || (showCategory && task.category) || subtaskCount > 0 || task.notes.length > 0) && (
           <View style={styles.metaRow}>
             {/* Leads the meta line: on the screens that ask for it, "when" is
                 what the row is being read for, and every other chip here
@@ -2022,6 +2022,19 @@ export const TaskItem = React.memo(function TaskItem({
                 <Ionicons name="hourglass-outline" size={iconSize.xs} color={colors.textSecondary} />
                 <Text style={styles.blockingLabel} numberOfLines={1}>
                   {waitingCount} waiting
+                </Text>
+              </View>
+            )}
+            {/* Marks a row added by another task's "extra task" rule, and names
+                which one — otherwise it reads as an unexplained extra row with
+                no way back to the task that earned it. `extraTaskSourceTitle`
+                is a snapshot rather than a live lookup, so this keeps working
+                once the completion that spawned it is purged. */}
+            {!!task.extraTaskSourceTitle && (
+              <View style={styles.metaChip} accessibilityLabel={`Extra task, added from ${task.extraTaskSourceTitle}`}>
+                <Ionicons name="sparkles" size={iconSize.xs} color={colors.textSecondary} />
+                <Text style={styles.blockingLabel} numberOfLines={1}>
+                  Extra · from {task.extraTaskSourceTitle}
                 </Text>
               </View>
             )}

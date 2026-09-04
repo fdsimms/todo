@@ -47,6 +47,7 @@ function task(over: Partial<Task> = {}): Task {
     chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false,
     extraTaskEveryN: null, extraTaskTitle: null, extraTaskDraft: null,
     extraTaskOneAtATime: false, extraTaskTally: 0, previousExtraTaskTally: 0,
+  extraTaskSourceTitle: null,
     archived: false, archivedAt: null, timerStartedAt: null, actualMinutes: null,
     timedMinutes: null, timerElapsedSeconds: 0,
     healthMetric: null,

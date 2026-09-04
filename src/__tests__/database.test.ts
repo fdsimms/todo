@@ -239,6 +239,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskOneAtATime: false,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
+  extraTaskSourceTitle: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -767,9 +768,13 @@ describe('dbInsertTask + rowToTask round-trip', () => {
       vacationPause: false,
       subtasks: [{ id: 's1', title: 'Wipe the strings' }],
     };
-    dbInsertTask(makeTask({ id: 'xd', extraTaskEveryN: 4, extraTaskTitle: 'Rosin', extraTaskDraft: draft }));
+    dbInsertTask(makeTask({
+      id: 'xd', extraTaskEveryN: 4, extraTaskTitle: 'Rosin', extraTaskDraft: draft,
+      extraTaskSourceTitle: 'Practice violin',
+    }));
     expect(dbGetAllTasks()[0].extraTaskDraft).toEqual(draft);
     expect(dbGetAllTasks()[0].extraTaskTitle).toBe('Rosin');
+    expect(dbGetAllTasks()[0].extraTaskSourceTitle).toBe('Practice violin');
 
     dbUpdateTask({ ...dbGetAllTasks()[0], extraTaskDraft: { ...draft, notes: 'Moved' }, title: 'Renamed' });
     const [t] = dbGetAllTasks();
@@ -778,6 +783,7 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     // The neighbours it would collide with if a placeholder were dropped.
     expect(t.extraTaskTally).toBe(0);
     expect(t.extraTaskEveryN).toBe(4);
+    expect(t.extraTaskSourceTitle).toBe('Practice violin');
   });
 
   it('reads a row written before the draft column as "just the title"', () => {

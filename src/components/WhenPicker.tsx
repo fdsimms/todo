@@ -67,7 +67,7 @@ const BLANK_SNOOZE_TASK: Task = {
   polarity: 'positive', slipCount: 0, slipDate: null,
   parentId: null, groupId: null, projectId: null,
   chainEnabled: false, chainIndex: 0, chainItems: [], chainStepOnSchedule: false, vacationPause: false, excludeFromSuggestions: false,
-  extraTaskEveryN: null, extraTaskTitle: null, extraTaskDraft: null, extraTaskOneAtATime: false, extraTaskTally: 0, previousExtraTaskTally: 0,
+  extraTaskEveryN: null, extraTaskTitle: null, extraTaskDraft: null, extraTaskOneAtATime: false, extraTaskTally: 0, previousExtraTaskTally: 0, extraTaskSourceTitle: null,
   archived: false, archivedAt: null, timerStartedAt: null, actualMinutes: null,
   timedMinutes: null, timerElapsedSeconds: 0,
   previousOccurrenceId: null,

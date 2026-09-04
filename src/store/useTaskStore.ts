@@ -540,6 +540,7 @@ function newTaskFromDraft(
     driftingSince: null,
     extraTaskTally: 0,
     previousExtraTaskTally: 0,
+    extraTaskSourceTitle: draft.extraTaskSourceTitle ?? null,
   };
   // Captured here rather than defaulted to null in the literal above: a task
   // created with a monthly rule and a due date on the 31st has to carry the
@@ -3453,6 +3454,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         // scope wanted here — undoing the 4th practice takes the rosin task
         // with it, and the tally goes back with the restored row.
         previousOccurrenceId: task.id,
+        extraTaskSourceTitle: task.title,
       }, now.toISOString(), maxOrder + 1);
       // Derived for the same reason the occurrence above is: one milestone
       // task per completion, however many devices saw that completion.
@@ -6340,6 +6342,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       extraTaskOneAtATime: false,
       extraTaskTally: 0,
       previousExtraTaskTally: 0,
+      extraTaskSourceTitle: null,
       vacationPause: false,
       excludeFromSuggestions: false,
       timerStartedAt: null,
@@ -6534,6 +6537,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       extraTaskOneAtATime: false,
       extraTaskTally: 0,
       previousExtraTaskTally: 0,
+      extraTaskSourceTitle: null,
       vacationPause: false,
       excludeFromSuggestions: false,
       timerStartedAt: null,

@@ -97,6 +97,7 @@ const BASE: Task = {
   extraTaskTitle: null,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
+  extraTaskSourceTitle: null,
   extraTaskDraft: null,
   extraTaskOneAtATime: false,
   vacationPause: false, excludeFromSuggestions: false,

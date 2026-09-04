@@ -99,6 +99,7 @@ const baseTask: Task = {
   extraTaskOneAtATime: false,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
+  extraTaskSourceTitle: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,

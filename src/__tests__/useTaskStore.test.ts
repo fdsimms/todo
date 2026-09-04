@@ -347,6 +347,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   extraTaskOneAtATime: false,
   extraTaskTally: 0,
   previousExtraTaskTally: 0,
+  extraTaskSourceTitle: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -12349,6 +12350,9 @@ describe('completeTask: extra task every Nth completion', () => {
     const live = completeOccurrence('practice');
     expect(extras()).toHaveLength(1);
     expect(live.extraTaskTally).toBe(0);
+    // The added row names the task it was earned by, for TaskItem's chip.
+    expect(extras()[0].extraTaskSourceTitle).toBe('Practice violin');
+    expect(live.extraTaskSourceTitle).toBeNull();
   });
 
   it('carries the tally across occurrences, since each one is a fresh id', () => {

@@ -1877,6 +1877,14 @@ export interface Task {
   // reads identically whether the completion fired the rule and reset it or
   // never advanced it at all (a miss, or a mid-chain step).
   previousExtraTaskTally: number;
+  // The spawning task's title, snapshotted at spawn time — what TaskItem's
+  // "Extra · from X" chip reads. Null on every task that isn't one of
+  // these. A snapshot rather than a pointer to the completed occurrence
+  // that earned it: that row is exactly what completedRetentionDays
+  // eventually purges, and previousOccurrenceId already exists for the
+  // undo path that needs the live row. Same call the pending-suppression
+  // match above makes, and for the same reason.
+  extraTaskSourceTitle: string | null;
 
   vacationPause: boolean;    // hide and protect streak while vacation mode is on
 
