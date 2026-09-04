@@ -296,7 +296,10 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       estimatedMinutes,
       vacationPause,
       excludeFromSuggestions,
-      polarity,
+      // Belt and braces with the row above being hidden for a chain: the two
+      // are mutually exclusive, and this is what an item saved by an older
+      // build carrying both is normalized by on its next save.
+      polarity: chainEnabled && effectiveChainItems.length > 0 ? 'positive' : polarity,
       recurrenceType,
       recurrenceInterval,
       recurrenceDays: recurrenceType === 'weekly' ? recurrenceDays : [],
@@ -827,10 +830,20 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
-        <View style={styles.sep} />
         {/* The template-side half of Task.polarity. A "quit smoking" template
             that could only produce ordinary tasks would be missing the one
-            thing it exists to set up. */}
+            thing it exists to set up.
+
+            Hidden once the item is a chain, the same way TaskEditor gates its
+            Goal row on kind === 'task': an avoid-task is never completed, and
+            a chain is a list of steps advanced by completions. Offering both
+            produced an item whose task read as a chain everywhere — which is
+            what taskKindOf answers for a row carrying both — with the shield
+            drawn on it and the Goal row then hidden behind that kind, so the
+            polarity could no longer be reached and turned off. */}
+        {!chainEnabled && (
+        <>
+        <View style={styles.sep} />
         <TouchableOpacity
           style={styles.optionRow}
           onPress={() => { haptics.tap(); setPolarity(p => (p === 'negative' ? 'positive' : 'negative')); }}
@@ -852,6 +865,8 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <View style={[styles.toggleKnob, polarity === 'negative' && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
+        </>
+        )}
       </View>
 
       {/* Chain */}
@@ -882,7 +897,15 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             right={
               <TouchableOpacity
                 style={[styles.toggle, chainEnabled && styles.toggleOn]}
-                onPress={() => { haptics.tap(); setChainEnabled(v => !v); }}
+                onPress={() => {
+                  haptics.tap();
+                  setChainEnabled(v => {
+                    // Same reset applyKind makes when a kind is chosen: the two
+                    // can't both hold, and the row above is about to go away.
+                    if (!v) setPolarity('positive');
+                    return !v;
+                  });
+                }}
                 accessibilityRole="switch"
                 accessibilityLabel="Chain"
                 accessibilityState={{ checked: chainEnabled }}

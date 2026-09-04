@@ -673,8 +673,14 @@ export function TasksProjectsSettings() {
       )}
 
       {/* Expiry needs a time window, and simplified mode takes the window row
-          off the editor. */}
-      {!simpleMode && (
+          off the editor — but only for *new* tasks. Simplified mode is a
+          display setting (see simpleMode.ts): it clears nothing, so a task that
+          already carries a window still expires, and sweepExpiredTasks still
+          reads this setting and still deletes. So the section stays while a
+          grace period is set, the same way the switch itself is never hidden by
+          the mode it turns on. Hiding the only control over a delete that keeps
+          happening is the one thing this mode must not do. */}
+      {(!simpleMode || autoRemoveExpiredTasks !== null) && (
       <SettingsSection
         label="Time-limited tasks"
         footer={'A task with a time window (like "farmers market, 8am–1pm") moves to Expired once its window closes, whether or not it repeats.'}
@@ -703,8 +709,15 @@ export function TasksProjectsSettings() {
       )}
 
       {/* Nothing to configure in simplified mode: it removes the per-task
-          "vacation pause" row, so vacation mode would have nothing to hide. */}
-      {!simpleMode && (
+          "vacation pause" row, so vacation mode has nothing new to hide.
+          Nothing *new* is the whole of it, though — the mode changes what is
+          rendered and never what is stored, so tasks already marked for
+          vacation pause, and whole categories set to hide on vacation, stay
+          hidden exactly as they were. Switching simplified mode on with
+          vacation mode already on therefore used to take the off-switch away
+          from a state that was still hiding the user's tasks, with no way back
+          to it. So the section survives as long as it is on. */}
+      {(!simpleMode || vacationMode) && (
       <SettingsSection
         label="Vacation"
         footer={`${vacationMode && vacationStart ? `On since ${format(new Date(vacationStart), 'MMM d')}. ` : ''}While on, tasks with "vacation pause" enabled are hidden everywhere and their streaks are protected. You can also hide whole categories on vacation from the Categories screen. Turn it off when you return and streaks will be forgiven automatically, or set an end date to have it happen for you.`}

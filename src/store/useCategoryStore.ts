@@ -361,7 +361,10 @@ function generatorEnabled(kind: GeneratedKind): boolean {
     case 'pantryReview': return s.pantryReviewTasks;
     case 'mealShortfall': return s.mealShortfallTasks;
     case 'supplyReorder': return s.supplyReorderTasks;
-    case 'calendarReview': return s.calendarReviewTasks;
+    // Two switches here too, same as health below: checkCalendarReviewTasks
+    // returns on !calendarReadEnabled, so the generator is off whatever its
+    // own key says.
+    case 'calendarReview': return s.calendarReviewTasks && s.calendarReadEnabled;
     case 'birthday': return s.birthdayTasks;
     case 'birthdayGift': return s.birthdayGiftTasks;
     case 'reachOut': return s.reachOutTasks;

@@ -5,6 +5,7 @@ import {
   completionsUntilFollowUpTask,
   describeFollowUpTaskDraft,
   describeFollowUpTaskRule,
+  canHoldFollowUpTask,
   emptyFollowUpTaskDraft,
   followUpTaskDraftIsEmpty,
   followUpTaskRule,
@@ -33,6 +34,21 @@ describe('followUpTaskRule', () => {
     expect(rule(1, 'Rosin the bow')).toBeNull();
     expect(rule(0, 'Rosin the bow')).toBeNull();
     expect(rule(MIN_FOLLOW_UP_TASK_EVERY_N, 'Rosin the bow')).not.toBeNull();
+  });
+});
+
+describe('canHoldFollowUpTask', () => {
+  // Exactly canHoldSupply's rule, for exactly its reason — the tally rides onto
+  // the successor a completion spawns, so a task that spawns none has nowhere
+  // to carry it and could never reach the second completion the floor of 2
+  // requires.
+  it('needs a repeat, because a one-off is completed once', () => {
+    expect(canHoldFollowUpTask({ recurrenceType: 'none', parentId: null })).toBe(false);
+    expect(canHoldFollowUpTask({ recurrenceType: 'daily', parentId: null })).toBe(true);
+  });
+
+  it('refuses a subtask, which has no run of its own', () => {
+    expect(canHoldFollowUpTask({ recurrenceType: 'daily', parentId: 'parent-1' })).toBe(false);
   });
 });
 
@@ -96,29 +112,25 @@ describe('followUpTaskSummary', () => {
 
 describe('describeFollowUpTaskRule', () => {
   it('says where the task lands, and only that', () => {
-    expect(describeFollowUpTaskRule(4, 'Rosin the bow', true)).toBe('Due with the next occurrence');
-  });
-
-  it('lands it on the day when the task does not repeat', () => {
-    expect(describeFollowUpTaskRule(4, 'Rosin the bow', false)).toBe("Due on the day it's added");
+    expect(describeFollowUpTaskRule(4, 'Rosin the bow')).toBe('Due with the next occurrence');
   });
 
   // The count and the title are both on screen — the stepper says one and the
   // field beside it holds the other — so a caption repeating either is the
   // user's own input read back at them.
   it('quotes neither the title nor the count', () => {
-    const caption = describeFollowUpTaskRule(4, 'Rosin the bow', true);
+    const caption = describeFollowUpTaskRule(4, 'Rosin the bow');
     expect(caption).not.toContain('Rosin the bow');
     expect(caption).not.toContain('4th');
   });
 
   it('asks for the missing half rather than describing a rule that will not fire', () => {
-    expect(describeFollowUpTaskRule(4, '', true)).toBe('Name the task to add');
-    expect(describeFollowUpTaskRule(4, '   ', true)).toBe('Name the task to add');
+    expect(describeFollowUpTaskRule(4, '')).toBe('Name the task to add');
+    expect(describeFollowUpTaskRule(4, '   ')).toBe('Name the task to add');
   });
 
   it('says so when there is no rule at all', () => {
-    expect(describeFollowUpTaskRule(null, 'Rosin the bow', true)).toBe('No follow-up task');
+    expect(describeFollowUpTaskRule(null, 'Rosin the bow')).toBe('No follow-up task');
   });
 });
 

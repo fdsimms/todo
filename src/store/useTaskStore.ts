@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -133,7 +133,7 @@ import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
-import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from '../utils/taskKinds';
+import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
 import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay } from '../utils/visibilityUtils';
@@ -147,7 +147,7 @@ import {
   driftingTasks,
   type DriftEntry,
 } from '../utils/postpone';
-import { followUpTaskRule, advanceFollowUpTaskTally, followUpTaskSuppressedBy } from '../utils/followUpTask';
+import { followUpTaskRule, advanceFollowUpTaskTally, followUpTaskSuppressedBy, canHoldFollowUpTask } from '../utils/followUpTask';
 import type { FollowUpTaskSuppression } from '../utils/followUpTask';
 import { normalizeTitle } from '../utils/taskInstances';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
@@ -372,6 +372,29 @@ function newTaskFromDraft(
   skipCategoryDefault = false,
 ): Task {
   const defaults = useSettingsStore.getState().newTaskDefaults;
+  // An avoid-task is never completed (see Task.polarity), so it can only be the
+  // plain kind: every other kind is a shape for *completing* something, and all
+  // four of their mechanisms hang off a completion that will never come. The
+  // editor already enforces this at the near end — applyKind resets polarity
+  // whenever the kind moves away from 'task' — but that is one door of several,
+  // and a template, an Apple Reminders import, a restored backup or a synced row
+  // arrives here instead. So the rule lives at the door all of them pass
+  // through, the same call canHoldSupply makes just below.
+  //
+  // The kind wins rather than the polarity, which matches taskKindOf's own
+  // precedence: a row carrying both reads as its kind everywhere else in the
+  // app, so leaving the polarity set would leave the Goal row hidden behind
+  // that kind with no way to reach it and turn the polarity back off.
+  const resolvedPolarity: Polarity =
+    taskKindOf({
+      chainEnabled: draft.chainEnabled ?? false,
+      targetCount: draft.targetCount ?? null,
+      timedMinutes: draft.timedMinutes ?? null,
+      healthMetric: draft.healthMetric ?? null,
+      healthTarget: draft.healthTarget ?? null,
+    }) === 'task'
+      ? (draft.polarity ?? 'positive')
+      : 'positive';
   const task: Task = {
     id: id ?? generateId(),
     title: draft.title ?? '',
@@ -467,18 +490,18 @@ function newTaskFromDraft(
     // means a habit created on Monday can't credit Tuesday until Wednesday's
     // pass has run twice. Today is deliberately the anchor rather than a day
     // earlier: half of it happened before the commitment existed.
-    streakDate: (draft.polarity ?? 'positive') === 'negative' ? getCurrentDayStart().toISOString() : null,
+    streakDate: resolvedPolarity === 'negative' ? getCurrentDayStart().toISOString() : null,
     previousStreakCount: 0,
     previousStreakDate: null,
     priorBestStreak: 0,
     slipCount: 0,
     slipDate: null,
-    polarity: draft.polarity ?? 'positive',
+    polarity: resolvedPolarity,
     // On by default for a negative habit and off for everything else. A flame on
     // every recurring row is noise (the reasoning behind the field), but the run
     // of clean days is the *only* feedback an avoid-task ever gives: it is never
     // completed, so without the chip the row never changes at all.
-    showStreak: draft.showStreak ?? (draft.polarity ?? 'positive') === 'negative',
+    showStreak: draft.showStreak ?? resolvedPolarity === 'negative',
     streakRequiresWindow: draft.streakRequiresWindow ?? false,
     parentId: draft.parentId ?? null,
     groupId: draft.groupId ?? null,
@@ -492,10 +515,26 @@ function newTaskFromDraft(
     chainIndex: draft.chainIndex ?? 0,
     chainItems: draft.chainItems ?? [],
     chainStepOnSchedule: draft.chainStepOnSchedule ?? false,
-    followUpTaskEveryN: draft.followUpTaskEveryN ?? null,
-    followUpTaskTitle: draft.followUpTaskTitle ?? null,
-    followUpTaskDraft: draft.followUpTaskDraft ?? null,
-    followUpTaskOneAtATime: draft.followUpTaskOneAtATime ?? false,
+    // The same door the supply block above passes through, and the same rule:
+    // the tally rides onto the successor a completion spawns, so a one-off or a
+    // subtask has nowhere to carry it and the rule could never reach its second
+    // completion. See canHoldFollowUpTask.
+    ...(canHoldFollowUpTask({
+      recurrenceType: draft.recurrenceType ?? 'none',
+      parentId: draft.parentId ?? null,
+    })
+      ? {
+          followUpTaskEveryN: draft.followUpTaskEveryN ?? null,
+          followUpTaskTitle: draft.followUpTaskTitle ?? null,
+          followUpTaskDraft: draft.followUpTaskDraft ?? null,
+          followUpTaskOneAtATime: draft.followUpTaskOneAtATime ?? false,
+        }
+      : {
+          followUpTaskEveryN: null,
+          followUpTaskTitle: null,
+          followUpTaskDraft: null,
+          followUpTaskOneAtATime: false,
+        }),
     vacationPause: draft.vacationPause ?? false,
     excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,

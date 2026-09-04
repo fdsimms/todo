@@ -248,6 +248,19 @@ describe('settings index', () => {
       expect(both.find(e => e.id === 'simpleMode')).toBeDefined();
     });
 
+    // The bug this guards: Focus sessions is rendered behind a single
+    // `!simpleMode` gate in TasksProjectsSettings, so the whole section leaves
+    // together — but three of its ten rows had no flag, and searching
+    // "distraction" or "social media" in simplified mode returned rows that
+    // don't render. Section-wide rather than row-by-row because that is how the
+    // screen gates it, and the next row added to the section inherits the check.
+    it('flags every row in a section simplified mode hides wholesale', () => {
+      const focus = SETTINGS_ENTRIES.filter(
+        e => e.groupId === 'tasksProjects' && e.section === 'Focus sessions');
+      expect(focus.length).toBeGreaterThan(1);
+      expect(focus.filter(e => !e.simple)).toEqual([]);
+    });
+
     it('leaves no group emptied by either switch', () => {
       const on = visibleSettingsEntries('ios', false, true);
       for (const group of visibleSettingsGroups('ios', false)) {

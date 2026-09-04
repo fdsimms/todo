@@ -13693,6 +13693,58 @@ describe('negative habits', () => {
 
 // Converting between the polarities. The two count different things, so the run
 // restarts rather than carrying across — and the dates are the dangerous half.
+describe('a draft carrying both an avoid-goal and a kind', () => {
+  // An avoid-task is never completed, and every other kind is a shape for
+  // completing something — so the two can't both hold. TaskEditor's applyKind
+  // enforces it at the near end, but a template, an import, a restored backup
+  // or a synced row reaches newTaskFromDraft instead, so the rule lives there
+  // too. The kind wins, matching taskKindOf's own precedence: leave the
+  // polarity set and the row reads as its kind everywhere, which hides the Goal
+  // row behind that kind and strands the polarity with no way to turn it off.
+  it('drops the avoid-goal for a chain, which is what a template could save', () => {
+    const task = useTaskStore.getState().addTask({
+      title: 'Morning routine',
+      polarity: 'negative',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Stretch' },
+        { id: 'b', title: 'Shower' },
+      ] as never,
+    });
+    expect(task.polarity).toBe('positive');
+    expect(task.chainEnabled).toBe(true);
+  });
+
+  it('drops it for a target, a timed task and a health target alike', () => {
+    expect(useTaskStore.getState().addTask({
+      title: 'Water', polarity: 'negative', targetCount: 8,
+    }).polarity).toBe('positive');
+    expect(useTaskStore.getState().addTask({
+      title: 'Violin', polarity: 'negative', timedMinutes: 15,
+    }).polarity).toBe('positive');
+    expect(useTaskStore.getState().addTask({
+      title: 'Steps', polarity: 'negative', healthMetric: 'steps', healthTarget: 8000,
+    }).polarity).toBe('positive');
+  });
+
+  it('keeps it on a plain task, which is the whole point of the field', () => {
+    const task = useTaskStore.getState().addTask({ title: "Don't smoke", polarity: 'negative' });
+    expect(task.polarity).toBe('negative');
+    // The two reads that follow the resolved value rather than the draft's, so
+    // a dropped goal can't leave a streak block behind that says otherwise.
+    expect(task.showStreak).toBe(true);
+    expect(task.streakDate).not.toBeNull();
+  });
+
+  it('leaves no streak block behind on the one it dropped', () => {
+    const task = useTaskStore.getState().addTask({
+      title: 'Water', polarity: 'negative', targetCount: 8,
+    });
+    expect(task.showStreak).toBe(false);
+    expect(task.streakDate).toBeNull();
+  });
+});
+
 describe('changing a task’s polarity', () => {
   beforeEach(() => {
     jest.useFakeTimers();

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { ensureGeneratedTaskCategory, useCategoryStore } from '../../store/useCategoryStore';
@@ -188,7 +188,10 @@ export function GeneratedTasksSection() {
       case 'pantryReview': return s.pantryReviewTasks;
       case 'mealShortfall': return s.mealShortfallTasks;
       case 'supplyReorder': return s.supplyReorderTasks;
-      case 'calendarReview': return s.calendarReviewTasks;
+      // Both switches, same as health below and for the same reason: the pass
+      // returns on !calendarReadEnabled (see checkCalendarReviewTasks), so a
+      // row reading "on" over a closed read would be lying about itself.
+      case 'calendarReview': return s.calendarReviewTasks && s.calendarReadEnabled;
       case 'birthday': return s.birthdayTasks;
       case 'birthdayGift': return s.birthdayGiftTasks;
       case 'reachOut': return s.reachOutTasks;
@@ -204,7 +207,37 @@ export function GeneratedTasksSection() {
     }
   };
 
+  /**
+   * What a generator needs turned on before its own switch can mean anything,
+   * or null for the sixteen that need nothing.
+   *
+   * Two of them read a source the app has to be allowed into first, and
+   * `enabledOf` refuses to show either as on while that read is shut. That is
+   * right (a row reading "on" over a closed read would be lying about itself)
+   * and it left the switch untappable: `toggle` computes `!enabledOf(kind)`, so
+   * the tap wrote true, `enabledOf` still answered false, and the switch sprang
+   * back with nothing said. Naming the prerequisite is what turns a dead tap
+   * into an answer.
+   */
+  const blockedBy = (kind: GeneratedKind): { setting: string; screen: string } | null => {
+    if (kind === 'health' && !s.healthReadEnabled) {
+      return { setting: 'Read Apple Health', screen: 'Health' };
+    }
+    if (kind === 'calendarReview' && !s.calendarReadEnabled) {
+      return { setting: 'Read my calendar', screen: 'Calendar' };
+    }
+    return null;
+  };
+
   const toggle = (kind: GeneratedKind): void => {
+    const blocker = blockedBy(kind);
+    if (blocker) {
+      Alert.alert(
+        `Turn on “${blocker.setting}” first`,
+        `This adds tasks from something the app isn't allowed to read yet. Turn on “${blocker.setting}” under ${blocker.screen} in Settings, then come back.`,
+      );
+      return;
+    }
     const next = !enabledOf(kind);
     switch (kind) {
       case 'mealSlot':
@@ -321,6 +354,11 @@ export function GeneratedTasksSection() {
    * because those are two more rows down and the answer is the point.
    */
   const hintFor = (spec: GeneratedKindSpec): string => {
+    // Ahead of the off-hint, which describes what turning this on would do —
+    // true of the other sixteen, and a promise the switch can't keep while its
+    // prerequisite is off.
+    const blocker = blockedBy(spec.kind);
+    if (blocker) return `Needs “${blocker.setting}”, which is off`;
     if (!enabledOf(spec.kind)) return spec.offHint;
     if (spec.kind === 'mealPlanNudge') {
       return `A task appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)} to plan that week`;

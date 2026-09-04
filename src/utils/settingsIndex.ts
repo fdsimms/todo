@@ -494,14 +494,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['pomodoro', 'focus', 'rest', 'how often'] },
   { id: 'focusLongRestMinutes', groupId: 'tasksProjects', label: 'Long break length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest'] },
-  { id: 'focusLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while focusing', section: 'Focus sessions',
+  { id: 'focusLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while focusing', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'session', 'lock screen', 'dynamic island', 'widget'] },
   // "Screen time" is the name most people have for this and appears nowhere in
   // the copy, same argument as "pomodoro" on the rows above. So are "block"
   // and "distraction", which is what somebody is actually looking for.
-  { id: 'focusShield', groupId: 'tasksProjects', label: 'Block apps while focusing', section: 'Focus sessions',
+  { id: 'focusShield', groupId: 'tasksProjects', label: 'Block apps while focusing', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'pomodoro', 'distraction', 'shield', 'social media', 'restrict'] },
-  { id: 'focusShieldApps', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions',
+  { id: 'focusShieldApps', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'distraction', 'which apps', 'picker', 'choose'] },
   { id: 'timerLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while timing', section: 'Timers',
     keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown'] },
