@@ -102,6 +102,16 @@ describe('isAwayDay', () => {
     expect(isAwayDay(s, new Date(2026, 10, 2, 23))).toBe(false);
   });
 
+  it('anchors the span bounds, not just the day asked about', () => {
+    // A span built straight from two picked dates carries their time of day.
+    // Compared raw, an anchored day sits before its own departure and the day
+    // you leave stops counting.
+    const raw = { start: new Date(2026, 10, 3, 12), end: new Date(2026, 10, 10, 12) };
+    expect(isAwayDay(raw, new Date(2026, 10, 3, 0, 30))).toBe(true);
+    expect(isAwayDay(raw, new Date(2026, 10, 9, 23, 30))).toBe(true);
+    expect(isAwayDay(raw, new Date(2026, 10, 10, 0, 30))).toBe(false);
+  });
+
   it('knows only the departure day when there is no return date', () => {
     // The alternative reading — away forever — would have every reader treat
     // an unfinished span as an open-ended absence.

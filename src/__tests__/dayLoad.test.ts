@@ -1,5 +1,6 @@
 import type { Task } from '../types';
 import type { BusyEvent } from '../utils/calendarBusy';
+import type { AwaySpan } from '../utils/awayDates';
 import { buildDayBuckets } from '../utils/calendarMonth';
 import {
   ASSUMED_TASK_MINUTES,
@@ -179,15 +180,54 @@ function loadsFor(
   tasks: Task[],
   busy?: { events: BusyEvent[]; start: Date; end: Date },
   dayResetTime = '00:00',
+  awaySpans?: AwaySpan[],
 ) {
   const buckets = buildDayBuckets(tasks, { from: FROM, to: TO, dayResetTime });
   return buildDayLoads(DAYS, buckets, {
     taskById: new Map(tasks.map(t => [t.id, t])),
     busyEvents: busy?.events,
     busyWindow: busy ? { start: busy.start, end: busy.end } : null,
+    awaySpans,
     dayResetTime,
   });
 }
+
+describe('buildDayLoads away spans', () => {
+  const span: AwaySpan = { start: at(2026, 8, 12), end: at(2026, 8, 16) };
+
+  it('leaves every day unmarked with no spans', () => {
+    const loads = loadsFor([]);
+    expect([...loads.values()].every(l => !l.away)).toBe(true);
+  });
+
+  it('marks the departure and the days between, but not the return', () => {
+    const loads = loadsFor([], undefined, '00:00', [span]);
+    expect(loads.get('2026-08-11')!.away).toBe(false);
+    expect(loads.get('2026-08-12')!.away).toBe(true);
+    expect(loads.get('2026-08-15')!.away).toBe(true);
+    expect(loads.get('2026-08-16')!.away).toBe(false);
+  });
+
+  it('marks days across more than one trip', () => {
+    // A month grid reaches further than one trip, so the option is plural.
+    const loads = loadsFor([], undefined, '00:00', [
+      span,
+      { start: at(2026, 8, 24), end: at(2026, 8, 26) },
+    ]);
+    expect(loads.get('2026-08-13')!.away).toBe(true);
+    expect(loads.get('2026-08-24')!.away).toBe(true);
+    expect(loads.get('2026-08-20')!.away).toBe(false);
+  });
+
+  it('does not touch rankedMinutes', () => {
+    // Being away is not a quantity of work, and tightDeadlines sums that
+    // number across a span expecting it to mean minutes.
+    const bare = loadsFor([]).get('2026-08-13')!.rankedMinutes;
+    const away = loadsFor([], undefined, '00:00', [span]).get('2026-08-13')!;
+    expect(away.rankedMinutes).toBe(bare);
+    expect(away.away).toBe(true);
+  });
+});
 
 describe('buildDayLoads', () => {
   it('counts an outstanding row and its estimate onto its due day', () => {
@@ -316,7 +356,7 @@ describe('buildDayLoads', () => {
 });
 
 describe('weightFor', () => {
-  const load = (rankedMinutes: number) => ({
+  const load = (rankedMinutes: number, away = false) => ({
     key: '2026-08-12',
     taskCount: 0,
     taskMinutes: 0,
@@ -325,6 +365,7 @@ describe('weightFor', () => {
     busyKnown: false,
     busyMinutes: 0,
     rankedMinutes,
+    away,
   });
 
   it('says nothing about an ordinary day', () => {
@@ -340,6 +381,13 @@ describe('weightFor', () => {
 
   it('marks a day full once it is twice over', () => {
     expect(weightFor(load(FULL_DAY_MINUTES))).toBe('full');
+  });
+
+  it('marks an away day, whatever else is on it', () => {
+    // Away answers a different question from the two thresholds, and it is the
+    // more useful of the two things to say about a day you are not there for.
+    expect(weightFor(load(0, true))).toBe('away');
+    expect(weightFor(load(FULL_DAY_MINUTES, true))).toBe('away');
   });
 
   it('lets unestimated tasks alone carry a day over the line', () => {
@@ -376,6 +424,7 @@ describe('describeDayLoad', () => {
       busyKnown: false,
       busyMinutes: 0,
       rankedMinutes: 0,
+      away: false,
     };
   }
 

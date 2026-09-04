@@ -36,6 +36,9 @@ import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { computeSnoozeSuggestion } from '../utils/snoozeEngine';
 import { buildDayBuckets } from '../utils/calendarMonth';
 import { buildDayLoads, describeDayWeight, weightFor, type DayLoad } from '../utils/dayLoad';
+import { awaySpanOf, type AwaySpan } from '../utils/awayDates';
+import { useProjectStore } from '../store/useProjectStore';
+import { useShallow } from 'zustand/react/shallow';
 import { shouldNudgePostpone } from '../utils/postpone';
 import { reachOutPersonId, offerDeclinedRecently } from '../utils/reachOutTasks';
 import { PostponeCheckBanner, type PostponeCheckAction } from './PostponeCheckBanner';
@@ -196,6 +199,7 @@ export function WhenPicker({
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const tasks = useTaskStore(s => s.tasks);
+  const projects = useProjectStore(useShallow(s => s.projects));
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const calendarEvents = useCalendarStore(s => s.events);
@@ -289,6 +293,25 @@ export function WhenPicker({
    * template's anchor date), which is a different question from whether the
    * day being picked is already full — and on both of those it very much is.
    */
+  /**
+   * Every live away span, so a day inside a trip can say so.
+   *
+   * All of them rather than `nextAwayProject`'s one: the grid pages months and
+   * can reach past the trip a reader is standing nearest to. Archived and
+   * completed projects are dropped for the reason nextAwayProject drops them —
+   * those are history, not schedule — but a span already over is *kept*, since
+   * a picker showing last month is entitled to say you were away.
+   */
+  const awaySpans = useMemo(
+    () => (visible
+      ? projects
+          .filter(p => !p.archived && !p.completed)
+          .map(p => awaySpanOf(p, dayResetTime))
+          .filter((span): span is AwaySpan => span !== null)
+      : []),
+    [visible, projects, dayResetTime],
+  );
+
   const dayLoads = useMemo(() => {
     if (!visible || calendarDays.length === 0) return new Map<string, DayLoad>();
     const buckets = buildDayBuckets(tasks, {
@@ -303,10 +326,11 @@ export function WhenPicker({
       busyWindow: calendarWindowStart && calendarWindowEnd
         ? { start: new Date(calendarWindowStart), end: new Date(calendarWindowEnd) }
         : null,
+      awaySpans,
       dayResetTime,
     });
   }, [visible, calendarDays, tasks, dayResetTime, calendarReadEnabled, calendarLoaded, calendarEvents,
-      calendarWindowStart, calendarWindowEnd]);
+      calendarWindowStart, calendarWindowEnd, awaySpans]);
 
   const toggleSegment = (seg: TimeOfDay) => {
     setSegments(prev =>
@@ -769,10 +793,23 @@ export function WhenPicker({
                           neighbours' — most days carry nothing here. */}
                       <View style={styles.weightSlot}>
                         {weight && !outOfRange && (
-                          <View style={[
-                            styles.weightBar,
-                            weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
-                          ]} />
+                          weight === 'away' ? (
+                            // Two segments with a gap rather than a third bar
+                            // width: away is not a heavier `full`, and a run of
+                            // them reads across the row as the stretch of days
+                            // it is. Same greys as the other two — the cue is
+                            // weight, not alarm, and a coloured dot here would
+                            // read as an event marker.
+                            <View style={styles.weightAway}>
+                              <View style={styles.weightAwayDash} />
+                              <View style={styles.weightAwayDash} />
+                            </View>
+                          ) : (
+                            <View style={[
+                              styles.weightBar,
+                              weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
+                            ]} />
+                          )
                         )}
                       </View>
                     </View>
@@ -1052,6 +1089,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   weightBarFull: {
     width: 21,
     height: 3,
+    backgroundColor: colors.textSecondary,
+  },
+  weightAway: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  weightAwayDash: {
+    width: 5,
+    height: 3,
+    borderRadius: 1.5,
     backgroundColor: colors.textSecondary,
   },
   dayCircleSelected: {

@@ -84,13 +84,19 @@ export function awaySpanOf(
 /** Whether `date` falls inside the span: on or after departure, before the return. */
 export function isAwayDay(span: AwaySpan | null, date: Date, dayResetTime?: string): boolean {
   if (!span) return false;
+  // Both sides are normalised, not just the day being asked about. `awaySpanOf`
+  // already hands back anchored bounds, but `buildDayLoads` takes spans from
+  // whoever calls it, and a span built straight from two picked dates carries
+  // whatever time of day they had — against which an anchored day sits *before*
+  // its own departure, and the day you leave silently stops counting.
   const day = getTaskDayStart(date, dayResetTime);
-  if (day < span.start) return false;
+  const start = getTaskDayStart(span.start, dayResetTime);
+  if (day < start) return false;
   // Without a return date the only day known to be away is the departure. The
   // honest alternative — "away forever" — would have every reader here treat
   // an unfinished span as an open-ended absence.
-  if (!span.end) return day.getTime() === span.start.getTime();
-  return day < span.end;
+  if (!span.end) return day.getTime() === start.getTime();
+  return day < getTaskDayStart(span.end, dayResetTime);
 }
 
 /** Nights away, the count `templateQuestions.answerFromDates` means by 'nights'. */
