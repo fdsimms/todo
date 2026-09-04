@@ -412,6 +412,8 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
   kind: 'project' as const,
+  awayStart: null,
+  awayEnd: null,
   ...overrides,
 });
 

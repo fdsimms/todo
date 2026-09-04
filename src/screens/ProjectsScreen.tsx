@@ -50,6 +50,7 @@ import { spacing, font, fontWeight, radius, interaction, type Colors } from '../
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { formatDeadlineDate } from '../utils/dateUtils';
+import { describeAwaySpan } from '../utils/awayDates';
 import type { Project } from '../types';
 
 // One date, one shape. This used to render a range and both of its halves
@@ -57,6 +58,26 @@ import type { Project } from '../types';
 // Project.deadline for why the start half is gone.
 function deadlineLabel(project: Project): string | null {
   return project.deadline ? `By ${formatDeadlineDate(project.deadline)}` : null;
+}
+
+/**
+ * The one caption under a project's title: its away span if it has a live one,
+ * otherwise its deadline.
+ *
+ * The span wins the slot rather than sitting beside the deadline, because for
+ * a trip the two say nearly the same thing and the span says it better — the
+ * date you have to be ready by is your departure, not a target you set. A
+ * project holding both still shows its deadline once the trip is over, since
+ * describeAwaySpan goes quiet then (see docs/arch/away-dates.md).
+ *
+ * `pastWindow` belongs to the deadline alone, so an away caption never wears
+ * the Overdue prefix: a trip in three days is not late for anything.
+ */
+function projectCaption(project: Project): { text: string; overdue: boolean } | null {
+  const away = describeAwaySpan(project);
+  if (away) return { text: away, overdue: false };
+  const deadline = deadlineLabel(project);
+  return deadline ? { text: deadline, overdue: true } : null;
 }
 
 // The add button, naming what a release right now would do.
@@ -394,7 +415,7 @@ export function ProjectsScreen() {
     const project = item.project;
     const progress = progressByProject.get(project.id) ?? { done: 0, total: 0 };
     const pastWindow = isProjectPastWindow(project, progress);
-    const deadlineText = deadlineLabel(project);
+    const caption = projectCaption(project);
     const selected = selectedIds.has(project.id);
     // Only the active list needs this — completed projects already show their
     // own restore affordance, and an archived one is filed away regardless.
@@ -408,7 +429,7 @@ export function ProjectsScreen() {
         project={project}
         progress={progress}
         pastWindow={pastWindow}
-        deadlineText={deadlineText}
+        caption={caption}
         projectFilter={projectFilter}
         allDone={allDone}
         selectionMode={selectionMode}
@@ -603,14 +624,14 @@ export function ProjectsScreen() {
  * `whenAction`.
  */
 function ProjectRow({
-  project, progress, pastWindow, deadlineText, projectFilter, allDone,
+  project, progress, pastWindow, caption, projectFilter, allDone,
   selectionMode, selected, isActive, drag, colors, styles,
   onPress, onToggleSelect, onSwipeSelect, onQuickUnarchive, onQuickUncomplete, onQuickComplete, onEdit,
 }: {
   project: Project;
   progress: { done: number; total: number };
   pastWindow: boolean;
-  deadlineText: string | null;
+  caption: { text: string; overdue: boolean } | null;
   projectFilter: ProjectFilter;
   allDone: boolean;
   selectionMode: boolean;
@@ -731,9 +752,12 @@ function ProjectRow({
                 <Text style={styles.progressText}>{progress.done}/{progress.total}</Text>
               </View>
             )}
-            {deadlineText && (
-              <Text style={[styles.rangeText, pastWindow && { color: colors.orange }]} numberOfLines={1}>
-                {pastWindow ? `Overdue · ${deadlineText}` : deadlineText}
+            {caption && (
+              <Text
+                style={[styles.rangeText, caption.overdue && pastWindow && { color: colors.orange }]}
+                numberOfLines={1}
+              >
+                {caption.overdue && pastWindow ? `Overdue · ${caption.text}` : caption.text}
               </Text>
             )}
           </View>

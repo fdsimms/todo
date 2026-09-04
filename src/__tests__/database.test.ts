@@ -1658,6 +1658,8 @@ describe('Projects', () => {
     reviewDeclinedAt: null,
     backfillDismissedFields: [],
     kind: 'project' as const,
+    awayStart: null,
+    awayEnd: null,
     ...overrides,
   });
 
@@ -1867,6 +1869,8 @@ describe('backup and restore', () => {
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
       kind: 'project' as const,
+      awayStart: null,
+      awayEnd: null,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');

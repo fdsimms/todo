@@ -1,9 +1,14 @@
 # Away dates: a project that knows when you are gone
 
-**Status: designed, not built.** Nothing in this file exists in the code yet. It is
-here because the design outgrew a conversation, and because most of the argument
-is about *fitting* — which existing rule each decision falls out of — which is the
-part that gets re-derived wrongly if it is not written down.
+**Status: partly built.** The span itself and its first two readers are in
+(`src/utils/awayDates.ts`, `Project.awayStart`/`awayEnd`, the two editor rows,
+the project card's caption, and the look-ahead prefill). Everything else here —
+the picker cue, scheduled vacation mode, the trip moving, the template
+nomination, the destination and its forecast — is designed and not built.
+
+It is written down because the design outgrew a conversation, and because most
+of the argument is about *fitting* — which existing rule each decision falls out
+of — which is the part that gets re-derived wrongly if it is not recorded.
 
 Read it before building any of it, and before adding a fifth half-implementation
 of "the user is away from home" (see below for the four that already exist).
@@ -191,9 +196,16 @@ planner what you would rather not do, never what you may not do.**
 
 ### Display
 
-`deadlineLabel` in `ProjectsScreen` is one function feeding one render site, and
-the away span goes there. `isProjectPastWindow` gains a "the trip is over"
-reading.
+`deadlineLabel` in `ProjectsScreen` fed one render site, and the away span goes
+there through `projectCaption` beside it.
+
+**The span wins the slot rather than sitting beside the deadline.** For a trip
+the two say nearly the same thing and the span says it better: the date you have
+to be ready by is your departure, not a target you set. A project holding both
+still shows its deadline once the trip is over, because `describeAwaySpan` goes
+quiet then. And `isProjectPastWindow` belongs to the deadline alone, so an away
+caption never wears the Overdue prefix — a trip in three days is not late for
+anything.
 
 Copy stays literal, per the user-facing copy rules in `CLAUDE.md`: "Leaves in 6
 days", "Away Nov 3 to Nov 10", "Back Tuesday". Not "6 sleeps".
@@ -621,10 +633,6 @@ new model, and it keeps the plan somewhere the app can already read.
   options object, which would also unblock the other things a template cannot set.
   It is the one refactor here that is not about trips, so it deserves a deliberate
   decision rather than being drifted into.
-- **What the away span does to `deadline` on a project that has both.** The trip
-  case says leave `deadline` alone, but the card then has two dates to render and
-  `deadlineLabel` is one function. Probably: the span wins the slot and `deadline`
-  is only drawn when there is no span. Not settled.
 - **Whether an `awayPrep` generated task is worth a twentieth generator.** "Anything
   to do before Japan?", raised on a lead day, linking into the look-ahead sheet
   scoped to the trip. Structurally identical to `weekendNudge`: a span, a lead

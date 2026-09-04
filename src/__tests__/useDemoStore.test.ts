@@ -28,6 +28,7 @@ import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
+import { awaySpanOf, awayStatus, awayNights, nextAwayProject } from '../utils/awayDates';
 import { pantryEntries } from '../utils/grocerySuggest';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -2508,6 +2509,25 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(review!.category).toBe('Calendar Events');
     expect(useSettingsStore.getState().calendarEventCategory).toBe('Calendar Events');
     expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+  });
+
+  it('seeds a trip carrying away dates', () => {
+    // The span is invisible until a project has one: with no trip seeded, the
+    // editor's two rows read as a feature the app doesn't have.
+    const { projects } = useProjectStore.getState();
+    const trip = projects.find(p => p.awayStart !== null);
+    expect(trip).toBeDefined();
+    expect(trip!.title).toBe('Lisbon, with Mia');
+
+    const span = awaySpanOf(trip!)!;
+    expect(span).not.toBeNull();
+    expect(span.end).not.toBeNull();
+    expect(awayNights(span)).toBe(7);
+
+    // Ahead of today, so the card shows the countdown rather than the away
+    // state, and so nextAwayProject has something live to find.
+    expect(awayStatus(span, new Date())!.phase).toBe('before');
+    expect(nextAwayProject(projects, new Date())!.project.id).toBe(trip!.id);
   });
 
   it('seeds the bare-weekend nudge and the project it quotes', () => {

@@ -1322,6 +1322,15 @@ export function initDatabase(): void {
     // Null on every existing row — none of them were spawned by the rule.
     // See Task.followUpTaskSourceTitle.
     'ALTER TABLE tasks ADD COLUMN extra_task_source_title TEXT',
+    // Null on every existing row: a project is a trip only once somebody says
+    // it is, and there is nothing to infer it from — no title reading, no
+    // reading of `kind` (see Project.awayStart for why not). Deliberately new
+    // columns rather than reviving `target_start_date`, which stays unread:
+    // that field meant "a target to start by" and these mean "the days I am
+    // not here", and quietly changing what a column means for every install
+    // that already has one is the kind of thing a comment cannot undo.
+    'ALTER TABLE projects ADD COLUMN away_start TEXT',
+    'ALTER TABLE projects ADD COLUMN away_end TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4819,6 +4828,8 @@ function rowToProject(row: Record<string, unknown>): Project {
     // a column added later, or a row from a peer on a newer build, must not
     // make somebody's project undrawable. See Project.kind.
     kind: row.kind === 'list' ? 'list' : 'project',
+    awayStart: (row.away_start as string) ?? null,
+    awayEnd: (row.away_end as string) ?? null,
   };
 }
 
@@ -4829,7 +4840,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, backfill_dismissed_fields, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, backfill_dismissed_fields, kind, away_start, away_end) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -4837,20 +4848,22 @@ export function dbInsertProject(project: Project): void {
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.weekendSource ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
+      project.awayStart, project.awayEnd,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, backfill_dismissed_fields=?, kind=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.weekendSource ? 1 : 0,
-      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind, project.id,
+      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
+      project.awayStart, project.awayEnd, project.id,
     ]
   );
 }

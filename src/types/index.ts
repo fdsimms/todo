@@ -679,6 +679,58 @@ export interface Project {
    * on completion is a form, not a list.
    */
   kind: ProjectKind;
+  /**
+   * The day you leave, for a project that is a trip — and `awayEnd` below is
+   * the day you are back. See `docs/arch/away-dates.md`, which is the design
+   * these are the first slice of and is not optional reading before adding a
+   * reader of them.
+   *
+   * They exist because four parts of the app already serve being away from
+   * home and none of them can tell the others when the trip is:
+   * `lookAhead`'s `{ start, cutoff, awayEnd }`, a template's two anchors,
+   * `isAwayList` in groceries, and vacation mode. Two of those carry an
+   * apology comment for the missing field — `LookAheadSheet` has to *ask*
+   * when you get back, because `vacationStart` is stamped at switch-on and so
+   * records when you went rather than when you are going, and
+   * `applyTemplate` says of a run's start anchor that it "has nowhere to go
+   * now that a project carries one date rather than a range".
+   *
+   * **Not a `ProjectKind`.** That field changes presentation and never
+   * behaviour, and its own note says it should stay that small. These change
+   * behaviour, so they are their own fields — the same call `weekendSource`
+   * made, and for the reason it gives.
+   *
+   * **This is not `targetStartDate` coming back.** That pair was deleted
+   * because the start half had, across its whole life, one reader: half a
+   * label. Departure is load-bearing in a way it never was — it is
+   * `lookAhead`'s cutoff, and the day you leave is not a day you have. The
+   * bar that deletion set is *readers*, and it is why nothing should ever add
+   * a span here without them.
+   *
+   * **Both are stored at noon** (`awayNoonIso`), so a span entered at home
+   * and read after a flight cannot move by a calendar day.
+   *
+   * **The span never blocks anything.** People do things on holiday, and a
+   * reader that refuses a day inside it is worse than no span at all, because
+   * then the trip stops being entered and every other reader loses its input.
+   * It ranks, it never gates. Vacation mode is already opt-in per row
+   * (`Task.vacationPause`, `Category.hideOnVacation`), and that stays the
+   * only thing that hides anything.
+   */
+  awayStart: string | null;
+  /**
+   * The day you are back, or null for a departure with no return date yet.
+   *
+   * Deliberately not symmetric with `awayStart`: it is ignored unless there is
+   * a start and it falls after it (see `awaySpanOf`), and a start without an
+   * end is a legal, meaningful state rather than a half-filled form — exactly
+   * `LookAheadWindow`'s own `awayEnd: null`, "a boundary but not a trip".
+   *
+   * The day itself is *not* away: containment is `start <= day < end`, so a
+   * trip out on the 3rd and back on the 10th is seven nights, which is what
+   * `templateQuestions.answerFromDates` already means by 'nights'.
+   */
+  awayEnd: string | null;
 }
 
 /**

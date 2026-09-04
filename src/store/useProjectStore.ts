@@ -172,7 +172,7 @@ interface ProjectStore {
   initialized: boolean;
   initialize: () => void;
   createProject: (title: string, deadline: string | null, kind?: ProjectKind) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing'>>) => void;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -244,6 +244,13 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // project, and every field above means the same thing either way. See
       // Project.kind.
       kind,
+      // No span: a project is a trip only once somebody enters the dates, and
+      // there is nothing here to infer them from. Deliberately not a parameter
+      // — createProject is already positional to its limit, and the one caller
+      // that will want to seed a span (a template run) is the reason
+      // docs/arch/away-dates.md leaves the options-object refactor open.
+      awayStart: null,
+      awayEnd: null,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));

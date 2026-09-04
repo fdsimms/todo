@@ -26,6 +26,7 @@ import { dbGetFocusSessionLog, dbInsertFocusSessionRecord } from '../db/database
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
+import { awayNoonIso } from './awayDates';
 import { generatedBy } from './generatedTasks';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
@@ -810,6 +811,24 @@ export function seedDemoData(): void {
   // rule. See Project.kind.
   const doctor = createProject('Questions for Dr. Okafor', null, 'list');
   updateProject(doctor.id, { category: 'Ideas' });
+
+  // A trip, so the away span is visible as a thing the app has rather than as
+  // two empty rows in the project editor (see Project.awayStart). Everything
+  // it buys is invisible until a project carries dates: the card's countdown,
+  // and the look-ahead sheet opening on the trip instead of asking for both
+  // ends of it. Far enough out that the countdown reads as one ("Leaves in 24
+  // days") rather than as the away state, which needs a trip in progress and
+  // would put the demo mid-flight on every screenshot.
+  const lisbon = createProject('Lisbon, with Mia', null);
+  updateProject(lisbon.id, {
+    category: 'Ideas',
+    awayStart: awayNoonIso(addDays(today, 24)),
+    awayEnd: awayNoonIso(addDays(today, 31)),
+  });
+  ['Renew passport', 'Book the airport parking', 'Sort out data roaming'].forEach((title, i) => {
+    const t = addTask({ title, dueDate: addDays(today, 10 + i * 4).toISOString() });
+    addExistingToProject(t.id, lisbon.id);
+  });
   const asked = addTask({
     title: 'Is the new dose meant to make me this tired?',
     deliverableKind: 'text',

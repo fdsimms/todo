@@ -54,6 +54,9 @@ import { deloadUpdates } from '../utils/taskMoves';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useProjectStore } from '../store/useProjectStore';
+import { useShallow } from 'zustand/react/shallow';
+import { nextAwayProject } from '../utils/awayDates';
 import type { Task } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
@@ -99,6 +102,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
   const deloadTasks = useTaskStore(s => s.deloadTasks);
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
   const vacationEnd = useSettingsStore(s => s.vacationEnd);
+  const projects = useProjectStore(useShallow(s => s.projects));
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const calendarEvents = useCalendarStore(s => s.events);
   const calendarLoaded = useCalendarStore(s => s.loaded);
@@ -117,8 +121,11 @@ export function LookAheadSheet({ visible, onClose }: Props) {
    * `vacationEnd` is ever a future date, so only it can prefill anything here.
    */
   const [backOn, setBackOn] = useState<Date | null>(null);
-  /** True while `backOn` is still the one vacation mode supplied. */
-  const [backFromVacation, setBackFromVacation] = useState(false);
+  /**
+   * Where a prefilled `backOn` came from, so the hint can say. Null once the
+   * reader picks their own.
+   */
+  const [backSource, setBackSource] = useState<'vacation' | string | null>(null);
   /** Which row the date picker is currently answering for. */
   const [picking, setPicking] = useState<'cutoff' | 'backOn' | null>(null);
   const [mode, setMode] = useState<Mode>('read');
@@ -135,14 +142,28 @@ export function LookAheadSheet({ visible, onClose }: Props) {
   useEffect(() => {
     if (!visible) return;
     const today = getLogicalToday(dayResetTime);
-    // A fortnight: the span this was built for, and long enough to hold a
-    // recurrence or two where "next Monday" would open on a window too short
-    // to say anything.
-    setCutoff(addDays(today, 14));
-    const scheduledEnd = vacationEnd ? new Date(vacationEnd) : null;
-    const usable = scheduledEnd !== null && scheduledEnd > today;
-    setBackOn(usable ? scheduledEnd : null);
-    setBackFromVacation(usable);
+    // A trip answers both rows at once and is the better answer to each, so it
+    // is asked first: its departure is exactly this window's cutoff ("the day
+    // you leave is not a day you have") and its return is exactly `backOn`.
+    // This is the note on `backOn` above being cashed in — the sheet had to ask
+    // because nothing in the app held the dates, and now something can.
+    const trip = nextAwayProject(projects, today, dayResetTime);
+    if (trip) {
+      setCutoff(trip.span.start);
+      setBackOn(trip.span.end);
+      // A departure with no return prefills the cutoff and leaves the second
+      // row to be answered, so there is no source to name for it.
+      setBackSource(trip.span.end ? trip.project.title : null);
+    } else {
+      // A fortnight: the span this was built for, and long enough to hold a
+      // recurrence or two where "next Monday" would open on a window too short
+      // to say anything.
+      setCutoff(addDays(today, 14));
+      const scheduledEnd = vacationEnd ? new Date(vacationEnd) : null;
+      const usable = scheduledEnd !== null && scheduledEnd > today;
+      setBackOn(usable ? scheduledEnd : null);
+      setBackSource(usable ? 'vacation' : null);
+    }
     setMode('read');
     setPicking(null);
     setExpanded(new Set());
@@ -380,7 +401,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
                 haptics.tap();
                 animateLayout();
                 setBackOn(null);
-                setBackFromVacation(false);
+                setBackSource(null);
               }}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               accessibilityRole="button"
@@ -394,9 +415,11 @@ export function LookAheadSheet({ visible, onClose }: Props) {
         </TouchableOpacity>
       </View>
       <Text style={styles.dateHint}>
-        {backFromVacation
+        {backSource === 'vacation'
           ? 'Taken from the end date on vacation mode.'
-          : backOn
+          : backSource
+            ? `Taken from the away dates on ${backSource}.`
+            : backOn
             ? 'Anything falling before then is listed separately below.'
             : 'Set this to see what falls due while you are gone.'}
       </Text>
@@ -694,7 +717,7 @@ export function LookAheadSheet({ visible, onClose }: Props) {
             if (picking === 'backOn') {
               setBackOn(noon);
               // Picked by hand, so the hint stops crediting vacation mode for it.
-              setBackFromVacation(false);
+              setBackSource(null);
             } else {
               setCutoff(noon);
             }

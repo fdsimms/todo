@@ -19,6 +19,7 @@ import { CollapsibleField } from './CollapsibleField';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
+import { awayNoonIso } from '../utils/awayDates';
 import { EditorSheet } from './EditorSheet';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -94,6 +95,12 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [category, setCategory] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
+  // The away span (see Project.awayStart). Held as two dates rather than one
+  // range because that is what the columns are, and because the end is
+  // optional in a way the start is not.
+  const [awayStart, setAwayStart] = useState<Date | null>(null);
+  const [awayEnd, setAwayEnd] = useState<Date | null>(null);
+  const [pickingAway, setPickingAway] = useState<'start' | 'end' | null>(null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   // Collapsed to the chosen category until tapped, like every other editor.
@@ -115,6 +122,9 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setNotes(project.notes);
     setCategory(project.category);
     setDeadline(project.deadline ? new Date(project.deadline) : null);
+    setAwayStart(project.awayStart ? new Date(project.awayStart) : null);
+    setAwayEnd(project.awayEnd ? new Date(project.awayEnd) : null);
+    setPickingAway(null);
     setNudgeMode(nudgeModeOf(project));
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
@@ -162,6 +172,11 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       notes,
       category: resolveCategory(),
       deadline: deadline ? deadline.toISOString() : null,
+      // Stored at midday so a flight cannot move either boundary by a calendar
+      // day, and the end is dropped without a start because on its own it is
+      // indistinguishable from the deadline above. See utils/awayDates.
+      awayStart: awayStart ? awayNoonIso(awayStart) : null,
+      awayEnd: awayStart && awayEnd ? awayNoonIso(awayEnd) : null,
       ...nudgeFieldsFor(nudgeMode, nudgeCadenceDays),
       // Anything but a scheduled cadence leaves nothing for auto-scheduling to
       // trigger on, so the two can't disagree about whether this project is
@@ -248,6 +263,39 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
             onClear={() => { setDeadline(null); setShowDeadlinePicker(false); }}
             onCancel={() => setShowDeadlinePicker(false)}
+          />
+          <WhenPicker
+            visible={pickingAway !== null}
+            value={pickingAway === 'end' ? awayEnd : awayStart}
+            title={pickingAway === 'end' ? 'Coming back' : 'Leaving'}
+            showTimeOfDay={false}
+            showSuggest={false}
+            onConfirm={(date) => {
+              if (pickingAway === 'end') {
+                // Only a return strictly after the departure is kept, matching
+                // awaySpanOf's own refusal — an end on or before the start is
+                // a typo, and a span that contains no days is not one anybody
+                // entered on purpose. Backdating is still allowed for both:
+                // recording a trip that has already happened is a real thing
+                // to do, which is why allowPast is left at its default.
+                setAwayEnd(date && awayStart && date > awayStart ? date : null);
+              } else {
+                setAwayStart(date);
+                // A return before the new departure stops meaning anything, so
+                // it goes rather than being left to be silently ignored.
+                if (date && awayEnd && awayEnd <= date) setAwayEnd(null);
+              }
+              setPickingAway(null);
+            }}
+            onClear={() => {
+              if (pickingAway === 'end') setAwayEnd(null);
+              // Clearing the departure clears the return with it: an end with
+              // no start is dropped on save anyway, and leaving it on screen
+              // would show a value that no longer means anything.
+              else { setAwayStart(null); setAwayEnd(null); }
+              setPickingAway(null);
+            }}
+            onCancel={() => setPickingAway(null)}
           />
         </>
       }
@@ -339,6 +387,34 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           with the field it was denying. */}
       <Text style={styles.sectionFooter}>
         Optional. Shown on the project's card, with no effect on scheduling or when tasks appear. If it passes before the project's done, nothing happens automatically; it's just flagged so you can decide what to do.
+      </Text>
+
+      {/* The away span. Two rows rather than one range control because the end
+          is genuinely optional: a trip you have booked a flight out for and
+          not back from is a real state, and it is the one LookAheadWindow
+          already calls "a boundary but not a trip". The return row only
+          appears once there is a departure, so the asymmetry is visible
+          instead of being enforced by silently dropping what you typed. */}
+      <View style={[styles.card, { marginTop: spacing.lg }]}>
+        <EditorRow
+          icon="airplane-outline"
+          label="Leaving"
+          value={awayStart ? formatDeadlineDate(awayStart.toISOString()) : undefined}
+          onPress={() => setPickingAway('start')}
+          onClear={awayStart ? () => { setAwayStart(null); setAwayEnd(null); } : undefined}
+        />
+        {awayStart && (
+          <EditorRow
+            icon="home-outline"
+            label="Coming back"
+            value={awayEnd ? formatDeadlineDate(awayEnd.toISOString()) : undefined}
+            onPress={() => setPickingAway('end')}
+            onClear={awayEnd ? () => setAwayEnd(null) : undefined}
+          />
+        )}
+      </View>
+      <Text style={styles.sectionFooter}>
+        The days you're away from home. Look ahead uses them to show what's due while you're gone, and the project's card counts down to the day you leave. The day you come back doesn't count as a day away.
       </Text>
 
       {/* One question, three answers. "Include in nudges" and "Review cadence"
