@@ -10,6 +10,7 @@ import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
 import { TaskEditor } from '../components/TaskEditor';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { SearchField } from '../components/SearchField';
 import { SelectionDot } from '../components/SelectionDot';
@@ -152,6 +153,7 @@ export function ArchivedScreen() {
           },
         ] : undefined}
       />
+      <HubPills hub="history" active="Archived" />
 
       {archivedTasks.length > 0 && (
         <SearchField

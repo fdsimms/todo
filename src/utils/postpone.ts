@@ -183,7 +183,7 @@ export interface DriftEntry {
  * keep their identity across calls when nothing actually changed — rather
  * than `driftingTasks()`'s freshly-allocated `DriftEntry` wrappers, which
  * `useShallow` can never treat as equal to the previous render's and which
- * drove DriftScreen into an infinite render loop (#1626).
+ * drove StuckScreen into an infinite render loop (#1626).
  */
 export function driftingTaskList(tasks: readonly Task[], threshold: number): Task[] {
   return tasks

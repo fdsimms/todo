@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { View, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../../store/useSettingsStore';
@@ -22,6 +23,7 @@ import {
 } from '../../utils/retention';
 import { useFocusStore } from '../../store/useFocusStore';
 import { useColors } from '../../theme/ThemeContext';
+import { featureHidden } from '../../utils/simpleMode';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
@@ -88,6 +90,9 @@ export function DataResetSettings() {
 
   const colors = useColors();
   const styles = useMemo(() => makeSettingsStyles(colors), [colors]);
+  const navigation = useNavigation<any>();
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  const backfillHidden = featureHidden('backfillScreen', simpleMode);
 
   // Guards both backup rows against a second tap while the first is still
   // going. Export walks every table and restore rewrites them, and neither is
@@ -245,6 +250,29 @@ export function DataResetSettings() {
 
   return (
     <>
+      {/* Backfill was a row in the side menu, alongside Waiting and Drift. It
+          isn't a task list like those two: it fills in empty fields across
+          tasks, categories, projects, people and grocery items, which is
+          maintenance on your own data and belongs where the app's other
+          maintenance lives. Pushed from here as a card, the same as a settings
+          group, so it needs no tab of its own. */}
+      {!backfillHidden && (
+        <SettingsSection
+          label="Fill in"
+          footer="Goes through one field at a time and offers the items missing it, so a list that grew without estimates or categories can be tidied up without opening every task."
+        >
+          <SettingsRow
+            entryId="backfill"
+            icon="flash-outline"
+            iconColor={colors.accent}
+            label="Backfill"
+            hint="Fill in fields you left empty, one item at a time"
+            chevron
+            onPress={() => navigation.navigate('Backfill' as never)}
+          />
+        </SettingsSection>
+      )}
+
       <SettingsSection
         label="Backup"
         footer="Everything lives on this device and nowhere else, so a backup is the only copy that survives losing the phone. The file holds your tasks, projects, stacks, templates, categories and settings, but never your API key, since a backup is a file you send places. Restoring replaces what's in the app rather than merging into it."

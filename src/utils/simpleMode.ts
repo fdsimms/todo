@@ -27,13 +27,16 @@ import { TASK_KINDS } from './taskKinds';
  *    `EditorGroupRow` already declares whether it holds a value.
  *
  * **Screens split two ways under that second rule**, which is the one
- * non-obvious thing here. Calendar, Stats, Backfill, Waiting and Drift are
- * *lenses*: every task they show is reachable from Today or Search, so hiding
- * them costs nothing and they go unconditionally. Stacks and Templates hold
- * objects that live nowhere else, so hiding them while the user has some would
- * strand real data — those two survive as long as they hold anything (see
- * `screenShown`). An install with no stacks and no templates loses both
+ * non-obvious thing here. Calendar, Stats, Backfill and Stuck are *lenses*:
+ * every task they show is reachable from Today or Search, so hiding them
+ * costs nothing and they go unconditionally. Stacks, Templates, People and
+ * Mood hold objects that live nowhere else, so hiding them while the user has
+ * some would strand real data — those four survive as long as they hold
+ * anything (see `screenShown`). An install with none of them loses all four
  * rows; an install with four stacks keeps the one row that can edit them.
+ * Mood was declared one of the four from the start but had no branch in
+ * `screenShown` for a long time, so it alone was shown unconditionally,
+ * including on an install with no entries at all.
  *
  * The list below is the whole scope of the feature. Adding an id here does
  * nothing on its own — a gate has to exist for it — so `simpleMode.test.ts`
@@ -71,8 +74,7 @@ export type SimpleFeatureId =
   | 'statsScreen'
   | 'moodScreen'
   | 'backfillScreen'
-  | 'waitingScreen'
-  | 'driftScreen'
+  | 'stuckScreen'
   // Everything Today offers besides the list itself.
   | 'focusSessions'
   | 'suggestedPins'
@@ -119,7 +121,7 @@ export interface SimpleFeature {
 /** Heading for each area's list of features, in Settings. */
 export const SIMPLE_AREA_LABELS: Record<SimpleArea, string> = {
   tasks: 'Task options',
-  screens: 'Screens in the menu',
+  screens: 'Screens',
   today: 'On the Today screen',
   kitchen: 'Groceries and recipes',
 };
@@ -161,8 +163,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // any would strand them with no way back to them.
   { id: 'moodScreen', label: 'Mood', area: 'screens', screen: 'Mood', contentScreen: true },
   { id: 'backfillScreen', label: 'Backfill', area: 'screens', screen: 'Backfill' },
-  { id: 'waitingScreen', label: 'Waiting', area: 'screens', screen: 'Waiting' },
-  { id: 'driftScreen', label: 'Drift', area: 'screens', screen: 'Drift' },
+  { id: 'stuckScreen', label: 'Stuck', area: 'screens', screen: 'Stuck' },
 
   { id: 'focusSessions', label: 'Focus sessions', area: 'today' },
   { id: 'suggestedPins', label: 'Suggested pins', area: 'today' },
@@ -175,7 +176,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'barcodeScanning', label: 'Barcode scanning', area: 'kitchen' },
   { id: 'receiptImport', label: 'Receipt scanning', area: 'kitchen' },
   { id: 'shoppingTrips', label: 'Shopping trips', area: 'kitchen' },
-  { id: 'pantryTracking', label: 'Pantry and freezer tracking', area: 'kitchen' },
+  { id: 'pantryTracking', label: 'Pantry and freezer tracking', area: 'kitchen', screen: 'Kitchen' },
   { id: 'productVariants', label: 'Brands and product variants', area: 'kitchen' },
   { id: 'itemChoices', label: 'Either/or items', area: 'kitchen' },
   { id: 'substitutes', label: 'Substitutes and standing swaps', area: 'kitchen' },
@@ -214,11 +215,17 @@ export function featureShown(id: SimpleFeatureId, simpleMode: boolean, set = fal
 }
 
 /**
- * Route names dropped from the menu outright.
+ * Route names dropped outright — from the menu, or from Settings where the
+ * screen is reached from there (Backfill).
  *
- * All five are lenses over tasks that Today and Search already reach, so
- * nothing here can strand data. Stacks and Templates are deliberately *not*
- * in this set — see `screenShown`.
+ * All five are lenses over tasks, fields and pantry state that Today, Search
+ * and the grocery list already reach, so nothing here can strand data. Stacks,
+ * Templates, People and Mood are deliberately *not* in this set — see
+ * `screenShown`. Pantry is here rather than being a special case in the
+ * navigator and a second `featureHidden` call in `HubPills`: it is the screen
+ * for the per-item pantry, freezer and use-by state the mode also takes off
+ * the item sheet, so with nothing left to fill it there is nothing left for it
+ * to show.
  */
 export const SIMPLE_HIDDEN_SCREENS: ReadonlySet<string> = new Set(
   SIMPLE_FEATURES.filter(f => f.screen && !f.contentScreen).map(f => f.screen!)
@@ -240,13 +247,18 @@ export const SIMPLE_CONTENT_SCREENS: ReadonlySet<string> = new Set(
 export function screenShown(
   routeName: string,
   simpleMode: boolean,
-  contentCounts: { stacks: number; templates: number; people?: number } = { stacks: 0, templates: 0 },
+  contentCounts: { stacks: number; templates: number; people?: number; mood?: number } = { stacks: 0, templates: 0 },
 ): boolean {
   if (!simpleMode) return true;
   if (SIMPLE_HIDDEN_SCREENS.has(routeName)) return false;
   if (routeName === 'Stacks') return contentCounts.stacks > 0;
   if (routeName === 'Templates') return contentCounts.templates > 0;
   if (routeName === 'People') return (contentCounts.people ?? 0) > 0;
+  // Mood was declared a content screen from the start and never got its branch,
+  // so it was the one of the four shown unconditionally — the row stayed on an
+  // install with no entries at all, which is the opposite of what the flag on
+  // it says. Every caller passes the count now.
+  if (routeName === 'Mood') return (contentCounts.mood ?? 0) > 0;
   return true;
 }
 

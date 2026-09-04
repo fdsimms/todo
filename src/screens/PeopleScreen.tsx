@@ -9,6 +9,7 @@ import type { Person } from '../types';
 import { usePersonStore, displayNameOf } from '../store/usePersonStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { ReorderableList } from '../components/ReorderableList';
 import { PersonEditor } from '../components/PersonEditor';
@@ -190,6 +191,7 @@ export function PeopleScreen() {
           // bulk-selecting list — no header button needed.
         ]}
       />
+      <HubPills hub="organize" active="People" />
 
       {visiblePeople.length === 0 ? (
         <EmptyState

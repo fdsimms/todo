@@ -138,7 +138,7 @@ describe('the tip content itself', () => {
     const routes = new Set([
       'Today', 'Groceries', 'Projects', 'Search', 'Recipes', 'MealPlan', 'Kitchen',
       'Calendar', 'Categories', 'Tags', 'Stacks', 'Templates', 'Logbook', 'Stats',
-      'Backfill', 'Waiting', 'Drift', 'Archived', 'Tips', 'Settings',
+      'Mood', 'People', 'Cookbooks', 'Backfill', 'Stuck', 'Archived', 'Tips', 'Settings',
     ]);
     for (const t of TIPS) {
       if (!t.link) continue;

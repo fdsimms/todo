@@ -20,8 +20,7 @@ import { StatsScreen } from '../screens/StatsScreen';
 import { MoodScreen } from '../screens/MoodScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { BackfillScreen } from '../screens/BackfillScreen';
-import { WaitingScreen } from '../screens/WaitingScreen';
-import { DriftScreen } from '../screens/DriftScreen';
+import { StuckScreen } from '../screens/StuckScreen';
 import { TemplatesScreen } from '../screens/TemplatesScreen';
 import { RecipesScreen } from '../screens/RecipesScreen';
 import { RecipeDetailScreen } from '../screens/RecipeDetailScreen';
@@ -50,9 +49,11 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { hasRunningRecipeTimer } from '../utils/recipeTimer';
 import { screenShown } from '../utils/simpleMode';
+import { NAV_HUBS, NAV_MENU_ROWS } from '../utils/navHubs';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { useMoodStore } from '../store/useMoodStore';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createNativeStackNavigator();
@@ -75,7 +76,18 @@ const EDGE_WIDTH = 20;
 // nobody can see.
 const HIDDEN = { tabBarButton: () => null, tabBarItemStyle: { display: 'none' as const } };
 
-const DRAWER_TABS = new Set(['Search', 'Calendar', 'Tags', 'Categories', 'Stacks', 'Templates', 'Logbook', 'Stats', 'Mood', 'Backfill', 'Waiting', 'Drift', 'Archived', 'Recipes', 'MealPlan', 'Kitchen', 'Cookbooks']);
+// Derived from the menu rather than written out again: every route the side
+// menu can reach, minus the three that have a bottom tab of their own. A hub
+// contributes all of its members, not just the one its row opens, which is
+// what makes the pill row's siblings restorable too.
+const MENU_ROUTES: ReadonlySet<string> = new Set(
+  NAV_MENU_ROWS.flatMap(row =>
+    row.kind === 'screen' ? [row.destination.route] : row.hub.members.map(m => m.route))
+);
+const VISIBLE_TABS: ReadonlySet<string> = new Set(['Today', 'Groceries', 'Projects']);
+const DRAWER_TABS: ReadonlySet<string> = new Set(
+  [...MENU_ROUTES].filter(r => !VISIBLE_TABS.has(r))
+);
 
 // Every screen it's safe to reopen the app directly on: the visible bottom
 // tabs plus every drawer screen, none of which take a route param. Excludes
@@ -84,7 +96,7 @@ const DRAWER_TABS = new Set(['Search', 'Calendar', 'Tags', 'Categories', 'Stacks
 // app can't invent on a cold launch). Backs the lastVisitedScreen setting
 // (useSettingsStore) so the app reopens where it was left rather than always
 // on Today — see initialRouteName below.
-const RESTORABLE_SCREENS = new Set(['Today', 'Groceries', 'Projects', ...DRAWER_TABS]);
+const RESTORABLE_SCREENS = new Set([...VISIBLE_TABS, ...DRAWER_TABS]);
 
 // The Groceries/Recipes/Meal plan/Kitchen hub (SideMenuDrawer's
 // GROCERIES_HUB_TABS) drops out of the drawer entirely while kitchenEnabled is
@@ -92,7 +104,9 @@ const RESTORABLE_SCREENS = new Set(['Today', 'Groceries', 'Projects', ...DRAWER_
 // offers a way back to. Checked only on the read side below — kitchenEnabled
 // can't change out from under an *open* session onto one of these screens,
 // since turning it off removes the only way to reach them.
-const KITCHEN_SCREENS = new Set(['Groceries', 'Recipes', 'MealPlan', 'Kitchen', 'Cookbooks']);
+const KITCHEN_SCREENS: ReadonlySet<string> = new Set(
+  (NAV_HUBS.find(h => h.id === 'kitchen')?.members ?? []).map(m => m.route)
+);
 
 // RootStack cards, not tabs. Pushing one must leave the drawer's highlight on
 // whichever tab you pushed it *from*, so these never become the active tab.
@@ -101,6 +115,11 @@ const KITCHEN_SCREENS = new Set(['Groceries', 'Recipes', 'MealPlan', 'Kitchen', 
 const PUSHED_ROUTES = new Set([
   'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail',
   'RecipeDetail', 'PersonDetail', 'CookbookDetail',
+  // Reached from Settings rather than from the menu — it fills in empty fields
+  // across tasks, categories, projects, people and grocery items, which is
+  // maintenance rather than a place to work. A pushed card like SettingsGroup,
+  // so it needs no tab and can't be restored onto at launch.
+  'Backfill',
 ]);
 
 function MorePlaceholder() {
@@ -220,9 +239,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
       <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
       <Tab.Screen name="Mood" component={MoodScreen} options={HIDDEN} />
-      <Tab.Screen name="Backfill" component={BackfillScreen} options={HIDDEN} />
-      <Tab.Screen name="Waiting" component={WaitingScreen} options={HIDDEN} />
-      <Tab.Screen name="Drift" component={DriftScreen} options={HIDDEN} />
+      <Tab.Screen name="Stuck" component={StuckScreen} options={HIDDEN} />
       <Tab.Screen name="Archived" component={ArchivedScreen} options={HIDDEN} />
       <Tab.Screen name="Tips" component={TipsScreen} options={HIDDEN} />
     </Tab.Navigator>
@@ -248,11 +265,8 @@ function initialScreenFromSettings(): string {
     stacks: useTaskGroupStore.getState().groups.length,
     templates: useTemplateStore.getState().templates.length,
     people: usePersonStore.getState().people.length,
+    mood: useMoodStore.getState().logs.length,
   })) return 'Today';
-  // And Pantry, whose only route in is the hub pill row simplified mode
-  // removes (see GroceriesHubPills). It isn't a `screenShown` case because it
-  // isn't a menu row — the drawer never listed it.
-  if (simpleMode && lastVisitedScreen === 'Kitchen') return 'Today';
   return lastVisitedScreen;
 }
 
@@ -363,6 +377,11 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="SettingsGroup"
             component={SettingsGroupScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="Backfill"
+            component={BackfillScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen

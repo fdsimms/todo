@@ -625,6 +625,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   ...AI_FEATURE_ENTRIES,
 
   // Data & reset
+  { id: 'backfill', groupId: 'dataReset', label: 'Backfill', section: 'Fill in', simple: true,
+    keywords: ['missing', 'empty', 'blank', 'fields', 'estimate', 'category', 'tidy', 'sweep'] },
   { id: 'syncEnabled', groupId: 'dataReset', label: 'Sync with iCloud', section: 'Sync',
     keywords: ['devices', 'mac', 'laptop', 'phone', 'across', 'same'] },
   { id: 'syncNow', groupId: 'dataReset', label: 'Sync now', section: 'Sync',

@@ -18,6 +18,7 @@ import { startOfWeek } from 'date-fns/startOfWeek';
 import { isSameDay } from 'date-fns/isSameDay';
 import { useTaskStore } from '../store/useTaskStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { bestStreakOf, isStreakAtRecord } from '../utils/streakRecord';
 import { useColors } from '../theme/ThemeContext';
@@ -419,6 +420,7 @@ export function StatsScreen() {
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       <ScreenHeader title="Stats" subtitle={hasTaskData ? `${done.length} completed` : undefined} />
+      <HubPills hub="history" active="Stats" />
 
       {!hasTaskData && !hasCooking && !hasProjectData && !hasFocusData ? (
         <EmptyState

@@ -13,6 +13,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { ReorderableList } from '../components/ReorderableList';
 import { CategoryEditor } from '../components/CategoryEditor';
@@ -56,6 +57,7 @@ export function CategoriesScreen() {
           ? `${allCategories.length} ${allCategories.length === 1 ? 'category' : 'categories'}`
           : undefined}
       />
+      <HubPills hub="organize" active="Categories" />
 
       {allCategories.length === 0 ? (
         <EmptyState

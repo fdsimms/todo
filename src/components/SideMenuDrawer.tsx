@@ -13,11 +13,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SafeBlurView } from './SafeBlurView';
 import { ScrollEdgeFade } from './ScrollEdgeFade';
+import { SearchField } from './SearchField';
 import { SheetScrim } from './SheetScrim';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
-import { animation, font, fontWeight, interaction, radius, spacing } from '../theme';
+import { animation, font, fontWeight, iconSize, interaction, radius, spacing } from '../theme';
 import { useScrollEdgeFade } from '../hooks/useScrollEdgeFade';
 import { haptics } from '../utils/haptics';
 import { useReduceMotion } from '../utils/useReduceMotion';
@@ -27,86 +28,19 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
-import { screenShown } from '../utils/simpleMode';
+import { useMoodStore } from '../store/useMoodStore';
+import {
+  hubSubtitle, menuDestinations, menuSearchTerms, rowEntryRoute, searchMenu, visibleMenuRows,
+  type NavMenuRow, type NavSearchResult,
+} from '../utils/navHubs';
 import { tipsFor } from '../utils/tips';
 
-const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.72);
-
-interface MenuItem {
-  name: string;
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  label: string;
-  /** Other tab names this row should also read as "active" for — the
-   *  Groceries/Recipes/Meal plan/Kitchen quartet now shares one row and a
-   *  `GroceriesHubPills` switcher inside each screen, so the row must stay
-   *  highlighted across all four. */
-  alsoActiveFor?: string[];
-}
-
-// Groceries, Recipes, Meal plan and Kitchen share one row: four screens
-// tightly coupled around a single kitchen workflow, switched via the pill row
-// each of them renders under its header (`GroceriesHubPills`) rather than
-// four separate drawer taps. The row always opens Groceries; the pills handle
-// getting to the other three once you're in.
-const GROCERIES_HUB_TABS = ['Groceries', 'Recipes', 'MealPlan', 'Kitchen'];
-
-interface MenuItemWithGate extends MenuItem {
-  /** Dropped from the menu while `kitchenEnabled` is off. */
-  kitchen?: boolean;
-}
-
-/**
- * Which rows simplified mode drops is decided by `screenShown` rather than a
- * flag here, because two of them are conditional: Stacks and Templates hold
- * objects reachable from nowhere else, so they stay for as long as they hold
- * any. See `src/utils/simpleMode.ts`.
- */
-
-const MENU_ITEMS: MenuItemWithGate[] = [
-  { name: 'Today', icon: 'checkbox-outline', label: 'Tasks' },
-  // Search moved out of the bottom tab bar to make room for Groceries there.
-  // It keeps its pull-to-refresh gesture on Today/Later/Unscheduled/Inbox
-  // (opens QuickSearchModal) — this row is the way to the full Search screen.
-  { name: 'Search', icon: 'search-outline', label: 'Search' },
-  // Sits with Tasks rather than down among Logbook/Archived: it's a peer
-  // surface you go to on purpose, not somewhere things end up.
-  { name: 'Groceries', icon: 'cart-outline', label: 'Groceries & Meals', alsoActiveFor: GROCERIES_HUB_TABS, kitchen: true },
-  // Right under the hub row it's a shelf for, rather than off with
-  // Categories/Tags: it groups recipes, not tasks.
-  { name: 'Cookbooks', icon: 'library-outline', label: 'Cookbooks', kitchen: true },
-  // Sits directly under Tasks: it's another way of reading the same tasks,
-  // where everything below it groups them by something other than a date.
-  { name: 'Calendar', icon: 'calendar-outline', label: 'Calendar' },
-  { name: 'Categories', icon: 'folder-outline', label: 'Categories' },
-  { name: 'Tags', icon: 'pricetag-outline', label: 'Tags' },
-  // With the other ways of grouping the same tasks, rather than down among
-  // Logbook/Archived: a person is something a task can belong to, the same as
-  // a category or a stack, not somewhere tasks end up.
-  { name: 'People', icon: 'people-outline', label: 'People' },
-  { name: 'Stacks', icon: 'layers-outline', label: 'Stacks' },
-  { name: 'Templates', icon: 'copy-outline', label: 'Templates' },
-  { name: 'Logbook', icon: 'book-outline', label: 'Logbook' },
-  { name: 'Stats', icon: 'bar-chart-outline', label: 'Stats' },
-  // Beside Stats rather than up with the task surfaces: it is a history read in
-  // aggregate, and half of what it shows is that history crossed with the task
-  // one. Somebody who has come here to look at numbers about themselves is in
-  // the right neighbourhood.
-  { name: 'Mood', icon: 'happy-outline', label: 'Mood' },
-  // A maintenance tool for the fields already on every task, not a new
-  // surface over new data — sits with Stats rather than up with Tasks.
-  { name: 'Backfill', icon: 'flash-outline', label: 'Backfill' },
-  { name: 'Waiting', icon: 'hourglass-outline', label: 'Waiting' },
-  // Sits with Waiting rather than up with Tasks: both are "held out of the
-  // daily list for a reason", and both are somewhere you go to clear a backlog
-  // rather than somewhere you work.
-  { name: 'Drift', icon: 'trending-down-outline', label: 'Drift' },
-  { name: 'Archived', icon: 'archive-outline', label: 'Archived' },
-  // Last, next to Settings in the footer below rather than up among the
-  // working surfaces: it's reference material, not somewhere you go to do
-  // anything. The unread count on the row is the only thing that says the
-  // screen exists, which is the same problem the tips themselves are for.
-  { name: 'Tips', icon: 'bulb-outline', label: 'Tips' },
-];
+// 85% rather than the 72% this used to be. The drawer is the only thing on
+// screen while it's open — everything behind it is blurred and dimmed and
+// exists to be tapped through — so the strip it left showing was 28% of the
+// display doing no work, and it was the same 28% a hub row's subtitle needed
+// to name what it holds without truncating.
+const DRAWER_WIDTH = Math.round(Dimensions.get('window').width * 0.85);
 
 interface Props {
   visible: boolean;
@@ -116,6 +50,28 @@ interface Props {
   activeTab: string;
 }
 
+/**
+ * The side menu.
+ *
+ * It held eighteen flat rows, which is about twice what a phone fits, so half
+ * of it lived under a fold nothing announced and the fix for that was a
+ * scroll-edge fade and a flashed scrollbar — both of which say "there is more"
+ * without making any of it easier to reach. Eight rows fit, and four of them
+ * are hubs standing in for thirteen destinations. What goes where, and why,
+ * is `navHubs.ts`; this file is the drawing.
+ *
+ * Two things carry the weight of the collapse:
+ *
+ * - **A hub row names its members underneath it.** "Organize" on its own is a
+ *   guess; "Categories, Tags, People, Stacks, Templates" is an answer, and it
+ *   stays honest under simplified mode because the subtitle is built from the
+ *   members that survived rather than written out.
+ * - **The find field reaches the members directly.** A hub hides four or five
+ *   destinations behind one label, so without this, consolidating the menu
+ *   would have made "Drift" strictly harder to find than it was as a row.
+ *   Typing filters to real destinations and a tap goes straight there, past
+ *   the hub. Same call `settingsIndex.ts` makes for the same reason.
+ */
 export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, activeTab }: Props) {
   const colors = useColors();
   const insets = useSafeAreaInsets();
@@ -123,16 +79,12 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   // A scalar, so it's referentially stable and needs no useShallow. Counts
   // what's still to buy — items already in the trolley aren't a reason to go.
   const groceryCount = useGroceryStore(s => listRemainingCount(s.listEntries, s.activeListId));
-  // The one row this can remove, so the filter runs on every render rather
-  // than being hoisted — it's a ten-item array and the setting is a scalar.
   const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   // A scalar for the same reason groceryCount is one. TIPS is a module-level
   // constant, so the only thing that can move this is a dismissal.
   // Counted over `tipsFor`, not `TIPS`: the badge has to agree with the list
-  // behind it, and simplified mode can take thirty tips out of that list. That
-  // costs the O(1) subtraction this used to be, but the walk is 70 records on
-  // settings-store writes only, and it still returns a scalar.
+  // behind it, and simplified mode can take thirty tips out of that list.
   const unreadTipCount = useSettingsStore(s =>
     tipsFor(s.simpleMode).filter(tip => !s.seenTips.includes(tip.id)).length);
   // Counted, not listed, for the same reason: a scalar selector is
@@ -141,22 +93,31 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const stackCount = useTaskGroupStore(s => s.groups.length);
   const templateCount = useTemplateStore(s => s.templates.length);
   const peopleCount = usePersonStore(s => s.people.length);
-  const menuItems = useMemo(() => {
-    const counts = { stacks: stackCount, templates: templateCount, people: peopleCount };
-    return MENU_ITEMS.filter(i =>
-      (kitchenEnabled || !i.kitchen) && screenShown(i.name, simpleMode, counts));
-  }, [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount]);
+  const moodCount = useMoodStore(s => s.logs.length);
+
+  const [query, setQuery] = useState('');
+  const menuOptions = useMemo(() => ({
+    kitchenEnabled,
+    simpleMode,
+    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount },
+  }), [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount, moodCount]);
+  const menuRows = useMemo(() => visibleMenuRows(menuOptions), [menuOptions]);
+  const terms = useMemo(() => menuSearchTerms(query), [query]);
+  const results = useMemo(
+    () => (terms.length === 0 ? [] : searchMenu(menuDestinations(menuOptions), terms)),
+    [menuOptions, terms],
+  );
+  const searching = terms.length > 0;
+
   const translateX = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const backdropOpacity = useRef(new Animated.Value(0)).current;
   const dragOffsetX = useRef(new Animated.Value(0)).current;
   const [isRendered, setIsRendered] = useState(false);
   const pendingActionRef = useRef<(() => void) | null>(null);
-  // The menu is taller than any phone — sixteen rows before Settings — and it
-  // is bounded by the footer's hairline rather than by the screen, so the last
-  // row above that line looked like the last row there was. Both halves of the
-  // answer are here: the band that dissolves the content into the footer, and
-  // the scroll indicator, flashed as the drawer opens so the thumb's length
-  // says how much more there is before anyone has touched it.
+  // Eight rows and a footer fit on every phone this runs on, so the fade and
+  // the flashed scrollbar are no longer load-bearing — they stay because the
+  // *search results* can be longer than the list they replace, and because a
+  // large accessibility text size can push even eight rows past the fold.
   const listRef = useRef<ScrollView>(null);
   const fade = useScrollEdgeFade();
   // Settings navigates to a whole new screen, so the drawer's own close
@@ -191,6 +152,9 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
     if (visible) {
       fastCloseRef.current = false;
       setIsRendered(true);
+      // A query handed back on the next open is a filtered menu with no visible
+      // reason why — the same rule the task editor's field search follows.
+      setQuery('');
       // After the slide-in, not during it: the indicator is drawn against the
       // drawer's own right edge, which is still crossing the screen.
       const flash = setTimeout(() => listRef.current?.flashScrollIndicators(), 260);
@@ -260,6 +224,17 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
     onClose();
   };
 
+  /** A row is lit for its own screen, and a hub row for any screen inside it. */
+  const isRowActive = (row: NavMenuRow) =>
+    row.kind === 'screen'
+      ? activeTab === row.destination.route
+      : row.hub.members.some(m => m.route === activeTab);
+
+  const badgeFor = (row: NavMenuRow): number => {
+    if (row.kind === 'hub') return row.hub.id === 'kitchen' ? groceryCount : 0;
+    return row.destination.route === 'Tips' ? unreadTipCount : 0;
+  };
+
   if (!isRendered) return null;
 
   return (
@@ -289,6 +264,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           style={[
             styles.drawer,
             {
+              width: DRAWER_WIDTH,
               borderRightColor: colors.separator,
               transform: [{ translateX: Animated.add(translateX, dragOffsetX) }],
             },
@@ -305,6 +281,13 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
 
           <View style={[styles.header, { borderBottomColor: colors.separator }]}>
             <Text style={[styles.headerTitle, { color: colors.text }]}>Menu</Text>
+            <SearchField
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Find a screen"
+              style={styles.search}
+              accessibilityLabel="Find a screen"
+            />
           </View>
 
           <View style={styles.itemsWrap}>
@@ -312,57 +295,87 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
             ref={listRef}
             style={styles.items}
             contentContainerStyle={styles.itemsContent}
+            keyboardShouldPersistTaps="handled"
             {...fade.scrollProps}
           >
-            {menuItems.map((item, index) => {
-              const isActive = activeTab === item.name || item.alsoActiveFor?.includes(activeTab) === true;
-              return (
-                <DrawerItemAppear key={item.name} index={index}>
-                <TouchableOpacity
-                  style={[
-                    styles.item,
-                    isActive && { backgroundColor: colors.accent + '18' },
-                  ]}
-                  onPress={() => handleNavigate(item.name)}
-                  activeOpacity={interaction.activeOpacity}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isActive }}
-                  accessibilityLabel={item.label}
-                >
-                  <View
-                    style={[
-                      styles.iconWrap,
-                      { backgroundColor: isActive ? colors.accent + '22' : colors.bgTertiary },
-                    ]}
-                  >
-                    <Ionicons
-                      name={item.icon}
-                      size={20}
-                      color={isActive ? colors.accent : colors.textSecondary}
+            {searching
+              ? results.map((result, index) => (
+                  <DrawerItemAppear key={`r:${result.route}`} index={index}>
+                    <ResultRow
+                      result={result}
+                      active={activeTab === result.route}
+                      colors={colors}
+                      onPress={() => handleNavigate(result.route)}
                     />
-                  </View>
-                  <Text
-                    style={[
-                      styles.itemLabel,
-                      { color: isActive ? colors.accent : colors.text },
-                    ]}
-                  >
-                    {item.label}
-                  </Text>
-                  {item.name === 'Groceries' && groceryCount > 0 && (
-                    <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
-                      <Text style={[styles.badgeText, { color: colors.accent }]}>{groceryCount}</Text>
-                    </View>
-                  )}
-                  {item.name === 'Tips' && unreadTipCount > 0 && (
-                    <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
-                      <Text style={[styles.badgeText, { color: colors.accent }]}>{unreadTipCount}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-                </DrawerItemAppear>
-              );
-            })}
+                  </DrawerItemAppear>
+                ))
+              : menuRows.map((row, index) => {
+                  const isActive = isRowActive(row);
+                  const badge = badgeFor(row);
+                  const label = row.kind === 'screen' ? row.destination.label : row.hub.label;
+                  const icon = row.kind === 'screen' ? row.icon : row.hub.icon;
+                  const subtitle = row.kind === 'hub' ? hubSubtitle(row.hub) : null;
+                  return (
+                    <DrawerItemAppear key={label} index={index}>
+                      <TouchableOpacity
+                        style={[
+                          styles.item,
+                          isActive && { backgroundColor: colors.accent + '18' },
+                        ]}
+                        onPress={() => handleNavigate(rowEntryRoute(row))}
+                        activeOpacity={interaction.activeOpacity}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected: isActive }}
+                        accessibilityLabel={subtitle ? `${label}. Holds ${subtitle}` : label}
+                      >
+                        <View
+                          style={[
+                            styles.iconWrap,
+                            { backgroundColor: isActive ? colors.accent + '22' : colors.bgTertiary },
+                          ]}
+                        >
+                          <Ionicons
+                            name={icon as React.ComponentProps<typeof Ionicons>['name']}
+                            size={20}
+                            color={isActive ? colors.accent : colors.textSecondary}
+                          />
+                        </View>
+                        <View style={styles.itemBody}>
+                          <Text
+                            style={[
+                              styles.itemLabel,
+                              { color: isActive ? colors.accent : colors.text },
+                            ]}
+                          >
+                            {label}
+                          </Text>
+                          {subtitle && (
+                            // Wraps rather than truncating: a list of members
+                            // cut off after three is a row that names some of
+                            // what it holds and hides the rest, which is the
+                            // problem the subtitle exists to solve.
+                            <Text style={[styles.itemSubtitle, { color: colors.textSecondary }]}>
+                              {subtitle}
+                            </Text>
+                          )}
+                        </View>
+                        {badge > 0 && (
+                          <View style={[styles.badge, { backgroundColor: colors.accentSubtle }]}>
+                            <Text style={[styles.badgeText, { color: colors.accent }]}>{badge}</Text>
+                          </View>
+                        )}
+                        {subtitle && (
+                          <Ionicons name="chevron-forward" size={iconSize.sm} color={colors.textTertiary} />
+                        )}
+                      </TouchableOpacity>
+                    </DrawerItemAppear>
+                  );
+                })}
+            {searching && results.length === 0 && (
+              <Text style={[styles.noResults, { color: colors.textSecondary }]}>
+                No screen matches that.
+              </Text>
+            )}
           </ScrollView>
           {/* Fades into the drawer's own frosted surface rather than to an
               opaque strip: `blurFallback` is `bgSecondary` at 85%, so the band
@@ -376,7 +389,7 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
           </View>
 
           <View style={[styles.footer, { borderTopColor: colors.separator, paddingBottom: spacing.md + insets.bottom }]}>
-            <DrawerItemAppear index={menuItems.length}>
+            <DrawerItemAppear index={menuRows.length}>
               <TouchableOpacity
                 style={styles.item}
                 onPress={handleSettings}
@@ -394,6 +407,50 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
         </Animated.View>
       </View>
     </Modal>
+  );
+}
+
+/**
+ * A search hit. It names the hub it lives in rather than the hub row's icon,
+ * because the useful thing to know about a result is where it will put you —
+ * and the hub is also the answer to "why did this match", when the match came
+ * off a keyword rather than the label.
+ */
+function ResultRow({
+  result, active, colors, onPress,
+}: {
+  result: NavSearchResult;
+  active: boolean;
+  colors: ReturnType<typeof useColors>;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={[styles.item, active && { backgroundColor: colors.accent + '18' }]}
+      onPress={onPress}
+      activeOpacity={interaction.activeOpacity}
+      accessibilityRole="button"
+      accessibilityState={{ selected: active }}
+      accessibilityLabel={result.hubLabel ? `${result.label}, in ${result.hubLabel}` : result.label}
+    >
+      <View style={[styles.iconWrap, { backgroundColor: active ? colors.accent + '22' : colors.bgTertiary }]}>
+        <Ionicons
+          name="arrow-forward"
+          size={18}
+          color={active ? colors.accent : colors.textSecondary}
+        />
+      </View>
+      <View style={styles.itemBody}>
+        <Text style={[styles.itemLabel, { color: active ? colors.accent : colors.text }]}>
+          {result.label}
+        </Text>
+        {result.hubLabel && (
+          <Text style={[styles.itemSubtitle, { color: colors.textSecondary }]}>
+            in {result.hubLabel}
+          </Text>
+        )}
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -434,7 +491,6 @@ const styles = StyleSheet.create({
     left: 0,
     top: 0,
     bottom: 0,
-    width: DRAWER_WIDTH,
     borderRightWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
     shadowOffset: { width: 6, height: 0 },
@@ -445,7 +501,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingTop: 64,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.sm,
     paddingHorizontal: spacing.lg,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
@@ -453,6 +509,9 @@ const styles = StyleSheet.create({
     fontSize: font.xxl,
     fontWeight: fontWeight.bold,
     letterSpacing: -0.5,
+  },
+  search: {
+    marginTop: spacing.sm,
   },
   itemsWrap: {
     flex: 1,
@@ -485,10 +544,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  itemBody: { flex: 1, minWidth: 0 },
   itemLabel: {
-    flex: 1,
     fontSize: font.md,
     fontWeight: fontWeight.medium,
+  },
+  itemSubtitle: {
+    fontSize: font.xs,
+    lineHeight: 16,
+    marginTop: 2,
   },
   badge: {
     minWidth: 22,
@@ -501,5 +565,10 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
+  },
+  noResults: {
+    fontSize: font.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.md,
   },
 });

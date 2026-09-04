@@ -689,15 +689,15 @@ one line this whole section exists to obey.
 
 `Task.waitingOnPersonId`, and `canWaitOn` / `personBlockerOf` in `blocking.ts`.
 The same pointer as `blockedById` with a person on the other end, so it inherits
-the Waiting screen whole.
+the Stuck screen's waiting half whole.
 
 - **It hides the task exactly as a task blocker does**, and it earns that
-  because the Waiting screen can *name* what it is waiting on — this one is a
+  because the Stuck screen can *name* what it is waiting on — this one is a
   clause inside `isTaskBlocked` rather than a separate predicate.
 - **Nothing ends it on its own, and that is the whole risk.** A blocker task
   completes and frees its waiters; nobody completes a person. So the clearing
   action is on the row itself (the chip is a button, unlike the blocker chip
-  beside it) and on the Waiting screen, not only in the editor. Hiding a task
+  beside it) and on the Stuck screen, not only in the editor. Hiding a task
   behind a wait with no obvious way back is how this becomes a way to lose one.
 - **A deleted or archived person frees their waiters**, which is `canBlock`'s
   shape exactly and for its reason: a stranded waiter is invisible with no user

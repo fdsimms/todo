@@ -371,7 +371,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **265 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **266 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -701,7 +701,18 @@ Cascades (`completeGroup`, `deferGroup`, `pinGroup`, `deleteGroup`) are roster-s
 
 ### Navigation
 
-`src/navigation/AppNavigator.tsx` uses a bottom tab bar with 4 visible tabs (Today, Groceries, Projects, More). The remaining screens (Search, Categories, Tags, Templates, Logbook, Stats, Archived) are registered as hidden tabs and reached via `SideMenuDrawer`, which overlays the full screen and is opened by tapping "More" or by edge-swipe from the left. The Groceries tab drops out (falling back to `tabBarButton: () => null`, same as any drawer-only tab) while `kitchenEnabled` is off in Settings, mirroring the drawer's own "Groceries & Meals" row.
+`src/navigation/AppNavigator.tsx` uses a bottom tab bar with 4 visible tabs (Today, Groceries, Projects, More). Every other screen is registered as a hidden tab and reached via `SideMenuDrawer`, which overlays the full screen and is opened by tapping "More" or by edge-swipe from the left. The Groceries tab drops out (falling back to `tabBarButton: () => null`, same as any drawer-only tab) while `kitchenEnabled` is off in Settings, mirroring the drawer's own "Groceries & Meals" row.
+
+**What the menu contains is `src/utils/navHubs.ts`, not the drawer component.** The drawer draws eight rows; four of them are **hubs** standing in for thirteen destinations. A hub is one menu row plus a `HubPills` row under each member screen's header — the shape `GroceriesHubPills` established for Groceries/Recipes/Meal plan/Pantry, now generalized so the other three are the same code rather than three more copies of it. The hubs are Groceries & Meals, Organize (Categories, Tags, People, Stacks, Templates) and History (Logbook, Stats, Mood, Archived); Tasks, Search, Calendar, Stuck and Tips stand alone.
+
+Four things follow from that and are worth not re-deriving:
+
+- **A hub row names its members in a subtitle, built from the members that survived the gates** rather than written out. A row promising Stats while simplified mode has taken Stats away is a lie the user finds out about one tap later.
+- **The drawer has a find field, and it is not optional decoration.** A hub hides four or five destinations behind one label, so without it, consolidating the menu would have made "Drift" strictly *harder* to reach than it was as its own row. `menuDestinations` flattens the same rows the menu draws into the index, so a screen the menu is hiding is not findable either — a result opening a feature you switched off is a way back into it that the switch didn't intend.
+- **Route sets are derived, not listed twice.** `DRAWER_TABS`, `RESTORABLE_SCREENS` and `KITCHEN_SCREENS` all come off `NAV_MENU_ROWS`/`NAV_HUBS`. Adding a screen to the menu is one edit.
+- **A hub row drops out when every member is gone**, and simplified mode is the only thing that can do that today. Pantry's disappearance under that mode used to be a hand-written special case in `initialScreenFromSettings` plus a second `featureHidden` call inside the pills; it is now just `screen: 'Kitchen'` on the `pantryTracking` feature, so one gate answers for the menu row, the pill and the cold-launch restore alike.
+
+**Two screens are deliberately not in the menu.** `StuckScreen` is the merge of what were the Waiting and Drift rows — both were lists of tasks held out of the daily lists, differing only in whether something else or you are holding them, and `DriftScreen` opened by saying it was "the same shape and same reasoning as WaitingScreen". `BackfillScreen` moved to Settings ("Data & reset" → Fill in) as a pushed `RootStack` card: it is not a task list at all, it fills in empty fields across tasks, categories, projects, people and grocery items, which is maintenance rather than a place to work.
 
 Today, Later, Unscheduled and Inbox are **not** separate screens — they're four `viewMode` sub-views of `TodayScreen`, switched by the pill row under its header, and they share one set of screen state (selection mode, expanded row, quick-add, editor). They're disjoint lenses over the same tasks (`isUnscheduledTask()` excludes inbox tasks, `isTaskVisible()` excludes both), each backed by its own store selector. Keep it that way when adding a fifth: Inbox used to be its own route, and every switch into it had to hand the destination over as a navigation param, which painted a frame of the *previous* sub-view before the param landed. A segmented control shouldn't navigate.
 

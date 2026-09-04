@@ -36,6 +36,7 @@ import {
   MIN_PAIRED_DAYS,
 } from '../utils/moodInsights';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { MoodLogSheet } from '../components/MoodLogSheet';
 
@@ -234,6 +235,7 @@ export function MoodScreen() {
           accessibilityLabel: 'Log how you\'re feeling',
         }]}
       />
+      <HubPills hub="history" active="Mood" />
 
       {logs.length === 0 ? (
         <EmptyState

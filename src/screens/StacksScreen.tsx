@@ -16,6 +16,7 @@ import { useTaskStore } from '../store/useTaskStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { ScreenHeader } from '../components/ScreenHeader';
+import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { TaskGroupEditor } from '../components/TaskGroupEditor';
 import { Fab, FAB_SIZE } from '../components/Fab';
@@ -193,6 +194,7 @@ export function StacksScreen() {
           ? `${groups.length} ${groups.length === 1 ? 'stack' : 'stacks'}`
           : undefined}
       />
+      <HubPills hub="organize" active="Stacks" />
 
       {groups.length === 0 ? (
         <EmptyState
