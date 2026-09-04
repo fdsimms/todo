@@ -69,6 +69,17 @@ A start with no end is legal and means something real. It is exactly
 knowing "a boundary but not a trip". The asymmetry is copied from there rather
 than invented here.
 
+**Store both at noon**, the way `getLogicalToday()` already returns noon as
+"safe for display". A span entered at home and read after a nine-hour flight
+must not move by a calendar day, and midday is the cheap way to guarantee that
+without any timezone machinery.
+
+Timezones are otherwise not a problem here, which is worth recording because it
+looks like one. `reanchorReminderToWallClock` (#1205) already re-expresses a
+`wallClock` reminder under the device's current zone so "9am" still means 9am
+after a flight, deliberately without any IANA timezone dependency. Nothing in
+this design needs to add to that.
+
 ### Why it is called "away"
 
 `trip` is taken, thoroughly and at every layer: `activeTrip.ts`,
@@ -484,6 +495,96 @@ degraded state, it is the one the field design already declares legal and
 meaningful: a boundary but not yet a trip, exactly `LookAheadWindow`'s own
 `awayEnd: null` case. The return date arrives later, by hand or from booking the
 flights, and the span completes itself.
+
+---
+
+## Net new: a destination, and the forecast for it
+
+Everything above is wiring — existing parts that could not share a fact. This is
+the one piece with no machinery behind it that is worth adding, and it earns its
+place because **packing is the trip task people actually get wrong, and they get
+it wrong because they do not know what the weather will be.**
+
+**`Project.destination`, free text.** `Task.location` carries a note saying
+nothing in the app plots it and that a real reader is a future thing; a trip is
+that reader. It also gives the template's `{destination}` blank somewhere to live
+between runs.
+
+**The forecast is cheaper than it looks.** `weatherLookup.ts` already calls
+Open-Meteo's `/v1/forecast` with a latitude, a longitude and `timezone=auto`. It
+asks only for `current=`. Pointing it at other coordinates and adding `daily=` is
+a small change to a service that exists and needs no key.
+
+Three rules if it is built.
+
+- **It is a sentence, not a rule.** "Nov 3 to 10 in Tokyo, 4 to 11°C, rain on the
+  5th." Not weather-conditioned packing items — that would mean extending template
+  conditions, which gate on choice questions only, and would stake packing
+  decisions on a ten-day forecast. `lookAhead`'s own rule is the right one here:
+  *a cue may rank; a sentence may only state.* Let the reader draw the conclusion
+  and the reliability objection disappears.
+- **Geocoding is a new keyless outbound service and needs its own switch.**
+  Turning "Tokyo" into coordinates is a network call the app does not currently
+  make. `productLookupEnabled` is the precedent and the reason: once something
+  reaches the network without a key, "no key, no traffic" stops being the whole
+  privacy answer, and the feature carries its own switch instead.
+- **It is a read with no store.** Same shape as `useWeatherStore`'s daily
+  snapshot. Nothing about a forecast should be persisted onto the project, where
+  it would go stale and then be believed.
+
+---
+
+## What this is not: the itinerary boundary
+
+The recurring question about anything in this file will be why it does not also
+hold flights, hotels, confirmation numbers and check-in times. The answer, and it
+is worth having one sentence for:
+
+> **This app plans for a trip. It does not run one.**
+
+TripIt and its like are built around an itinerary and live travel-day operations:
+parsing booking emails into a chronological plan, then flight delay alerts, gate
+changes, seat tracking, airport maps, when to leave for the airport. What they
+almost entirely lack is *preparation* — no real packing list, no "this bill lands
+mid-trip", no sense that being away has consequences for the rest of your life.
+That is the half this app is for, and the two are complementary rather than
+competing.
+
+Concretely, an itinerary is refused because:
+
+- **A flight is not a task.** You do not tick it; it happens to you. Every list,
+  completion path and visibility rule in this app is about things you do.
+- **It needs a start *and end* time, which does not exist.** `windowStart`/
+  `windowEnd` are times of day, not a datetime range, and `TemplateContainer`'s
+  doc already refused dates on the task container for exactly this reason. So it
+  is a new model, not a new field.
+- **The live half needs infrastructure this app does not have** and should not
+  grow: a paid flight data feed, push, and a backend, against an architecture
+  whose first claim is that there is none.
+
+**The better answer is import, not modelling.** `EventImportSheet` already reads a
+booking confirmation from a photo or pasted text and produces dated tasks, which
+is a slice of the same trick. If an itinerary is ever wanted, growing that path —
+an end time, and filing the result into a trip — is a far smaller change than a
+new model, and it keeps the plan somewhere the app can already read.
+
+### Also refused, and why
+
+- **Passport numbers, booking references, boarding passes.** There is no
+  attachment model, and the one piece of sensitive data the app holds lives in
+  the keychain (`secureApiKey.ts`). Storing travel documents is a different app
+  with a different threat model.
+- **A trip budget.** A whole domain. Groceries has prices; travel spend is not
+  the same thing and would need its own everything.
+- **Assigning tasks to travelling companions.** There is no sharing model, so an
+  assignment has nowhere to go. `docs/arch/people.md` is clear that the people
+  layer does not do this kind of thing.
+- **A days-until Live Activity.** Live Activities render through SwiftUI's timer
+  style with JS supplying start and target, so a days-until countdown is new
+  native work for something the line on the project card says just as well.
+- **A "you always forget your charger" generator.** The template is already the
+  memory and editing it after a trip is the mechanism. A twentieth generator to
+  prompt that is a hard sell against the bar the other nineteen cleared.
 
 ---
 
