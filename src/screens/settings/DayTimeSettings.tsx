@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
+import { applyDaySegmentTime, type DaySegmentKey, type DaySegmentTimes } from '../../utils/daySegments';
 import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
@@ -56,12 +57,38 @@ export function DayTimeSettings() {
     setOpenPickerKey(key);
   };
 
+  /**
+   * The four boundaries as they stand. `dayResetTime` is Morning's, since
+   * `setDayResetTime` writes both it and `morningStart` (see that setter).
+   */
+  const segmentTimes = (): DaySegmentTimes => ({
+    morning: dayResetTime!,
+    afternoon: afternoonStart!,
+    evening: eveningStart!,
+    night: nightStart!,
+  });
+
+  /**
+   * Writes a segment boundary and whichever of the later ones it carries with
+   * it, so the four can't be left out of order — see `applyDaySegmentTime` for
+   * what that broke. Only the values that actually changed are written, so a
+   * confirm that moves nothing else touches nothing else.
+   */
+  const setSegment = (key: DaySegmentKey, hhmm: string) => {
+    const before = segmentTimes();
+    const after = applyDaySegmentTime(before, key, hhmm);
+    if (after.morning !== before.morning) setDayResetTime(after.morning);
+    if (after.afternoon !== before.afternoon) setAfternoonStart(after.afternoon);
+    if (after.evening !== before.evening) setEveningStart(after.evening);
+    if (after.night !== before.night) setNightStart(after.night);
+  };
+
   const confirmPicker = () => {
     const hhmm = dateToHHMM(pickerDate);
-    if (openPickerKey === 'dayReset') setDayResetTime(hhmm);
-    else if (openPickerKey === 'afternoon') setAfternoonStart(hhmm);
-    else if (openPickerKey === 'evening') setEveningStart(hhmm);
-    else if (openPickerKey === 'night') setNightStart(hhmm);
+    if (openPickerKey === 'dayReset') setSegment('morning', hhmm);
+    else if (openPickerKey === 'afternoon') setSegment('afternoon', hhmm);
+    else if (openPickerKey === 'evening') setSegment('evening', hhmm);
+    else if (openPickerKey === 'night') setSegment('night', hhmm);
     else if (openPickerKey === 'activeStart') setActiveHoursStart(hhmm);
     else if (openPickerKey === 'activeEnd') setActiveHoursEnd(hhmm);
     setOpenPickerKey(null);

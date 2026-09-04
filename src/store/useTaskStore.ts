@@ -136,7 +136,7 @@ import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOve
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHeldBack, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -7666,7 +7666,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const { vacationMode } = useSettingsStore.getState();
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
-      .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived && !(vacationMode && t.vacationPause))
+      // Pinning overrides the *clock* — a pinned task shows here whether or not
+      // it is due today, which is the whole feature. It does not override the
+      // one hide that isn't a clock: isVisibleApartFromVacation puts isHeldBack
+      // ahead of every time gate on purpose, "being blocked isn't a 'not yet'
+      // that a clock resolves". This filter is written out by hand rather than
+      // reusing that rule, so the two non-clock hides it already honours
+      // (archived, vacation) were right and this one leaked — a task waiting on
+      // another task, or on a person, sat at the top of Today with nothing the
+      // user could do about it while its own ordinary row had correctly left.
+      // It comes back the moment the blocker clears, exactly as that row does.
+      .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived
+        && !isHeldBack(t) && !(vacationMode && t.vacationPause))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.

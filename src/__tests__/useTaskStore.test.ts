@@ -8375,6 +8375,61 @@ describe('visibleTasks', () => {
 });
 
 describe('pinnedTasks', () => {
+  // Pinning overrides the clock, which is the feature — a pinned task shows
+  // whether or not it is due today. It does not override the one hide that
+  // isn't a clock: isVisibleApartFromVacation puts isHeldBack ahead of every
+  // time gate on purpose. This selector writes its filter out by hand, so the
+  // two non-clock hides it already honoured (archived, vacation) were right and
+  // blocking leaked — a task waiting on another task sat at the top of Today
+  // with nothing the user could do about it, while its own ordinary row had
+  // correctly left the list.
+  it('drops a pinned task that is waiting on another task', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', title: 'Cancel the plan' }),
+        makeTask({ id: 'waiter', title: 'Return the router', pinned: true, blockedById: 'blocker' }),
+      ],
+    });
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual([]);
+  });
+
+  it('brings it back once the blocker is done, same as its ordinary row', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', completed: true, completedAt: new Date().toISOString() }),
+        makeTask({ id: 'waiter', pinned: true, blockedById: 'blocker' }),
+      ],
+    });
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['waiter']);
+  });
+
+  // The other half of isHeldBack, and the one nothing resolves on its own.
+  // The person has to actually exist: the pointer is resolve-or-shrug, so a
+  // deleted or archived person frees their waiters rather than stranding them.
+  it('drops a pinned task that is waiting on a person', () => {
+    const people = usePersonStore.getState().people;
+    usePersonStore.setState({
+      people: [{
+        id: 'p-1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+        archived: false, archivedAt: null, createdAt: new Date().toISOString(),
+        birthdayMonth: null, birthdayDay: null, birthYear: null,
+        birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
+        phoneNumber: null, email: null, linkUrl: null,
+        cadenceDays: 30, nudgeOptIn: false, cadenceSetAt: null,
+        reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
+        backfillDismissedFields: [], groupId: null,
+      }],
+      initialized: true,
+    });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'photos', pinned: true, waitingOnPersonId: 'p-1' })],
+    });
+
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual([]);
+
+    usePersonStore.setState({ people });
+  });
+
   it('returns pinned, non-completed, non-subtask tasks sorted by sortOrder', () => {
     useTaskStore.setState({
       tasks: [
