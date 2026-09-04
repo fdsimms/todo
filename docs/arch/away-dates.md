@@ -119,11 +119,12 @@ that clears the bar above.
 
 1. **Look ahead prefills from it.** The sheet stops asking for two dates it could
    know, and can name the trip. Deletes the apology comment.
-2. **Away days draw as unavailable in `WhenPicker`.** There is one choke point:
+2. **Away days carry a cue in `WhenPicker`.** There is one choke point:
    `buildDayLoads`, consumed by the picker and by the look-ahead sheet's day
-   strip. Once the cue exists, `deloadPlan` and `buildPushPlan` stop offering to
-   land work in the middle of the trip. This is where the feature stops being
-   decoration.
+   strip. Once the cue exists, `deloadPlan` and `buildPushPlan` can rank those
+   days last instead of treating them as ordinary. This is where the feature
+   stops being decoration — and see the rule below, because it is a cue and
+   never a refusal.
    - The `dayLoad` rule that "no cue is never *this day is free*" is not in
      tension with this. That rule is about absent information; away dates are
      information the user typed.
@@ -133,6 +134,49 @@ that clears the bar above.
 5. **Templates write the span.** Its own section below.
 6. **The away grocery list binds to the span**, so Groceries opens on that list
    while you are away instead of `activeListId` being a manual switch.
+
+---
+
+## The span never blocks anything
+
+**A day inside the span is a day you can schedule work on, and no reader here may
+refuse one.** This is the rule the rest of the design has to be checked against,
+and an earlier draft of this file got it wrong — it said away days should draw as
+"unavailable", which is a block wearing a cue's clothes.
+
+People do things on holiday. Checking in for the return flight, confirming the
+hotel, taking medication, a work call that could not be moved, the thing you
+brought the laptop for. A span that refuses those is worse than no span, because
+the user's answer is then to not enter their trip at all, and every other reader
+here loses its input.
+
+The vocabulary already exists. `projectPull`'s `StallMode` distinguishes a cadence
+that *gates* in nudge mode from one that only *ranks* in ask mode. **The away span
+ranks. It never gates.** Concretely:
+
+- **`WhenPicker` cues, it does not dim.** The app has exactly one genuine
+  refusal in that component, `allowPast={false}`, and it exists because a date
+  that *places* something cannot be in the past. A trip day is a perfectly good
+  day to put a task on, so it gets a cue in the same channel `buildDayLoads`
+  already paints day weight in, and nothing else.
+- **`deloadPlan` and `buildPushPlan` may rank an away day last, never exclude
+  it.** Both already propose per-row with everything untickable, so a proposal
+  that avoids the trip is a default the user can overrule, which is the whole
+  point.
+- **Vacation mode is already opt-in per row, and this design inherits that
+  rather than replacing it.** `Task.vacationPause` and `Category.hideOnVacation`
+  are nominations: arming vacation mode hides what the user has *already said*
+  should hide, and leaves everything else exactly where it was. So "vacation
+  mode turns itself on when you leave" is not "your tasks disappear". This is
+  worth stating because it is the obvious misreading of the section below, and
+  because it is also the answer to the objection: the app's existing mechanism
+  for "I still need to do things while away" is that you nominate what pauses,
+  and nothing here should invent a second, blunter one.
+
+The one-line version, for anyone adding a reader later: **the span tells a
+planner what you would rather not do, never what you may not do.**
+
+---
 
 ### Display
 
@@ -317,6 +361,50 @@ needed, because the project declared itself by having the dates.
 
 Both directions are worth having. New trip: the template makes the project.
 Existing trip: the project teaches the run its anchors.
+
+### The trip you have not booked yet
+
+Both directions above assume you know the dates when you apply the template. Often
+you do not — the trip is real, the prep is real, and the dates are the *first*
+thing on the list to find out. The Trip prep template already opens with exactly
+that task: "Pick dates for {destination}", a `deliverableKind: 'date'` task
+28 days out.
+
+So the third direction is: **applying the template with no anchors gives a project
+with no span, and answering that task fills it in.**
+
+This is a third writer of a deliverable answer, and `deliverables.ts`' header is
+explicit that there are two, on stated terms, and that *"a third reader wanting
+looser terms than these is a different feature and should say so."* Saying so:
+
+- **The term it keeps.** One kind (`'date'`), written in `completeTask` beside the
+  other two, reusing an answer the task was recording anyway. The module's own
+  opening line is *"'Pick a date for the trip' isn't done when you tick it, it's
+  done when you know the date"*, so this is close to the motivating case rather
+  than an extension away from it.
+- **The term it loosens, and this is the real one.** Both existing writers are
+  safe because nobody can aim them: the chain case reuses a date the successor
+  was getting regardless, and the supply case is on a *generated* task whose kind
+  the generator sets. Here the task is authored by a user, in their own project,
+  so a user chooses the destination. That is genuinely looser and is the thing to
+  argue about if this is ever built.
+- **What makes it safe anyway: it writes a field, it does not re-date anything.**
+  Setting `awayStart` on a project whose members are already dated raises the
+  *proposal* from the trip-moving section, per-row and untickable. A user-aimable
+  writer that can only ever populate one project field and then ask is a much
+  smaller thing than one that can move nine tasks.
+
+**It fills in the start only.** A `'date'` answer records one date and a trip has
+two, and the obvious fix — a range deliverable kind — is a new kind for one caller
+and should be refused. Nor can the duration come from the template run's own
+`{nights}` answer: answers are never persisted (`ApplyTemplateSheet` zeroes on
+open, nothing writes back), so 28 days later it is gone.
+
+So the answer writes `awayStart` and leaves `awayEnd` null. That is not a
+degraded state, it is the one the field design already declares legal and
+meaningful: a boundary but not yet a trip, exactly `LookAheadWindow`'s own
+`awayEnd: null` case. The return date arrives later, by hand or from booking the
+flights, and the span completes itself.
 
 ---
 
