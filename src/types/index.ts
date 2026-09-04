@@ -129,8 +129,8 @@ export interface ChainItem {
   deliverableDatesNextStep?: boolean;
 }
 
-// Everything the "Extra task" rule says about the task it adds, beyond its
-// title — see the field notes on Task.extraTaskEveryN, and extraTask.ts for
+// Everything the "Follow-up task" rule says about the task it adds, beyond its
+// title — see the field notes on Task.followUpTaskEveryN, and followUpTask.ts for
 // the rule itself.
 //
 // **Null on the task means "just the title", which is what every rule written
@@ -149,7 +149,7 @@ export interface ChainItem {
 // due date, a defer, a reminder or a repeat of its own would be a second
 // schedule contradicting the first — the same call applyTaskDates makes about
 // a series never carrying a recurrence rule.
-export interface ExtraTaskDraft {
+export interface FollowUpTaskDraft {
   notes: string;
   // Null = the same category as the task that spawns it, which is the
   // original behaviour and stays the default. Deliberately not a tri-state
@@ -168,7 +168,7 @@ export interface ExtraTaskDraft {
   // is why it belongs here rather than being a rule-level condition: it marks
   // the added task as one vacation hides *and*, because of that, stops the
   // rule adding one at all while vacation mode is on (see the suppression
-  // note in extraTask.ts). Both follow from the same answer — "this is work
+  // note in followUpTask.ts). Both follow from the same answer — "this is work
   // that waits until I'm back" — so asking twice would be asking the same
   // question in two places.
   //
@@ -211,7 +211,7 @@ export interface TitleRule {
   // which is exactly why adding the second form has to be this cheap.
   keywords: string[];
   match: TitleRuleMatch;
-  // The filing half of ExtraTaskDraft, and null/0 mean the same thing here:
+  // The filing half of FollowUpTaskDraft, and null/0 mean the same thing here:
   // this rule says nothing about that field, so whatever would have happened
   // without it still happens.
   category: string | null;
@@ -1834,7 +1834,7 @@ export interface Task {
   // ten times through the chain, not ten steps.
   chainStepOnSchedule: boolean;
 
-  // "Extra task" — every Nth completion of this task adds a separate one-off
+  // "Follow-up task" — every Nth completion of this task adds a separate one-off
   // task ("rosin the bow every 4th violin practice").
   //
   // A third spawn mechanism alongside chains and quotas, because neither
@@ -1848,20 +1848,20 @@ export interface Task {
   // after the fact. Like `streakCount`, it rides onto the row spawned by the
   // completion, since every occurrence is a fresh id.
   //
-  // The rule is live only with both a count and a title: an extra task with
-  // no name is a row nobody could act on, so `extraTaskRule()` is what every
+  // The rule is live only with both a count and a title: a follow-up task with
+  // no name is a row nobody could act on, so `followUpTaskRule()` is what every
   // reader asks rather than testing the fields apart.
-  extraTaskEveryN: number | null; // null = off; >= 2 (every 1st is every time)
-  extraTaskTitle: string | null;  // title of the task to add
+  followUpTaskEveryN: number | null; // null = off; >= 2 (every 1st is every time)
+  followUpTaskTitle: string | null;  // title of the task to add
   // The rest of what the added task looks like, or null for "just the title"
-  // — see ExtraTaskDraft. Off the rule's own liveness check on purpose:
-  // extraTaskRule() needs a count and a name, and everything here is optional
+  // — see FollowUpTaskDraft. Off the rule's own liveness check on purpose:
+  // followUpTaskRule() needs a count and a name, and everything here is optional
   // detail on top of those.
-  extraTaskDraft: ExtraTaskDraft | null;
+  followUpTaskDraft: FollowUpTaskDraft | null;
   // Don't add another while one added by this rule is still outstanding.
   //
   // A property of the *rule* rather than of the task it adds, which is why it
-  // sits here and not in ExtraTaskDraft: it decides whether to spawn at all,
+  // sits here and not in FollowUpTaskDraft: it decides whether to spawn at all,
   // and says nothing about what the spawned row looks like.
   //
   // Off by default, so every rule written before this behaves exactly as it
@@ -1869,14 +1869,22 @@ export interface Task {
   // (swapping wash cloths: a second row says nothing the first didn't), and a
   // count you're meant to keep up with (one row per set of five runs) — so
   // this is asked rather than assumed.
-  extraTaskOneAtATime: boolean;
-  extraTaskTally: number;         // completions since the last one was added
-  // Snapshot of extraTaskTally from just before the current completion, so
+  followUpTaskOneAtATime: boolean;
+  followUpTaskTally: number;         // completions since the last one was added
+  // Snapshot of followUpTaskTally from just before the current completion, so
   // uncompleting restores it — the same device previousStreakCount uses, and
   // for the same reason. It can't be derived after the fact: a tally of 0
   // reads identically whether the completion fired the rule and reset it or
   // never advanced it at all (a miss, or a mid-chain step).
-  previousExtraTaskTally: number;
+  previousFollowUpTaskTally: number;
+  // The spawning task's title, snapshotted at spawn time — what TaskItem's
+  // "Extra · from X" chip reads. Null on every task that isn't one of
+  // these. A snapshot rather than a pointer to the completed occurrence
+  // that earned it: that row is exactly what completedRetentionDays
+  // eventually purges, and previousOccurrenceId already exists for the
+  // undo path that needs the live row. Same call the pending-suppression
+  // match above makes, and for the same reason.
+  followUpTaskSourceTitle: string | null;
 
   vacationPause: boolean;    // hide and protect streak while vacation mode is on
 
@@ -2030,9 +2038,9 @@ export interface Task {
 // same reason: they're derived state the app maintains, not something a draft
 // gets to assert. That makes newTaskFromDraft's hard-coded 0/false the only
 // source, so a series row or a template application can't inherit a count.
-// extraTaskTally is the same kind of thing — the rule (extraTaskEveryN,
-// extraTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'slipCount' | 'slipDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'extraTaskTally' | 'previousExtraTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
+// followUpTaskTally is the same kind of thing — the rule (followUpTaskEveryN,
+// followUpTaskTitle) is the draft's to set, the progress toward it is not.
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'slipCount' | 'slipDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'followUpTaskTally' | 'previousFollowUpTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"

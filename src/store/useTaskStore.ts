@@ -147,8 +147,8 @@ import {
   driftingTasks,
   type DriftEntry,
 } from '../utils/postpone';
-import { extraTaskRule, advanceExtraTaskTally, extraTaskSuppressedBy } from '../utils/extraTask';
-import type { ExtraTaskSuppression } from '../utils/extraTask';
+import { followUpTaskRule, advanceFollowUpTaskTally, followUpTaskSuppressedBy } from '../utils/followUpTask';
+import type { FollowUpTaskSuppression } from '../utils/followUpTask';
 import { normalizeTitle } from '../utils/taskInstances';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
 import { registerTaskSource } from '../utils/blockerRegistry';
@@ -492,10 +492,10 @@ function newTaskFromDraft(
     chainIndex: draft.chainIndex ?? 0,
     chainItems: draft.chainItems ?? [],
     chainStepOnSchedule: draft.chainStepOnSchedule ?? false,
-    extraTaskEveryN: draft.extraTaskEveryN ?? null,
-    extraTaskTitle: draft.extraTaskTitle ?? null,
-    extraTaskDraft: draft.extraTaskDraft ?? null,
-    extraTaskOneAtATime: draft.extraTaskOneAtATime ?? false,
+    followUpTaskEveryN: draft.followUpTaskEveryN ?? null,
+    followUpTaskTitle: draft.followUpTaskTitle ?? null,
+    followUpTaskDraft: draft.followUpTaskDraft ?? null,
+    followUpTaskOneAtATime: draft.followUpTaskOneAtATime ?? false,
     vacationPause: draft.vacationPause ?? false,
     excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
@@ -538,8 +538,9 @@ function newTaskFromDraft(
     postponeCount: 0,
     postponeMuted: false,
     driftingSince: null,
-    extraTaskTally: 0,
-    previousExtraTaskTally: 0,
+    followUpTaskTally: 0,
+    previousFollowUpTaskTally: 0,
+    followUpTaskSourceTitle: draft.followUpTaskSourceTitle ?? null,
   };
   // Captured here rather than defaulted to null in the literal above: a task
   // created with a monthly rule and a due date on the 31st has to carry the
@@ -3020,8 +3021,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // nextStreakRecord) and the completed row and its successor must agree.
     const nextStreak = streakBreaks ? 0 : streakAdvances ? newStreakCount : task.streakCount;
 
-    // "Extra task" — every Nth completion adds a separate one-off task (see
-    // Task.extraTaskEveryN). The tally is advanced here, not derived from the
+    // "Follow-up task" — every Nth completion adds a separate one-off task (see
+    // Task.followUpTaskEveryN). The tally is advanced here, not derived from the
     // completed rows, which completedRetentionDays eventually purges.
     //
     // Gated on advancesBySchedule for the same reason the streak is: mid-chain
@@ -3029,9 +3030,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // so a three-step chain would otherwise reach "every 4th" in a day and a
     // bit. A miss doesn't count either — the rule counts completions, and
     // markMissed comes through here too.
-    const extraRule = extraTaskRule(task);
-    const extraAdvance = extraRule && !missed && !neutral && advancesBySchedule
-      ? advanceExtraTaskTally(task.extraTaskTally, extraRule.everyN)
+    const followUpRule = followUpTaskRule(task);
+    const followUpAdvance = followUpRule && !missed && !neutral && advancesBySchedule
+      ? advanceFollowUpTaskTally(task.followUpTaskTally, followUpRule.everyN)
       : null;
     // Why an earned spawn might not happen — vacation, or one of its own
     // still outstanding. Asked only when the advance actually fires, so the
@@ -3044,24 +3045,24 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // occurrence. Same call cohortKeyOf makes in rhythms.ts, for the same
     // reason. Renaming the added row therefore reads as a different piece of
     // work and lets the next one through, which is the right answer anyway.
-    let extraSuppression: ExtraTaskSuppression | null = null;
-    if (extraRule && extraAdvance?.spawns) {
-      const wanted = normalizeTitle(extraRule.title);
-      extraSuppression = extraTaskSuppressedBy(
-        extraRule,
-        task.extraTaskOneAtATime,
+    let followUpSuppression: FollowUpTaskSuppression | null = null;
+    if (followUpRule && followUpAdvance?.spawns) {
+      const wanted = normalizeTitle(followUpRule.title);
+      followUpSuppression = followUpTaskSuppressedBy(
+        followUpRule,
+        task.followUpTaskOneAtATime,
         useSettingsStore.getState().vacationMode,
         get().tasks.some(t =>
           !t.parentId && !t.completed && !t.archived && normalizeTitle(t.title) === wanted),
       );
     }
     // A suppressed spawn leaves the tally exactly where it was rather than
-    // taking the reset it earned — see extraTaskSuppressedBy. The advance
+    // taking the reset it earned — see followUpTaskSuppressedBy. The advance
     // tests `>=`, so the first completion after the reason passes fires for
     // real instead of starting another full N-completion wait.
-    const nextExtraTally = extraAdvance && !extraSuppression
-      ? extraAdvance.tally
-      : task.extraTaskTally;
+    const nextFollowUpTally = followUpAdvance && !followUpSuppression
+      ? followUpAdvance.tally
+      : task.followUpTaskTally;
 
     const completed: Task = {
       ...task,
@@ -3103,8 +3104,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       deliverableValue: options?.deliverableValue !== undefined
         ? options.deliverableValue
         : task.deliverableValue,
-      extraTaskTally: nextExtraTally,
-      previousExtraTaskTally: task.extraTaskTally,
+      followUpTaskTally: nextFollowUpTally,
+      previousFollowUpTaskTally: task.followUpTaskTally,
     };
     if (task.pinned) pendingUnpinIds.push(id);
     dbUpdateTask(completed);
@@ -3286,8 +3287,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // Rides onto the successor like the streak does, and for the same
           // reason: every occurrence is a fresh id, so a tally left on the
           // completed row would restart the count from zero every time.
-          extraTaskTally: nextExtraTally,
-          previousExtraTaskTally: task.extraTaskTally,
+          followUpTaskTally: nextFollowUpTally,
+          previousFollowUpTaskTally: task.followUpTaskTally,
           reminderTime: nextReminderTime,
           reminderUtcOffsetMinutes: nextReminderUtcOffsetMinutes,
           chainIndex: nextChainIndex,
@@ -3404,7 +3405,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
-    // The extra task is due on the *next* occurrence's day rather than piling
+    // The follow-up task is due on the *next* occurrence's day rather than piling
     // onto the completion that earned it — you rosin the bow at the bench, and
     // the practice that just finished is over. With no next occurrence (a
     // one-off, or a series that has run out) there's nothing to ride, so it
@@ -3416,7 +3417,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // and would disappear the moment its parent was ticked.
     //
     // What the added task looks like past its title is the rule's own
-    // `draft` (Task.extraTaskDraft) when there is one. With none — every rule
+    // `draft` (Task.followUpTaskDraft) when there is one. With none — every rule
     // written before drafts existed — each field below falls back to exactly
     // what it was: filed where the spawning task lives, and `undefined` for
     // priority and effort so newTaskFromDraft's new-task defaults still
@@ -3424,17 +3425,17 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // owns its members' category and cascades over them, and this is a
     // different piece of work that happens to have been earned by one of
     // them.
-    let extraTask: Task | null = null;
-    let extraSubtasks: Task[] = [];
-    if (extraRule && extraAdvance?.spawns && !extraSuppression) {
+    let followUpTask: Task | null = null;
+    let followUpSubtasks: Task[] = [];
+    if (followUpRule && followUpAdvance?.spawns && !followUpSuppression) {
       const maxOrder = get().tasks.reduce((m, t) => Math.max(m, t.sortOrder), 0);
-      const spec = extraRule.draft;
-      extraTask = newTaskFromDraft({
-        title: extraRule.title,
+      const spec = followUpRule.draft;
+      followUpTask = newTaskFromDraft({
+        title: followUpRule.title,
         dueDate: nextTask?.dueDate ?? getCurrentDayStart().toISOString(),
         notes: spec?.notes ?? '',
         // Null on the draft means "the same as the task that spawned it", so
-        // it doesn't sit loose above the categories — see ExtraTaskDraft.
+        // it doesn't sit loose above the categories — see FollowUpTaskDraft.
         category: spec?.category ?? task.category,
         projectId: spec?.projectId ?? task.projectId,
         tags: spec?.tags ?? [],
@@ -3446,25 +3447,26 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         timeSegments: spec?.timeSegments ?? [],
         // Written onto the row, not merely consulted at spawn time: a
         // vacation that starts after this landed should hide it too, the
-        // same as any other paused row. See ExtraTaskDraft.vacationPause.
+        // same as any other paused row. See FollowUpTaskDraft.vacationPause.
         vacationPause: spec?.vacationPause ?? false,
         // Undo comes free: uncompleteTask deletes every uncompleted row
         // pointing back at the completion being undone, which is exactly the
         // scope wanted here — undoing the 4th practice takes the rosin task
         // with it, and the tally goes back with the restored row.
         previousOccurrenceId: task.id,
+        followUpTaskSourceTitle: task.title,
       }, now.toISOString(), maxOrder + 1);
       // Derived for the same reason the occurrence above is: one milestone
       // task per completion, however many devices saw that completion.
-      extraTask = { ...extraTask, id: derivedId(spawnSeed.extra(task.id)) };
-      dbInsertTask(extraTask);
+      followUpTask = { ...followUpTask, id: derivedId(spawnSeed.extra(task.id)) };
+      dbInsertTask(followUpTask);
 
       // Real subtask rows, since that's the only thing a subtask ever is
       // here — the draft holds title-only stubs, like TemplateItem.subtasks.
       // They ride the same undo as their parent: uncompleteTask deletes the
       // subtasks of every follow-up it takes back.
-      const parentId = extraTask.id;
-      extraSubtasks = (spec?.subtasks ?? []).map((sub, i) => newTaskFromDraft(
+      const parentId = followUpTask.id;
+      followUpSubtasks = (spec?.subtasks ?? []).map((sub, i) => newTaskFromDraft(
         // The new-task defaults are for a task someone is creating, and a
         // checklist step under one isn't that — addSubtask spells out a bare
         // row for the same reason, so category, priority and effort are said
@@ -3476,7 +3478,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         derivedId(spawnSeed.subtask(parentId, sub.id)),
         true,
       ));
-      extraSubtasks.forEach(sub => dbInsertTask(sub));
+      followUpSubtasks.forEach(sub => dbInsertTask(sub));
     }
 
     // A repeating dated series rolls over as a whole set, not row by row:
@@ -3530,8 +3532,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(nextTask ? [nextTask] : []),
         ...nextSubtasks,
         ...rolledOver,
-        ...(extraTask ? [extraTask] : []),
-        ...extraSubtasks,
+        ...(followUpTask ? [followUpTask] : []),
+        ...followUpSubtasks,
       ],
       completionHoldIds: [...s.completionHoldIds, id],
       // A daily target that completes mid-hold hands over to the completion
@@ -3809,9 +3811,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // Same restore as the streak, and it has to be a snapshot rather than a
       // decrement: a completion that fired the rule reset the tally to 0, so
       // subtracting one would leave it at 0 and the next completion would fire
-      // again immediately. The extra task itself is deleted below, as an
+      // again immediately. The follow-up task itself is deleted below, as an
       // uncompleted row pointing back at this one.
-      extraTaskTally: task.previousExtraTaskTally,
+      followUpTaskTally: task.previousFollowUpTaskTally,
     };
     dbUpdateTask(updated);
     // Reopened, so a deadline it still carries is live again.
@@ -6334,12 +6336,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       chainIndex: 0,
       chainItems: [],
       chainStepOnSchedule: false,
-      extraTaskEveryN: null,
-      extraTaskTitle: null,
-      extraTaskDraft: null,
-      extraTaskOneAtATime: false,
-      extraTaskTally: 0,
-      previousExtraTaskTally: 0,
+      followUpTaskEveryN: null,
+      followUpTaskTitle: null,
+      followUpTaskDraft: null,
+      followUpTaskOneAtATime: false,
+      followUpTaskTally: 0,
+      previousFollowUpTaskTally: 0,
+      followUpTaskSourceTitle: null,
       vacationPause: false,
       excludeFromSuggestions: false,
       timerStartedAt: null,
@@ -6528,12 +6531,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       chainIndex: 0,
       chainItems: [],
       chainStepOnSchedule: false,
-      extraTaskEveryN: null,
-      extraTaskTitle: null,
-      extraTaskDraft: null,
-      extraTaskOneAtATime: false,
-      extraTaskTally: 0,
-      previousExtraTaskTally: 0,
+      followUpTaskEveryN: null,
+      followUpTaskTitle: null,
+      followUpTaskDraft: null,
+      followUpTaskOneAtATime: false,
+      followUpTaskTally: 0,
+      previousFollowUpTaskTally: 0,
+      followUpTaskSourceTitle: null,
       vacationPause: false,
       excludeFromSuggestions: false,
       timerStartedAt: null,

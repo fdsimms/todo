@@ -48,7 +48,7 @@ interface Props {
  * One title rule: the words that trigger it on the left, what it files a task
  * as on the right.
  *
- * Shaped like `ExtraTaskSheet` — the same question ("what will this task look
+ * Shaped like `FollowUpTaskSheet` — the same question ("what will this task look
  * like when something else fills it in") answered from the same primitives, so
  * the two forms can't drift into two idioms for one job. What it deliberately
  * doesn't borrow is that sheet's notes and subtasks: see `TitleRule` for why a
@@ -79,7 +79,7 @@ export function TitleRuleSheet({ visible, rule, onSave, onDelete, onClose }: Pro
 
   // Seeded when the sheet opens rather than on `rule` changing: the save hands
   // a fresh object back up, and re-seeding from it mid-edit would fight
-  // whatever is being typed. Same call ExtraTaskSheet makes.
+  // whatever is being typed. Same call FollowUpTaskSheet makes.
   useEffect(() => {
     if (!visible) return;
     setDraft(rule ?? emptyTitleRule());

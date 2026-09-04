@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { Effort, ExtraTaskDraft, Priority, TimeOfDay } from '../types';
+import type { Effort, FollowUpTaskDraft, Priority, TimeOfDay } from '../types';
 import { EFFORT_LABELS, EFFORT_HINTS, PRIORITY_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
@@ -10,7 +10,7 @@ import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { categoryLabel } from '../utils/categoryLabel';
 import { generateId } from '../utils/id';
-import { emptyExtraTaskDraft, extraTaskDraftIsEmpty } from '../utils/extraTask';
+import { emptyFollowUpTaskDraft, followUpTaskDraftIsEmpty } from '../utils/followUpTask';
 import { useTaskStore } from '../store/useTaskStore';
 import { useCategoryStore } from '../store/useCategoryStore';
 import { useProjectStore } from '../store/useProjectStore';
@@ -39,17 +39,17 @@ interface Props {
   visible: boolean;
   /** The title the rule already carries, shown as the sheet's subtitle. */
   taskTitle: string;
-  draft: ExtraTaskDraft | null;
+  draft: FollowUpTaskDraft | null;
   /** Null whenever nothing past the title is set, so the row keeps reading as "just the title". */
-  onSave: (draft: ExtraTaskDraft | null) => void;
+  onSave: (draft: FollowUpTaskDraft | null) => void;
   onClose: () => void;
 }
 
 /**
- * What the "Extra task" rule adds, past its title — notes, where it's filed,
+ * What the "Follow-up task" rule adds, past its title — notes, where it's filed,
  * how it's ranked, how long it takes and its checklist.
  *
- * A sheet rather than more rows under the Extra task field, which is where
+ * A sheet rather than more rows under the Follow-up task field, which is where
  * this started: the field is one line in the middle of a group in the middle
  * of TaskEditor, and unfolding eight pickers there buries the task actually
  * being edited under a second task's worth of form. The shape is
@@ -59,9 +59,9 @@ interface Props {
  * **It says what the task *is*, never when it happens.** The rule already
  * answers that — due with the next occurrence, or today when there isn't one
  * — so a date, a defer, a reminder or a repeat here would be a second
- * schedule contradicting the first. See ExtraTaskDraft.
+ * schedule contradicting the first. See FollowUpTaskDraft.
  */
-export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: Props) {
+export function FollowUpTaskSheet({ visible, taskTitle, draft, onSave, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -100,7 +100,7 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
   // whatever is being typed.
   useEffect(() => {
     if (!visible) return;
-    const seed = draft ?? emptyExtraTaskDraft();
+    const seed = draft ?? emptyFollowUpTaskDraft();
     setNotes(seed.notes);
     setCategory(seed.category);
     setProjectId(seed.projectId);
@@ -145,7 +145,7 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
     // the press handler runs.
     const pendingTag = newTag.trim();
     const pendingSubtask = newSubtaskTitle.trim();
-    const next: ExtraTaskDraft = {
+    const next: FollowUpTaskDraft = {
       notes: notes.trim(),
       category,
       projectId,
@@ -162,7 +162,7 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
     // An untouched draft is stored as null, so a rule that says nothing past
     // its title keeps reading that way — and keeps spawning the task exactly
     // as it did before this sheet existed.
-    onSave(extraTaskDraftIsEmpty(next) ? null : next);
+    onSave(followUpTaskDraftIsEmpty(next) ? null : next);
     onClose();
   };
 
@@ -181,7 +181,7 @@ export function ExtraTaskSheet({ visible, taskTitle, draft, onSave, onClose }: P
         <>
           <SheetHeaderButton label="Done" onPress={saveAndClose} minWidth={56} />
           <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerTitle}>Extra task</Text>
+            <Text style={styles.headerTitle}>Follow-up task</Text>
             {!!taskTitle.trim() && (
               <Text style={styles.headerSubtitle} numberOfLines={1}>{taskTitle.trim()}</Text>
             )}

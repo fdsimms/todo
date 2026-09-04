@@ -40,7 +40,7 @@ import { addDays } from 'date-fns/addDays';
 import { subDays } from 'date-fns/subDays';
 import { subMinutes } from 'date-fns/subMinutes';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
-import type { Task, Priority, Effort, ExtraTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod } from '../types';
+import type { Task, Priority, Effort, FollowUpTaskDraft, RecurrenceType, ChainItem, DeliverableKind, TimeOfDay, ReminderKind, Polarity, QuotaPeriod } from '../types';
 import { PRIORITY_LABELS, EFFORT_LABELS, TITLE_MAX_LENGTH } from '../types';
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, border, interaction, animation, checkboxRadius, iconSize, type Colors } from '../theme';
@@ -60,9 +60,9 @@ import type { HealthMetric } from '../utils/moodInsights';
 import { featureShown, taskKindsForMode } from '../utils/simpleMode';
 import { MAX_TARGET_UNIT_LENGTH, formatQuotaProgress, formatQuotaTarget, normalizeTargetUnit } from '../utils/quotaUnit';
 import {
-  MIN_EXTRA_TASK_EVERY_N, MAX_EXTRA_TASK_EVERY_N,
-  describeExtraTaskDraft, describeExtraTaskRule, extraTaskSummary,
-} from '../utils/extraTask';
+  MIN_FOLLOW_UP_TASK_EVERY_N, MAX_FOLLOW_UP_TASK_EVERY_N,
+  describeFollowUpTaskDraft, describeFollowUpTaskRule, followUpTaskSummary,
+} from '../utils/followUpTask';
 import { ordinal } from '../utils/ordinal';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore, CONTENT_FIELDS, derivedTargetCount } from '../store/useTaskStore';
@@ -109,7 +109,7 @@ import { editorSearchTerms, matchesEditorQuery } from '../utils/editorSearch';
 import { CountStepper } from './CountStepper';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
 import { TitleTokenAccessory } from './TitleTokenAccessory';
-import { ExtraTaskSheet } from './ExtraTaskSheet';
+import { FollowUpTaskSheet } from './FollowUpTaskSheet';
 import { TaskRelationPickerSheet } from './TaskRelationPickerSheet';
 import { describeBlocks } from '../utils/blocking';
 import { displayTitleFor, isMissableMealPlanTask } from '../utils/visibilityUtils';
@@ -432,12 +432,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [blocksIds, setBlocksIds] = useState<string[]>([]);
   const [showBlocks, setShowBlocks] = useState(false);
   const [showBlocksPicker, setShowBlocksPicker] = useState(false);
-  const [extraTaskEveryN, setExtraTaskEveryN] = useState<number | null>(null);
-  const [extraTaskTitle, setExtraTaskTitle] = useState('');
-  const [extraTaskDraft, setExtraTaskDraft] = useState<ExtraTaskDraft | null>(null);
-  const [extraTaskOneAtATime, setExtraTaskOneAtATime] = useState(false);
-  const [showExtraTaskSheet, setShowExtraTaskSheet] = useState(false);
-  const [showExtraTask, setShowExtraTask] = useState(false);
+  const [followUpTaskEveryN, setFollowUpTaskEveryN] = useState<number | null>(null);
+  const [followUpTaskTitle, setFollowUpTaskTitle] = useState('');
+  const [followUpTaskDraft, setFollowUpTaskDraft] = useState<FollowUpTaskDraft | null>(null);
+  const [followUpTaskOneAtATime, setFollowUpTaskOneAtATime] = useState(false);
+  const [showFollowUpTaskSheet, setShowFollowUpTaskSheet] = useState(false);
+  const [showFollowUpTask, setShowFollowUpTask] = useState(false);
   // Just the blocker's title, for the row's value. Selecting the one task
   // rather than the whole list keeps unrelated task changes from re-rendering
   // the editor.
@@ -667,10 +667,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setWaitingOnPersonId(task.waitingOnPersonId ?? null);
       setBlocksIds(blockedTasksOf(task.id).map(t => t.id));
       setDeliverableKind(task.deliverableKind ?? null);
-      setExtraTaskEveryN(task.extraTaskEveryN ?? null);
-      setExtraTaskTitle(task.extraTaskTitle ?? '');
-      setExtraTaskDraft(task.extraTaskDraft ?? null);
-      setExtraTaskOneAtATime(task.extraTaskOneAtATime ?? false);
+      setFollowUpTaskEveryN(task.followUpTaskEveryN ?? null);
+      setFollowUpTaskTitle(task.followUpTaskTitle ?? '');
+      setFollowUpTaskDraft(task.followUpTaskDraft ?? null);
+      setFollowUpTaskOneAtATime(task.followUpTaskOneAtATime ?? false);
     } else {
       setTitle(initialDraft?.title ?? ''); titleCaret.resetCaret(initialDraft?.title ?? ''); setNotes(initialDraft?.notes ?? ''); setCategory(initialDraft?.category ?? null); setProject(initialDraft?.projectId ?? null); setTags(initialDraft?.tags ?? []);
       setGroupId(initialDraft?.groupId ?? null);
@@ -701,11 +701,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setWaitingOnPersonId(null);
       setBlocksIds([]);
       setDeliverableKind(null);
-      setExtraTaskEveryN(null);
-      setExtraTaskTitle('');
-      setExtraTaskOneAtATime(false);
+      setFollowUpTaskEveryN(null);
+      setFollowUpTaskTitle('');
+      setFollowUpTaskOneAtATime(false);
     }
-    setShowExtraTask(false);
+    setShowFollowUpTask(false);
     setShowBlockerPicker(false);
     setShowBlocks(false); setShowBlocksPicker(false);
     setShowLinkPicker(false); setCustomLinkText('');
@@ -803,10 +803,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       blockedById: task?.blockedById ?? null,
       waitingOnPersonId: task?.waitingOnPersonId ?? null,
       deliverableKind: task?.deliverableKind ?? null,
-      extraTaskEveryN: task?.extraTaskEveryN ?? null,
-      extraTaskTitle: task?.extraTaskTitle ?? '',
-      extraTaskDraft: task?.extraTaskDraft ?? null,
-      extraTaskOneAtATime: task?.extraTaskOneAtATime ?? false,
+      followUpTaskEveryN: task?.followUpTaskEveryN ?? null,
+      followUpTaskTitle: task?.followUpTaskTitle ?? '',
+      followUpTaskDraft: task?.followUpTaskDraft ?? null,
+      followUpTaskOneAtATime: task?.followUpTaskOneAtATime ?? false,
     });
   }, [visible, task]);
 
@@ -988,7 +988,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   };
 
   const proceedWithSave = (effectiveChainItems: ChainItem[] = chainItems, effectiveDraftSubtasks: DraftSubtask[] = draftSubtasks) => {
-    const resolvedExtraTaskTitle = extraTaskTitle.trim() || null;
+    const resolvedFollowUpTaskTitle = followUpTaskTitle.trim() || null;
     const data = {
       title: title.trim(), notes, category, projectId: project, tags, personIds,
       dueDate: dueDate?.toISOString() ?? null,
@@ -1085,18 +1085,18 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deliverableKind,
       // Both halves or neither: a count with no name would be a rule that can
       // never fire, and a name with no count is a leftover from clearing one.
-      // extraTaskRule() is what reads them, and this is what keeps a saved row
+      // followUpTaskRule() is what reads them, and this is what keeps a saved row
       // from disagreeing with it.
-      extraTaskEveryN: resolvedExtraTaskTitle ? extraTaskEveryN : null,
-      extraTaskTitle: extraTaskEveryN !== null ? resolvedExtraTaskTitle : null,
+      followUpTaskEveryN: resolvedFollowUpTaskTitle ? followUpTaskEveryN : null,
+      followUpTaskTitle: followUpTaskEveryN !== null ? resolvedFollowUpTaskTitle : null,
       // Follows the rule it details rather than surviving on its own: with no
       // rule left there is no task for it to describe, and a draft stranded
       // on the row would come back the moment a count and a name did.
-      extraTaskDraft: resolvedExtraTaskTitle && extraTaskEveryN !== null ? extraTaskDraft : null,
+      followUpTaskDraft: resolvedFollowUpTaskTitle && followUpTaskEveryN !== null ? followUpTaskDraft : null,
       // Cleared alongside the draft when the rule isn't live, for the same
       // reason: a condition on a rule that can't fire is a setting that reads
       // as doing something and isn't.
-      extraTaskOneAtATime: resolvedExtraTaskTitle && extraTaskEveryN !== null ? extraTaskOneAtATime : false,
+      followUpTaskOneAtATime: resolvedFollowUpTaskTitle && followUpTaskEveryN !== null ? followUpTaskOneAtATime : false,
     };
 
     // The whole set of dates this task falls on, earliest first. A single
@@ -1619,10 +1619,10 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       blockedById,
       waitingOnPersonId,
       deliverableKind,
-      extraTaskEveryN,
-      extraTaskTitle,
-      extraTaskDraft,
-      extraTaskOneAtATime,
+      followUpTaskEveryN,
+      followUpTaskTitle,
+      followUpTaskDraft,
+      followUpTaskOneAtATime,
     });
     if (current !== initialStateRef.current) {
       Alert.alert(
@@ -2137,12 +2137,12 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ))}
             onClose={() => setQuestionStepId(null)}
           />
-          <ExtraTaskSheet
-            visible={showExtraTaskSheet}
-            taskTitle={extraTaskTitle}
-            draft={extraTaskDraft}
-            onSave={setExtraTaskDraft}
-            onClose={() => setShowExtraTaskSheet(false)}
+          <FollowUpTaskSheet
+            visible={showFollowUpTaskSheet}
+            taskTitle={followUpTaskTitle}
+            draft={followUpTaskDraft}
+            onSave={setFollowUpTaskDraft}
+            onClose={() => setShowFollowUpTaskSheet(false)}
           />
           <NumberPadAccessory />
           <TitleTokenAccessory nativeID={TITLE_TOKEN_ACCESSORY_ID} onInsert={insertTitleToken} />
@@ -3802,32 +3802,32 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             ),
           }]),
           {
-            key: 'extraTask', label: 'Extra task', set: extraTaskEveryN !== null,
+            key: 'followUpTask', label: 'Follow-up task', set: followUpTaskEveryN !== null,
             keywords: ['every', 'nth', 'occasionally', 'periodic', 'follow-up', 'maintenance',
               'one at a time', 'duplicate', 'pile up', 'vacation', 'away'],
             node: (
               <>
             <EditorRow
               icon="add-circle-outline"
-              label="Extra task"
+              label="Follow-up task"
               hint="Add a one-off task every few times you complete this one."
               // The count alone, not the count and the title: the pair
               // truncates at this width, and the title is right underneath
               // once the row is open. Same call Daily target makes.
-              value={extraTaskSummary(extraTaskEveryN)}
-              expanded={showExtraTask}
-              onPress={() => { animateLayout(); setShowExtraTask(v => !v); }}
-              onClear={extraTaskEveryN !== null
+              value={followUpTaskSummary(followUpTaskEveryN)}
+              expanded={showFollowUpTask}
+              onPress={() => { animateLayout(); setShowFollowUpTask(v => !v); }}
+              onClear={followUpTaskEveryN !== null
                 // The details go with the rule they detail, matching what the
                 // save writes — clearing the rule and setting a new one is a
-                // new extra task, not the old one with its name changed.
+                // new follow-up task, not the old one with its name changed.
                 ? () => {
-                    setExtraTaskEveryN(null); setExtraTaskTitle('');
-                    setExtraTaskDraft(null); setShowExtraTask(false);
+                    setFollowUpTaskEveryN(null); setFollowUpTaskTitle('');
+                    setFollowUpTaskDraft(null); setShowFollowUpTask(false);
                   }
                 : undefined}
             />
-            {showExtraTask && (
+            {showFollowUpTask && (
               // The same shape as the Daily target body below — a small integer
               // with a filled field beside it and a caption saying how it will
               // read — and sharing its styles, since a second set for the same
@@ -3841,7 +3841,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                       while the count is null, since "Every Off completion"
                       isn't a sentence, and they're hidden from VoiceOver
                       because `describeValue` below already speaks the phrase. */}
-                  {extraTaskEveryN !== null && (
+                  {followUpTaskEveryN !== null && (
                     <Text
                       style={styles.stepperSentence}
                       accessibilityElementsHidden
@@ -3851,19 +3851,19 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     </Text>
                   )}
                   <CountStepper
-                    value={extraTaskEveryN}
-                    onChange={setExtraTaskEveryN}
-                    min={MIN_EXTRA_TASK_EVERY_N}
-                    max={MAX_EXTRA_TASK_EVERY_N}
+                    value={followUpTaskEveryN}
+                    onChange={setFollowUpTaskEveryN}
+                    min={MIN_FOLLOW_UP_TASK_EVERY_N}
+                    max={MAX_FOLLOW_UP_TASK_EVERY_N}
                     // The floor clears it, so the row's × isn't the only way
                     // back out once this has been opened.
                     allowNull
                     emptyLabel="Off"
                     format={n => ordinal(n)}
-                    label="Extra task frequency"
+                    label="Follow-up task frequency"
                     describeValue={n => (n === null ? 'off' : `every ${ordinal(n)} completion`)}
                   />
-                  {extraTaskEveryN !== null && (
+                  {followUpTaskEveryN !== null && (
                     <Text
                       style={styles.stepperSentence}
                       accessibilityElementsHidden
@@ -3878,11 +3878,11 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                     a whole task title, and half a row truncates one at 390pt.
                     Hidden until there's a count, since on its own a title names
                     a task nothing will ever create. */}
-                {extraTaskEveryN !== null && (
+                {followUpTaskEveryN !== null && (
                   <TextInput
-                    style={[styles.fieldBox, styles.extraTaskTitleInput]}
-                    value={extraTaskTitle}
-                    onChangeText={setExtraTaskTitle}
+                    style={[styles.fieldBox, styles.followUpTaskTitleInput]}
+                    value={followUpTaskTitle}
+                    onChangeText={setFollowUpTaskTitle}
                     placeholder="Task to add"
                     placeholderTextColor={colors.textTertiary}
                     maxLength={TITLE_MAX_LENGTH}
@@ -3891,46 +3891,46 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   />
                 )}
                 <Text style={styles.targetStepperCaption}>
-                  {describeExtraTaskRule(extraTaskEveryN, extraTaskTitle, recurrenceType !== 'none')}
+                  {describeFollowUpTaskRule(followUpTaskEveryN, followUpTaskTitle, recurrenceType !== 'none')}
                 </Text>
                 {/* Everything past the title, in a sheet of its own — eight
                     pickers unfolded here would bury the task being edited
                     under a second task's worth of form. Offered only once the
                     rule can actually fire, since until then there is nothing
                     for the details to be about. */}
-                {extraTaskEveryN !== null && extraTaskTitle.trim() !== '' && (
-                  <View style={styles.extraTaskDetailsIndent}>
+                {followUpTaskEveryN !== null && followUpTaskTitle.trim() !== '' && (
+                  <View style={styles.followUpTaskDetailsIndent}>
                     <EditorRow
                       icon="options-outline"
                       label="Details"
                       hint="Notes, category, priority and a checklist for the task this adds."
-                      value={describeExtraTaskDraft(
-                        extraTaskDraft,
-                        extraTaskDraft?.category ? categoryLabel(extraTaskDraft.category, categories) : null,
-                        projects.find(p => p.id === extraTaskDraft?.projectId)?.title ?? null,
+                      value={describeFollowUpTaskDraft(
+                        followUpTaskDraft,
+                        followUpTaskDraft?.category ? categoryLabel(followUpTaskDraft.category, categories) : null,
+                        projects.find(p => p.id === followUpTaskDraft?.projectId)?.title ?? null,
                       )}
-                      onPress={() => setShowExtraTaskSheet(true)}
-                      onClear={extraTaskDraft ? () => setExtraTaskDraft(null) : undefined}
+                      onPress={() => setShowFollowUpTaskSheet(true)}
+                      onClear={followUpTaskDraft ? () => setFollowUpTaskDraft(null) : undefined}
                     />
                     <TouchableOpacity
-                      style={[styles.optionRow, styles.extraTaskOptionRow]}
-                      onPress={() => { haptics.tap(); setExtraTaskOneAtATime(v => !v); }}
+                      style={[styles.optionRow, styles.followUpTaskOptionRow]}
+                      onPress={() => { haptics.tap(); setFollowUpTaskOneAtATime(v => !v); }}
                       activeOpacity={interaction.activeOpacity}
                       accessibilityRole="switch"
                       accessibilityLabel="Only one at a time"
-                      accessibilityState={{ checked: extraTaskOneAtATime }}
+                      accessibilityState={{ checked: followUpTaskOneAtATime }}
                     >
                       <Ionicons
                         name="layers-outline"
                         size={18}
-                        color={extraTaskOneAtATime ? colors.accent : colors.textSecondary}
+                        color={followUpTaskOneAtATime ? colors.accent : colors.textSecondary}
                       />
                       <View style={styles.optionContent}>
                         <Text style={styles.optionLabel}>Only one at a time</Text>
                         <Text style={styles.optionHint}>Skip it while the last one is outstanding</Text>
                       </View>
-                      <View style={[styles.toggle, extraTaskOneAtATime && styles.toggleOn]}>
-                        <View style={[styles.toggleKnob, extraTaskOneAtATime && styles.toggleKnobOn]} />
+                      <View style={[styles.toggle, followUpTaskOneAtATime && styles.toggleOn]}>
+                        <View style={[styles.toggleKnob, followUpTaskOneAtATime && styles.toggleKnobOn]} />
                       </View>
                     </TouchableOpacity>
                   </View>
@@ -4994,14 +4994,14 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
    * which is the one place in this editor that happens — every other unfolded
    * control is a pill row or a stepper, and so can't be mistaken for a
    * sibling of the row above it. Indenting past the top-level rows' own label
-   * column is what says it belongs to Extra task rather than to Relationships.
+   * column is what says it belongs to Follow-up task rather than to Relationships.
    *
    * The margin (rather than padding) is what puts the hairline at the same
    * 16pt inset the app's other nested separators use, while `EditorRow`'s own
    * padding still lands the content at 32. Without the line the row floated in
    * the gap under the caption and read as the start of the next group.
    */
-  extraTaskDetailsIndent: {
+  followUpTaskDetailsIndent: {
     marginLeft: spacing.md,
     borderTopWidth: border.hairline, borderTopColor: colors.separator,
   },
@@ -5009,12 +5009,12 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // `sep`: that one insets past the icon to sit under the label, which inside
   // a block already indented by spacing.md lands the line halfway across the
   // row.
-  extraTaskOptionRow: {
+  followUpTaskOptionRow: {
     borderTopWidth: border.hairline, borderTopColor: colors.separator,
   },
   /**
    * The filled input that keeps a `CountStepper` company — Daily target's unit
-   * and Extra task's title.
+   * and Follow-up task's title.
    *
    * Both were a hairline-underlined 32pt box sitting next to a 36pt filled
    * pill, which read as two unrelated controls at two different weights, and
@@ -5058,8 +5058,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textSecondary, fontSize: font.sm,
     paddingHorizontal: spacing.md, paddingTop: spacing.xs, paddingBottom: spacing.sm,
   },
-  /** Extra task's title: a line of its own, and a touch taller for typing into. */
-  extraTaskTitleInput: {
+  /** Follow-up task's title: a line of its own, and a touch taller for typing into. */
+  followUpTaskTitleInput: {
     marginHorizontal: spacing.md, marginTop: spacing.sm, height: 40,
   },
   linkPickerRow: {

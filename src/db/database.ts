@@ -5,7 +5,7 @@ import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
 import { parseUnavailableProductIds, productKeyFor } from '../utils/groceryProduct';
 import { parseChainItems } from '../utils/chain';
-import { parseExtraTaskDraft } from '../utils/extraTask';
+import { parseFollowUpTaskDraft } from '../utils/followUpTask';
 import { cookbookKey, parseRecipeIngredients, parsePrepTasks, parseSteps } from '../utils/recipeUtils';
 import { parseRecipeTags } from '../utils/recipeTags';
 import { parseRecipeChoices, parseRecipeComponents } from '../utils/recipeComponents';
@@ -855,13 +855,20 @@ export function initDatabase(): void {
     'ALTER TABLE grocery_items ADD COLUMN running_low_at TEXT',
     // Superseded by generated_kind/generated_source_id, same as meal_entry_id.
     'ALTER TABLE tasks ADD COLUMN grocery_item_id TEXT',
+    // These columns are still named for what this feature used to be called
+    // ("extra task", renamed to "follow-up task" after they shipped). Same
+    // call cycle_enabled/cycle_index/cycle_items make for "chain": renaming
+    // the columns too would need a data migration for existing installs, so
+    // the JS-facing names (Task.followUpTask*) are the new ones and the
+    // storage layer keeps the old ones.
+    //
     // NULL on every existing row — nobody has a rule for a feature that didn't
     // exist, and NULL is what "off" already means for this field.
     'ALTER TABLE tasks ADD COLUMN extra_task_every_n INTEGER',
     'ALTER TABLE tasks ADD COLUMN extra_task_title TEXT',
     // 0, which is the only honest backfill: past completions were never
-    // counted, so no upgraded task can start part-way toward its first extra
-    // task. See Task.extraTaskTally.
+    // counted, so no upgraded task can start part-way toward its first
+    // follow-up task. See Task.followUpTaskTally.
     'ALTER TABLE tasks ADD COLUMN extra_task_tally INTEGER NOT NULL DEFAULT 0',
     'ALTER TABLE tasks ADD COLUMN previous_extra_task_tally INTEGER NOT NULL DEFAULT 0',
     // NULL on every existing row, which is exactly "an ordinary task that
@@ -994,7 +1001,7 @@ export function initDatabase(): void {
     // NULL on every existing row, which is exactly what "just the title"
     // means — a rule written before this shipped says nothing else about the
     // task it adds, and the spawn still reads it that way. See
-    // Task.extraTaskDraft.
+    // Task.followUpTaskDraft.
     'ALTER TABLE tasks ADD COLUMN extra_task_draft TEXT',
     // 0 for every existing row — a habit tracked before this shipped always
     // continued its streak on any same-day-or-cadence completion regardless
@@ -1307,11 +1314,14 @@ export function initDatabase(): void {
     // people who never picked one. Same reasoning as nudge_opt_in above.
     // See Project.weekendSource.
     'ALTER TABLE projects ADD COLUMN weekend_source INTEGER NOT NULL DEFAULT 0',
-    // 0 on every existing row: an extra-task rule written before this shipped
+    // 0 on every existing row: a follow-up task rule written before this shipped
     // added one every Nth completion regardless of what was still outstanding,
     // and backfilling it true would quietly stop rules firing for people who
-    // never asked for that. See Task.extraTaskOneAtATime.
+    // never asked for that. See Task.followUpTaskOneAtATime.
     'ALTER TABLE tasks ADD COLUMN extra_task_one_at_a_time INTEGER NOT NULL DEFAULT 0',
+    // Null on every existing row — none of them were spawned by the rule.
+    // See Task.followUpTaskSourceTitle.
+    'ALTER TABLE tasks ADD COLUMN extra_task_source_title TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2172,12 +2182,13 @@ function rowToTask(row: Record<string, unknown>): Task {
     chainIndex: (row.cycle_index as number) ?? 0,
     chainItems: parseChainItems(JSON.parse((row.cycle_items as string) ?? '[]')),
     chainStepOnSchedule: Boolean(row.chain_step_on_schedule),
-    extraTaskEveryN: (row.extra_task_every_n as number | null) ?? null,
-    extraTaskTitle: (row.extra_task_title as string | null) ?? null,
-    extraTaskDraft: parseExtraTaskDraft(row.extra_task_draft as string | null),
-    extraTaskOneAtATime: row.extra_task_one_at_a_time === 1,
-    extraTaskTally: (row.extra_task_tally as number) ?? 0,
-    previousExtraTaskTally: (row.previous_extra_task_tally as number) ?? 0,
+    followUpTaskEveryN: (row.extra_task_every_n as number | null) ?? null,
+    followUpTaskTitle: (row.extra_task_title as string | null) ?? null,
+    followUpTaskDraft: parseFollowUpTaskDraft(row.extra_task_draft as string | null),
+    followUpTaskOneAtATime: row.extra_task_one_at_a_time === 1,
+    followUpTaskTally: (row.extra_task_tally as number) ?? 0,
+    previousFollowUpTaskTally: (row.previous_extra_task_tally as number) ?? 0,
+    followUpTaskSourceTitle: (row.extra_task_source_title as string | null) ?? null,
     vacationPause: Boolean(row.vacation_pause),
     excludeFromSuggestions: Boolean(row.exclude_from_suggestions),
     timerStartedAt: (row.timer_started_at as string | null) ?? null,
@@ -2249,7 +2260,7 @@ export function dbInsertTask(task: Task): void {
       show_streak, blocked_by_id, reminder_kind, chain_step_on_schedule, pending_import, missed_at, auto_scheduled_at,
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, generated_kind,
       generated_source_id, postpone_count, postpone_muted, drifting_since,
-      extra_task_every_n, extra_task_title, extra_task_draft, extra_task_one_at_a_time, extra_task_tally, previous_extra_task_tally,
+      extra_task_every_n, extra_task_title, extra_task_draft, extra_task_one_at_a_time, extra_task_tally, previous_extra_task_tally, extra_task_source_title,
       deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id, time_block_event_id,
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
@@ -2258,7 +2269,7 @@ export function dbInsertTask(task: Task): void {
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
       health_metric, health_target
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2298,12 +2309,13 @@ export function dbInsertTask(task: Task): void {
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
       task.driftingSince ?? null,
-      task.extraTaskEveryN ?? null,
-      task.extraTaskTitle ?? null,
-      task.extraTaskDraft ? JSON.stringify(task.extraTaskDraft) : null,
-      task.extraTaskOneAtATime ? 1 : 0,
-      task.extraTaskTally,
-      task.previousExtraTaskTally,
+      task.followUpTaskEveryN ?? null,
+      task.followUpTaskTitle ?? null,
+      task.followUpTaskDraft ? JSON.stringify(task.followUpTaskDraft) : null,
+      task.followUpTaskOneAtATime ? 1 : 0,
+      task.followUpTaskTally,
+      task.previousFollowUpTaskTally,
+      task.followUpTaskSourceTitle ?? null,
       task.deliverableKind ?? null,
       task.deliverableValue ?? null,
       task.deadlineOnCalendar ? 1 : 0,
@@ -2354,7 +2366,7 @@ export function dbUpdateTask(task: Task): void {
       show_streak=?, blocked_by_id=?, reminder_kind=?, chain_step_on_schedule=?, pending_import=?, missed_at=?, auto_scheduled_at=?,
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, generated_kind=?,
       generated_source_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
-      extra_task_every_n=?, extra_task_title=?, extra_task_draft=?, extra_task_one_at_a_time=?, extra_task_tally=?, previous_extra_task_tally=?,
+      extra_task_every_n=?, extra_task_title=?, extra_task_draft=?, extra_task_one_at_a_time=?, extra_task_tally=?, previous_extra_task_tally=?, extra_task_source_title=?,
       deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?, time_block_event_id=?,
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
@@ -2403,12 +2415,13 @@ export function dbUpdateTask(task: Task): void {
       task.postponeCount,
       task.postponeMuted ? 1 : 0,
       task.driftingSince ?? null,
-      task.extraTaskEveryN ?? null,
-      task.extraTaskTitle ?? null,
-      task.extraTaskDraft ? JSON.stringify(task.extraTaskDraft) : null,
-      task.extraTaskOneAtATime ? 1 : 0,
-      task.extraTaskTally,
-      task.previousExtraTaskTally,
+      task.followUpTaskEveryN ?? null,
+      task.followUpTaskTitle ?? null,
+      task.followUpTaskDraft ? JSON.stringify(task.followUpTaskDraft) : null,
+      task.followUpTaskOneAtATime ? 1 : 0,
+      task.followUpTaskTally,
+      task.previousFollowUpTaskTally,
+      task.followUpTaskSourceTitle ?? null,
       task.deliverableKind ?? null,
       task.deliverableValue ?? null,
       task.deadlineOnCalendar ? 1 : 0,

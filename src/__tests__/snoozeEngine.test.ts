@@ -92,12 +92,13 @@ const BASE: Task = {
   chainIndex: 0,
   chainItems: [],
   chainStepOnSchedule: false,
-  extraTaskEveryN: null,
-  extraTaskTitle: null,
-  extraTaskDraft: null,
-  extraTaskOneAtATime: false,
-  extraTaskTally: 0,
-  previousExtraTaskTally: 0,
+  followUpTaskEveryN: null,
+  followUpTaskTitle: null,
+  followUpTaskDraft: null,
+  followUpTaskOneAtATime: false,
+  followUpTaskTally: 0,
+  previousFollowUpTaskTally: 0,
+  followUpTaskSourceTitle: null,
   vacationPause: false, excludeFromSuggestions: false,
   timerStartedAt: null,
   timedMinutes: null,
@@ -233,14 +234,14 @@ describe('computeSnoozeSuggestion', () => {
 
     // An extra one-off task on D+2 to make it extra busy
     const d2 = addDays(today, 2);
-    const extraTask = makeTask({ id: 'extra', dueDate: d2.toISOString() });
+    const followUpTask = makeTask({ id: 'extra', dueDate: d2.toISOString() });
 
     const task = makeTask({ id: 'snooze-me' });
-    const result = computeSnoozeSuggestion(task, [task, dailyTask, extraTask]);
+    const result = computeSnoozeSuggestion(task, [task, dailyTask, followUpTask]);
 
     // Every day has the recurring task, but D+2 also has the extra — it should
     // never be chosen as the lightest day if another option has the same recurring load
-    // but no extra task. (Just ensure result is valid and D+2 is disfavored.)
+    // but no follow-up task. (Just ensure result is valid and D+2 is disfavored.)
     const resultDayKey = isoDate(result.date);
     const d2Key = isoDate(d2);
     // D+2 should score worse than D+1 (same recurring load + 1 extra), so result should not be D+2
