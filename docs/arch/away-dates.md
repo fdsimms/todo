@@ -231,6 +231,85 @@ Five hazards, and where each lands.
 
 ---
 
+## Look ahead needs both directions
+
+`buildPushPlan` moves the window's work *past* the return, and that is the only
+direction it has. But some of what lands during a trip has to happen **before**
+you go, and the module already knows which:
+
+```ts
+if (wouldMissDeadline(task, destination, dayResetTime)) {
+  return { ..., destination: null, selected: false,
+           blocker: 'deadline',
+           blockerLabel: 'Deadline lands before you are back' };
+}
+```
+
+Its own comment calls that *"the common case rather than the edge one"*. So the
+plan already computes this set, already labels it in the trip's own terms, and
+can then do nothing with it: the row is dead, unselected, with a sentence
+explaining why it cannot move. **Pulling it forward is the missing action, and
+the hard part — knowing which tasks — is already done.**
+
+### The direction is chosen per row, from a rule the module already has
+
+Not "offer both on everything". `AwayEntry.kind` is already `'due' | 'deadline'`,
+and the header already says what separates them: a do-date is *"the day a task
+becomes available, not a promise it can break"*, and *"only `Task.deadline` is
+ever late here"*.
+
+That is the whole rule:
+
+- **A deadline landing inside the span defaults to pulling forward.** It cannot
+  wait, and you will not be there.
+- **A plain do-date landing inside the span defaults to pushing back.** Nothing is
+  broken by doing it later, which is what the existing plan already assumes.
+
+Both stay untickable and overridable per row, as every proposal in this app is.
+This is direction as a *default*, not as a gate — the same rule as the section
+above.
+
+### Where a pulled task lands
+
+Push has an obvious destination: the day after you are back. Pull does not, and
+the wrong answer is the day before departure, which is already the worst day of
+the trip.
+
+Take the destination from `buildDayLoads` over the days between now and
+departure, which the sheet has computed anyway — the same "spread it across the
+best nearby days" judgement `deloadPlan` already makes, rather than a second
+placement rule invented here. And keep `describeCrowding`'s silence rule: if
+every day before departure is already heavy, the sheet must not imply the work
+fits.
+
+### Two refusals, and they are not the same refusal
+
+`wouldMissDeadline` is the *push* refusal. Pull has its own and it is a mirror:
+a task cannot be pulled in front of the day it becomes available. `deferUntil`,
+`windowStart` and a blocker in `blocking.ts` all say that, and
+`deloadBlockerFor`'s hard/soft split is the existing vocabulary for reporting it.
+
+**And a recurring occurrence should not be offered at all.** `AwayEntry.occurrences`
+exists precisely because a daily chore reads as one line saying "8 times", and
+there is no sense in which eight projected occurrences pull forward. More
+sharply: pulling a date-anchored task forward rewrites `dueDate` *and*
+`recurrenceAnchorDate`, so doing it to a recurring row moves the grid the rest of
+the schedule is measured from. Offer the pull for entries landing once. Leave the
+rest to the push, which handles them correctly today by deferring.
+
+### This is the second caller for the same missing arm
+
+`buildPushPlan` sets `mode: 'defer' | 'reschedule'` from `isDateAnchored`, and
+`deloadUpdates` implements exactly those two. Neither can express a pull-forward
+for a date-anchored task; that rule lives inline in `TaskItem.tsx`.
+
+The trip-moving section below needs the same arm. So this is no longer a refactor
+a hypothetical future caller might want — **two readers in this design need it**,
+which is the argument for lifting it into `taskMoves.ts` rather than writing a
+third copy in the look-ahead sheet.
+
+---
+
 ## The trip moving
 
 The half that setup does not cover, and the half with no answer at all today.
@@ -262,9 +341,9 @@ Three sharp edges, all real.
   ever set it once — lives inline in `TaskItem.tsx`. So the *predicate*
   (`isDateAnchored`) sits in the leaf and the *rule* that consumes it sits in a
   component. Deload and look-ahead never noticed, because they only ever push
-  outward. A shift is the first caller needing both directions, and it is the
-  reason to move that rule into the leaf that exists precisely so it cannot
-  drift.
+  outward. A shift needs both directions, and so does look-ahead's pull (see the
+  section above) — two callers, which is the reason to move that rule into the
+  leaf that exists precisely so it cannot drift.
 - **It must not go through `deloadTasks`.** Both reasons are in that function's
   own comments. Its undo snapshot is `{ dueDate, deferUntil, postponeCount }`, so
   a patch that also wrote `recurrenceAnchorDate` would survive the undo and
