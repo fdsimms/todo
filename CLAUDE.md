@@ -616,9 +616,17 @@ the block would inherit none.
   screen. Same opt-out the drag overlay's floating copy already used.
 - **Expansion is keyed on the row, not the task** (`renderTaskRow`'s `rowKey`, `pin-<id>` for the
   copy), so tapping one row doesn't also expand its twin halfway down the list.
-- **`pinnedTasks()` ignores visibility on purpose** — a pinned task shows in the block whether or not
-  it's due today. So the copy passes `hidesWhenOnPace: false`, and a pinned task that isn't visible
-  today has only the one row rather than two.
+- **`pinnedTasks()` ignores the *clock* gates on purpose** — a pinned task shows in the block whether
+  or not it's due today. So the copy passes `hidesWhenOnPace: false`, and a pinned task that isn't
+  visible today has only the one row rather than two. It does **not** ignore the hides that aren't a
+  clock, and the selector spells all three out because it writes its filter by hand rather than
+  reusing `isVisibleApartFromVacation`: completed, archived, vacation-paused and *held back*
+  (`isHeldBack` — waiting on another task or on a person) are all excluded. That last one leaked for
+  a while, and it's the one worth not re-introducing: pinning is an answer to "not yet *today*",
+  which is not an answer to "can't be done yet at all", so a blocked pinned task sat at the top of
+  Today with nothing the user could do about it while its own ordinary row had correctly left the
+  list. `isVisibleApartFromVacation` makes exactly this distinction, putting `isHeldBack` ahead of
+  every time gate.
 - **One exception to that: a pinned daily target unpins itself once logging catches it up to pace.**
   Otherwise it would sit pinned at the top of Today, at quota, until the next unit falls due hours
   later — the exact "hidden until later" state pinning is supposed to override for a task that

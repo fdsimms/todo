@@ -5,6 +5,8 @@ import {
   generatedBy,
   generatedSourceOf,
   generatedTaskCountOf,
+  generatorPausedForVacation,
+  generatorSwitchedOn,
   hasAnyGeneratedTask,
   isNoticeTask,
   isUseUpKind,
@@ -366,5 +368,78 @@ describe('the registry', () => {
     expect(GENERATED_KIND_LIST.filter(s => s.categorized).every(s => !!s.defaultCategory)).toBe(true);
     expect(GENERATED_KIND_SPECS.calendarReview.categorized).toBe(false);
     expect(GENERATED_KIND_SPECS.supplyReorder.categorized).toBe(false);
+  });
+});
+
+// Before this field, exactly one generator of nineteen answered the question —
+// checkMealPlanNudge's own inline gate — and the other eighteen carried on
+// writing tasks onto Today throughout a deliberate "hide work from me". Three
+// of them had the decision written up in docs/arch/generated-tasks.md and no
+// field to put it in.
+describe('generatorPausedForVacation', () => {
+  it('is only ever true while vacation mode is on', () => {
+    for (const spec of GENERATED_KIND_LIST) {
+      expect(generatorPausedForVacation(spec.kind, false)).toBe(false);
+    }
+  });
+
+  it('pauses the generators that invent work', () => {
+    for (const kind of ['mealSlot', 'groceryUseUp', 'leftoverUseUp', 'pantryCheck',
+      'pantryReview', 'projectReview', 'supplyReorder', 'mealShortfall',
+      'mealPlanNudge', 'weekendNudge'] as const) {
+      expect(generatorPausedForVacation(kind, true)).toBe(true);
+    }
+  });
+
+  // "Sunscreen, not work" — the doc's own phrase for weather, screenTime and
+  // health, and the same call for the rest of these: a birthday missed because
+  // you were away is the failure the feature exists to prevent, and what is on
+  // tomorrow matters more when you are travelling.
+  it('leaves the ones that are not work running', () => {
+    for (const kind of ['weather', 'screenTime', 'health', 'moodLog', 'moodNudge',
+      'birthday', 'birthdayGift', 'reachOut', 'calendarReview'] as const) {
+      expect(generatorPausedForVacation(kind, true)).toBe(false);
+    }
+  });
+
+  // Required rather than optional for the reason `kitchen` is: a generator
+  // added to the registry has to answer, and the answer isn't guessable from
+  // anything else about it.
+  it('is answered by every generator in the registry', () => {
+    for (const spec of GENERATED_KIND_LIST) {
+      expect(typeof spec.pausedOnVacation).toBe('boolean');
+    }
+    // The listing skips mealCook (it folded into mealSlot), so check it apart
+    // rather than leaving the one legacy kind unanswered.
+    expect(typeof GENERATED_KIND_SPECS.mealCook.pausedOnVacation).toBe('boolean');
+  });
+});
+
+// One answer for "is this generator on", asked by Settings' own row, by
+// useCategoryStore and by the settings-search index. It was a switch per kind
+// in the first two independently, which is how calendarReview came to be
+// missing its read gate in both while health had it in both.
+describe('generatorSwitchedOn', () => {
+  const flags = (over: Record<string, boolean> = {}) => ({
+    ...Object.fromEntries(GENERATED_KIND_LIST.map(sp => [sp.enabledKey, true])),
+    healthReadEnabled: true,
+    calendarReadEnabled: true,
+    ...over,
+  } as Parameters<typeof generatorSwitchedOn>[1]);
+
+  it('is off when the generator\'s own switch is', () => {
+    expect(generatorSwitchedOn('projectReview', flags({ projectReviewTasks: false }))).toBe(false);
+    expect(generatorSwitchedOn('projectReview', flags())).toBe(true);
+  });
+
+  it('needs the read as well, for the two that depend on one', () => {
+    expect(generatorSwitchedOn('health', flags({ healthReadEnabled: false }))).toBe(false);
+    expect(generatorSwitchedOn('calendarReview', flags({ calendarReadEnabled: false }))).toBe(false);
+  });
+
+  it('leaves the other generators alone when a read is off', () => {
+    const noReads = flags({ healthReadEnabled: false, calendarReadEnabled: false });
+    expect(generatorSwitchedOn('birthday', noReads)).toBe(true);
+    expect(generatorSwitchedOn('weather', noReads)).toBe(true);
   });
 });

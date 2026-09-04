@@ -521,10 +521,25 @@ const DAILY_AGENDA_ID = 'daily-agenda';
  * must not be reserved for.
  */
 function agendaRequest(tasks: Task[], now: Date): { when: Date; body: string } | null {
-  const { dailyAgendaEnabled, dailyAgendaTime, dayResetTime } = useSettingsStore.getState();
+  const {
+    dailyAgendaEnabled, dailyAgendaTime, dayResetTime, quietHoursStart, quietHoursEnd,
+  } = useSettingsStore.getState();
   if (!dailyAgendaEnabled) return null;
 
-  const when = nextAgendaTime(now, dailyAgendaTime);
+  // Held to the end of quiet hours, like every other thing this file schedules.
+  // The agenda was the one exception, and the default settings walk straight
+  // into it: "Match my awake hours" writes the window as 22:00 to 08:00 and the
+  // agenda's own default is 08:00, so it clears the window by a single minute
+  // and any earlier time the user picks fires inside it.
+  //
+  // Deferred rather than suppressed, which is the choice a reminder makes
+  // rather than the one a timer alarm makes: an agenda is a summary of the day
+  // ahead, so it is still worth having at the moment you are up, where a nudge
+  // whose moment has passed is not. Deferring before the body is built rather
+  // than after is what keeps the counts about the day it actually arrives on.
+  const when = deferPastQuietHours(
+    nextAgendaTime(now, dailyAgendaTime), quietHoursStart, quietHoursEnd,
+  );
   // Vacation-hidden tasks are filtered here rather than inside agendaCounts,
   // which stays free of store reads so it can be tested directly.
   const body = agendaBody(

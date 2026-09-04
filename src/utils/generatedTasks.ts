@@ -251,6 +251,34 @@ export interface GeneratedKindSpec {
    */
   kitchen: boolean;
   /**
+   * Whether the app stops writing this kind while vacation mode is on.
+   *
+   * Required rather than optional, for the reason `kitchen` is: a generator
+   * added to the registry has to answer, and the answer is not guessable from
+   * anything else about it. Before this, exactly one of the nineteen answered —
+   * `checkMealPlanNudge`'s own inline gate — and the other eighteen carried on
+   * writing tasks onto Today throughout a deliberate "hide work from me", with
+   * nothing in the Vacation section saying so. Three of them had the decision
+   * written up in `docs/arch/generated-tasks.md` and simply no field to put it
+   * in.
+   *
+   * The rule the answers follow is that doc's own, coined for `weather` and
+   * reused for `screenTime` and `health`: **sunscreen, not work.** A generator
+   * that invents something to *do* — cook this, shop for that, review the quiet
+   * project, use up the spinach, reorder the filters — is exactly what vacation
+   * mode was switched on to stop, so it pauses. A generator about your body,
+   * your mood, the weather, your own phone use, the people you care about, or
+   * what is on tomorrow is not work and does not stop: a birthday missed
+   * because you were away is the failure that feature exists to prevent, and
+   * what is on tomorrow matters more when you are travelling, not less.
+   *
+   * A paused generator skips *without recording its period key*, the way
+   * `checkMealPlanNudge` already did, so the trigger it declined fires for real
+   * the first time the app is opened after vacation ends rather than being
+   * marked done in absentia.
+   */
+  pausedOnVacation: boolean;
+  /**
    * Whether a row of this kind is a *notice* rather than a task to manage.
    *
    * A notice is something the app is telling you, with a tick box on it: it
@@ -331,6 +359,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // real gate — the setting below only decides whether the pass runs at all.
   reachOut: {
     kind: 'reachOut',
+    pausedOnVacation: false,
     enabledKey: 'reachOutTasks',
     label: 'Reminders to keep in touch',
     onHint: 'A person you asked to be reminded about gets a task when it has been a while',
@@ -344,6 +373,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   birthday: {
     kind: 'birthday',
+    pausedOnVacation: false,
     enabledKey: 'birthdayTasks',
     label: 'Birthday reminders',
     onHint: 'A person with a birthday on file gets a task a few days before it',
@@ -364,6 +394,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // own to point to.
   birthdayGift: {
     kind: 'birthdayGift',
+    pausedOnVacation: false,
     enabledKey: 'birthdayGiftTasks',
     label: 'Birthday gift reminders',
     onHint: 'A person with a birthday on file gets a task to get them a gift',
@@ -377,6 +408,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   mealSlot: {
     kind: 'mealSlot',
+    pausedOnVacation: true,
     enabledKey: 'mealCookTasks',
     label: 'Meal tasks',
     onHint: 'Each meal you eat gets a task: what to make, or what to decide',
@@ -399,6 +431,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // lists it, since GENERATED_KIND_LIST is built from GENERATED_KINDS.
   mealCook: {
     kind: 'mealCook',
+    pausedOnVacation: true,
     enabledKey: 'mealCookTasks',
     label: 'Cook tasks',
     onHint: 'Planning a recipe adds a task to cook it',
@@ -412,6 +445,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   groceryUseUp: {
     kind: 'groceryUseUp',
+    pausedOnVacation: true,
     enabledKey: 'groceryUseUpTasks',
     label: 'Use-up tasks for groceries',
     onHint: 'Buying something with a use-by date adds a task to use it up',
@@ -425,6 +459,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   pantryCheck: {
     kind: 'pantryCheck',
+    pausedOnVacation: true,
     enabledKey: 'pantryCheckTasks',
     label: 'Pantry checks',
     onHint: 'Adds a task to check whether you still have something once its usual shelf life has passed',
@@ -442,6 +477,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // the app is mostly sure about never raises it at all.
   pantryReview: {
     kind: 'pantryReview',
+    pausedOnVacation: true,
     enabledKey: 'pantryReviewTasks',
     label: 'Pantry reviews',
     onHint: 'Adds a task to go through the pantry when several things are in doubt at once',
@@ -471,6 +507,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   leftoverUseUp: {
     kind: 'leftoverUseUp',
+    pausedOnVacation: true,
     enabledKey: 'leftoverUseUpTasks',
     label: 'Use-up tasks for leftovers',
     onHint: 'A leftover about to go bad adds a task to use it up',
@@ -484,6 +521,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   projectReview: {
     kind: 'projectReview',
+    pausedOnVacation: true,
     enabledKey: 'projectReviewTasks',
     label: 'Review tasks for quiet projects',
     onHint: 'A project with nothing scheduled adds a task to pick its next one',
@@ -497,6 +535,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   supplyReorder: {
     kind: 'supplyReorder',
+    pausedOnVacation: true,
     enabledKey: 'supplyReorderTasks',
     label: 'Reorder tasks for supplies',
     onHint: 'A task running low on supplies adds a task to order more',
@@ -516,6 +555,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   mealShortfall: {
     kind: 'mealShortfall',
+    pausedOnVacation: true,
     enabledKey: 'mealShortfallTasks',
     label: 'Shopping tasks for planned meals',
     onHint: 'A meal coming up that you lack ingredients for adds a task to shop',
@@ -537,6 +577,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   mealPlanNudge: {
     kind: 'mealPlanNudge',
+    pausedOnVacation: true,
     enabledKey: 'mealPlanNudgeEnabled',
     label: 'Plan meals for the week',
     onHint: 'Adds a task once a week to plan that week\'s meals',
@@ -556,6 +597,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   },
   calendarReview: {
     kind: 'calendarReview',
+    pausedOnVacation: false,
     enabledKey: 'calendarReviewTasks',
     label: 'Review tomorrow\'s calendar',
     onHint: 'Adds a task each day to review tomorrow\'s events',
@@ -579,6 +621,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // calendar, not a row" position calendarReview is in.
   weather: {
     kind: 'weather',
+    pausedOnVacation: false,
     enabledKey: 'weatherTasks',
     label: 'Weather-based tasks',
     onHint: "A rule that matches today's weather adds its task, like sunscreen on a sunny day",
@@ -597,6 +640,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // threshold and is told it was crossed. See src/utils/screenTimeRules.ts.
   screenTime: {
     kind: 'screenTime',
+    pausedOnVacation: false,
     enabledKey: 'screenTimeTasks',
     label: 'Screen time tasks',
     onHint: 'A rule adds its task once you have spent that long on the apps you picked',
@@ -627,6 +671,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // count on Today" is not the same instruction as "don't add health tasks".
   health: {
     kind: 'health',
+    pausedOnVacation: false,
     enabledKey: 'healthTasks',
     label: 'Health tasks',
     onHint: 'A rule adds its task on a day your Health reading falls short of it',
@@ -644,6 +689,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // either — nobody has a mood log until they start one.
   moodLog: {
     kind: 'moodLog',
+    pausedOnVacation: false,
     enabledKey: 'moodLogTasks',
     label: 'Daily mood check-in',
     onHint: 'Adds one task a day to log how you\'re feeling',
@@ -670,6 +716,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // has. See src/utils/moodTasks.ts for the three rules holding it in place.
   moodNudge: {
     kind: 'moodNudge',
+    pausedOnVacation: false,
     enabledKey: 'moodNudgeTasks',
     label: 'Nudge after low days',
     onHint: 'Adds a task to plan something you enjoy after a run of low-mood days',
@@ -690,6 +737,7 @@ export const GENERATED_KIND_SPECS: Record<GeneratedKind, GeneratedKindSpec> = {
   // anything, not whether it appears, so the setting is the real permission.
   weekendNudge: {
     kind: 'weekendNudge',
+    pausedOnVacation: true,
     enabledKey: 'weekendNudgeTasks',
     label: 'Nudge for an empty weekend',
     onHint: 'Adds a task before a weekend that has nothing scheduled on it',
@@ -766,6 +814,43 @@ export function generatedTaskCounts(
  * a generator's column read back as undefined rather than null, and "the
  * setting decides" is the right answer for both.
  */
+/**
+ * The switches a generator's on/off answer depends on: its own key, plus the
+ * two source reads that outrank one.
+ */
+export type GeneratedEnabledFlags =
+  Record<GeneratedEnabledKey, boolean>
+  & { healthReadEnabled: boolean; calendarReadEnabled: boolean };
+
+/**
+ * Whether this generator is switched on, counting the read it depends on.
+ *
+ * Two of them need the app to be allowed into a source before their own key can
+ * mean anything, and a row reading "on" over a closed read lies about itself.
+ * `health` had that second gate and `calendarReview` did not, in *both* places
+ * this question was being answered independently (Settings' own row and
+ * `useCategoryStore`) — so this is the one answer all of them ask, rather than
+ * a third copy for the settings-search index to drift from as well.
+ */
+export function generatorSwitchedOn(kind: GeneratedKind, flags: GeneratedEnabledFlags): boolean {
+  if (!flags[GENERATED_KIND_SPECS[kind].enabledKey]) return false;
+  if (kind === 'health') return flags.healthReadEnabled;
+  if (kind === 'calendarReview') return flags.calendarReadEnabled;
+  return true;
+}
+
+/**
+ * Whether this generator should stand down right now — see
+ * `GeneratedKindSpec.pausedOnVacation`.
+ *
+ * Pure and parameterised rather than reading the settings store, like
+ * everything else in this module: the passes hold the store, this holds the
+ * rule.
+ */
+export function generatorPausedForVacation(kind: GeneratedKind, vacationMode: boolean): boolean {
+  return vacationMode && GENERATED_KIND_SPECS[kind].pausedOnVacation;
+}
+
 export function wantsGeneratedTask(
   explicit: boolean | null | undefined,
   enabled: boolean,

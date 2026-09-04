@@ -153,6 +153,36 @@ export interface SettingsEntry {
    * have no way back.
    */
   simple?: boolean;
+  /**
+   * Rendered only on iOS, where its *group* is not — the same one-row-at-a-time
+   * treatment `kitchen` and `simple` give their areas.
+   *
+   * `SettingsGroup.iosOnly` covers a whole group and was the only platform flag
+   * there was, so five rows sitting in cross-platform groups behind their own
+   * `Platform.OS === 'ios'` check had no way to say so and stayed in the index
+   * on Android: both Live Activity rows, and the two Screen Time ones (which
+   * are additionally behind a runtime capability check, so they can be absent
+   * on an iOS device too — the flag is the platform half, and the honest half
+   * we can state here).
+   */
+  iosOnly?: boolean;
+  /**
+   * The id of the row that has to be switched on for this one to render, or
+   * absent for a row that always does.
+   *
+   * About thirty rows sit inside a `{parentToggle && (` in their screen, so
+   * searching "do not disturb" with quiet hours off, or "reschedule threshold"
+   * with the postpone check off, returned a row that isn't on the page. That
+   * breaks the contract SettingsScreen states: search must not turn up a row
+   * that isn't rendered.
+   *
+   * An id rather than a predicate, deliberately. A predicate would have to read
+   * the settings store, and this module is pure data — the settings-as-config
+   * mistake its own header warns about. The screen holds the store, so it
+   * passes `visibleSettingsEntries` the set of gating rows currently on and the
+   * index just does the lookup.
+   */
+  requires?: string;
 }
 
 /**
@@ -291,6 +321,9 @@ const GENERATED_ENTRIES: SettingsEntry[] = GENERATED_KIND_LIST.flatMap(spec => {
       label: 'File them under',
       section: spec.label,
       keywords: ['category', 'where', 'section'],
+      // Rendered only under a generator that's switched on, the same way the
+      // screen renders it — see SettingsEntry.requires.
+      requires: `gen:${spec.kind}`,
     }] : []),
   ];
 });
@@ -336,7 +369,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['permission', 'allow', 'notification', 'alerts'] },
   { id: 'dailyAgenda', groupId: 'notifications', label: 'Daily agenda', section: 'Notifications',
     keywords: ['morning summary', 'digest', 'notification'] },
-  { id: 'dailyAgendaTime', groupId: 'notifications', label: 'Send it at', section: 'Notifications',
+  { id: 'dailyAgendaTime', requires: 'dailyAgenda', groupId: 'notifications', label: 'Send it at', section: 'Notifications',
     keywords: ['agenda time'] },
   // The five rows below had no entry at all, which made the group's own subject
   // unsearchable: "quiet hours" and "do not disturb" are among the most likely
@@ -346,11 +379,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'quietHours', groupId: 'notifications', label: 'Quiet hours', section: 'Notifications',
     keywords: ['do not disturb', 'dnd', 'night', 'silence', 'mute', 'sleep', 'overnight',
       'no notifications'] },
-  { id: 'quietHoursStart', groupId: 'notifications', label: 'From', section: 'Notifications',
+  { id: 'quietHoursStart', requires: 'quietHours', groupId: 'notifications', label: 'From', section: 'Notifications',
     keywords: ['quiet hours', 'start', 'silence', 'night'] },
-  { id: 'quietHoursEnd', groupId: 'notifications', label: 'Until', section: 'Notifications',
+  { id: 'quietHoursEnd', requires: 'quietHours', groupId: 'notifications', label: 'Until', section: 'Notifications',
     keywords: ['quiet hours', 'end', 'silence', 'morning'] },
-  { id: 'quietHoursFromAwake', groupId: 'notifications', label: 'Set from awake hours', section: 'Notifications',
+  { id: 'quietHoursFromAwake', requires: 'quietHours', groupId: 'notifications', label: 'Set from awake hours', section: 'Notifications',
     keywords: ['quiet hours', 'match', 'copy', 'day & time'] },
   { id: 'defaultReminderLead', groupId: 'notifications', label: 'Remind me before', section: 'Default reminder',
     keywords: ['lead', 'early', 'ahead', 'start time', 'automatic', 'notification', 'alert'] },
@@ -474,7 +507,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['nudge me', 'nudge', 'stalled', 'quiet', 'chase', 'reminder', 'stall', 'new project'] },
   { id: 'postponeCheck', groupId: 'tasksProjects', label: 'Suggest an action after repeated reschedules', section: 'Rescheduling',
     keywords: ['postpone', 'procrastinate', 'snooze', 'defer', 'avoid'] },
-  { id: 'postponeCheckThreshold', groupId: 'tasksProjects', label: 'Reschedule threshold', section: 'Rescheduling',
+  { id: 'postponeCheckThreshold', requires: 'postponeCheck', groupId: 'tasksProjects', label: 'Reschedule threshold', section: 'Rescheduling',
     keywords: ['postpone', 'how many'] },
   // Every focus row carries "pomodoro": it's the name most people have for the
   // thing, and it appears nowhere in the UI copy (which says what each setting
@@ -492,24 +525,24 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['pomodoro', 'focus', 'rest', 'short break'] },
   { id: 'focusLongRestEvery', groupId: 'tasksProjects', label: 'Long break every', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest', 'how often'] },
-  { id: 'focusLongRestMinutes', groupId: 'tasksProjects', label: 'Long break length', section: 'Focus sessions', simple: true,
+  { id: 'focusLongRestMinutes', requires: 'focusLongRestEvery', groupId: 'tasksProjects', label: 'Long break length', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'focus', 'rest'] },
-  { id: 'focusLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while focusing', section: 'Focus sessions',
+  { id: 'focusLiveActivity', iosOnly: true, groupId: 'tasksProjects', label: 'Live Activity while focusing', section: 'Focus sessions', simple: true,
     keywords: ['pomodoro', 'session', 'lock screen', 'dynamic island', 'widget'] },
   // "Screen time" is the name most people have for this and appears nowhere in
   // the copy, same argument as "pomodoro" on the rows above. So are "block"
   // and "distraction", which is what somebody is actually looking for.
-  { id: 'focusShield', groupId: 'tasksProjects', label: 'Block apps while focusing', section: 'Focus sessions',
+  { id: 'focusShield', iosOnly: true, groupId: 'tasksProjects', label: 'Block apps while focusing', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'pomodoro', 'distraction', 'shield', 'social media', 'restrict'] },
-  { id: 'focusShieldApps', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions',
+  { id: 'focusShieldApps', iosOnly: true, requires: 'focusShield', groupId: 'tasksProjects', label: 'Apps to block', section: 'Focus sessions', simple: true,
     keywords: ['screen time', 'distraction', 'which apps', 'picker', 'choose'] },
-  { id: 'timerLiveActivity', groupId: 'tasksProjects', label: 'Live Activity while timing', section: 'Timers',
+  { id: 'timerLiveActivity', iosOnly: true, groupId: 'tasksProjects', label: 'Live Activity while timing', section: 'Timers',
     keywords: ['lock screen', 'dynamic island', 'timer', 'stopwatch', 'cooking', 'recipe', 'countdown'] },
   { id: 'autoRemoveExpired', groupId: 'tasksProjects', label: 'Auto-remove expired tasks', section: 'Time-limited tasks',
     keywords: ['window', 'delete'], simple: true },
   { id: 'vacationMode', groupId: 'tasksProjects', label: 'Vacation mode', section: 'Vacation',
     keywords: ['holiday', 'pause', 'away', 'streaks'], simple: true },
-  { id: 'vacationEnd', groupId: 'tasksProjects', label: 'End date', section: 'Vacation',
+  { id: 'vacationEnd', requires: 'vacationMode', groupId: 'tasksProjects', label: 'End date', section: 'Vacation',
     keywords: ['vacation end', 'return'], simple: true },
   // The master switch for the groceries/recipes/meal plan area. Unflagged, and
   // has to stay that way — a row that hid itself when switched off would be a
@@ -579,11 +612,11 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up scanned barcodes', section: 'Barcode lookups',
     keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy'],
     kitchen: true, simple: true },
-  { id: 'fdcApiKey', groupId: 'privacyAi', label: 'FoodData Central key', section: 'Barcode lookups',
+  { id: 'fdcApiKey', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'FoodData Central key', section: 'Barcode lookups',
     keywords: ['usda', 'api', 'barcode', 'scan', 'branded', 'nutrition'], kitchen: true, simple: true },
-  { id: 'goUpcApiKey', groupId: 'privacyAi', label: 'Go-UPC key', section: 'Barcode lookups',
+  { id: 'goUpcApiKey', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'Go-UPC key', section: 'Barcode lookups',
     keywords: ['api', 'barcode', 'scan', 'paid', 'fallback'], kitchen: true, simple: true },
-  { id: 'clearGtinLookups', groupId: 'privacyAi', label: 'Forget saved barcodes', section: 'Barcode lookups',
+  { id: 'clearGtinLookups', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'Forget saved barcodes', section: 'Barcode lookups',
     keywords: ['cache', 'clear', 'reset', 'wrong name', 'upc', 'gtin', 'scan again'], kitchen: true, simple: true },
 
   // ── Groceries & meals ─────────────────────────────────────────────────────
@@ -597,9 +630,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     simple: true },
   { id: 'cookRecapEnabled', groupId: 'kitchen', label: 'Ask after cooking', section: 'Meals on Today',
     keywords: ['rate', 'rating', 'review', 'leftovers', 'used up', 'out of', 'sheet', 'prompt', 'cooked'] },
-  { id: 'restockOfferEnabled', groupId: 'kitchen', label: 'Restock after cooking', section: 'Meals on Today',
+  { id: 'restockOfferEnabled', requires: 'cookRecapEnabled', groupId: 'kitchen', label: 'Restock after cooking', section: 'Meals on Today',
     keywords: ['ingredients', 'shopping list', 'offer', 'buy again', 'cooked'] },
-  { id: 'tripLiveActivity', groupId: 'kitchen', label: 'Live Activity while shopping', section: 'Shopping trip',
+  { id: 'tripLiveActivity', iosOnly: true, groupId: 'kitchen', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'],
     simple: true },
   { id: 'unitSystem', groupId: 'kitchen', label: 'Units', section: 'Recipe & grocery amounts',
@@ -618,7 +651,7 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
   // Privacy & AI
   { id: 'appLock', groupId: 'privacyAi', label: 'Require Face ID to open', section: 'App lock',
     keywords: ['touch id', 'biometric', 'lock', 'passcode', 'privacy', 'security'] },
-  { id: 'appLockGrace', groupId: 'privacyAi', label: 'Lock again after', section: 'App lock',
+  { id: 'appLockGrace', requires: 'appLock', groupId: 'privacyAi', label: 'Lock again after', section: 'App lock',
     keywords: ['grace', 'timeout'] },
   { id: 'apiKey', groupId: 'privacyAi', label: 'Anthropic API key', section: 'AI suggestions',
     keywords: ['ai', 'claude', 'suggestions'] },
@@ -675,12 +708,21 @@ export function visibleSettingsEntries(
   platformOS: string,
   kitchenEnabled = true,
   simpleMode = false,
+  /**
+   * The ids of the gating rows currently switched on — see
+   * `SettingsEntry.requires`. Omitted means "don't apply that filter", which is
+   * what a caller with no store to read (a test, a platform check) wants and
+   * what every caller got before the flag existed.
+   */
+  activeEntryIds?: ReadonlySet<string>,
 ): SettingsEntry[] {
   const shown = new Set(visibleSettingsGroups(platformOS, kitchenEnabled).map(g => g.id));
   return SETTINGS_ENTRIES.filter(e =>
     shown.has(e.groupId)
     && (kitchenEnabled || !e.kitchen)
-    && (!simpleMode || !e.simple));
+    && (!simpleMode || !e.simple)
+    && (!e.iosOnly || platformOS === 'ios')
+    && (!e.requires || !activeEntryIds || activeEntryIds.has(e.requires)));
 }
 
 export function settingsGroup(id: SettingsGroupId): SettingsGroup | undefined {

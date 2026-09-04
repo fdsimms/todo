@@ -202,6 +202,46 @@ describe('QUICK_ADD_CHIP_LABELS', () => {
   });
 });
 
+// The kind a row reports and the kind it behaves as have to be the same thing.
+// taskKindOf used to test these three fields for null alone while every reader
+// of the actual behaviour applied a threshold, so a row carrying targetCount 1,
+// timedMinutes 0 or healthTarget 0 — which a template, an import, a restored
+// backup or a synced row can hold — drew a kind's card and chip over machinery
+// that ignored it.
+describe('taskKindOf agrees with the readers that act on the fields', () => {
+  const shape = (over: Record<string, unknown> = {}) => ({
+    chainEnabled: false, targetCount: null, timedMinutes: null,
+    healthMetric: null, healthTarget: null, ...over,
+  }) as Parameters<typeof taskKindOf>[0];
+
+  it('matches isQuotaTask at the target floor', () => {
+    for (const targetCount of [0, 1, 2, 8]) {
+      const behaves = targetCount !== null && targetCount > 1;
+      expect(taskKindOf(shape({ targetCount })) === 'target').toBe(behaves);
+    }
+  });
+
+  it('matches isTimedTask at zero minutes', () => {
+    for (const timedMinutes of [0, 1, 15]) {
+      expect(taskKindOf(shape({ timedMinutes })) === 'timed').toBe(timedMinutes > 0);
+    }
+  });
+
+  it('matches hasHealthTarget at a zero goal', () => {
+    for (const healthTarget of [0, 1, 8000]) {
+      expect(taskKindOf(shape({ healthMetric: 'steps', healthTarget })) === 'health')
+        .toBe(healthTarget > 0);
+    }
+  });
+
+  // The deliberate exception, and the one arm that must stay a bare flag: read
+  // the one-item rule here and a task would stop being a chain the moment you
+  // opened the editor to add its second step.
+  it('still calls a one-item chain a chain, which is the documented exception', () => {
+    expect(taskKindOf(shape({ chainEnabled: true }))).toBe('chain');
+  });
+});
+
 describe('taskKindOf', () => {
   const shape = (over: Partial<Parameters<typeof taskKindOf>[0]> = {}) => ({
     chainEnabled: false, targetCount: null, timedMinutes: null,

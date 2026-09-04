@@ -36,6 +36,14 @@ const mockTaskState = {
   }),
   setLastAction: jest.fn(),
 };
+// The reconcile also asks whether vacation mode is on, for the kinds that stand
+// down during it (see GeneratedKindSpec.pausedOnVacation). Mocked rather than
+// imported for the reason useTaskStore is: the real store pulls in expo-sqlite.
+const mockSettingsState = { vacationMode: false };
+jest.mock('../store/useSettingsStore', () => ({
+  useSettingsStore: { getState: () => mockSettingsState },
+}));
+
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => mockTaskState },
 }));
@@ -67,6 +75,7 @@ const opts = (overrides: Partial<Parameters<typeof reconcileGeneratedTask>[0]> =
 beforeEach(() => {
   jest.clearAllMocks();
   mockTaskState.tasks = [];
+  mockSettingsState.vacationMode = false;
 });
 
 describe('reconcileGeneratedTask — creating', () => {
@@ -160,6 +169,43 @@ describe('reconcileGeneratedTask — creating', () => {
     reconcileGeneratedTask(opts());
 
     expect(mockTaskState.tasks).toHaveLength(2);
+  });
+});
+
+// Vacation mode is a deliberate "hide work from me", and a use-up task is work.
+// Only *creating* stops: gating the whole reconcile would freeze rows whose
+// source has already finished with them, and gating `wanted` would delete a row
+// on the way into vacation and write it again on the way out.
+describe('reconcileGeneratedTask — vacation mode', () => {
+  it('creates nothing for a kind that stands down', () => {
+    mockSettingsState.vacationMode = true;
+    reconcileGeneratedTask(opts());
+
+    expect(mockTaskState.addTask).not.toHaveBeenCalled();
+    expect(mockTaskState.tasks).toHaveLength(0);
+  });
+
+  it('still creates for a kind that keeps running', () => {
+    mockSettingsState.vacationMode = true;
+    reconcileGeneratedTask(opts({ kind: 'birthday' as const }));
+
+    expect(mockTaskState.addTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('still lets an existing row drift with its source', () => {
+    mockSettingsState.vacationMode = true;
+    seedTask();
+    reconcileGeneratedTask(opts({ drift: () => ({ title: 'Use up Spinach today' }) }));
+
+    expect(mockTaskState.updateTask).toHaveBeenCalledTimes(1);
+  });
+
+  it('still removes an existing row the source no longer wants', () => {
+    mockSettingsState.vacationMode = true;
+    seedTask();
+    reconcileGeneratedTask(opts({ wanted: false }));
+
+    expect(mockTaskState.tasks).toHaveLength(0);
   });
 });
 
