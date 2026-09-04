@@ -7,6 +7,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
 import {
+  generatorSwitchedOn,
   listedGeneratedKinds,
   type GeneratedKind,
   type GeneratedKindSpec,
@@ -172,40 +173,11 @@ export function GeneratedTasksSection() {
   // four generators the last arm was the nudge's, and a fifth added to the
   // registry would silently have read and written the nudge's own setting
   // instead of its own. An exhaustive switch makes that a typecheck failure.
-  const enabledOf = (kind: GeneratedKind): boolean => {
-    switch (kind) {
-      // One arm for both: mealSlot is what mealCook folded into, and it kept
-      // the setting keys rather than migrating preferences people had already
-      // set (see the note above). Legacy rows still read as mealCook, so the
-      // kind stays answerable even though nothing lists it any more.
-      case 'mealSlot':
-      case 'mealCook': return s.mealCookTasks;
-      case 'groceryUseUp': return s.groceryUseUpTasks;
-      case 'leftoverUseUp': return s.leftoverUseUpTasks;
-      case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
-      case 'projectReview': return s.projectReviewTasks;
-      case 'pantryCheck': return s.pantryCheckTasks;
-      case 'pantryReview': return s.pantryReviewTasks;
-      case 'mealShortfall': return s.mealShortfallTasks;
-      case 'supplyReorder': return s.supplyReorderTasks;
-      // Both switches, same as health below and for the same reason: the pass
-      // returns on !calendarReadEnabled (see checkCalendarReviewTasks), so a
-      // row reading "on" over a closed read would be lying about itself.
-      case 'calendarReview': return s.calendarReviewTasks && s.calendarReadEnabled;
-      case 'birthday': return s.birthdayTasks;
-      case 'birthdayGift': return s.birthdayGiftTasks;
-      case 'reachOut': return s.reachOutTasks;
-      case 'weather': return s.weatherTasks;
-      case 'screenTime': return s.screenTimeTasks;
-      // Both switches, for the reason generatorEnabled gives: the pass
-      // cannot run while the app is not allowed to read Health at all, so a
-      // row reading "on" over a closed read would be lying about itself.
-      case 'health': return s.healthTasks && s.healthReadEnabled;
-      case 'moodLog': return s.moodLogTasks;
-      case 'moodNudge': return s.moodNudgeTasks;
-      case 'weekendNudge': return s.weekendNudgeTasks;
-    }
-  };
+  // One answer, shared with useCategoryStore and the settings-search index —
+  // see generatorSwitchedOn. It used to be a switch per kind here and a second
+  // switch per kind there, which is how calendarReview came to be missing the
+  // read gate in both while health had it in both.
+  const enabledOf = (kind: GeneratedKind): boolean => generatorSwitchedOn(kind, s);
 
   /**
    * What a generator needs turned on before its own switch can mean anything,

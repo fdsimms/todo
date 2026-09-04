@@ -71,14 +71,28 @@ export function taskKindOf(v: {
   // where TaskEditor already applies it — read it here and a task would stop
   // being a chain the moment you opened the editor to add its second step.
   if (v.chainEnabled) return 'chain';
-  if (v.targetCount !== null) return 'target';
-  if (v.timedMinutes !== null) return 'timed';
+  // The three thresholds below are the runtime readers' own, deliberately
+  // rather than a bare null check: isQuotaTask wants `> 1`, isTimedTask `> 0`
+  // and hasHealthTarget `> 0`, so a bare check made this answer a kind the
+  // task did not behave as. A row carrying targetCount 1 or timedMinutes 0 —
+  // which a template, an import, a restored backup or a synced row can hold —
+  // read as a target or a timed task here, and so drew that kind's card in the
+  // editor and its chip on the row, while every reader of the actual behaviour
+  // ignored it. taskKinds.test.ts pins the agreement so the two can't part
+  // again.
+  //
+  // The chain arm above is the deliberate exception and stays a bare flag,
+  // for the reason its own note gives: a one-item chain doesn't function as
+  // one either, but that rule belongs at save, and reading it here would stop
+  // a task being a chain the moment you opened the editor to add its second
+  // step. The three below have no such mid-edit state — applyKind bakes a real
+  // default for each, and their steppers have floors — so a sub-threshold
+  // value is only ever a row from somewhere else.
+  if (v.targetCount !== null && v.targetCount >= MIN_TARGET_COUNT) return 'target';
+  if (v.timedMinutes !== null && v.timedMinutes > 0) return 'timed';
   // Last, because it is the thinnest of the lot: it changes neither what
-  // completing does nor the repeat, only when the row reads as ready. Nothing
-  // in the wild can hold it alongside another shape — the fields are new and
-  // bakedFields has always cleared the others — so the precedence is only here
-  // for a row the editor's independent fields could produce from here on.
-  if (v.healthMetric !== null && v.healthTarget !== null) return 'health';
+  // completing does nor the repeat, only when the row reads as ready.
+  if (v.healthMetric !== null && v.healthTarget !== null && v.healthTarget > 0) return 'health';
   return 'task';
 }
 

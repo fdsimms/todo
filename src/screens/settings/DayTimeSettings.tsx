@@ -22,7 +22,6 @@ const WEEK_START_OPTIONS: SegmentOption<WeekStart>[] = [
 export function DayTimeSettings() {
   const {
     dayResetTime, setDayResetTime,
-    morningStart,
     afternoonStart, setAfternoonStart,
     eveningStart, setEveningStart,
     nightStart, setNightStart,
@@ -102,7 +101,14 @@ export function DayTimeSettings() {
         label="When the day turns over"
         footer={'Set Morning to 2:00 AM or later if you’re often up past midnight and don’t want today’s tasks to vanish before you’re done. A task with a time-of-day segment appears once its part of the day begins.'}
       >
-        {segment('dayReset', 'Morning', 'sunny', formatHHMM(morningStart),
+        {/* dayResetTime, which is what this row's picker opens on, what its
+            confirm writes and what its hint describes. It used to display
+            morningStart instead, and the two are only equal because
+            setDayResetTime writes both — so out of the box, where the defaults
+            are 00:00 and 06:00, the row read "6:00 AM" over a day that flipped
+            at midnight, and stayed wrong until the row was touched once. A
+            restore or a sync merge can part them the same way. */}
+        {segment('dayReset', 'Morning', 'sunny', formatHHMM(dayResetTime!),
           { first: true, hint: '"Today" flips and streaks reset at this time' })}
         {segment('afternoon', 'Afternoon starts', 'partly-sunny', formatHHMM(afternoonStart))}
         {segment('evening', 'Evening starts', 'moon-outline', formatHHMM(eveningStart))}

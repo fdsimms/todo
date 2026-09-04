@@ -18,7 +18,7 @@ import {
 } from '../db/database';
 import { firstEmoji } from '../utils/emojiInput';
 import { useSettingsStore } from './useSettingsStore';
-import { GENERATED_KIND_LIST, GENERATED_KIND_SPECS, type GeneratedKind } from '../utils/generatedTasks';
+import { GENERATED_KIND_LIST, GENERATED_KIND_SPECS, generatorSwitchedOn, type GeneratedKind } from '../utils/generatedTasks';
 
 interface CategoryStore {
   categories: Category[];
@@ -349,34 +349,11 @@ function generatedCategorySetting(kind: GeneratedKind): {
 
 /** Whether this generator is currently switched on. */
 function generatorEnabled(kind: GeneratedKind): boolean {
-  const s = useSettingsStore.getState();
-  switch (kind) {
-    case 'mealSlot':
-    case 'mealCook': return s.mealCookTasks;
-    case 'groceryUseUp': return s.groceryUseUpTasks;
-    case 'leftoverUseUp': return s.leftoverUseUpTasks;
-    case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
-    case 'projectReview': return s.projectReviewTasks;
-    case 'pantryCheck': return s.pantryCheckTasks;
-    case 'pantryReview': return s.pantryReviewTasks;
-    case 'mealShortfall': return s.mealShortfallTasks;
-    case 'supplyReorder': return s.supplyReorderTasks;
-    // Two switches here too, same as health below: checkCalendarReviewTasks
-    // returns on !calendarReadEnabled, so the generator is off whatever its
-    // own key says.
-    case 'calendarReview': return s.calendarReviewTasks && s.calendarReadEnabled;
-    case 'birthday': return s.birthdayTasks;
-    case 'birthdayGift': return s.birthdayGiftTasks;
-    case 'reachOut': return s.reachOutTasks;
-    case 'weather': return s.weatherTasks;
-    case 'screenTime': return s.screenTimeTasks;
-    // Two switches, and both have to be on: a generator that fires off Health
-    // data cannot run while the app is not allowed to read any.
-    case 'health': return s.healthTasks && s.healthReadEnabled;
-    case 'moodLog': return s.moodLogTasks;
-    case 'moodNudge': return s.moodNudgeTasks;
-    case 'weekendNudge': return s.weekendNudgeTasks;
-  }
+  // One answer, shared with Settings' own row and the settings-search index —
+  // see generatorSwitchedOn. This used to be a switch per kind here and a
+  // second switch per kind there, which is how calendarReview came to be
+  // missing its read gate in both while health had it in both.
+  return generatorSwitchedOn(kind, useSettingsStore.getState());
 }
 
 /**

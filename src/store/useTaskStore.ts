@@ -85,7 +85,7 @@ import {
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
-import { generatedBy, generatedSourceOf, generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
+import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
@@ -2626,6 +2626,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(!('recurrenceAnchorDate' in updates) && SCHEDULE_FIELDS.some(f => f in updates)
           ? { recurrenceAnchorDate: null }
           : {}),
+        // Two rules that ride onto the successor a completion spawns, and so
+        // mean nothing on a task that no longer spawns one. Both were enforced
+        // at creation (canHoldSupply / canHoldFollowUpTask in newTaskFromDraft)
+        // and on the editor's own save, which left the gap in the middle:
+        // anything else that writes `recurrenceType: 'none'` onto a live task —
+        // a bulk edit, a sync merge, a store action — stranded a supply frozen
+        // at its last count and a follow-up rule that could never fire again,
+        // both still drawn on the row. Same trigger shape as the anchors above:
+        // a patch naming the field itself wins outright, so a whole-snapshot
+        // undo restores what it recorded rather than being re-cleared.
+        ...(!canHoldSupply({ ...t, ...updates }) && !('supplyCount' in updates)
+          ? {
+              supplyCount: null,
+              supplyUnit: null,
+              supplyRefillCount: null,
+              supplyReorderAt: DEFAULT_SUPPLY_REORDER_AT,
+              supplyLeadDays: null,
+              supplyDeclinedAtCount: null,
+              supplyGroceryItemId: null,
+            }
+          : {}),
+        ...(!canHoldFollowUpTask({ ...t, ...updates }) && !('followUpTaskEveryN' in updates)
+          ? {
+              followUpTaskEveryN: null,
+              followUpTaskTitle: null,
+              followUpTaskDraft: null,
+              followUpTaskOneAtATime: false,
+            }
+          : {}),
         // Same shape as the two rules above, and the same reasoning: a patch
         // naming targetCount itself wins outright, so a whole-snapshot undo
         // restores the count it recorded rather than recomputing a new one
@@ -4534,7 +4563,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // "hide work from me" the user set today. Deliberately doesn't record
     // weekKey when skipped this way, so the same week's trigger fires for
     // real the first time the app is opened after vacation ends.
-    if (settings.vacationMode) return;
+    //
+    // Through the registry rather than reading vacationMode directly: this was
+    // the only generator of nineteen that answered this question, and one rule
+    // with one exception is how the other eighteen came to have no answer.
+    if (generatorPausedForVacation('mealPlanNudge', settings.vacationMode)) return;
 
     const due = dueMealPlanNudge(
       new Date(),
@@ -4628,6 +4661,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   checkProjectReviewTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('projectReview', settings.vacationMode)) return;
     if (!settings.projectReviewTasks) return;
 
     const tasks = get().tasks;
@@ -4983,6 +5021,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    */
   checkMealSlotTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('mealSlot', settings.vacationMode)) return;
     // The same gate checkPantryCheckTasks takes, and for the same reason —
     // which that one's comment claimed was unique to it, back when it was. This
     // pass fires on time passing rather than on a purchase or an edit, so with
@@ -5044,6 +5087,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   checkPantryCheckTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('pantryCheck', settings.vacationMode)) return;
     if (!settings.pantryCheckTasks) return;
     // The whole grocery area can be switched off (kitchenEnabled), and this
     // generator fires on time passing rather than on a purchase or an edit — so
@@ -5132,6 +5180,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   checkPantryReviewTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('pantryReview', settings.vacationMode)) return;
     if (!settings.pantryReviewTasks) return;
     // The same kitchenEnabled gate checkPantryCheckTasks takes directly above,
     // for the same reason: this fires on time passing rather than on a purchase
@@ -5222,6 +5275,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    */
   checkMealShortfallTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('mealShortfall', settings.vacationMode)) return;
     if (!settings.mealShortfallTasks) return;
     // The whole grocery area can be switched off, and this generator reads the
     // catalog to decide what's missing — without this gate it would be part of
@@ -5320,6 +5378,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   checkSupplyReorderTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('supplyReorder', settings.vacationMode)) return;
     const { dayResetTime } = settings;
     const tasks = get().tasks;
 
@@ -5877,6 +5940,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    */
   checkWeekendNudgeTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('weekendNudge', settings.vacationMode)) return;
     if (!settings.weekendNudgeTasks || !settings.weekendNudgeTaskCategory) return;
     // Gated like calendarReview, and for its reason rather than the general
     // one: the busy half of this reading is the *real device calendar*, which

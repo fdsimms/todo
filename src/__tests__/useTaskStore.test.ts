@@ -13224,8 +13224,15 @@ describe('time block reconcile', () => {
 // the sheet only appears to save.
 describe('updateTask: the followUp task draft', () => {
   it('saves a draft onto the task and takes it back off again', () => {
+    // Repeating, because that is the only task a follow-up rule can sit on:
+    // the tally rides onto the successor a completion spawns (see
+    // canHoldFollowUpTask), and updateTask now clears a rule stranded on a task
+    // that spawns none.
     useTaskStore.setState({
-      tasks: [makeTask({ id: 'practice', followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin the bow' })],
+      tasks: [makeTask({
+        id: 'practice', recurrenceType: 'daily',
+        followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin the bow',
+      })],
     });
     const draft = { ...emptyFollowUpTaskDraft(), notes: 'In the case pocket', priority: 2 as const };
 
@@ -13234,6 +13241,62 @@ describe('updateTask: the followUp task draft', () => {
 
     useTaskStore.getState().updateTask('practice', { followUpTaskDraft: null });
     expect(useTaskStore.getState().tasks[0].followUpTaskDraft).toBeNull();
+  });
+});
+
+describe('updateTask: a rule that can no longer be carried', () => {
+  // Both rules ride onto the successor a completion spawns. The editor clears
+  // them on its own save and newTaskFromDraft refuses them at creation, which
+  // left the gap in the middle: anything else writing the repeat away — a bulk
+  // edit, a sync merge, a store action — stranded a supply frozen at its last
+  // count and a follow-up rule that could never fire, both still on the row.
+  const rowOf = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  it('drops a follow-up rule when the repeat is taken away', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'practice', recurrenceType: 'daily',
+        followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin the bow',
+      })],
+    });
+    useTaskStore.getState().updateTask('practice', { recurrenceType: 'none' });
+    expect(rowOf('practice').followUpTaskEveryN).toBeNull();
+    expect(rowOf('practice').followUpTaskTitle).toBeNull();
+  });
+
+  it('drops a supply when the repeat is taken away', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'filter', recurrenceType: 'monthly', supplyCount: 3, supplyUnit: 'filters',
+      })],
+    });
+    useTaskStore.getState().updateTask('filter', { recurrenceType: 'none' });
+    expect(rowOf('filter').supplyCount).toBeNull();
+    expect(rowOf('filter').supplyUnit).toBeNull();
+  });
+
+  it('leaves both alone while the repeat is still there', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'both', recurrenceType: 'daily', supplyCount: 3,
+        followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin the bow',
+      })],
+    });
+    useTaskStore.getState().updateTask('both', { title: 'Renamed' });
+    expect(rowOf('both').supplyCount).toBe(3);
+    expect(rowOf('both').followUpTaskEveryN).toBe(4);
+  });
+
+  // The same "a patch naming the field wins outright" the anchors above rely
+  // on, so a whole-snapshot undo restores what it recorded.
+  it('lets a patch that names the field itself through', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'undo', recurrenceType: 'none' })],
+    });
+    useTaskStore.getState().updateTask('undo', {
+      followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin the bow',
+    });
+    expect(rowOf('undo').followUpTaskEveryN).toBe(4);
   });
 });
 

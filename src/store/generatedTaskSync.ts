@@ -1,12 +1,14 @@
 import type { Task, TaskDraft } from '../types';
 import {
   generatedTaskCountOf,
+  generatorPausedForVacation,
   hasAnyGeneratedTask,
   liveGeneratedTask,
   liveUseUpTaskCount,
   type GeneratedKind,
 } from '../utils/generatedTasks';
 import { derivedId, spawnSeed } from '../utils/syncIds';
+import { useSettingsStore } from './useSettingsStore';
 import { useTaskStore } from './useTaskStore';
 
 /**
@@ -137,6 +139,19 @@ export function reconcileGeneratedTask(options: ReconcileGeneratedOptions): void
     return;
   }
 
+  // Nothing new while vacation mode is on, for the kinds that answer yes to it
+  // (see GeneratedKindSpec.pausedOnVacation). Deliberately here rather than at
+  // the top: the two branches above still run, so an existing row still drifts
+  // with its source and still goes when the source stops wanting it. Only
+  // *creating* stops, which is what "don't invent work while I'm away" means —
+  // gating the whole function would instead freeze rows the source has already
+  // finished with, and gating `wanted` would delete a row on the way into
+  // vacation and write it again on the way out.
+  //
+  // The pass-level guards in useTaskStore are not made redundant by this: they
+  // also stop a pass recording the period key for a day it declined, which is
+  // what lets the trigger fire for real once vacation ends.
+  if (generatorPausedForVacation(kind, useSettingsStore.getState().vacationMode)) return;
   if (blocksOnFinished && hasAnyGeneratedTask(tasks, kind, sourceId)) return;
   if (useUpCap !== null && liveUseUpTaskCount(tasks) >= useUpCap) return;
   // Derived rather than random for a sourced generator (#1751): two devices

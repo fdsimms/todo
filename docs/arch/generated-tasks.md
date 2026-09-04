@@ -475,6 +475,37 @@ one. Those three rules and the reasoning behind them are in
     people keep loosely, and a half-filled week answered with shopping rows is the fastest way to
     have the whole thing switched off.
 
+## Vacation mode: which of them stand down
+
+`GeneratedKindSpec.pausedOnVacation` is every generator's answer, required the way `kitchen` is
+because it isn't guessable from anything else about the generator. Before it existed exactly one of
+the nineteen answered — `checkMealPlanNudge`'s own inline gate — and the other eighteen carried on
+writing tasks onto Today throughout a deliberate "hide work from me", with nothing in the Vacation
+section of Settings saying so. Three of them had the decision argued out in this file and simply had
+nowhere to record it.
+
+The rule is the one coined for `weather` below and reused for `screenTime` and `health`:
+**sunscreen, not work.** A generator that invents something to *do* is exactly what vacation mode
+was switched on to stop, so it pauses: `mealSlot`, `groceryUseUp`, `leftoverUseUp`, `pantryCheck`,
+`pantryReview`, `projectReview`, `supplyReorder`, `mealShortfall`, `mealPlanNudge`, `weekendNudge`.
+A generator about your body, your mood, the weather, your own phone use, the people you care about,
+or what is on tomorrow is not work and keeps running: `weather`, `screenTime`, `health`, `moodLog`,
+`moodNudge`, `birthday`, `birthdayGift`, `reachOut`, `calendarReview`. A birthday missed because you
+were away is the exact failure that feature exists to prevent, and what is on tomorrow matters more
+when you are travelling, not less.
+
+Two things enforce it, and they are not redundant:
+
+- **The clock-driven passes** check `generatorPausedForVacation` at the top, and skip *without
+  recording their period key* — the behaviour `checkMealPlanNudge` already had. That is what makes
+  the trigger they declined fire for real the first time the app is opened after vacation ends,
+  rather than being marked done in absentia.
+- **`reconcileGeneratedTask`** checks it too, for the generators whose trigger is an edit rather
+  than a clock (`groceryUseUp`, `leftoverUseUp`). It checks *after* the remove and drift branches,
+  so only creation stops: an existing row still follows its source and still goes when the source
+  stops wanting it. Gating the whole function would freeze rows their source has finished with, and
+  gating `wanted` would delete a row on the way into vacation and write it again on the way out.
+
 ## `mealSlot` — the fold that turned cook tasks into meal tasks
 
 `mealCook` is retired. It is still in the `GeneratedKind` union (those are storage values, and rows

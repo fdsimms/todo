@@ -217,6 +217,68 @@ describe('settings index', () => {
     });
   });
 
+  describe('per-row platform gating', () => {
+    // SettingsGroup.iosOnly covers a whole group and was the only platform flag
+    // there was, so rows sitting in cross-platform groups behind their own
+    // Platform.OS check stayed in the index on Android.
+    it('drops an iOS-only row on another platform', () => {
+      const android = visibleSettingsEntries('android');
+      expect(android.some(e => e.iosOnly)).toBe(false);
+      expect(SETTINGS_ENTRIES.filter(e => e.iosOnly).length).toBeGreaterThan(0);
+    });
+
+    it('keeps it on iOS', () => {
+      const ios = visibleSettingsEntries('ios');
+      expect(ios.some(e => e.id === 'timerLiveActivity')).toBe(true);
+      expect(ios.some(e => e.id === 'focusShield')).toBe(true);
+    });
+  });
+
+  describe('rows nested under another row', () => {
+    // Searching "do not disturb" with quiet hours off, or "reschedule
+    // threshold" with the postpone check off, used to return a row that isn't
+    // on the page.
+    it('drops a row whose gating row is off', () => {
+      const off = visibleSettingsEntries('ios', true, false, new Set());
+      expect(off.some(e => e.id === 'quietHoursStart')).toBe(false);
+      expect(off.some(e => e.id === 'postponeCheckThreshold')).toBe(false);
+      expect(off.some(e => e.id === 'vacationEnd')).toBe(false);
+    });
+
+    it('keeps it once that row is on', () => {
+      const on = visibleSettingsEntries('ios', true, false, new Set(['quietHours']));
+      expect(on.some(e => e.id === 'quietHoursStart')).toBe(true);
+      expect(on.some(e => e.id === 'quietHoursEnd')).toBe(true);
+      // Still gone: a different gate, still off.
+      expect(on.some(e => e.id === 'postponeCheckThreshold')).toBe(false);
+    });
+
+    it('applies no such filter for a caller with no store to read', () => {
+      const all = visibleSettingsEntries('ios');
+      expect(all.some(e => e.id === 'quietHoursStart')).toBe(true);
+    });
+
+    // A typo here would silently hide a row from search for ever, since the
+    // named parent could never be in the set.
+    it('names a real row in every requires', () => {
+      const ids = new Set(SETTINGS_ENTRIES.map(e => e.id));
+      for (const entry of SETTINGS_ENTRIES) {
+        if (entry.requires) expect(ids.has(entry.requires)).toBe(true);
+      }
+      expect(SETTINGS_ENTRIES.filter(e => e.requires).length).toBeGreaterThan(0);
+    });
+
+    // The screen renders "File them under" inside `on && spec.categorized`, so
+    // every derived category row is gated on its own generator's toggle.
+    it('gates every generator category row on its own generator', () => {
+      const categoryRows = SETTINGS_ENTRIES.filter(e => e.id.endsWith(':category'));
+      expect(categoryRows.length).toBeGreaterThan(0);
+      for (const row of categoryRows) {
+        expect(row.requires).toBe(row.id.replace(/:category$/, ''));
+      }
+    });
+  });
+
   describe('simplified-mode gating', () => {
     it('drops every flagged row when the mode is on', () => {
       const on = visibleSettingsEntries('ios', true, true);

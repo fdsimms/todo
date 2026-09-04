@@ -1222,6 +1222,32 @@ describe('scheduleDailyAgenda', () => {
     expect(arg.content.data).toEqual({ dailyAgenda: true });
   });
 
+  // The agenda was the one scheduled notification quiet hours didn't cover, and
+  // the defaults walk straight into it: "Match my awake hours" writes 22:00 to
+  // 08:00 and the agenda's own default is 08:00, clearing the window by a
+  // minute. Anything earlier fired inside it.
+  it('waits for quiet hours to end rather than firing inside them', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    mockSettings.dailyAgendaTime = '06:30';
+    mockSettings.quietHoursStart = '22:00';
+    mockSettings.quietHoursEnd = '08:00';
+    await scheduleDailyAgenda([dueOnAgendaDay()]);
+    const when: Date = agendaCall().trigger.date;
+    expect(when.getHours()).toBe(8);
+    expect(when.getMinutes()).toBe(0);
+  });
+
+  it('leaves a send time outside the window where the user put it', async () => {
+    mockSettings.dailyAgendaEnabled = true;
+    mockSettings.dailyAgendaTime = '09:15';
+    mockSettings.quietHoursStart = '22:00';
+    mockSettings.quietHoursEnd = '08:00';
+    await scheduleDailyAgenda([dueOnAgendaDay()]);
+    const when: Date = agendaCall().trigger.date;
+    expect(when.getHours()).toBe(9);
+    expect(when.getMinutes()).toBe(15);
+  });
+
   it('lands in the notification list without lighting the screen', async () => {
     mockSettings.dailyAgendaEnabled = true;
     await scheduleDailyAgenda([dueOnAgendaDay()]);
