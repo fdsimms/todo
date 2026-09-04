@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Alert, StyleSheet, View } from 'react-native';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { useTaskStore } from '../../store/useTaskStore';
 import { ensureGeneratedTaskCategory, useCategoryStore } from '../../store/useCategoryStore';
@@ -7,6 +7,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { categoryLabel } from '../../utils/categoryLabel';
 import { haptics } from '../../utils/haptics';
 import {
+  generatorSwitchedOn,
   listedGeneratedKinds,
   type GeneratedKind,
   type GeneratedKindSpec,
@@ -172,39 +173,43 @@ export function GeneratedTasksSection() {
   // four generators the last arm was the nudge's, and a fifth added to the
   // registry would silently have read and written the nudge's own setting
   // instead of its own. An exhaustive switch makes that a typecheck failure.
-  const enabledOf = (kind: GeneratedKind): boolean => {
-    switch (kind) {
-      // One arm for both: mealSlot is what mealCook folded into, and it kept
-      // the setting keys rather than migrating preferences people had already
-      // set (see the note above). Legacy rows still read as mealCook, so the
-      // kind stays answerable even though nothing lists it any more.
-      case 'mealSlot':
-      case 'mealCook': return s.mealCookTasks;
-      case 'groceryUseUp': return s.groceryUseUpTasks;
-      case 'leftoverUseUp': return s.leftoverUseUpTasks;
-      case 'mealPlanNudge': return s.mealPlanNudgeEnabled;
-      case 'projectReview': return s.projectReviewTasks;
-      case 'pantryCheck': return s.pantryCheckTasks;
-      case 'pantryReview': return s.pantryReviewTasks;
-      case 'mealShortfall': return s.mealShortfallTasks;
-      case 'supplyReorder': return s.supplyReorderTasks;
-      case 'calendarReview': return s.calendarReviewTasks;
-      case 'birthday': return s.birthdayTasks;
-      case 'birthdayGift': return s.birthdayGiftTasks;
-      case 'reachOut': return s.reachOutTasks;
-      case 'weather': return s.weatherTasks;
-      case 'screenTime': return s.screenTimeTasks;
-      // Both switches, for the reason generatorEnabled gives: the pass
-      // cannot run while the app is not allowed to read Health at all, so a
-      // row reading "on" over a closed read would be lying about itself.
-      case 'health': return s.healthTasks && s.healthReadEnabled;
-      case 'moodLog': return s.moodLogTasks;
-      case 'moodNudge': return s.moodNudgeTasks;
-      case 'weekendNudge': return s.weekendNudgeTasks;
+  // One answer, shared with useCategoryStore and the settings-search index —
+  // see generatorSwitchedOn. It used to be a switch per kind here and a second
+  // switch per kind there, which is how calendarReview came to be missing the
+  // read gate in both while health had it in both.
+  const enabledOf = (kind: GeneratedKind): boolean => generatorSwitchedOn(kind, s);
+
+  /**
+   * What a generator needs turned on before its own switch can mean anything,
+   * or null for the sixteen that need nothing.
+   *
+   * Two of them read a source the app has to be allowed into first, and
+   * `enabledOf` refuses to show either as on while that read is shut. That is
+   * right (a row reading "on" over a closed read would be lying about itself)
+   * and it left the switch untappable: `toggle` computes `!enabledOf(kind)`, so
+   * the tap wrote true, `enabledOf` still answered false, and the switch sprang
+   * back with nothing said. Naming the prerequisite is what turns a dead tap
+   * into an answer.
+   */
+  const blockedBy = (kind: GeneratedKind): { setting: string; screen: string } | null => {
+    if (kind === 'health' && !s.healthReadEnabled) {
+      return { setting: 'Read Apple Health', screen: 'Health' };
     }
+    if (kind === 'calendarReview' && !s.calendarReadEnabled) {
+      return { setting: 'Read my calendar', screen: 'Calendar' };
+    }
+    return null;
   };
 
   const toggle = (kind: GeneratedKind): void => {
+    const blocker = blockedBy(kind);
+    if (blocker) {
+      Alert.alert(
+        `Turn on “${blocker.setting}” first`,
+        `This adds tasks from something the app isn't allowed to read yet. Turn on “${blocker.setting}” under ${blocker.screen} in Settings, then come back.`,
+      );
+      return;
+    }
     const next = !enabledOf(kind);
     switch (kind) {
       case 'mealSlot':
@@ -321,6 +326,11 @@ export function GeneratedTasksSection() {
    * because those are two more rows down and the answer is the point.
    */
   const hintFor = (spec: GeneratedKindSpec): string => {
+    // Ahead of the off-hint, which describes what turning this on would do —
+    // true of the other sixteen, and a promise the switch can't keep while its
+    // prerequisite is off.
+    const blocker = blockedBy(spec.kind);
+    if (blocker) return `Needs “${blocker.setting}”, which is off`;
     if (!enabledOf(spec.kind)) return spec.offHint;
     if (spec.kind === 'mealPlanNudge') {
       return `A task appears ${WEEKDAY_NAMES[s.mealPlanNudgeWeekday]} at ${formatHHMM(s.mealPlanNudgeTime)} to plan that week`;
