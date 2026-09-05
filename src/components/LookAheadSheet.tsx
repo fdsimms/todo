@@ -56,7 +56,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useProjectStore } from '../store/useProjectStore';
 import { useShallow } from 'zustand/react/shallow';
-import { nextAwayProject } from '../utils/awayDates';
+import { awayStatus, nextAwayProject } from '../utils/awayDates';
 import type { Task } from '../types';
 import { useSheetHiddenOffset } from '../hooks/useSheetHiddenOffset';
 
@@ -148,17 +148,25 @@ export function LookAheadSheet({ visible, onClose }: Props) {
     // This is the note on `backOn` above being cashed in — the sheet had to ask
     // because nothing in the app held the dates, and now something can.
     const trip = nextAwayProject(projects, today, dayResetTime);
+    // A fortnight: the span this was built for, and long enough to hold a
+    // recurrence or two where "next Monday" would open on a window too short
+    // to say anything.
+    const fallbackCutoff = addDays(today, 14);
     if (trip) {
-      setCutoff(trip.span.start);
+      // The departure is the cutoff only while it is still ahead. On a trip
+      // already under way it is a date that has been and gone, and this row
+      // means "show everything before" — a past cutoff reads as nonsense and
+      // gives `daysBetween` a negative span, so the window comes out empty.
+      // Mid-trip there is no "before I go" left to ask about; the useful half
+      // is the return, which still prefills below.
+      const started = (awayStatus(trip.span, today, dayResetTime)?.phase ?? 'before') !== 'before';
+      setCutoff(started ? fallbackCutoff : trip.span.start);
       setBackOn(trip.span.end);
       // A departure with no return prefills the cutoff and leaves the second
       // row to be answered, so there is no source to name for it.
       setBackSource(trip.span.end ? trip.project.title : null);
     } else {
-      // A fortnight: the span this was built for, and long enough to hold a
-      // recurrence or two where "next Monday" would open on a window too short
-      // to say anything.
-      setCutoff(addDays(today, 14));
+      setCutoff(fallbackCutoff);
       const scheduledEnd = vacationEnd ? new Date(vacationEnd) : null;
       const usable = scheduledEnd !== null && scheduledEnd > today;
       setBackOn(usable ? scheduledEnd : null);
