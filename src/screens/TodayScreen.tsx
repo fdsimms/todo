@@ -62,6 +62,7 @@ import {
   mealContextRows,
   kitchenContextRows,
   healthContextRows,
+  weatherContextRows,
   plannedUsesToday,
   insertContextRows,
   withoutContextRows,
@@ -141,6 +142,7 @@ import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHealthStore } from '../store/useHealthStore';
+import { useWeatherStore } from '../store/useWeatherStore';
 import { eventsIn, type BusyEvent } from '../utils/calendarBusy';
 import { useHiddenEventsStore } from '../store/useHiddenEventsStore';
 import { hiddenEventKey } from '../utils/hiddenEvents';
@@ -1313,6 +1315,14 @@ export function TodayScreen() {
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const healthToday = useHealthStore(s => s.today);
 
+  // Today's reading and tomorrow's forecast, filed under the same category the
+  // "sunny -> sunscreen"-style rule tasks land in (`weatherTaskCategory`) —
+  // that's also this row's off switch, and `useWeatherSync` in App.tsx is what
+  // keeps the snapshot current, same split useHealthSync draws above.
+  const weatherTaskCategory = useSettingsStore(s => s.weatherTaskCategory);
+  const weatherSnapshot = useWeatherStore(s => s.snapshot);
+  const weatherSnapshotDayKey = useWeatherStore(s => s.snapshotDayKey);
+
   // The second line the same menu can carry, and the health feature's only
   // reach into Today beyond its own row. Gated on the *read* rather than on the
   // generator: this is a line in a menu somebody opened, not a task, so it
@@ -1898,6 +1908,18 @@ export function TodayScreen() {
         category: healthCategory,
       }));
     }
+    // Same gate as health above, and the same reason: a cleared category is
+    // this row's off switch, and it's also what keeps a demo session from
+    // reading a real snapshot left in the store by a previous one — the demo
+    // database has never had a weatherTaskCategory of its own.
+    if (weatherTaskCategory) {
+      rows.push(...weatherContextRows(weatherSnapshot, {
+        todayKey: getLogicalDayKey(new Date(), dayResetTime),
+        snapshotDayKey: weatherSnapshotDayKey,
+        category: weatherTaskCategory,
+        now: new Date(),
+      }));
+    }
     // No category means nowhere to put them — see ensureCalendarEventCategory
     // for why a cleared setting is a real answer rather than a missing one.
     if (calendarEventCategory) {
@@ -1945,6 +1967,7 @@ export function TodayScreen() {
     mealsOnToday, todayMealEntries, recipesById, mealCookTaskCategory, allTasks,
     kitchenOnToday, kitchenEntries, kitchenPlannedUses,
     healthToday, healthCategory, dayResetTime,
+    weatherSnapshot, weatherSnapshotDayKey, weatherTaskCategory,
     minuteTick,
   ]);
 
@@ -2726,6 +2749,10 @@ export function TodayScreen() {
             // already read. The arm is explicit rather than left to fall
             // through, because the fall-through is the meal plan.
             : item.row.kind === 'health' ? undefined
+            // A weather row has nowhere to go either, for the same reason a
+            // health row doesn't: the reading came from another service and
+            // this row already shows the whole of what's known about it.
+            : item.row.kind === 'weather' ? undefined
             : openMealPlan
           }
           onMarkCooked={

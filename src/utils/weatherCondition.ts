@@ -48,3 +48,33 @@ export function classifyWeather(weatherCode: number, tempF: number): WeatherCond
   if (tempF >= HOT_THRESHOLD_F) conditions.push('hot');
   return conditions;
 }
+
+/**
+ * The glyph a forecast row draws for `weatherCode`, for `weatherContextRows`
+ * (`dayContextRows.ts`). Sky only, in the same priority `classifyWeather`
+ * checks in — cold/hot have no icon of their own, since a forecast row is
+ * already stating the temperature as a number and a second, wordless way of
+ * saying "cold" would just be a thermometer next to one.
+ */
+export function weatherIconFor(weatherCode: number): 'sunny-outline' | 'rainy-outline' | 'snow-outline' | 'cloud-outline' {
+  if (SNOWY_CODES.has(weatherCode)) return 'snow-outline';
+  if (RAINY_CODES.has(weatherCode)) return 'rainy-outline';
+  if (SUNNY_CODES.has(weatherCode)) return 'sunny-outline';
+  return 'cloud-outline';
+}
+
+/** "sunny", "rainy", "snowy", or "cloudy" for anything outside those three groups. */
+export function weatherConditionAdjective(weatherCode: number): string {
+  if (SNOWY_CODES.has(weatherCode)) return 'snowy';
+  if (RAINY_CODES.has(weatherCode)) return 'rainy';
+  if (SUNNY_CODES.has(weatherCode)) return 'sunny';
+  return 'cloudy';
+}
+
+/** "Snow", "Rain", "Sun", or "Clouds" — the noun form, for a future day's row title. */
+export function weatherConditionNoun(weatherCode: number): string {
+  if (SNOWY_CODES.has(weatherCode)) return 'Snow';
+  if (RAINY_CODES.has(weatherCode)) return 'Rain';
+  if (SUNNY_CODES.has(weatherCode)) return 'Sun';
+  return 'Clouds';
+}
