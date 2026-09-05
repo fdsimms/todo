@@ -1575,6 +1575,13 @@ interface TaskStore extends UndoHistoryActions {
   // protect and every move is a plain reschedule.
   pullProjectTasks: (moves: readonly { id: string; updates: Partial<Task> }[]) => void;
   /**
+   * Applies an accepted "the trip moved" plan (see utils/awayShift) under one
+   * undo entry. deloadTasks' mirror, and deliberately *not* deloadTasks: that
+   * one counts postpones, which would blame the user for a flight change, and
+   * its undo snapshot drops recurrenceAnchorDate, which a pull-forward writes.
+   */
+  shiftAwayTasks: (moves: readonly { id: string; updates: Partial<Task> }[]) => void;
+  /**
    * Files the tasks a rule just written would have filed, had it existed when
    * they were typed (see utils/titleRules.titleRuleBacklog). Offered once, at
    * the moment a rule is authored — a rule still never fires on its own after
@@ -4410,6 +4417,50 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       redo: () => get().deloadTasks(moves),
       undo: () => snapshots.forEach(s =>
         get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil, postponeCount: s.postponeCount })
+      ),
+    });
+  },
+
+  shiftAwayTasks(moves) {
+    const byId = new Map(get().tasks.map(t => [t.id, t]));
+    const applied = moves.filter(m => byId.has(m.id));
+    if (applied.length === 0) return;
+
+    // The anchor rides in the snapshot, unlike deloadTasks' three fields. A
+    // shift can *pull* a recurring member forward, which writes
+    // recurrenceAnchorDate, and an undo that restored only the two dates would
+    // leave that behind — silently rotating the grid the rest of the
+    // schedule steps from, the exact back-door rotation the "only ever set
+    // once" rule in scheduleMoveUpdates exists to prevent.
+    const snapshots = applied.map(m => {
+      const t = byId.get(m.id)!;
+      return {
+        id: m.id,
+        dueDate: t.dueDate,
+        deferUntil: t.deferUntil,
+        recurrenceAnchorDate: t.recurrenceAnchorDate,
+      };
+    });
+
+    // Never counted, deliberately, and this is the half deloadTasks gets the
+    // other way round. "Lighten this day" is the most explicit *I am pushing
+    // today's work* action in the app, so it counts; a trip moving because the
+    // airline moved it is not the user postponing anything, and counting it
+    // would feed the "you've pushed this five times" prompt (utils/postpone)
+    // with pushes nobody made.
+    dbTransaction(() => {
+      applied.forEach(m => get().updateTask(m.id, m.updates, { skipPostponeCount: true, markSeenOnBecomeVisible: true }));
+    });
+
+    get().setLastAction({
+      label: `${applied.length} task${applied.length === 1 ? '' : 's'} moved with the trip`,
+      redo: () => get().shiftAwayTasks(moves),
+      undo: () => snapshots.forEach(s =>
+        get().updateTask(
+          s.id,
+          { dueDate: s.dueDate, deferUntil: s.deferUntil, recurrenceAnchorDate: s.recurrenceAnchorDate },
+          { skipPostponeCount: true },
+        )
       ),
     });
   },

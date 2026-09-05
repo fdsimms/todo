@@ -2577,6 +2577,61 @@ describe('completeTask', () => {
   });
 });
 
+// ─── shiftAwayTasks ─────────────────────────────────────────────────────────
+
+describe('shiftAwayTasks', () => {
+  it('applies every move under one undo entry', () => {
+    const a = makeTask({ id: 'a', dueDate: '2026-06-05T12:00:00.000Z' });
+    const b = makeTask({ id: 'b', dueDate: '2026-06-06T12:00:00.000Z' });
+    useTaskStore.setState({ tasks: [a, b] });
+    useTaskStore.getState().shiftAwayTasks([
+      { id: 'a', updates: { dueDate: '2026-06-07T12:00:00.000Z', deferUntil: null } },
+      { id: 'b', updates: { dueDate: '2026-06-08T12:00:00.000Z', deferUntil: null } },
+    ]);
+    expect(useTaskStore.getState().tasks.find(t => t.id === 'a')!.dueDate)
+      .toBe('2026-06-07T12:00:00.000Z');
+    expect(useTaskStore.getState().lastAction?.label).toBe('2 tasks moved with the trip');
+  });
+
+  it('does not count a shift as the user postponing anything', () => {
+    // A trip moving because the airline moved it is not a push, and counting
+    // it would feed the "you've pushed this five times" prompt with pushes
+    // nobody made. deloadTasks deliberately counts; this deliberately does not.
+    useTaskStore.setState({ tasks: [makeTask({ id: 'a', dueDate: '2026-06-05T12:00:00.000Z' })] });
+    useTaskStore.getState().shiftAwayTasks([
+      { id: 'a', updates: { dueDate: '2026-06-09T12:00:00.000Z', deferUntil: null } },
+    ]);
+    expect(useTaskStore.getState().tasks[0].postponeCount).toBe(0);
+  });
+
+  it('restores the recurrence anchor on undo, not just the two dates', () => {
+    // A shift can pull a recurring member forward, which writes
+    // recurrenceAnchorDate. An undo that left it behind would silently rotate
+    // the grid the rest of the schedule steps from.
+    useTaskStore.setState({ tasks: [makeTask({
+      id: 'a', dueDate: '2026-06-08T12:00:00.000Z', recurrenceType: 'daily',
+      recurrenceAnchorDate: null,
+    })] });
+    useTaskStore.getState().shiftAwayTasks([{ id: 'a', updates: {
+      dueDate: '2026-06-05T12:00:00.000Z',
+      recurrenceAnchorDate: '2026-06-08T12:00:00.000Z',
+      deferUntil: null,
+    } }]);
+    expect(useTaskStore.getState().tasks[0].recurrenceAnchorDate).toBe('2026-06-08T12:00:00.000Z');
+
+    useTaskStore.getState().lastAction!.undo();
+    const back = useTaskStore.getState().tasks[0];
+    expect(back.dueDate).toBe('2026-06-08T12:00:00.000Z');
+    expect(back.recurrenceAnchorDate).toBeNull();
+  });
+
+  it('ignores an id that is no longer there', () => {
+    useTaskStore.setState({ tasks: [] });
+    useTaskStore.getState().shiftAwayTasks([{ id: 'gone', updates: { dueDate: null } }]);
+    expect(useTaskStore.getState().lastAction?.label).not.toBe('1 task moved with the trip');
+  });
+});
+
 // ─── checkAwayVacation ──────────────────────────────────────────────────────
 
 describe('checkAwayVacation', () => {

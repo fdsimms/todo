@@ -22,6 +22,7 @@ import { EditorRow } from './EditorRow';
 import { awayNoonIso } from '../utils/awayDates';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { featureShown } from '../utils/simpleMode';
+import { AwayShiftSheet } from './AwayShiftSheet';
 import { EditorSheet } from './EditorSheet';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -159,9 +160,30 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     return category;
   };
 
+  /**
+   * The departure this sheet opened on, and where it has just been moved to.
+   *
+   * Held rather than closed over, because the offer outlives the save: the
+   * sheet writes the project and then hands the reader a plan built against
+   * the dates it changed *from*.
+   */
+  const projectTasks = useTaskStore(
+    useShallow(s => (project ? s.tasks.filter(t => t.projectId === project.id) : [])),
+  );
+  const [shiftFrom, setShiftFrom] = useState<Date | null>(null);
+  const [shiftTo, setShiftTo] = useState<Date | null>(null);
+
   const saveAndClose = () => {
     if (!project) { onClose(); return; }
     const trimmed = title.trim();
+    // Did the departure move? Only the start is compared: a trip that got
+    // longer at the far end has not moved anything scheduled against its
+    // start, which is the same reason buildAwayShiftPlan takes no return date.
+    const priorStart = project.awayStart ? new Date(project.awayStart) : null;
+    const nextStart = awayStart;
+    const departureMoved =
+      priorStart !== null && nextStart !== null &&
+      awayNoonIso(priorStart) !== awayNoonIso(nextStart);
     updateProject(project.id, {
       // A blank name is refused, but it must not take the rest of the sheet
       // with it. The whole `updateProject` used to sit behind `if (trimmed)`,
@@ -200,6 +222,15 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       ongoing,
       weekendSource,
     });
+    // The trip moved, so offer to bring its prepared work with it (see
+    // utils/awayShift). Deliberately an offer rather than a shift: "Renew
+    // passport" is anchored to the trip and "Buy a suitcase" is not, and only
+    // the person who typed them knows which. The sheet closes this one.
+    if (departureMoved && priorStart && nextStart) {
+      setShiftFrom(priorStart);
+      setShiftTo(nextStart);
+      return;
+    }
     onClose();
   };
 
@@ -312,6 +343,14 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setAwayPauses(project.awayPauses);
             }}
             onCancel={() => setPickingAway(null)}
+          />
+          <AwayShiftSheet
+            visible={shiftFrom !== null && shiftTo !== null}
+            tasks={projectTasks}
+            from={shiftFrom}
+            to={shiftTo}
+            projectTitle={project?.title ?? 'The trip'}
+            onClose={() => { setShiftFrom(null); setShiftTo(null); onClose(); }}
           />
         </>
       }

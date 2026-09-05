@@ -2,10 +2,11 @@
 
 **Status: partly built.** In: the span itself (`src/utils/awayDates.ts`,
 `Project.awayStart`/`awayEnd`), the editor rows, the project card's caption,
-the look-ahead prefill, the away cue in both day grids (`DayLoad.away`), and
-scheduled vacation mode (`Project.awayPauses`, `checkAwayVacation`). Still
-designed and not built: the trip moving, the template nomination, and the
-destination with its forecast.
+the look-ahead prefill, the away cue in both day grids (`DayLoad.away`),
+scheduled vacation mode (`Project.awayPauses`, `checkAwayVacation`), and the
+trip moving (`src/utils/awayShift.ts`, `shiftAwayTasks`, `AwayShiftSheet`).
+Still designed and not built: the template nomination, and the destination
+with its forecast.
 
 It is written down because the design outgrew a conversation, and because most
 of the argument is about *fitting* — which existing rule each decision falls out
@@ -147,8 +148,7 @@ that clears the bar above.
      tension with this. That rule is about absent information; away dates are
      information the user typed.
 3. **Scheduled vacation mode** *(built)*. Its own section below.
-4. **The trip moving.** Its own section below. Probably the largest single piece,
-   and possibly the most valuable.
+4. **The trip moving** *(built)*. Its own section below.
 5. **Templates write the span.** Its own section below.
 6. **The away grocery list binds to the span**, so Groceries opens on that list
    while you are away instead of `activeListId` being a manual switch.
@@ -341,7 +341,11 @@ third copy in the look-ahead sheet.
 
 ## The trip moving
 
-The half that setup does not cover, and the half with no answer at all today.
+*Built.* `scheduleMoveUpdates` in `taskMoves.ts` is the lifted rule,
+`awayShift.ts` the planner, `shiftAwayTasks` the store action, `AwayShiftSheet`
+the offer.
+
+The half that setup does not cover, and the half that had no answer at all.
 
 Two facts:
 
