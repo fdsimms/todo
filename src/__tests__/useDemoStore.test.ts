@@ -314,7 +314,7 @@ describe('demo mode', () => {
   it('hides real categories, tags, projects and stacks too, not just tasks', () => {
     useTaskStore.getState().addCategory('Therapy');
     useTaskStore.getState().addTag('confidential');
-    useProjectStore.getState().createProject('Divorce paperwork', null);
+    useProjectStore.getState().createProject('Divorce paperwork');
     useTaskGroupStore.getState().createGroup('Medications', null);
 
     useDemoStore.getState().enterDemoMode();

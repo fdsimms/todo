@@ -104,7 +104,6 @@ export function ProjectsScreen() {
   const navigation = useNavigation();
   const projects = useProjectStore(useShallow(s => s.projects));
   const createProject = useProjectStore(s => s.createProject);
-  const updateProject = useProjectStore(s => s.updateProject);
   const removeProjectRow = useProjectStore(s => s.removeProjectRow);
   const reorderProjectsWithCategoryUpdates = useProjectStore(s => s.reorderProjectsWithCategoryUpdates);
   const bulkSetProjectCategory = useProjectStore(s => s.bulkSetProjectCategory);
@@ -364,10 +363,12 @@ export function ProjectsScreen() {
     // The draft carries the seeded category; only the placement is let go of.
     closeQuickAdd();
     animateLayout();
-    const project = createProject(draft.title, draft.deadline);
-    if (draft.category) updateProject(project.id, { category: draft.category });
+    const project = createProject(draft.title, {
+      deadline: draft.deadline,
+      category: draft.category,
+    });
     newProjectIdRef.current = project.id;
-    setEditingProject({ ...project, category: draft.category });
+    setEditingProject(project);
   };
 
   const handleEditorClose = () => {

@@ -5,9 +5,9 @@
 the look-ahead prefill, the away cue in both day grids (`DayLoad.away`),
 scheduled vacation mode (`Project.awayPauses`, `checkAwayVacation`), the
 trip moving (`src/utils/awayShift.ts`, `shiftAwayTasks`, `AwayShiftSheet`),
-the template nomination (`TaskTemplate.anchorsAreAway`), and the destination
+the template nomination (`TaskTemplate.anchorsAreAway`), the destination
 with its forecast (`Project.destination`, `services/geocode.ts`,
-`utils/tripForecast.ts`).
+`utils/tripForecast.ts`), and `createProject`'s options object.
 
 Not built, and the one reader left: **the away grocery list binding to the
 span**, so Groceries opens on that list while you are away instead of
@@ -670,24 +670,39 @@ new model, and it keeps the plan somewhere the app can already read.
 
 ---
 
+## `createProject` takes an options object
+
+*Built.* `createProject(title, options?)`, with `CreateProjectOptions` holding
+`deadline`, `kind`, `category`, `awayStart`, `awayEnd` and `destination`.
+
+It was on this list because a trip template needs to seed a span and
+`(title, deadline, kind)` had no room for two more dates. But the positional
+signature was already costing more than that: three callers created the row and
+immediately patched it, which is a second write, a second render, and a returned
+row that is stale on the very next line — `QuickAddProjectModal` carried a
+comment about handing on `{ ...project, category }` for exactly that reason, and
+`ProjectsScreen` did the same thing a few lines later. All three are one call
+now.
+
+**What belongs on the object is what somebody decides at creation**, and that is
+the whole rule. The opt-ins (`awayPauses`, `weekendSource`, `autoSchedule`) stay
+off it and stay off: they are answered later, by a person, in the editor — the
+"nominated, never inferred" rule, which an options field would quietly make
+skippable. Nor do the seeded-from-settings fields (`nudgeCadenceDays`,
+`nudgeOptIn`) or the runtime stamps. The demo seed shows the shape: Lisbon's
+span, category and destination go in at creation, and `awayPauses` is turned on
+afterwards the way a user would.
+
+---
+
 ## Still open
 
-- **`createProject`'s signature.** It is positional — `(title, deadline, kind)` —
-  and a template can configure nothing else about the project it creates: category
-  is forced null for the project container, notes hardcoded, nudge settings from
-  global defaults. Two more dates makes five positional arguments. This wants an
-  options object, which would also unblock the other things a template cannot set.
-  It is the one refactor here that is not about trips, so it deserves a deliberate
-  decision rather than being drifted into.
 - **Whether an `awayPrep` generated task is worth a twentieth generator.** "Anything
   to do before Japan?", raised on a lead day, linking into the look-ahead sheet
   scoped to the trip. Structurally identical to `weekendNudge`: a span, a lead
   window, a link to a sheet that already exists. It adds a surface rather than
   replacing one, so it would ship off by default. Genuinely unsure it earns its
   place.
-- **Ordering interaction between arming vacation and `sweepExpiredTasks`.** The
-  ordering above is argued from #689's mirror, but #689 is about the *off*
-  direction. A task whose window closes on the departure day, with the sweep
-  running before the arm, is swept rather than protected. That may well be right —
-  the trip has not started when the sweep runs — but it has not been thought
-  through properly.
+*(The `createProject` signature and the sweep/arm ordering were both here and
+are now resolved — see "createProject takes an options object" below, and the
+ordering bullet under "Scheduled vacation mode".)*

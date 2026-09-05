@@ -465,24 +465,27 @@ export const useTemplateStore = create<TemplateStore>((set, get) => ({
       // *back*, so writing it there gives a trip a "target to finish by" of the
       // day you come home, when the date you have to be ready by is departure.
       const runProject = (!options?.targetProjectId && container === 'project')
-        // Without the flag the run's end anchor becomes the project's deadline.
-        // Its start anchor still places the *items*, which is the half that was
-        // ever load-bearing.
-        ? useProjectStore.getState().createProject(
-            runName,
-            template.anchorsAreAway ? null : anchors.end?.toISOString() ?? null,
-          )
+        ? useProjectStore.getState().createProject(runName, template.anchorsAreAway
+            // The anchors *are* the trip, so they go in as the span and the
+            // deadline is left empty on purpose: the end anchor is the day you
+            // get back, and a "target to finish by" of the day you come home is
+            // the wrong date to put in front of anybody packing.
+            //
+            // An end with no start is dropped rather than stored, matching what
+            // `awaySpanOf` would read it as anyway — a column holding half a
+            // span nothing can answer about is a row waiting to confuse a later
+            // reader (or a sync peer) into completing it.
+            ? (anchors.start
+                ? {
+                    awayStart: awayNoonIso(anchors.start),
+                    awayEnd: anchors.end ? awayNoonIso(anchors.end) : null,
+                  }
+                : {})
+            // Without the flag the run's end anchor becomes the project's
+            // deadline. Its start anchor still places the *items*, which is the
+            // half that was ever load-bearing.
+            : { deadline: anchors.end?.toISOString() ?? null })
         : null;
-      if (runProject && template.anchorsAreAway && anchors.start) {
-        // Through updateProject rather than as two more positional arguments to
-        // createProject, which is already at its limit. The options-object
-        // refactor that would fix that is deliberately still open (see
-        // docs/arch/away-dates.md) rather than done as a side effect here.
-        useProjectStore.getState().updateProject(runProject.id, {
-          awayStart: awayNoonIso(anchors.start),
-          awayEnd: anchors.end ? awayNoonIso(anchors.end) : null,
-        });
-      }
       const projectId = options?.targetProjectId ?? runProject?.id ?? null;
 
       // A 'task' container's parent is a real Task rather than a TaskGroup or

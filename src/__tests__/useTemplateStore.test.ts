@@ -604,7 +604,7 @@ describe('applyTemplate — naming the run', () => {
     const end = new Date('2026-09-14T12:00:00');
     useTemplateStore.setState({ templates: [makeTemplate({ applyContainer: 'project', items: [makeItem({ id: 'a' })] })] });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end }, { runName: 'Denver' });
-    expect(mockCreateProject).toHaveBeenCalledWith('Denver', end.toISOString());
+    expect(mockCreateProject).toHaveBeenCalledWith('Denver', { deadline: end.toISOString() });
     expect(mockAddTask.mock.calls[0][0].projectId).toBe('project-Denver');
     expect(mockCreateGroup).not.toHaveBeenCalled();
   });
@@ -618,11 +618,13 @@ describe('applyTemplate — naming the run', () => {
       applyContainer: 'project', anchorsAreAway: true, items: [makeItem({ id: 'a' })],
     })] });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end }, { runName: 'Lisbon' });
-    expect(mockCreateProject).toHaveBeenCalledWith('Lisbon', null);
-    expect(mockUpdateProject).toHaveBeenCalledWith('project-Lisbon', {
+    // The span goes in at creation rather than as a follow-up patch, so the
+    // row createProject hands back is never stale (see CreateProjectOptions).
+    expect(mockCreateProject).toHaveBeenCalledWith('Lisbon', {
       awayStart: awayNoonIso(start),
       awayEnd: awayNoonIso(end),
     });
+    expect(mockUpdateProject).not.toHaveBeenCalled();
   });
 
   it('gives a trip template a departure with no return, when that is all it was told', () => {
@@ -631,7 +633,7 @@ describe('applyTemplate — naming the run', () => {
       applyContainer: 'project', anchorsAreAway: true, items: [makeItem({ id: 'a' })],
     })] });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end: null }, { runName: 'Lisbon' });
-    expect(mockUpdateProject).toHaveBeenCalledWith('project-Lisbon', {
+    expect(mockCreateProject).toHaveBeenCalledWith('Lisbon', {
       awayStart: awayNoonIso(start),
       awayEnd: null,
     });
@@ -642,7 +644,8 @@ describe('applyTemplate — naming the run', () => {
       applyContainer: 'project', anchorsAreAway: true, items: [makeItem({ id: 'a' })],
     })] });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Lisbon' });
-    expect(mockUpdateProject).not.toHaveBeenCalled();
+    // And no deadline either — a trip template's anchors are never a deadline.
+    expect(mockCreateProject).toHaveBeenCalledWith('Lisbon', {});
   });
 
   it('leaves the span alone for an ordinary template', () => {
@@ -654,14 +657,14 @@ describe('applyTemplate — naming the run', () => {
       applyContainer: 'project', items: [makeItem({ id: 'a' })],
     })] });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end }, { runName: 'Move' });
-    expect(mockCreateProject).toHaveBeenCalledWith('Move', end.toISOString());
+    expect(mockCreateProject).toHaveBeenCalledWith('Move', { deadline: end.toISOString() });
     expect(mockUpdateProject).not.toHaveBeenCalled();
   });
 
   it('leaves a project undated when the run picked no anchors', () => {
     useTemplateStore.setState({ templates: [makeTemplate({ applyContainer: 'project', items: [makeItem({ id: 'a' })] })] });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
-    expect(mockCreateProject).toHaveBeenCalledWith('Denver', null);
+    expect(mockCreateProject).toHaveBeenCalledWith('Denver', { deadline: null });
   });
 
   it('honors a template that opts out of containers entirely', () => {
@@ -685,7 +688,7 @@ describe('applyTemplate — naming the run', () => {
     });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
     // The run becomes the project; the item group still becomes its own stack inside it.
-    expect(mockCreateProject).toHaveBeenCalledWith('Denver', null);
+    expect(mockCreateProject).toHaveBeenCalledWith('Denver', { deadline: null });
     expect(mockCreateGroup).not.toHaveBeenCalled();
     expect(mockGroupTasks).toHaveBeenCalledWith(['task-Book'], 'Flights', null);
     expect(mockAddTask.mock.calls[0][0].projectId).toBe('project-Denver');
