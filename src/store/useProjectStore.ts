@@ -13,6 +13,7 @@ import {
   dbBatchUpdateProjectSortOrders,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { registerAwayProjectSource } from '../utils/awayDates';
 import { deliverableKindFor } from '../utils/deliverables';
 
 /**
@@ -341,3 +342,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set(s => ({ projects: [...s.projects, project] }));
   },
 }));
+
+// So `isTaskExpired` can ask whether a nominated trip covers today without
+// this store — and so expo-sqlite — being reachable from `visibilityUtils`.
+// See the registry note in `src/utils/awayDates.ts`.
+registerAwayProjectSource(() => useProjectStore.getState().projects);

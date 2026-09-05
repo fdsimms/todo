@@ -192,3 +192,74 @@ export function nextAwayProject<T extends Pick<Project, 'awayStart' | 'awayEnd' 
   const best = live[0];
   return { project: best.project, span: best.span };
 }
+
+/**
+ * Whether this project is a live trip covering `now`.
+ *
+ * The "still schedule rather than history" cut `nextAwayProject` makes, asked
+ * about one project instead of ranked across many: archived and completed
+ * projects are out, and so is a project whose span does not reach today.
+ */
+export function isProjectAwayNow<T extends Pick<Project, 'awayStart' | 'awayEnd' | 'archived' | 'completed'>>(
+  project: T,
+  now: Date = new Date(),
+  dayResetTime?: string,
+): boolean {
+  if (project.archived || project.completed) return false;
+  return isAwayDay(awaySpanOf(project, dayResetTime), now, dayResetTime);
+}
+
+/**
+ * The project whose nominated pause is in force right now, or null.
+ *
+ * The whole of "am I meant to be paused because I am away" in one pure call,
+ * so the pass that arms vacation mode (`checkAwayVacation`) and the gate that
+ * has to answer the same question *before* that pass has run (expiry, see
+ * `isTaskExpired`) cannot read the nomination two slightly different ways.
+ *
+ * Three conditions, all of them the "nominated, never inferred" rule: the
+ * project opted in (`awayPauses`), its span covers today, and the user has not
+ * already turned this trip's pause off by hand (`awayPauseDeclinedFor`).
+ */
+export function awayPauseDriver<T extends Pick<Project, 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'archived' | 'completed'>>(
+  projects: readonly T[],
+  now: Date = new Date(),
+  dayResetTime?: string,
+): T | null {
+  return projects.find(p =>
+    p.awayPauses &&
+    p.awayPauseDeclinedFor !== p.awayStart &&
+    isProjectAwayNow(p, now, dayResetTime),
+  ) ?? null;
+}
+
+/**
+ * Where a leaf module gets the project list from, without importing the store.
+ *
+ * The `blockerRegistry` / `peopleRegistry` shape, for their exact reason:
+ * `useProjectStore` reaches `src/db/database.ts` and therefore expo-sqlite,
+ * which does not exist under Jest's `node` environment, and the one reader
+ * that needs this (`isTaskExpired`, in `visibilityUtils.ts`) sits underneath
+ * roughly the whole app. So the store pushes a getter in here at module load,
+ * and this module — which imports nothing but types and date helpers — hands
+ * the answer back on demand.
+ *
+ * Resolve-or-shrug like the others: with no source registered the answer is
+ * "no trip", which fails toward the behaviour that existed before any of this
+ * did rather than toward sparing rows nobody asked to spare.
+ */
+type AwayProject = Pick<Project, 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'archived' | 'completed'>;
+
+let awayProjectSource: (() => readonly AwayProject[]) | null = null;
+
+/** Called once by useProjectStore at module load. Tests can point it at a fixture. */
+export function registerAwayProjectSource(fn: (() => readonly AwayProject[]) | null): void {
+  awayProjectSource = fn;
+}
+
+/** Whether a nominated pause is in force right now, per the registered source. */
+export function isAwayPauseInForce(now: Date = new Date(), dayResetTime?: string): boolean {
+  const projects = awayProjectSource?.();
+  if (!projects) return false;
+  return awayPauseDriver(projects, now, dayResetTime) !== null;
+}

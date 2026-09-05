@@ -108,7 +108,7 @@ import { useMoodStore } from './useMoodStore';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
 import type { MealSlot, Project, TaskGroup } from '../types';
-import { awaySpanOf, isAwayDay } from '../utils/awayDates';
+import { awayPauseDriver, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
@@ -7243,8 +7243,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const { vacationMode, vacationEnd, vacationDrivenBy } = settings;
     const today = getCurrentDayStart();
     const projects = useProjectStore.getState().projects;
-    const covers = (p: Project) =>
-      !p.archived && !p.completed && isAwayDay(awaySpanOf(p), today);
+    const covers = (p: Project) => isProjectAwayNow(p, today);
 
     // Turned off by hand since we armed it. Judged on the trip still covering
     // today, so the ordinary case — checkVacationExpiry having just ended a
@@ -7261,8 +7260,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (live) return;
     }
 
-    const driver = projects.find(p =>
-      p.awayPauses && covers(p) && p.awayPauseDeclinedFor !== p.awayStart);
+    // The same call `isTaskExpired` makes, so the sweep that runs before this
+    // pass and this pass itself cannot disagree about whose trip is driving.
+    const driver = awayPauseDriver(projects, today);
 
     if (!driver) {
       // Nothing should be driving. Clear a stale pointer left by an expiry, so

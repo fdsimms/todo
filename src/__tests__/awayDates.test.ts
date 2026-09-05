@@ -1,10 +1,12 @@
 import {
   awayNights,
+  awayPauseDriver,
   awayNoonIso,
   awaySpanOf,
   awayStatus,
   describeAwaySpan,
   isAwayDay,
+  isProjectAwayNow,
   nextAwayProject,
 } from '../utils/awayDates';
 
@@ -270,5 +272,85 @@ describe('nextAwayProject', () => {
   it('finds a departure with no return date', () => {
     const found = nextAwayProject([p('open', noon(2026, 11, 3), null)], now)!;
     expect(found.span.end).toBeNull();
+  });
+});
+
+describe('awayPauseDriver', () => {
+  // Standing inside the 3rd-to-10th trip.
+  const now = new Date(2026, 10, 5, 9, 0, 0);
+  const start = noon(2026, 11, 3);
+  const end = noon(2026, 11, 10);
+
+  const trip = (extra: Partial<{
+    awayPauses: boolean;
+    awayPauseDeclinedFor: string | null;
+    archived: boolean;
+    completed: boolean;
+    awayStart: string | null;
+    awayEnd: string | null;
+  }> = {}) => ({
+    id: 'trip',
+    awayStart: start,
+    awayEnd: end,
+    awayPauses: true,
+    awayPauseDeclinedFor: null,
+    archived: false,
+    completed: false,
+    ...extra,
+  });
+
+  it('names the nominated trip covering today', () => {
+    expect(awayPauseDriver([trip()], now)?.id).toBe('trip');
+  });
+
+  it('ignores a trip that never nominated a pause', () => {
+    expect(awayPauseDriver([trip({ awayPauses: false })], now)).toBeNull();
+  });
+
+  it('ignores a trip whose pause was turned off by hand', () => {
+    expect(awayPauseDriver([trip({ awayPauseDeclinedFor: start })], now)).toBeNull();
+  });
+
+  it('honours a refusal recorded against a different departure', () => {
+    // The user declined last month's trip; this one has not been asked about.
+    const stale = awayPauseDriver([trip({ awayPauseDeclinedFor: noon(2026, 9, 1) })], now);
+    expect(stale?.id).toBe('trip');
+  });
+
+  it('ignores a span that has not started or is already over', () => {
+    expect(awayPauseDriver([trip()], new Date(2026, 10, 1))).toBeNull();
+    expect(awayPauseDriver([trip()], new Date(2026, 10, 20))).toBeNull();
+  });
+
+  it('ignores archived and completed projects', () => {
+    expect(awayPauseDriver([trip({ archived: true })], now)).toBeNull();
+    expect(awayPauseDriver([trip({ completed: true })], now)).toBeNull();
+  });
+
+  it('ignores a project with no span at all', () => {
+    expect(awayPauseDriver([trip({ awayStart: null, awayEnd: null })], now)).toBeNull();
+  });
+
+  it('counts the departure day itself, the day the sweep first sees a backlog', () => {
+    expect(awayPauseDriver([trip()], new Date(2026, 10, 3, 8, 0, 0))?.id).toBe('trip');
+  });
+
+  it('does not count the return day', () => {
+    expect(awayPauseDriver([trip()], new Date(2026, 10, 10, 8, 0, 0))).toBeNull();
+  });
+});
+
+describe('isProjectAwayNow', () => {
+  const live = { awayStart: noon(2026, 11, 3), awayEnd: noon(2026, 11, 10), archived: false, completed: false };
+
+  it('is true inside the span and false either side of it', () => {
+    expect(isProjectAwayNow(live, new Date(2026, 10, 5))).toBe(true);
+    expect(isProjectAwayNow(live, new Date(2026, 10, 2))).toBe(false);
+    expect(isProjectAwayNow(live, new Date(2026, 10, 11))).toBe(false);
+  });
+
+  it('is false for a project that is history rather than schedule', () => {
+    expect(isProjectAwayNow({ ...live, archived: true }, new Date(2026, 10, 5))).toBe(false);
+    expect(isProjectAwayNow({ ...live, completed: true }, new Date(2026, 10, 5))).toBe(false);
   });
 });

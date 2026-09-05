@@ -252,13 +252,35 @@ Five hazards, and where each lands.
   the user every morning. The stamp has to be span-scoped: the project records
   the `awayStart` it was declined for. Moving the dates later is a new trip in
   every sense that matters, and re-arms.
-- **Ordering.** `sweepExpiredTasks` runs first, and launch-only, *because* it has
-  to precede vacation turning off (#689): sweeping after would delete tasks
-  vacation had been protecting. Arming is the mirror case and takes the mirror
-  answer — it goes in `catchUpPasses` immediately after `checkVacationExpiry`, so
-  a trip ending and another starting on the same day resolve in that order. And
-  it reconciles rather than arms once, because extending the trip in the editor
-  has to move `vacationEnd` too.
+- **Ordering, and why the arm cannot come first.** `sweepExpiredTasks` runs
+  first, and launch-only, *because* it has to precede vacation turning off
+  (#689): sweeping after would delete tasks vacation had been protecting. Arming
+  goes in `catchUpPasses` immediately after `checkVacationExpiry`, so a trip
+  ending and another starting on the same day resolve in that order. And it
+  reconciles rather than arms once, because extending the trip in the editor has
+  to move `vacationEnd` too.
+
+  Those two constraints chain: the sweep is before expiry, expiry is before the
+  arm, so **the arm is necessarily downstream of the sweep** and no reordering
+  fixes it. Which leaves a real hole. The first launch after a departure sweeps
+  with vacation mode still off, and that is precisely the launch carrying the
+  biggest backlog of windows that closed while the app was shut — every one of
+  them on a day the user had said they would be away for. With
+  `autoRemoveExpiredTasks` set to Immediately or 1 day, those rows are deleted,
+  and a delete has no way back.
+
+  So `isTaskExpired` asks the span itself (`isAwayPauseInForce`) rather than
+  asking whether the arm has happened yet, and `checkAwayVacation` asks the same
+  pure `awayPauseDriver` so the two cannot read the nomination differently.
+  Deliberately scoped to expiry alone: nothing renders during the startup
+  sequence, so visibility never observes the unarmed window, and a Today screen
+  hiding rows for a vacation mode the Settings switch says is off would be a
+  second and worse bug. This is about the one call with no way back.
+
+  It reaches the project list through `registerAwayProjectSource`, the
+  `blockerRegistry` / `peopleRegistry` shape — `visibilityUtils` sits under
+  most of the app and importing `useProjectStore` into it drags expo-sqlite in
+  behind it, which broke thirteen test suites the first time.
 - **Background is correct, not incidental.** `runBackgroundRefresh` spreads
   `catchUpPasses`, so this arms with the app closed. Reminders going quiet on
   departure morning without anyone opening the app is the feature working.
