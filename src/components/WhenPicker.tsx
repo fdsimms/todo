@@ -234,6 +234,22 @@ export function WhenPicker({
   // The ceiling, or null for none — see the allowFuture prop.
   const latestDay = allowFuture ? null : today;
 
+  // "After vacation" — only when there's a real date to land on. `vacationEnd`
+  // is the day vacation mode reads as "back", the same date LookAheadSheet
+  // prefills its own "back on" field from (see the comment there): it's
+  // stamped a future date only when the user set one, never derived from
+  // `vacationStart`, which just records when the mode was switched on.
+  const vacationMode = useSettingsStore(s => s.vacationMode);
+  const vacationEnd = useSettingsStore(s => s.vacationEnd);
+  const afterVacationDay = useMemo(() => {
+    if (!vacationMode || !vacationEnd) return null;
+    const end = new Date(vacationEnd);
+    if (end <= today) return null;
+    if (latestDay && isDayAfter(end, latestDay)) return null;
+    return end;
+  }, [vacationMode, vacationEnd, today, latestDay]);
+  const afterVacationKey = afterVacationDay ? dayKeyOf(afterVacationDay) : null;
+
   useEffect(() => {
     if (visible) {
       // Clamped, so a picker holding a value from before the floor doesn't open
@@ -342,6 +358,11 @@ export function WhenPicker({
 
   const handleToday = () => confirmWithFeedback(noonOf(today), 'today');
   const handleTomorrow = () => { declineReachOutOfferIfShown(); confirmWithFeedback(noonOf(tomorrow), tomorrowKey); };
+  const handleAfterVacation = () => {
+    if (!afterVacationDay || !afterVacationKey) return;
+    declineReachOutOfferIfShown();
+    confirmWithFeedback(noonOf(afterVacationDay), afterVacationKey);
+  };
   // Offering a quick button for a day the grid refuses would be the one
   // control in the picker that disagrees with the rest of it.
   const showTomorrow = latestDay === null;
@@ -630,6 +651,18 @@ export function WhenPicker({
                     Suggest
                   </Text>
                 </TouchableOpacity>
+              )}
+              {afterVacationDay && (
+                <QuickButton
+                  styles={styles}
+                  colors={colors}
+                  icon="airplane"
+                  iconColor={colors.accent}
+                  label="After vacation"
+                  pending={pendingKey === afterVacationKey}
+                  popAnim={popAnim}
+                  onPress={handleAfterVacation}
+                />
               )}
             </View>
 
