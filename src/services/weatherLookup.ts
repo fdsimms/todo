@@ -37,6 +37,16 @@ export interface WeatherSnapshot {
   tempF: number;
   /** ISO, when this reading was taken. */
   fetchedAt: string;
+  /**
+   * Today's own high/low, and tomorrow's forecast — null when the daily
+   * fields didn't parse, which the current-only fields above never depended
+   * on and still don't: a rule matches on `weatherCode`/`tempF` alone, so a
+   * forecast that failed to parse costs the Today row `weatherContextRows`
+   * draws and nothing else.
+   */
+  todayHighF: number | null;
+  todayLowF: number | null;
+  tomorrow: { weatherCode: number; highF: number; lowF: number } | null;
 }
 
 /**
@@ -56,14 +66,34 @@ export async function fetchWeatherSnapshot(location: DeviceLocation): Promise<We
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     const url = `${FORECAST_URL}?latitude=${location.latitude}&longitude=${location.longitude}` +
-      '&current=temperature_2m,weather_code&temperature_unit=fahrenheit&timezone=auto';
+      '&current=temperature_2m,weather_code' +
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min' +
+      '&forecast_days=2&temperature_unit=fahrenheit&timezone=auto';
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) return null;
     const body = await response.json();
     const weatherCode = body?.current?.weather_code;
     const tempF = body?.current?.temperature_2m;
     if (typeof weatherCode !== 'number' || typeof tempF !== 'number') return null;
-    return { weatherCode, tempF, fetchedAt: new Date().toISOString() };
+
+    // The forecast is a bonus on top of the reading above — a rule only ever
+    // matches on that, so a daily block that's missing or short (Open-Meteo
+    // declining `forecast_days`, an older cached response) degrades to no
+    // forecast rather than no snapshot.
+    const daily = body?.daily;
+    const dailyCodes = daily?.weather_code;
+    const dailyHighs = daily?.temperature_2m_max;
+    const dailyLows = daily?.temperature_2m_min;
+    const hasDailyDay = (i: number) =>
+      typeof dailyCodes?.[i] === 'number' && typeof dailyHighs?.[i] === 'number' && typeof dailyLows?.[i] === 'number';
+
+    const todayHighF = hasDailyDay(0) ? dailyHighs[0] : null;
+    const todayLowF = hasDailyDay(0) ? dailyLows[0] : null;
+    const tomorrow = hasDailyDay(1)
+      ? { weatherCode: dailyCodes[1], highF: dailyHighs[1], lowF: dailyLows[1] }
+      : null;
+
+    return { weatherCode, tempF, fetchedAt: new Date().toISOString(), todayHighF, todayLowF, tomorrow };
   } catch {
     return null;
   } finally {

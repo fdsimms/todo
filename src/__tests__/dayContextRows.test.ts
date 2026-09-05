@@ -6,6 +6,7 @@ import {
   mealContextRows,
   kitchenContextRows,
   healthContextRows,
+  weatherContextRows,
   plannedUsesToday,
   insertContextRows,
   withoutContextRows,
@@ -527,6 +528,74 @@ describe('healthContextRows', () => {
     // is the row's off switch — but the builder itself stays kind-blind about
     // it, exactly as eventContextRows does.
     const [row] = healthContextRows({ dayKey: TODAY, steps: 12 }, { ...opts, category: null });
+    expect(row.category).toBeNull();
+  });
+});
+
+describe('weatherContextRows', () => {
+  const TODAY = '2026-08-13';
+  // A Thursday, so "tomorrow" formats as "Fri".
+  const now = new Date('2026-08-13T09:00:00');
+  const opts = { todayKey: TODAY, snapshotDayKey: TODAY, category: 'Weather', now };
+
+  const snapshot = (extra: Partial<{
+    weatherCode: number; tempF: number; todayHighF: number | null; todayLowF: number | null;
+    tomorrow: { weatherCode: number; highF: number; lowF: number } | null;
+  }> = {}) => ({
+    weatherCode: 0,
+    tempF: 68,
+    todayHighF: 72,
+    todayLowF: 54,
+    tomorrow: { weatherCode: 61, highF: 61, lowF: 50 },
+    ...extra,
+  });
+
+  it('says the current reading, captioned with the day\'s high and low', () => {
+    const rows = weatherContextRows(snapshot(), opts);
+    expect(rows[0].kind).toBe('weather');
+    expect(rows[0].title).toBe('68° and sunny');
+    expect(rows[0].caption).toBe('Today · H:72° L:54°');
+    expect(rows[0].weatherIcon).toBe('sunny-outline');
+  });
+
+  it('adds a second row for tomorrow\'s forecast, weekday and hi/lo', () => {
+    const rows = weatherContextRows(snapshot(), opts);
+    expect(rows).toHaveLength(2);
+    expect(rows[1].title).toBe('Rain tomorrow');
+    expect(rows[1].caption).toBe('Fri · H:61° L:50°');
+    expect(rows[1].weatherIcon).toBe('rainy-outline');
+  });
+
+  it('drops the tomorrow row when the forecast half never parsed', () => {
+    const rows = weatherContextRows(snapshot({ tomorrow: null }), opts);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('still shows today\'s reading without a caption\'s hi/lo when those never parsed', () => {
+    const rows = weatherContextRows(snapshot({ todayHighF: null, todayLowF: null }), opts);
+    expect(rows[0].caption).toBe('Today');
+  });
+
+  it('files under the category it is given, and carries no source', () => {
+    const [row] = weatherContextRows(snapshot(), opts);
+    expect(row.category).toBe('Weather');
+    expect(row.sourceId).toBe('');
+    expect(row.now).toBe(false);
+    expect(row.calendarTag).toBeNull();
+  });
+
+  it('says nothing when there is no snapshot at all', () => {
+    expect(weatherContextRows(null, opts)).toEqual([]);
+  });
+
+  it('says nothing about a snapshot read for another day', () => {
+    // useWeatherStore holds one day-keyed snapshot, and one fetched before the
+    // day turned over is not an answer about this one.
+    expect(weatherContextRows(snapshot(), { ...opts, snapshotDayKey: '2026-08-12' })).toEqual([]);
+  });
+
+  it('lands in the loose group when no category is set, like every other kind', () => {
+    const [row] = weatherContextRows(snapshot(), { ...opts, category: null });
     expect(row.category).toBeNull();
   });
 });

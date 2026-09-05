@@ -1172,6 +1172,7 @@ describe('sectionTasksByLabel', () => {
           category: 'work',
           now: false,
           calendarTag: null,
+          weatherIcon: null,
         },
       },
     ]);

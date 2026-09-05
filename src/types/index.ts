@@ -4602,7 +4602,7 @@ export interface ContextRow {
    * point at.
    */
   sourceId: string;
-  kind: 'event' | 'meal' | 'kitchen' | 'health';
+  kind: 'event' | 'meal' | 'kitchen' | 'health' | 'weather';
   title: string;
   /**
    * The caption under the title — "4:15 PM", "All day", "Now", "Dinner", "Use
@@ -4634,6 +4634,15 @@ export interface ContextRow {
    * once a second source makes "which one" a real question.
    */
   calendarTag: { name: string; color: string } | null;
+  /**
+   * Which glyph a `kind: 'weather'` row draws — null for every other kind.
+   * Unlike the other three sources, whose glyph is fixed per kind
+   * (`calendar-outline` for every event whatever it's about), a weather
+   * reading's icon is the one part of the row worth varying per instance, so
+   * it rides here rather than being hardcoded in `DayContextRow` — the same
+   * per-kind-only shape `calendarTag` already uses.
+   */
+  weatherIcon: 'sunny-outline' | 'rainy-outline' | 'snow-outline' | 'cloud-outline' | null;
 }
 
 export const PRIORITY_LABELS = ['None', 'Low', 'Medium', 'High', 'Urgent'] as const;
