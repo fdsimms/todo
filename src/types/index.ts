@@ -731,6 +731,44 @@ export interface Project {
    * `templateQuestions.answerFromDates` already means by 'nights'.
    */
   awayEnd: string | null;
+  /**
+   * Opt-in: let this trip switch vacation mode on when you leave and off when
+   * you are back.
+   *
+   * Nominated, never inferred, the call `weekendSource` makes and for its
+   * reason — nothing may decide on its own that a project's dates are the ones
+   * that should hide half your tasks. Separate from the dates themselves
+   * because they answer different questions: `awayStart`/`awayEnd` are "when am
+   * I gone", this is "and pause my tasks while I am", and entering a trip is
+   * not a request for the second.
+   *
+   * **It does not hide anything by itself.** All it does is flip the existing
+   * global switch, and what that switch hides is still only what the user has
+   * already nominated per row (`Task.vacationPause`, `Category.hideOnVacation`).
+   * So a trip with this on and nothing marked pauses nothing, which is correct:
+   * the app's answer to "I still need to do things while away" is that you say
+   * which things pause, and this changes only *when* that takes effect.
+   *
+   * Deliberately not set by a template run either. `TemplateSchedule` can fire
+   * a run unattended, so a template that could set this could turn vacation
+   * mode on with nobody having asked. See docs/arch/away-dates.md.
+   */
+  awayPauses: boolean;
+  /**
+   * The `awayStart` this project's vacation pause was last switched off for,
+   * or null.
+   *
+   * The opt-out that had to be scoped to the *span* rather than to a day.
+   * `reviewDeclinedAt` is a date because dismissing a review task means "not
+   * today"; switching vacation mode off on day three of a seven-day trip means
+   * "give me my tasks back for this trip", so a day-scoped stamp would re-arm
+   * every morning and fight the user for the rest of the week.
+   *
+   * Holding the departure rather than a boolean is what makes it self-clearing:
+   * moving the dates is a new trip in every sense that matters, and the stamp
+   * stops matching.
+   */
+  awayPauseDeclinedFor: string | null;
 }
 
 /**

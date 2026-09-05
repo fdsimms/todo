@@ -824,6 +824,11 @@ export function seedDemoData(): void {
     category: 'Ideas',
     awayStart: awayNoonIso(addDays(today, 24)),
     awayEnd: awayNoonIso(addDays(today, 31)),
+    // Nominated to drive vacation mode, which is invisible until something
+    // does. Inert here on purpose: the pass only arms once the departure has
+    // arrived, so a trip three weeks out shows the setting without a demo
+    // session ever waking up with half its tasks hidden.
+    awayPauses: true,
   });
   ['Renew passport', 'Book the airport parking', 'Sort out data roaming'].forEach((title, i) => {
     const t = addTask({ title, dueDate: addDays(today, 10 + i * 4).toISOString() });

@@ -70,6 +70,12 @@ export function catchUpPasses(): MaintenanceStep[] {
     // Turn vacation mode back off if its end date already passed while the
     // app was closed
     ['check vacation expiry', () => tasks().checkVacationExpiry()],
+    // And switch it *on* for a trip whose departure has arrived, or move the
+    // end date a trip that got longer should now turn itself off on (see
+    // Project.awayPauses). Immediately after the expiry above, deliberately:
+    // one trip ending and another starting on the same day has to resolve in
+    // that order, or the arm is undone by the pass that follows it.
+    ['check away vacation', () => tasks().checkAwayVacation()],
     // Close out quota tasks whose day ended unfinished while the app was
     // closed, so a day you fell short on is logged as a partial instead of
     // sitting overdue — also needs real settings (dayResetTime) loaded first.

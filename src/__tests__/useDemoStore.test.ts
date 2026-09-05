@@ -2527,6 +2527,9 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Ahead of today, so the card shows the countdown rather than the away
     // state, and so nextAwayProject has something live to find.
     expect(awayStatus(span, new Date())!.phase).toBe('before');
+    // Nominated to drive vacation mode, and inert until the departure arrives:
+    // a demo session must never open with half its tasks hidden.
+    expect(trip!.awayPauses).toBe(true);
     expect(nextAwayProject(projects, new Date())!.project.id).toBe(trip!.id);
   });
 

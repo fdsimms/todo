@@ -31,6 +31,8 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   kind: 'project' as const,
   awayStart: null,
   awayEnd: null,
+  awayPauses: false,
+  awayPauseDeclinedFor: null,
   ...overrides,
 });
 

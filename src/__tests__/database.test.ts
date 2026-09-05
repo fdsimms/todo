@@ -1660,6 +1660,8 @@ describe('Projects', () => {
     kind: 'project' as const,
     awayStart: null,
     awayEnd: null,
+    awayPauses: false,
+    awayPauseDeclinedFor: null,
     ...overrides,
   });
 
@@ -1871,6 +1873,8 @@ describe('backup and restore', () => {
       kind: 'project' as const,
       awayStart: null,
       awayEnd: null,
+      awayPauses: false,
+      awayPauseDeclinedFor: null,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');

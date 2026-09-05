@@ -414,6 +414,8 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   kind: 'project' as const,
   awayStart: null,
   awayEnd: null,
+  awayPauses: false,
+  awayPauseDeclinedFor: null,
   ...overrides,
 });
 
@@ -2572,6 +2574,178 @@ describe('completeTask', () => {
       expect(useTaskStore.getState().completionHoldIds).toEqual([]);
       expect(store().visibleTasks()).toHaveLength(0);
     });
+  });
+});
+
+// ─── checkAwayVacation ──────────────────────────────────────────────────────
+
+describe('checkAwayVacation', () => {
+  const getSettingsMock = () => {
+    const { useSettingsStore } = jest.requireMock('../store/useSettingsStore') as { useSettingsStore: { getState: jest.Mock } };
+    return useSettingsStore;
+  };
+
+  /** Midday N days from today, the way the away columns store a boundary. */
+  const dayOffset = (n: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    d.setHours(12, 0, 0, 0);
+    return d.toISOString();
+  };
+
+  const settings = (over: Record<string, unknown> = {}) => {
+    const setVacationMode = jest.fn();
+    const setVacationDrivenBy = jest.fn();
+    const setVacationEnd = jest.fn();
+    getSettingsMock().getState.mockReturnValue({
+      dayResetTime: '00:00',
+      vacationMode: false,
+      vacationEnd: null,
+      vacationDrivenBy: null,
+      setVacationMode, setVacationDrivenBy, setVacationEnd,
+      ...over,
+    });
+    return { setVacationMode, setVacationDrivenBy, setVacationEnd };
+  };
+
+  /** A trip covering today, nominated to drive vacation mode. */
+  const liveTrip = (over: Partial<import('../types').Project> = {}) => makeProject({
+    id: 'trip', title: 'Lisbon',
+    awayStart: dayOffset(-1), awayEnd: dayOffset(4), awayPauses: true,
+    ...over,
+  });
+
+  beforeEach(() => { useProjectStore.setState({ projects: [] }); });
+
+  it('does nothing with no trips at all', () => {
+    const { setVacationMode } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('arms vacation mode for a nominated trip that has started', () => {
+    useProjectStore.setState({ projects: [liveTrip()] });
+    const { setVacationMode, setVacationDrivenBy } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).toHaveBeenCalledWith(true, dayOffset(4));
+    expect(setVacationDrivenBy).toHaveBeenCalledWith('trip');
+  });
+
+  it('leaves a trip that has not started yet alone', () => {
+    useProjectStore.setState({ projects: [liveTrip({ awayStart: dayOffset(3), awayEnd: dayOffset(9) })] });
+    const { setVacationMode } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('leaves a trip that was never nominated alone', () => {
+    // Entering dates is "when am I gone", not "and pause my tasks while I am".
+    useProjectStore.setState({ projects: [liveTrip({ awayPauses: false })] });
+    const { setVacationMode } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('ignores an archived or completed trip', () => {
+    for (const over of [{ archived: true }, { completed: true }]) {
+      useProjectStore.setState({ projects: [liveTrip(over)] });
+      const { setVacationMode } = settings();
+      useTaskStore.getState().checkAwayVacation();
+      expect(setVacationMode).not.toHaveBeenCalled();
+    }
+  });
+
+  it('never turns off a vacation somebody switched on themselves', () => {
+    // vacationDrivenBy null means nobody here owns it.
+    const { setVacationMode, setVacationEnd } = settings({ vacationMode: true, vacationEnd: null });
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+    expect(setVacationEnd).not.toHaveBeenCalled();
+  });
+
+  it('does not rewrite the end date of a vacation it does not own', () => {
+    useProjectStore.setState({ projects: [liveTrip()] });
+    const { setVacationEnd } = settings({
+      vacationMode: true, vacationEnd: '2099-01-01T12:00:00.000Z', vacationDrivenBy: null,
+    });
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationEnd).not.toHaveBeenCalled();
+  });
+
+  it('moves the end date when its own trip got longer', () => {
+    useProjectStore.setState({ projects: [liveTrip()] });
+    const { setVacationEnd } = settings({
+      vacationMode: true, vacationEnd: dayOffset(2), vacationDrivenBy: 'trip',
+    });
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationEnd).toHaveBeenCalledWith(dayOffset(4));
+  });
+
+  it('leaves its own trip alone when the end date already matches', () => {
+    useProjectStore.setState({ projects: [liveTrip()] });
+    const { setVacationEnd, setVacationMode } = settings({
+      vacationMode: true, vacationEnd: dayOffset(4), vacationDrivenBy: 'trip',
+    });
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationEnd).not.toHaveBeenCalled();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('reads mode-off mid-trip as a refusal, and scopes it to the span', () => {
+    // Not to the day: turning it off on day three of a seven-day trip means
+    // "give me my tasks back for this trip", so a day-scoped stamp would
+    // re-arm every morning for the rest of the week.
+    const trip = liveTrip();
+    useProjectStore.setState({ projects: [trip] });
+    const { setVacationMode, setVacationDrivenBy } = settings({
+      vacationMode: false, vacationDrivenBy: 'trip',
+    });
+    useTaskStore.getState().checkAwayVacation();
+    expect(useProjectStore.getState().projects[0].awayPauseDeclinedFor).toBe(trip.awayStart);
+    expect(setVacationDrivenBy).toHaveBeenCalledWith(null);
+    // And emphatically does not re-arm in the same pass.
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('does not re-arm a trip that was refused for this span', () => {
+    const trip = liveTrip();
+    useProjectStore.setState({ projects: [{ ...trip, awayPauseDeclinedFor: trip.awayStart }] });
+    const { setVacationMode } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).not.toHaveBeenCalled();
+  });
+
+  it('arms again once the dates move, since that is a different trip', () => {
+    const trip = liveTrip();
+    useProjectStore.setState({ projects: [{ ...trip, awayPauseDeclinedFor: dayOffset(-30) }] });
+    const { setVacationMode } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).toHaveBeenCalledWith(true, trip.awayEnd);
+  });
+
+  it('reads mode-off after a finished trip as the expiry it is, not a refusal', () => {
+    // checkVacationExpiry runs immediately before this and turns the mode off
+    // on its own; stamping a refusal for that would be a decision nobody made.
+    const over = makeProject({
+      id: 'trip', awayStart: dayOffset(-9), awayEnd: dayOffset(-2), awayPauses: true,
+    });
+    useProjectStore.setState({ projects: [over] });
+    const { setVacationDrivenBy } = settings({ vacationMode: false, vacationDrivenBy: 'trip' });
+    useTaskStore.getState().checkAwayVacation();
+    expect(useProjectStore.getState().projects[0].awayPauseDeclinedFor).toBeNull();
+    expect(setVacationDrivenBy).toHaveBeenCalledWith(null);
+  });
+
+  it('needs no tie-break between two trips at once', () => {
+    // Vacation mode is a boolean, so the question is only whether any
+    // nominated trip covers today.
+    useProjectStore.setState({ projects: [
+      liveTrip({ id: 'a', awayPauses: false }),
+      liveTrip({ id: 'b' }),
+    ] });
+    const { setVacationDrivenBy } = settings();
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationDrivenBy).toHaveBeenCalledWith('b');
   });
 });
 

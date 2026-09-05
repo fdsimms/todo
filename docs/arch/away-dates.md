@@ -1,10 +1,11 @@
 # Away dates: a project that knows when you are gone
 
-**Status: partly built.** The span itself and its first two readers are in
-(`src/utils/awayDates.ts`, `Project.awayStart`/`awayEnd`, the two editor rows,
-the project card's caption, and the look-ahead prefill). Everything else here —
-the picker cue, scheduled vacation mode, the trip moving, the template
-nomination, the destination and its forecast — is designed and not built.
+**Status: partly built.** In: the span itself (`src/utils/awayDates.ts`,
+`Project.awayStart`/`awayEnd`), the editor rows, the project card's caption,
+the look-ahead prefill, the away cue in both day grids (`DayLoad.away`), and
+scheduled vacation mode (`Project.awayPauses`, `checkAwayVacation`). Still
+designed and not built: the trip moving, the template nomination, and the
+destination with its forecast.
 
 It is written down because the design outgrew a conversation, and because most
 of the argument is about *fitting* — which existing rule each decision falls out
@@ -133,9 +134,10 @@ sequencing that recreates the mistake.
 Ranked by cost. Each is independently shippable; the first two are the minimum
 that clears the bar above.
 
-1. **Look ahead prefills from it.** The sheet stops asking for two dates it could
+1. **Look ahead prefills from it** *(built)*. The sheet stops asking for two dates it could
    know, and can name the trip. Deletes the apology comment.
-2. **Away days carry a cue in `WhenPicker`.** There is one choke point:
+2. **Away days carry a cue in `WhenPicker`** *(built, and in the month grid
+   too)*. There is one choke point:
    `buildDayLoads`, consumed by the picker and by the look-ahead sheet's day
    strip. Once the cue exists, `deloadPlan` and `buildPushPlan` can rank those
    days last instead of treating them as ordinary. This is where the feature
@@ -144,7 +146,7 @@ that clears the bar above.
    - The `dayLoad` rule that "no cue is never *this day is free*" is not in
      tension with this. That rule is about absent information; away dates are
      information the user typed.
-3. **Scheduled vacation mode.** Its own section below.
+3. **Scheduled vacation mode** *(built)*. Its own section below.
 4. **The trip moving.** Its own section below. Probably the largest single piece,
    and possibly the most valuable.
 5. **Templates write the span.** Its own section below.
@@ -213,6 +215,10 @@ days", "Away Nov 3 to Nov 10", "Back Tuesday". Not "6 sleeps".
 ---
 
 ## Scheduled vacation mode
+
+*Built.* `Project.awayPauses` is the nomination, `awayPauseDeclinedFor` the
+span-scoped refusal, `vacationDrivenBy` the settings key recording who owns the
+switch, and `checkAwayVacation` the pass.
 
 **It is the "on" half only.** `checkVacationExpiry` — first in `catchUpPasses` —
 already turns vacation off once `vacationEnd` passes. So the whole feature is: on

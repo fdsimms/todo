@@ -101,6 +101,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [awayStart, setAwayStart] = useState<Date | null>(null);
   const [awayEnd, setAwayEnd] = useState<Date | null>(null);
   const [pickingAway, setPickingAway] = useState<'start' | 'end' | null>(null);
+  const [awayPauses, setAwayPauses] = useState(false);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   // Collapsed to the chosen category until tapped, like every other editor.
@@ -125,6 +126,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setAwayStart(project.awayStart ? new Date(project.awayStart) : null);
     setAwayEnd(project.awayEnd ? new Date(project.awayEnd) : null);
     setPickingAway(null);
+    setAwayPauses(project.awayPauses);
     setNudgeMode(nudgeModeOf(project));
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
@@ -177,6 +179,12 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       // indistinguishable from the deadline above. See utils/awayDates.
       awayStart: awayStart ? awayNoonIso(awayStart) : null,
       awayEnd: awayStart && awayEnd ? awayNoonIso(awayEnd) : null,
+      awayPauses: awayStart !== null && awayPauses,
+      // Switching the nomination back on is a fresh statement, so it clears a
+      // refusal made during an earlier run of the same trip (see
+      // Project.awayPauseDeclinedFor). Moving the dates clears it on its own,
+      // since the stamp holds the departure it was made for.
+      awayPauseDeclinedFor: awayPauses && !project.awayPauses ? null : project.awayPauseDeclinedFor,
       ...nudgeFieldsFor(nudgeMode, nudgeCadenceDays),
       // Anything but a scheduled cadence leaves nothing for auto-scheduling to
       // trigger on, so the two can't disagree about whether this project is
@@ -286,6 +294,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
                 if (date && awayEnd && awayEnd <= date) setAwayEnd(null);
               }
               setPickingAway(null);
+    setAwayPauses(project.awayPauses);
             }}
             onClear={() => {
               if (pickingAway === 'end') setAwayEnd(null);
@@ -294,6 +303,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               // would show a value that no longer means anything.
               else { setAwayStart(null); setAwayEnd(null); }
               setPickingAway(null);
+    setAwayPauses(project.awayPauses);
             }}
             onCancel={() => setPickingAway(null)}
           />
@@ -411,6 +421,29 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             onPress={() => setPickingAway('end')}
             onClear={awayEnd ? () => setAwayEnd(null) : undefined}
           />
+        )}
+        {awayStart && (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setAwayPauses(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Pause tasks while away"
+            accessibilityState={{ checked: awayPauses }}
+          >
+            <Ionicons name="pause-circle-outline" size={18} color={awayPauses ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Pause tasks while away</Text>
+              <Text style={styles.optionHint}>
+                {awayPauses
+                  ? "Vacation mode turns on the day you leave and off when you're back. It hides only the tasks and categories you've already set to pause on vacation."
+                  : 'Vacation mode stays however you set it.'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, awayPauses && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, awayPauses && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
         )}
       </View>
       <Text style={styles.sectionFooter}>

@@ -1331,6 +1331,12 @@ export function initDatabase(): void {
     // that already has one is the kind of thing a comment cannot undo.
     'ALTER TABLE projects ADD COLUMN away_start TEXT',
     'ALTER TABLE projects ADD COLUMN away_end TEXT',
+    // 0 on every existing row, for the reason nudge_opt_in and weekend_source
+    // are: letting a trip switch vacation mode is a statement nobody has made
+    // yet, and backfilling it true would hide tasks for people who never asked.
+    // See Project.awayPauses.
+    'ALTER TABLE projects ADD COLUMN away_pauses INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE projects ADD COLUMN away_pause_declined_for TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4830,6 +4836,8 @@ function rowToProject(row: Record<string, unknown>): Project {
     kind: row.kind === 'list' ? 'list' : 'project',
     awayStart: (row.away_start as string) ?? null,
     awayEnd: (row.away_end as string) ?? null,
+    awayPauses: Boolean(row.away_pauses),
+    awayPauseDeclinedFor: (row.away_pause_declined_for as string) ?? null,
   };
 }
 
@@ -4840,7 +4848,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, backfill_dismissed_fields, kind, away_start, away_end) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -4849,13 +4857,14 @@ export function dbInsertProject(project: Project): void {
       project.weekendSource ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
       project.awayStart, project.awayEnd,
+      project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -4863,7 +4872,8 @@ export function dbUpdateProject(project: Project): void {
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.weekendSource ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
-      project.awayStart, project.awayEnd, project.id,
+      project.awayStart, project.awayEnd,
+      project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.id,
     ]
   );
 }

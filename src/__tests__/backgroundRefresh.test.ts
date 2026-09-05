@@ -29,6 +29,7 @@ const mockTaskState = {
   initialize: mockRecord('initialize'),
   sweepExpiredTasks: mockRecord('sweepExpiredTasks'),
   checkVacationExpiry: mockRecord('checkVacationExpiry'),
+  checkAwayVacation: mockRecord('checkAwayVacation'),
   rolloverQuotas: mockRecord('rolloverQuotas'),
   sweepOvershootQuotas: mockRecord('sweepOvershootQuotas'),
   dripStalledProjects: mockRecord('dripStalledProjects'),
@@ -117,7 +118,8 @@ describe('runBackgroundRefresh', () => {
     // added to the launch sequence has to reach the background run too, and a
     // hand-written expectation here is exactly how that would stop being true.
     const passNames = [
-      'checkVacationExpiry', 'rolloverQuotas', 'sweepOvershootQuotas', 'dripStalledProjects',
+      'checkVacationExpiry', 'checkAwayVacation', 'rolloverQuotas', 'sweepOvershootQuotas',
+      'dripStalledProjects',
       'checkMealPlanNudge', 'checkProjectReviewTasks', 'checkMealSlotTasks',
       'checkPantryReviewTasks', 'checkPantryCheckTasks', 'checkMealShortfallTasks',
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'checkScreenTimeTasks', 'checkHealthTasks',
