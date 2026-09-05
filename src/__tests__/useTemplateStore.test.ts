@@ -30,9 +30,12 @@ jest.mock('../store/useTaskGroupStore', () => ({
   useTaskGroupStore: { getState: () => ({ createGroup: mockCreateGroup }) },
 }));
 
+import { awayNoonIso } from '../utils/awayDates';
+
 const mockCreateProject = jest.fn();
+const mockUpdateProject = jest.fn();
 jest.mock('../store/useProjectStore', () => ({
-  useProjectStore: { getState: () => ({ createProject: mockCreateProject }) },
+  useProjectStore: { getState: () => ({ createProject: mockCreateProject, updateProject: mockUpdateProject }) },
 }));
 
 // checkScheduledTemplates reads vacationMode/weekStartsOn/dayResetTime, and
@@ -92,6 +95,7 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   applyContainer: 'stack',
   schedule: null,
   scheduleLastFiredKey: null,
+  anchorsAreAway: false,
   ...overrides,
 });
 
@@ -605,6 +609,55 @@ describe('applyTemplate — naming the run', () => {
     expect(mockCreateGroup).not.toHaveBeenCalled();
   });
 
+  it('gives a trip template the away span instead of a deadline', () => {
+    // The end anchor is the day you get *back*, so writing it to the deadline
+    // would give a trip a "target to finish by" of the day you come home.
+    const start = new Date('2026-09-12T12:00:00');
+    const end = new Date('2026-09-19T12:00:00');
+    useTemplateStore.setState({ templates: [makeTemplate({
+      applyContainer: 'project', anchorsAreAway: true, items: [makeItem({ id: 'a' })],
+    })] });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end }, { runName: 'Lisbon' });
+    expect(mockCreateProject).toHaveBeenCalledWith('Lisbon', null);
+    expect(mockUpdateProject).toHaveBeenCalledWith('project-Lisbon', {
+      awayStart: awayNoonIso(start),
+      awayEnd: awayNoonIso(end),
+    });
+  });
+
+  it('gives a trip template a departure with no return, when that is all it was told', () => {
+    const start = new Date('2026-09-12T12:00:00');
+    useTemplateStore.setState({ templates: [makeTemplate({
+      applyContainer: 'project', anchorsAreAway: true, items: [makeItem({ id: 'a' })],
+    })] });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end: null }, { runName: 'Lisbon' });
+    expect(mockUpdateProject).toHaveBeenCalledWith('project-Lisbon', {
+      awayStart: awayNoonIso(start),
+      awayEnd: null,
+    });
+  });
+
+  it('writes no span for a trip template run with no departure', () => {
+    useTemplateStore.setState({ templates: [makeTemplate({
+      applyContainer: 'project', anchorsAreAway: true, items: [makeItem({ id: 'a' })],
+    })] });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Lisbon' });
+    expect(mockUpdateProject).not.toHaveBeenCalled();
+  });
+
+  it('leaves the span alone for an ordinary template', () => {
+    // Anchors are days away only once the template says so. A house move has
+    // a start and an end and you are not away for it.
+    const start = new Date('2026-09-12T12:00:00');
+    const end = new Date('2026-09-19T12:00:00');
+    useTemplateStore.setState({ templates: [makeTemplate({
+      applyContainer: 'project', items: [makeItem({ id: 'a' })],
+    })] });
+    useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start, end }, { runName: 'Move' });
+    expect(mockCreateProject).toHaveBeenCalledWith('Move', end.toISOString());
+    expect(mockUpdateProject).not.toHaveBeenCalled();
+  });
+
   it('leaves a project undated when the run picked no anchors', () => {
     useTemplateStore.setState({ templates: [makeTemplate({ applyContainer: 'project', items: [makeItem({ id: 'a' })] })] });
     useTemplateStore.getState().applyTemplate('tpl-1', new Set(['a']), { start: null, end: null }, { runName: 'Denver' });
@@ -624,6 +677,7 @@ describe('applyTemplate — naming the run', () => {
         applyContainer: 'stack',
         schedule: null,
         scheduleLastFiredKey: null,
+        anchorsAreAway: false,
         itemGroups: [{ id: 'g1', title: 'Flights', sortOrder: 1 }],
         questions: [],
         items: [makeItem({ id: 'a', title: 'Book', groupId: 'g1' })],

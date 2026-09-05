@@ -1527,6 +1527,12 @@ function seedMoodLog(today: Date): void {
 function seedTemplates(): void {
   const { addTemplate, addItem, addQuestion } = useTemplateStore.getState();
   const template = addTemplate('Trip prep');
+  // Its two anchors are days away from home, so a run of it fills in the
+  // project's away span rather than reading its return date as a deadline.
+  // Nominated, never inferred from the nights question below — see
+  // TaskTemplate.anchorsAreAway.
+  useTemplateStore.getState().setTemplateAnchorsAreAway(template.id, true);
+  useTemplateStore.getState().setTemplateContainer(template.id, 'project');
   // Referenced by the item titles below rather than by an item field, so its
   // id is never needed here.
   addQuestion(template.id, {

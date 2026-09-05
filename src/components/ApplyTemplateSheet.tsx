@@ -18,6 +18,8 @@ import { spacing, radius, font, fontWeight, lineHeight, border, animation, inter
 import { haptics } from '../utils/haptics';
 import { useShallow } from 'zustand/react/shallow';
 import { useTemplateStore } from '../store/useTemplateStore';
+import { useProjectStore } from '../store/useProjectStore';
+import { awaySpanOf } from '../utils/awayDates';
 import {
   resolveOffsetDate,
   formatOffsetLabel,
@@ -122,6 +124,18 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
     [template, templatesById]
   );
 
+  /**
+   * Whether this run's two dates are days away from home.
+   *
+   * Read off the template's own nomination, or off the project being applied
+   * into when that already holds a trip — the second needs no flag, since a
+   * project with a span has said so by having one.
+   */
+  const targetProject = useProjectStore(
+    s => (projectId ? s.projects.find(p => p.id === projectId) ?? null : null),
+  );
+  const away = (template?.anchorsAreAway ?? false) || (targetProject ? awaySpanOf(targetProject) !== null : false);
+
   // Leaf item ids the user has checked — the only ids the checklist UI
   // itself needs to track; ref-item ids are derived at apply time.
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -166,8 +180,13 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
         resolveAnswers(freshQuestions, {}, { start: null, end: null }),
       ));
       setCollapsedRefIds(new Set());
-      setStartAnchor(null);
-      setEndAnchor(null);
+      // Applying into a project that already holds a trip: its dates are the
+      // anchors, so `{nights}` and every offset come out right without them
+      // being typed twice. This direction needs no nomination on the template —
+      // the project declared itself by having a span.
+      const span = targetProject ? awaySpanOf(targetProject) : null;
+      setStartAnchor(span?.start ?? null);
+      setEndAnchor(span?.end ?? null);
       setCalendarTarget(null);
       setRunName('');
       setPlaceholderValues({});
@@ -533,19 +552,27 @@ export function ApplyTemplateSheet({ visible, template, onClose, projectId, onAp
           {(showRunField || placeholderNames.length > 0 || visibleQuestions.length > 0) && <View style={styles.inlineSep} />}
 
           {/* Anchor dates */}
+          {/* Named for what the dates *are* when the template says they are
+              days away, rather than for the anchor they feed. Two rows either
+              way, so the relabel costs nothing and "Leaving" answers the
+              question "start of what?" that "Start date" leaves open. */}
           <AnchorRow
-            icon="play-outline"
-            label="Start date"
-            hint="Items that count days from the start are dated from this day."
+            icon={away ? 'airplane-outline' : 'play-outline'}
+            label={away ? 'Leaving' : 'Start date'}
+            hint={away
+              ? 'The day you go. Items that count days from the start are dated from it.'
+              : 'Items that count days from the start are dated from this day.'}
             value={startAnchor}
             onPress={() => openCalendar('start')}
             onClear={() => setStartAnchor(null)}
           />
           <View style={styles.inlineSep} />
           <AnchorRow
-            icon="flag-outline"
-            label="End date"
-            hint="Items that count days from the end are dated from this day."
+            icon={away ? 'home-outline' : 'flag-outline'}
+            label={away ? 'Coming back' : 'End date'}
+            hint={away
+              ? "The day you're back. Items that count days from the end are dated from it."
+              : 'Items that count days from the end are dated from this day.'}
             value={endAnchor}
             onPress={() => openCalendar('end')}
             onClear={() => setEndAnchor(null)}

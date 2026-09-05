@@ -15,7 +15,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { confirmDelete } from '../utils/confirmDelete';
@@ -46,6 +46,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
   const renameTemplate = useTemplateStore(s => s.renameTemplate);
   const setTemplateCategory = useTemplateStore(s => s.setTemplateCategory);
   const setTemplateContainer = useTemplateStore(s => s.setTemplateContainer);
+  const setTemplateAnchorsAreAway = useTemplateStore(s => s.setTemplateAnchorsAreAway);
   const setSchedule = useTemplateStore(s => s.setSchedule);
   const deleteTemplate = useTaskStore(s => s.deleteTemplate);
   const templates = useTemplateStore(useShallow(s => s.templates));
@@ -61,6 +62,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
   // Collapsed to the chosen category until tapped, like every other editor.
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [containerOpen, setContainerOpen] = useState(false);
+  const [anchorsAreAway, setAnchorsAreAway] = useState(false);
   const [schedule, setScheduleDraft] = useState<TemplateSchedule | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [timePickerOpen, setTimePickerOpen] = useState(false);
@@ -73,6 +75,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
     setName(template.name);
     setCategory(template.category);
     setContainer(template.applyContainer);
+    setAnchorsAreAway(template.anchorsAreAway);
     setScheduleDraft(template.schedule);
     setCategoryOpen(false);
     setContainerOpen(false);
@@ -102,6 +105,7 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
     if (trimmed) renameTemplate(template.id, trimmed);
     setTemplateCategory(template.id, resolveCategory());
     setTemplateContainer(template.id, container);
+    setTemplateAnchorsAreAway(template.id, anchorsAreAway);
     setSchedule(template.id, schedule);
     onClose();
   };
@@ -257,6 +261,38 @@ export function TemplateEditor({ visible, template, onClose }: Props) {
             </Text>
           )}
         </CollapsibleField>
+      </View>
+
+      {/* Sits under "When applied" because it is the same question one step on:
+          that field says where a run lands, this says what its two dates mean
+          once it gets there. Nominated rather than inferred from a nights
+          question — see TaskTemplate.anchorsAreAway. */}
+      <View style={styles.sectionCard}>
+        <TouchableOpacity
+          style={styles.optionRow}
+          onPress={() => { haptics.tap(); setAnchorsAreAway(v => !v); }}
+          activeOpacity={interaction.activeOpacity}
+          accessibilityRole="switch"
+          accessibilityLabel="These dates are days away from home"
+          accessibilityState={{ checked: anchorsAreAway }}
+        >
+          <Ionicons
+            name="airplane-outline"
+            size={18}
+            color={anchorsAreAway ? colors.accent : colors.textSecondary}
+          />
+          <View style={styles.optionContent}>
+            <Text style={styles.optionLabel}>These dates are days away from home</Text>
+            <Text style={styles.optionHint}>
+              {anchorsAreAway
+                ? "A run asks for Leaving and Coming back, and the project it creates keeps them as its away dates."
+                : 'A run asks for a start and end date, and the project it creates keeps the end date as its deadline.'}
+            </Text>
+          </View>
+          <View style={[styles.toggle, anchorsAreAway && styles.toggleOn]}>
+            <View style={[styles.toggleKnob, anchorsAreAway && styles.toggleKnobOn]} />
+          </View>
+        </TouchableOpacity>
       </View>
 
       {/* Applies itself (#1781). Under "When applied" on purpose: that field
@@ -518,6 +554,25 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     backgroundColor: colors.bgSecondary,
     borderRadius: radius.md,
   },
+  // The same option-row + toggle shape ProjectEditor and TaskEditor use for a
+  // per-row switch. Restated here rather than shared, matching the ten files
+  // that already carry it; pulling it into a primitive is its own change.
+  optionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: 14,
+  },
+  optionContent: { flex: 1 },
+  optionLabel: { color: colors.text, fontSize: font.md },
+  optionHint: { color: colors.textTertiary, fontSize: font.xs, marginTop: 2 },
+  toggle: {
+    width: 44, height: 26, borderRadius: radius.full,
+    backgroundColor: colors.bgQuaternary, padding: 2, justifyContent: 'center',
+  },
+  toggleOn: { backgroundColor: colors.accent },
+  toggleKnob: {
+    width: 22, height: 22, borderRadius: radius.full, backgroundColor: colors.bg,
+  },
+  toggleKnobOn: { alignSelf: 'flex-end' },
   pillRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',

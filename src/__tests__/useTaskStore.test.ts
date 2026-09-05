@@ -431,6 +431,7 @@ const makeTemplate = (overrides: Partial<import('../types').TaskTemplate> = {}):
   applyContainer: 'stack',
   schedule: null,
   scheduleLastFiredKey: null,
+  anchorsAreAway: false,
   ...overrides,
 });
 
@@ -6981,6 +6982,7 @@ function makeTemplateWithItemCategories(id: string, categories: (string | null)[
     applyContainer: 'stack' as const,
     schedule: null,
     scheduleLastFiredKey: null,
+    anchorsAreAway: false,
   };
 }
 

@@ -3,10 +3,10 @@
 **Status: partly built.** In: the span itself (`src/utils/awayDates.ts`,
 `Project.awayStart`/`awayEnd`), the editor rows, the project card's caption,
 the look-ahead prefill, the away cue in both day grids (`DayLoad.away`),
-scheduled vacation mode (`Project.awayPauses`, `checkAwayVacation`), and the
-trip moving (`src/utils/awayShift.ts`, `shiftAwayTasks`, `AwayShiftSheet`).
-Still designed and not built: the template nomination, and the destination
-with its forecast.
+scheduled vacation mode (`Project.awayPauses`, `checkAwayVacation`), the
+trip moving (`src/utils/awayShift.ts`, `shiftAwayTasks`, `AwayShiftSheet`),
+and the template nomination (`TaskTemplate.anchorsAreAway`). Still designed and
+not built: the destination with its forecast.
 
 It is written down because the design outgrew a conversation, and because most
 of the argument is about *fitting* — which existing rule each decision falls out
@@ -149,7 +149,7 @@ that clears the bar above.
      information the user typed.
 3. **Scheduled vacation mode** *(built)*. Its own section below.
 4. **The trip moving** *(built)*. Its own section below.
-5. **Templates write the span.** Its own section below.
+5. **Templates write the span** *(built)*. Its own section below.
 6. **The away grocery list binds to the span**, so Groceries opens on that list
    while you are away instead of `activeListId` being a manual switch.
 
@@ -409,6 +409,10 @@ the tasks a stored offset would never have covered.
 ---
 
 ## Templates
+
+*Built.* `TaskTemplate.anchorsAreAway` is the nomination, `applyTemplate` writes
+the span, `ApplyTemplateSheet` relabels its two rows and prefills them from a
+project that already holds a trip.
 
 ### The current mapping is wrong for a trip
 

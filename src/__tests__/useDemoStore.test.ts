@@ -2511,6 +2511,15 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
   });
 
+  it('seeds a trip template whose anchors are days away', () => {
+    // Invisible until a template says so: without it the apply sheet asks for
+    // a start and an end date, and a run's return date lands on the deadline.
+    const tpl = useTemplateStore.getState().templates.find(t => t.name === 'Trip prep');
+    expect(tpl).toBeDefined();
+    expect(tpl!.anchorsAreAway).toBe(true);
+    expect(tpl!.applyContainer).toBe('project');
+  });
+
   it('seeds a trip carrying away dates', () => {
     // The span is invisible until a project has one: with no trip seeded, the
     // editor's two rows read as a feature the app doesn't have.

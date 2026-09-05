@@ -1510,6 +1510,7 @@ describe('Templates', () => {
     applyContainer: 'stack',
     schedule: null,
     scheduleLastFiredKey: null,
+    anchorsAreAway: false,
     ...overrides,
   });
 

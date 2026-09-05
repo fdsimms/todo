@@ -2411,6 +2411,29 @@ export interface TaskTemplate {
   // tasks — a period that was skipped for vacation is the one exception, and
   // it deliberately leaves this alone so the run happens when vacation ends.
   scheduleLastFiredKey: string | null;
+  /**
+   * Whether this template's two anchor dates are days *away from home*, so a
+   * run fills in the project's away span rather than only its deadline.
+   *
+   * Authored on the template, and it has to be: nothing is remembered between
+   * runs (`ApplyTemplateSheet` zeroes every field on open and answers never
+   * leave component state), so there is no memory an "ask once, remember it"
+   * scheme could live in.
+   *
+   * **Not inferred from a `fromDates` question**, tempting as that is — the one
+   * template in the repo that uses one is the trip. `'days'` is genuinely
+   * ambiguous (eight days of renovation is not eight days away), and inferring
+   * is the move `Project.weekendSource`'s note forbids in as many words. The
+   * template editor may surface this toggle more prominently when a `'nights'`
+   * question exists; that is a hint, not a rule.
+   *
+   * **It never sets `Project.awayPauses`.** `TemplateSchedule` can fire a run
+   * unattended, so a template that could set that could switch vacation mode on
+   * with nobody having asked. The two nominations answer different questions —
+   * this one is about *placement*, that one about *suppression* — and are
+   * deliberately kept apart. See `docs/arch/away-dates.md`.
+   */
+  anchorsAreAway: boolean;
 }
 
 // One row of the grocery catalog — which is also the shopping list. A row is
