@@ -652,19 +652,29 @@ export function WhenPicker({
                   </Text>
                 </TouchableOpacity>
               )}
-              {afterVacationDay && (
-                <QuickButton
-                  styles={styles}
-                  colors={colors}
-                  icon="airplane"
-                  iconColor={colors.accent}
-                  label="After vacation"
-                  pending={pendingKey === afterVacationKey}
-                  popAnim={popAnim}
-                  onPress={handleAfterVacation}
-                />
-              )}
             </View>
+
+            {afterVacationDay && (
+              <TouchableOpacity
+                style={styles.afterVacationRow}
+                onPress={handleAfterVacation}
+                activeOpacity={interaction.activeOpacity}
+              >
+                <Animated.View style={[
+                  styles.afterVacationInner,
+                  pendingKey === afterVacationKey && { transform: [{ scale: popAnim }] },
+                ]}>
+                  <Ionicons
+                    name={pendingKey === afterVacationKey ? 'checkmark-circle' : 'airplane'}
+                    size={15}
+                    color={colors.accent}
+                  />
+                  <Text style={styles.afterVacationLabel}>
+                    After vacation — {format(afterVacationDay, 'EEE, MMM d')}
+                  </Text>
+                </Animated.View>
+              </TouchableOpacity>
+            )}
 
             {showPostponeCheck && postponeTask && (
               <PostponeCheckBanner
@@ -991,6 +1001,23 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   suggestButton: {
     backgroundColor: colors.purple + '22',
+  },
+  afterVacationRow: {
+    marginTop: spacing.sm,
+    paddingVertical: 9,
+    borderRadius: radius.sm,
+    backgroundColor: colors.bgQuaternary,
+    alignItems: 'center',
+  },
+  afterVacationInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  afterVacationLabel: {
+    color: colors.text,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
   suggestBanner: {
     flexDirection: 'row',
