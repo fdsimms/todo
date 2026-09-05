@@ -1,5 +1,5 @@
 /**
- * What the side menu contains, as data — eight rows, four of which are hubs.
+ * What the side menu contains, as data — nine rows, three of which are hubs.
  *
  * The menu used to be eighteen flat rows of equal weight, about twice what
  * fits on a phone, so half of it lived below a fold nothing announced. Reading
@@ -19,9 +19,10 @@
  * exactly this drift one level down.)
  *
  * **Ordering is by what you came for, not by resemblance.** Tasks, Search,
- * Calendar and Stuck are the four questions about your own tasks — what is on
- * today, where is that one, what falls when, what is not moving. Groceries
- * follows as the other working surface. Organize and History are the two
+ * Calendar, Stuck and Reminders are the questions about your own tasks — what
+ * is on today, where is that one, what falls when, what is not moving, what
+ * will ring. Groceries follows as the other working surface. Organize and
+ * History are the two
  * shelves: things a task can belong to, and things that already happened.
  * Tips is last because it's reference material, and sits next to Settings.
  *
@@ -158,6 +159,15 @@ export const NAV_MENU_ROWS: readonly NavMenuRow[] = [
       route: 'Stuck',
       label: 'Stuck',
       keywords: ['waiting', 'blocked', 'drift', 'drifting', 'postponed', 'pushed', 'stalled', 'on hold'],
+    },
+  },
+  {
+    kind: 'screen',
+    icon: 'alarm-outline',
+    destination: {
+      route: 'Reminders',
+      label: 'Reminders',
+      keywords: ['upcoming', 'alerts', 'notifications', 'alarm'],
     },
   },
   { kind: 'hub', hub: KITCHEN_HUB },
