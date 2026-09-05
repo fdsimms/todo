@@ -108,10 +108,21 @@ export function computeSnoozeSuggestion(
   // set thirty times over and projected a schedule the app doesn't promise. The
   // stored row is excluded by the walk itself, which is what this wants: it's
   // already counted in `pending`.
+  //
+  // `canProject` refuses a `recurrenceFromCompletion` task outright — rightly,
+  // for a calendar cell that promises a date the app can't actually predict.
+  // This is only a load estimate, not a promise, so it's worth the assumption
+  // `canProject`'s own doc comment says the app can't make: project it as if it
+  // *will* be completed on schedule, by walking the grid with the flag cleared
+  // so `getNextDueDate` anchors to the due date like a fixed schedule instead of
+  // to today. Wrong the moment the user actually runs late, but silently
+  // dropping every one of these tasks from every day's load is a worse guess
+  // than a schedule that assumes they land on time.
   const recurringByDay = new Map<string, { count: number; effort: number }>();
   for (const t of pending) {
     if (t.recurrenceType === 'none') continue;
-    for (const date of projectOccurrences(t, today, windowEnd, dayResetTime)) {
+    const projectable = t.recurrenceFromCompletion ? { ...t, recurrenceFromCompletion: false } : t;
+    for (const date of projectOccurrences(projectable, today, windowEnd, dayResetTime)) {
       const dateStr = dayKeyOf(date);
       const existing = recurringByDay.get(dateStr) ?? { count: 0, effort: 0 };
       recurringByDay.set(dateStr, {
