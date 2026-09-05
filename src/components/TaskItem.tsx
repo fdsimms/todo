@@ -773,6 +773,20 @@ export const TaskItem = React.memo(function TaskItem({
     ? Math.max(0, (nowTick - new Date(task.timerStartedAt as string).getTime()) / 1000)
     : 0;
 
+  // A negative habit has no checkbox at all — its box is a shield, and the tap
+  // reports a slip rather than completing anything (see Task.polarity).
+  //
+  // Declared up here rather than beside the box treatments below because the
+  // completion-shaped chips have to stand down for it too. `completeTask`
+  // refuses a negative task outright, so every one of them describes something
+  // that cannot happen: a countdown to a completion, a supply spent by one, a
+  // chain step advanced by one, a question asked before one. Each `!isNegative`
+  // below is a guard rather than a case, exactly as the one on isQuota is — the
+  // editor and newTaskFromDraft won't let the two be set together, but a row
+  // predating those guards can still arrive from a restored backup or a synced
+  // row, and a chip nothing can ever change is worse than no chip.
+  const isNegative = isNegativeTask(task);
+
   // Countdown state for timed tasks ("play violin for 15 minutes"). Everything
   // is recomputed from the stored fields against nowTick rather than counted
   // down in state, so a row that mounts after the app was backgrounded — or
@@ -783,7 +797,7 @@ export const TaskItem = React.memo(function TaskItem({
   // of its own — and a subtask does surface as a row of its own in Search,
   // where a second start button for the same session would be two timers on
   // one task.
-  const timed = isTimedTask(task) && task.parentId === null;
+  const timed = isTimedTask(task) && task.parentId === null && !isNegative;
   const remainingSeconds = timed ? timerRemaining(task, nowTick) : 0;
   const countdownProgress = timed ? timerProgress(task, nowTick) : 0;
   const timerReady = timed && remainingSeconds <= 0;
@@ -1061,13 +1075,12 @@ export const TaskItem = React.memo(function TaskItem({
   // open a sheet rather than just tick, and the control that behaves
   // differently is where that belongs. Never while it's completing or locked:
   // those states own the glyph, and both outrank "this one will ask".
-  const asksOnComplete = asksOnCompletion(task) && !task.completed;
+  //
+  // Not on a negative task: the shield and this are drawn as siblings in the
+  // same 20pt circle, so the two would stack — and the question would never be
+  // asked anyway, since the tap reports a slip and completeTask refuses.
+  const asksOnComplete = asksOnCompletion(task) && !task.completed && !isNegative;
 
-  // A negative habit has no checkbox at all — its box is a shield, and the tap
-  // reports a slip rather than completing anything (see Task.polarity). It
-  // outranks every other box treatment below because polarity decides what the
-  // control *is*, where the rest decide how a completion behaves.
-  const isNegative = isNegativeTask(task);
   const slipped = isNegative && !isCleanToday(task, getCurrentDayStart());
   const slipsLoggedToday = isNegative ? slipsToday(task, getCurrentDayStart()) : 0;
 
@@ -1107,7 +1120,7 @@ export const TaskItem = React.memo(function TaskItem({
   // line that already carries the scheduled one would be two dates competing to
   // be the row's answer to "when". The count is the number that changes on the
   // tap you just made.
-  const supplyLabel = describeSupply(task);
+  const supplyLabel = isNegative ? null : describeSupply(task);
   // Tinted once the supply is at or under its own threshold, which is the same
   // moment the app starts asking for more — so the chip and the reorder task
   // can't disagree about whether this is low.
@@ -1195,7 +1208,7 @@ export const TaskItem = React.memo(function TaskItem({
   });
 
   const activeChainItem =
-    !task.completed && task.chainEnabled && task.chainItems.length > 0
+    !task.completed && !isNegative && task.chainEnabled && task.chainItems.length > 0
       ? task.chainItems[task.chainIndex % task.chainItems.length]
       : null;
   // A multi-step chain drives the row's title (collapsed and expanded alike,
@@ -1211,7 +1224,10 @@ export const TaskItem = React.memo(function TaskItem({
   const chainStep = activeChainItem && task.chainItems.length > 1 ? activeChainItem : null;
   const chainStepIndex = task.chainItems.length > 0 ? task.chainIndex % task.chainItems.length : 0;
   const chainPosition = chainStep ? `${chainStepIndex + 1}/${task.chainItems.length}` : '';
-  const displayTitle = activeChainStepTitle(task) ?? task.title;
+  // Its own title on a negative task rather than the step's: a chain step can
+  // never be advanced past, so displayTitleFor would otherwise replace the row's
+  // title with step one for ever.
+  const displayTitle = (isNegative ? null : activeChainStepTitle(task)) ?? task.title;
   // Computed once and reused by the expandable step list (#1237) and the row's
   // step-forward/back controls (#786) — same reasoning as chainStepIndex above.
   const chainStepPreview = chainStep ? chainPreview(task) : null;

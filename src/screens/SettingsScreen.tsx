@@ -21,7 +21,7 @@ import {
 } from '../utils/settingsIndex';
 import { searchSettings } from '../utils/settingsSearch';
 import { settingsSummaries } from '../utils/settingsSummary';
-import { generatedTaskCounts } from '../utils/generatedTasks';
+import { generatedTaskCounts, generatorSwitchedOn, GENERATED_KIND_LIST } from '../utils/generatedTasks';
 
 /**
  * How the Groceries & meals line names the unit setting. Null for `asWritten`,
@@ -61,12 +61,43 @@ export function SettingsScreen() {
     () => visibleSettingsGroups(Platform.OS, settings.kitchenEnabled),
     [settings.kitchenEnabled]
   );
+  /**
+   * The gating rows currently switched on — see `SettingsEntry.requires`.
+   *
+   * Here rather than in the index because the index is pure data and this is
+   * live state: a predicate on the entry would have to read the settings store,
+   * which is the settings-as-config mistake that file's own header warns about.
+   * The screen holds the store, so it answers and the index looks up.
+   */
+  const activeEntryIds = useMemo(() => {
+    const on = new Set<string>();
+    if (settings.postponeCheckEnabled) on.add('postponeCheck');
+    if (settings.focusLongRestEvery !== null) on.add('focusLongRestEvery');
+    if (settings.focusShieldEnabled) on.add('focusShield');
+    if (settings.vacationMode) on.add('vacationMode');
+    if (settings.dailyAgendaEnabled) on.add('dailyAgenda');
+    // Both null is how quiet hours are off; the screen's own toggle is derived
+    // from exactly this.
+    if (settings.quietHoursStart !== null) on.add('quietHours');
+    if (settings.appLockEnabled) on.add('appLock');
+    if (settings.productLookupEnabled) on.add('productLookupEnabled');
+    if (settings.cookRecapEnabled) on.add('cookRecapEnabled');
+    // Through the same rule the rows themselves use, so a generator whose read
+    // is switched off takes its "File them under" row out of search too.
+    for (const spec of GENERATED_KIND_LIST) {
+      if (generatorSwitchedOn(spec.kind, settings)) on.add(`gen:${spec.kind}`);
+    }
+    return on;
+  }, [settings]);
+
   // Search must not turn up a row that isn't rendered, so the kitchen entries
-  // leave the index with the area, and the simplified-mode ones with theirs —
-  // the same contract `iosOnly` has.
+  // leave the index with the area, the simplified-mode ones with theirs, the
+  // iOS-only rows with the platform, and a row nested under a switched-off
+  // toggle with that toggle — the four ways a row can be absent from the page.
   const entries = useMemo(
-    () => visibleSettingsEntries(Platform.OS, settings.kitchenEnabled, settings.simpleMode),
-    [settings.kitchenEnabled, settings.simpleMode]
+    () => visibleSettingsEntries(
+      Platform.OS, settings.kitchenEnabled, settings.simpleMode, activeEntryIds),
+    [settings.kitchenEnabled, settings.simpleMode, activeEntryIds]
   );
   const results = useMemo(() => searchSettings(entries, query.trim()), [entries, query]);
 

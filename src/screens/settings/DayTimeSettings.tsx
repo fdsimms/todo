@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSettingsStore, type WeekStart } from '../../store/useSettingsStore';
 import { dateToHHMM, hhmmToDate } from '../../utils/clockTime';
+import { applyDaySegmentTime, type DaySegmentKey, type DaySegmentTimes } from '../../utils/daySegments';
 import { formatHHMM } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
@@ -22,7 +23,6 @@ const WEEK_START_OPTIONS: SegmentOption<WeekStart>[] = [
 export function DayTimeSettings() {
   const {
     dayResetTime, setDayResetTime,
-    morningStart,
     afternoonStart, setAfternoonStart,
     eveningStart, setEveningStart,
     nightStart, setNightStart,
@@ -57,12 +57,38 @@ export function DayTimeSettings() {
     setOpenPickerKey(key);
   };
 
+  /**
+   * The four boundaries as they stand. `dayResetTime` is Morning's, since
+   * `setDayResetTime` writes both it and `morningStart` (see that setter).
+   */
+  const segmentTimes = (): DaySegmentTimes => ({
+    morning: dayResetTime!,
+    afternoon: afternoonStart!,
+    evening: eveningStart!,
+    night: nightStart!,
+  });
+
+  /**
+   * Writes a segment boundary and whichever of the later ones it carries with
+   * it, so the four can't be left out of order — see `applyDaySegmentTime` for
+   * what that broke. Only the values that actually changed are written, so a
+   * confirm that moves nothing else touches nothing else.
+   */
+  const setSegment = (key: DaySegmentKey, hhmm: string) => {
+    const before = segmentTimes();
+    const after = applyDaySegmentTime(before, key, hhmm);
+    if (after.morning !== before.morning) setDayResetTime(after.morning);
+    if (after.afternoon !== before.afternoon) setAfternoonStart(after.afternoon);
+    if (after.evening !== before.evening) setEveningStart(after.evening);
+    if (after.night !== before.night) setNightStart(after.night);
+  };
+
   const confirmPicker = () => {
     const hhmm = dateToHHMM(pickerDate);
-    if (openPickerKey === 'dayReset') setDayResetTime(hhmm);
-    else if (openPickerKey === 'afternoon') setAfternoonStart(hhmm);
-    else if (openPickerKey === 'evening') setEveningStart(hhmm);
-    else if (openPickerKey === 'night') setNightStart(hhmm);
+    if (openPickerKey === 'dayReset') setSegment('morning', hhmm);
+    else if (openPickerKey === 'afternoon') setSegment('afternoon', hhmm);
+    else if (openPickerKey === 'evening') setSegment('evening', hhmm);
+    else if (openPickerKey === 'night') setSegment('night', hhmm);
     else if (openPickerKey === 'activeStart') setActiveHoursStart(hhmm);
     else if (openPickerKey === 'activeEnd') setActiveHoursEnd(hhmm);
     setOpenPickerKey(null);
@@ -102,7 +128,14 @@ export function DayTimeSettings() {
         label="When the day turns over"
         footer={'Set Morning to 2:00 AM or later if you’re often up past midnight and don’t want today’s tasks to vanish before you’re done. A task with a time-of-day segment appears once its part of the day begins.'}
       >
-        {segment('dayReset', 'Morning', 'sunny', formatHHMM(morningStart),
+        {/* dayResetTime, which is what this row's picker opens on, what its
+            confirm writes and what its hint describes. It used to display
+            morningStart instead, and the two are only equal because
+            setDayResetTime writes both — so out of the box, where the defaults
+            are 00:00 and 06:00, the row read "6:00 AM" over a day that flipped
+            at midnight, and stayed wrong until the row was touched once. A
+            restore or a sync merge can part them the same way. */}
+        {segment('dayReset', 'Morning', 'sunny', formatHHMM(dayResetTime!),
           { first: true, hint: '"Today" flips and streaks reset at this time' })}
         {segment('afternoon', 'Afternoon starts', 'partly-sunny', formatHHMM(afternoonStart))}
         {segment('evening', 'Evening starts', 'moon-outline', formatHHMM(eveningStart))}

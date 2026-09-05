@@ -1,4 +1,4 @@
-import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, matchPersonMentions, findAmbiguousMention, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
+import { parseTaskInput, describeSchedule, parseLinkInput, parsePhoneInput, parseEmailInput, detectContactIntent, parseDurationInput, parseSupplyInput, parseCategoryAndTagsInput, parsePriorityInput, matchPersonMentions, findAmbiguousMention, applyMentionOverrides, parseFromCompletionSuffix, type ParsedSchedule } from '../utils/parseTaskInput';
 
 // Tuesday, June 10 2025, 10:00 AM — same anchor as parseNaturalDate.test.ts
 const NOW = new Date(2025, 5, 10, 10, 0, 0);
@@ -869,6 +869,59 @@ describe('parseCategoryAndTagsInput', () => {
   it('still requires an exact match for tags, even when a prefix is unambiguous', () => {
     const result = parseCategoryAndTagsInput('buy milk #err', [], ['errand']);
     expect(result).toBeNull();
+  });
+});
+
+// ─── parsePriorityInput ───
+
+describe('parsePriorityInput', () => {
+  it('resolves an exact priority word', () => {
+    const result = parsePriorityInput('clean the garage !urgent');
+    expect(result?.priority).toBe(4);
+    expect(result?.cleanTitle).toBe('clean the garage');
+  });
+
+  it('is case-insensitive', () => {
+    expect(parsePriorityInput('mow the lawn !HIGH')?.priority).toBe(3);
+  });
+
+  it('resolves an unambiguous prefix before the word is finished', () => {
+    const result = parsePriorityInput('pay rent !urg');
+    expect(result?.priority).toBe(4);
+    expect(result?.cleanTitle).toBe('pay rent');
+  });
+
+  it('resolves each of the four priority words', () => {
+    expect(parsePriorityInput('a !low')?.priority).toBe(1);
+    expect(parsePriorityInput('a !medium')?.priority).toBe(2);
+    expect(parsePriorityInput('a !high')?.priority).toBe(3);
+    expect(parsePriorityInput('a !urgent')?.priority).toBe(4);
+  });
+
+  it('does not resolve a prefix shorter than the minimum length', () => {
+    expect(parsePriorityInput('mow the lawn !h')).toBeNull();
+  });
+
+  it('does not resolve a token matching no priority word', () => {
+    expect(parsePriorityInput('mow the lawn !soon')).toBeNull();
+  });
+
+  it('ignores a bare exclamation with no following word', () => {
+    expect(parsePriorityInput('wow!!!')).toBeNull();
+  });
+
+  it('does not fire mid-word', () => {
+    expect(parsePriorityInput('reply to bri!high')).toBeNull();
+  });
+
+  it('returns null for a title with no token', () => {
+    expect(parsePriorityInput('just a normal title')).toBeNull();
+  });
+
+  it('reports the matched span', () => {
+    const input = 'walk the dog !urgent please';
+    const result = parsePriorityInput(input)!;
+    expect(input.slice(result.matchStart, result.matchEnd)).toBe('!urgent');
   });
 });
 

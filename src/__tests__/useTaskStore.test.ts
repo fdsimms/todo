@@ -8621,6 +8621,61 @@ describe('visibleTasks', () => {
 });
 
 describe('pinnedTasks', () => {
+  // Pinning overrides the clock, which is the feature — a pinned task shows
+  // whether or not it is due today. It does not override the one hide that
+  // isn't a clock: isVisibleApartFromVacation puts isHeldBack ahead of every
+  // time gate on purpose. This selector writes its filter out by hand, so the
+  // two non-clock hides it already honoured (archived, vacation) were right and
+  // blocking leaked — a task waiting on another task sat at the top of Today
+  // with nothing the user could do about it, while its own ordinary row had
+  // correctly left the list.
+  it('drops a pinned task that is waiting on another task', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', title: 'Cancel the plan' }),
+        makeTask({ id: 'waiter', title: 'Return the router', pinned: true, blockedById: 'blocker' }),
+      ],
+    });
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual([]);
+  });
+
+  it('brings it back once the blocker is done, same as its ordinary row', () => {
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'blocker', completed: true, completedAt: new Date().toISOString() }),
+        makeTask({ id: 'waiter', pinned: true, blockedById: 'blocker' }),
+      ],
+    });
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual(['waiter']);
+  });
+
+  // The other half of isHeldBack, and the one nothing resolves on its own.
+  // The person has to actually exist: the pointer is resolve-or-shrug, so a
+  // deleted or archived person frees their waiters rather than stranding them.
+  it('drops a pinned task that is waiting on a person', () => {
+    const people = usePersonStore.getState().people;
+    usePersonStore.setState({
+      people: [{
+        id: 'p-1', name: 'Dustin', nickname: '', notes: '', sortOrder: 1,
+        archived: false, archivedAt: null, createdAt: new Date().toISOString(),
+        birthdayMonth: null, birthdayDay: null, birthYear: null,
+        birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
+        phoneNumber: null, email: null, linkUrl: null,
+        cadenceDays: 30, nudgeOptIn: false, cadenceSetAt: null,
+        reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
+        backfillDismissedFields: [], groupId: null,
+      }],
+      initialized: true,
+    });
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'photos', pinned: true, waitingOnPersonId: 'p-1' })],
+    });
+
+    expect(useTaskStore.getState().pinnedTasks().map(t => t.id)).toEqual([]);
+
+    usePersonStore.setState({ people });
+  });
+
   it('returns pinned, non-completed, non-subtask tasks sorted by sortOrder', () => {
     useTaskStore.setState({
       tasks: [
@@ -13470,8 +13525,15 @@ describe('time block reconcile', () => {
 // the sheet only appears to save.
 describe('updateTask: the followUp task draft', () => {
   it('saves a draft onto the task and takes it back off again', () => {
+    // Repeating, because that is the only task a follow-up rule can sit on:
+    // the tally rides onto the successor a completion spawns (see
+    // canHoldFollowUpTask), and updateTask now clears a rule stranded on a task
+    // that spawns none.
     useTaskStore.setState({
-      tasks: [makeTask({ id: 'practice', followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin the bow' })],
+      tasks: [makeTask({
+        id: 'practice', recurrenceType: 'daily',
+        followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin the bow',
+      })],
     });
     const draft = { ...emptyFollowUpTaskDraft(), notes: 'In the case pocket', priority: 2 as const };
 
@@ -13480,6 +13542,62 @@ describe('updateTask: the followUp task draft', () => {
 
     useTaskStore.getState().updateTask('practice', { followUpTaskDraft: null });
     expect(useTaskStore.getState().tasks[0].followUpTaskDraft).toBeNull();
+  });
+});
+
+describe('updateTask: a rule that can no longer be carried', () => {
+  // Both rules ride onto the successor a completion spawns. The editor clears
+  // them on its own save and newTaskFromDraft refuses them at creation, which
+  // left the gap in the middle: anything else writing the repeat away — a bulk
+  // edit, a sync merge, a store action — stranded a supply frozen at its last
+  // count and a follow-up rule that could never fire, both still on the row.
+  const rowOf = (id: string) => useTaskStore.getState().tasks.find(t => t.id === id)!;
+
+  it('drops a follow-up rule when the repeat is taken away', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'practice', recurrenceType: 'daily',
+        followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin the bow',
+      })],
+    });
+    useTaskStore.getState().updateTask('practice', { recurrenceType: 'none' });
+    expect(rowOf('practice').followUpTaskEveryN).toBeNull();
+    expect(rowOf('practice').followUpTaskTitle).toBeNull();
+  });
+
+  it('drops a supply when the repeat is taken away', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'filter', recurrenceType: 'monthly', supplyCount: 3, supplyUnit: 'filters',
+      })],
+    });
+    useTaskStore.getState().updateTask('filter', { recurrenceType: 'none' });
+    expect(rowOf('filter').supplyCount).toBeNull();
+    expect(rowOf('filter').supplyUnit).toBeNull();
+  });
+
+  it('leaves both alone while the repeat is still there', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({
+        id: 'both', recurrenceType: 'daily', supplyCount: 3,
+        followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin the bow',
+      })],
+    });
+    useTaskStore.getState().updateTask('both', { title: 'Renamed' });
+    expect(rowOf('both').supplyCount).toBe(3);
+    expect(rowOf('both').followUpTaskEveryN).toBe(4);
+  });
+
+  // The same "a patch naming the field wins outright" the anchors above rely
+  // on, so a whole-snapshot undo restores what it recorded.
+  it('lets a patch that names the field itself through', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 'undo', recurrenceType: 'none' })],
+    });
+    useTaskStore.getState().updateTask('undo', {
+      followUpTaskEveryN: 4, followUpTaskTitle: 'Rosin the bow',
+    });
+    expect(rowOf('undo').followUpTaskEveryN).toBe(4);
   });
 });
 
@@ -13939,6 +14057,58 @@ describe('negative habits', () => {
 
 // Converting between the polarities. The two count different things, so the run
 // restarts rather than carrying across — and the dates are the dangerous half.
+describe('a draft carrying both an avoid-goal and a kind', () => {
+  // An avoid-task is never completed, and every other kind is a shape for
+  // completing something — so the two can't both hold. TaskEditor's applyKind
+  // enforces it at the near end, but a template, an import, a restored backup
+  // or a synced row reaches newTaskFromDraft instead, so the rule lives there
+  // too. The kind wins, matching taskKindOf's own precedence: leave the
+  // polarity set and the row reads as its kind everywhere, which hides the Goal
+  // row behind that kind and strands the polarity with no way to turn it off.
+  it('drops the avoid-goal for a chain, which is what a template could save', () => {
+    const task = useTaskStore.getState().addTask({
+      title: 'Morning routine',
+      polarity: 'negative',
+      chainEnabled: true,
+      chainItems: [
+        { id: 'a', title: 'Stretch' },
+        { id: 'b', title: 'Shower' },
+      ] as never,
+    });
+    expect(task.polarity).toBe('positive');
+    expect(task.chainEnabled).toBe(true);
+  });
+
+  it('drops it for a target, a timed task and a health target alike', () => {
+    expect(useTaskStore.getState().addTask({
+      title: 'Water', polarity: 'negative', targetCount: 8,
+    }).polarity).toBe('positive');
+    expect(useTaskStore.getState().addTask({
+      title: 'Violin', polarity: 'negative', timedMinutes: 15,
+    }).polarity).toBe('positive');
+    expect(useTaskStore.getState().addTask({
+      title: 'Steps', polarity: 'negative', healthMetric: 'steps', healthTarget: 8000,
+    }).polarity).toBe('positive');
+  });
+
+  it('keeps it on a plain task, which is the whole point of the field', () => {
+    const task = useTaskStore.getState().addTask({ title: "Don't smoke", polarity: 'negative' });
+    expect(task.polarity).toBe('negative');
+    // The two reads that follow the resolved value rather than the draft's, so
+    // a dropped goal can't leave a streak block behind that says otherwise.
+    expect(task.showStreak).toBe(true);
+    expect(task.streakDate).not.toBeNull();
+  });
+
+  it('leaves no streak block behind on the one it dropped', () => {
+    const task = useTaskStore.getState().addTask({
+      title: 'Water', polarity: 'negative', targetCount: 8,
+    });
+    expect(task.showStreak).toBe(false);
+    expect(task.streakDate).toBeNull();
+  });
+});
+
 describe('changing a task’s polarity', () => {
   beforeEach(() => {
     jest.useFakeTimers();

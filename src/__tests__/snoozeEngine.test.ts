@@ -248,6 +248,29 @@ describe('computeSnoozeSuggestion', () => {
     expect(resultDayKey).not.toBe(d2Key);
   });
 
+  it('projects a recurrenceFromCompletion task as if it completes on schedule', () => {
+    // An every-3-days "from completion" task due today: with completion
+    // assumed on time, its projected load lands on D+3, D+6, not on every day.
+    const today = new Date();
+    const fromCompletionTask = makeTask({
+      id: 'from-completion',
+      recurrenceType: 'daily',
+      recurrenceInterval: 3,
+      recurrenceFromCompletion: true,
+      dueDate: today.toISOString(),
+    });
+
+    const d3 = addDays(today, 3);
+    const followUpTask = makeTask({ id: 'extra', dueDate: d3.toISOString() });
+
+    const task = makeTask({ id: 'snooze-me' });
+    const result = computeSnoozeSuggestion(task, [task, fromCompletionTask, followUpTask]);
+
+    // D+3 carries both the projected recurrence and the extra task, so it
+    // should be disfavored relative to a day with only the projected recurrence.
+    expect(isoDate(result.date)).not.toBe(isoDate(d3));
+  });
+
   it('keeps high-priority tasks close', () => {
     const urgentTask = makeTask({ id: 'snooze-me', priority: 4 });
     const lowTask = makeTask({ id: 'snooze-low', priority: 0 });

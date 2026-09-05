@@ -118,10 +118,14 @@ export function KitchenSettings() {
           onPress={() => setCookRecapEnabled(!cookRecapEnabled)}
           accessibilityLabel="Ask after cooking"
         />
-        {/* Indented under nothing, but it only does anything while the row
-            above is on: it governs one section of that sheet. Left as its own
-            row rather than folded in because "never shop from a recipe" and
-            "don't ask me anything" are different wants. */}
+        {/* Shown only while the row above is on, because it governs one section
+            of that sheet and can do nothing without it — it read as fully
+            active over a sheet that never opens. Still its own setting rather
+            than folded in, because "never shop from a recipe" and "don't ask
+            me anything" are different wants and the answer to the first is
+            kept: turning the recap back on brings this back as it was. Same
+            nesting the product-lookup keys get under their own switch. */}
+        {cookRecapEnabled && (
         <SettingsRow
           entryId="restockOfferEnabled"
           icon="basket-outline"
@@ -132,6 +136,7 @@ export function KitchenSettings() {
           onPress={() => setRestockOfferEnabled(!restockOfferEnabled)}
           accessibilityLabel="Restock after cooking"
         />
+        )}
       </SettingsSection>
 
       {Platform.OS === 'ios' && !simpleMode && (

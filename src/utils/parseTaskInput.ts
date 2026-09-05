@@ -10,7 +10,7 @@ import { setHours } from 'date-fns/setHours';
 import { startOfDay } from 'date-fns/startOfDay';
 import { startOfMonth } from 'date-fns/startOfMonth';
 import type { Day } from 'date-fns';
-import type { RecurrenceType, TimeOfDay } from '../types';
+import type { Priority, RecurrenceType, TimeOfDay } from '../types';
 import { extractDayPart, extractTime, MONTHS, monthDay, parseDatePart, WEEKDAYS } from './parseNaturalDate';
 import { looksLikePhoneNumber } from './phone';
 
@@ -947,6 +947,70 @@ export function parseCategoryAndTagsInput(
     matchStart: consumed[0].start,
     matchEnd: consumed[0].end,
   };
+}
+
+export interface ParsedPriority {
+  priority: Priority;
+  /** Input minus the matched "!word" token, whitespace collapsed and trimmed. */
+  cleanTitle: string;
+  matchStart: number;
+  matchEnd: number;
+}
+
+// "!" immediately followed by a word, not itself preceded by a word character
+// — same shape as CATEGORY_OR_TAG_TOKEN_PATTERN's "#word", using "!" since
+// nothing else in this grammar claims it and it's the common urgency marker
+// elsewhere. Matched once rather than globally: a task has one priority, so
+// unlike "#word" there's no second slot a later token could fill.
+const PRIORITY_TOKEN_PATTERN = /(?<!\w)!([a-z]+)/i;
+
+// Below this many characters a prefix match is too eager — "!m" reads closer
+// to a stray exclamation than a chosen priority. Two is enough for every
+// candidate below to already be unambiguous (lo/me/hi/ur), unlike
+// MIN_CATEGORY_PREFIX_LENGTH's three against an open-ended category list.
+const MIN_PRIORITY_PREFIX_LENGTH = 2;
+
+const PRIORITY_WORDS: { word: string; value: Priority }[] = [
+  { word: 'low', value: 1 },
+  { word: 'medium', value: 2 },
+  { word: 'high', value: 3 },
+  { word: 'urgent', value: 4 },
+];
+
+/**
+ * Finds a "!word" token in a quick-add title and resolves it to a priority —
+ * "!high", "!urg" and "!ur" all resolve to Urgent, matched the same
+ * unambiguous-prefix way "#word" resolves to a category
+ * (parseCategoryAndTagsInput), just against this fixed four-word set instead
+ * of one built from the user's own categories. A prefix matching more than
+ * one word (there are none among these four past the two-character floor
+ * above) or no word at all is left as literal text rather than guessed.
+ *
+ * Only the first "!word" in the title is tried — a task has one priority, so
+ * there's no second slot for a later token to fill the way a second "#word"
+ * fills the tag list.
+ *
+ * Deliberately has no "!none"/"!clear" to unset a priority: nothing else in
+ * this sigil grammar removes a value that's already set, and a title being
+ * typed fresh has no priority yet to clear.
+ */
+export function parsePriorityInput(input: string): ParsedPriority | null {
+  const match = input.match(PRIORITY_TOKEN_PATTERN);
+  if (!match || match.index === undefined) return null;
+
+  const token = match[1].toLowerCase();
+  if (token.length < MIN_PRIORITY_PREFIX_LENGTH) return null;
+
+  const hits = PRIORITY_WORDS.filter(p => p.word.startsWith(token));
+  if (hits.length !== 1) return null;
+
+  const matchStart = match.index;
+  const matchEnd = matchStart + match[0].length;
+  const cleanTitle = (input.slice(0, matchStart) + input.slice(matchEnd))
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return { priority: hits[0].value, cleanTitle, matchStart, matchEnd };
 }
 
 /** One resolved "@name" token: where it sits in the title, and who it names. */

@@ -33,6 +33,11 @@ export function NotificationSettings() {
   const setDailyAgendaEnabled = useSettingsStore(s => s.setDailyAgendaEnabled);
   const dailyAgendaTime = useSettingsStore(s => s.dailyAgendaTime);
   const setDailyAgendaTime = useSettingsStore(s => s.setDailyAgendaTime);
+  // The trip reminder is about a shopping trip, which only exists while the
+  // grocery area does — and the index has always flagged it `kitchen`, so with
+  // the area off the row was on screen and unfindable by search, the inverse of
+  // the leak that flag exists to prevent.
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const tripReminderEnabled = useSettingsStore(s => s.tripReminderEnabled);
   const setTripReminderEnabled = useSettingsStore(s => s.setTripReminderEnabled);
   const defaultReminderLeadMinutes = useSettingsStore(s => s.defaultReminderLeadMinutes);
@@ -285,6 +290,8 @@ export function NotificationSettings() {
         </>
       )}
 
+      {kitchenEnabled && (
+      <>
       <View style={styles.sep} />
       <SettingsRow
         entryId="tripReminder"
@@ -297,6 +304,8 @@ export function NotificationSettings() {
         toggle={tripReminderEnabled}
         onPress={() => onToggleTripReminder(!tripReminderEnabled)}
       />
+      </>
+      )}
 
       <View style={styles.sep} />
       <SettingsRow
@@ -305,8 +314,8 @@ export function NotificationSettings() {
         iconColor={quietHoursEnabled ? colors.accent : undefined}
         label="Quiet hours"
         hint={quietHoursEnabled
-          ? 'A reminder in this window waits until it ends; a timer alarm in it is skipped'
-          : 'Reminders and timer alarms can arrive at any hour'}
+          ? 'A reminder or daily agenda in this window waits until it ends; a timer alarm in it is skipped'
+          : 'Reminders, the daily agenda and timer alarms can arrive at any hour'}
         toggle={quietHoursEnabled}
         onPress={() => onToggleQuietHours(!quietHoursEnabled)}
       />

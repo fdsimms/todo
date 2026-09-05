@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
-import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod } from '../types';
+import type { Task, TaskDraft, Priority, TimeOfDay, TitleRule, Person, QuotaPeriod, Polarity } from '../types';
 import {
   initDatabase,
   dbGetAllTasks,
@@ -85,7 +85,7 @@ import {
 // reason: the reference is inside an action body, by which time both modules
 // have finished loading.
 import { deleteGeneratedTaskQuietly, dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
-import { generatedBy, generatedSourceOf, generatedTaskCountOf, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
+import { generatedBy, generatedSourceOf, generatedTaskCountOf, generatorPausedForVacation, hasAnyGeneratedTask, liveGeneratedTask, liveGeneratedTasksOfKind } from '../utils/generatedTasks';
 import { CALENDAR_REVIEW_TITLE, calendarReviewDayKey, wantsCalendarReview } from '../utils/calendarReviewTasks';
 import { MOOD_LOG_TITLE, MOOD_NUDGE_TITLE, moodLogDayKey, moodNudgeNotes, wantsMoodNudge } from '../utils/moodTasks';
 import { buildMoodDays, lowMoodRun } from '../utils/moodInsights';
@@ -134,10 +134,10 @@ import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
-import { MIN_TARGET_COUNT, MAX_TARGET_COUNT } from '../utils/taskKinds';
+import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
 import { isNegativeTask, slipPatch, undoSlipPatch, cleanDayPatch } from '../utils/negativeHabits';
-import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay } from '../utils/visibilityUtils';
+import { isTaskVisible, isTaskNew, isTaskDeferred, isUpcomingToday, isHeldBack, isHiddenForVacation, isVisibleApartFromVacation, isTaskExpired, isTaskSweepable, isRecurrenceNotYetDue, isLiveRecurring, isMissableMealPlanTask, isInboxTask, isUnscheduledTask, isWaitingTask, isRelevantToGroupToday, groupRoster, hasNoDateSignal, isQuotaTask, isQuotaOnPace, quotaRidesOutTheDay, isMissed, sameTimeSegments, isCompletionOnTime, isCategoryScheduledDay } from '../utils/visibilityUtils';
 import { retentionCutoff, selectPurgeableTaskIds } from '../utils/retention';
 import { categoryLabel } from '../utils/categoryLabel';
 import {
@@ -148,7 +148,7 @@ import {
   driftingTasks,
   type DriftEntry,
 } from '../utils/postpone';
-import { followUpTaskRule, advanceFollowUpTaskTally, followUpTaskSuppressedBy } from '../utils/followUpTask';
+import { followUpTaskRule, advanceFollowUpTaskTally, followUpTaskSuppressedBy, canHoldFollowUpTask } from '../utils/followUpTask';
 import type { FollowUpTaskSuppression } from '../utils/followUpTask';
 import { normalizeTitle } from '../utils/taskInstances';
 import { resolveTitleRules, titleRuleBacklog } from '../utils/titleRules';
@@ -373,6 +373,29 @@ function newTaskFromDraft(
   skipCategoryDefault = false,
 ): Task {
   const defaults = useSettingsStore.getState().newTaskDefaults;
+  // An avoid-task is never completed (see Task.polarity), so it can only be the
+  // plain kind: every other kind is a shape for *completing* something, and all
+  // four of their mechanisms hang off a completion that will never come. The
+  // editor already enforces this at the near end — applyKind resets polarity
+  // whenever the kind moves away from 'task' — but that is one door of several,
+  // and a template, an Apple Reminders import, a restored backup or a synced row
+  // arrives here instead. So the rule lives at the door all of them pass
+  // through, the same call canHoldSupply makes just below.
+  //
+  // The kind wins rather than the polarity, which matches taskKindOf's own
+  // precedence: a row carrying both reads as its kind everywhere else in the
+  // app, so leaving the polarity set would leave the Goal row hidden behind
+  // that kind with no way to reach it and turn the polarity back off.
+  const resolvedPolarity: Polarity =
+    taskKindOf({
+      chainEnabled: draft.chainEnabled ?? false,
+      targetCount: draft.targetCount ?? null,
+      timedMinutes: draft.timedMinutes ?? null,
+      healthMetric: draft.healthMetric ?? null,
+      healthTarget: draft.healthTarget ?? null,
+    }) === 'task'
+      ? (draft.polarity ?? 'positive')
+      : 'positive';
   const task: Task = {
     id: id ?? generateId(),
     title: draft.title ?? '',
@@ -468,18 +491,18 @@ function newTaskFromDraft(
     // means a habit created on Monday can't credit Tuesday until Wednesday's
     // pass has run twice. Today is deliberately the anchor rather than a day
     // earlier: half of it happened before the commitment existed.
-    streakDate: (draft.polarity ?? 'positive') === 'negative' ? getCurrentDayStart().toISOString() : null,
+    streakDate: resolvedPolarity === 'negative' ? getCurrentDayStart().toISOString() : null,
     previousStreakCount: 0,
     previousStreakDate: null,
     priorBestStreak: 0,
     slipCount: 0,
     slipDate: null,
-    polarity: draft.polarity ?? 'positive',
+    polarity: resolvedPolarity,
     // On by default for a negative habit and off for everything else. A flame on
     // every recurring row is noise (the reasoning behind the field), but the run
     // of clean days is the *only* feedback an avoid-task ever gives: it is never
     // completed, so without the chip the row never changes at all.
-    showStreak: draft.showStreak ?? (draft.polarity ?? 'positive') === 'negative',
+    showStreak: draft.showStreak ?? resolvedPolarity === 'negative',
     streakRequiresWindow: draft.streakRequiresWindow ?? false,
     parentId: draft.parentId ?? null,
     groupId: draft.groupId ?? null,
@@ -493,10 +516,26 @@ function newTaskFromDraft(
     chainIndex: draft.chainIndex ?? 0,
     chainItems: draft.chainItems ?? [],
     chainStepOnSchedule: draft.chainStepOnSchedule ?? false,
-    followUpTaskEveryN: draft.followUpTaskEveryN ?? null,
-    followUpTaskTitle: draft.followUpTaskTitle ?? null,
-    followUpTaskDraft: draft.followUpTaskDraft ?? null,
-    followUpTaskOneAtATime: draft.followUpTaskOneAtATime ?? false,
+    // The same door the supply block above passes through, and the same rule:
+    // the tally rides onto the successor a completion spawns, so a one-off or a
+    // subtask has nowhere to carry it and the rule could never reach its second
+    // completion. See canHoldFollowUpTask.
+    ...(canHoldFollowUpTask({
+      recurrenceType: draft.recurrenceType ?? 'none',
+      parentId: draft.parentId ?? null,
+    })
+      ? {
+          followUpTaskEveryN: draft.followUpTaskEveryN ?? null,
+          followUpTaskTitle: draft.followUpTaskTitle ?? null,
+          followUpTaskDraft: draft.followUpTaskDraft ?? null,
+          followUpTaskOneAtATime: draft.followUpTaskOneAtATime ?? false,
+        }
+      : {
+          followUpTaskEveryN: null,
+          followUpTaskTitle: null,
+          followUpTaskDraft: null,
+          followUpTaskOneAtATime: false,
+        }),
     vacationPause: draft.vacationPause ?? false,
     excludeFromSuggestions: draft.excludeFromSuggestions ?? false,
     timerStartedAt: draft.timerStartedAt ?? null,
@@ -2601,6 +2640,35 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
         ...(!('recurrenceAnchorDate' in updates) && SCHEDULE_FIELDS.some(f => f in updates)
           ? { recurrenceAnchorDate: null }
           : {}),
+        // Two rules that ride onto the successor a completion spawns, and so
+        // mean nothing on a task that no longer spawns one. Both were enforced
+        // at creation (canHoldSupply / canHoldFollowUpTask in newTaskFromDraft)
+        // and on the editor's own save, which left the gap in the middle:
+        // anything else that writes `recurrenceType: 'none'` onto a live task —
+        // a bulk edit, a sync merge, a store action — stranded a supply frozen
+        // at its last count and a follow-up rule that could never fire again,
+        // both still drawn on the row. Same trigger shape as the anchors above:
+        // a patch naming the field itself wins outright, so a whole-snapshot
+        // undo restores what it recorded rather than being re-cleared.
+        ...(!canHoldSupply({ ...t, ...updates }) && !('supplyCount' in updates)
+          ? {
+              supplyCount: null,
+              supplyUnit: null,
+              supplyRefillCount: null,
+              supplyReorderAt: DEFAULT_SUPPLY_REORDER_AT,
+              supplyLeadDays: null,
+              supplyDeclinedAtCount: null,
+              supplyGroceryItemId: null,
+            }
+          : {}),
+        ...(!canHoldFollowUpTask({ ...t, ...updates }) && !('followUpTaskEveryN' in updates)
+          ? {
+              followUpTaskEveryN: null,
+              followUpTaskTitle: null,
+              followUpTaskDraft: null,
+              followUpTaskOneAtATime: false,
+            }
+          : {}),
         // Same shape as the two rules above, and the same reasoning: a patch
         // naming targetCount itself wins outright, so a whole-snapshot undo
         // restores the count it recorded rather than recomputing a new one
@@ -4553,7 +4621,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // "hide work from me" the user set today. Deliberately doesn't record
     // weekKey when skipped this way, so the same week's trigger fires for
     // real the first time the app is opened after vacation ends.
-    if (settings.vacationMode) return;
+    //
+    // Through the registry rather than reading vacationMode directly: this was
+    // the only generator of nineteen that answered this question, and one rule
+    // with one exception is how the other eighteen came to have no answer.
+    if (generatorPausedForVacation('mealPlanNudge', settings.vacationMode)) return;
 
     const due = dueMealPlanNudge(
       new Date(),
@@ -4647,6 +4719,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   checkProjectReviewTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('projectReview', settings.vacationMode)) return;
     if (!settings.projectReviewTasks) return;
 
     const tasks = get().tasks;
@@ -5002,6 +5079,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    */
   checkMealSlotTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('mealSlot', settings.vacationMode)) return;
     // The same gate checkPantryCheckTasks takes, and for the same reason —
     // which that one's comment claimed was unique to it, back when it was. This
     // pass fires on time passing rather than on a purchase or an edit, so with
@@ -5063,6 +5145,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   checkPantryCheckTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('pantryCheck', settings.vacationMode)) return;
     if (!settings.pantryCheckTasks) return;
     // The whole grocery area can be switched off (kitchenEnabled), and this
     // generator fires on time passing rather than on a purchase or an edit — so
@@ -5151,6 +5238,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   checkPantryReviewTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('pantryReview', settings.vacationMode)) return;
     if (!settings.pantryReviewTasks) return;
     // The same kitchenEnabled gate checkPantryCheckTasks takes directly above,
     // for the same reason: this fires on time passing rather than on a purchase
@@ -5241,6 +5333,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    */
   checkMealShortfallTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('mealShortfall', settings.vacationMode)) return;
     if (!settings.mealShortfallTasks) return;
     // The whole grocery area can be switched off, and this generator reads the
     // catalog to decide what's missing — without this gate it would be part of
@@ -5339,6 +5436,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
 
   checkSupplyReorderTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('supplyReorder', settings.vacationMode)) return;
     const { dayResetTime } = settings;
     const tasks = get().tasks;
 
@@ -5896,6 +5998,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    */
   checkWeekendNudgeTasks() {
     const settings = useSettingsStore.getState();
+    // Work the app invents, and vacation mode is the deliberate "hide work
+    // from me" — see GeneratedKindSpec.pausedOnVacation. Skipped without
+    // recording anything, so the trigger declined here fires for real the
+    // first time the app is opened after vacation ends.
+    if (generatorPausedForVacation('weekendNudge', settings.vacationMode)) return;
     if (!settings.weekendNudgeTasks || !settings.weekendNudgeTaskCategory) return;
     // Gated like calendarReview, and for its reason rather than the general
     // one: the busy half of this reading is the *real device calendar*, which
@@ -7688,7 +7795,18 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const { vacationMode } = useSettingsStore.getState();
     const { tasks, completionHoldIds } = get();
     return withHeldCompletions(tasks, completionHoldIds)
-      .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived && !(vacationMode && t.vacationPause))
+      // Pinning overrides the *clock* — a pinned task shows here whether or not
+      // it is due today, which is the whole feature. It does not override the
+      // one hide that isn't a clock: isVisibleApartFromVacation puts isHeldBack
+      // ahead of every time gate on purpose, "being blocked isn't a 'not yet'
+      // that a clock resolves". This filter is written out by hand rather than
+      // reusing that rule, so the two non-clock hides it already honours
+      // (archived, vacation) were right and this one leaked — a task waiting on
+      // another task, or on a person, sat at the top of Today with nothing the
+      // user could do about it while its own ordinary row had correctly left.
+      // It comes back the moment the blocker clears, exactly as that row does.
+      .filter(t => !t.parentId && t.pinned && !t.completed && !t.archived
+        && !isHeldBack(t) && !(vacationMode && t.vacationPause))
       // sortOrder breaks ties rather than being the sort: every row starts at
       // pinnedOrder 0, so an install that has never dragged a pin (or upgraded
       // into the column) reads exactly as it did before. See Task.pinnedOrder.

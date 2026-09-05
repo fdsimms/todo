@@ -23,6 +23,25 @@ export const MIN_FOLLOW_UP_TASK_EVERY_N = 2;
 /** Same ceiling `CountStepper` gets everywhere else a small integer is picked. */
 export const MAX_FOLLOW_UP_TASK_EVERY_N = 99;
 
+/**
+ * Whether this task can carry a follow-up rule at all.
+ *
+ * Exactly `canHoldSupply`'s rule, for exactly its reason: the tally rides onto
+ * the successor a completion spawns (see completeTask), so a task that spawns
+ * none has nowhere to carry it. With a floor of 2, a one-off never reaches the
+ * second completion the rule needs, and a subtask has no run of its own — so
+ * the rule would sit on the row reading as set and could never fire.
+ *
+ * The editor gates its own row and clears the fields on save; this is the door
+ * everything else passes through, and the one place a draft assembled
+ * elsewhere (a template, an import, a restored backup) is also checked.
+ */
+export function canHoldFollowUpTask(
+  task: Pick<Task, 'recurrenceType' | 'parentId'>
+): boolean {
+  return task.recurrenceType !== 'none' && !task.parentId;
+}
+
 export interface FollowUpTaskRule {
   everyN: number;
   title: string;
@@ -129,17 +148,20 @@ export function followUpTaskSummary(everyN: number | null): string | undefined {
  * editor now spells the frequency out around the stepper itself ("Every [4th]
  * completion"), so all that's left for a caption is the half nobody can infer:
  * it's due with the *next* occurrence, not stacked onto the completion that
- * triggered it. A task that doesn't repeat has no next occurrence, so it lands
- * on the day it's added.
+ * triggered it.
+ *
+ * There is deliberately no branch for a task that doesn't repeat. It used to
+ * say the added task would land "on the day it's added" there, which was a
+ * promise the mechanism cannot keep: the tally rides onto the successor a
+ * completion spawns, so a one-off never reaches the second completion the
+ * floor of 2 requires. The rule is now offered only on a repeating task (see
+ * the Follow-up task row in TaskEditor, gated exactly as Supply is), so the
+ * case this described can no longer be saved.
  */
-export function describeFollowUpTaskRule(
-  everyN: number | null,
-  title: string | null,
-  repeats: boolean
-): string {
+export function describeFollowUpTaskRule(everyN: number | null, title: string | null): string {
   if (everyN === null || everyN < MIN_FOLLOW_UP_TASK_EVERY_N) return 'No follow-up task';
   if (!title?.trim()) return 'Name the task to add';
-  return repeats ? 'Due with the next occurrence' : "Due on the day it's added";
+  return 'Due with the next occurrence';
 }
 
 /**

@@ -989,6 +989,14 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
 
   const proceedWithSave = (effectiveChainItems: ChainItem[] = chainItems, effectiveDraftSubtasks: DraftSubtask[] = draftSubtasks) => {
     const resolvedFollowUpTaskTitle = followUpTaskTitle.trim() || null;
+    // All three or none. A count with no name would add a row nobody could
+    // act on, a name with no count is a leftover from clearing one, and either
+    // of them on a task that doesn't repeat is a rule with no second
+    // completion to reach — see the note on the row. followUpTaskRule() reads
+    // the first two, and this is what keeps a saved row from disagreeing with
+    // it or with the repeat.
+    const followUpTaskLive =
+      recurrenceType !== 'none' && followUpTaskEveryN !== null && !!resolvedFollowUpTaskTitle;
     const data = {
       title: title.trim(), notes, category, projectId: project, tags, personIds,
       dueDate: dueDate?.toISOString() ?? null,
@@ -1083,20 +1091,15 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       blockedById,
       waitingOnPersonId,
       deliverableKind,
-      // Both halves or neither: a count with no name would be a rule that can
-      // never fire, and a name with no count is a leftover from clearing one.
-      // followUpTaskRule() is what reads them, and this is what keeps a saved row
-      // from disagreeing with it.
-      followUpTaskEveryN: resolvedFollowUpTaskTitle ? followUpTaskEveryN : null,
-      followUpTaskTitle: followUpTaskEveryN !== null ? resolvedFollowUpTaskTitle : null,
-      // Follows the rule it details rather than surviving on its own: with no
-      // rule left there is no task for it to describe, and a draft stranded
-      // on the row would come back the moment a count and a name did.
-      followUpTaskDraft: resolvedFollowUpTaskTitle && followUpTaskEveryN !== null ? followUpTaskDraft : null,
-      // Cleared alongside the draft when the rule isn't live, for the same
-      // reason: a condition on a rule that can't fire is a setting that reads
-      // as doing something and isn't.
-      followUpTaskOneAtATime: resolvedFollowUpTaskTitle && followUpTaskEveryN !== null ? followUpTaskOneAtATime : false,
+      followUpTaskEveryN: followUpTaskLive ? followUpTaskEveryN : null,
+      followUpTaskTitle: followUpTaskLive ? resolvedFollowUpTaskTitle : null,
+      // Both follow the rule they detail rather than surviving on their own:
+      // with no rule left there is no task for them to describe, and either
+      // stranded on the row would come back the moment a rule did. A condition
+      // on a rule that can't fire is a setting that reads as doing something
+      // and isn't.
+      followUpTaskDraft: followUpTaskLive ? followUpTaskDraft : null,
+      followUpTaskOneAtATime: followUpTaskLive ? followUpTaskOneAtATime : false,
     };
 
     // The whole set of dates this task falls on, earliest first. A single
@@ -3801,7 +3804,13 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               </>
             ),
           }]),
-          {
+          // Only on a repeating task, and it's the same hard constraint the
+          // Supply card carries one group over, for the same mechanism: the
+          // tally rides onto the successor a completion spawns (see
+          // completeTask), so a one-off has nowhere to carry it and the rule
+          // could never reach its second completion. Offered there, it was a
+          // rule that read as set and could not fire.
+          ...(recurrenceType !== 'none' ? [{
             key: 'followUpTask', label: 'Follow-up task', set: followUpTaskEveryN !== null,
             keywords: ['every', 'nth', 'occasionally', 'periodic', 'follow-up', 'maintenance',
               'one at a time', 'duplicate', 'pile up', 'vacation', 'away'],
@@ -3891,7 +3900,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   />
                 )}
                 <Text style={styles.targetStepperCaption}>
-                  {describeFollowUpTaskRule(followUpTaskEveryN, followUpTaskTitle, recurrenceType !== 'none')}
+                  {describeFollowUpTaskRule(followUpTaskEveryN, followUpTaskTitle)}
                 </Text>
                 {/* Everything past the title, in a sheet of its own — eight
                     pickers unfolded here would bury the task being edited
@@ -3939,7 +3948,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
             )}
               </>
             ),
-          },
+          }] : []),
         ]}
       />
 

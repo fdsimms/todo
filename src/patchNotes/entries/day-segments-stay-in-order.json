@@ -1,0 +1,4 @@
+{
+  "message": "The four time-of-day boundaries now stay in order, so Morning can't be set later than Afternoon",
+  "date": "2026-09-04"
+}
