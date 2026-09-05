@@ -26,6 +26,7 @@ import { dbGetFocusSessionLog, dbInsertFocusSessionRecord } from '../db/database
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
+import { awayNoonIso } from './awayDates';
 import { generatedBy } from './generatedTasks';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
@@ -715,7 +716,7 @@ export function seedDemoData(): void {
   addProjectCategory('Around the house');
   addProjectCategory('Ideas');
 
-  const kitchen = createProject('Kitchen refresh', addDays(today, 45).toISOString());
+  const kitchen = createProject('Kitchen refresh', { deadline: addDays(today, 45).toISOString() });
   // Notes are collapsed to one line at the top of the project screen and
   // expand on tap — with no project carrying any, that row never rendered.
   updateProject(kitchen.id, {
@@ -794,7 +795,7 @@ export function seedDemoData(): void {
   //
   // nudgeOptIn defaults to false, so it still never trips the gone-quiet nudge
   // or shows up in "Pull from projects". See Project.nudgeOptIn.
-  const giftIdeas = createProject('Gift ideas', null, 'list');
+  const giftIdeas = createProject('Gift ideas', { kind: 'list' });
   // A running list nobody expects to finish — see Project.ongoing. Never
   // offers to mark itself complete, however many ideas on it get used.
   updateProject(giftIdeas.id, { category: 'Ideas', ongoing: true });
@@ -808,8 +809,37 @@ export function seedDemoData(): void {
   // demanded an answer on completion would be a form, so the kind is opt-in
   // per item and the demo has to show that it's the exception rather than the
   // rule. See Project.kind.
-  const doctor = createProject('Questions for Dr. Okafor', null, 'list');
+  const doctor = createProject('Questions for Dr. Okafor', { kind: 'list' });
   updateProject(doctor.id, { category: 'Ideas' });
+
+  // A trip, so the away span is visible as a thing the app has rather than as
+  // two empty rows in the project editor (see Project.awayStart). Everything
+  // it buys is invisible until a project carries dates: the card's countdown,
+  // and the look-ahead sheet opening on the trip instead of asking for both
+  // ends of it. Far enough out that the countdown reads as one ("Leaves in 24
+  // days") rather than as the away state, which needs a trip in progress and
+  // would put the demo mid-flight on every screenshot.
+  const lisbon = createProject('Lisbon, with Mia', {
+    category: 'Ideas',
+    awayStart: awayNoonIso(addDays(today, 24)),
+    awayEnd: awayNoonIso(addDays(today, 31)),
+    // Somewhere to go, so the destination row is visible as a thing a trip
+    // has. Nothing is looked up for it: destinationForecastEnabled is off by
+    // default and geocodePlace refuses in demo mode anyway, so a demo session
+    // puts no traffic on the network about an invented trip.
+    destination: 'Lisbon',
+  });
+  // Nominated to drive vacation mode, which is invisible until something does.
+  // Not a creation-time option for the reason CreateProjectOptions gives — the
+  // opt-ins all start off — so the demo turns it on the way a user would.
+  // Inert here anyway: the pass only arms once the departure has arrived, so a
+  // trip three weeks out shows the setting without a demo session ever waking
+  // up with half its tasks hidden.
+  updateProject(lisbon.id, { awayPauses: true });
+  ['Renew passport', 'Book the airport parking', 'Sort out data roaming'].forEach((title, i) => {
+    const t = addTask({ title, dueDate: addDays(today, 10 + i * 4).toISOString() });
+    addExistingToProject(t.id, lisbon.id);
+  });
   const asked = addTask({
     title: 'Is the new dose meant to make me this tired?',
     deliverableKind: 'text',
@@ -843,7 +873,7 @@ export function seedDemoData(): void {
   // the seed runs, so the row a screenshot shows wouldn't be the row this file
   // wrote — and the same foreground would delete the review task below, since
   // the two layers coordinate by excluding each other (see wantedProjectReviews).
-  const garage = createProject('Garage shelving', null);
+  const garage = createProject('Garage shelving');
   updateProject(garage.id, { nudgeOptIn: true, nudgeCadenceDays: 14, category: 'Around the house' });
   // Quiet is measured from the project's own creation until something in it
   // is completed, so a project minted seconds ago is never quiet however long
@@ -914,7 +944,7 @@ export function seedDemoData(): void {
   // different feature: a project nominated as somewhere to look
   // (Project.weekendSource, invisible until something quotes it — exactly the
   // kind of capability the demo has to make visible), and the row quoting it.
-  const dayTrips = createProject('Day trips', null);
+  const dayTrips = createProject('Day trips');
   updateProject(dayTrips.id, { category: 'Ideas', ongoing: true, weekendSource: true });
   ['Drive out to the coast', 'Walk the ridge trail', 'That bakery two towns over'].forEach(title => {
     const t = addTask({ title });
@@ -1020,7 +1050,7 @@ export function seedDemoData(): void {
   // Marked complete rather than archived — demonstrates Project.completed,
   // which has its own Completed list (see ProjectEditor's Mark complete row)
   // instead of disappearing into Archived the way finishing a project used to.
-  const hallway = createProject('Repaint the hallway', null);
+  const hallway = createProject('Repaint the hallway');
   updateProject(hallway.id, { category: 'Around the house' });
   ['Buy paint and tape', 'Tape the trim', 'Two coats, let dry between'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
@@ -1034,7 +1064,7 @@ export function seedDemoData(): void {
   // Abandoned rather than finished, which is what archiving without completing
   // says — its two members stay live and unfiled the same way they would for a
   // real archive.
-  const basement = createProject('Basement declutter', null);
+  const basement = createProject('Basement declutter');
   updateProject(basement.id, { category: 'Around the house' });
   ['Hire a skip', 'Sort the boxes by the stairs'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
@@ -1047,7 +1077,7 @@ export function seedDemoData(): void {
   // screen exists for. Left uncompleted on purpose, unlike the hallway
   // above: that one demonstrates Project.completed, this one demonstrates
   // the nudge to reach it.
-  const gate = createProject('Fix the back gate', null);
+  const gate = createProject('Fix the back gate');
   ['Buy a new hinge', 'Sand and repaint'].forEach(title => {
     const t = addTask({ title, category: 'Home' });
     addExistingToProject(t.id, gate.id);
@@ -1503,6 +1533,12 @@ function seedMoodLog(today: Date): void {
 function seedTemplates(): void {
   const { addTemplate, addItem, addQuestion } = useTemplateStore.getState();
   const template = addTemplate('Trip prep');
+  // Its two anchors are days away from home, so a run of it fills in the
+  // project's away span rather than reading its return date as a deadline.
+  // Nominated, never inferred from the nights question below — see
+  // TaskTemplate.anchorsAreAway.
+  useTemplateStore.getState().setTemplateAnchorsAreAway(template.id, true);
+  useTemplateStore.getState().setTemplateContainer(template.id, 'project');
   // Referenced by the item titles below rather than by an item field, so its
   // id is never needed here.
   addQuestion(template.id, {
@@ -2704,6 +2740,14 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // away list rather than land in it.
   const airbnb = addList('Airbnb');
   if (airbnb) {
+    // And the Lisbon trip buys from it, which is the only way the nomination is
+    // visible at all (see Project.awayListId). Inert for the same reason
+    // `awayPauses` is: the trip is three weeks out, so `checkAwayGroceryList`
+    // has nothing to switch and a demo session never opens on a list somebody
+    // handed the phone did not choose. Looked up by title rather than passed
+    // in, because the project is seeded before any grocery list exists.
+    const lisbon = useProjectStore.getState().projects.find(p => p.title === 'Lisbon, with Mia');
+    if (lisbon) useProjectStore.getState().updateProject(lisbon.id, { awayListId: airbnb.id });
     setActiveList(airbnb.id);
     ['Coffee', 'Milk', 'Eggs', 'Olive oil', 'Paper towels'].forEach(name =>
       addByName(name, undefined, undefined, { registerUndo: false })

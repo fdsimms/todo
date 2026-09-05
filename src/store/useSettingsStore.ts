@@ -295,6 +295,42 @@ interface SettingsStore {
   vacationMode: boolean;
   vacationStart: string | null;
   vacationEnd: string | null; // optional ISO date — vacation mode auto-turns-off once this passes
+  /**
+   * The project whose away dates switched vacation mode on, or null when a
+   * person did it themselves.
+   *
+   * The pass may only turn off what it turned on — same rule as
+   * `dropGeneratedTask` versus an opt-out write, where the app's own tidying
+   * never overwrites a decision somebody made. It is also how a manual switch
+   * *off* mid-trip is detected: vacation mode being off while this still names
+   * a project can only mean it was turned off since the pass armed it. See
+   * checkAwayVacation in useTaskStore.
+   */
+  vacationDrivenBy: string | null;
+  /**
+   * The project whose away list is the one currently being shown, or null.
+   *
+   * `vacationDrivenBy` one feature over, with the same job and the same rule:
+   * the pass may only switch back a list it switched to, and a mismatch
+   * between this and `activeListId` is how a switch made by hand mid-trip is
+   * detected. See checkAwayGroceryList in useGroceryStore.
+   *
+   * Not synced, because the list it points into is not: which trolley a device
+   * is showing is that device's business (see `grocery_active_list` in
+   * `syncTracking.ts`), and a pointer that outlived the value it points at
+   * would have one phone switching another one's list back.
+   */
+  activeListDrivenBy: string | null;
+  /**
+   * Whether a trip's destination may be looked up and its forecast fetched.
+   *
+   * Its own switch, off by default, on `productLookupEnabled`'s precedent and
+   * for its reason: both calls are keyless, so "no key, no traffic" is not the
+   * privacy answer here the way it is for everything gated behind the user's
+   * own Anthropic key. This one sends a place name the user typed to a third
+   * party, which is a thing to opt into rather than a thing to discover.
+   */
+  destinationForecastEnabled: boolean;
   // How long a task with a closed time window sits in the Expired section
   // before sweepExpiredTasks deletes it. null = Never (keep forever, the old
   // `false`), 0 = Immediately (delete on window close, the old `true`), or a
@@ -1140,6 +1176,9 @@ interface SettingsStore {
   setAppLockGraceSeconds: (seconds: number) => void;
   setVacationMode: (on: boolean, endDate?: string | null) => void;
   setVacationEnd: (endDate: string | null) => void;
+  setVacationDrivenBy: (projectId: string | null) => void;
+  setActiveListDrivenBy: (projectId: string | null) => void;
+  setDestinationForecastEnabled: (on: boolean) => void;
   setAutoRemoveExpiredTasks: (days: ExpiredTaskGraceDays) => void;
   setAutoCompleteProjectsOnDone: (on: boolean) => void;
   setFocusWorkCapMinutes: (minutes: number) => void;
@@ -1615,6 +1654,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   vacationMode: false,
   vacationStart: null,
   vacationEnd: null,
+  vacationDrivenBy: null,
+  activeListDrivenBy: null,
+  destinationForecastEnabled: false,
   autoRemoveExpiredTasks: null,
   autoCompleteProjectsOnDone: false,
   postponeCheckEnabled: true,
@@ -1798,6 +1840,9 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const vacationMode = dbGetSetting('vacationMode') === 'true';
     const vacationStart = dbGetSetting('vacationStart') ?? null;
     const vacationEnd = dbGetSetting('vacationEnd') || null;
+    const vacationDrivenBy = dbGetSetting('vacationDrivenBy') || null;
+    const activeListDrivenBy = dbGetSetting('activeListDrivenBy') || null;
+    const destinationForecastEnabled = dbGetSetting('destinationForecastEnabled') === 'true';
     const autoRemoveExpiredTasks = parseExpiredTaskGrace(dbGetSetting('autoRemoveExpiredTasks'));
     // Still read from the 'autoArchiveProjectsOnComplete' key: the behaviour
     // changed from archiving to completing, but the question the toggle asks
@@ -2140,7 +2185,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, healthReadEnabled, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, moodLogTimeSegment, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, healthReadEnabled, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, moodLogTimeSegment, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -2373,6 +2418,21 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   setVacationEnd(endDate: string | null) {
     dbSetSetting('vacationEnd', endDate ?? '');
     set({ vacationEnd: endDate });
+  },
+
+  setDestinationForecastEnabled(on: boolean) {
+    dbSetSetting('destinationForecastEnabled', on ? 'true' : 'false');
+    set({ destinationForecastEnabled: on });
+  },
+
+  setVacationDrivenBy(projectId: string | null) {
+    dbSetSetting('vacationDrivenBy', projectId ?? '');
+    set({ vacationDrivenBy: projectId });
+  },
+
+  setActiveListDrivenBy(projectId: string | null) {
+    dbSetSetting('activeListDrivenBy', projectId ?? '');
+    set({ activeListDrivenBy: projectId });
   },
 
   setProjectReviewTasks(on: boolean) {

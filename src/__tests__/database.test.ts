@@ -1510,6 +1510,7 @@ describe('Templates', () => {
     applyContainer: 'stack',
     schedule: null,
     scheduleLastFiredKey: null,
+    anchorsAreAway: false,
     ...overrides,
   });
 
@@ -1658,6 +1659,13 @@ describe('Projects', () => {
     reviewDeclinedAt: null,
     backfillDismissedFields: [],
     kind: 'project' as const,
+    awayStart: null,
+    awayEnd: null,
+    awayPauses: false,
+    awayPauseDeclinedFor: null,
+    destination: null,
+    awayListId: null,
+    awayListDeclinedFor: null,
     ...overrides,
   });
 
@@ -1867,6 +1875,13 @@ describe('backup and restore', () => {
       reviewDeclinedAt: null,
       backfillDismissedFields: [],
       kind: 'project' as const,
+      awayStart: null,
+      awayEnd: null,
+      awayPauses: false,
+      awayPauseDeclinedFor: null,
+      destination: null,
+      awayListId: null,
+      awayListDeclinedFor: null,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');

@@ -54,6 +54,7 @@ const makeTemplate = (overrides: Partial<TaskTemplate> = {}): TaskTemplate => ({
   applyContainer: 'stack',
   schedule: null,
   scheduleLastFiredKey: null,
+  anchorsAreAway: false,
   ...overrides,
 });
 

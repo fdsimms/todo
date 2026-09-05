@@ -1077,6 +1077,11 @@ export function TodayScreen() {
       const subscription = AppState.addEventListener('change', state => {
         if (state === 'active') {
           useTaskStore.getState().checkVacationExpiry();
+          // Straight after the expiry, the order maintenancePasses uses and for
+          // its reason: opening the app on the morning you fly is the moment
+          // this is for, and a trip ending as another starts must resolve in
+          // that order.
+          useTaskStore.getState().checkAwayVacation();
           // The device's timezone can change while the app sits backgrounded
           // (a flight lands mid-trip) — a phone left closed never sees a
           // cold start, so this is the only chance to notice before the

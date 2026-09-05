@@ -28,6 +28,7 @@ import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
+import { awaySpanOf, awayStatus, awayNights, nextAwayProject } from '../utils/awayDates';
 import { pantryEntries } from '../utils/grocerySuggest';
 import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { standingSwapMap } from '../utils/standingSwaps';
@@ -313,7 +314,7 @@ describe('demo mode', () => {
   it('hides real categories, tags, projects and stacks too, not just tasks', () => {
     useTaskStore.getState().addCategory('Therapy');
     useTaskStore.getState().addTag('confidential');
-    useProjectStore.getState().createProject('Divorce paperwork', null);
+    useProjectStore.getState().createProject('Divorce paperwork');
     useTaskGroupStore.getState().createGroup('Medications', null);
 
     useDemoStore.getState().enterDemoMode();
@@ -2508,6 +2509,49 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(review!.category).toBe('Calendar Events');
     expect(useSettingsStore.getState().calendarEventCategory).toBe('Calendar Events');
     expect(review!.generatedSourceId).toBe(dayKeyOf(addDays(getCurrentDayStart(), 1)));
+  });
+
+  it('seeds a trip template whose anchors are days away', () => {
+    // Invisible until a template says so: without it the apply sheet asks for
+    // a start and an end date, and a run's return date lands on the deadline.
+    const tpl = useTemplateStore.getState().templates.find(t => t.name === 'Trip prep');
+    expect(tpl).toBeDefined();
+    expect(tpl!.anchorsAreAway).toBe(true);
+    expect(tpl!.applyContainer).toBe('project');
+  });
+
+  it('seeds a trip carrying away dates', () => {
+    // The span is invisible until a project has one: with no trip seeded, the
+    // editor's two rows read as a feature the app doesn't have.
+    const { projects } = useProjectStore.getState();
+    const trip = projects.find(p => p.awayStart !== null);
+    expect(trip).toBeDefined();
+    expect(trip!.title).toBe('Lisbon, with Mia');
+
+    const span = awaySpanOf(trip!)!;
+    expect(span).not.toBeNull();
+    expect(span.end).not.toBeNull();
+    expect(awayNights(span)).toBe(7);
+
+    // Ahead of today, so the card shows the countdown rather than the away
+    // state, and so nextAwayProject has something live to find.
+    expect(awayStatus(span, new Date())!.phase).toBe('before');
+    // Nominated to drive vacation mode, and inert until the departure arrives:
+    // a demo session must never open with half its tasks hidden.
+    expect(trip!.awayPauses).toBe(true);
+    // Somewhere to go, which is what makes the destination row visible. It is
+    // never looked up: the switch is off by default and geocodePlace refuses
+    // in demo mode regardless.
+    expect(trip!.destination).toBe('Lisbon');
+    expect(useSettingsStore.getState().destinationForecastEnabled).toBe(false);
+    // And it buys from the away list, the other half of a nomination that is
+    // invisible without one. Inert for awayPauses' reason: the trip is ahead,
+    // so the demo opens on Groceries rather than on somebody else's trolley.
+    const airbnb = useGroceryStore.getState().lists.find(l => l.name === 'Airbnb');
+    expect(airbnb).toBeDefined();
+    expect(trip!.awayListId).toBe(airbnb!.id);
+    expect(useGroceryStore.getState().activeListId).toBeNull();
+    expect(nextAwayProject(projects, new Date())!.project.id).toBe(trip!.id);
   });
 
   it('seeds the bare-weekend nudge and the project it quotes', () => {

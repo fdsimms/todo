@@ -244,6 +244,10 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   'vacationMode',
   'vacationStart',
   'vacationEnd',
+  // Which trip switched it on, so a peer doesn't read a mode it can see as one
+  // nobody owns and turn it off. Rides with the three above for the same
+  // reason: it is a statement about the person, not the device.
+  'vacationDrivenBy',
 ];
 
 /**
@@ -271,6 +275,9 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   other phone would read it as answers about events it has never seen.
  * - `aiFeatureConfig` — the API key it depends on is device-local by design,
  *   so syncing the config turns features on for a device that cannot run them.
+ * - `activeListDrivenBy` — a pointer into `grocery_active_list`, so it is per
+ *   device for that key's reason. Synced, it would have one phone switching
+ *   another one's list back at the end of a trip.
  * - `grocery_active_list`, `grocery_group_by` — which shopping list one device
  *   is showing and how it groups the rows. The lists themselves sync
  *   (`grocery_lists`); which of them you are *looking at* is the same kind of

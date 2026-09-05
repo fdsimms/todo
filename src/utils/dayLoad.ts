@@ -3,6 +3,7 @@ import type { BusyEvent } from './calendarBusy';
 import { busyMinutesIn } from './calendarBusy';
 import type { DayBucket } from './calendarMonth';
 import { dayKeyOf, dayKeyToDate, getDayStart } from './dateUtils';
+import { isAwayDay, type AwaySpan } from './awayDates';
 import { estimatedMinutesFor, formatDuration } from './effort';
 
 /**
@@ -69,7 +70,12 @@ export const FULL_DAY_MINUTES = BUSY_DAY_MINUTES * 2;
 export const ASSUMED_TASK_MINUTES = 30;
 
 /** How heavy a day is, when it's heavy enough to be worth saying. */
-export type DayWeight = 'busy' | 'full';
+/**
+ * What a day's cue says. `'away'` is not a heavier `'full'` — it answers a
+ * different question ("are you even here") and so outranks both, since a day
+ * you are not there for is the more useful thing to know about it.
+ */
+export type DayWeight = 'busy' | 'full' | 'away';
 
 export interface DayLoad {
   key: string;
@@ -101,6 +107,18 @@ export interface DayLoad {
    * never typed.
    */
   rankedMinutes: number;
+  /**
+   * Whether this day falls inside a project's away span (see
+   * `utils/awayDates`).
+   *
+   * Deliberately its own field rather than minutes folded into
+   * `rankedMinutes`. That number is minutes, read by `weightFor` and summed by
+   * `lookAhead.tightDeadlines`, and inventing some for a day nobody is
+   * scheduled on would be the "sum a guess into a fact" this module already
+   * refuses for meeting time. It is also the field that must never become a
+   * refusal: the span ranks, it never gates (see docs/arch/away-dates.md).
+   */
+  away: boolean;
 }
 
 export interface BuildDayLoadsOptions {
@@ -114,6 +132,14 @@ export interface BuildDayLoadsOptions {
   busyEvents?: readonly BusyEvent[];
   /** The span those events were actually read for. See `DayLoad.busyKnown`. */
   busyWindow?: { start: Date; end: Date } | null;
+  /**
+   * Away spans to mark, already resolved from whichever projects the caller
+   * cares about. Plural because a grid can reach across more than one trip,
+   * and omitted by a caller with nothing to say — an empty list leaves every
+   * day `away: false`, which is the honest reading of "no trips entered"
+   * rather than of "you are home", the same way `busyKnown` separates those.
+   */
+  awaySpans?: readonly AwaySpan[];
   dayResetTime?: string;
 }
 
@@ -126,6 +152,7 @@ const emptyLoad = (key: string): DayLoad => ({
   busyKnown: false,
   busyMinutes: 0,
   rankedMinutes: 0,
+  away: false,
 });
 
 /**
@@ -149,7 +176,7 @@ export function buildDayLoads(
   buckets: ReadonlyMap<string, DayBucket>,
   options: BuildDayLoadsOptions,
 ): Map<string, DayLoad> {
-  const { taskById, busyEvents = [], busyWindow = null, dayResetTime } = options;
+  const { taskById, busyEvents = [], busyWindow = null, awaySpans = [], dayResetTime } = options;
   const loads = new Map<string, DayLoad>();
 
   for (const day of days) {
@@ -202,6 +229,10 @@ export function buildDayLoads(
 
     load.rankedMinutes =
       load.taskMinutes + load.unestimated * ASSUMED_TASK_MINUTES + projectedMinutes + load.busyMinutes;
+    // Deliberately after rankedMinutes and not part of it: being away is not a
+    // quantity of work, and every reader that sums those minutes must go on
+    // reading the same number it always did.
+    load.away = awaySpans.some(span => isAwayDay(span, day, dayResetTime));
     loads.set(key, load);
   }
 
@@ -214,6 +245,9 @@ export function buildDayLoads(
  */
 export function weightFor(load: DayLoad | undefined): DayWeight | null {
   if (!load) return null;
+  // Ahead of both minute thresholds: a day inside a trip may also be busy, and
+  // "you are away" is the more useful of the two things to say about it.
+  if (load.away) return 'away';
   if (load.rankedMinutes >= FULL_DAY_MINUTES) return 'full';
   if (load.rankedMinutes >= BUSY_DAY_MINUTES) return 'busy';
   return null;
@@ -221,6 +255,7 @@ export function weightFor(load: DayLoad | undefined): DayWeight | null {
 
 /** How a cue is spoken, for the cells that draw one. */
 export function describeDayWeight(weight: DayWeight): string {
+  if (weight === 'away') return 'away';
   return weight === 'full' ? 'already full' : 'already busy';
 }
 

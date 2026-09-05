@@ -163,6 +163,13 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
   kind: 'project' as const,
+  awayStart: null,
+  awayEnd: null,
+  awayPauses: false,
+  awayPauseDeclinedFor: null,
+  destination: null,
+  awayListId: null,
+  awayListDeclinedFor: null,
   ...overrides,
 });
 
@@ -483,12 +490,46 @@ describe('isProjectPastWindow', () => {
 
 describe('createProject / updateProject / getProjectById', () => {
   it('creates a project with the given fields and persists it', () => {
-    const project = useProjectStore.getState().createProject('Summer Bucket List', '2026-09-01T00:00:00.000Z');
+    const project = useProjectStore.getState().createProject('Summer Bucket List', { deadline: '2026-09-01T00:00:00.000Z' });
     expect(project.title).toBe('Summer Bucket List');
     expect(project.deadline).toBe('2026-09-01T00:00:00.000Z');
     expect(project.archived).toBe(false);
     expect(dbInsertProject).toHaveBeenCalledWith(project);
     expect(useProjectStore.getState().projects).toContainEqual(project);
+  });
+
+  it('takes every creation-time field in one write, with no follow-up patch', () => {
+    // The whole point of the options object: three callers used to create the
+    // row and immediately updateProject it, which made the row they were
+    // handed back stale on the next line.
+    const project = useProjectStore.getState().createProject('Lisbon', {
+      kind: 'list',
+      category: 'Travel',
+      awayStart: '2026-09-12T12:00:00.000Z',
+      awayEnd: '2026-09-19T12:00:00.000Z',
+      destination: 'Lisbon, Portugal',
+    });
+    expect(project.kind).toBe('list');
+    expect(project.category).toBe('Travel');
+    expect(project.awayStart).toBe('2026-09-12T12:00:00.000Z');
+    expect(project.awayEnd).toBe('2026-09-19T12:00:00.000Z');
+    expect(project.destination).toBe('Lisbon, Portugal');
+    expect(dbUpdateProject).not.toHaveBeenCalled();
+  });
+
+  it('defaults every option a caller did not answer', () => {
+    const project = useProjectStore.getState().createProject('Kitchen refresh');
+    expect(project.deadline).toBeNull();
+    expect(project.kind).toBe('project');
+    expect(project.category).toBeNull();
+    expect(project.awayStart).toBeNull();
+    expect(project.awayEnd).toBeNull();
+    expect(project.destination).toBeNull();
+    // The opt-ins stay off however the project was created — they are not
+    // creation-time answers, which is why they are not on the options object.
+    expect(project.awayPauses).toBe(false);
+    expect(project.weekendSource).toBe(false);
+    expect(project.autoSchedule).toBe(false);
   });
 
   it('updates fields on an existing project', () => {
@@ -504,7 +545,7 @@ describe('createProject / updateProject / getProjectById', () => {
   });
 
   it('gives a new project the default nudge cadence, with auto-scheduling off', () => {
-    const project = useProjectStore.getState().createProject('Kitchen remodel', null);
+    const project = useProjectStore.getState().createProject('Kitchen remodel');
     expect(project.nudgeCadenceDays).toBe(DEFAULT_NUDGE_CADENCE_DAYS);
     expect(project.autoSchedule).toBe(false);
     expect(project.nudgeOptIn).toBe(false);
@@ -521,7 +562,7 @@ describe('createProject / updateProject / getProjectById', () => {
 
     it('opts a new project in when the default names a cadence', () => {
       useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 14 });
-      const project = useProjectStore.getState().createProject('Loft conversion', null);
+      const project = useProjectStore.getState().createProject('Loft conversion');
       expect(project.nudgeCadenceDays).toBe(14);
       expect(project.nudgeOptIn).toBe(true);
       expect(nudgeModeOf(project)).toBe('scheduled');
@@ -529,7 +570,7 @@ describe('createProject / updateProject / getProjectById', () => {
 
     it('leaves a new project out of nudges entirely when the default is Never', () => {
       useSettingsStore.setState({ defaultProjectNudgeCadenceDays: 0 });
-      const project = useProjectStore.getState().createProject('Gift ideas', null);
+      const project = useProjectStore.getState().createProject('Gift ideas');
       expect(project.nudgeOptIn).toBe(false);
       expect(nudgeModeOf(project)).toBe('never');
     });
@@ -571,7 +612,7 @@ describe('createProject / updateProject / getProjectById', () => {
   it('creates a project with weekendSource off', () => {
     // Off, like every other opt-in here: the weekend nudge may quote a project
     // only once somebody has said it is one to quote.
-    expect(useProjectStore.getState().createProject('Day trips', null).weekendSource).toBe(false);
+    expect(useProjectStore.getState().createProject('Day trips').weekendSource).toBe(false);
   });
 });
 
@@ -721,14 +762,14 @@ describe('removeProjectRow / restoreProject', () => {
 describe('kind', () => {
   it('creates an ordinary project by default, so nothing existing changes', () => {
     useProjectStore.setState({ projects: [] });
-    const project = useProjectStore.getState().createProject('Kitchen refresh', null);
+    const project = useProjectStore.getState().createProject('Kitchen refresh');
     expect(project.kind).toBe('project');
     expect(dbInsertProject).toHaveBeenCalledWith(expect.objectContaining({ kind: 'project' }));
   });
 
   it('creates a list when asked', () => {
     useProjectStore.setState({ projects: [] });
-    const project = useProjectStore.getState().createProject('Questions for Dr. Okafor', null, 'list');
+    const project = useProjectStore.getState().createProject('Questions for Dr. Okafor', { kind: 'list' });
     expect(project.kind).toBe('list');
   });
 

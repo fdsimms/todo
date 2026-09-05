@@ -679,6 +679,141 @@ export interface Project {
    * on completion is a form, not a list.
    */
   kind: ProjectKind;
+  /**
+   * The day you leave, for a project that is a trip — and `awayEnd` below is
+   * the day you are back. See `docs/arch/away-dates.md`, which is the design
+   * these are the first slice of and is not optional reading before adding a
+   * reader of them.
+   *
+   * They exist because four parts of the app already serve being away from
+   * home and none of them can tell the others when the trip is:
+   * `lookAhead`'s `{ start, cutoff, awayEnd }`, a template's two anchors,
+   * `isAwayList` in groceries, and vacation mode. Two of those carry an
+   * apology comment for the missing field — `LookAheadSheet` has to *ask*
+   * when you get back, because `vacationStart` is stamped at switch-on and so
+   * records when you went rather than when you are going, and
+   * `applyTemplate` says of a run's start anchor that it "has nowhere to go
+   * now that a project carries one date rather than a range".
+   *
+   * **Not a `ProjectKind`.** That field changes presentation and never
+   * behaviour, and its own note says it should stay that small. These change
+   * behaviour, so they are their own fields — the same call `weekendSource`
+   * made, and for the reason it gives.
+   *
+   * **This is not `targetStartDate` coming back.** That pair was deleted
+   * because the start half had, across its whole life, one reader: half a
+   * label. Departure is load-bearing in a way it never was — it is
+   * `lookAhead`'s cutoff, and the day you leave is not a day you have. The
+   * bar that deletion set is *readers*, and it is why nothing should ever add
+   * a span here without them.
+   *
+   * **Both are stored at noon** (`awayNoonIso`), so a span entered at home
+   * and read after a flight cannot move by a calendar day.
+   *
+   * **The span never blocks anything.** People do things on holiday, and a
+   * reader that refuses a day inside it is worse than no span at all, because
+   * then the trip stops being entered and every other reader loses its input.
+   * It ranks, it never gates. Vacation mode is already opt-in per row
+   * (`Task.vacationPause`, `Category.hideOnVacation`), and that stays the
+   * only thing that hides anything.
+   */
+  awayStart: string | null;
+  /**
+   * The day you are back, or null for a departure with no return date yet.
+   *
+   * Deliberately not symmetric with `awayStart`: it is ignored unless there is
+   * a start and it falls after it (see `awaySpanOf`), and a start without an
+   * end is a legal, meaningful state rather than a half-filled form — exactly
+   * `LookAheadWindow`'s own `awayEnd: null`, "a boundary but not a trip".
+   *
+   * The day itself is *not* away: containment is `start <= day < end`, so a
+   * trip out on the 3rd and back on the 10th is seven nights, which is what
+   * `templateQuestions.answerFromDates` already means by 'nights'.
+   */
+  awayEnd: string | null;
+  /**
+   * Opt-in: let this trip switch vacation mode on when you leave and off when
+   * you are back.
+   *
+   * Nominated, never inferred, the call `weekendSource` makes and for its
+   * reason — nothing may decide on its own that a project's dates are the ones
+   * that should hide half your tasks. Separate from the dates themselves
+   * because they answer different questions: `awayStart`/`awayEnd` are "when am
+   * I gone", this is "and pause my tasks while I am", and entering a trip is
+   * not a request for the second.
+   *
+   * **It does not hide anything by itself.** All it does is flip the existing
+   * global switch, and what that switch hides is still only what the user has
+   * already nominated per row (`Task.vacationPause`, `Category.hideOnVacation`).
+   * So a trip with this on and nothing marked pauses nothing, which is correct:
+   * the app's answer to "I still need to do things while away" is that you say
+   * which things pause, and this changes only *when* that takes effect.
+   *
+   * Deliberately not set by a template run either. `TemplateSchedule` can fire
+   * a run unattended, so a template that could set this could turn vacation
+   * mode on with nobody having asked. See docs/arch/away-dates.md.
+   */
+  awayPauses: boolean;
+  /**
+   * The `awayStart` this project's vacation pause was last switched off for,
+   * or null.
+   *
+   * The opt-out that had to be scoped to the *span* rather than to a day.
+   * `reviewDeclinedAt` is a date because dismissing a review task means "not
+   * today"; switching vacation mode off on day three of a seven-day trip means
+   * "give me my tasks back for this trip", so a day-scoped stamp would re-arm
+   * every morning and fight the user for the rest of the week.
+   *
+   * Holding the departure rather than a boolean is what makes it self-clearing:
+   * moving the dates is a new trip in every sense that matters, and the stamp
+   * stops matching.
+   */
+  awayPauseDeclinedFor: string | null;
+  /**
+   * The shopping list this trip buys from, or null.
+   *
+   * Groceries already has a list you are away from home for — `isAwayList()`,
+   * whose whole meaning is that — but nothing connected it to *when*. So the
+   * list was a manual switch at both ends of a trip, and the end that costs is
+   * the one at the end: an away list records nothing (see `finishShopping`, no
+   * purchase history, no price, no store link, no use-by), so a shop at home on
+   * a list you forgot to switch off drops all of it silently.
+   *
+   * Nominated, never inferred — the `weekendSource` rule, one field over. A
+   * project does not acquire a list because its name matches one, and a list
+   * does not become a trip's because it was made during the trip.
+   *
+   * `checkAwayGroceryList` is what reads it. Storing the id rather than a flag
+   * on `GroceryList` keeps the direction right: a trip has a list, a list does
+   * not have a trip, and two projects can point at one list without the list
+   * having to hold a set.
+   */
+  awayListId: string | null;
+  /**
+   * The `awayStart` this project's list switch was last undone for, or null.
+   *
+   * Exactly `awayPauseDeclinedFor`, for exactly its reason: switching back to
+   * the home list on day three of a seven-day trip means "leave my lists
+   * alone for this trip", not "not today", and a day-scoped stamp would put
+   * you back on the trip's list on the next foreground. Holding the departure
+   * is what makes it self-clearing when the dates move.
+   */
+  awayListDeclinedFor: string | null;
+  /**
+   * Where the trip goes, as free text.
+   *
+   * `Task.location` carries a note saying nothing in the app plots it and that
+   * a real reader is a future thing. This is that reader: paired with the away
+   * span it is enough to ask what the weather will be while you are there, which
+   * is the one thing packing actually turns on. It also gives a trip template's
+   * `{destination}` blank somewhere to live between runs.
+   *
+   * Free text, and geocoded only when the reader asks (see
+   * `src/services/geocode.ts`) — never stored back as coordinates. "Mum's" is a
+   * destination and is not a place any gazetteer knows, and a field that only
+   * accepted what a geocoder recognised would refuse half the trips people take.
+   */
+  destination: string | null;
 }
 
 /**
@@ -2321,6 +2456,29 @@ export interface TaskTemplate {
   // tasks — a period that was skipped for vacation is the one exception, and
   // it deliberately leaves this alone so the run happens when vacation ends.
   scheduleLastFiredKey: string | null;
+  /**
+   * Whether this template's two anchor dates are days *away from home*, so a
+   * run fills in the project's away span rather than only its deadline.
+   *
+   * Authored on the template, and it has to be: nothing is remembered between
+   * runs (`ApplyTemplateSheet` zeroes every field on open and answers never
+   * leave component state), so there is no memory an "ask once, remember it"
+   * scheme could live in.
+   *
+   * **Not inferred from a `fromDates` question**, tempting as that is — the one
+   * template in the repo that uses one is the trip. `'days'` is genuinely
+   * ambiguous (eight days of renovation is not eight days away), and inferring
+   * is the move `Project.weekendSource`'s note forbids in as many words. The
+   * template editor may surface this toggle more prominently when a `'nights'`
+   * question exists; that is a hint, not a rule.
+   *
+   * **It never sets `Project.awayPauses`.** `TemplateSchedule` can fire a run
+   * unattended, so a template that could set that could switch vacation mode on
+   * with nobody having asked. The two nominations answer different questions —
+   * this one is about *placement*, that one about *suppression* — and are
+   * deliberately kept apart. See `docs/arch/away-dates.md`.
+   */
+  anchorsAreAway: boolean;
 }
 
 // One row of the grocery catalog — which is also the shopping list. A row is
