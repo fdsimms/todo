@@ -769,6 +769,21 @@ export interface Project {
    * stops matching.
    */
   awayPauseDeclinedFor: string | null;
+  /**
+   * Where the trip goes, as free text.
+   *
+   * `Task.location` carries a note saying nothing in the app plots it and that
+   * a real reader is a future thing. This is that reader: paired with the away
+   * span it is enough to ask what the weather will be while you are there, which
+   * is the one thing packing actually turns on. It also gives a trip template's
+   * `{destination}` blank somewhere to live between runs.
+   *
+   * Free text, and geocoded only when the reader asks (see
+   * `src/services/geocode.ts`) — never stored back as coordinates. "Mum's" is a
+   * destination and is not a place any gazetteer knows, and a field that only
+   * accepted what a geocoder recognised would refuse half the trips people take.
+   */
+  destination: string | null;
 }
 
 /**

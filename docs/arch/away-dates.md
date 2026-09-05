@@ -5,8 +5,13 @@
 the look-ahead prefill, the away cue in both day grids (`DayLoad.away`),
 scheduled vacation mode (`Project.awayPauses`, `checkAwayVacation`), the
 trip moving (`src/utils/awayShift.ts`, `shiftAwayTasks`, `AwayShiftSheet`),
-and the template nomination (`TaskTemplate.anchorsAreAway`). Still designed and
-not built: the destination with its forecast.
+the template nomination (`TaskTemplate.anchorsAreAway`), and the destination
+with its forecast (`Project.destination`, `services/geocode.ts`,
+`utils/tripForecast.ts`).
+
+Not built, and the one reader left: **the away grocery list binding to the
+span**, so Groceries opens on that list while you are away instead of
+`activeListId` being a manual switch.
 
 It is written down because the design outgrew a conversation, and because most
 of the argument is about *fitting* — which existing rule each decision falls out
@@ -525,6 +530,11 @@ flights, and the span completes itself.
 ---
 
 ## Net new: a destination, and the forecast for it
+
+*Built.* `Project.destination` is free text, `services/geocode.ts` turns it into
+coordinates behind `destinationForecastEnabled`, `fetchDestinationForecast`
+asks for the span's days, and `utils/tripForecast.ts` owns what the line may
+claim.
 
 Everything above is wiring — existing parts that could not share a fact. This is
 the one piece with no machinery behind it that is worth adding, and it earns its

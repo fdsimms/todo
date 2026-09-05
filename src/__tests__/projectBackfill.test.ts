@@ -28,6 +28,7 @@ const baseProject: Project = {
   awayEnd: null,
   awayPauses: false,
   awayPauseDeclinedFor: null,
+  destination: null,
 };
 
 describe('isProjectFieldMissing', () => {

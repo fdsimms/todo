@@ -105,6 +105,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [awayEnd, setAwayEnd] = useState<Date | null>(null);
   const [pickingAway, setPickingAway] = useState<'start' | 'end' | null>(null);
   const [awayPauses, setAwayPauses] = useState(false);
+  const [destination, setDestination] = useState('');
   const simpleMode = useSettingsStore(s => s.simpleMode);
   // Rule 2 of simplified mode: a project that already has a trip keeps its
   // rows, whatever the switch says.
@@ -134,6 +135,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setAwayEnd(project.awayEnd ? new Date(project.awayEnd) : null);
     setPickingAway(null);
     setAwayPauses(project.awayPauses);
+    setDestination(project.destination ?? '');
     setNudgeMode(nudgeModeOf(project));
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
@@ -208,6 +210,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       awayStart: awayStart ? awayNoonIso(awayStart) : null,
       awayEnd: awayStart && awayEnd ? awayNoonIso(awayEnd) : null,
       awayPauses: awayStart !== null && awayPauses,
+      destination: awayStart !== null && destination.trim() ? destination.trim() : null,
       // Switching the nomination back on is a fresh statement, so it clears a
       // refusal made during an earlier run of the same trip (see
       // Project.awayPauseDeclinedFor). Moving the dates clears it on its own,
@@ -332,6 +335,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               }
               setPickingAway(null);
     setAwayPauses(project.awayPauses);
+    setDestination(project.destination ?? '');
             }}
             onClear={() => {
               if (pickingAway === 'end') setAwayEnd(null);
@@ -341,6 +345,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               else { setAwayStart(null); setAwayEnd(null); }
               setPickingAway(null);
     setAwayPauses(project.awayPauses);
+    setDestination(project.destination ?? '');
             }}
             onCancel={() => setPickingAway(null)}
           />
@@ -476,6 +481,20 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           />
         )}
         {awayStart && (
+          <View style={styles.destinationRow}>
+            <Ionicons name="location-outline" size={18} color={colors.textSecondary} />
+            <TextInput
+              style={styles.destinationInput}
+              value={destination}
+              onChangeText={setDestination}
+              placeholder="e.g. Lisbon"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={80}
+              accessibilityLabel="Where you're going"
+            />
+          </View>
+        )}
+        {awayStart && (
           <TouchableOpacity
             style={styles.optionRow}
             onPress={() => { haptics.tap(); setAwayPauses(v => !v); }}
@@ -500,7 +519,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         )}
       </View>
       <Text style={styles.sectionFooter}>
-        The days you're away from home. Look ahead uses them to show what's due while you're gone, and the project's card counts down to the day you leave. The day you come back doesn't count as a day away.
+        The days you're away from home. Look ahead uses them to show what's due while you're gone, and the project's card counts down to the day you leave. The day you come back doesn't count as a day away. Where you're going is optional, and it's only looked up if you turn on the destination forecast in Settings.
       </Text>
       </>
       )}
@@ -774,6 +793,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.sm,
     marginTop: spacing.sm,
   },
+  destinationRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: 14,
+  },
+  destinationInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
   optionRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,

@@ -2539,6 +2539,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Nominated to drive vacation mode, and inert until the departure arrives:
     // a demo session must never open with half its tasks hidden.
     expect(trip!.awayPauses).toBe(true);
+    // Somewhere to go, which is what makes the destination row visible. It is
+    // never looked up: the switch is off by default and geocodePlace refuses
+    // in demo mode regardless.
+    expect(trip!.destination).toBe('Lisbon');
+    expect(useSettingsStore.getState().destinationForecastEnabled).toBe(false);
     expect(nextAwayProject(projects, new Date())!.project.id).toBe(trip!.id);
   });
 

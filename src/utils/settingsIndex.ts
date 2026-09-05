@@ -511,6 +511,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['holiday', 'pause', 'away', 'streaks'], simple: true },
   { id: 'vacationEnd', groupId: 'tasksProjects', label: 'End date', section: 'Vacation',
     keywords: ['vacation end', 'return'], simple: true },
+  { id: 'destinationForecastEnabled', groupId: 'tasksProjects', label: 'Destination forecast',
+    section: 'Trips',
+    keywords: ['weather', 'trip', 'away', 'packing', 'travel', 'rain'] },
   // The master switch for the groceries/recipes/meal plan area. Unflagged, and
   // has to stay that way — a row that hid itself when switched off would be a
   // setting with no way back, which is now also why it can't live in the

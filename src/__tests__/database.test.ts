@@ -1663,6 +1663,7 @@ describe('Projects', () => {
     awayEnd: null,
     awayPauses: false,
     awayPauseDeclinedFor: null,
+    destination: null,
     ...overrides,
   });
 
@@ -1876,6 +1877,7 @@ describe('backup and restore', () => {
       awayEnd: null,
       awayPauses: false,
       awayPauseDeclinedFor: null,
+      destination: null,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');

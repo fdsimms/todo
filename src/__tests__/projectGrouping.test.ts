@@ -25,6 +25,7 @@ const makeProject = (overrides: Partial<Project> = {}): Project => ({
   awayEnd: null,
   awayPauses: false,
   awayPauseDeclinedFor: null,
+  destination: null,
   ...overrides,
 });
 

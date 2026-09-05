@@ -251,6 +251,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/tips.ts` — TipArea, TipScreen, TipSignals, Tip, TipAreaInfo, TIP_AREAS, TIPS, tipsFor, tipsForArea, unseenTipsForScreen, +4 more
 - `src/utils/titleRules.ts` — MIN_KEYWORD_LENGTH, KEYWORD_MAX_LENGTH, TITLE_RULE_MATCHES, TitleRuleMatchResult, TitleRuleFill, emptyTitleRule, titleRuleSaysNothing, titleRuleIsUseless, normalizeKeywords, matchKeyword, +7 more
 - `src/utils/titleSuggestions.ts` — TitleSuggestion, suggestTitles
+- `src/utils/tripForecast.ts` — TripForecast, summarizeTripForecast, describeTripForecast, describeForecastGap
 - `src/utils/tripLiveActivity.ts` — TripRun, buildTripRun, useTripLiveActivitySync
 - `src/utils/undoHistory.ts` — UndoableAction, UndoHistory, UNDO_STACK_LIMIT, topOf, pushEntry, popEntry, freshest, redoIsCurrent, UndoHistoryActions, UndoHistoryState, +6 more
 - `src/utils/unitConvert.ts` — UnitSystem, UNIT_SYSTEMS, Dimension, ConvertedQuantity, MeasuredQuantity, measureQuantity, shelfUnit, unitFactor, describeUnitFamily, convertQuantity
@@ -337,7 +338,8 @@ render, so listing them adds lines without adding answers.
 ## `src/services`
 
 - `src/services/aiSuggestions.ts` — describeAIError, TemplateItemSuggestion, suggestTemplateItems, ProjectTaskSuggestion, suggestProjectTasks, SubtaskSuggestion, suggestSubtasks, MAX_RECIPE_CHARS, suggestGroceryAisles, RecipeGroceryItem, +17 more
+- `src/services/geocode.ts` — GeocodedPlace, geocodePlace
 - `src/services/onDeviceModel.ts` — isOnDeviceReady, onDeviceAvailability, describeOnDeviceAvailability, isOnDeviceErrorMessage, describeOnDeviceError, runOnDevice
 - `src/services/productLookup.ts` — ProductRecord, ProductLookupError, describeLookupError, lookupGtin
 - `src/services/recipePage.ts` — RecipePageErrorCode, RecipePageError, recipePageError, isRecipePageError, describeImportError, isRetryableImportError, FetchedRecipePage, fetchRecipePage
-- `src/services/weatherLookup.ts` — WeatherSnapshot, fetchWeatherSnapshot
+- `src/services/weatherLookup.ts` — WeatherSnapshot, fetchWeatherSnapshot, ForecastDay, fetchDestinationForecast

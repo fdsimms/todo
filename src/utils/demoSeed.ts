@@ -829,6 +829,11 @@ export function seedDemoData(): void {
     // arrived, so a trip three weeks out shows the setting without a demo
     // session ever waking up with half its tasks hidden.
     awayPauses: true,
+    // Somewhere to go, so the destination row is visible as a thing a trip
+    // has. Nothing is looked up for it: destinationForecastEnabled is off by
+    // default and geocodePlace refuses in demo mode anyway, so a demo session
+    // puts no traffic on the network about an invented trip.
+    destination: 'Lisbon',
   });
   ['Renew passport', 'Book the airport parking', 'Sort out data roaming'].forEach((title, i) => {
     const t = addTask({ title, dueDate: addDays(today, 10 + i * 4).toISOString() });

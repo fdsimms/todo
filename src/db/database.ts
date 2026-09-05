@@ -1342,6 +1342,8 @@ export function initDatabase(): void {
     // TaskTemplate.anchorsAreAway for why a fromDates question is not that
     // signal). An install upgrading into it reads exactly as it did.
     'ALTER TABLE templates ADD COLUMN anchors_are_away INTEGER NOT NULL DEFAULT 0',
+    // Null on every existing row. See Project.destination.
+    'ALTER TABLE projects ADD COLUMN destination TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4843,6 +4845,7 @@ function rowToProject(row: Record<string, unknown>): Project {
     awayEnd: (row.away_end as string) ?? null,
     awayPauses: Boolean(row.away_pauses),
     awayPauseDeclinedFor: (row.away_pause_declined_for as string) ?? null,
+    destination: (row.destination as string) ?? null,
   };
 }
 
@@ -4853,7 +4856,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -4862,14 +4865,14 @@ export function dbInsertProject(project: Project): void {
       project.weekendSource ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
       project.awayStart, project.awayEnd,
-      project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor,
+      project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -4878,7 +4881,7 @@ export function dbUpdateProject(project: Project): void {
       project.weekendSource ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
       project.awayStart, project.awayEnd,
-      project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.id,
+      project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination, project.id,
     ]
   );
 }

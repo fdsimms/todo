@@ -416,6 +416,7 @@ const makeProject = (overrides: Partial<import('../types').Project> = {}): impor
   awayEnd: null,
   awayPauses: false,
   awayPauseDeclinedFor: null,
+  destination: null,
   ...overrides,
 });
 

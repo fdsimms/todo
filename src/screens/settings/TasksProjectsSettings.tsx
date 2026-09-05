@@ -70,6 +70,8 @@ export function TasksProjectsSettings() {
   const setVacationMode = useSettingsStore(s => s.setVacationMode);
   const vacationStart = useSettingsStore(s => s.vacationStart);
   const vacationEnd = useSettingsStore(s => s.vacationEnd);
+  const destinationForecastEnabled = useSettingsStore(s => s.destinationForecastEnabled);
+  const setDestinationForecastEnabled = useSettingsStore(s => s.setDestinationForecastEnabled);
   const setVacationEnd = useSettingsStore(s => s.setVacationEnd);
   const autoRemoveExpiredTasks = useSettingsStore(s => s.autoRemoveExpiredTasks);
   const setAutoRemoveExpiredTasks = useSettingsStore(s => s.setAutoRemoveExpiredTasks);
@@ -758,6 +760,21 @@ export function TasksProjectsSettings() {
         )}
       </SettingsSection>
       )}
+
+      <SettingsSection
+        label="Trips"
+        footer="A project with away dates can carry where you're going. With this on, that place is sent to Open-Meteo to look up its coordinates and the forecast for your dates, and the project shows a line with the temperature range and whether rain or snow is expected. Nothing is stored, and it's only ever asked about a project that has both a destination and a departure date. Off means nothing leaves the app."
+      >
+        <SettingsRow
+          entryId="destinationForecastEnabled"
+          icon="partly-sunny-outline"
+          iconColor={destinationForecastEnabled ? colors.accent : undefined}
+          label="Destination forecast"
+          hint="Looks up the weather where you're going."
+          toggle={destinationForecastEnabled}
+          onPress={() => setDestinationForecastEnabled(!destinationForecastEnabled)}
+        />
+      </SettingsSection>
 
       <SettingsSection
         label="Feature areas"
