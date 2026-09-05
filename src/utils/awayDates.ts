@@ -234,6 +234,33 @@ export function awayPauseDriver<T extends Pick<Project, 'awayStart' | 'awayEnd' 
 }
 
 /**
+ * The trip whose shopping list should be the one on screen right now, or null.
+ *
+ * `awayPauseDriver` for lists rather than for vacation mode — same three
+ * conditions in the same order, because it is the same question with a
+ * different nomination: the project named a list (`awayListId`), its span
+ * covers today, and the user has not already switched off that list for this
+ * trip (`awayListDeclinedFor`).
+ *
+ * It is deliberately two functions rather than one parameterised over the
+ * field. They are separate opt-ins on purpose — a trip that pauses your tasks
+ * is not necessarily a trip you shop for, and a template may set neither (see
+ * TaskTemplate.anchorsAreAway) — so collapsing them would suggest a coupling
+ * the design spent a paragraph refusing.
+ */
+export function awayListDriver<T extends Pick<Project, 'awayStart' | 'awayEnd' | 'awayListId' | 'awayListDeclinedFor' | 'archived' | 'completed'>>(
+  projects: readonly T[],
+  now: Date = new Date(),
+  dayResetTime?: string,
+): T | null {
+  return projects.find(p =>
+    p.awayListId !== null &&
+    p.awayListDeclinedFor !== p.awayStart &&
+    isProjectAwayNow(p, now, dayResetTime),
+  ) ?? null;
+}
+
+/**
  * Where a leaf module gets the project list from, without importing the store.
  *
  * The `blockerRegistry` / `peopleRegistry` shape, for their exact reason:

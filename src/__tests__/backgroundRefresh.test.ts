@@ -74,7 +74,12 @@ jest.mock('../store/useLeftoverStore', () => ({
   },
 }));
 jest.mock('../store/useGroceryStore', () => ({
-  useGroceryStore: { getState: () => ({ tripShopId: null, tripStartedAt: null, shops: [] }) },
+  useGroceryStore: {
+    getState: () => ({
+      tripShopId: null, tripStartedAt: null, shops: [],
+      checkAwayGroceryList: mockRecord('checkAwayGroceryList'),
+    }),
+  },
 }));
 jest.mock('../store/useEventReminderStore', () => ({
   useEventReminderStore: { getState: () => ({ remindersByKey: {} }) },
@@ -118,7 +123,8 @@ describe('runBackgroundRefresh', () => {
     // added to the launch sequence has to reach the background run too, and a
     // hand-written expectation here is exactly how that would stop being true.
     const passNames = [
-      'checkVacationExpiry', 'checkAwayVacation', 'rolloverQuotas', 'sweepOvershootQuotas',
+      'checkVacationExpiry', 'checkAwayVacation', 'checkAwayGroceryList',
+      'rolloverQuotas', 'sweepOvershootQuotas',
       'dripStalledProjects',
       'checkMealPlanNudge', 'checkProjectReviewTasks', 'checkMealSlotTasks',
       'checkPantryReviewTasks', 'checkPantryCheckTasks', 'checkMealShortfallTasks',

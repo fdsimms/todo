@@ -1,5 +1,6 @@
 import {
   awayNights,
+  awayListDriver,
   awayPauseDriver,
   awayNoonIso,
   awaySpanOf,
@@ -352,5 +353,44 @@ describe('isProjectAwayNow', () => {
   it('is false for a project that is history rather than schedule', () => {
     expect(isProjectAwayNow({ ...live, archived: true }, new Date(2026, 10, 5))).toBe(false);
     expect(isProjectAwayNow({ ...live, completed: true }, new Date(2026, 10, 5))).toBe(false);
+  });
+});
+
+describe('awayListDriver', () => {
+  const now = new Date(2026, 10, 5, 9, 0, 0);
+  const start = noon(2026, 11, 3);
+
+  const trip = (extra: Record<string, unknown> = {}) => ({
+    id: 'trip',
+    awayStart: start,
+    awayEnd: noon(2026, 11, 10),
+    awayListId: 'l1',
+    awayListDeclinedFor: null,
+    archived: false,
+    completed: false,
+    ...extra,
+  });
+
+  it('names the trip that nominated a list and covers today', () => {
+    expect(awayListDriver([trip()], now)?.id).toBe('trip');
+  });
+
+  it('ignores a trip that nominated none', () => {
+    expect(awayListDriver([trip({ awayListId: null })], now)).toBeNull();
+  });
+
+  it('ignores a trip whose list switch was undone by hand', () => {
+    expect(awayListDriver([trip({ awayListDeclinedFor: start })], now)).toBeNull();
+  });
+
+  it('is independent of the pause nomination, which is a separate opt-in', () => {
+    // A trip you shop for is not necessarily one you pause tasks for.
+    const shopsOnly = trip({ awayPauses: false, awayPauseDeclinedFor: null });
+    expect(awayListDriver([shopsOnly], now)?.id).toBe('trip');
+    expect(awayPauseDriver([shopsOnly as any], now)).toBeNull();
+  });
+
+  it('ignores a span that is over', () => {
+    expect(awayListDriver([trip()], new Date(2026, 10, 20))).toBeNull();
   });
 });

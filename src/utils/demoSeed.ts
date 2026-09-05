@@ -2740,6 +2740,14 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // away list rather than land in it.
   const airbnb = addList('Airbnb');
   if (airbnb) {
+    // And the Lisbon trip buys from it, which is the only way the nomination is
+    // visible at all (see Project.awayListId). Inert for the same reason
+    // `awayPauses` is: the trip is three weeks out, so `checkAwayGroceryList`
+    // has nothing to switch and a demo session never opens on a list somebody
+    // handed the phone did not choose. Looked up by title rather than passed
+    // in, because the project is seeded before any grocery list exists.
+    const lisbon = useProjectStore.getState().projects.find(p => p.title === 'Lisbon, with Mia');
+    if (lisbon) useProjectStore.getState().updateProject(lisbon.id, { awayListId: airbnb.id });
     setActiveList(airbnb.id);
     ['Coffee', 'Milk', 'Eggs', 'Olive oil', 'Paper towels'].forEach(name =>
       addByName(name, undefined, undefined, { registerUndo: false })

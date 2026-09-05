@@ -7,11 +7,11 @@ scheduled vacation mode (`Project.awayPauses`, `checkAwayVacation`), the
 trip moving (`src/utils/awayShift.ts`, `shiftAwayTasks`, `AwayShiftSheet`),
 the template nomination (`TaskTemplate.anchorsAreAway`), the destination
 with its forecast (`Project.destination`, `services/geocode.ts`,
-`utils/tripForecast.ts`), and `createProject`'s options object.
+`utils/tripForecast.ts`), `createProject`'s options object, and the away
+grocery list binding (`Project.awayListId`, `checkAwayGroceryList`).
 
-Not built, and the one reader left: **the away grocery list binding to the
-span**, so Groceries opens on that list while you are away instead of
-`activeListId` being a manual switch.
+Everything designed here is built. What is left is under "Still open" and is
+genuinely undecided rather than merely unstarted.
 
 It is written down because the design outgrew a conversation, and because most
 of the argument is about *fitting* — which existing rule each decision falls out
@@ -155,8 +155,7 @@ that clears the bar above.
 3. **Scheduled vacation mode** *(built)*. Its own section below.
 4. **The trip moving** *(built)*. Its own section below.
 5. **Templates write the span** *(built)*. Its own section below.
-6. **The away grocery list binds to the span**, so Groceries opens on that list
-   while you are away instead of `activeListId` being a manual switch.
+6. **The away grocery list binds to the span** *(built)*. Its own section below.
 
 ---
 
@@ -667,6 +666,53 @@ new model, and it keeps the plan somewhere the app can already read.
 - **Demo seed.** The demo's Japan trip is a *task with subtasks*, not a project,
   so there is no trip project to give dates to. Seeding this means adding one,
   and per the demo-seed rule that is part of the change rather than a follow-up.
+
+---
+
+## The away grocery list binds to the span
+
+*Built.* `Project.awayListId` is the nomination, `awayListDeclinedFor` the
+span-scoped refusal, `activeListDrivenBy` the settings key recording who owns
+the current list, and `checkAwayGroceryList` the pass — the same four parts
+scheduled vacation mode has, and deliberately so: it is the same question with
+a different nomination, so the rules are already argued above and only the
+differences are worth stating.
+
+Groceries already had the away half. `isAwayList()`'s whole meaning is "a list
+you are away from home for", and an away trip records nothing at all — see
+`finishShopping`: no purchase count, no price, no store link, no use-by day,
+none of the pantry claims a purchase normally refutes. What was missing was
+*when*, so the list was a manual switch at both ends of a trip.
+
+**The end that costs is the one at the end**, which is why this switches back
+as well as there. Forgetting to leave an away list is silent: the next shop at
+home looks completely normal and drops the whole record of itself. Forgetting
+to switch *to* one merely means shopping from the wrong trolley, which is
+visible in the header on the first glance.
+
+Four things that differ from the vacation pass:
+
+- **It is a separate opt-in, and that is the point.** A trip you shop for is
+  not necessarily a trip you pause your tasks for. `awayListDriver` and
+  `awayPauseDriver` are two functions rather than one parameterised over the
+  field, so nothing suggests a coupling neither wants.
+- **It claims a list you switched to yourself.** Somebody who moved to the
+  Airbnb list the night before leaving should still be moved home at the end,
+  so the pass takes ownership of a list that is already the right one.
+- **A deleted list is shrugged at, not cleared.** The nomination stays on the
+  project: a restore or a sync brings the row back, and rewriting a row the
+  delete was not otherwise touching is the same cost the retention note
+  refuses to pay.
+- **`activeListDrivenBy` does not sync**, because `grocery_active_list` does
+  not: which trolley a device is showing is that device's business, and a
+  synced pointer would have one phone switching another one's list back.
+
+The editor row is a `CollapsibleField` holding a `PillGroup` — lists are an
+open-ended set the user builds, which is the rule that already picks that
+control for aisles and stores. "No list" is pinned, so the option meaning
+*leave my lists alone* is never buried behind the cap. The row appears only
+with a departure entered and only while the kitchen is switched on, since
+otherwise it names a screen the user cannot reach.
 
 ---
 

@@ -2544,6 +2544,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // in demo mode regardless.
     expect(trip!.destination).toBe('Lisbon');
     expect(useSettingsStore.getState().destinationForecastEnabled).toBe(false);
+    // And it buys from the away list, the other half of a nomination that is
+    // invisible without one. Inert for awayPauses' reason: the trip is ahead,
+    // so the demo opens on Groceries rather than on somebody else's trolley.
+    const airbnb = useGroceryStore.getState().lists.find(l => l.name === 'Airbnb');
+    expect(airbnb).toBeDefined();
+    expect(trip!.awayListId).toBe(airbnb!.id);
+    expect(useGroceryStore.getState().activeListId).toBeNull();
     expect(nextAwayProject(projects, new Date())!.project.id).toBe(trip!.id);
   });
 

@@ -76,6 +76,11 @@ export function catchUpPasses(): MaintenanceStep[] {
     // one trip ending and another starting on the same day has to resolve in
     // that order, or the arm is undone by the pass that follows it.
     ['check away vacation', () => tasks().checkAwayVacation()],
+    // And put the screen on that trip's shopping list, or take it off again now
+    // it is over. Straight after the pass above because they read the same span
+    // and are the same shape; separate opt-ins because a trip that pauses your
+    // tasks is not necessarily one you shop for. See Project.awayListId.
+    ['check away grocery list', () => useGroceryStore.getState().checkAwayGroceryList()],
     // Close out quota tasks whose day ended unfinished while the app was
     // closed, so a day you fell short on is logged as a partial instead of
     // sitting overdue — also needs real settings (dayResetTime) loaded first.

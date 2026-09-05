@@ -770,6 +770,36 @@ export interface Project {
    */
   awayPauseDeclinedFor: string | null;
   /**
+   * The shopping list this trip buys from, or null.
+   *
+   * Groceries already has a list you are away from home for — `isAwayList()`,
+   * whose whole meaning is that — but nothing connected it to *when*. So the
+   * list was a manual switch at both ends of a trip, and the end that costs is
+   * the one at the end: an away list records nothing (see `finishShopping`, no
+   * purchase history, no price, no store link, no use-by), so a shop at home on
+   * a list you forgot to switch off drops all of it silently.
+   *
+   * Nominated, never inferred — the `weekendSource` rule, one field over. A
+   * project does not acquire a list because its name matches one, and a list
+   * does not become a trip's because it was made during the trip.
+   *
+   * `checkAwayGroceryList` is what reads it. Storing the id rather than a flag
+   * on `GroceryList` keeps the direction right: a trip has a list, a list does
+   * not have a trip, and two projects can point at one list without the list
+   * having to hold a set.
+   */
+  awayListId: string | null;
+  /**
+   * The `awayStart` this project's list switch was last undone for, or null.
+   *
+   * Exactly `awayPauseDeclinedFor`, for exactly its reason: switching back to
+   * the home list on day three of a seven-day trip means "leave my lists
+   * alone for this trip", not "not today", and a day-scoped stamp would put
+   * you back on the trip's list on the next foreground. Holding the departure
+   * is what makes it self-clearing when the dates move.
+   */
+  awayListDeclinedFor: string | null;
+  /**
    * Where the trip goes, as free text.
    *
    * `Task.location` carries a note saying nothing in the app plots it and that

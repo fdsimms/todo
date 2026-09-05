@@ -172,6 +172,8 @@ const PROJECT_BASE: Project = {
   awayPauses: false,
   awayPauseDeclinedFor: null,
   destination: null,
+  awayListId: null,
+  awayListDeclinedFor: null,
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({ ...PROJECT_BASE, ...overrides });

@@ -16,6 +16,8 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { WhenPicker } from './WhenPicker';
 import { CollapsibleField } from './CollapsibleField';
+import { PillGroup, type PillGroupOption } from './PillGroup';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
@@ -105,7 +107,15 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [awayEnd, setAwayEnd] = useState<Date | null>(null);
   const [pickingAway, setPickingAway] = useState<'start' | 'end' | null>(null);
   const [awayPauses, setAwayPauses] = useState(false);
+  const [awayListId, setAwayListId] = useState<string | null>(null);
+  const [awayListOpen, setAwayListOpen] = useState(false);
   const [destination, setDestination] = useState('');
+  // The lists to nominate from, and whether there is a Groceries tab at all to
+  // nominate one for. With the kitchen switched off this row would name a
+  // screen the user cannot reach.
+  const groceryLists = useGroceryStore(useShallow(s => s.lists));
+  const addGroceryList = useGroceryStore(s => s.addList);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
   const simpleMode = useSettingsStore(s => s.simpleMode);
   // Rule 2 of simplified mode: a project that already has a trip keeps its
   // rows, whatever the switch says.
@@ -125,6 +135,35 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [weekendSource, setWeekendSource] = useState(false);
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
+  const awayListName = awayListId
+    ? groceryLists.find(l => l.id === awayListId)?.name ?? 'No list'
+    : 'No list';
+
+  const awayListOptions: PillGroupOption[] = [
+    {
+      key: '__none__',
+      label: 'No list',
+      pinned: true,
+      selected: awayListId === null,
+      onPress: () => { haptics.tap(); setAwayListId(null); setAwayListOpen(false); },
+    },
+    ...groceryLists.map(list => ({
+      key: list.id,
+      label: list.name,
+      selected: list.id === awayListId,
+      onPress: () => { haptics.tap(); setAwayListId(list.id); setAwayListOpen(false); },
+    })),
+  ];
+
+  // Rejected by name rather than silently, the way PillGroup's contract asks:
+  // addList refuses a blank or a name already taken, home's included.
+  const handleCreateAwayList = (name: string) => {
+    const created = addGroceryList(name);
+    if (!created) return 'That name is already taken.';
+    setAwayListId(created.id);
+    setAwayListOpen(false);
+  };
+
   useEffect(() => {
     if (!project) return;
     setTitle(project.title);
@@ -135,6 +174,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     setAwayEnd(project.awayEnd ? new Date(project.awayEnd) : null);
     setPickingAway(null);
     setAwayPauses(project.awayPauses);
+    setAwayListId(project.awayListId);
+    setAwayListOpen(false);
     setDestination(project.destination ?? '');
     setNudgeMode(nudgeModeOf(project));
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
@@ -216,6 +257,12 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       // Project.awayPauseDeclinedFor). Moving the dates clears it on its own,
       // since the stamp holds the departure it was made for.
       awayPauseDeclinedFor: awayPauses && !project.awayPauses ? null : project.awayPauseDeclinedFor,
+      awayListId: awayStart !== null ? awayListId : null,
+      // Same rule as the line above, one nomination over: naming a list is a
+      // fresh statement and clears a refusal from an earlier run of this trip.
+      awayListDeclinedFor: awayListId && awayListId !== project.awayListId
+        ? null
+        : project.awayListDeclinedFor,
       ...nudgeFieldsFor(nudgeMode, nudgeCadenceDays),
       // Anything but a scheduled cadence leaves nothing for auto-scheduling to
       // trigger on, so the two can't disagree about whether this project is
@@ -335,6 +382,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               }
               setPickingAway(null);
     setAwayPauses(project.awayPauses);
+    setAwayListId(project.awayListId);
     setDestination(project.destination ?? '');
             }}
             onClear={() => {
@@ -345,6 +393,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               else { setAwayStart(null); setAwayEnd(null); }
               setPickingAway(null);
     setAwayPauses(project.awayPauses);
+    setAwayListId(project.awayListId);
     setDestination(project.destination ?? '');
             }}
             onCancel={() => setPickingAway(null)}
@@ -516,6 +565,27 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
               <View style={[styles.toggleKnob, awayPauses && styles.toggleKnobOn]} />
             </View>
           </TouchableOpacity>
+        )}
+        {/* The shopping list this trip buys from. A CollapsibleField holding a
+            PillGroup, because the set is one the user builds and has no
+            ceiling — the rule the design system states for aisles and stores,
+            and lists are the same shape. "No list" is pinned so the option
+            meaning *leave my lists alone* is never buried behind the cap. */}
+        {awayStart && kitchenEnabled && (
+          <CollapsibleField
+            label="Shopping list"
+            summary={awayListName}
+            hint="Groceries opens on this list while you're away, and goes back to Groceries when you're home. Switch lists yourself any time and it stays where you put it for the rest of the trip."
+            expanded={awayListOpen}
+            onToggle={() => setAwayListOpen(v => !v)}
+          >
+            <PillGroup
+              options={awayListOptions}
+              noun="list"
+              onCreate={handleCreateAwayList}
+              filterPlaceholder="Find or add a list…"
+            />
+          </CollapsibleField>
         )}
       </View>
       <Text style={styles.sectionFooter}>

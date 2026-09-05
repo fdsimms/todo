@@ -1664,6 +1664,8 @@ describe('Projects', () => {
     awayPauses: false,
     awayPauseDeclinedFor: null,
     destination: null,
+    awayListId: null,
+    awayListDeclinedFor: null,
     ...overrides,
   });
 
@@ -1878,6 +1880,8 @@ describe('backup and restore', () => {
       awayPauses: false,
       awayPauseDeclinedFor: null,
       destination: null,
+      awayListId: null,
+      awayListDeclinedFor: null,
     });
     dbInsertCategory('Home');
     dbSetSetting('themeMode', 'light');
