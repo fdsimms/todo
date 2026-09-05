@@ -2736,6 +2736,16 @@ describe('checkAwayVacation', () => {
     expect(setVacationDrivenBy).toHaveBeenCalledWith(null);
   });
 
+  it('arms regardless of simplified mode', () => {
+    // Rule 1 of that mode: it changes what is rendered, never what is stored.
+    // The editor rows are hidden for a project with no span, and that must
+    // never reach the pass, or a rendering switch would change behaviour.
+    useProjectStore.setState({ projects: [liveTrip()] });
+    const { setVacationMode } = settings({ simpleMode: true });
+    useTaskStore.getState().checkAwayVacation();
+    expect(setVacationMode).toHaveBeenCalledWith(true, dayOffset(4));
+  });
+
   it('needs no tie-break between two trips at once', () => {
     // Vacation mode is a boolean, so the question is only whether any
     // nominated trip covers today.

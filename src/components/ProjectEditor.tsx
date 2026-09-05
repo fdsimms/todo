@@ -20,6 +20,8 @@ import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
 import { awayNoonIso } from '../utils/awayDates';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { featureShown } from '../utils/simpleMode';
 import { EditorSheet } from './EditorSheet';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -102,6 +104,10 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [awayEnd, setAwayEnd] = useState<Date | null>(null);
   const [pickingAway, setPickingAway] = useState<'start' | 'end' | null>(null);
   const [awayPauses, setAwayPauses] = useState(false);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  // Rule 2 of simplified mode: a project that already has a trip keeps its
+  // rows, whatever the switch says.
+  const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   // Collapsed to the chosen category until tapped, like every other editor.
@@ -404,7 +410,15 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
           not back from is a real state, and it is the one LookAheadWindow
           already calls "a boundary but not a trip". The return row only
           appears once there is a departure, so the asymmetry is visible
-          instead of being enforced by silently dropping what you typed. */}
+          instead of being enforced by silently dropping what you typed.
+
+          Simplified mode takes the whole block, but only while this project
+          has no span: rule 2 of that mode is that a feature already in use
+          stays on show, and the rule it is *not* allowed to break is rule 1 —
+          hiding these rows must never stop checkAwayVacation, or a rendering
+          switch would be quietly changing behaviour. */}
+      {awayFieldShown && (
+      <>
       <View style={[styles.card, { marginTop: spacing.lg }]}>
         <EditorRow
           icon="airplane-outline"
@@ -449,6 +463,8 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       <Text style={styles.sectionFooter}>
         The days you're away from home. Look ahead uses them to show what's due while you're gone, and the project's card counts down to the day you leave. The day you come back doesn't count as a day away.
       </Text>
+      </>
+      )}
 
       {/* One question, three answers. "Include in nudges" and "Review cadence"
           used to be a switch and a stepper nested inside it, which took two
