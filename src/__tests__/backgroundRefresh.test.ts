@@ -51,6 +51,10 @@ const mockTaskState = {
   tasks: [] as unknown[],
 };
 const mockSettingsState = { initialized: true, initialize: mockRecord('initializeSettings') };
+const mockSyncState = {
+  initialize: mockRecord('initializeSync'),
+  syncNow: async () => { mockCalls.push('syncNow'); return null; },
+};
 
 jest.mock('../store/useTaskStore', () => ({
   useTaskStore: { getState: () => mockTaskState },
@@ -78,6 +82,9 @@ jest.mock('../store/useGroceryStore', () => ({
 jest.mock('../store/useEventReminderStore', () => ({
   useEventReminderStore: { getState: () => ({ remindersByKey: {} }) },
 }));
+jest.mock('../store/useSyncStore', () => ({
+  useSyncStore: { getState: () => mockSyncState },
+}));
 jest.mock('../utils/notifications', () => ({
   rescheduleAllReminders: () => { mockCalls.push('rescheduleAllReminders'); },
 }));
@@ -86,7 +93,7 @@ jest.mock('../utils/widgetSync', () => ({
 }));
 
 import * as TaskManager from 'expo-task-manager';
-import { runBackgroundRefresh, BACKGROUND_REFRESH_TASK } from '../utils/backgroundRefresh';
+import { runBackgroundRefresh, runBackgroundSync, BACKGROUND_REFRESH_TASK } from '../utils/backgroundRefresh';
 import { catchUpPasses, retentionPasses, expiryPasses } from '../utils/maintenancePasses';
 
 beforeEach(() => {
@@ -157,6 +164,11 @@ describe('runBackgroundRefresh', () => {
     // never ran and the SQLite handle is closed.
     expect(mockCalls[0]).toBe('initialize');
     expect(mockCalls[1]).toBe('initializeSettings');
+    // And the sync store, which is not part of the task store's fan-out — it is
+    // its own step in App.tsx, which a cold background launch never reaches.
+    // Unhydrated it reports sync as switched off and refuses every background
+    // exchange while looking exactly like a device that never turned it on.
+    expect(mockCalls[2]).toBe('initializeSync');
   });
 
   it('does not re-initialize a process that is merely backgrounded', () => {
@@ -166,6 +178,15 @@ describe('runBackgroundRefresh', () => {
     // whatever the user was in the middle of when they switched away.
     expect(mockCalls).not.toContain('initialize');
     expect(mockCalls).not.toContain('initializeSettings');
+    expect(mockCalls).not.toContain('initializeSync');
+  });
+
+  it('leaves the sync itself out, because it is the one thing that awaits', () => {
+    runBackgroundRefresh();
+    // The local half stays synchronous: no await for iOS to expire the task
+    // at, so it either completes or never starts. runBackgroundSync is where
+    // the network call lives, and the executor runs it afterwards.
+    expect(mockCalls).not.toContain('syncNow');
   });
 
   it('bails rather than running eighteen passes against a database that would not open', () => {
@@ -190,6 +211,45 @@ describe('runBackgroundRefresh', () => {
     // The steps after the throw still ran, which is the whole point of
     // runStartupSequence isolating them.
     expect(mockCalls).toContain('writeWidgetSnapshot');
+  });
+});
+
+describe('runBackgroundSync', () => {
+  it('hands off to the store, which owns every guard worth having', async () => {
+    await runBackgroundSync();
+    // syncNow refuses unless the user switched sync on, refuses a second run
+    // while one is in flight, and records the outcome for the Settings status
+    // line. None of that is worth a second copy here.
+    expect(mockCalls).toEqual(['syncNow']);
+  });
+
+  it('refuses in demo mode', async () => {
+    setDemoModeActive(true);
+    expect(await runBackgroundSync()).toBeNull();
+    // runSync would refuse a demo database itself (isSyncable), but the rule is
+    // that anything reaching past SQLite carries its own gate rather than
+    // trusting the layer under it to have one.
+    expect(mockCalls).toEqual([]);
+  });
+});
+
+describe('the background task executor', () => {
+  const executor = () =>
+    (TaskManager.defineTask as jest.Mock).mock.calls.find(
+      ([name]) => name === BACKGROUND_REFRESH_TASK
+    )![1] as () => Promise<unknown>;
+
+  it('syncs after the passes, never before them', async () => {
+    await executor()();
+    // Pushing first would publish the state the app went to sleep in: the
+    // passes are what write the rows worth sending.
+    expect(mockCalls.indexOf('syncNow')).toBeGreaterThan(mockCalls.indexOf('writeWidgetSnapshot'));
+  });
+
+  it('does not sync when the run bailed', async () => {
+    setDemoModeActive(true);
+    await executor()();
+    expect(mockCalls).toEqual([]);
   });
 });
 
