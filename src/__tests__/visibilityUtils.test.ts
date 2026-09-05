@@ -34,6 +34,7 @@ import {
   isCategoryScheduledDay,
 } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
+import { registerAwayProjectSource } from '../utils/awayDates';
 import { registerPersonSource } from '../utils/peopleRegistry';
 import { useCategoryStore } from '../store/useCategoryStore';
 import type { Task, Category } from '../types';
@@ -2129,5 +2130,95 @@ describe('sameTimeSegments', () => {
   // nothing guarantees the order two equal sets were written in.
   it('ignores order', () => {
     expect(sameTimeSegments(['morning', 'night'], ['night', 'morning'])).toBe(true);
+  });
+});
+
+// ─── Expiry during a nominated trip ────────────────────────────────────────
+// The sweep runs before the pass that arms a trip's vacation mode and cannot
+// be reordered after it, so expiry asks the away span itself. See the note on
+// isVacationPauseInForce.
+
+describe('isTaskExpired during a nominated away span', () => {
+  const NOW_AWAY = new Date(2025, 5, 10, 10, 0, 0);
+
+  const trip = (extra: Record<string, unknown> = {}) => ({
+    id: 'trip',
+    // 2025-06-08 to 2025-06-15, so NOW_AWAY sits inside it.
+    awayStart: new Date(2025, 5, 8, 12, 0, 0).toISOString(),
+    awayEnd: new Date(2025, 5, 15, 12, 0, 0).toISOString(),
+    awayPauses: true,
+    awayPauseDeclinedFor: null,
+    archived: false,
+    completed: false,
+    ...extra,
+  });
+
+  // A task whose window closed two days ago, on a day inside the span.
+  const closed = (over: Partial<Task> = {}): Task => ({
+    ...baseTask,
+    dueDate: new Date(2025, 5, 8, 0, 0, 0).toISOString(),
+    windowStart: '07:00',
+    windowEnd: '09:00',
+    ...over,
+  });
+
+  let mockProjects: any[] = [];
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW_AWAY);
+    mockProjects = [];
+    registerAwayProjectSource(() => mockProjects);
+    mockSettingsState.vacationMode = false;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    registerAwayProjectSource(null);
+    mockSettingsState.vacationMode = false;
+  });
+
+  it('expires a vacation-paused task with no trip in force', () => {
+    expect(isTaskExpired(closed({ vacationPause: true }))).toBe(true);
+  });
+
+  it('spares a vacation-paused task while a nominated trip covers today', () => {
+    mockProjects.push(trip());
+    expect(isTaskExpired(closed({ vacationPause: true }))).toBe(false);
+    // And so the delete never comes up, at any grace setting.
+    expect(isTaskSweepable(closed({ vacationPause: true }), 0)).toBe(false);
+  });
+
+  it('still expires a task that was never vacation-paused', () => {
+    // The span pauses what the user marked, not the whole app — the same
+    // refusal to gate on the trip that the away cue makes in the day grids.
+    mockProjects.push(trip());
+    expect(isTaskExpired(closed({ vacationPause: false }))).toBe(true);
+  });
+
+  it('spares a task in a category set to hide on vacation', () => {
+    mockProjects.push(trip());
+    mockCategorySchedule({ ...workCategory, hideOnVacation: true });
+    expect(isTaskExpired(closed({ category: 'Work', vacationPause: false }))).toBe(false);
+    mockCategorySchedule(null);
+  });
+
+  it('does not spare anything for a trip that did not nominate a pause', () => {
+    mockProjects.push(trip({ awayPauses: false }));
+    expect(isTaskExpired(closed({ vacationPause: true }))).toBe(true);
+  });
+
+  it('does not spare anything once the trip is over', () => {
+    mockProjects.push(trip({
+      awayStart: new Date(2025, 4, 1, 12, 0, 0).toISOString(),
+      awayEnd: new Date(2025, 4, 8, 12, 0, 0).toISOString(),
+    }));
+    expect(isTaskExpired(closed({ vacationPause: true }))).toBe(true);
+  });
+
+  it('honours a pause the user turned off for this trip', () => {
+    const t = trip();
+    mockProjects.push({ ...t, awayPauseDeclinedFor: t.awayStart });
+    expect(isTaskExpired(closed({ vacationPause: true }))).toBe(true);
   });
 });

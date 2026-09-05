@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -44,6 +44,16 @@ import { ProjectDecisions } from '../components/ProjectDecisions';
 import { DeliverablePromptSheet } from '../components/DeliverablePromptSheet';
 import { FabMenu, FAB_SIZE, type FabMenuItem } from '../components/Fab';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { addDays } from 'date-fns/addDays';
+import { dayKeyOf } from '../utils/dateUtils';
+import { awayNights, awaySpanOf } from '../utils/awayDates';
+import { geocodePlace } from '../services/geocode';
+import { fetchDestinationForecast } from '../services/weatherLookup';
+import {
+  describeForecastGap,
+  describeTripForecast,
+  summarizeTripForecast,
+} from '../utils/tripForecast';
 import { addMenuItemShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, interaction, type Colors } from '../theme';
@@ -228,6 +238,47 @@ export function ProjectDetailScreen() {
   const { copied, copy } = useCopyToClipboard();
   // Presentation only — see Project.kind.
   const isList = project?.kind === 'list';
+
+  /**
+   * The destination forecast line, fetched on open and never stored.
+   *
+   * A read with no store, the shape `useWeatherStore`'s own daily snapshot
+   * takes one feature over: a forecast written onto the project would go stale
+   * and then be believed. Held in component state so it lives exactly as long
+   * as the screen does.
+   *
+   * Every refusal upstream (the switch off, demo mode, no network, a place no
+   * gazetteer knows, a trip further out than the forecast reaches) comes back
+   * as null and draws nothing. There is no error state, deliberately: a line
+   * that could not be fetched has nothing to say, and saying so would be a
+   * second row about the app rather than about the trip.
+   */
+  const [forecastLine, setForecastLine] = useState<string | null>(null);
+  const [forecastGap, setForecastGap] = useState<string | null>(null);
+  const destinationForecastEnabled = useSettingsStore(s => s.destinationForecastEnabled);
+  const unitSystem = useSettingsStore(s => s.unitSystem);
+  const awaySpan = project ? awaySpanOf(project) : null;
+  const destination = project?.destination ?? null;
+  const spanStartKey = awaySpan ? dayKeyOf(awaySpan.start) : null;
+  const spanEndKey = awaySpan?.end ? dayKeyOf(addDays(awaySpan.end, -1)) : spanStartKey;
+
+  useEffect(() => {
+    setForecastLine(null);
+    setForecastGap(null);
+    if (!destinationForecastEnabled || !destination || !spanStartKey || !spanEndKey) return;
+    let live = true;
+    void (async () => {
+      const place = await geocodePlace(destination);
+      if (!live || !place) return;
+      const days = await fetchDestinationForecast(place, spanStartKey, spanEndKey);
+      if (!live || !days) return;
+      const summary = summarizeTripForecast(days);
+      const nights = awayNights(awaySpan);
+      setForecastLine(describeTripForecast(summary, place.name, unitSystem === 'metric'));
+      setForecastGap(describeForecastGap(summary, nights));
+    })();
+    return () => { live = false; };
+  }, [destinationForecastEnabled, destination, spanStartKey, spanEndKey, unitSystem]);
   const completedProjectTasks = projectTasks
     .filter(t => t.completed)
     .sort((a, b) => (b.completedAt ?? '').localeCompare(a.completedAt ?? ''));
@@ -724,6 +775,15 @@ export function ProjectDetailScreen() {
             // mid-selection would be the odd one out.
             ListHeaderComponent={
               <>
+                {forecastLine && (
+                  <View style={styles.forecastRow}>
+                    <Ionicons name="partly-sunny-outline" size={16} color={colors.textSecondary} />
+                    <View style={styles.forecastContent}>
+                      <Text style={styles.forecastLine}>{forecastLine}</Text>
+                      {forecastGap && <Text style={styles.forecastGap}>{forecastGap}</Text>}
+                    </View>
+                  </View>
+                )}
                 {isList && !selectionMode && (
                   <View style={styles.listAddRow}>
                     <Ionicons name="add" size={18} color={colors.textTertiary} />
@@ -1080,6 +1140,24 @@ export function ProjectDetailScreen() {
 }
 
 const makeStyles = (colors: Colors) => StyleSheet.create({
+  // Reference material above the list, in the same card treatment and the same
+  // gutters as the add row below it. Both margins set: the list starts right
+  // underneath with no top margin of its own.
+  forecastRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSecondary,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  forecastContent: { flex: 1 },
+  forecastLine: { color: colors.text, fontSize: font.sm },
+  forecastGap: { color: colors.textSecondary, fontSize: font.xs, marginTop: 2 },
   listAddRow: {
     flexDirection: 'row',
     alignItems: 'center',

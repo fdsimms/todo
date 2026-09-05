@@ -13,6 +13,7 @@ import {
   dbBatchUpdateProjectSortOrders,
 } from '../db/database';
 import { generateId } from '../utils/id';
+import { registerAwayProjectSource } from '../utils/awayDates';
 import { deliverableKindFor } from '../utils/deliverables';
 
 /**
@@ -171,8 +172,8 @@ interface ProjectStore {
   projects: Project[];
   initialized: boolean;
   initialize: () => void;
-  createProject: (title: string, deadline: string | null, kind?: ProjectKind) => Project;
-  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing'>>) => void;
+  createProject: (title: string, options?: CreateProjectOptions) => Project;
+  updateProject: (id: string, patch: Partial<Pick<Project, 'title' | 'notes' | 'deadline' | 'category' | 'nudgeCadenceDays' | 'autoSchedule' | 'nudgeOptIn' | 'weekendSource' | 'reviewDeclinedAt' | 'backfillDismissedFields' | 'kind' | 'ongoing' | 'awayStart' | 'awayEnd' | 'awayPauses' | 'awayPauseDeclinedFor' | 'destination' | 'awayListId' | 'awayListDeclinedFor'>>) => void;
   /** Filing several projects at once from the Projects screen's bulk bar. */
   bulkSetProjectCategory: (ids: string[], category: string | null) => void;
   getProjectById: (id: string) => Project | null;
@@ -195,6 +196,41 @@ interface ProjectStore {
   restoreProject: (project: Project) => void;
 }
 
+/**
+ * What a caller may decide about a project at the moment it is created.
+ *
+ * An options object rather than more positional parameters, which is where
+ * this was heading: `createProject(title, deadline, kind)` had already run out
+ * of room, so the three callers that wanted a fourth thing created the row and
+ * immediately patched it — a second write, a second render, and a returned row
+ * that was stale on the line after it came back (see the comment
+ * `QuickAddProjectModal` used to carry about handing on `{ ...project,
+ * category }`).
+ *
+ * Only the fields somebody actually decides *at creation*. Everything else on
+ * `Project` is either an opt-in that must start off (`awayPauses`,
+ * `weekendSource`, `autoSchedule`), seeded from a setting (`nudgeCadenceDays`),
+ * or a runtime stamp (`completedAt`, `reviewDeclinedAt`) — none of which a
+ * caller has an opinion about yet. Adding one here means a caller can answer
+ * it; that is the bar.
+ */
+export interface CreateProjectOptions {
+  deadline?: string | null;
+  /** Presentation only. See Project.kind. */
+  kind?: ProjectKind;
+  category?: string | null;
+  /**
+   * The away span, for the one caller that knows one at creation: a template
+   * run whose anchors are the days it is away (see TaskTemplate.anchorsAreAway
+   * and docs/arch/away-dates.md). Same asymmetry `awaySpanOf` reads them with —
+   * an end with no start is not a span — so a caller passing only the end gets
+   * a project with no span, not a half of one.
+   */
+  awayStart?: string | null;
+  awayEnd?: string | null;
+  destination?: string | null;
+}
+
 export const useProjectStore = create<ProjectStore>((set, get) => ({
   projects: [],
   initialized: false,
@@ -204,7 +240,7 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set({ projects, initialized: true });
   },
 
-  createProject(title, deadline, kind = 'project') {
+  createProject(title, options = {}) {
     const maxOrder = get().projects.reduce((m, p) => Math.max(m, p.sortOrder), 0);
     // Settings' "Default review cadence" decides both fields, not just the
     // number. It used to seed the cadence beside a hardcoded `nudgeOptIn:
@@ -221,8 +257,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       id: generateId(),
       title,
       notes: '',
-      deadline,
-      category: null,
+      deadline: options.deadline ?? null,
+      category: options.category ?? null,
       sortOrder: maxOrder + 1,
       archived: false,
       archivedAt: null,
@@ -243,7 +279,22 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
       // Presentation only — a list's members are ordinary tasks in an ordinary
       // project, and every field above means the same thing either way. See
       // Project.kind.
-      kind,
+      kind: options.kind ?? 'project',
+      // No span unless a caller brought one. A project is a trip only once
+      // somebody enters the dates, and there is nothing here to infer them
+      // from — so the default is null and the only caller that passes a pair is
+      // a template run whose anchors are away dates.
+      awayStart: options.awayStart ?? null,
+      awayEnd: options.awayEnd ?? null,
+      // Off, like every other opt-in here. See Project.awayPauses.
+      awayPauses: false,
+      awayPauseDeclinedFor: null,
+      destination: options.destination ?? null,
+      // No list either, and for `awayPauses`' reason rather than the span's: a
+      // trip buys from a list only once somebody nominates one. See
+      // Project.awayListId.
+      awayListId: null,
+      awayListDeclinedFor: null,
     };
     dbInsertProject(project);
     set(s => ({ projects: [...s.projects, project] }));
@@ -330,3 +381,8 @@ export const useProjectStore = create<ProjectStore>((set, get) => ({
     set(s => ({ projects: [...s.projects, project] }));
   },
 }));
+
+// So `isTaskExpired` can ask whether a nominated trip covers today without
+// this store — and so expo-sqlite — being reachable from `visibilityUtils`.
+// See the registry note in `src/utils/awayDates.ts`.
+registerAwayProjectSource(() => useProjectStore.getState().projects);

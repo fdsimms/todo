@@ -11,6 +11,7 @@ import {
   SOFT_DELOAD_BLOCKERS,
   deloadBlockerFor,
   isDateAnchored,
+  scheduleMoveUpdates,
 } from '../utils/taskMoves';
 
 const BASE: Task = {
@@ -179,5 +180,56 @@ describe('deloadBlockerFor', () => {
   it('reports the hard blockers it always did', () => {
     expect(deloadBlockerFor(task({ timerStartedAt: new Date().toISOString() }))!.blocker).toBe('running');
     expect(deloadBlockerFor(task({ targetCount: 8 }))!.blocker).toBe('quota');
+  });
+});
+
+describe('scheduleMoveUpdates', () => {
+  const at = (y: number, m: number, d: number) => new Date(y, m - 1, d, 12, 0, 0, 0);
+  const anchored = (over: Partial<Task> = {}): Task =>
+    task({ dueDate: at(2026, 6, 10).toISOString(), recurrenceType: 'daily', ...over });
+
+  it('clears the schedule for a null date', () => {
+    expect(scheduleMoveUpdates(task({ dueDate: at(2026, 6, 10).toISOString() }), null))
+      .toEqual({ dueDate: null, deferUntil: null });
+  });
+
+  it('reschedules an unanchored task in either direction', () => {
+    const plain = task({ dueDate: at(2026, 6, 10).toISOString() });
+    for (const dest of [at(2026, 6, 14), at(2026, 6, 6)]) {
+      const updates = scheduleMoveUpdates(plain, dest);
+      expect(updates.dueDate).toBe(dest.toISOString());
+      expect(updates.deferUntil).toBeNull();
+      expect(updates).not.toHaveProperty('recurrenceAnchorDate');
+    }
+  });
+
+  it('pushes an anchored task out by deferring, leaving its grid alone', () => {
+    const updates = scheduleMoveUpdates(anchored(), at(2026, 6, 14));
+    expect(updates).toEqual({ deferUntil: at(2026, 6, 14).toISOString() });
+  });
+
+  it('pulls an anchored task forward by moving the date and keeping an anchor', () => {
+    // A defer cannot pull a task in front of its own date, and there is no
+    // un-hide to pair with the hide.
+    const task = anchored();
+    const updates = scheduleMoveUpdates(task, at(2026, 6, 6));
+    expect(updates.dueDate).toBe(at(2026, 6, 6).toISOString());
+    expect(updates.recurrenceAnchorDate).toBe(task.dueDate);
+    expect(updates.deferUntil).toBeNull();
+  });
+
+  it('only ever sets the anchor once', () => {
+    // Pulling a second time must not re-anchor the grid onto the first pull's
+    // day, which would rotate the schedule by the back door.
+    const first = at(2026, 6, 10).toISOString();
+    const task = anchored({ dueDate: at(2026, 6, 8).toISOString(), recurrenceAnchorDate: first });
+    expect(scheduleMoveUpdates(task, at(2026, 6, 6)).recurrenceAnchorDate).toBe(first);
+  });
+
+  it('clears a stale defer when the destination is the stored day', () => {
+    const task = anchored({ deferUntil: at(2026, 6, 20).toISOString() });
+    const updates = scheduleMoveUpdates(task, at(2026, 6, 10));
+    expect(updates.deferUntil).toBeNull();
+    expect(updates.dueDate).toBe(at(2026, 6, 10).toISOString());
   });
 });

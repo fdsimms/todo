@@ -143,12 +143,31 @@ jest.mock('../store/useTaskStore', () => ({
 let mockUseUpTasks = false;
 let mockUseUpLeadDays = 1;
 let mockUseUpCategory: string | null = null;
+let mockActiveListDrivenBy: string | null = null;
+let mockProjects: any[] = [];
+
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
     getState: () => ({
       get groceryUseUpTasks() { return mockUseUpTasks; },
       get groceryUseUpLeadDays() { return mockUseUpLeadDays; },
       get groceryUseUpTaskCategory() { return mockUseUpCategory; },
+      dayResetTime: '00:00',
+      get activeListDrivenBy() { return mockActiveListDrivenBy; },
+      setActiveListDrivenBy: (id: string | null) => { mockActiveListDrivenBy = id; },
+    }),
+  },
+}));
+
+// Kept out of the real store, which reaches src/db/database.ts and so
+// expo-sqlite — the same reason every other cross-store mock here exists.
+jest.mock('../store/useProjectStore', () => ({
+  useProjectStore: {
+    getState: () => ({
+      projects: mockProjects,
+      updateProject: (id: string, patch: Record<string, unknown>) => {
+        mockProjects = mockProjects.map(p => (p.id === id ? { ...p, ...patch } : p));
+      },
     }),
   },
 }));
@@ -6549,5 +6568,180 @@ describe('separate shopping lists', () => {
 
       expect(useGroceryStore.getState().items.find(i => i.id === milk.id)!.purchaseCount).toBe(3);
     });
+  });
+});
+
+// ─── checkAwayGroceryList ──────────────────────────────────────────────────
+// Puts the screen on the shopping list of the trip you are on, and takes it
+// off again when you get back. checkAwayVacation's shape, one nomination over
+// — see Project.awayListId and docs/arch/away-dates.md.
+
+describe('checkAwayGroceryList', () => {
+  const LISBON: GroceryList = { id: 'l-lisbon', name: 'Lisbon', sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z' };
+  const NOW = new Date(2026, 8, 15, 10, 0, 0);
+
+  const trip = (extra: Record<string, unknown> = {}) => ({
+    id: 'trip',
+    // 2026-09-12 to 2026-09-19, so NOW is inside it.
+    awayStart: new Date(2026, 8, 12, 12, 0, 0).toISOString(),
+    awayEnd: new Date(2026, 8, 19, 12, 0, 0).toISOString(),
+    awayListId: LISBON.id,
+    awayListDeclinedFor: null,
+    archived: false,
+    completed: false,
+    ...extra,
+  });
+
+  const run = () => useGroceryStore.getState().checkAwayGroceryList();
+  const active = () => useGroceryStore.getState().activeListId;
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    mockProjects = [];
+    mockActiveListDrivenBy = null;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    mockProjects = [];
+    mockActiveListDrivenBy = null;
+  });
+
+  it('switches to the trip\'s list on a day inside the span, and claims it', () => {
+    seed([], { lists: [LISBON], activeListId: null });
+    mockProjects = [trip()];
+
+    run();
+
+    expect(active()).toBe(LISBON.id);
+    expect(mockActiveListDrivenBy).toBe('trip');
+  });
+
+  it('does nothing before the trip starts', () => {
+    seed([], { lists: [LISBON], activeListId: null });
+    mockProjects = [trip()];
+    jest.setSystemTime(new Date(2026, 8, 1, 10, 0, 0));
+
+    run();
+
+    expect(active()).toBeNull();
+    expect(mockActiveListDrivenBy).toBeNull();
+  });
+
+  it('switches back home once the trip is over', () => {
+    // The half that matters more: an away list records nothing, so a shop at
+    // home on one drops the purchase history, prices and use-by days silently.
+    seed([], { lists: [LISBON], activeListId: LISBON.id });
+    mockProjects = [trip()];
+    mockActiveListDrivenBy = 'trip';
+    jest.setSystemTime(new Date(2026, 8, 25, 10, 0, 0));
+
+    run();
+
+    expect(active()).toBeNull();
+    expect(mockActiveListDrivenBy).toBeNull();
+  });
+
+  it('leaves a list it never claimed alone when no trip is on', () => {
+    // Turn off what you turned on. Somebody shopping from a second list at
+    // home is not a trip that ended.
+    seed([], { lists: [LISBON], activeListId: LISBON.id });
+    mockProjects = [];
+
+    run();
+
+    expect(active()).toBe(LISBON.id);
+  });
+
+  it('records a span-scoped refusal when the list is switched by hand mid-trip', () => {
+    seed([], { lists: [LISBON], activeListId: LISBON.id });
+    const t = trip();
+    mockProjects = [t];
+    mockActiveListDrivenBy = 'trip';
+
+    // The user goes back to the home list themselves.
+    useGroceryStore.getState().setActiveList(null);
+    run();
+
+    expect(mockActiveListDrivenBy).toBeNull();
+    expect(mockProjects[0].awayListDeclinedFor).toBe(t.awayStart);
+  });
+
+  it('does not put you back on the list after that refusal', () => {
+    seed([], { lists: [LISBON], activeListId: null });
+    const t = trip();
+    mockProjects = [{ ...t, awayListDeclinedFor: t.awayStart }];
+
+    run();
+
+    expect(active()).toBeNull();
+    expect(mockActiveListDrivenBy).toBeNull();
+  });
+
+  it('re-arms once the trip dates move, since the stamp holds a departure', () => {
+    seed([], { lists: [LISBON], activeListId: null });
+    const t = trip();
+    mockProjects = [{
+      ...t,
+      awayListDeclinedFor: new Date(2026, 7, 1, 12, 0, 0).toISOString(),
+    }];
+
+    run();
+
+    expect(active()).toBe(LISBON.id);
+  });
+
+  it('ignores a project that nominated no list', () => {
+    seed([], { lists: [LISBON], activeListId: null });
+    mockProjects = [trip({ awayListId: null })];
+
+    run();
+
+    expect(active()).toBeNull();
+  });
+
+  it('ignores a nomination whose list has been deleted', () => {
+    // Resolve-or-shrug, and the nomination is left on the row rather than
+    // cleared: a restore or a sync brings the list back.
+    seed([], { lists: [], activeListId: null });
+    mockProjects = [trip()];
+
+    run();
+
+    expect(active()).toBeNull();
+    expect(mockProjects[0].awayListId).toBe(LISBON.id);
+  });
+
+  it('ignores archived and completed projects', () => {
+    seed([], { lists: [LISBON], activeListId: null });
+    mockProjects = [trip({ archived: true })];
+    run();
+    expect(active()).toBeNull();
+
+    mockProjects = [trip({ completed: true })];
+    run();
+    expect(active()).toBeNull();
+  });
+
+  it('claims a list the user switched to themselves before leaving', () => {
+    // Otherwise nothing owns it and the switch home at the end never happens.
+    seed([], { lists: [LISBON], activeListId: LISBON.id });
+    mockProjects = [trip()];
+
+    run();
+
+    expect(mockActiveListDrivenBy).toBe('trip');
+  });
+
+  it('is idempotent across repeated passes during the trip', () => {
+    seed([], { lists: [LISBON], activeListId: null });
+    mockProjects = [trip()];
+
+    run(); run(); run();
+
+    expect(active()).toBe(LISBON.id);
+    expect(mockActiveListDrivenBy).toBe('trip');
+    expect(mockProjects[0].awayListDeclinedFor).toBeNull();
   });
 });

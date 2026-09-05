@@ -55,6 +55,9 @@ import { useRecipeStore } from './useRecipeStore';
 import { clampSupplyReorderAt, restockedSupplyCount } from '../utils/supply';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
+import { useProjectStore } from './useProjectStore';
+import { awayListDriver, isProjectAwayNow } from '../utils/awayDates';
+import { getCurrentDayStart } from '../utils/dateUtils';
 import { generateId } from '../utils/id';
 import {
   HOME_LIST_NAME,
@@ -285,6 +288,16 @@ interface GroceryStore extends UndoHistoryActions {
    * trolley nobody can name.
    */
   activeListId: string | null;
+  /**
+   * Put the screen on the shopping list of the trip you are currently on, and
+   * take it off again when you get back. See Project.awayListId.
+   *
+   * A `catchUpPasses` member beside `checkAwayVacation`, and the same shape:
+   * it reconciles rather than fires once, it only ever switches back a list it
+   * switched to, and a switch made by hand mid-trip is recorded against the
+   * departure so it is not undone on the next foreground.
+   */
+  checkAwayGroceryList: () => void;
   setActiveList: (id: string | null) => void;
   /** Null when the name is blank or already taken. */
   addList: (name: string) => GroceryList | null;
@@ -1651,6 +1664,63 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setGroceryGroupBy(groupBy) {
     dbSetGroceryGroupBy(groupBy);
     set({ groceryGroupBy: groupBy });
+  },
+
+  checkAwayGroceryList() {
+    const settings = useSettingsStore.getState();
+    const { activeListDrivenBy } = settings;
+    const activeListId = get().activeListId;
+    const projects = useProjectStore.getState().projects;
+    const today = getCurrentDayStart();
+
+    // Switched by hand since we switched it. Recorded against the departure
+    // rather than the day, `awayPauseDeclinedFor`'s rule: switching back to the
+    // home list on day three of a week away means "leave my lists alone for
+    // this trip", and a day-scoped stamp would put you back on the trip's list
+    // on the next foreground.
+    if (activeListDrivenBy) {
+      const owner = projects.find(p => p.id === activeListDrivenBy);
+      const stillOurs = owner ? activeListId === owner.awayListId : false;
+      if (!stillOurs) {
+        if (owner && owner.awayStart && isProjectAwayNow(owner, today)) {
+          useProjectStore.getState().updateProject(owner.id, {
+            awayListDeclinedFor: owner.awayStart,
+          });
+        }
+        settings.setActiveListDrivenBy(null);
+        return;
+      }
+    }
+
+    const driver = awayListDriver(projects, today);
+    // A list deleted mid-trip resolves to nothing, and the nomination is left
+    // alone rather than cleared: same resolve-or-shrug every cross-row pointer
+    // in groceries takes, and a restore or a sync would bring the row back.
+    const target = driver && get().lists.some(l => l.id === driver.awayListId)
+      ? driver.awayListId
+      : null;
+
+    if (!target) {
+      // Home again. Switching back matters more than switching there did: an
+      // away list records nothing (see finishShopping), so a shop at home on a
+      // list nobody switched off drops the purchase history, the prices, the
+      // store link and the use-by days without saying so.
+      if (activeListDrivenBy) {
+        if (activeListId !== null) get().setActiveList(null);
+        settings.setActiveListDrivenBy(null);
+      }
+      return;
+    }
+
+    if (activeListId !== target) {
+      get().setActiveList(target);
+      settings.setActiveListDrivenBy(driver!.id);
+    } else if (activeListDrivenBy !== driver!.id) {
+      // Already on the right list, but claimed by nobody or by a finished trip
+      // — happens when the user switched there themselves before leaving.
+      // Claiming it is what lets the switch home at the end still happen.
+      settings.setActiveListDrivenBy(driver!.id);
+    }
   },
 
   setActiveList(id) {

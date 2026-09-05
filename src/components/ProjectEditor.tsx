@@ -16,9 +16,15 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { useShallow } from 'zustand/react/shallow';
 import { WhenPicker } from './WhenPicker';
 import { CollapsibleField } from './CollapsibleField';
+import { PillGroup, type PillGroupOption } from './PillGroup';
+import { useGroceryStore } from '../store/useGroceryStore';
 import { InlineAction } from './InlineAction';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { EditorRow } from './EditorRow';
+import { awayNoonIso } from '../utils/awayDates';
+import { useSettingsStore } from '../store/useSettingsStore';
+import { featureShown } from '../utils/simpleMode';
+import { AwayShiftSheet } from './AwayShiftSheet';
 import { EditorSheet } from './EditorSheet';
 import { CountStepper } from './CountStepper';
 import { SegmentedControl, type SegmentOption } from './SegmentedControl';
@@ -94,6 +100,26 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [category, setCategory] = useState<string | null>(null);
   const [deadline, setDeadline] = useState<Date | null>(null);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
+  // The away span (see Project.awayStart). Held as two dates rather than one
+  // range because that is what the columns are, and because the end is
+  // optional in a way the start is not.
+  const [awayStart, setAwayStart] = useState<Date | null>(null);
+  const [awayEnd, setAwayEnd] = useState<Date | null>(null);
+  const [pickingAway, setPickingAway] = useState<'start' | 'end' | null>(null);
+  const [awayPauses, setAwayPauses] = useState(false);
+  const [awayListId, setAwayListId] = useState<string | null>(null);
+  const [awayListOpen, setAwayListOpen] = useState(false);
+  const [destination, setDestination] = useState('');
+  // The lists to nominate from, and whether there is a Groceries tab at all to
+  // nominate one for. With the kitchen switched off this row would name a
+  // screen the user cannot reach.
+  const groceryLists = useGroceryStore(useShallow(s => s.lists));
+  const addGroceryList = useGroceryStore(s => s.addList);
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const simpleMode = useSettingsStore(s => s.simpleMode);
+  // Rule 2 of simplified mode: a project that already has a trip keeps its
+  // rows, whatever the switch says.
+  const awayFieldShown = featureShown('awayDates', simpleMode, awayStart !== null);
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategory, setNewCategory] = useState('');
   // Collapsed to the chosen category until tapped, like every other editor.
@@ -109,12 +135,48 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
   const [weekendSource, setWeekendSource] = useState(false);
   const [cadenceOpen, setCadenceOpen] = useState(false);
 
+  const awayListName = awayListId
+    ? groceryLists.find(l => l.id === awayListId)?.name ?? 'No list'
+    : 'No list';
+
+  const awayListOptions: PillGroupOption[] = [
+    {
+      key: '__none__',
+      label: 'No list',
+      pinned: true,
+      selected: awayListId === null,
+      onPress: () => { haptics.tap(); setAwayListId(null); setAwayListOpen(false); },
+    },
+    ...groceryLists.map(list => ({
+      key: list.id,
+      label: list.name,
+      selected: list.id === awayListId,
+      onPress: () => { haptics.tap(); setAwayListId(list.id); setAwayListOpen(false); },
+    })),
+  ];
+
+  // Rejected by name rather than silently, the way PillGroup's contract asks:
+  // addList refuses a blank or a name already taken, home's included.
+  const handleCreateAwayList = (name: string) => {
+    const created = addGroceryList(name);
+    if (!created) return 'That name is already taken.';
+    setAwayListId(created.id);
+    setAwayListOpen(false);
+  };
+
   useEffect(() => {
     if (!project) return;
     setTitle(project.title);
     setNotes(project.notes);
     setCategory(project.category);
     setDeadline(project.deadline ? new Date(project.deadline) : null);
+    setAwayStart(project.awayStart ? new Date(project.awayStart) : null);
+    setAwayEnd(project.awayEnd ? new Date(project.awayEnd) : null);
+    setPickingAway(null);
+    setAwayPauses(project.awayPauses);
+    setAwayListId(project.awayListId);
+    setAwayListOpen(false);
+    setDestination(project.destination ?? '');
     setNudgeMode(nudgeModeOf(project));
     setNudgeCadenceDays(project.nudgeCadenceDays > 0 ? project.nudgeCadenceDays : FALLBACK_CADENCE_DAYS);
     setAutoSchedule(project.autoSchedule);
@@ -141,9 +203,30 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
     return category;
   };
 
+  /**
+   * The departure this sheet opened on, and where it has just been moved to.
+   *
+   * Held rather than closed over, because the offer outlives the save: the
+   * sheet writes the project and then hands the reader a plan built against
+   * the dates it changed *from*.
+   */
+  const projectTasks = useTaskStore(
+    useShallow(s => (project ? s.tasks.filter(t => t.projectId === project.id) : [])),
+  );
+  const [shiftFrom, setShiftFrom] = useState<Date | null>(null);
+  const [shiftTo, setShiftTo] = useState<Date | null>(null);
+
   const saveAndClose = () => {
     if (!project) { onClose(); return; }
     const trimmed = title.trim();
+    // Did the departure move? Only the start is compared: a trip that got
+    // longer at the far end has not moved anything scheduled against its
+    // start, which is the same reason buildAwayShiftPlan takes no return date.
+    const priorStart = project.awayStart ? new Date(project.awayStart) : null;
+    const nextStart = awayStart;
+    const departureMoved =
+      priorStart !== null && nextStart !== null &&
+      awayNoonIso(priorStart) !== awayNoonIso(nextStart);
     updateProject(project.id, {
       // A blank name is refused, but it must not take the rest of the sheet
       // with it. The whole `updateProject` used to sit behind `if (trimmed)`,
@@ -162,6 +245,24 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       notes,
       category: resolveCategory(),
       deadline: deadline ? deadline.toISOString() : null,
+      // Stored at midday so a flight cannot move either boundary by a calendar
+      // day, and the end is dropped without a start because on its own it is
+      // indistinguishable from the deadline above. See utils/awayDates.
+      awayStart: awayStart ? awayNoonIso(awayStart) : null,
+      awayEnd: awayStart && awayEnd ? awayNoonIso(awayEnd) : null,
+      awayPauses: awayStart !== null && awayPauses,
+      destination: awayStart !== null && destination.trim() ? destination.trim() : null,
+      // Switching the nomination back on is a fresh statement, so it clears a
+      // refusal made during an earlier run of the same trip (see
+      // Project.awayPauseDeclinedFor). Moving the dates clears it on its own,
+      // since the stamp holds the departure it was made for.
+      awayPauseDeclinedFor: awayPauses && !project.awayPauses ? null : project.awayPauseDeclinedFor,
+      awayListId: awayStart !== null ? awayListId : null,
+      // Same rule as the line above, one nomination over: naming a list is a
+      // fresh statement and clears a refusal from an earlier run of this trip.
+      awayListDeclinedFor: awayListId && awayListId !== project.awayListId
+        ? null
+        : project.awayListDeclinedFor,
       ...nudgeFieldsFor(nudgeMode, nudgeCadenceDays),
       // Anything but a scheduled cadence leaves nothing for auto-scheduling to
       // trigger on, so the two can't disagree about whether this project is
@@ -171,6 +272,15 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       ongoing,
       weekendSource,
     });
+    // The trip moved, so offer to bring its prepared work with it (see
+    // utils/awayShift). Deliberately an offer rather than a shift: "Renew
+    // passport" is anchored to the trip and "Buy a suitcase" is not, and only
+    // the person who typed them knows which. The sheet closes this one.
+    if (departureMoved && priorStart && nextStart) {
+      setShiftFrom(priorStart);
+      setShiftTo(nextStart);
+      return;
+    }
     onClose();
   };
 
@@ -248,6 +358,53 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
             onConfirm={(date) => { setDeadline(date); setShowDeadlinePicker(false); }}
             onClear={() => { setDeadline(null); setShowDeadlinePicker(false); }}
             onCancel={() => setShowDeadlinePicker(false)}
+          />
+          <WhenPicker
+            visible={pickingAway !== null}
+            value={pickingAway === 'end' ? awayEnd : awayStart}
+            title={pickingAway === 'end' ? 'Coming back' : 'Leaving'}
+            showTimeOfDay={false}
+            showSuggest={false}
+            onConfirm={(date) => {
+              if (pickingAway === 'end') {
+                // Only a return strictly after the departure is kept, matching
+                // awaySpanOf's own refusal — an end on or before the start is
+                // a typo, and a span that contains no days is not one anybody
+                // entered on purpose. Backdating is still allowed for both:
+                // recording a trip that has already happened is a real thing
+                // to do, which is why allowPast is left at its default.
+                setAwayEnd(date && awayStart && date > awayStart ? date : null);
+              } else {
+                setAwayStart(date);
+                // A return before the new departure stops meaning anything, so
+                // it goes rather than being left to be silently ignored.
+                if (date && awayEnd && awayEnd <= date) setAwayEnd(null);
+              }
+              setPickingAway(null);
+    setAwayPauses(project.awayPauses);
+    setAwayListId(project.awayListId);
+    setDestination(project.destination ?? '');
+            }}
+            onClear={() => {
+              if (pickingAway === 'end') setAwayEnd(null);
+              // Clearing the departure clears the return with it: an end with
+              // no start is dropped on save anyway, and leaving it on screen
+              // would show a value that no longer means anything.
+              else { setAwayStart(null); setAwayEnd(null); }
+              setPickingAway(null);
+    setAwayPauses(project.awayPauses);
+    setAwayListId(project.awayListId);
+    setDestination(project.destination ?? '');
+            }}
+            onCancel={() => setPickingAway(null)}
+          />
+          <AwayShiftSheet
+            visible={shiftFrom !== null && shiftTo !== null}
+            tasks={projectTasks}
+            from={shiftFrom}
+            to={shiftTo}
+            projectTitle={project?.title ?? 'The trip'}
+            onClose={() => { setShiftFrom(null); setShiftTo(null); onClose(); }}
           />
         </>
       }
@@ -340,6 +497,102 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
       <Text style={styles.sectionFooter}>
         Optional. Shown on the project's card, with no effect on scheduling or when tasks appear. If it passes before the project's done, nothing happens automatically; it's just flagged so you can decide what to do.
       </Text>
+
+      {/* The away span. Two rows rather than one range control because the end
+          is genuinely optional: a trip you have booked a flight out for and
+          not back from is a real state, and it is the one LookAheadWindow
+          already calls "a boundary but not a trip". The return row only
+          appears once there is a departure, so the asymmetry is visible
+          instead of being enforced by silently dropping what you typed.
+
+          Simplified mode takes the whole block, but only while this project
+          has no span: rule 2 of that mode is that a feature already in use
+          stays on show, and the rule it is *not* allowed to break is rule 1 —
+          hiding these rows must never stop checkAwayVacation, or a rendering
+          switch would be quietly changing behaviour. */}
+      {awayFieldShown && (
+      <>
+      <View style={[styles.card, { marginTop: spacing.lg }]}>
+        <EditorRow
+          icon="airplane-outline"
+          label="Leaving"
+          value={awayStart ? formatDeadlineDate(awayStart.toISOString()) : undefined}
+          onPress={() => setPickingAway('start')}
+          onClear={awayStart ? () => { setAwayStart(null); setAwayEnd(null); } : undefined}
+        />
+        {awayStart && (
+          <EditorRow
+            icon="home-outline"
+            label="Coming back"
+            value={awayEnd ? formatDeadlineDate(awayEnd.toISOString()) : undefined}
+            onPress={() => setPickingAway('end')}
+            onClear={awayEnd ? () => setAwayEnd(null) : undefined}
+          />
+        )}
+        {awayStart && (
+          <View style={styles.destinationRow}>
+            <Ionicons name="location-outline" size={18} color={colors.textSecondary} />
+            <TextInput
+              style={styles.destinationInput}
+              value={destination}
+              onChangeText={setDestination}
+              placeholder="e.g. Lisbon"
+              placeholderTextColor={colors.textTertiary}
+              maxLength={80}
+              accessibilityLabel="Where you're going"
+            />
+          </View>
+        )}
+        {awayStart && (
+          <TouchableOpacity
+            style={styles.optionRow}
+            onPress={() => { haptics.tap(); setAwayPauses(v => !v); }}
+            activeOpacity={interaction.activeOpacity}
+            accessibilityRole="switch"
+            accessibilityLabel="Pause tasks while away"
+            accessibilityState={{ checked: awayPauses }}
+          >
+            <Ionicons name="pause-circle-outline" size={18} color={awayPauses ? colors.accent : colors.textSecondary} />
+            <View style={styles.optionContent}>
+              <Text style={styles.optionLabel}>Pause tasks while away</Text>
+              <Text style={styles.optionHint}>
+                {awayPauses
+                  ? "Vacation mode turns on the day you leave and off when you're back. It hides only the tasks and categories you've already set to pause on vacation."
+                  : 'Vacation mode stays however you set it.'}
+              </Text>
+            </View>
+            <View style={[styles.toggle, awayPauses && styles.toggleOn]}>
+              <View style={[styles.toggleKnob, awayPauses && styles.toggleKnobOn]} />
+            </View>
+          </TouchableOpacity>
+        )}
+        {/* The shopping list this trip buys from. A CollapsibleField holding a
+            PillGroup, because the set is one the user builds and has no
+            ceiling — the rule the design system states for aisles and stores,
+            and lists are the same shape. "No list" is pinned so the option
+            meaning *leave my lists alone* is never buried behind the cap. */}
+        {awayStart && kitchenEnabled && (
+          <CollapsibleField
+            label="Shopping list"
+            summary={awayListName}
+            hint="Groceries opens on this list while you're away, and goes back to Groceries when you're home. Switch lists yourself any time and it stays where you put it for the rest of the trip."
+            expanded={awayListOpen}
+            onToggle={() => setAwayListOpen(v => !v)}
+          >
+            <PillGroup
+              options={awayListOptions}
+              noun="list"
+              onCreate={handleCreateAwayList}
+              filterPlaceholder="Find or add a list…"
+            />
+          </CollapsibleField>
+        )}
+      </View>
+      <Text style={styles.sectionFooter}>
+        The days you're away from home. Look ahead uses them to show what's due while you're gone, and the project's card counts down to the day you leave. The day you come back doesn't count as a day away. Where you're going is optional, and it's only looked up if you turn on the destination forecast in Settings.
+      </Text>
+      </>
+      )}
 
       {/* One question, three answers. "Include in nudges" and "Review cadence"
           used to be a switch and a stepper nested inside it, which took two
@@ -610,6 +863,11 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: spacing.sm,
     marginTop: spacing.sm,
   },
+  destinationRow: {
+    flexDirection: 'row', alignItems: 'center', gap: spacing.md,
+    paddingHorizontal: spacing.md, paddingVertical: 14,
+  },
+  destinationInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
   optionRow: {
     flexDirection: 'row', alignItems: 'center', gap: spacing.md,
     paddingHorizontal: spacing.md, paddingVertical: 14,

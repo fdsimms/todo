@@ -107,7 +107,8 @@ import { hasLogOnDay } from '../utils/moodLog';
 import { useMoodStore } from './useMoodStore';
 import { eventsIn } from '../utils/calendarBusy';
 import { isDemoModeActive } from '../utils/demoState';
-import type { MealSlot, TaskGroup } from '../types';
+import type { MealSlot, Project, TaskGroup } from '../types';
+import { awayPauseDriver, isProjectAwayNow } from '../utils/awayDates';
 import { generateId } from '../utils/id';
 import { derivedId, spawnSeed } from '../utils/syncIds';
 import { reorderSubset } from '../utils/reorder';
@@ -1613,6 +1614,13 @@ interface TaskStore extends UndoHistoryActions {
   // protect and every move is a plain reschedule.
   pullProjectTasks: (moves: readonly { id: string; updates: Partial<Task> }[]) => void;
   /**
+   * Applies an accepted "the trip moved" plan (see utils/awayShift) under one
+   * undo entry. deloadTasks' mirror, and deliberately *not* deloadTasks: that
+   * one counts postpones, which would blame the user for a flight change, and
+   * its undo snapshot drops recurrenceAnchorDate, which a pull-forward writes.
+   */
+  shiftAwayTasks: (moves: readonly { id: string; updates: Partial<Task> }[]) => void;
+  /**
    * Files the tasks a rule just written would have filed, had it existed when
    * they were typed (see utils/titleRules.titleRuleBacklog). Offered once, at
    * the moment a rule is authored — a rule still never fires on its own after
@@ -1847,6 +1855,12 @@ interface TaskStore extends UndoHistoryActions {
 
   forgivVacationStreaks: () => void;
   checkVacationExpiry: () => void;
+  /**
+   * Arm vacation mode for a nominated trip that has started, and keep its end
+   * date in step. The "off" half is checkVacationExpiry above, which already
+   * shipped — see this action's own doc for the four rules it holds to.
+   */
+  checkAwayVacation: () => void;
   resetAllStreaks: () => void;
   bulkCompleteTasks: (ids: string[]) => void;
   bulkUncompleteTasks: (ids: string[]) => void;
@@ -4471,6 +4485,50 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       redo: () => get().deloadTasks(moves),
       undo: () => snapshots.forEach(s =>
         get().updateTask(s.id, { dueDate: s.dueDate, deferUntil: s.deferUntil, postponeCount: s.postponeCount })
+      ),
+    });
+  },
+
+  shiftAwayTasks(moves) {
+    const byId = new Map(get().tasks.map(t => [t.id, t]));
+    const applied = moves.filter(m => byId.has(m.id));
+    if (applied.length === 0) return;
+
+    // The anchor rides in the snapshot, unlike deloadTasks' three fields. A
+    // shift can *pull* a recurring member forward, which writes
+    // recurrenceAnchorDate, and an undo that restored only the two dates would
+    // leave that behind — silently rotating the grid the rest of the
+    // schedule steps from, the exact back-door rotation the "only ever set
+    // once" rule in scheduleMoveUpdates exists to prevent.
+    const snapshots = applied.map(m => {
+      const t = byId.get(m.id)!;
+      return {
+        id: m.id,
+        dueDate: t.dueDate,
+        deferUntil: t.deferUntil,
+        recurrenceAnchorDate: t.recurrenceAnchorDate,
+      };
+    });
+
+    // Never counted, deliberately, and this is the half deloadTasks gets the
+    // other way round. "Lighten this day" is the most explicit *I am pushing
+    // today's work* action in the app, so it counts; a trip moving because the
+    // airline moved it is not the user postponing anything, and counting it
+    // would feed the "you've pushed this five times" prompt (utils/postpone)
+    // with pushes nobody made.
+    dbTransaction(() => {
+      applied.forEach(m => get().updateTask(m.id, m.updates, { skipPostponeCount: true, markSeenOnBecomeVisible: true }));
+    });
+
+    get().setLastAction({
+      label: `${applied.length} task${applied.length === 1 ? '' : 's'} moved with the trip`,
+      redo: () => get().shiftAwayTasks(moves),
+      undo: () => snapshots.forEach(s =>
+        get().updateTask(
+          s.id,
+          { dueDate: s.dueDate, deferUntil: s.deferUntil, recurrenceAnchorDate: s.recurrenceAnchorDate },
+          { skipPostponeCount: true },
+        )
       ),
     });
   },
@@ -7260,6 +7318,77 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     if (new Date() < new Date(vacationEnd)) return;
     get().forgivVacationStreaks();
     setVacationMode(false);
+  },
+
+  /**
+   * Switch vacation mode on for a trip that has started, and reconcile the end
+   * date it should turn itself off on. See docs/arch/away-dates.md.
+   *
+   * **This is the "on" half only.** `checkVacationExpiry` above already turns
+   * vacation off once `vacationEnd` passes, so arming with the trip's return
+   * date hands the other half to code that has shipped for years. It also
+   * keeps `vacationStart` honest: that stamp is `new Date()` at switch-on, and
+   * firing *on* the departure day rather than arming in advance means it still
+   * records when you went.
+   *
+   * Four rules, none of them optional:
+   *
+   * - **It may only turn off what it turned on** (`vacationDrivenBy`). A mode
+   *   somebody switched on by hand is theirs, and the existing `vacationEnd`
+   *   is the only thing that may end it.
+   * - **Mode off while `vacationDrivenBy` still names a live trip means the
+   *   user switched it off**, and that is declined for the whole span rather
+   *   than for the day (`Project.awayPauseDeclinedFor`) — a day-scoped opt-out
+   *   would re-arm every morning for the rest of the week.
+   * - **It reconciles rather than arming once**, since moving the return date
+   *   in the editor has to move the date expiry will read.
+   * - **Several trips at once need no tie-break.** Vacation mode is a boolean,
+   *   so the question is only whether *any* nominated trip covers today.
+   */
+  checkAwayVacation() {
+    const settings = useSettingsStore.getState();
+    const { vacationMode, vacationEnd, vacationDrivenBy } = settings;
+    const today = getCurrentDayStart();
+    const projects = useProjectStore.getState().projects;
+    const covers = (p: Project) => isProjectAwayNow(p, today);
+
+    // Turned off by hand since we armed it. Judged on the trip still covering
+    // today, so the ordinary case — checkVacationExpiry having just ended a
+    // finished trip — is read as the expiry it is rather than as a refusal.
+    if (!vacationMode && vacationDrivenBy) {
+      const driver = projects.find(p => p.id === vacationDrivenBy);
+      const live = driver ? covers(driver) : false;
+      if (live && driver?.awayStart) {
+        useProjectStore.getState().updateProject(driver.id, {
+          awayPauseDeclinedFor: driver.awayStart,
+        });
+      }
+      settings.setVacationDrivenBy(null);
+      if (live) return;
+    }
+
+    // The same call `isTaskExpired` makes, so the sweep that runs before this
+    // pass and this pass itself cannot disagree about whose trip is driving.
+    const driver = awayPauseDriver(projects, today);
+
+    if (!driver) {
+      // Nothing should be driving. Clear a stale pointer left by an expiry, so
+      // the branch above can't read it later as a refusal that never happened.
+      if (!vacationMode && vacationDrivenBy) settings.setVacationDrivenBy(null);
+      return;
+    }
+
+    if (!vacationMode) {
+      settings.setVacationMode(true, driver.awayEnd);
+      settings.setVacationDrivenBy(driver.id);
+      return;
+    }
+    // Already on. Only a mode this pass owns may have its end date moved —
+    // rewriting the end of a vacation somebody set by hand is exactly the
+    // "turn off what you turned on" rule, one field over.
+    if (vacationDrivenBy === driver.id && vacationEnd !== driver.awayEnd) {
+      settings.setVacationEnd(driver.awayEnd);
+    }
   },
 
   resetAllStreaks() {

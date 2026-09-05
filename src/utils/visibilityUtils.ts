@@ -4,6 +4,7 @@ import { getCurrentDayStart, getTaskDayStart, getDayStart, hhmmToDate, getNextDu
 import type { ExpiredTaskGraceDays } from './expiredTaskGrace';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useCategoryStore } from '../store/useCategoryStore';
+import { isAwayPauseInForce } from './awayDates';
 import { activeChainStep } from './chain';
 import { isBlocked, isWaitingOnPerson } from './blocking';
 import { resolveBlocker } from './blockerRegistry';
@@ -97,11 +98,15 @@ function getTimeOfDayThreshold(timeOfDay: TimeOfDay, pass?: VisibleAtPass): Date
 
 // True when the task's category is set to hide while vacation mode is on.
 // Mirrors per-task `vacationPause`: the task is hidden everywhere (Today and Later).
-function isCategoryHiddenOnVacation(category: string | null): boolean {
+function categoryHidesOnVacation(category: string | null): boolean {
   if (!category) return false;
-  if (!useSettingsStore.getState().vacationMode) return false;
   const cat = useCategoryStore.getState().getCategoryByName(category);
   return !!cat?.hideOnVacation;
+}
+
+function isCategoryHiddenOnVacation(category: string | null): boolean {
+  if (!useSettingsStore.getState().vacationMode) return false;
+  return categoryHidesOnVacation(category);
 }
 
 // True when a task is hidden *specifically* because vacation mode is on — either
@@ -354,6 +359,30 @@ export function isTaskWindowActive(task: Task): boolean {
   return true;
 }
 
+// True while the tasks a vacation pauses are actually paused — the mode the
+// user set by hand, *or* a nominated trip whose span covers today with the
+// pass that arms the mode not having run yet.
+//
+// That second half is only expiry's problem, and it is not solvable by
+// reordering the passes. `sweepExpiredTasks` runs first and has to
+// (#689: it must see vacationMode before checkVacationExpiry turns a finished
+// vacation off), and `checkAwayVacation` has to run after checkVacationExpiry
+// (one trip ending and another starting on the same day resolve in that
+// order), so the arm is necessarily downstream of the sweep. The first launch
+// after a departure therefore sweeps with the mode still off — and that is the
+// launch carrying the biggest backlog of windows that closed while the app was
+// shut, all of them on days the user had said they would be away for.
+//
+// So expiry asks the span rather than asking whether the arm has happened yet.
+// Deliberately *only* expiry: nothing renders during the startup sequence, so
+// visibility never observes the unarmed window, and a Today screen hiding rows
+// for a vacation mode the Settings switch says is off would be a second, worse
+// bug. This is about the one call with no way back.
+function isVacationPauseInForce(): boolean {
+  if (useSettingsStore.getState().vacationMode) return true;
+  return isAwayPauseInForce();
+}
+
 // True once a task's time window has closed (windowEnd has passed on its own
 // day) and it's still incomplete. Expired tasks are neither "visible" nor
 // "deferred" — they move to their own Expired bucket and stay there until the
@@ -361,8 +390,9 @@ export function isTaskWindowActive(task: Task): boolean {
 export function isTaskExpired(task: Task): boolean {
   const end = effectiveWindowEnd(task);
   if (task.completed || task.archived || !end) return false;
-  if (task.vacationPause && useSettingsStore.getState().vacationMode) return false;
-  if (isCategoryHiddenOnVacation(task.category)) return false;
+  const paused = isVacationPauseInForce();
+  if (paused && task.vacationPause) return false;
+  if (paused && categoryHidesOnVacation(task.category)) return false;
   if (!isPlacedOnADay(task)) return false;
   if (!hasDayArrived(task)) return false;
   return new Date() >= getWindowThreshold(end);

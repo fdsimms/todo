@@ -66,6 +66,7 @@ export type SimpleFeatureId =
   | 'stacks'
   | 'streakOptions'
   | 'vacationPause'
+  | 'awayDates'
   | 'effortRating'
   | 'calendarImport'
   // Screens behind the menu.
@@ -149,6 +150,7 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   { id: 'stacks', label: 'Stacks', area: 'tasks', screen: 'Stacks', contentScreen: true },
   { id: 'streakOptions', label: 'Streak options', area: 'tasks' },
   { id: 'vacationPause', label: 'Vacation pause', area: 'tasks' },
+  { id: 'awayDates', label: "A project's away dates", area: 'tasks' },
   { id: 'effortRating', label: 'Effort', area: 'tasks' },
   { id: 'calendarImport', label: 'Import event from photo or text', area: 'tasks' },
 

@@ -1322,6 +1322,33 @@ export function initDatabase(): void {
     // Null on every existing row — none of them were spawned by the rule.
     // See Task.followUpTaskSourceTitle.
     'ALTER TABLE tasks ADD COLUMN extra_task_source_title TEXT',
+    // Null on every existing row: a project is a trip only once somebody says
+    // it is, and there is nothing to infer it from — no title reading, no
+    // reading of `kind` (see Project.awayStart for why not). Deliberately new
+    // columns rather than reviving `target_start_date`, which stays unread:
+    // that field meant "a target to start by" and these mean "the days I am
+    // not here", and quietly changing what a column means for every install
+    // that already has one is the kind of thing a comment cannot undo.
+    'ALTER TABLE projects ADD COLUMN away_start TEXT',
+    'ALTER TABLE projects ADD COLUMN away_end TEXT',
+    // 0 on every existing row, for the reason nudge_opt_in and weekend_source
+    // are: letting a trip switch vacation mode is a statement nobody has made
+    // yet, and backfilling it true would hide tasks for people who never asked.
+    // See Project.awayPauses.
+    'ALTER TABLE projects ADD COLUMN away_pauses INTEGER NOT NULL DEFAULT 0',
+    'ALTER TABLE projects ADD COLUMN away_pause_declined_for TEXT',
+    // 0 on every existing row: a template's anchors mean "days away" only once
+    // somebody says so, and there is nothing to infer it from (see
+    // TaskTemplate.anchorsAreAway for why a fromDates question is not that
+    // signal). An install upgrading into it reads exactly as it did.
+    'ALTER TABLE templates ADD COLUMN anchors_are_away INTEGER NOT NULL DEFAULT 0',
+    // Null on every existing row. See Project.destination.
+    'ALTER TABLE projects ADD COLUMN destination TEXT',
+    // Null on every existing row: a trip has a shopping list only once somebody
+    // nominates one, and an existing away list has nothing saying which trip it
+    // belongs to. See Project.awayListId.
+    'ALTER TABLE projects ADD COLUMN away_list_id TEXT',
+    'ALTER TABLE projects ADD COLUMN away_list_declined_for TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4819,6 +4846,13 @@ function rowToProject(row: Record<string, unknown>): Project {
     // a column added later, or a row from a peer on a newer build, must not
     // make somebody's project undrawable. See Project.kind.
     kind: row.kind === 'list' ? 'list' : 'project',
+    awayStart: (row.away_start as string) ?? null,
+    awayEnd: (row.away_end as string) ?? null,
+    awayPauses: Boolean(row.away_pauses),
+    awayPauseDeclinedFor: (row.away_pause_declined_for as string) ?? null,
+    awayListId: (row.away_list_id as string) ?? null,
+    awayListDeclinedFor: (row.away_list_declined_for as string) ?? null,
+    destination: (row.destination as string) ?? null,
   };
 }
 
@@ -4829,7 +4863,7 @@ export function dbGetAllProjects(): Project[] {
 
 export function dbInsertProject(project: Project): void {
   db.runSync(
-    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, backfill_dismissed_fields, kind) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+    'INSERT INTO projects (id, title, notes, target_end_date, category, sort_order, archived, archived_at, completed, completed_at, ongoing, created_at, nudge_cadence_days, auto_schedule, nudge_opt_in, weekend_source, review_declined_at, backfill_dismissed_fields, kind, away_start, away_end, away_pauses, away_pause_declined_for, destination, away_list_id, away_list_declined_for) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
     [
       project.id, project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
@@ -4837,20 +4871,26 @@ export function dbInsertProject(project: Project): void {
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.weekendSource ? 1 : 0,
       project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
+      project.awayStart, project.awayEnd,
+      project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
+      project.awayListId, project.awayListDeclinedFor,
     ]
   );
 }
 
 export function dbUpdateProject(project: Project): void {
   db.runSync(
-    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, backfill_dismissed_fields=?, kind=? WHERE id=?',
+    'UPDATE projects SET title=?, notes=?, target_end_date=?, category=?, sort_order=?, archived=?, archived_at=?, completed=?, completed_at=?, ongoing=?, nudge_cadence_days=?, auto_schedule=?, nudge_opt_in=?, weekend_source=?, review_declined_at=?, backfill_dismissed_fields=?, kind=?, away_start=?, away_end=?, away_pauses=?, away_pause_declined_for=?, destination=?, away_list_id=?, away_list_declined_for=? WHERE id=?',
     [
       project.title, project.notes, project.deadline,
       project.category, project.sortOrder, project.archived ? 1 : 0, project.archivedAt,
       project.completed ? 1 : 0, project.completedAt, project.ongoing ? 1 : 0,
       project.nudgeCadenceDays, project.autoSchedule ? 1 : 0, project.nudgeOptIn ? 1 : 0,
       project.weekendSource ? 1 : 0,
-      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind, project.id,
+      project.reviewDeclinedAt, JSON.stringify(project.backfillDismissedFields), project.kind,
+      project.awayStart, project.awayEnd,
+      project.awayPauses ? 1 : 0, project.awayPauseDeclinedFor, project.destination,
+      project.awayListId, project.awayListDeclinedFor, project.id,
     ]
   );
 }
@@ -5045,6 +5085,7 @@ function rowToTemplate(row: Record<string, unknown>): TaskTemplate {
     applyContainer: parseApplyContainer(row.apply_container),
     schedule: parseTemplateSchedule(row.schedule),
     scheduleLastFiredKey: (row.schedule_last_fired_key as string) ?? null,
+    anchorsAreAway: Boolean(row.anchors_are_away),
   };
 }
 
@@ -5103,15 +5144,15 @@ export function dbGetAllTemplates(): TaskTemplate[] {
 
 export function dbInsertTemplate(template: TaskTemplate): void {
   db.runSync(
-    'INSERT INTO templates (id, name, items, item_groups, questions, created_at, sort_order, category, apply_container, schedule, schedule_last_fired_key) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.createdAt, template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey]
+    'INSERT INTO templates (id, name, items, item_groups, questions, created_at, sort_order, category, apply_container, schedule, schedule_last_fired_key, anchors_are_away) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+    [template.id, template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.createdAt, template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.anchorsAreAway ? 1 : 0]
   );
 }
 
 export function dbUpdateTemplate(template: TaskTemplate): void {
   db.runSync(
-    'UPDATE templates SET name = ?, items = ?, item_groups = ?, questions = ?, sort_order = ?, category = ?, apply_container = ?, schedule = ?, schedule_last_fired_key = ? WHERE id = ?',
-    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.id]
+    'UPDATE templates SET name = ?, items = ?, item_groups = ?, questions = ?, sort_order = ?, category = ?, apply_container = ?, schedule = ?, schedule_last_fired_key = ?, anchors_are_away = ? WHERE id = ?',
+    [template.name, JSON.stringify(template.items), JSON.stringify(template.itemGroups), JSON.stringify(template.questions), template.sortOrder, template.category, template.applyContainer, template.schedule ? JSON.stringify(template.schedule) : null, template.scheduleLastFiredKey, template.anchorsAreAway ? 1 : 0, template.id]
   );
 }
 

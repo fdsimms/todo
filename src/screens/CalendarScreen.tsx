@@ -37,6 +37,9 @@ import {
   type DayWeight,
 } from '../utils/dayLoad';
 import { useCalendarStore } from '../store/useCalendarStore';
+import { useProjectStore } from '../store/useProjectStore';
+import { useShallow } from 'zustand/react/shallow';
+import { awaySpanOf, type AwaySpan } from '../utils/awayDates';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const CELL_SIZE = Math.floor((SCREEN_WIDTH - spacing.md * 2) / 7);
@@ -103,7 +106,22 @@ export function CalendarScreen() {
   // Collapse an expanded row on the way out, so it isn't still open on return.
   useFocusEffect(useCallback(() => () => setExpandedTaskId(null), []));
 
+  const projects = useProjectStore(useShallow(s => s.projects));
   const days = useMemo(() => buildCalendarGrid(displayMonth, weekStartsOn), [displayMonth, weekStartsOn]);
+  /**
+   * Every live away span, so a month holding a trip says so.
+   *
+   * All of them rather than the nearest one, since the grid pages through
+   * months and can reach past whichever trip is next. A span already over is
+   * kept: a month view of last month is entitled to say you were away.
+   */
+  const awaySpans = useMemo(
+    () => projects
+      .filter(p => !p.archived && !p.completed)
+      .map(p => awaySpanOf(p, dayResetTime))
+      .filter((span): span is AwaySpan => span !== null),
+    [projects, dayResetTime],
+  );
   const dayHeaders = useMemo(() => weekdayHeaders(weekStartsOn), [weekStartsOn]);
 
   const buckets = useMemo(
@@ -137,8 +155,9 @@ export function CalendarScreen() {
     busyWindow: calendarWindowStart && calendarWindowEnd
       ? { start: new Date(calendarWindowStart), end: new Date(calendarWindowEnd) }
       : null,
+    awaySpans,
     dayResetTime,
-  }), [days, buckets, taskById, calendarReadEnabled, calendarLoaded, calendarEvents,
+  }), [days, buckets, taskById, awaySpans, calendarReadEnabled, calendarLoaded, calendarEvents,
        calendarWindowStart, calendarWindowEnd, dayResetTime]);
   const selectedLoad = describeDayLoad(dayLoads.get(selectedKey));
 
@@ -445,10 +464,21 @@ function DayCell({
               their neighbours', and a grid is read by its rows. */}
           <View style={styles.weightSlot}>
             {weight && (
-              <View style={[
-                styles.weightBar,
-                weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
-              ]} />
+              weight === 'away' ? (
+                // Two segments with a gap, matching WhenPicker's cell exactly:
+                // one visual language for "what does this day already hold",
+                // and a run of them reads across the row as the stretch of days
+                // it is.
+                <View style={styles.weightAway}>
+                  <View style={styles.weightAwayDash} />
+                  <View style={styles.weightAwayDash} />
+                </View>
+              ) : (
+                <View style={[
+                  styles.weightBar,
+                  weight === 'full' ? styles.weightBarFull : styles.weightBarBusy,
+                ]} />
+              )
             )}
           </View>
         </View>
@@ -581,6 +611,17 @@ function makeStyles(colors: Colors) {
     weightBarFull: {
       width: 21,
       height: 3,
+      backgroundColor: colors.textSecondary,
+    },
+    weightAway: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 3,
+    },
+    weightAwayDash: {
+      width: 5,
+      height: 3,
+      borderRadius: 1.5,
       backgroundColor: colors.textSecondary,
     },
     dayCircleSelected: {

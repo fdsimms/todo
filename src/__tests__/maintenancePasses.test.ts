@@ -28,6 +28,8 @@ describe('the three maintenance groups', () => {
     // whole so a reorder has to be deliberate.
     expect(names(catchUpPasses())).toEqual([
       'check vacation expiry',
+      'check away vacation',
+      'check away grocery list',
       'roll over quotas',
       'sweep overshoot quotas',
       'drip stalled projects',

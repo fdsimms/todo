@@ -71,7 +71,6 @@ export function QuickAddProjectModal({
 
   const projects = useProjectStore(useShallow(s => s.projects));
   const createProject = useProjectStore(s => s.createProject);
-  const updateProject = useProjectStore(s => s.updateProject);
   const unarchiveProject = useTaskStore(s => s.unarchiveProject);
   const categories = useProjectCategoryStore(useShallow(s => s.categories));
   const addCategory = useProjectCategoryStore(s => s.addCategory);
@@ -175,11 +174,11 @@ export function QuickAddProjectModal({
     haptics.success();
     animateLayout();
     const resolvedCategory = resolveCategory();
-    const project = createProject(finalTitle, deadline ? deadline.toISOString() : null);
-    if (resolvedCategory) updateProject(project.id, { category: resolvedCategory });
-    // createProject doesn't take a category, so hand the caller the row as it
-    // now stands rather than the one it returned a line ago.
-    onCreated?.({ ...project, category: resolvedCategory }, seedActive);
+    const project = createProject(finalTitle, {
+      deadline: deadline ? deadline.toISOString() : null,
+      category: resolvedCategory,
+    });
+    onCreated?.(project, seedActive);
     dismiss();
   };
 

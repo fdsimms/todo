@@ -167,6 +167,13 @@ const PROJECT_BASE: Project = {
   reviewDeclinedAt: null,
   backfillDismissedFields: [],
   kind: 'project' as const,
+  awayStart: null,
+  awayEnd: null,
+  awayPauses: false,
+  awayPauseDeclinedFor: null,
+  destination: null,
+  awayListId: null,
+  awayListDeclinedFor: null,
 };
 
 const makeProject = (overrides: Partial<Project> = {}): Project => ({ ...PROJECT_BASE, ...overrides });

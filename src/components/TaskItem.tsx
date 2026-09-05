@@ -41,7 +41,7 @@ import { useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, lineHeight, border, iconSize, animation, interaction, checkboxRadius, type Colors } from '../theme';
 import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, dateToHHMM, formatWindowRemaining, getDeadlineCountdown, getEffectiveTaskDate, getTaskDayStart, getCurrentDayStart, getLogicalDayKey, dayKeyToDate, formatTimeOfDay } from '../utils/dateUtils';
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
-import { isDateAnchored } from '../utils/taskMoves';
+import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import {
@@ -3410,33 +3410,12 @@ export const TaskItem = React.memo(function TaskItem({
             // Wednesday is for its date to *be* Wednesday. So an earlier pick
             // moves `dueDate` honestly and hands the grid its own anchor to
             // keep stepping from.
-            const anchored = date != null && isDateAnchored(task) && task.dueDate != null;
+            // The push/pull/reschedule rule itself lives in taskMoves, the leaf
+            // that exists so it cannot drift from `isDateAnchored` beside it.
+            // It was inline here until the away-date shift became its third
+            // caller; the comments explaining the three arms moved with it.
+            const baseUpdates = { ...scheduleMoveUpdates(task, date), timeSegments: segs };
             const picked = date ? getTaskDayStart(date) : null;
-            const stored = task.dueDate ? getTaskDayStart(new Date(task.dueDate)) : null;
-            const anchoredPush = anchored && picked !== null && stored !== null && picked > stored;
-            const anchoredPull = anchored && picked !== null && stored !== null && picked < stored;
-            const baseUpdates =
-              anchoredPush && date
-                ? { deferUntil: date.toISOString(), timeSegments: segs }
-                : anchoredPull && date
-                  ? {
-                      dueDate: date.toISOString(),
-                      // Whatever the grid was already measured from, or the
-                      // date being moved off. Only ever set once: pulling a
-                      // second time must not re-anchor the schedule onto the
-                      // first pull's day, which would rotate it by the back
-                      // door — the very thing this exists to stop.
-                      recurrenceAnchorDate: task.recurrenceAnchorDate ?? task.dueDate,
-                      deferUntil: null,
-                      timeSegments: segs,
-                    }
-                // Clearing the defer is what makes the picked date the one that
-                // takes effect: a task already pushed out is hidden until the
-                // old deferUntil, and writing only dueDate would leave it
-                // sitting behind a date the user has just replaced. Writing
-                // dueDate with no anchor beside it is a deliberate schedule
-                // edit, and updateTask clears the grid's anchor on exactly that.
-                : { dueDate: date ? date.toISOString() : null, deferUntil: null, timeSegments: segs };
             // Pinning is for today's block specifically — moving the task off
             // the day it was sitting on means it no longer belongs there, so a
             // real reschedule (not just a time-of-day tweak on the same day)
