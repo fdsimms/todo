@@ -343,6 +343,14 @@ export function RecipeCreateSheet({
     return recipes.find(r => r.nameKey === key) ?? null;
   }, [cleaned, recipes]);
 
+  // A link already imported once is the same "already have this" case as a
+  // repeated name, just keyed on sourceUrl instead of nameKey.
+  const urlDuplicate = useMemo(() => {
+    const url = input.page?.url;
+    if (!url) return null;
+    return recipes.find(r => r.sourceUrl === url) ?? null;
+  }, [input.page, recipes]);
+
   const toggleIn = (
     setter: React.Dispatch<React.SetStateAction<Set<number>>>,
   ) => (index: number) => setter(prev => {
@@ -365,7 +373,7 @@ export function RecipeCreateSheet({
   };
 
   const handleCreate = () => {
-    if (!extracted || !cleaned || duplicate) return;
+    if (!extracted || !cleaned || duplicate || urlDuplicate) return;
     const recipe = addRecipe(cleaned);
     if (!recipe) {
       // The store refused a name the live check said was free — the box changed
@@ -467,7 +475,7 @@ export function RecipeCreateSheet({
     onCreated(recipe.id, page?.url ?? null);
   };
 
-  const canCreate = !loading && !!extracted && !!cleaned && !duplicate;
+  const canCreate = !loading && !!extracted && !!cleaned && !duplicate && !urlDuplicate;
 
   // Any progress past a blank input screen — extracted content, a typed
   // name, or unrun paste/link/photo input — is real work a swipe-down would
@@ -668,6 +676,25 @@ export function RecipeCreateSheet({
                 }}
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${duplicate.name}`}
+              >
+                <Text style={styles.dupeAction}>Open it</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          {!duplicate && !!urlDuplicate && (
+            <View style={styles.dupeRow}>
+              <Text style={styles.dupeText} numberOfLines={2}>
+                You already imported this link as “{urlDuplicate.name}”.
+              </Text>
+              <TouchableOpacity
+                activeOpacity={interaction.activeOpacity}
+                onPress={() => {
+                  haptics.tap();
+                  onClose();
+                  onCreated(urlDuplicate.id, input.page?.url ?? null);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${urlDuplicate.name}`}
               >
                 <Text style={styles.dupeAction}>Open it</Text>
               </TouchableOpacity>
