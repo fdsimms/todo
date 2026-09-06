@@ -182,6 +182,8 @@ interface RecipeStore {
   bulkDeleteRecipes: (ids: string[]) => void;
   /** Sets vote on every named recipe at once — the bulk form of setVote. */
   bulkSetVote: (ids: string[], vote: RecipeVote | null) => void;
+  /** Sets meal type on every named recipe at once — the bulk form of setMealType. */
+  bulkSetMealType: (ids: string[], mealType: RecipeMealType | null) => void;
 
   /**
    * Bumps cookCount and stamps lastCookedAt. Called once per "Mark cooked" on
@@ -702,6 +704,16 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     const toUpdate = get().recipes.filter(r => idSet.has(r.id) && r.vote !== vote);
     if (toUpdate.length === 0) return;
     const updated = toUpdate.map(r => ({ ...r, vote }));
+    updated.forEach(dbUpdateRecipe);
+    const byId = new Map(updated.map(r => [r.id, r]));
+    set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
+  },
+
+  bulkSetMealType(ids, mealType) {
+    const idSet = new Set(ids);
+    const toUpdate = get().recipes.filter(r => idSet.has(r.id) && r.mealType !== mealType);
+    if (toUpdate.length === 0) return;
+    const updated = toUpdate.map(r => ({ ...r, mealType }));
     updated.forEach(dbUpdateRecipe);
     const byId = new Map(updated.map(r => [r.id, r]));
     set(s => ({ recipes: s.recipes.map(r => byId.get(r.id) ?? r) }));
