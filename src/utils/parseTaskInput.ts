@@ -254,6 +254,9 @@ function matchRecurrenceCore(text: string, now: Date, segments: TimeOfDay[]): Pa
   }
 
   if (/^every weekdays?$/.test(text)) return recurrence('weekly', 1, [1, 2, 3, 4, 5], segments, now);
+  if (/^every weeknights?$/.test(text)) {
+    return recurrence('weekly', 1, [1, 2, 3, 4, 5], [DAY_PART_SEGMENT.night], now);
+  }
   if (/^every weekends?$/.test(text)) return recurrence('weekly', 1, [0, 6], segments, now);
 
   // Interval synonyms.

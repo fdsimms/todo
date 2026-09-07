@@ -636,6 +636,16 @@ export function GeneratedTasksSection() {
               onConfirm={confirmTime}
             />
           )}
+          <View style={styles.sep} />
+          <SettingsRow
+            entryId="mealPlanNudgeIgnoresVacation"
+            icon="airplane-outline"
+            iconColor={s.mealPlanNudgeIgnoresVacation ? colors.accent : undefined}
+            label="Also during vacation"
+            hint="Vacation mode normally pauses this along with the app's other automatic tasks. Turn this on to keep getting the weekly nudge anyway."
+            toggle={s.mealPlanNudgeIgnoresVacation}
+            onPress={() => s.setMealPlanNudgeIgnoresVacation(!s.mealPlanNudgeIgnoresVacation)}
+          />
         </>
       );
     }

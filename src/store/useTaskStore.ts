@@ -4632,7 +4632,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Through the registry rather than reading vacationMode directly: this was
     // the only generator of nineteen that answered this question, and one rule
     // with one exception is how the other eighteen came to have no answer.
-    if (generatorPausedForVacation('mealPlanNudge', settings.vacationMode)) return;
+    // mealPlanNudgeIgnoresVacation is checked ahead of it rather than folded
+    // into the registry: some people plan meals *for* the trip, and this is
+    // the one generator where "hide work from me" isn't what vacation mode
+    // should mean for everybody.
+    if (!settings.mealPlanNudgeIgnoresVacation && generatorPausedForVacation('mealPlanNudge', settings.vacationMode)) return;
 
     const due = dueMealPlanNudge(
       new Date(),

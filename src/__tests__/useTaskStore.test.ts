@@ -4958,6 +4958,7 @@ describe('checkMealPlanNudge', () => {
     vacationMode: false,
     kitchenEnabled: true,
     mealPlanNudgeEnabled: true,
+    mealPlanNudgeIgnoresVacation: false,
     mealPlanNudgeWeekday: 0,
     mealPlanNudgeTime: '09:00',
     mealPlanNudgeLastFiredWeekKey: null as string | null,
@@ -5036,6 +5037,17 @@ describe('checkMealPlanNudge', () => {
 
     expect(useTaskStore.getState().tasks).toHaveLength(0);
     expect(s.setMealPlanNudgeLastFiredWeekKey).not.toHaveBeenCalled();
+  });
+
+  it('still fires during vacation mode when told to ignore it', () => {
+    jest.setSystemTime(new Date(2025, 7, 3, 9, 0, 0));
+    const s = settings({ vacationMode: true, mealPlanNudgeIgnoresVacation: true });
+    useSettingsStore.getState.mockReturnValue(s);
+    useTaskStore.setState({ tasks: [] });
+
+    useTaskStore.getState().checkMealPlanNudge();
+
+    expect(useTaskStore.getState().tasks).toHaveLength(7);
   });
 
   it('does nothing before the configured day/time arrives', () => {
