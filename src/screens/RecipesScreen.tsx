@@ -15,6 +15,7 @@ import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe, RecipeMealType } from '../types';
+import { RECIPE_MEAL_TYPES, RECIPE_MEAL_TYPE_LABELS } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRowSelection } from '../hooks/useRowSelection';
@@ -158,6 +159,7 @@ export function RecipesScreen() {
   const addRecipe = useRecipeStore(s => s.addRecipe);
   const bulkDeleteRecipes = useRecipeStore(s => s.bulkDeleteRecipes);
   const bulkSetVote = useRecipeStore(s => s.bulkSetVote);
+  const bulkSetMealType = useRecipeStore(s => s.bulkSetMealType);
   const setMealType = useRecipeStore(s => s.setMealType);
   const anthropicApiKey = useSettingsStore(s => s.anthropicApiKey);
   const recipeSort = useSettingsStore(s => s.recipeSortOption);
@@ -476,6 +478,18 @@ export function RecipesScreen() {
     animateLayout();
     bulkSetVote(Array.from(selectedIds), next ? 'loved' : null);
     haptics[next ? 'success' : 'tap']();
+    exitSelection();
+  };
+
+  const mealTypeLabelToType = useMemo(
+    () => new Map(RECIPE_MEAL_TYPES.map(t => [RECIPE_MEAL_TYPE_LABELS[t], t])),
+    [],
+  );
+
+  const handleBulkSetMealType = (label: string | null) => {
+    animateLayout();
+    bulkSetMealType(Array.from(selectedIds), label === null ? null : mealTypeLabelToType.get(label) ?? null);
+    haptics.tap();
     exitSelection();
   };
 
@@ -849,6 +863,12 @@ export function RecipesScreen() {
         <ListBulkBar
           selectedCount={selectedIds.size}
           totalCount={visible.length}
+          category={{
+            title: 'Move to Meal Type',
+            options: RECIPE_MEAL_TYPES.map(t => RECIPE_MEAL_TYPE_LABELS[t]),
+            onSet: handleBulkSetMealType,
+            allowNone: true,
+          }}
           actions={[
             {
               key: 'love',
