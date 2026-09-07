@@ -337,6 +337,14 @@ describe('parseTaskInput — recurrence', () => {
     expectDay(we.schedule.dueDate, 2025, 5, 14); // Saturday
   });
 
+  it('parses "every weeknight" as weekdays + evening segment', () => {
+    const wn = parseTaskInput('take out trash every weeknight', NOW)!;
+    expect(wn.schedule.recurrenceType).toBe('weekly');
+    expect(wn.schedule.recurrenceDays).toEqual([1, 2, 3, 4, 5]);
+    expect(wn.schedule.timeSegments).toEqual(['evening']);
+    expectDay(wn.schedule.dueDate, 2025, 5, 10);
+  });
+
   it('maps "every morning" to daily + morning segment', () => {
     const r = parseTaskInput('meditate every morning', NOW)!;
     expect(r.schedule.recurrenceType).toBe('daily');
