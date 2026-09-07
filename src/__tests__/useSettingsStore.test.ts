@@ -831,6 +831,12 @@ describe('meal plan nudge settings', () => {
     expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeEnabled', 'true');
   });
 
+  it('stores and persists mealPlanNudgeIgnoresVacation', () => {
+    useSettingsStore.getState().setMealPlanNudgeIgnoresVacation(true);
+    expect(useSettingsStore.getState().mealPlanNudgeIgnoresVacation).toBe(true);
+    expect(dbSetSetting).toHaveBeenCalledWith('mealPlanNudgeIgnoresVacation', 'true');
+  });
+
   it('stores and persists mealPlanNudgeWeekday', () => {
     useSettingsStore.getState().setMealPlanNudgeWeekday(5);
     expect(useSettingsStore.getState().mealPlanNudgeWeekday).toBe(5);

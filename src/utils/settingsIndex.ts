@@ -592,6 +592,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['birthday', 'gift', 'present', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'mealPlanNudgeTime', groupId: 'generated', label: 'Nudge me on', section: 'Plan meals for the week',
     keywords: ['meal plan', 'weekday', 'day', 'time', 'when'], kitchen: true },
+  { id: 'mealPlanNudgeIgnoresVacation', groupId: 'generated', label: 'Also during vacation', section: 'Plan meals for the week',
+    keywords: ['meal plan', 'away', 'trip', 'pause'], kitchen: true },
   { id: 'calendarReviewTimeSegment', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow\'s calendar',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when'] },
   { id: 'moodLogTimeSegment', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
