@@ -586,6 +586,7 @@ export function getReminderOffsetDate(dueDate: Date, offsetDays: number): Date {
  * always "before": there's no reading of "remind me after it's due".
  */
 export function describeReminderOffset(offsetDays: number): string {
+  if (offsetDays === 0) return 'On due date';
   const unit = offsetDays === 1 ? 'day' : 'days';
   return `${offsetDays} ${unit} before due`;
 }

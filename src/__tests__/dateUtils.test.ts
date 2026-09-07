@@ -1312,6 +1312,12 @@ describe('getReminderOffsetDate', () => {
     expect(result.getMonth()).toBe(0);
     expect(result.getDate()).toBe(28);
   });
+
+  it('lands on the due date itself with a zero offset', () => {
+    const result = getReminderOffsetDate(new Date(2026, 0, 20), 0);
+    expect(result.getMonth()).toBe(0);
+    expect(result.getDate()).toBe(20);
+  });
 });
 
 describe('describeReminderOffset', () => {
@@ -1321,6 +1327,10 @@ describe('describeReminderOffset', () => {
 
   it('singularises one day', () => {
     expect(describeReminderOffset(1)).toBe('1 day before due');
+  });
+
+  it('describes a zero offset as the due date itself', () => {
+    expect(describeReminderOffset(0)).toBe('On due date');
   });
 });
 
