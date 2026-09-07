@@ -438,6 +438,18 @@ export function seedDemoData(): void {
   // in and closes out in without it counting as a miss.
   updateTask(eyes.id, { progressCount: 7 });
 
+  // A recurring task still sitting on yesterday's date, unresolved — the one
+  // row that makes the morning check-in sheet actually have something to
+  // show. Without this the feature is invisible in the demo: nothing else
+  // seeded above is both recurring and left dangling on a past day.
+  addTask({
+    title: 'Floss',
+    category: 'Health',
+    dueDate: addDays(today, -1).toISOString(),
+    recurrenceType: 'daily',
+    recurrenceInterval: 1,
+  });
+
   // The third kind of daily target: no time-of-day expectation at all, so the
   // hide-while-on-pace behavior the other two rely on is exactly what this one
   // opts out of. Seeded on pace (unlike water/eyes) — the point being

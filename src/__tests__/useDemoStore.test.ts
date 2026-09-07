@@ -20,6 +20,7 @@ import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { useProjectStore, projectDecisions, projectProgress } from '../store/useProjectStore';
 import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { isHeldBack, isQuotaOnPace, isTaskVisible } from '../utils/visibilityUtils';
+import { isMorningCheckInCandidate } from '../utils/morningCheckIn';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
@@ -570,6 +571,24 @@ describe('demo mode', () => {
     const behind = s.tasks.find(t => t.title === 'Morning standup');
     expect(isStreakAtRecord(behind!)).toBe(false);
     expect(bestStreakOf(behind!)).toBeGreaterThan(behind!.streakCount);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
+  // Without a recurring task left dangling on a past day, the morning
+  // check-in sheet has nothing to show and the demo reads as not having the
+  // feature at all.
+  it('seeds a recurring task still sitting on yesterday, for the morning check-in to pick up', () => {
+    useDemoStore.getState().enterDemoMode();
+    const s = useTaskStore.getState();
+
+    const floss = s.tasks.find(t => t.title === 'Floss');
+    expect(floss).toBeDefined();
+    expect(floss?.recurrenceType).toBe('daily');
+    expect(floss?.completed).toBe(false);
+    expect(
+      isMorningCheckInCandidate(floss!, useSettingsStore.getState().dayResetTime)
+    ).toBe(true);
 
     useDemoStore.getState().exitDemoMode();
   });
