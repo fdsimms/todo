@@ -36,7 +36,8 @@ interface Props {
  * there's no way to clear it without refocusing — hence the custom button
  * below runs on every platform (not just the non-iOS ones without a native
  * clear button at all) rather than being gated to `Platform.OS !== 'ios'`.
- * The two don't visually collide: the native one only appears mid-edit.
+ * The native one is left off the `TextInput` itself so the two don't stack
+ * while the field is focused with text in it.
  *
  * Shared so the three copies of it (Search, Logbook, quick search) can't drift
  * — and so the `height`/`padding` note below only has to be right once.
@@ -64,7 +65,6 @@ export const SearchField = forwardRef<TextInput, Props>(function SearchField(
         autoCapitalize="none"
         returnKeyType="search"
         onSubmitEditing={onSubmitEditing}
-        clearButtonMode="while-editing"
         accessibilityLabel={accessibilityLabel}
       />
       {value.length > 0 && (
