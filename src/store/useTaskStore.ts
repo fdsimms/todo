@@ -1520,7 +1520,7 @@ interface TaskStore extends UndoHistoryActions {
    * exclusive with `missed` in practice (nothing passes both); `missed`
    * still wins if it somehow were, since a miss is the more specific claim.
    */
-  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null; neutral?: boolean }) => void;
+  completeTask: (id: string, options?: { missed?: boolean; deliverableValue?: string | null; neutral?: boolean; completedAt?: string }) => void;
   uncompleteTask: (id: string) => void;
   /**
    * Writes (or clears) the answer on an already-completed task — the Logbook's
@@ -3018,6 +3018,13 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     }
 
     const now = new Date();
+    // The morning check-in is the one caller that completes a task after the
+    // fact — "yes, I did this last night" — and wants the record to say so
+    // rather than reading as done at whatever moment the user got around to
+    // answering. Everything else this function writes (the successor's
+    // createdAt/seenAt, the streak's getCurrentDayStart() calls) stays keyed
+    // to the real moment; only the completed row's own timestamps move.
+    const completedAt = options?.completedAt ? new Date(options.completedAt) : now;
     const { dayResetTime } = useSettingsStore.getState();
 
     const recurs = task.recurrenceType !== 'none';
@@ -3149,10 +3156,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     const completed: Task = {
       ...task,
       completed: true,
-      completedAt: now.toISOString(),
+      completedAt: completedAt.toISOString(),
       // What makes this row a miss rather than a completion. It is set
       // alongside `completed`, never instead of it — see Task.missedAt.
-      missedAt: missed ? now.toISOString() : task.missedAt,
+      missedAt: missed ? completedAt.toISOString() : task.missedAt,
       // Pin is cleared once the completion hold below expires, not
       // immediately — otherwise a pinned row would vanish from the Pinned
       // section instantly instead of getting the same fade-out grace period

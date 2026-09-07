@@ -90,6 +90,7 @@ import { useSettingsStore, type MealsOnToday } from '../store/useSettingsStore';
 import { useShallow } from 'zustand/react/shallow';
 import { MAX_SUGGESTED_PINS } from '../utils/pinSuggest';
 import { SuggestedPinsSheet } from '../components/SuggestedPinsSheet';
+import { MorningCheckInSheet } from '../components/MorningCheckInSheet';
 import { TaskItem } from '../components/TaskItem';
 import { TaskGroupHeader } from '../components/TaskGroupHeader';
 import { TaskGroupBody } from '../components/TaskGroupBody';
@@ -139,6 +140,7 @@ import { useMealPlanStore } from '../store/useMealPlanStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { selectTodayMealEntries, recipeIndex } from '../utils/mealPlan';
 import { getDayStart, getLogicalDayKey } from '../utils/dateUtils';
+import { morningCheckInTasks } from '../utils/morningCheckIn';
 import { addDays } from 'date-fns/addDays';
 import { useCalendarStore } from '../store/useCalendarStore';
 import { useHealthStore } from '../store/useHealthStore';
@@ -640,6 +642,7 @@ export function TodayScreen() {
   const [deloadVisible, setDeloadVisible] = useState(false);
   const [lookAheadVisible, setLookAheadVisible] = useState(false);
   const [suggestedPinsVisible, setSuggestedPinsVisible] = useState(false);
+  const [morningCheckInVisible, setMorningCheckInVisible] = useState(false);
   const [pullVisible, setPullVisible] = useState(false);
   // undefined = unscoped (opened from the "…" menu's "Pull from projects");
   // set = opened from the quiet-project nudge, restricted to those projects.
@@ -1292,6 +1295,33 @@ export function TodayScreen() {
   };
 
   const dayResetTime = useSettingsStore(s => s.dayResetTime);
+
+  // The morning check-in: recurring tasks whose day already passed with
+  // nothing said about them. Shown once per logical day, on this screen's
+  // first mount rather than gated behind focus/foreground — reopening the
+  // app later the same day shouldn't ask twice, which is exactly what
+  // morningCheckInLastDayKey is for (same "shown, not answered" reading as
+  // moodLogLastDayKey/pantryReviewLastDayKey). The candidate list itself
+  // stays live off `allTasks` so answering a row inside the sheet shrinks it
+  // without needing its own refresh.
+  const morningCheckInLastDayKey = useSettingsStore(s => s.morningCheckInLastDayKey);
+  const setMorningCheckInLastDayKey = useSettingsStore(s => s.setMorningCheckInLastDayKey);
+  const morningCheckInCandidates = useMemo(
+    () => morningCheckInTasks(allTasks, dayResetTime),
+    [allTasks, dayResetTime]
+  );
+  useEffect(() => {
+    const todayKey = getLogicalDayKey(new Date(), dayResetTime);
+    if (morningCheckInLastDayKey === todayKey) return;
+    if (morningCheckInCandidates.length === 0) return;
+    setMorningCheckInVisible(true);
+    setMorningCheckInLastDayKey(todayKey);
+    // Only the day-key gate belongs here — re-running this effect as tasks
+    // change (e.g. while the sheet is open answering rows) must not reopen
+    // it, so the candidate list and the visible flag are deliberately left
+    // out of the dependency array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // The one place the mood log reaches back into Today — one line under
   // "Lighten today", and only while a run of low days is actually going. See
@@ -4260,6 +4290,12 @@ export function TodayScreen() {
         <LookAheadSheet
           visible={lookAheadVisible}
           onClose={() => setLookAheadVisible(false)}
+        />
+
+        <MorningCheckInSheet
+          visible={morningCheckInVisible}
+          onClose={() => setMorningCheckInVisible(false)}
+          tasks={morningCheckInCandidates}
         />
 
         <SuggestedPinsSheet
