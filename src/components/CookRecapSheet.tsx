@@ -299,7 +299,7 @@ export function CookRecapSheet({
         >
           <View style={styles.header}>
             <SheetHeaderButton label="Skip" role="cancel" onPress={dismiss} minWidth={80} />
-            <Text style={styles.headerTitle} numberOfLines={1}>Cooked it</Text>
+            <Text style={styles.headerTitle} numberOfLines={1}>Meal eaten</Text>
             <SheetHeaderButton
               label={ticked.size > 0 ? `Mark ${ticked.size}` : 'Done'}
               onPress={handleDone}
