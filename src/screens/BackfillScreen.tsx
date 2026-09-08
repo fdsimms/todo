@@ -102,6 +102,7 @@ const PERSON_FIELD_ICONS: Record<PersonBackfillFieldId, keyof typeof Ionicons.gl
   birthday: 'gift-outline',
   cadence: 'notifications-outline',
   askAbout: 'chatbubble-ellipses-outline',
+  location: 'airplane-outline',
 };
 
 // Neither item field is a plain toggle either — `variety` opens a name
@@ -279,6 +280,7 @@ export function BackfillScreen() {
   // both invites a value from one entity being read as the other's.
   const [personCadenceDraft, setPersonCadenceDraft] = useState<CadenceParts>({ count: null, unit: 'days' });
   const [askAboutText, setAskAboutText] = useState('');
+  const [locationText, setLocationText] = useState('');
   const [birthdayPickerOpen, setBirthdayPickerOpen] = useState(false);
   // Whether the cadence about to be set should also go to the current
   // person's groupmates — off by default and reset per card, same as every
@@ -405,6 +407,7 @@ export function BackfillScreen() {
     if (!currentPerson) return;
     setPersonCadenceDraft(toCadenceParts(currentPerson.cadenceDays));
     setAskAboutText(currentPerson.askAbout);
+    setLocationText(currentPerson.location ?? '');
   }, [currentPerson?.id]);
 
   // Same default RemindMePicker's own caller (TaskEditor) opens with: 9am on
@@ -801,6 +804,24 @@ export function BackfillScreen() {
     const personId = currentPerson.id;
     const before = { askAbout: currentPerson.askAbout };
     updatePerson(personId, { askAbout: text });
+    logSession({
+      itemId: personId,
+      title: displayNameOf(currentPerson),
+      valueText: text,
+      undo: () => updatePerson(personId, before),
+    });
+  };
+
+  const applyLocation = () => {
+    const text = locationText.trim();
+    if (!currentPerson || !text) return;
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    const personId = currentPerson.id;
+    const before = { location: currentPerson.location };
+    updatePerson(personId, { location: text });
     logSession({
       itemId: personId,
       title: displayNameOf(currentPerson),
@@ -1433,6 +1454,7 @@ export function BackfillScreen() {
     const cadenceDays = fromCadenceParts(personCadenceDraft);
     const cadenceReady = personCadenceDraft.count !== null;
     const askAboutReady = askAboutText.trim().length > 0;
+    const locationReady = locationText.trim().length > 0;
 
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -1639,6 +1661,33 @@ export function BackfillScreen() {
                   accessibilityLabel={`Save something to ask ${displayNameOf(currentPerson)} about`}
                 >
                   <Ionicons name="chatbubble-ellipses" size={iconSize.md} color={colors.onAccent} />
+                  <Text style={styles.toggleButtonText}>Save</Text>
+                </PressableScale>
+              </View>
+            )}
+
+            {active.id === 'location' && (
+              <View style={styles.askAboutRow}>
+                <TextInput
+                  style={styles.askAboutInput}
+                  value={locationText}
+                  onChangeText={setLocationText}
+                  placeholder="e.g. Austin, TX"
+                  placeholderTextColor={colors.textTertiary}
+                  autoCapitalize="words"
+                  returnKeyType="done"
+                  onSubmitEditing={applyLocation}
+                  accessibilityLabel={`Where ${displayNameOf(currentPerson)} lives`}
+                />
+                <PressableScale
+                  style={[styles.toggleButton, { backgroundColor: colors.accentFill }, !locationReady && styles.toggleButtonIdle]}
+                  onPress={applyLocation}
+                  disabled={!locationReady}
+                  accessibilityRole="button"
+                  accessibilityState={{ disabled: !locationReady }}
+                  accessibilityLabel={`Save where ${displayNameOf(currentPerson)} lives`}
+                >
+                  <Ionicons name="airplane" size={iconSize.md} color={colors.onAccent} />
                   <Text style={styles.toggleButtonText}>Save</Text>
                 </PressableScale>
               </View>
