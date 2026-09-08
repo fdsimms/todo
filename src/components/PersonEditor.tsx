@@ -93,6 +93,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
   const [showBirthdayPicker, setShowBirthdayPicker] = useState(false);
   const [cadenceDays, setCadenceDays] = useState(0);
   const [askAbout, setAskAbout] = useState('');
+  const [location, setLocation] = useState('');
   const [showGroupEditor, setShowGroupEditor] = useState(false);
 
   const group = usePersonGroupStore(s => (person?.groupId ? s.groups.find(g => g.id === person.groupId) ?? null : null));
@@ -122,6 +123,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
     setLinkUrl(person.linkUrl ?? '');
     setCadenceDays(person.cadenceDays);
     setAskAbout(person.askAbout);
+    setLocation(person.location ?? '');
     setShowBirthdayPicker(false);
   }, [person, visible]);
 
@@ -155,6 +157,7 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
       // from the first time. See Person.cadenceSetAt.
       cadenceSetAt: nudgeOptIn ? (person.nudgeOptIn ? person.cadenceSetAt : new Date().toISOString()) : null,
       askAbout: askAbout.trim(),
+      location: location.trim() || null,
     });
     onClose();
   };
@@ -388,6 +391,24 @@ export function PersonEditor({ visible, person, isNew, onClose }: Props) {
           onPress={() => setShowGroupEditor(true)}
         />
       </View>
+
+      <Text style={styles.groupLabel}>LOCATION</Text>
+      <View style={styles.sectionCard}>
+        <View style={styles.fieldRow}>
+          <Text style={styles.fieldLabel}>Location</Text>
+          <TextInput
+            style={styles.fieldInput}
+            value={location}
+            onChangeText={setLocation}
+            placeholder="e.g. Austin, TX"
+            placeholderTextColor={colors.textTertiary}
+            autoCapitalize="words"
+          />
+        </View>
+      </View>
+      <Text style={styles.sectionFooter}>
+        Where they live. Used to find them when you're planning a trip somewhere.
+      </Text>
 
       <Text style={styles.groupLabel}>GETTING HOLD OF THEM</Text>
       <View style={styles.sectionCard}>

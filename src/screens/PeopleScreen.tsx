@@ -15,6 +15,7 @@ import { ReorderableList } from '../components/ReorderableList';
 import { PersonEditor } from '../components/PersonEditor';
 import { QuickAddNameSheet } from '../components/QuickAddNameSheet';
 import { ContactPickerSheet } from '../components/ContactPickerSheet';
+import { TripPlannerSheet } from '../components/TripPlannerSheet';
 import { Fab, FAB_SIZE } from '../components/Fab';
 import { SelectionDot } from '../components/SelectionDot';
 import { SimpleBulkBar } from '../components/SimpleBulkBar';
@@ -30,6 +31,7 @@ import {
   nextBirthday,
 } from '../utils/birthdayTasks';
 import { getCurrentDayStart } from '../utils/dateUtils';
+import { anyoneHasLocation } from '../utils/peopleLocations';
 
 /**
  * The people list.
@@ -71,6 +73,7 @@ export function PeopleScreen() {
   const [newPerson, setNewPerson] = useState<Person | null>(null);
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [contactPickerVisible, setContactPickerVisible] = useState(false);
+  const [tripPlannerVisible, setTripPlannerVisible] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
   // Off by default: the hand-dragged order is the one ranking this feature is
   // allowed to have (see the header comment and docs/arch/people.md, rule 3).
@@ -181,6 +184,13 @@ export function PeopleScreen() {
             active: alphabetical,
             accessibilityLabel: alphabetical ? 'Sort by hand order' : 'Sort alphabetically',
           },
+          // Only once somebody actually has a location on file — a row that
+          // opens onto an empty search is a feature with nothing to offer yet.
+          ...(showArchived || !anyoneHasLocation(people) ? [] : [{
+            icon: 'airplane-outline' as const,
+            onPress: () => { haptics.tap(); setTripPlannerVisible(true); },
+            accessibilityLabel: 'Plan a trip',
+          }]),
           {
             icon: 'archive-outline',
             onPress: () => { haptics.tap(); animateLayout(); setShowArchived(v => !v); },
@@ -339,6 +349,16 @@ export function PeopleScreen() {
         person={newPerson}
         isNew
         onClose={() => setNewPerson(null)}
+      />
+
+      <TripPlannerSheet
+        visible={tripPlannerVisible}
+        people={people}
+        onPickPerson={personId => {
+          setTripPlannerVisible(false);
+          navigation.navigate('PersonDetail', { personId });
+        }}
+        onClose={() => setTripPlannerVisible(false)}
       />
     </View>
   );

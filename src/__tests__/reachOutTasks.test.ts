@@ -26,7 +26,7 @@ const person = (o: Partial<Person> = {}): Person => ({
   birthdayMonth: null, birthdayDay: null, birthYear: null, birthdayTaskOptOut: false, birthdayGiftTaskOptOut: false,
   phoneNumber: null, email: null, linkUrl: null,
   cadenceDays: 30, nudgeOptIn: true, cadenceSetAt: daysAgo(45).toISOString(), reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
-  backfillDismissedFields: [], groupId: null,
+  backfillDismissedFields: [], groupId: null, location: null,
   ...o,
 });
 

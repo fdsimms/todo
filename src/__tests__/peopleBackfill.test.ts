@@ -29,6 +29,7 @@ const basePerson: Person = {
   askAbout: '',
   backfillDismissedFields: [],
   groupId: null,
+  location: null,
 };
 
 describe('isPersonFieldMissing', () => {
@@ -54,6 +55,12 @@ describe('isPersonFieldMissing', () => {
     expect(isPersonFieldMissing(basePerson, 'askAbout')).toBe(true);
     expect(isPersonFieldMissing({ ...basePerson, askAbout: '   ' }, 'askAbout')).toBe(true);
     expect(isPersonFieldMissing({ ...basePerson, askAbout: 'the new job' }, 'askAbout')).toBe(false);
+  });
+
+  it('treats a null or blank location as missing', () => {
+    expect(isPersonFieldMissing(basePerson, 'location')).toBe(true);
+    expect(isPersonFieldMissing({ ...basePerson, location: '   ' }, 'location')).toBe(true);
+    expect(isPersonFieldMissing({ ...basePerson, location: 'Austin, TX' }, 'location')).toBe(false);
   });
 });
 
@@ -117,7 +124,7 @@ describe('personBackfillFieldCounts', () => {
       { ...basePerson, id: 'b', nudgeOptIn: true },
       { ...basePerson, id: 'c', archived: true },
     ];
-    expect(personBackfillFieldCounts(people)).toEqual({ birthday: 1, cadence: 1, askAbout: 2 });
+    expect(personBackfillFieldCounts(people)).toEqual({ birthday: 1, cadence: 1, askAbout: 2, location: 2 });
   });
 
   it('covers every declared backfillable field', () => {
@@ -129,7 +136,7 @@ describe('personBackfillFieldCounts', () => {
 
   it('does not count a person dismissed for that field', () => {
     const person = { ...basePerson, backfillDismissedFields: ['birthday'] };
-    expect(personBackfillFieldCounts([person])).toEqual({ birthday: 0, cadence: 1, askAbout: 1 });
+    expect(personBackfillFieldCounts([person])).toEqual({ birthday: 0, cadence: 1, askAbout: 1, location: 1 });
   });
 });
 
