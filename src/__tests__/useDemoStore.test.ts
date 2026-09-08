@@ -1312,6 +1312,10 @@ describe('demo seed — people', () => {
     expect(usePersonStore.getState().people.some(p => p.nickname !== '')).toBe(true);
   });
 
+  it('seeds a location, which is otherwise invisible', () => {
+    expect(usePersonStore.getState().people.some(p => p.location !== null)).toBe(true);
+  });
+
   // Off is the default the whole feature rests on, so the seed has to show it
   // as the default rather than as a thing nobody uses: most people carry no
   // cadence at all, and exactly one is opted in so the generator is visible.

@@ -29,6 +29,7 @@ const basePerson: Person = {
   askAbout: '',
   backfillDismissedFields: [],
   groupId: null,
+  location: null,
 };
 
 describe('isPersonFieldMissing', () => {

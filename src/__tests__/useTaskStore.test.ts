@@ -4431,6 +4431,7 @@ describe('checkReachOutTasks', () => {
     reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
     backfillDismissedFields: [],
     groupId: null,
+    location: null,
     ...overrides,
   });
 
@@ -8675,7 +8676,7 @@ describe('pinnedTasks', () => {
         phoneNumber: null, email: null, linkUrl: null,
         cadenceDays: 30, nudgeOptIn: false, cadenceSetAt: null,
         reachOutDeclinedAt: null, reachOutOfferDeclinedAt: null, askAbout: '',
-        backfillDismissedFields: [], groupId: null,
+        backfillDismissedFields: [], groupId: null, location: null,
       }],
       initialized: true,
     });

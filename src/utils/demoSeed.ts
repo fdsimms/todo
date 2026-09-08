@@ -1337,6 +1337,7 @@ function seedPeople(today: Date): void {
     birthYear: bdayNear.getFullYear() - 34,
     phoneNumber: '555 0148',
     notes: 'Climbs on Wednesdays. Allergic to shellfish.',
+    location: 'Denver, CO',
   });
 
   const ansley = createPerson('Ansley');
@@ -1370,6 +1371,7 @@ function seedPeople(today: Date): void {
     nudgeOptIn: true,
     askAbout: 'her garden',
     phoneNumber: '555 0106',
+    location: 'Denver, CO',
   });
 
   // Tasks that name people, which is what a shared history is made of (#2045).

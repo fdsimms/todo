@@ -1349,6 +1349,8 @@ export function initDatabase(): void {
     // belongs to. See Project.awayListId.
     'ALTER TABLE projects ADD COLUMN away_list_id TEXT',
     'ALTER TABLE projects ADD COLUMN away_list_declined_for TEXT',
+    // Null on every existing row. See Person.location.
+    'ALTER TABLE people ADD COLUMN location TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4935,6 +4937,7 @@ function rowToPerson(row: Record<string, unknown>): Person {
     askAbout: (row.ask_about as string) ?? '',
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
     groupId: (row.group_id as string) ?? null,
+    location: (row.location as string) ?? null,
   };
 }
 
@@ -4950,8 +4953,8 @@ export function dbInsertPerson(person: Person): void {
       birthday_month, birthday_day, birth_year, birthday_task_opt_out, birthday_gift_task_opt_out,
       phone_number, email, link_url, cadence_days, nudge_opt_in, cadence_set_at, reach_out_declined_at,
       reach_out_offer_declined_at, ask_about,
-      backfill_dismissed_fields, group_id
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      backfill_dismissed_fields, group_id, location
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       person.id, person.name, person.nickname, person.notes, person.sortOrder,
       person.archived ? 1 : 0, person.archivedAt, person.createdAt,
@@ -4963,6 +4966,7 @@ export function dbInsertPerson(person: Person): void {
       person.reachOutOfferDeclinedAt, person.askAbout,
       JSON.stringify(person.backfillDismissedFields),
       person.groupId,
+      person.location,
     ]
   );
 }
@@ -4974,7 +4978,7 @@ export function dbUpdatePerson(person: Person): void {
       birthday_month=?, birthday_day=?, birth_year=?, birthday_task_opt_out=?, birthday_gift_task_opt_out=?,
       phone_number=?, email=?, link_url=?, cadence_days=?, nudge_opt_in=?, cadence_set_at=?, reach_out_declined_at=?,
       reach_out_offer_declined_at=?, ask_about=?,
-      backfill_dismissed_fields=?, group_id=?
+      backfill_dismissed_fields=?, group_id=?, location=?
     WHERE id=?`,
     [
       person.name, person.nickname, person.notes, person.sortOrder,
@@ -4987,6 +4991,7 @@ export function dbUpdatePerson(person: Person): void {
       person.reachOutOfferDeclinedAt, person.askAbout,
       JSON.stringify(person.backfillDismissedFields),
       person.groupId,
+      person.location,
       person.id,
     ]
   );

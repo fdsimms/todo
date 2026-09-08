@@ -965,6 +965,15 @@ export interface Person {
    * one group at a time.
    */
   groupId: string | null;
+  /**
+   * Where this person lives — free text ("Austin, TX"), typed once and read
+   * back, never geocoded or validated against a real place. Same shape as
+   * `Project.destination`: a fact you wrote down, not an input to arithmetic.
+   * Exists so a person can be found by place when planning a trip
+   * (`src/utils/peopleLocations.ts`), not to sort or group people by anything
+   * that ranks them — the trip planner reads it as a plain substring match.
+   */
+  location: string | null;
 }
 
 /**

@@ -363,6 +363,13 @@ export function PersonDetailScreen() {
           </View>
         )}
 
+        {person.location && person.location.trim().length > 0 && (
+          <View style={styles.summary}>
+            <Text style={styles.summaryLabel}>Location</Text>
+            <Text style={styles.summaryValue}>{person.location}</Text>
+          </View>
+        )}
+
         {/* Last together. The date leads; the day count is the quieter half,
             and this screen is the only place it is allowed to appear at all. */}
         {last && (
