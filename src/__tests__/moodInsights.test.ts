@@ -3,6 +3,7 @@ import {
   buildMoodDays,
   categoryMoodContrasts,
   completionDayKey,
+  contextTagMoodContrasts,
   correlation,
   correlationStrength,
   describeHealthInsight,
@@ -27,6 +28,7 @@ function log(dayKey: string, mood: number | null, over: Partial<MoodLog> = {}): 
     dayKey,
     mood: mood as MoodLog['mood'],
     symptoms: over.symptoms ?? [],
+    contextTags: over.contextTags ?? [],
     note: over.note ?? null,
   };
 }
@@ -49,6 +51,7 @@ function daysWithMoods(moods: (number | null)[], completed: number[] = []): Mood
     dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
     mood,
     symptomKeys: [],
+    contextTagKeys: [],
     completed: completed[i] ?? 0,
     categories: [],
     steps: null,
@@ -118,6 +121,15 @@ describe('building the day series', () => {
     expect(days[0].symptomKeys).toEqual(['headache']);
   });
 
+  it('carries context tags onto a day with no mood on it', () => {
+    const days = buildMoodDays(
+      [log('2026-08-17', null, { contextTags: ['Vacation'] })],
+      [],
+      '00:00',
+    );
+    expect(days[0].contextTagKeys).toEqual(['vacation']);
+  });
+
   it('drops an unlogged day from every comparison rather than scoring it zero', () => {
     // Rule 3: not opening the app is not a bad day, and treating it as one is
     // the easiest way to invent a trend out of a fortnight of silence.
@@ -177,11 +189,12 @@ describe('mood against what you finish', () => {
 });
 
 describe('contrasts', () => {
-  const build = (rows: { mood: number; categories?: string[]; symptomKeys?: string[] }[]): MoodDay[] =>
+  const build = (rows: { mood: number; categories?: string[]; symptomKeys?: string[]; contextTagKeys?: string[] }[]): MoodDay[] =>
     rows.map((r, i) => ({
       dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
       mood: r.mood,
       symptomKeys: r.symptomKeys ?? [],
+      contextTagKeys: r.contextTagKeys ?? [],
       completed: 0,
       categories: r.categories ?? [],
       steps: null,
@@ -219,6 +232,15 @@ describe('contrasts', () => {
   it('says nothing at all below the paired-day floor', () => {
     const days = build([{ mood: 5, categories: ['Work'] }, { mood: 1, categories: [] }]);
     expect(categoryMoodContrasts(days)).toEqual([]);
+  });
+
+  it('compares mood on days a context tag applied against days it didn\'t', () => {
+    const days = build([
+      ...Array(5).fill(0).map(() => ({ mood: 5, contextTagKeys: ['vacation'] })),
+      ...Array(5).fill(0).map(() => ({ mood: 2, contextTagKeys: [] as string[] })),
+    ]);
+    const [row] = contextTagMoodContrasts(days);
+    expect(row).toMatchObject({ label: 'vacation', withDays: 5, withoutDays: 5, delta: 3 });
   });
 });
 
@@ -275,8 +297,8 @@ describe('the summary', () => {
 
   it('counts a symptom-only day as logged but not toward the average', () => {
     const days: MoodDay[] = [
-      { dayKey: '2026-08-01', mood: null, symptomKeys: ['headache'], completed: 0, categories: [], steps: null, sleepHours: null },
-      { dayKey: '2026-08-02', mood: 4, symptomKeys: [], completed: 0, categories: [], steps: null, sleepHours: null },
+      { dayKey: '2026-08-01', mood: null, symptomKeys: ['headache'], contextTagKeys: [], completed: 0, categories: [], steps: null, sleepHours: null },
+      { dayKey: '2026-08-02', mood: 4, symptomKeys: [], contextTagKeys: [], completed: 0, categories: [], steps: null, sleepHours: null },
     ];
     const summary = moodSummary(days, '2026-08-02');
     expect(summary.loggedDays).toBe(2);
@@ -288,7 +310,7 @@ describe('the summary', () => {
 describe('the logging streak', () => {
   const dayRows = (keys: string[]): MoodDay[] =>
     keys.map(dayKey => ({
-      dayKey, mood: 3, symptomKeys: [], completed: 0, categories: [],
+      dayKey, mood: 3, symptomKeys: [], contextTagKeys: [], completed: 0, categories: [],
       steps: null, sleepHours: null,
     }));
 
@@ -322,6 +344,7 @@ describe('the health axis', () => {
       // taken at its word.
       mood: opts.mood ? (opts.mood[i] ?? null) : 3,
       symptomKeys: [],
+      contextTagKeys: [],
       completed: opts.completed?.[i] ?? 0,
       categories: [],
       steps: s,

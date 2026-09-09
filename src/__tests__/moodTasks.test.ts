@@ -18,6 +18,7 @@ const days = (moods: (number | null)[]): MoodDay[] =>
     dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
     mood,
     symptomKeys: [],
+    contextTagKeys: [],
     completed: 0,
     categories: [],
     steps: null,

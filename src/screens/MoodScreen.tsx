@@ -16,6 +16,8 @@ import { haptics } from '../utils/haptics';
 import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
 import { segmentOf } from '../utils/rhythms';
 import {
+  contextTagKey,
+  contextTagVocabulary,
   moodEmoji,
   moodLabel,
   moodLogSummary,
@@ -26,6 +28,7 @@ import {
 import {
   buildMoodDays,
   categoryMoodContrasts,
+  contextTagMoodContrasts,
   describeHealthInsight,
   healthAverage,
   healthInsight,
@@ -157,6 +160,20 @@ export function MoodScreen() {
       label: symptomNames.get(row.label) ?? row.label,
     })),
     [days, symptomNames],
+  );
+  // Same key-to-casing resolution as symptomNames, for the same reason: a
+  // contrast is keyed on the lowercased match, not what the user typed.
+  const contextTagNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const name of contextTagVocabulary(logs)) names.set(contextTagKey(name), name);
+    return names;
+  }, [logs]);
+  const contextTagRows = useMemo(
+    () => contextTagMoodContrasts(days).slice(0, 4).map(row => ({
+      ...row,
+      label: contextTagNames.get(row.label) ?? row.label,
+    })),
+    [days, contextTagNames],
   );
   const timeRows = useMemo(
     () => moodByTimeOfDay(logs, iso => segmentOf(new Date(iso), {
@@ -434,6 +451,30 @@ export function MoodScreen() {
             </>
           )}
 
+          {contextTagRows.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>MOOD WITH CONTEXT</Text>
+              <View style={styles.card}>
+                {contextTagRows.map(row => (
+                  <View
+                    key={row.label}
+                    style={styles.contrastRow}
+                    accessible
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days it applied, ${row.moodWithout.toFixed(1)} on days it didn't`}
+                  >
+                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
+                    <Text style={styles.contrastValue}>
+                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
+                    </Text>
+                  </View>
+                ))}
+                <Text style={styles.chartCaption}>
+                  Your average mood on days a tag applied, against days it didn't.
+                </Text>
+              </View>
+            </>
+          )}
+
           {timeRows.length > 1 && (
             <>
               <Text style={styles.sectionTitle}>MOOD BY TIME OF DAY</Text>
@@ -481,6 +522,11 @@ export function MoodScreen() {
                 {log.symptoms.length > 0 && (
                   <Text style={styles.entrySymptoms} numberOfLines={2}>
                     {log.symptoms.map(s => `${s.name} (${severityLabel(s.severity).toLowerCase()})`).join(', ')}
+                  </Text>
+                )}
+                {log.contextTags.length > 0 && (
+                  <Text style={styles.entryContextTags} numberOfLines={2}>
+                    {log.contextTags.join(', ')}
                   </Text>
                 )}
                 {!!log.note && (
@@ -588,5 +634,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   entryTitle: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
   entryMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
   entrySymptoms: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs },
+  entryContextTags: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },
   entryNote: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },
 });

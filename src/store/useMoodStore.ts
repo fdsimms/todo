@@ -8,7 +8,7 @@ import {
 } from '../db/database';
 import { generateId } from '../utils/id';
 import { dayKeyOf, getCurrentDayStart, getDayStart } from '../utils/dateUtils';
-import { symptomKey } from '../utils/moodLog';
+import { contextTagKey, symptomKey } from '../utils/moodLog';
 
 /**
  * The mood/symptom log — see `src/utils/moodLog.ts` for every rule and
@@ -25,7 +25,7 @@ import { symptomKey } from '../utils/moodLog';
  * wants several cuts of the whole history at once.
  */
 
-export type MoodLogPatch = Partial<Pick<MoodLog, 'mood' | 'symptoms' | 'note'>>;
+export type MoodLogPatch = Partial<Pick<MoodLog, 'mood' | 'symptoms' | 'contextTags' | 'note'>>;
 
 interface MoodStore {
   logs: MoodLog[];
@@ -57,6 +57,7 @@ interface MoodStore {
      * Mood screen need before they will say anything at all.
      */
     at?: Date,
+    contextTags?: string[],
   ) => MoodLog | null;
   updateLog: (id: string, patch: MoodLogPatch) => void;
   removeLog: (id: string) => void;
@@ -70,14 +71,15 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
     set({ logs: dbGetAllMoodLogs(), initialized: true });
   },
 
-  addLog(mood, symptoms, note = null, at) {
+  addLog(mood, symptoms, note = null, at, contextTags = []) {
     const cleaned = cleanSymptoms(symptoms);
+    const cleanedTags = cleanContextTags(contextTags);
     const trimmedNote = note?.trim() || null;
     // Refuses an entry that records nothing, the same rule `addNote` follows:
     // the sheet's Save is the only way in, and an empty row would be a day
     // marked as logged with nothing on it — which every read here would then
     // have to distinguish from a real one.
-    if (mood === null && cleaned.length === 0 && !trimmedNote) return null;
+    if (mood === null && cleaned.length === 0 && cleanedTags.length === 0 && !trimmedNote) return null;
 
     const when = at ?? new Date();
     const log: MoodLog = {
@@ -89,6 +91,7 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
       dayKey: dayKeyOf(at ? getDayStart(when) : getCurrentDayStart()),
       mood,
       symptoms: cleaned,
+      contextTags: cleanedTags,
       note: trimmedNote,
     };
     dbInsertMoodLog(log);
@@ -104,6 +107,7 @@ export const useMoodStore = create<MoodStore>((set, get) => ({
     if (!existing) return;
     const next: MoodLog = { ...existing, ...patch };
     if (patch.symptoms !== undefined) next.symptoms = cleanSymptoms(patch.symptoms);
+    if (patch.contextTags !== undefined) next.contextTags = cleanContextTags(patch.contextTags);
     if (patch.note !== undefined) next.note = patch.note?.trim() || null;
     // `loggedAt` and `dayKey` are deliberately not patchable. An entry records a
     // moment, and editing what you said about that moment must not move which
@@ -136,6 +140,24 @@ function cleanSymptoms(symptoms: readonly LoggedSymptom[]): LoggedSymptom[] {
     if (!seen || symptom.severity > seen.severity) {
       byKey.set(key, { name, severity: symptom.severity });
     }
+  }
+  return [...byKey.values()];
+}
+
+/**
+ * Drop blanks and collapse two spellings of one context tag.
+ *
+ * Same belt-and-braces role as `cleanSymptoms`, minus the severity: a tag
+ * either applies to the day or it doesn't, so there is nothing to pick the
+ * worse of.
+ */
+function cleanContextTags(tags: readonly string[]): string[] {
+  const byKey = new Map<string, string>();
+  for (const tag of tags) {
+    const name = tag.trim();
+    if (!name) continue;
+    const key = contextTagKey(name);
+    if (!byKey.has(key)) byKey.set(key, name);
   }
   return [...byKey.values()];
 }
