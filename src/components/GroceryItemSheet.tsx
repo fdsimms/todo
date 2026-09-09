@@ -223,6 +223,7 @@ export function GroceryItemSheet({
   // it, which is how a price is taken back.
   const [priceEdits, setPriceEdits] = useState<Record<string, string>>({});
   const [nameError, setNameError] = useState<string | null>(null);
+  const [nameCollisionId, setNameCollisionId] = useState<string | null>(null);
   // Which substitute sheet is up, if any: 'add' opens the picker, an item id
   // opens that link for review. Null closes it.
   const [subSheet, setSubSheet] = useState<'add' | string | null>(null);
@@ -338,13 +339,18 @@ export function GroceryItemSheet({
   // the field itself keeps whatever was typed until it's corrected.
   const commitName = () => {
     const trimmed = name.trim();
-    if (!trimmed || trimmed === item.name) { setNameError(null); return; }
+    if (!trimmed || trimmed === item.name) { setNameError(null); setNameCollisionId(null); return; }
     if (!renameItem(item.id, trimmed)) {
-      setNameError('Another item already has that name.');
+      const collision = items.find(i => i.id !== item.id && i.nameKey === groceryNameKey(trimmed));
+      setNameError(
+        collision ? `That's the same as ${collision.name} in your catalog.` : 'Another item already has that name.',
+      );
+      setNameCollisionId(collision?.id ?? null);
       haptics.error();
       return;
     }
     setNameError(null);
+    setNameCollisionId(null);
   };
   const commitQuantity = () => {
     if (quantity !== (item.quantity ?? '')) setQuantity(item.id, quantity);
@@ -1446,7 +1452,7 @@ export function GroceryItemSheet({
             value={name}
             onChangeText={t => {
               setName(t);
-              if (nameError) setNameError(null);
+              if (nameError) { setNameError(null); setNameCollisionId(null); }
             }}
             onBlur={commitName}
             onSubmitEditing={commitName}
@@ -1456,6 +1462,15 @@ export function GroceryItemSheet({
             accessibilityLabel="Item name"
           />
           {!!nameError && <Text style={styles.error}>{nameError}</Text>}
+          {!!nameCollisionId && (
+            <InlineAction
+              label="Merge with it instead"
+              icon="git-merge-outline"
+              onPress={() => setMergeSheetOpen(true)}
+              accessibilityLabel="Merge with the existing item"
+              style={styles.mergeSuggestion}
+            />
+          )}
           {/* A snapshot, not editable here — see GroceryItem.sourceRecipeTitle.
               Renaming the item doesn't touch it, and there's nothing to
               reassign; it just says why this row exists. */}
@@ -1784,9 +1799,11 @@ export function GroceryItemSheet({
       <MergeItemSheet
         visible={mergeSheetOpen}
         itemId={item.id}
-        onClose={() => setMergeSheetOpen(false)}
+        initialPickedId={nameCollisionId}
+        onClose={() => { setMergeSheetOpen(false); setNameCollisionId(null); }}
         onMerged={survivorId => {
           setMergeSheetOpen(false);
+          setNameCollisionId(null);
           // The row this sheet is open for lost the merge — nothing left to
           // show, so the whole sheet closes rather than rendering over a
           // deleted item.
@@ -1915,6 +1932,7 @@ function makeStyles(colors: Colors) {
     // No lineHeight, same as `input` — see the note there.
     priceInput: { flex: 1, fontSize: font.md, color: colors.text, padding: 0 },
     error: { fontSize: font.sm, color: colors.red, marginTop: spacing.xs },
+    mergeSuggestion: { alignSelf: 'flex-start', marginTop: spacing.sm },
     hint: { fontSize: font.sm, color: colors.textTertiary, marginBottom: spacing.sm },
     choiceBlock: { alignItems: 'flex-start', marginBottom: spacing.sm },
     // A row rather than bare accent text: this leaves the sheet for another

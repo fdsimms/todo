@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -18,6 +18,12 @@ interface Props {
   visible: boolean;
   /** The item the merge was opened from — one side of the pair. */
   itemId: string | null;
+  /**
+   * Skip straight to the "which one to keep" step for this row, instead of
+   * the search list — for a rename that collided with it, where the other
+   * side of the pair is already known.
+   */
+  initialPickedId?: string | null;
   onClose: () => void;
   /**
    * Fired after a successful merge, with the id of the row that survived.
@@ -41,7 +47,7 @@ interface Props {
  * anywhere in this store, so a destructive action is behind a confirm rather
  * than a swipe.
  */
-export function MergeItemSheet({ visible, itemId, onClose, onMerged }: Props) {
+export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMerged }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -53,6 +59,15 @@ export function MergeItemSheet({ visible, itemId, onClose, onMerged }: Props) {
 
   const [query, setQuery] = useState('');
   const [pickedId, setPickedId] = useState<string | null>(null);
+
+  // The sheet stays mounted with `visible` toggling, so a fresh open has to
+  // reseed state rather than relying on a mount-time default.
+  useEffect(() => {
+    if (visible) {
+      setQuery('');
+      setPickedId(initialPickedId ?? null);
+    }
+  }, [visible, initialPickedId]);
 
   const picked = items.find(i => i.id === pickedId) ?? null;
 
