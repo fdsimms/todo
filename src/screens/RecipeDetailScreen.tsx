@@ -28,7 +28,7 @@ import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient, RecipePrepTask, RecipeStep } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useSettingsStore } from '../store/useSettingsStore';
@@ -219,6 +219,10 @@ export function RecipeDetailScreen() {
   // building a new step; set, it's replacing that step's text on submit.
   const [stepDraft, setStepDraft] = useState('');
   const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  // The note for the step being edited, held as a draft rather than written on
+  // every keystroke: the length stepper beside it writes straight through
+  // because a press is one discrete value, and typed prose is not.
+  const [noteDraft, setNoteDraft] = useState('');
   const stepInputRef = useRef<TextInput>(null);
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingIngredient, setEditingIngredient] = useState<RecipeIngredient | null>(null);
@@ -567,12 +571,22 @@ export function RecipeDetailScreen() {
   const editingStep = editingStepId === null ? null : recipe.steps.find(s => s.id === editingStepId) ?? null;
   const editingStepParsed = editingStep === null ? null : parseStepDurations(editingStep.text)[0] ?? null;
 
+  /** Writes the note draft onto the step being edited. No-ops when unchanged. */
+  const commitStepNote = () => {
+    if (editingStepId === null) return;
+    setStepNote(recipe.id, editingStepId, noteDraft);
+  };
+
   const submitStepDraft = () => {
     if (!stepDraft.trim()) return;
     animateLayout();
     if (editingStepId) {
       updateStep(recipe.id, editingStepId, stepDraft);
+      // Before the id goes: Save closes the editor, and a note typed but not
+      // yet blurred is part of what was being saved.
+      commitStepNote();
       setEditingStepId(null);
+      setNoteDraft('');
       haptics.tap();
     } else {
       const added = addStep(recipe.id, stepDraft);
@@ -586,6 +600,7 @@ export function RecipeDetailScreen() {
     haptics.tap();
     setEditingStepId(step.id);
     setStepDraft(step.text);
+    setNoteDraft(step.note ?? '');
     stepInputRef.current?.focus();
   };
 
@@ -593,13 +608,14 @@ export function RecipeDetailScreen() {
     haptics.tap();
     setEditingStepId(null);
     setStepDraft('');
+    setNoteDraft('');
   };
 
   const confirmRemoveStep = (step: RecipeStep) => {
     animateLayout();
     // Editing the very step being deleted would otherwise leave the field
     // pointed at an id that no longer resolves.
-    if (editingStepId === step.id) { setEditingStepId(null); setStepDraft(''); }
+    if (editingStepId === step.id) { setEditingStepId(null); setStepDraft(''); setNoteDraft(''); }
     removeStep(recipe.id, step.id);
     haptics.tap();
   };
@@ -1630,20 +1646,40 @@ export function RecipeDetailScreen() {
               Cook mode offers a timer for the time written in the step. Set a length here to
               use it instead.
             </Text>
-            {/* Only when there is one to remove. Cook mode is where a note is
-                written, by keeping an answer it gave — there is nothing to
-                compose here, so this is the one control the note needs. */}
-            {!!editingStep.note && (
-              <View style={styles.stepNoteEditRow}>
-                <Text style={styles.stepNoteEditText}>{editingStep.note}</Text>
+            {/* Written here or kept from an answer in cook mode, and an
+                ordinary note either way. Cook mode's Keep is the commoner
+                writer, but a note that could *only* arrive that way would be
+                unwritable without an API key, and this is the field it is
+                already showing. Committed on blur rather than per keystroke. */}
+            <View style={styles.stepNoteEditRow}>
+              <Text style={styles.stepNoteEditLabel}>Note</Text>
+              <TextInput
+                style={styles.stepNoteInput}
+                value={noteDraft}
+                onChangeText={setNoteDraft}
+                onBlur={commitStepNote}
+                placeholder="e.g. dry the chicken first, or the pan steams it"
+                placeholderTextColor={colors.textTertiary}
+                maxLength={RECIPE_STEP_NOTE_MAX_LENGTH}
+                multiline
+                accessibilityLabel="Note on this step"
+              />
+              {!!editingStep.note && (
                 <InlineAction
                   label="Remove note"
                   icon="trash-outline"
                   variant="neutral"
-                  onPress={() => { haptics.tap(); setStepNote(recipe.id, editingStep.id, null); }}
+                  onPress={() => {
+                    haptics.tap();
+                    setNoteDraft('');
+                    setStepNote(recipe.id, editingStep.id, null);
+                  }}
                 />
-              </View>
-            )}
+              )}
+            </View>
+            <Text style={styles.inputHint}>
+              Shown under the step in cook mode. Keeping an answer there writes one too.
+            </Text>
           </>
         )}
 
@@ -2130,10 +2166,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     padding: spacing.md,
     marginTop: spacing.sm,
   },
-  stepNoteEditText: {
+  stepNoteEditLabel: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  // No `lineHeight` on a TextInput — see CLAUDE.md; `minHeight` holds the box
+  // open so the row doesn't resize between an empty note and a typed one.
+  stepNoteInput: {
+    alignSelf: 'stretch',
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
+    minHeight: 60,
     color: colors.text,
     fontSize: font.sm,
-    lineHeight: lineHeight.sm,
   },
   stepTimerEditRow: {
     flexDirection: 'row',

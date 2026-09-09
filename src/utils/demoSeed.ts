@@ -1967,10 +1967,10 @@ function seedRecipes(): DemoRecipes {
   const searStep = useRecipeStore.getState().recipeById(stirFry.id)?.steps[1];
   if (searStep) setStepTimerSeconds(stirFry.id, searStep.id, 4 * 60);
   // A note kept on a step from a previous cooking — what cook mode's "ask about
-  // this step" leaves behind when an answer is worth keeping. Invisible
-  // otherwise: the asking needs an API key, and the keeping is the half that
-  // outlives it, so without a seeded one the feature reads as absent rather
-  // than as unused.
+  // this step" leaves behind when an answer is worth keeping. The asking itself
+  // needs an API key nobody hands a demo phone, and the note is the half that
+  // outlives it, so without a seeded one that whole exchange reads as absent
+  // rather than as unused.
   if (searStep) {
     setStepNote(
       stirFry.id,

@@ -621,8 +621,12 @@ cannot have: the context.
   nobody kept one on round-trips byte for byte. A step read out of `notes` has no row to hold one,
   for the same reason its id is synthesized, so Keep isn't offered there. Cook mode shows a kept
   note without being asked (not having to ask again is why it was kept); the recipe screen's step
-  row shows it too, and removing it lives in that row's open-for-editing block beside the timer
-  length.
+  row shows it too, and the field it is **typed and edited in** lives in that row's
+  open-for-editing block beside the timer length. Keep is the commoner writer, but a note that
+  could only ever arrive from an answer would be unwritable without an API key, and it is an
+  ordinary note about the step either way. That field commits on blur rather than per keystroke,
+  unlike the length stepper next to it, because a press is one discrete value and typed prose is
+  not.
 - **`cookHelp` takes Sonnet by default**, the third feature to do so, and for the reason
   `receiptImport` gives: the cost difference per question is a fraction of a cent and the expensive
   failure is a confident wrong answer about whether something is cooked through. It has no
