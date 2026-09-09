@@ -12,7 +12,7 @@ import {
   buildBackup, serializeBackup, parseBackup, summarizeBackup, backupFileName, type Backup,
 } from '../../utils/backup';
 import {
-  writeBackupFile, shareBackupFile, discardBackupFile, pickBackupFile, canShare,
+  writeExportFile, shareBackupFile, discardBackupFile, pickBackupFile, canShare,
 } from '../../utils/backupFile';
 import {
   recipeImageBasename, readRecipeImageBase64, writeRecipeImageFile,
@@ -119,7 +119,7 @@ export function DataResetSettings() {
         exportedAt: now,
         images,
       });
-      uri = writeBackupFile(serializeBackup(backup), backupFileName(now));
+      uri = writeExportFile(serializeBackup(backup), backupFileName(now));
       if (!(await canShare())) {
         Alert.alert('Can’t share from this device', `Your backup was written to ${uri}.`);
         uri = null; // left in place — it's the only copy the user has

@@ -21,6 +21,7 @@ const days = (moods: (number | null)[]): MoodDay[] =>
     contextTagKeys: [],
     completed: 0,
     categories: [],
+    taskKeys: [],
     steps: null,
     sleepHours: null,
   }));
