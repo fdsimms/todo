@@ -324,6 +324,27 @@ export interface ScreenTimeRule {
 }
 
 /**
+ * The metrics a health rule can watch — a superset of `HealthMetric`
+ * (`moodInsights.ts`'s steps/sleep axis) plus eight nutrients, none of which
+ * have a mood axis of their own since `MoodDay` carries no nutrient fields.
+ * Kept as its own type rather than widening `HealthMetric` itself, so
+ * `moodInsights.ts`'s axis functions — written against `MoodDay`'s actual
+ * fields — don't gain a case they can't answer.
+ *
+ * **It lives here rather than in `healthRules.ts` because it used to be written
+ * out twice.** The union was declared in that module *and* inlined on
+ * `HealthRule.metric` below, so a ninth metric meant editing both with nothing
+ * to catch a miss: the two copies agreeing was luck rather than structure. This
+ * file already owns every model's shape, and a field's type is part of that
+ * shape, so the declaration belongs on this side of the boundary and
+ * `healthRules.ts` imports it — which is also the direction the dependency
+ * already ran, since utils reads types and never the reverse.
+ */
+export type HealthRuleMetric =
+  | 'steps' | 'sleepHours'
+  | 'sodiumMg' | 'proteinG' | 'satFatG' | 'fiberG' | 'sugarG' | 'caffeineMg' | 'waterMl' | 'calorieKcal';
+
+/**
  * A rule matching today's Apple Health reading against a threshold the user
  * wrote — "under six hours of sleep, keep today light".
  *
@@ -337,9 +358,7 @@ export interface ScreenTimeRule {
 export interface HealthRule {
   id: string;
   /** Which reading this rule watches. */
-  metric:
-    | 'steps' | 'sleepHours'
-    | 'sodiumMg' | 'proteinG' | 'satFatG' | 'fiberG' | 'sugarG' | 'caffeineMg' | 'waterMl' | 'calorieKcal';
+  metric: HealthRuleMetric;
   /**
    * The number the reading is compared against, in the metric's own unit —
    * steps, whole hours asleep, milligrams of sodium or caffeine, grams of
