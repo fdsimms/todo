@@ -2704,7 +2704,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setProductOnHandUntil(id, until) {
     const product = get().itemProducts.find(p => p.id === id);
     if (!product || product.onHandUntil === until) return;
-    const updated: ItemProduct = { ...product, onHandUntil: until };
+    const updated: ItemProduct = {
+      ...product,
+      onHandUntil: until,
+      // Mirrors the item-level setOnHandUntil's clear exactly — see its note.
+      ...(until === OUT_OF_IT_UNTIL ? { expiresAt: null, frozenAt: null, openedAt: null } : null),
+    };
     dbSetItemProduct(updated);
     set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
   },
@@ -2715,7 +2720,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       p => wanted.has(p.id) && p.onHandUntil !== OUT_OF_IT_UNTIL
     );
     if (before.length === 0) return 0;
-    const updates = before.map((p): ItemProduct => ({ ...p, onHandUntil: OUT_OF_IT_UNTIL }));
+    // Mirrors markOutOfMany's own clear — see its note.
+    const updates = before.map((p): ItemProduct => ({
+      ...p,
+      onHandUntil: OUT_OF_IT_UNTIL,
+      expiresAt: null,
+      frozenAt: null,
+      openedAt: null,
+    }));
     for (const u of updates) dbSetItemProduct(u);
     const byId = new Map(updates.map(u => [u.id, u]));
     set(s => ({ itemProducts: s.itemProducts.map(p => byId.get(p.id) ?? p) }));
@@ -2782,7 +2794,16 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
   setOnHandUntil(id, until) {
     const item = get().items.find(i => i.id === id);
     if (!item) return;
-    const updated = { ...item, onHandUntil: until };
+    const updated: GroceryItem = {
+      ...item,
+      onHandUntil: until,
+      // Marking the row out of it ends this box's story, same as a purchase
+      // already ends the last one — see the matching clear in markOutOfMany
+      // for why these three specifically. Without it, a bare re-add
+      // (addToPantry, which never touches any of these) came back reading the
+      // disposed box's use-by day as the new one's.
+      ...(until === OUT_OF_IT_UNTIL ? { expiresAt: null, frozenAt: null, openedAt: null } : null),
+    };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
@@ -2808,6 +2829,11 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       usedUpCount: i.usedUpCount + (outcome === 'usedUp' ? 1 : 0),
       spoiledCount: i.spoiledCount + (outcome === 'spoiled' ? 1 : 0),
       lastSpoiledAt: outcome === 'spoiled' ? at : i.lastSpoiledAt,
+      // Same clear setOnHandUntil makes for the same sentinel — see its note.
+      // Undo restores these from `before` along with everything else.
+      expiresAt: null,
+      frozenAt: null,
+      openedAt: null,
     }));
     for (const u of updates) dbUpdateGroceryItem(u);
     const byId = new Map(updates.map(u => [u.id, u]));
