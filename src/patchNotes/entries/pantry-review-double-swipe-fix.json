@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where swiping through the pantry review deck quickly could leave a card stuck off-screen with nothing left to tap",
+  "date": "2026-09-09"
+}
