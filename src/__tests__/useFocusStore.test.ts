@@ -259,6 +259,51 @@ describe('finishForNow', () => {
   });
 });
 
+describe('restoreSession', () => {
+  it('puts a skipped task’s stretches back exactly as they were', () => {
+    state().startSession([task('a'), task('b')], OPTIONS);
+    const before = live();
+    state().skipTask('a');
+    expect(live().steps.map(s => s.taskId)).toEqual([null, 'b']);
+
+    state().restoreSession(before);
+    expect(live()).toEqual(before);
+  });
+
+  it('puts a task marked done for now back, dropping it from the summary too', () => {
+    state().startSession([task('a'), task('b')], OPTIONS);
+    const before = live();
+    state().finishForNow('a');
+    expect(live().completedTaskIds).toEqual(['a']);
+
+    state().restoreSession(before);
+    expect(live()).toEqual(before);
+  });
+
+  it('is a no-op once the session it belongs to has ended', () => {
+    state().startSession([task('a')], OPTIONS);
+    const before = live();
+    state().endSession();
+    (dbSaveFocusSession as jest.Mock).mockClear();
+
+    state().restoreSession(before);
+    expect(state().session).toBeNull();
+    expect(dbSaveFocusSession).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op once a different session has replaced it', () => {
+    state().startSession([task('a')], OPTIONS);
+    const before = live();
+    state().startSession([task('b')], OPTIONS);
+    const replacement = live();
+    (dbSaveFocusSession as jest.Mock).mockClear();
+
+    state().restoreSession(before);
+    expect(live()).toEqual(replacement);
+    expect(dbSaveFocusSession).not.toHaveBeenCalled();
+  });
+});
+
 describe('initialize', () => {
   it('picks a stored session back up and puts its alarm back', () => {
     state().startSession([task('a'), task('b')], OPTIONS);
