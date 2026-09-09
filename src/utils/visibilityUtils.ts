@@ -1165,14 +1165,22 @@ export function groupRoster(children: Task[]): Task[] {
     if (child.previousOccurrenceId) superseded.add(child.previousOccurrenceId);
   }
   const collapsed = children.filter(child => {
-    // Checked first so a successor that IS due today (a chain step spawned
-    // from a dated predecessor picks up today's date — see completeTask)
-    // is never dropped as a duplicate of the step that spawned it.
+    const prev = child.previousOccurrenceId ? byId.get(child.previousOccurrenceId) : undefined;
+    // A successor whose own predecessor is already relevant today is a
+    // duplicate of it (tonight's finished row plus tomorrow's fresh one) and
+    // loses to the predecessor — *unless* it's a chain step, where a 'date'
+    // step can legitimately place the next step on the same day as the one
+    // that spawned it (see completeTask). Checking this ahead of the child's
+    // own isRelevantToGroupToday is what makes the drop stick: a plain
+    // recurring successor otherwise reads as "relevant today" too whenever a
+    // stored dueDate lands on today's side of the day boundary — normally
+    // only true for a genuinely same-day catch-up, but also true, spuriously,
+    // for a `dueDate` computed under one timezone and re-read under another
+    // after the device travels — and without this check both rows survive.
+    if (prev && isRelevantToGroupToday(prev) && !child.chainEnabled) return false;
     if (isRelevantToGroupToday(child)) return true;
     if (child.completed || child.archived) return false;
     if (superseded.has(child.id)) return false;
-    const prev = child.previousOccurrenceId ? byId.get(child.previousOccurrenceId) : undefined;
-    if (prev && isRelevantToGroupToday(prev)) return false;
     return true;
   });
   return collapseSeries(collapsed);

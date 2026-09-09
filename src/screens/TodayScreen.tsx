@@ -1671,7 +1671,11 @@ export function TodayScreen() {
     return taskGroups
       .map(group => ({
         group,
-        children: (childrenByGroupId.get(group.id) ?? []).filter(t => filteredIds.has(t.id)),
+        // Rostered first — otherwise a completed-today tombstone and the
+        // fresh occurrence it just spawned can both land in `filtered` at
+        // once (see groupRoster's own note on why that pair can look
+        // "relevant today" together) and the tray renders both.
+        children: groupRoster(childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => filteredIds.has(t.id)),
       }))
       .filter(g => g.children.length > 0);
   }, [taskGroups, childrenByGroupId, filtered]);
@@ -1684,7 +1688,8 @@ export function TodayScreen() {
     return taskGroups
       .map(group => ({
         group,
-        children: (childrenByGroupId.get(group.id) ?? []).filter(t => upcomingTaskIds.has(t.id)),
+        // Rostered first, same reason visibleGroupItems is — see its comment.
+        children: groupRoster(childrenByGroupId.get(group.id) ?? NO_GROUP_CHILDREN).filter(t => upcomingTaskIds.has(t.id)),
       }))
       .filter(g => g.children.length > 0);
   }, [taskGroups, childrenByGroupId, upcomingTaskIds]);

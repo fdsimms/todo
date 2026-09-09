@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where a stack could show a completed task and its freshly repeated copy at the same time, doubling its count",
+  "date": "2026-09-09"
+}
