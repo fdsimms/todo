@@ -589,7 +589,7 @@ export function ProjectEditor({ visible, project, isNew, onClose }: Props) {
         )}
       </View>
       <Text style={styles.sectionFooter}>
-        The days you're away from home. Look ahead uses them to show what's due while you're gone, and the project's card counts down to the day you leave. The day you come back doesn't count as a day away. Where you're going is optional, and it's only looked up if you turn on the destination forecast in Settings.
+        Only relevant if this project involves travel, so leave it blank otherwise. The days you're away from home. Look ahead uses them to show what's due while you're gone, and the project's card counts down to the day you leave. The day you come back doesn't count as a day away. Where you're going is optional, and it's only looked up if you turn on the destination forecast in Settings.
       </Text>
       </>
       )}
