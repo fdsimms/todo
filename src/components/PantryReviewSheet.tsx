@@ -147,11 +147,22 @@ export function PantryReviewSheet({ visible, onClose }: Props) {
         answer === 'low'
           ? { x: 0, y: -SCREEN_HEIGHT }
           : { x: answer === 'have' ? SCREEN_WIDTH * 1.4 : -SCREEN_WIDTH * 1.4, y: 0 };
+      // A second swipe or button tap before this animation finishes stops it
+      // and fires this same callback with `finished: false` — Animated always
+      // calls back on interruption, not just on completion (the same reason
+      // TaskItem's own completion animations check the flag). Committing
+      // unconditionally here double-committed the interrupted card: one
+      // commit from the stopped animation and a second from whatever
+      // restarted `pan`, advancing `index` twice for a single card and
+      // leaving the next real card's fling stranded off-screen with the
+      // pan value it never got reset from.
       Animated.timing(pan, {
         toValue,
         duration: animation.duration.fast,
         useNativeDriver: true,
-      }).start(() => commit(answer));
+      }).start(({ finished }) => {
+        if (finished) commit(answer);
+      });
     },
     [commit, pan]
   );
