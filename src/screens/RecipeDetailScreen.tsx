@@ -1710,11 +1710,7 @@ export function RecipeDetailScreen() {
               Cook mode joined them as the third verb (#1695), for the same
               reason and in the same place: it's the one that happens *now*, so
               it leads. Its label is a word where the others are two, which is
-              what keeps three buttons on a 390pt line.
-
-              It says "Steps", not "Cook" — named for what it shows, matching
-              the "Steps" section further up this screen, and leaving the
-              flame glyph to the timer. */}
+              what keeps three buttons on a 390pt line. */}
           {cookableCount > 0 && !featureHidden('cookMode', simpleMode) && (
             <TouchableOpacity
               style={styles.secondary}
@@ -1724,7 +1720,7 @@ export function RecipeDetailScreen() {
               accessibilityLabel={`Read ${recipe.name} one step at a time`}
             >
               <Ionicons name="list-outline" size={iconSize.sm} color={colors.accent} />
-              <Text style={styles.secondaryText}>Steps</Text>
+              <Text style={styles.secondaryText}>Cook</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
