@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where changing one ingredient choice on the Add to list sheet re-checked every other ingredient, even ones you had just unchecked",
+  "date": "2026-09-09"
+}
