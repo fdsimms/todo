@@ -9,6 +9,7 @@ import {
   PanResponder,
   StyleSheet,
 } from 'react-native';
+import { SortableList } from './SortableList';
 import { useNavigation } from '@react-navigation/native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeBlurView } from './SafeBlurView';
@@ -171,6 +172,10 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   /** Swapped-away ids, never offered again while the sheet is open. */
   const [rejectedIds, setRejectedIds] = useState<string[]>([]);
+  // Switches the enclosing ScrollView off for the duration of a drag — see
+  // SortableList's onDragStateChange doc for why this is required, not just
+  // tidy.
+  const [reordering, setReordering] = useState(false);
 
   const hiddenY = useSheetHiddenOffset();
 
@@ -290,6 +295,15 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
   );
 
   /**
+   * These run in order, so dragging a row is a real edit to the plan rather
+   * than cosmetic — it changes which task each stretch is, same as swapping
+   * one does. Reorders `slotIds` directly (not just the ticked subset), so an
+   * unticked row dragged past a ticked one keeps its new place if it's ticked
+   * back on.
+   */
+  const reorderSlots = (next: Task[]) => setSlotIds(next.map(t => t.id));
+
+  /**
    * The company a candidate is scored against: the rows the user is keeping. A
    * row they've unticked isn't part of the queue they're building, so it
    * doesn't get to pull its neighbours in.
@@ -376,7 +390,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     dismiss();
   };
 
-  const renderRow = (task: Task) => {
+  const renderRow = (task: Task, drag: () => void, isActive: boolean) => {
     const checked = selectedIds.has(task.id);
     const reason = ctx ? focusReason(task, companyFor(task.id), ctx) : null;
     // A daily target is logged a unit at a time rather than ticked off once, so
@@ -395,7 +409,7 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
     const spokenTime = planned.assumed ? `about ${formatDuration(planned.minutes)}` : time;
 
     return (
-      <View key={task.id} style={styles.row}>
+      <View style={[styles.row, isActive && styles.rowActive]}>
         <TouchableOpacity
           style={styles.rowMain}
           onPress={() => toggle(task)}
@@ -445,6 +459,17 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           accessibilityHint="Replaces this suggestion with the next best task"
         >
           <Ionicons name="refresh" size={iconSize.sm} color={canSwap ? colors.textSecondary : colors.bgQuaternary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onLongPress={drag}
+          delayLongPress={interaction.delayLongPress}
+          hitSlop={8}
+          style={styles.dragHandle}
+          accessibilityRole="button"
+          accessibilityLabel={`Reorder ${task.title}`}
+        >
+          <Ionicons name="reorder-three" size={iconSize.md} color={colors.textTertiary} />
         </TouchableOpacity>
       </View>
     );
@@ -594,20 +619,25 @@ export function FocusSetupSheet({ visible, tasks, allTasks, pinnedSeed, reachOut
           ) : (
             <Text style={styles.hint}>
               {seedLabel === 'pinned'
-                ? 'These run one at a time, in pinned order. Tap to include or skip, or swap a row for the next best task.'
+                ? 'These run one at a time, in pinned order. Tap to include or skip, drag to reorder, or swap a row for the next best task.'
                 : seedLabel === 'reachOut'
-                  ? 'These run one at a time. Tap to include or skip, or swap a row for the next best task.'
-                : 'These run one at a time, in this order. Tap to include or skip, or swap a row for the next best task.'}
+                  ? 'These run one at a time. Tap to include or skip, drag to reorder, or swap a row for the next best task.'
+                : 'These run one at a time, in this order. Tap to include or skip, drag to reorder, or swap a row for the next best task.'}
             </Text>
           )}
 
-          <ScrollView style={styles.list} bounces={false}>
-            {slots.map((task, i) => (
-              <React.Fragment key={task.id}>
-                {i > 0 && <View style={styles.sep} />}
-                {renderRow(task)}
-              </React.Fragment>
-            ))}
+          <ScrollView style={styles.list} bounces={false} scrollEnabled={!reordering}>
+            <SortableList
+              data={slots}
+              onReorder={reorderSlots}
+              onDragStateChange={setReordering}
+              renderItem={(task, i, drag, isActive) => (
+                <>
+                  {i > 0 && <View style={styles.sep} />}
+                  {renderRow(task, drag, isActive)}
+                </>
+              )}
+            />
           </ScrollView>
 
           {selected.length > 0 && (
@@ -752,7 +782,8 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textAlign: 'center',
   },
   list: { maxHeight: 300 },
-  row: { flexDirection: 'row', alignItems: 'center' },
+  row: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.bgSecondary },
+  rowActive: { backgroundColor: colors.bgTertiary },
   rowMain: {
     flex: 1,
     flexDirection: 'row',
@@ -768,7 +799,13 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   rowSub: { color: colors.textTertiary, fontSize: font.xs },
   rowReason: { flexShrink: 1 },
   swapBtn: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 12,
+    alignSelf: 'stretch',
+    justifyContent: 'center',
+  },
+  dragHandle: {
+    paddingHorizontal: spacing.sm,
     paddingVertical: 12,
     alignSelf: 'stretch',
     justifyContent: 'center',

@@ -340,8 +340,12 @@ objects and no store standing behind it.
   phones sharing one session's cursor is not a state this feature has, and
   syncing the row would invent it. Both exclusions are argued in
   `BACKUP_EXCLUDED_TABLES` and `SYNC_EXCLUDED_TABLES`.
-- **No reordering on the setup sheet.** The suggester's order is "best first,
-  and each one partly chosen for going with the ones above it", which is a
-  defensible run order. Dragging inside that sheet is the `SortableList`
-  scroll-container dance (see the drag notes in `CLAUDE.md`) for a v1 that
-  doesn't need it.
+- **The setup sheet's rows are reorderable** (a `SortableList` inside the
+  sheet's own `ScrollView`, `scrollEnabled` switched off for the duration —
+  the drag notes in `CLAUDE.md`). The suggester's order is "best first, and
+  each one partly chosen for going with the ones above it", a defensible
+  default, but the queue runs one at a time in the order shown, so dragging a
+  row is a real edit to the plan rather than cosmetic — the same weight
+  swapping a row already carries. The reorder is local to the session being
+  set up; it doesn't write back to `pinnedOrder` or anything the suggester
+  reads next time.
