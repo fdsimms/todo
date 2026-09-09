@@ -245,7 +245,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null,
+  healthTarget: null, completionTimerMinutes: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -629,6 +629,25 @@ describe('dbInsertTask + rowToTask round-trip', () => {
     mockRawDb.prepare("UPDATE tasks SET health_metric='heartRate', health_target=60 WHERE id='odd'").run();
     const [t] = dbGetAllTasks();
     expect(t.healthMetric).toBeNull();
+  });
+
+  it('round-trips a completion timer', () => {
+    dbInsertTask(makeTask({ id: 'timer1', completionTimerMinutes: 120 }));
+    const [t] = dbGetAllTasks();
+    expect(t.completionTimerMinutes).toBe(120);
+  });
+
+  it('round-trips a completion timer through an update', () => {
+    dbInsertTask(makeTask({ id: 'timer2' }));
+    dbUpdateTask(makeTask({ id: 'timer2', completionTimerMinutes: 30 }));
+    const [t] = dbGetAllTasks();
+    expect(t.completionTimerMinutes).toBe(30);
+  });
+
+  it('reads a task with no completion timer as having none', () => {
+    dbInsertTask(makeTask({ id: 'timer3' }));
+    const [t] = dbGetAllTasks();
+    expect(t.completionTimerMinutes).toBeNull();
   });
 
   it('returns null targetUnit when unset', () => {
@@ -1486,6 +1505,7 @@ describe('Templates', () => {
     recurrenceCount: null,
     vacationPause: false, excludeFromSuggestions: false,
     estimatedMinutes: null,
+    completionTimerMinutes: null,
     deliverableKind: null,
     chainEnabled: false,
     chainItems: [],

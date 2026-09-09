@@ -61,6 +61,7 @@ export function normalizeTemplateItem(raw: Partial<TemplateItem>): TemplateItem 
     vacationPause: raw.vacationPause ?? false,
     excludeFromSuggestions: raw.excludeFromSuggestions ?? false,
     estimatedMinutes: raw.estimatedMinutes ?? null,
+    completionTimerMinutes: raw.completionTimerMinutes ?? null,
     deliverableKind: raw.deliverableKind ?? null,
     chainEnabled: raw.chainEnabled ?? false,
     chainItems: parseChainItems(raw.chainItems),
@@ -179,6 +180,7 @@ export function buildDraftsFromTemplate(
       excludeFromSuggestions: item.excludeFromSuggestions,
       polarity: item.polarity,
       estimatedMinutes: item.estimatedMinutes,
+      completionTimerMinutes: item.completionTimerMinutes,
       // The question only — createTask never reads a draft's deliverableValue,
       // so an applied item always starts with the decision still to make.
       deliverableKind: item.deliverableKind,

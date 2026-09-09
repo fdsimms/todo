@@ -43,6 +43,7 @@ import { formatDeadlineDate, formatScheduledDate, formatTaskDate, formatHHMM, da
 import { isNegativeTask, isCleanToday, slipsToday } from '../utils/negativeHabits';
 import { scheduleMoveUpdates } from '../utils/taskMoves';
 import { formatDuration, formatStopwatch } from '../utils/effort';
+import { scheduleCompletionTimer } from '../utils/notifications';
 import { isTimedTask, timerRemaining, timerProgress, timerElapsed } from '../utils/timer';
 import {
   describeHealthTarget, hasHealthTarget, healthTargetProgress, healthTargetValue, isHealthTargetReady,
@@ -1431,6 +1432,30 @@ export const TaskItem = React.memo(function TaskItem({
     if (asksOnComplete) {
       await haptics.tap();
       setShowDeliverablePrompt(true);
+      return;
+    }
+    // A completion timer is asked about, not assumed — same "ask before it's
+    // scheduled" rule the deliverable prompt above follows, for a task that
+    // opted into a reminder a fixed span after completion (see
+    // Task.completionTimerMinutes and docs/arch for the iron-pill case this
+    // shipped for). The row still completes immediately either way; only the
+    // reminder is conditional.
+    if (task.completionTimerMinutes) {
+      await haptics.tap();
+      Alert.alert(
+        'Set a reminder?',
+        `Remind you in ${formatDuration(task.completionTimerMinutes)}?`,
+        [
+          { text: 'No thanks', style: 'cancel', onPress: () => runCompletion() },
+          {
+            text: 'Set reminder',
+            onPress: () => {
+              scheduleCompletionTimer(task);
+              runCompletion();
+            },
+          },
+        ],
+      );
       return;
     }
     await runCompletion();

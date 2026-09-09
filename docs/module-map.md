@@ -140,7 +140,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/navHubs.ts` — NavContentCounts, NavHubId, NavDestination, NavHub, NavMenuRow, NAV_HUBS, NAV_MENU_ROWS, hubForRoute, visibleHubMembers, NavMenuOptions, +7 more
 - `src/utils/negativeHabits.ts` — NegativeHabitFields, isNegativeTask, slipsToday, isCleanToday, slipPatch, undoSlipPatch, cleanDayPatch
 - `src/utils/notificationTapSync.ts` — useNotificationTapSync
-- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +28 more
+- `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +30 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — NudgeMode, NUDGE_MODES, nudgeModeOf, nudgeFieldsFor, FALLBACK_CADENCE_DAYS, NUDGE_MODE_LABEL, describeNudge, CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, +7 more
 - `src/utils/ordinal.ts` — ordinal
