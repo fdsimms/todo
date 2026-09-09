@@ -680,6 +680,18 @@ describe('demo mode', () => {
     useDemoStore.getState().exitDemoMode();
   });
 
+  // Same reasoning: nothing seeded carrying logCompletionToCalendar reads as
+  // a feature the app doesn't have.
+  it('seeds a task that logs its completion to the calendar', () => {
+    useDemoStore.getState().enterDemoMode();
+    const { tasks } = useTaskStore.getState();
+
+    const roadmap = tasks.find(t => t.title === 'Send the Q3 roadmap to Priya');
+    expect(roadmap?.logCompletionToCalendar).toBe(true);
+
+    useDemoStore.getState().exitDemoMode();
+  });
+
   // The month grid's one distinctive mark is a dot for an occurrence that has
   // no row yet, and only a fixed-schedule recurrence with a due date produces
   // one (see canProject). Nothing else in the seed asserts that combination

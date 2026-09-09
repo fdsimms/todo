@@ -52,6 +52,7 @@ import {
   rescheduleAllReminders,
 } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
+import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
 import { deleteCalendarEvent } from '../utils/calendarSync';
 import { setDemoModeActive } from '../utils/demoState';
 import type { GroceryItem, Person, Project, Task, TaskGroup, TitleRule } from '../types';
@@ -243,6 +244,10 @@ jest.mock('../utils/deadlineCalendarSync', () => ({
   syncDeadlineEvent: jest.fn().mockResolvedValue(null),
 }));
 
+jest.mock('../utils/completionCalendarSync', () => ({
+  logTaskCompletionToCalendar: jest.fn().mockResolvedValue(null),
+}));
+
 jest.mock('../utils/calendarSync', () => ({
   deleteCalendarEvent: jest.fn().mockResolvedValue(undefined),
   // The #1492 half. Stubbed to "the user cancelled" / "no such event" by
@@ -373,6 +378,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  logCompletionToCalendar: false,
+  completionCalendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],
@@ -1535,6 +1542,26 @@ describe('completeTask', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', deadline: new Date(2025, 5, 20).toISOString() })] });
     useTaskStore.getState().completeTask('t1');
     expect(syncDeadlineEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: true }));
+  });
+
+  it('logs the completion to the calendar when logCompletionToCalendar is on', async () => {
+    (logTaskCompletionToCalendar as jest.Mock).mockResolvedValue('log-evt');
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', logCompletionToCalendar: true })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(logTaskCompletionToCalendar).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 't1', completed: true }),
+      expect.any(Date)
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    const task = useTaskStore.getState().tasks.find(t => t.id === 't1');
+    expect(task?.completionCalendarEventId).toBe('log-evt');
+  });
+
+  it('does not call logTaskCompletionToCalendar when the flag is off', () => {
+    useTaskStore.setState({ tasks: [makeTask({ id: 't1', logCompletionToCalendar: false })] });
+    useTaskStore.getState().completeTask('t1');
+    expect(logTaskCompletionToCalendar).not.toHaveBeenCalled();
   });
 
   it('clears calendarEventId on the fresh occurrence of a recurring task', () => {
@@ -2889,6 +2916,24 @@ describe('uncompleteTask', () => {
     useTaskStore.setState({ tasks: [makeTask({ id: 't1', completed: true, completedAt: 'now' })] });
     useTaskStore.getState().uncompleteTask('t1');
     expect(dbUpdateTask).toHaveBeenCalledWith(expect.objectContaining({ id: 't1', completed: false }));
+  });
+
+  it('deletes the completion calendar event and clears the field', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', completed: true, completedAt: 'now', completionCalendarEventId: 'log-evt' })],
+    });
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(deleteCalendarEvent).toHaveBeenCalledWith('log-evt');
+    const task = useTaskStore.getState().tasks[0];
+    expect(task.completionCalendarEventId).toBeNull();
+  });
+
+  it('does not call deleteCalendarEvent when there is no completion calendar event', () => {
+    useTaskStore.setState({
+      tasks: [makeTask({ id: 't1', completed: true, completedAt: 'now', completionCalendarEventId: null })],
+    });
+    useTaskStore.getState().uncompleteTask('t1');
+    expect(deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
   it('removes the untouched follow-up occurrence spawned by the completion', () => {

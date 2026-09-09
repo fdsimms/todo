@@ -1308,6 +1308,12 @@ export interface Task {
   // opt-in per task, never a blanket export of every deadline in the app.
   // See calendarEventId below and reconcileDeadlineEvent in useTaskStore.ts.
   deadlineOnCalendar: boolean;
+  // Whether completing this task writes a silent, point-in-time event to the
+  // calendar picked in Settings › Calendar (useSettingsStore's
+  // completionCalendarId) — opt-in per task, never a blanket export of every
+  // completion in the app. See completionCalendarEventId below and
+  // logCompletionEvent in useTaskStore.ts.
+  logCompletionToCalendar: boolean;
   deferUntil: string | null;
   timeSegments: TimeOfDay[];
   windowStart: string | null; // "HH:MM" — task only becomes visible/active from this time on its day
@@ -1784,6 +1790,20 @@ export interface Task {
   // this dangling, and the next reconcile just writes a fresh one.
   calendarEventId: string | null;
 
+  // The id of the one-shot event logging this task's completion, or null when
+  // logCompletionToCalendar is off, no calendar is picked, or the write
+  // hasn't happened (yet, or ever). Resolve-or-shrug like calendarEventId
+  // above, but with one key difference: this is written **once**, at
+  // completion time, and never reconciled or rewritten afterward — it's a
+  // historical record of what happened, not a live mirror of current task
+  // state, so nothing here goes stale the way a moved deadline would leave
+  // calendarEventId's event pointing at the wrong day.
+  //
+  // On uncomplete, if this is set, the device event is deleted and this is
+  // cleared — un-completing the task means the thing the event recorded
+  // didn't actually happen, so there's nothing left for it to log.
+  completionCalendarEventId: string | null;
+
   // The id of the timed event blocking out room to actually *do* this task,
   // or null until the user asks for one. Deliberately its own field rather
   // than sharing calendarEventId above: a deadline event and a time block are
@@ -2184,7 +2204,7 @@ export interface Task {
 // source, so a series row or a template application can't inherit a count.
 // followUpTaskTally is the same kind of thing — the rule (followUpTaskEveryN,
 // followUpTaskTitle) is the draft's to set, the progress toward it is not.
-export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'slipCount' | 'slipDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'followUpTaskTally' | 'previousFollowUpTaskTally' | 'calendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
+export type TaskDraft = Omit<Task, 'id' | 'createdAt' | 'seenAt' | 'completed' | 'completedAt' | 'streakCount' | 'streakDate' | 'previousStreakCount' | 'previousStreakDate' | 'priorBestStreak' | 'slipCount' | 'slipDate' | 'archived' | 'archivedAt' | 'postponeCount' | 'postponeMuted' | 'driftingSince' | 'followUpTaskTally' | 'previousFollowUpTaskTally' | 'calendarEventId' | 'completionCalendarEventId' | 'timeBlockEventId' | 'backfillDismissedFields'>;
 
 // Which of the template's two anchor dates an item's offsets are relative
 // to — e.g. "pack" anchored to the trip's end date, "request time off"

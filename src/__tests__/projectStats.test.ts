@@ -69,7 +69,8 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   seriesRepeatMonths: 1, seriesDefaults: null, archived: false, archivedAt: null, linkUrl: null,
   phoneNumber: null, emailAddress: null, location: null, blockedById: null, waitingOnPersonId: null,
   deliverableKind: null, deliverableValue: null, generatedKind: null, generatedSourceId: null,
-  deadlineOnCalendar: false, calendarEventId: null, timeBlockEventId: null, pendingImport: null,
+  deadlineOnCalendar: false, calendarEventId: null,
+  logCompletionToCalendar: false, completionCalendarEventId: null, timeBlockEventId: null, pendingImport: null,
   backfillDismissedFields: [], personIds: [],
   ...overrides,
 });

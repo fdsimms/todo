@@ -184,6 +184,7 @@ import { giftIdeasText } from '../utils/personNotes';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
+import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
 import {
   deleteCalendarEvent,
   presentTimeBlockCreate,
@@ -548,11 +549,14 @@ function newTaskFromDraft(
     generatedKind: draft.generatedKind ?? null,
     generatedSourceId: draft.generatedSourceId ?? null,
     deadlineOnCalendar: draft.deadlineOnCalendar ?? false,
+    logCompletionToCalendar: draft.logCompletionToCalendar ?? false,
     // Never read off the draft, same reasoning as deliverableValue just
     // below: a duplicate or template application starting with someone
     // else's device event id would either point at the wrong task's event or
     // silently overwrite it on the first reconcile.
     calendarEventId: null,
+    // Same rule: a fresh row hasn't logged a completion yet.
+    completionCalendarEventId: null,
     // Same rule, and both are off the draft type for it (see TaskDraft).
     timeBlockEventId: null,
     seriesId: draft.seriesId ?? null,
@@ -634,6 +638,34 @@ function reconcileDeadlineEvent(task: Task): void {
       const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
       if (!current) return;
       const updated = { ...current, calendarEventId };
+      dbUpdateTask(updated);
+      useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
+    })
+    .catch(() => {});
+}
+
+/**
+ * Writes the silent, one-shot completion event for a task that has
+ * `logCompletionToCalendar` on — fire-and-forget, same shape as
+ * `reconcileDeadlineEvent` above, but simpler: `logTaskCompletionToCalendar`
+ * (completionCalendarSync.ts) never reconciles or rewrites, so there's no
+ * "did the id change" check, only the write and the patch of the id it
+ * returns. Still guards against the task having vanished by the time the
+ * device write resolves, the same reason `reconcileDeadlineEvent` does.
+ *
+ * Called only when `task.logCompletionToCalendar` is true (checked by the
+ * caller, not here) rather than unconditionally on every completion the way
+ * `reconcileDeadlineEvent` is — the util itself checks the settings side
+ * too, but there's no reason to fire a promise on every completion in the
+ * app just to have it resolve to null for the ones with the flag off.
+ */
+function logCompletionEvent(task: Task, completedAt: Date): void {
+  logTaskCompletionToCalendar(task, completedAt)
+    .then(completionCalendarEventId => {
+      if (!completionCalendarEventId) return;
+      const current = useTaskStore.getState().tasks.find(t => t.id === task.id);
+      if (!current) return;
+      const updated = { ...current, completionCalendarEventId };
       dbUpdateTask(updated);
       useTaskStore.setState(s => ({ tasks: s.tasks.map(t => (t.id === task.id ? updated : t)) }));
     })
@@ -2380,6 +2412,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // two tasks pointing at one event means editing either one's deadline
       // silently drags the other's calendar entry with it.
       calendarEventId: null,
+      // logCompletionToCalendar carries via ...original the same way, but a
+      // copy is a fresh, uncompleted task — it hasn't logged anything yet.
+      completionCalendarEventId: null,
       // Same reasoning, and the copy has no claim on the original's slot
       // anyway — the block was time set aside for one piece of work.
       timeBlockEventId: null,
@@ -3201,6 +3236,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // A completed row has nothing left to be late for — its deadline event,
     // if it had one, is deleted rather than left dangling on the calendar.
     reconcileDeadlineEvent(completed);
+    // Opt-in and one-shot, unlike the reconcile above — only fired when the
+    // task actually asked for it.
+    if (task.logCompletionToCalendar) logCompletionEvent(completed, completedAt);
 
     cancelTaskReminder(id);
 
@@ -3461,6 +3499,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           // deadline (nextDeadline above) that needs its own event, created
           // by the reconcile call below.
           calendarEventId: null,
+          // Nor this: the old occurrence's completion event logged that
+          // occurrence's completion, not this fresh one's — which hasn't
+          // happened yet.
+          completionCalendarEventId: null,
           // Nor this: last Tuesday's block was time spent on last Tuesday's
           // occurrence. The next one starts unblocked, and asking for a slot
           // is a decision the user makes per occurrence — there is no
@@ -3903,7 +3945,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       // again immediately. The follow-up task itself is deleted below, as an
       // uncompleted row pointing back at this one.
       followUpTaskTally: task.previousFollowUpTaskTally,
+      // Un-completing means the completion the event logged didn't actually
+      // happen, so there's nothing left for it to record.
+      completionCalendarEventId: null,
     };
+    if (task.completionCalendarEventId) deleteCalendarEvent(task.completionCalendarEventId);
     dbUpdateTask(updated);
     // Reopened, so a deadline it still carries is live again.
     reconcileDeadlineEvent(updated);
@@ -6546,6 +6592,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       generatedSourceId: null,
       deadlineOnCalendar: false,
       calendarEventId: null,
+      logCompletionToCalendar: false,
+      completionCalendarEventId: null,
       timeBlockEventId: null,
       pendingImport: null,
       postponeCount: 0,
@@ -6741,6 +6789,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       generatedSourceId: null,
       deadlineOnCalendar: false,
       calendarEventId: null,
+      logCompletionToCalendar: false,
+      completionCalendarEventId: null,
       timeBlockEventId: null,
       pendingImport: null,
       postponeCount: 0,

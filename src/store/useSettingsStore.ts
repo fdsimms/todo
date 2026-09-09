@@ -793,6 +793,15 @@ interface SettingsStore {
   // calendar" toggle in the editor has nothing to offer without one, the
   // same way `calendarReadEnabled` follows `calendarIds` in `CalendarSettings`.
   deadlineCalendarId: string | null;
+  // Which calendar a task's completion is logged onto as a silent,
+  // point-in-time event, separate from `deadlineCalendarId` above. Not
+  // because a different person reads it (unlike `mealCalendarId`) — it's the
+  // same shape of setting for a different question: a deadline event answers
+  // "when is this due" and a completion event answers "when did I finish
+  // this", two different facts about a task that a user may want recorded on
+  // either calendar, both, or neither. Null means off, same "the calendar to
+  // write into is the switch" reasoning as `deadlineCalendarId`.
+  completionCalendarId: string | null;
   // Which calendar the week's planned meals are mirrored onto as all-day
   // events (#1494). Null means off, and off is the default — same shape as
   // `deadlineCalendarId` above and for the same reason: a calendar to write
@@ -1251,6 +1260,7 @@ interface SettingsStore {
   setReminderMeetingNudgeEnabled: (on: boolean) => void;
   setCalendarPeopleHistory: (on: boolean) => void;
   setDeadlineCalendarId: (id: string | null) => void;
+  setCompletionCalendarId: (id: string | null) => void;
   setMealCalendarId: (id: string | null) => void;
   setProjectReviewTasks: (on: boolean) => void;
   setProjectReviewTaskCategory: (category: string | null) => void;
@@ -1741,6 +1751,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
   reminderMeetingNudgeEnabled: true,
   calendarPeopleHistory: true,
   deadlineCalendarId: null,
+  completionCalendarId: null,
   mealCalendarId: null,
   healthReadEnabled: false,
   healthCategory: null,
@@ -2016,6 +2027,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const reminderMeetingNudgeEnabled = dbGetSetting('reminderMeetingNudgeEnabled') !== 'false';
     const calendarPeopleHistory = dbGetSetting('calendarPeopleHistory') !== 'false';
     const deadlineCalendarId = dbGetSetting('deadlineCalendarId') || null;
+    const completionCalendarId = dbGetSetting('completionCalendarId') || null;
     const mealCalendarId = dbGetSetting('mealCalendarId') || null;
     const healthReadEnabled = dbGetSetting('healthReadEnabled') === 'true';
     // '' persists as "not chosen", matching calendarEventCategory. Nothing
@@ -2207,7 +2219,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     const newTaskDefaults = parseNewTaskDefaults(dbGetSetting('newTaskDefaults'));
     const titleRules = parseTitleRules(dbGetSetting('titleRules'));
     const lastVisitedScreen = dbGetSetting('lastVisitedScreen') || null;
-    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, mealCalendarId, healthReadEnabled, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegment, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
+    set({ dayResetTime: resetTime, morningStart, afternoonStart, eveningStart, nightStart, activeHoursStart, activeHoursEnd, quietHoursStart, quietHoursEnd, themeMode, appFont, appFontRandomize, appFontPool, dailyAgendaEnabled, dailyAgendaTime, tripReminderEnabled, backgroundRefreshEnabled, use24HourTime, weekStartsOn, fabHand, hapticsEnabled, shakeToUndoEnabled, confirmBeforeDeleting, sortOption, filterPriorities, filterEfforts, filterHasReminder, recipeSortOption, recipeLovedOnly, appLockEnabled, appLockGraceSeconds, vacationMode, vacationStart, vacationEnd, vacationDrivenBy, activeListDrivenBy, destinationForecastEnabled, autoRemoveExpiredTasks, autoCompleteProjectsOnDone, postponeCheckEnabled, postponeCheckThreshold, focusWorkCapMinutes, focusDefaultWorkMinutes, focusRestAfterTasks, focusRestAfterMinutes, focusRestMinutes, focusLongRestEvery, focusLongRestMinutes, focusShieldEnabled, completedRetentionDays, defaultReminderLeadMinutes, hideCategories, collapsedCategories, collapsedRecipeSections, recentSearches, simpleTaskForm, simpleMode, hideHelpText, tipsEnabled, seenTips, lastTipShown, timerLiveActivity, tripLiveActivity, focusLiveActivity, kitchenEnabled, mealsOnToday, kitchenOnToday, unitSystem, currencySymbol, mealCookTasks, mealCookTaskCategory, mealSlotsEnabled, mealSlotTasksWrittenThroughDayKey, mealSlotStepEstimates, cookRecapEnabled, restockOfferEnabled, productLookupEnabled, groceryUseUpTasks, groceryUseUpLeadDays, groceryUseUpTaskCategory, leftoverUseUpTasks, leftoverUseUpTaskCategory, useUpTaskCap, remindersImportEnabled, remindersImportListId, remindersImportConfirmedListId, remindersImportDelete, remindersImportReview, groceryImportEnabled, groceryImportListId, groceryImportConfirmedListId, groceryImportDelete, groceryImportTwoWay, calendarReadEnabled, calendarIds, vacationHiddenCalendarIds, calendarEventCategory, reminderMeetingNudgeEnabled, calendarPeopleHistory, deadlineCalendarId, completionCalendarId, mealCalendarId, healthReadEnabled, healthCategory, healthTasks, healthTaskCategory, healthRules, projectReviewTasks, projectReviewTaskCategory, birthdayTasks, birthdayLeadDays, birthdayTaskCategory, birthdayGiftTasks, birthdayGiftLeadDays, birthdayGiftTaskCategory, reachOutTasks, reachOutTaskCategory, pantryCheckTasks, pantryCheckTaskCategory, pantryReviewTasks, pantryReviewTaskCategory, pantryReviewLastDayKey, mealShortfallTasks, mealShortfallLeadDays, mealShortfallTaskCategory, supplyReorderTasks, calendarReviewTasks, calendarReviewLastDayKey, calendarReviewTimeSegment, weatherTasks, weatherTaskCategory, weatherRules, screenTimeTasks, screenTimeTaskCategory, screenTimeRules, moodLogTasks, moodLogTaskCategory, moodLogLastDayKey, morningCheckInLastDayKey, moodLogTimeSegment, moodNudgeTasks, moodNudgeTaskCategory, moodNudgeAfterDays, moodNudgeLastDayKey, weekendNudgeTasks, weekendNudgeTaskCategory, weekendNudgeLeadDays, weekendNudgeLastWeekendKey, patchNotesQaStatus, aiFeatureConfig, onDeviceAiEnabled, defaultProjectNudgeCadenceDays, mealPlanNudgeEnabled, mealPlanNudgeIgnoresVacation, mealPlanNudgeWeekday, mealPlanNudgeTime, mealPlanNudgeLastFiredWeekKey, mealPlanNudgeGroupId, mealPlanNudgeTaskCategory, newTaskDefaults, titleRules, lastVisitedScreen, initialized: true });
   },
 
   /**
@@ -3179,6 +3191,11 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     set({ deadlineCalendarId: id });
   },
 
+  setCompletionCalendarId(id: string | null) {
+    dbSetSetting('completionCalendarId', id ?? '');
+    set({ completionCalendarId: id });
+  },
+
   // Deliberately no backfill, the same call `mealCookTasks` makes: picking a
   // calendar mirrors the meals planned from here on, and leaves the ones
   // already in the plan alone. Turning it back off likewise leaves whatever
@@ -3296,6 +3313,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
     // Per-task deadlineOnCalendar flags aren't settings and aren't touched —
     // they just have nothing to write to until a calendar is picked again.
     dbSetSetting('deadlineCalendarId', '');
+    dbSetSetting('completionCalendarId', '');
     dbSetSetting('mealCalendarId', '');
     set({
       ...DEFAULT_SETTINGS,
@@ -3304,6 +3322,7 @@ export const useSettingsStore = create<SettingsStore>((set, get) => ({
       groceryImportListId: null,
       groceryImportConfirmedListId: null,
       deadlineCalendarId: null,
+      completionCalendarId: null,
       mealCalendarId: null,
     });
   },

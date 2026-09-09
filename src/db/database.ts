@@ -904,6 +904,11 @@ export function initDatabase(): void {
     // both. NULL until the user puts one on the calendar by hand — nothing
     // backfills it. See Task.timeBlockEventId.
     'ALTER TABLE tasks ADD COLUMN time_block_event_id TEXT',
+    // 0 for every existing row, same reasoning as deadline_on_calendar above.
+    // See Task.logCompletionToCalendar.
+    'ALTER TABLE tasks ADD COLUMN log_completion_to_calendar INTEGER DEFAULT 0',
+    // NULL until the completion that writes it. See Task.completionCalendarEventId.
+    'ALTER TABLE tasks ADD COLUMN completion_calendar_event_id TEXT',
     // Superseded by generated_kind/generated_source_id, same as the two above.
     'ALTER TABLE tasks ADD COLUMN leftover_id TEXT',
     // Nullable with no default, for exactly the reason grocery_items.
@@ -2263,6 +2268,8 @@ function rowToTask(row: Record<string, unknown>): Task {
     postponeMuted: Boolean(row.postpone_muted),
     driftingSince: (row.drifting_since as string | null) ?? null,
     calendarEventId: (row.calendar_event_id as string | null) ?? null,
+    logCompletionToCalendar: Boolean(row.log_completion_to_calendar),
+    completionCalendarEventId: (row.completion_calendar_event_id as string | null) ?? null,
     timeBlockEventId: (row.time_block_event_id as string | null) ?? null,
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
     location: (row.location as string) ?? null,
@@ -2290,7 +2297,8 @@ export function dbInsertTask(task: Task): void {
       target_unit, phone_number, email_address, allow_overshoot, pinned_order, generated_kind,
       generated_source_id, postpone_count, postpone_muted, drifting_since,
       extra_task_every_n, extra_task_title, extra_task_draft, extra_task_one_at_a_time, extra_task_tally, previous_extra_task_tally, extra_task_source_title,
-      deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id, time_block_event_id,
+      deliverable_kind, deliverable_value, deadline_on_calendar, calendar_event_id,
+      log_completion_to_calendar, completion_calendar_event_id, time_block_event_id,
       streak_requires_window, backfill_dismissed_fields,
       supply_count, supply_unit, supply_refill_count, supply_reorder_at,
       supply_lead_days, supply_declined_at_count, supply_grocery_item_id,
@@ -2298,7 +2306,7 @@ export function dbInsertTask(task: Task): void {
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
       health_metric, health_target
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2349,6 +2357,8 @@ export function dbInsertTask(task: Task): void {
       task.deliverableValue ?? null,
       task.deadlineOnCalendar ? 1 : 0,
       task.calendarEventId ?? null,
+      task.logCompletionToCalendar ? 1 : 0,
+      task.completionCalendarEventId ?? null,
       task.timeBlockEventId ?? null,
       task.streakRequiresWindow ? 1 : 0,
       JSON.stringify(task.backfillDismissedFields),
@@ -2396,7 +2406,8 @@ export function dbUpdateTask(task: Task): void {
       target_unit=?, phone_number=?, email_address=?, allow_overshoot=?, pinned_order=?, generated_kind=?,
       generated_source_id=?, postpone_count=?, postpone_muted=?, drifting_since=?,
       extra_task_every_n=?, extra_task_title=?, extra_task_draft=?, extra_task_one_at_a_time=?, extra_task_tally=?, previous_extra_task_tally=?, extra_task_source_title=?,
-      deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?, time_block_event_id=?,
+      deliverable_kind=?, deliverable_value=?, deadline_on_calendar=?, calendar_event_id=?,
+      log_completion_to_calendar=?, completion_calendar_event_id=?, time_block_event_id=?,
       streak_requires_window=?, backfill_dismissed_fields=?,
       supply_count=?, supply_unit=?, supply_refill_count=?, supply_reorder_at=?,
       supply_lead_days=?, supply_declined_at_count=?, supply_grocery_item_id=?,
@@ -2455,6 +2466,8 @@ export function dbUpdateTask(task: Task): void {
       task.deliverableValue ?? null,
       task.deadlineOnCalendar ? 1 : 0,
       task.calendarEventId ?? null,
+      task.logCompletionToCalendar ? 1 : 0,
+      task.completionCalendarEventId ?? null,
       task.timeBlockEventId ?? null,
       task.streakRequiresWindow ? 1 : 0,
       JSON.stringify(task.backfillDismissedFields),
