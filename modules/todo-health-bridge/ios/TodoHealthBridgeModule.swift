@@ -70,35 +70,97 @@ public class TodoHealthBridgeModule: Module {
     if let sleep = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) {
       types.insert(sleep)
     }
+    if let sodium = HKQuantityType.quantityType(forIdentifier: .dietarySodium) {
+      types.insert(sodium)
+    }
+    if let protein = HKQuantityType.quantityType(forIdentifier: .dietaryProtein) {
+      types.insert(protein)
+    }
+    if let satFat = HKQuantityType.quantityType(forIdentifier: .dietaryFatSaturated) {
+      types.insert(satFat)
+    }
     return types
   }
 
-  /// The step total to report for one statistics bucket, or nil for no samples.
+  /// The total to report for one statistics bucket, in `unit`, or nil for no
+  /// samples.
   ///
-  /// `.separateBySource` on top of the sum because a phone and a watch both
-  /// record steps for the same walk, and HealthKit does not de-duplicate them
-  /// for a statistics query — the Health app's own total is computed by logic
-  /// Apple has never exposed. Summing every source double-counts anyone wearing
-  /// a Watch, which is most of the people this is for. Taking the largest
-  /// single source under-counts a day split between devices, and that is the
-  /// error to prefer: it never claims more steps than some one device actually
-  /// recorded, which is the difference between a reading and a guess.
+  /// `.separateBySource` on top of the sum because two sources can both record
+  /// the same real-world thing — a phone and a watch both counting steps for
+  /// one walk, or two food-logging apps both writing the same meal's sodium —
+  /// and HealthKit does not de-duplicate for a statistics query. Summing every
+  /// source double-counts whichever of those applies to a given person.
+  /// Taking the largest single source under-counts a day split across devices
+  /// or apps instead, and that is the error to prefer: it never claims more
+  /// than some one source actually recorded, which is the difference between a
+  /// reading and a guess.
   ///
-  /// Shared by the one-window read and the daily one so the rule cannot drift
-  /// between them, which is the whole reason it is a function.
-  private static func bestSum(_ statistics: HKStatistics) -> Double? {
+  /// Shared by every cumulative quantity this reads (steps, sodium, protein,
+  /// saturated fat) so the rule cannot drift between them, which is the whole
+  /// reason it is a function rather than being written out at each call site.
+  private static func bestSum(_ statistics: HKStatistics, unit: HKUnit) -> Double? {
     var best: Double? = nil
     if let sources = statistics.sources, !sources.isEmpty {
       for source in sources {
         guard let quantity = statistics.sumQuantity(for: source) else { continue }
-        let value = quantity.doubleValue(for: HKUnit.count())
+        let value = quantity.doubleValue(for: unit)
         if best == nil || value > best! { best = value }
       }
     }
     if best == nil, let total = statistics.sumQuantity() {
-      best = total.doubleValue(for: HKUnit.count())
+      best = total.doubleValue(for: unit)
     }
     return best
+  }
+
+  /// One `HKStatisticsCollectionQuery` over `identifier`, bucketed the same
+  /// way steps and sodium already were, writing each day's `bestSum` through
+  /// `write` and calling `finish` when the query's own callback fires.
+  ///
+  /// Pulled out once a fourth cumulative quantity (saturated fat) would have
+  /// made this the fourth near-identical fifteen-line block in this
+  /// function — same predicate, same options, same anchor, differing only in
+  /// which identifier and unit feed `bestSum` and which array the result
+  /// lands in. `write` closes over that array directly rather than this
+  /// taking an `inout` parameter, because an `inout` can't survive across the
+  /// query's own escaping completion handler.
+  private func runDietQuery(
+    identifier: HKQuantityTypeIdentifier,
+    unit: HKUnit,
+    anchor: Date,
+    end: Date,
+    starts: [Date],
+    write: @escaping (Int, Double) -> Void,
+    finish: @escaping () -> Void
+  ) {
+    guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else {
+      finish()
+      return
+    }
+    let query = HKStatisticsCollectionQuery(
+      quantityType: type,
+      quantitySamplePredicate: HKQuery.predicateForSamples(
+        withStart: anchor, end: end, options: .strictStartDate
+      ),
+      options: [.cumulativeSum, .separateBySource],
+      anchorDate: anchor,
+      intervalComponents: DateComponents(day: 1)
+    )
+    query.initialResultsHandler = { _, collection, _ in
+      collection?.enumerateStatistics(from: anchor, to: end) { statistics, _ in
+        // Which bucket a result falls *in*, rather than which bucket start it
+        // equals. The enumeration is anchored to the same instants `starts`
+        // was built from, so the two should match exactly — but "should" here
+        // means every day silently reads null if they ever don't, and a
+        // feature whose absent value is indistinguishable from a refusal
+        // cannot afford a failure that looks like no data. Same containment
+        // rule the sleep query below uses.
+        guard let i = starts.lastIndex(where: { $0 <= statistics.startDate }) else { return }
+        if let value = Self.bestSum(statistics, unit: unit) { write(i, value) }
+      }
+      finish()
+    }
+    self.store.execute(query)
   }
 
   /// The category values that count as asleep.
@@ -198,7 +260,8 @@ public class TodoHealthBridgeModule: Module {
     // ─── Reading ────────────────────────────────────────────────────────────
 
     /// One entry per logical day, as JSON:
-    /// `[{"start":"…","steps":4120,"sleepMinutes":437}, …]`, either number null.
+    /// `[{"start":"…","steps":4120,"sleepMinutes":437,"sodiumMg":1850,
+    /// "proteinG":42,"satFatG":18}, …]`, any number null.
     ///
     /// The window is described as an anchor plus a day count rather than as a
     /// list of boundaries, because a logical day is exactly 1 calendar day long
@@ -213,9 +276,9 @@ public class TodoHealthBridgeModule: Module {
     /// reader uses, so there is exactly one implementation of "which day is
     /// this" in the app and it is the one with the setting.
     ///
-    /// Both numbers are nullable per day and null is not zero — a day with no
-    /// samples, a day before the phone was set up, and a day whose type was
-    /// refused all read the same way. See the module note above.
+    /// All five numbers are nullable per day and null is not zero — a day
+    /// with no samples, a day before the phone was set up, and a day whose
+    /// type was refused all read the same way. See the module note above.
     AsyncFunction("readDailyHealth") { (anchorISO: String, days: Int, promise: Promise) in
       #if canImport(HealthKit)
       let calendar = Calendar.current
@@ -241,57 +304,59 @@ public class TodoHealthBridgeModule: Module {
 
       var steps = [Double?](repeating: nil, count: days)
       var sleepMinutes = [Double?](repeating: nil, count: days)
-      // Two queries, one promise. `resolve` is called by whichever finishes
+      var sodiumMg = [Double?](repeating: nil, count: days)
+      var proteinG = [Double?](repeating: nil, count: days)
+      var satFatG = [Double?](repeating: nil, count: days)
+      // Five queries, one promise. `resolve` is called by whichever finishes
       // last, and `pending` is only ever touched on the health store's own
       // serial callback queue, so the count needs no lock.
-      var pending = 2
+      var pending = 5
       let finish = {
         pending -= 1
         guard pending == 0 else { return }
         let entries: [String] = (0..<days).map { i in
           let stepPart = steps[i].map { "\(Int($0.rounded()))" } ?? "null"
           let sleepPart = sleepMinutes[i].map { "\(Int($0.rounded()))" } ?? "null"
-          return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"steps\":\(stepPart),\"sleepMinutes\":\(sleepPart)}"
+          let sodiumPart = sodiumMg[i].map { "\(Int($0.rounded()))" } ?? "null"
+          let proteinPart = proteinG[i].map { "\(Int($0.rounded()))" } ?? "null"
+          let satFatPart = satFatG[i].map { "\(Int($0.rounded()))" } ?? "null"
+          return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"steps\":\(stepPart),\"sleepMinutes\":\(sleepPart),"
+            + "\"sodiumMg\":\(sodiumPart),\"proteinG\":\(proteinPart),\"satFatG\":\(satFatPart)}"
         }
         promise.resolve("[" + entries.joined(separator: ",") + "]")
       }
 
       var started = false
       TodoHealthExceptionCatcher.runCatchingExceptions {
-        // ─── Steps: one collection query over the whole span ───────────────
+        // ─── Steps, sodium, protein, saturated fat: one collection query each,
+        // over the whole span ───────────────────────────────────────────────
         //
         // A collection query rather than one statistics query per day, which
         // is what an anchor-plus-interval window is for: 90 round trips to the
         // health daemon to draw one insight is the version of this that gets
-        // noticed.
-        if let type = HKQuantityType.quantityType(forIdentifier: .stepCount) {
-          let query = HKStatisticsCollectionQuery(
-            quantityType: type,
-            quantitySamplePredicate: HKQuery.predicateForSamples(
-              withStart: anchor, end: end, options: .strictStartDate
-            ),
-            options: [.cumulativeSum, .separateBySource],
-            anchorDate: anchor,
-            intervalComponents: DateComponents(day: 1)
-          )
-          query.initialResultsHandler = { _, collection, _ in
-            collection?.enumerateStatistics(from: anchor, to: end) { statistics, _ in
-              // Which bucket a result falls *in*, rather than which bucket start
-              // it equals. The enumeration is anchored to the same instants
-              // `starts` was built from, so the two should match exactly — but
-              // "should" here means every day silently reads null if they ever
-              // don't, and a feature whose absent value is indistinguishable
-              // from a refusal cannot afford a failure that looks like no data.
-              // Same containment rule the sleep half below uses.
-              guard let i = starts.lastIndex(where: { $0 <= statistics.startDate }) else { return }
-              steps[i] = Self.bestSum(statistics)
-            }
-            finish()
-          }
-          self.store.execute(query)
-        } else {
-          finish()
-        }
+        // noticed. All four are cumulative and per-source for the same
+        // reason: a phone and a watch both counting steps for one walk, or two
+        // food-logging apps both writing the same meal's sodium, protein or
+        // saturated fat, would otherwise be double-counted — see `bestSum`.
+        // This app never writes any of the three nutrients itself, so every
+        // gram or milligram here came from whatever food-logging app the
+        // person already uses.
+        self.runDietQuery(
+          identifier: .stepCount, unit: .count(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in steps[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietarySodium, unit: HKUnit.gramUnit(with: .milli), anchor: anchor, end: end, starts: starts,
+          write: { i, value in sodiumMg[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryProtein, unit: .gram(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in proteinG[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryFatSaturated, unit: .gram(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in satFatG[i] = value }, finish: finish
+        )
 
         // ─── Sleep: one sample query, bucketed here ────────────────────────
         //

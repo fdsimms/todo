@@ -209,6 +209,15 @@ this gets no sleep until somebody taps the access row in Settings, and because a
 refused read and an unasked one look identical, nothing can tell them that is
 why. Weigh that against what the type buys before extending the list again.
 
+**None of the three nutrients (see below) join this axis.** `MoodDay` carries
+no sodium, protein or saturated-fat field, and `healthInsight` gains no third
+metric for any of them. A join against mood asks whether a *pattern*
+correlates with how somebody feels; a nutrient rule here is a person's own
+medically-set target, checked against a number they picked, not a candidate
+for "no clear pattern" alongside steps and sleep. Nothing about adding one is
+technically hard — it would be one more pairing in `healthInsight` — the
+decision was that none of them answers the same question steps and sleep do.
+
 ## The generator, and the line under "Lighten today"
 
 `health` is generator #19 and its own rules live in
@@ -244,25 +253,95 @@ day. It is gated on the read alone rather than on the generator, because it is a
 line in a menu somebody opened rather than a task — the same argument
 `lowMoodDeloadNote` makes for needing no switch of its own.
 
-**The sleep-shortfall task carries the same note and an action, so it stops
-reading as coming from nowhere.** `checkHealthTasks` writes `shortSleepDeloadNote`
-straight onto the row's own `notes` (`healthTaskLinkUrl` in `healthRules.ts`
-supplies `dundundun://deload`, wired to `resetToDeload` in `navigationRef.ts`),
-so tapping "Keep today light" opens the same `DeloadSheet` the menu line points
-at rather than sitting there as a bare title. This is deliberately scoped to
-`sleepHours` — a steps-shortfall task ("Go for a walk") already names its own
-action in the title and gets neither field.
+**Every shortfall task past steps carries the same note, and only sleep
+carries a link too.** `checkHealthTasks` writes the metric's own note
+(`healthTaskNote` in `healthRules.ts`, dispatching to `shortSleepDeloadNote` /
+`sodiumShortfallNote` / `proteinShortfallNote` / `satFatOverageNote`) straight
+onto the row's own `notes`, so a sleep, sodium, protein or saturated-fat task
+never reads as coming from nowhere the way a bare title would. Only sleep also
+gets `healthTaskLinkUrl`'s `dundundun://deload`, wired to `resetToDeload` in
+`navigationRef.ts`, so tapping "Keep today light" opens the same `DeloadSheet`
+the menu line points at. Steps carries neither field ("Go for a walk" already
+names its own action), and none of the three nutrients has a comparable sheet
+to open, so they get the note and stop there.
+
+**Sodium, protein and saturated fat are shortfall rules with more than one
+checkpoint a day, and that is what `HealthRule.checkpointHour` exists for.**
+Steps and sleep judge from one fixed hour per metric
+(`HEALTH_METRIC_EARLIEST_HOUR`), because one evening floor is what a step
+count or a night's sleep needs. A nutrient target set by a doctor is routinely
+phrased as more than one number over a day — "at least 2,000mg of sodium by
+lunch, 4,000mg by dinner" — which is two *rules*, not one, and they need two
+different hours. Rather than growing a second fixed map entry per checkpoint
+(and a third, and a fourth, the moment somebody wants a mid-afternoon one
+too), each of these three rules carries its own `checkpointHour`, editable in
+`HealthRulesSheet` for any metric but steps and sleep.
+`HEALTH_METRIC_EARLIEST_HOUR`'s entries for the three nutrients still exist,
+but only as the value a freshly-created rule starts from — steps and sleep
+have no reason to follow, and don't.
+
+**Saturated fat reads its checkpoint the opposite way round, and that is the
+one place this generator stopped being purely a floor.** The file's own
+argument used to be "Only 'under' is expressible, and that is deliberate": a
+comparator would put a control on every row to serve a case nobody had, and
+the mirror of a shortfall ("at least 10,000 steps") describes something
+already true and needing no task. A nutrient *ceiling* — "don't go over 20g of
+saturated fat" — is a different request the mirror argument never covered: it
+is still a number the user picked and a shortfall against it, just measured
+the other way. `HEALTH_METRIC_DIRECTION` makes the comparator a property of
+the metric rather than a control (`healthRuleDirection`), so there is still
+no per-row toggle — saturated fat is the one metric wired to `'over'`, and
+every other metric stays `'under'`.
+
+**A ceiling needs its idempotency mark spent the other way round too, and
+missing this would make the feature silently useless.** Every other rule here
+only gets easier to satisfy as the day goes on — more steps, more sodium, more
+protein all move toward the target, never away from it — so `checkHealthTasks`
+spending the mark the moment `ruleCanBeJudgedYet` says yes, matched or not, is
+correct: whatever the reading says once the checkpoint has passed is final. A
+ceiling is the mirror of that: more saturated fat only moves *toward* crossing
+it, so an early "still under 20g" checked at 9am says nothing about 6pm. Spend
+the mark on that early "safe" reading the way an under-rule does, and the rule
+is retired for the day the first time it happens to be checked while still
+under — which for most people, most days, is the very first foreground sweep.
+So `checkHealthTasks` withholds the mark for an `'over'` rule until it actually
+matches, and only then treats it like every other generator. See that
+function's own comment for the exact branch.
+
+Two things keep saturated fat's addition narrow rather than reopening the
+comparator question generally: the reading itself is unchanged in kind —
+`dietaryFatSaturated` is read, `null`-checked and shortfall-compared through
+the same `ruleCanBeJudgedYet`/`ruleShortfallToday` pair every other metric
+uses — and the direction is fixed per metric, never offered as a choice on a
+row. What changed is *which way* one metric's shortfall points and *when its
+mark may be spent*, not a new relationship between a reading and a task.
 
 ## What is deliberately not built yet
 
-Steps and sleep, and nothing else. The read-type list is one place
-(`readTypes`) and the note beside it says what adding to it costs; every metric
-this file rules out — resting heart rate, HRV, weight, glucose, cycle tracking —
-stays ruled out for the reason given there, which is that a generator firing on
-one of them can be wrong about a body rather than about a day. The set of read
-types is one list in the Swift module (`readTypes`) because the permission sheet
-is shown once for whatever is asked for, and a type added there is a type the
-sheet will list — so nothing goes in until something reads it.
+Steps, sleep, sodium, protein and saturated fat — nothing past those five. The
+read-type list is one place (`readTypes`) and the note beside it says what
+adding to it costs; every metric this file still rules out — resting heart
+rate, HRV, weight, glucose, cycle tracking — stays ruled out for the reason
+given there, which is that a generator firing on one of them can be wrong
+about a body rather than about a day. The set of read types is one list in the
+Swift module (`readTypes`) because the permission sheet is shown once for
+whatever is asked for, and a type added there is a type the sheet will list —
+so nothing goes in until something reads it.
+
+**The three nutrients are not an exception to that reasoning; they sit on the
+other side of the line it draws.** The ruled-out metrics are all a device's
+own guess about a body a person never entered a number for — an app cannot ask
+"is this HRV reading meaningfully low for *you*" without inventing a
+diagnosis. A dietary figure is different in kind: it exists at all only
+because a person (or their own food-logging app) entered it, and the
+threshold it is judged against is a number *they* typed into
+`HealthRulesSheet`, the same as "under 3,000 steps" or "under 6 hours asleep"
+already is. The generator still never says "your sodium is low" or "you ate
+too much saturated fat" — every note function attributes its figure to Apple
+Health exactly as `shortSleepDeloadNote` does, ceiling included — it only
+reports the reading against the target the user set. Nothing here licenses
+adding a metric the app would be interpreting on the user's behalf; it
+licenses adding one whose bar, and whose direction, is entirely theirs.
 
 The four things this was built to make possible, in the order they are worth
 doing, none of them started:
@@ -277,6 +356,13 @@ read, with the cost of adding a type written down beside `readTypes`. And a task
 *may* show its live figure and mark itself ready — as its own `TaskKind`, in
 `isTimerReady`'s shape, never as a completion. See the section above for why
 that shape and no other.
+
+Sodium, protein and saturated fat (kind #19's three nutrient metrics) are a
+fifth thing this file's earlier "deliberately not built" list didn't
+anticipate, added for a specific, medically-motivated request rather than as a
+general widening of what this generator may watch — see the sections above for
+the reasoning and the two lines (which metrics are eligible at all, and which
+way a shortfall may point) it does and doesn't cross.
 
 ## One thing worth knowing before scoping the background half
 

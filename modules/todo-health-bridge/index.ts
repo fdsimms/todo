@@ -2,7 +2,7 @@ import { Platform } from 'react-native';
 import { requireNativeModule } from 'expo-modules-core';
 
 /**
- * Apple Health, as much of it as this app reads — which is one number.
+ * Apple Health, as much of it as this app reads — a small handful of numbers.
  *
  * The shape of this module is dictated by one hard limit in Apple's API, and
  * it is worth knowing before adding to it:
@@ -54,13 +54,21 @@ export type HealthAuthorizationResult = 'unavailable' | 'requested' | 'failed';
  * uses. One implementation of "which day is this", and it is the one that has
  * the setting.
  *
- * Both numbers are independently nullable, and null is never zero — see the
+ * Every number is independently nullable, and null is never zero — see the
  * module note above.
  */
 export interface HealthDayReading {
   start: string;
   steps: number | null;
   sleepMinutes: number | null;
+  /** Milligrams of dietary sodium logged for the day, or null. Not read from
+   * this app's own writes — nothing here writes to Health — but from whatever
+   * food-logging app the person already uses; see the module note above. */
+  sodiumMg: number | null;
+  /** Grams of dietary protein logged for the day, or null. Same source as `sodiumMg`. */
+  proteinG: number | null;
+  /** Grams of dietary saturated fat logged for the day, or null. Same source as `sodiumMg`. */
+  satFatG: number | null;
 }
 
 interface TodoHealthNativeModule {
@@ -132,7 +140,8 @@ function countOrNull(value: unknown): number | null {
 }
 
 /**
- * Steps and sleep for each of `days` logical days starting at `anchorISO`.
+ * Steps, sleep, and sodium/protein/saturated fat for each of `days` logical
+ * days starting at `anchorISO`.
  *
  * The window is an anchor plus a count rather than a pair of instants, because
  * a logical day is exactly one calendar day long under any reset time — so the
@@ -163,7 +172,7 @@ export async function readDailyHealth(
     const out: HealthDayReading[] = [];
     for (const entry of parsed) {
       if (typeof entry !== 'object' || entry === null) continue;
-      const { start, steps, sleepMinutes } = entry as Record<string, unknown>;
+      const { start, steps, sleepMinutes, sodiumMg, proteinG, satFatG } = entry as Record<string, unknown>;
       // A row with no instant cannot be filed under a day, so it is dropped
       // rather than guessed at — the same refusal the native side makes when
       // it cannot work out which bucket a sample belongs in.
@@ -172,6 +181,9 @@ export async function readDailyHealth(
         start,
         steps: countOrNull(steps),
         sleepMinutes: countOrNull(sleepMinutes),
+        sodiumMg: countOrNull(sodiumMg),
+        proteinG: countOrNull(proteinG),
+        satFatG: countOrNull(satFatG),
       });
     }
     return out;

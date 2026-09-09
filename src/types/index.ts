@@ -337,16 +337,32 @@ export interface ScreenTimeRule {
 export interface HealthRule {
   id: string;
   /** Which reading this rule watches. */
-  metric: 'steps' | 'sleepHours';
+  metric: 'steps' | 'sleepHours' | 'sodiumMg' | 'proteinG' | 'satFatG';
   /**
-   * The number the reading has to fall *under*, in the metric's own unit —
-   * steps, or whole hours asleep.
+   * The number the reading is compared against, in the metric's own unit —
+   * steps, whole hours asleep, milligrams of sodium, or grams of protein or
+   * saturated fat.
    *
-   * Only "under" is expressible. Every rule worth writing here is a shortfall,
-   * and the mirror describes something that has already happened and needs no
-   * task, so a comparator would be a control on every row serving nobody.
+   * Which way it's compared is a property of the *metric*
+   * (`HEALTH_METRIC_DIRECTION` in `healthRules.ts`), not a control on the row:
+   * every metric but saturated fat is a floor ("under"), and saturated fat
+   * alone is a ceiling ("over") — a nutrient somebody is trying to stay
+   * *under* for a reason, where every other metric here is one they're trying
+   * to reach. Both directions still describe a shortfall against the number
+   * the user picked, which is what keeps this from being a general
+   * greater/less toggle: there is no rule here that fires on "you did enough".
    */
   threshold: number;
+  /**
+   * The hour of the logical day this rule is judged from, for a metric that
+   * wants more than one checkpoint in a day rather than one fixed floor —
+   * sodium, protein and saturated fat, today. Steps and sleep take a fixed
+   * hour from `HEALTH_METRIC_EARLIEST_HOUR` instead and ignore this field.
+   * `undefined` for those two; see `HEALTH_METRIC_EARLIEST_HOUR`'s own comment
+   * in `healthRules.ts` for why the nutrient rules needed a per-rule hour
+   * where steps and sleep don't.
+   */
+  checkpointHour?: number;
   /** The task's title, e.g. "Keep today light". */
   title: string;
   // Off keeps the rule written down but stops it firing, same as WeatherRule.

@@ -40,10 +40,11 @@ describe('readDailyHealth', () => {
     mockNative.readDailyHealth.mockResolvedValue(json);
   }
 
-  it('reads a day through, both numbers', async () => {
-    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":4120,"sleepMinutes":437}]');
+  it('reads a day through, all five numbers', async () => {
+    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":4120,"sleepMinutes":437,'
+      + '"sodiumMg":1850,"proteinG":42,"satFatG":18}]');
     await expect(readDailyHealth(ANCHOR, 1)).resolves.toEqual([
-      { start: '2026-08-04T00:00:00.000Z', steps: 4120, sleepMinutes: 437 },
+      { start: '2026-08-04T00:00:00.000Z', steps: 4120, sleepMinutes: 437, sodiumMg: 1850, proteinG: 42, satFatG: 18 },
     ]);
   });
 
@@ -53,32 +54,47 @@ describe('readDailyHealth', () => {
     expect(mockNative.readDailyHealth).toHaveBeenCalledWith(ANCHOR, 30);
   });
 
-  it('keeps the two numbers independently nullable', async () => {
-    // The common case for anybody without a Watch: steps every day, sleep
-    // never. A day is not dropped for missing one of them.
-    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":6000,"sleepMinutes":null}]');
+  it('keeps all five numbers independently nullable', async () => {
+    // The common case for anybody without a Watch or a food-logging app:
+    // steps every day, the other four never. A day is not dropped for
+    // missing any of them.
+    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":6000,"sleepMinutes":null,'
+      + '"sodiumMg":null,"proteinG":null,"satFatG":null}]');
     const [day] = await readDailyHealth(ANCHOR, 1);
     expect(day.steps).toBe(6000);
     expect(day.sleepMinutes).toBeNull();
+    expect(day.sodiumMg).toBeNull();
+    expect(day.proteinG).toBeNull();
+    expect(day.satFatG).toBeNull();
   });
 
-  it('keeps a real zero on either number', async () => {
-    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":0,"sleepMinutes":0}]');
+  it('keeps a real zero on any of the five numbers', async () => {
+    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":0,"sleepMinutes":0,'
+      + '"sodiumMg":0,"proteinG":0,"satFatG":0}]');
     const [day] = await readDailyHealth(ANCHOR, 1);
     expect(day.steps).toBe(0);
     expect(day.sleepMinutes).toBe(0);
+    expect(day.sodiumMg).toBe(0);
+    expect(day.proteinG).toBe(0);
+    expect(day.satFatG).toBe(0);
   });
 
   it('reads a broken number as no number rather than as a small one', async () => {
-    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":-1,"sleepMinutes":"437"}]');
+    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":-1,"sleepMinutes":"437",'
+      + '"sodiumMg":-5,"proteinG":-1,"satFatG":"18"}]');
     const [day] = await readDailyHealth(ANCHOR, 1);
     expect(day.steps).toBeNull();
     expect(day.sleepMinutes).toBeNull();
+    expect(day.sodiumMg).toBeNull();
+    expect(day.proteinG).toBeNull();
+    expect(day.satFatG).toBeNull();
   });
 
   it('drops a row with no instant instead of guessing which day it is', async () => {
-    answering('[{"steps":100,"sleepMinutes":10},{"start":"","steps":1,"sleepMinutes":1},'
-      + '{"start":"2026-08-05T00:00:00.000Z","steps":7,"sleepMinutes":null}]');
+    answering('[{"steps":100,"sleepMinutes":10,"sodiumMg":100,"proteinG":10,"satFatG":5},'
+      + '{"start":"","steps":1,"sleepMinutes":1,"sodiumMg":1,"proteinG":1,"satFatG":1},'
+      + '{"start":"2026-08-05T00:00:00.000Z","steps":7,"sleepMinutes":null,'
+      + '"sodiumMg":null,"proteinG":null,"satFatG":null}]');
     const days = await readDailyHealth(ANCHOR, 3);
     expect(days.map(d => d.start)).toEqual(['2026-08-05T00:00:00.000Z']);
   });

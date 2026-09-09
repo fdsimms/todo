@@ -60,6 +60,19 @@ export interface HealthDay {
    * against a day.
    */
   sleepHours: number | null;
+  /**
+   * Milligrams of sodium logged for today so far, or null. Same null rule as
+   * `steps`/`sleepHours` — and doubly so here, since this app never records a
+   * sodium sample itself: the number only exists at all once another app (a
+   * food/diet logger) has written one to Health, so "nothing recorded" and
+   * "nobody logs sodium" read identically, same as everywhere else in this
+   * file.
+   */
+  sodiumMg: number | null;
+  /** Grams of protein logged for today so far, or null. Same rules as `sodiumMg`. */
+  proteinG: number | null;
+  /** Grams of saturated fat logged for today so far, or null. Same rules as `sodiumMg`. */
+  satFatG: number | null;
   /** When this was read, for a caller that wants to say how fresh it is. */
   readAt: string;
 }
@@ -131,6 +144,9 @@ export const useHealthStore = create<HealthState>((set, get) => ({
           dayKey,
           steps: reading?.steps ?? null,
           sleepHours: reading?.sleepMinutes == null ? null : reading.sleepMinutes / 60,
+          sodiumMg: reading?.sodiumMg ?? null,
+          proteinG: reading?.proteinG ?? null,
+          satFatG: reading?.satFatG ?? null,
           readAt: now.toISOString(),
         },
       });

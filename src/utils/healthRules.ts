@@ -1,7 +1,42 @@
+import { format } from 'date-fns/format';
 import type { HealthRule, Task } from '../types';
-import type { HealthMetric } from './moodInsights';
 import { generateId } from './id';
 import { generatedSourceOf } from './generatedTasks';
+
+/**
+ * The metrics a health rule can watch — a superset of `HealthMetric`
+ * (`moodInsights.ts`'s steps/sleep axis) plus the three nutrients, none of
+ * which have a mood axis of their own since `MoodDay` carries no nutrient
+ * fields. Kept as its own type rather than widening `HealthMetric` itself, so
+ * `moodInsights.ts`'s axis functions — written against `MoodDay`'s actual
+ * fields — don't gain a case they can't answer.
+ */
+export type HealthRuleMetric = 'steps' | 'sleepHours' | 'sodiumMg' | 'proteinG' | 'satFatG';
+
+/**
+ * Which way a metric's reading is compared against its threshold.
+ *
+ * Every metric but saturated fat is a floor: the reading has to reach the
+ * number, and falling short is what fires the task. Saturated fat alone is a
+ * ceiling, because that is the only shape a "don't go above X" request can
+ * take — nobody asks this app to make sure they eat *enough* saturated fat.
+ * Both directions are still a shortfall against a number the user picked
+ * (see the file-level note on why a general greater/less toggle isn't
+ * offered): 'over' doesn't mean "any comparator you like", it means this one
+ * metric's shortfall is measured the other way.
+ */
+export const HEALTH_METRIC_DIRECTION: Record<HealthRuleMetric, 'under' | 'over'> = {
+  steps: 'under',
+  sleepHours: 'under',
+  sodiumMg: 'under',
+  proteinG: 'under',
+  satFatG: 'over',
+};
+
+/** Which way `metric` is compared — see `HEALTH_METRIC_DIRECTION`. */
+export function healthRuleDirection(metric: HealthRuleMetric): 'under' | 'over' {
+  return HEALTH_METRIC_DIRECTION[metric];
+}
 
 /**
  * Health rules — "under six hours of sleep, add a task".
@@ -27,11 +62,16 @@ import { generatedSourceOf } from './generatedTasks';
  *   hours are two different days, and this is `screenTime`'s position rather
  *   than weather's.
  *
- * **Only "under" is expressible, and that is deliberate.** Every rule worth
- * writing here is a shortfall: a short night, a day spent sitting down. The
- * mirror ("at least 10,000 steps → …") describes something that has already
- * happened and needs no task, and offering a comparator would put a control on
- * every row to serve a case nobody has.
+ * **The comparator is a property of the metric, not a control on the row, and
+ * that is still deliberate even now that both directions exist.** Every rule
+ * here is a shortfall against a number the user picked; what changed is that
+ * one metric's shortfall (saturated fat) is measured as *too much* rather
+ * than *too little*. A rule that let you flip "under 3,000 steps" to "over
+ * 3,000 steps" would describe something that has already happened and needs
+ * no task, so that comparator is never offered — the mirror this file used to
+ * rule out entirely is still ruled out, only saturated fat's own, opposite,
+ * direction now exists because a nutrient ceiling is a real request the
+ * mirror argument never covered. See `HEALTH_METRIC_DIRECTION`.
  */
 
 /** A rule can't be an empty task title — nothing to show on Today. */
@@ -47,11 +87,22 @@ export const HEALTH_RULE_TITLE_MAX_LENGTH = 80;
  * sixty presses to say 3,000.
  */
 export const HEALTH_THRESHOLDS: Record<
-  HealthMetric,
+  HealthRuleMetric,
   { min: number; max: number; step: number; default: number }
 > = {
   steps: { min: 500, max: 30000, step: 500, default: 3000 },
   sleepHours: { min: 3, max: 12, step: 1, default: 6 },
+  // Hundreds, not the 500s steps uses: a sodium target is picked with a doctor
+  // or a food label in hand, and 2,000/4,000mg-shaped numbers want a finer
+  // step than steps' order-of-magnitude range does.
+  sodiumMg: { min: 0, max: 6000, step: 100, default: 2000 },
+  // Grams, in fives: a protein target is usually said as "50g" or "100g", not
+  // to the gram, and a 5g step reaches the common targets in a handful of
+  // presses without the hundred-plus presses a step of 1 would cost.
+  proteinG: { min: 0, max: 400, step: 5, default: 50 },
+  // A ceiling is usually phrased in single grams ("under 20g"), which is
+  // small enough a range that the finer step doesn't cost many presses.
+  satFatG: { min: 0, max: 100, step: 1, default: 20 },
 };
 
 /**
@@ -63,44 +114,107 @@ export const HEALTH_THRESHOLDS: Record<
  * 3,000 steps" is true at 7am for everybody who is not out running, so firing
  * on it then would be telling people off for not having had their day yet.
  *
- * It is a property of the metric rather than a per-rule setting, which is what
- * keeps a fourth control off every row. Sleep is recorded overnight and is
- * settled by the time anybody looks, so it has no floor. Steps accumulate all
- * day, so the number only means something once most of the day has gone.
+ * It is a property of the metric rather than a per-rule setting for steps and
+ * sleep, which is what keeps a fourth control off either row. Sleep is
+ * recorded overnight and is settled by the time anybody looks, so it has no
+ * floor. Steps accumulate all day, so the number only means something once
+ * most of the day has gone — and one evening floor is enough, because nobody
+ * asked this app for a mid-afternoon step checkpoint.
  *
  * 18:00 is round rather than measured, the same admission `weatherCondition.ts`
  * makes about its temperature bands — early enough to leave an evening to act
  * in, late enough that the day has had its chance.
+ *
+ * **The three nutrients are what this doesn't hold for**, and the reason is
+ * the feature itself rather than a change of mind about the argument above.
+ * A sodium or protein target is routinely checked several times over a day on
+ * purpose ("2,000mg by lunch, 4,000mg by dinner"), not once at a single
+ * evening floor, so there is no one hour to hang off this map for either.
+ * Saturated fat is the mirror case for the opposite reason: a *ceiling* wants
+ * catching as early in the day as it's crossed, not held back until evening
+ * the way a floor is — so its fallback here is 0, not 18. `HealthRule.
+ * checkpointHour` carries the real hour per rule for all three, and the
+ * entries here are only the value a freshly created rule starts from.
  */
-export const HEALTH_METRIC_EARLIEST_HOUR: Record<HealthMetric, number> = {
+export const HEALTH_METRIC_EARLIEST_HOUR: Record<HealthRuleMetric, number> = {
   steps: 18,
   sleepHours: 0,
+  sodiumMg: 12,
+  proteinG: 18,
+  satFatG: 0,
 };
 
-export const HEALTH_METRICS: readonly HealthMetric[] = ['steps', 'sleepHours'];
+export const HEALTH_METRICS: readonly HealthRuleMetric[] =
+  ['steps', 'sleepHours', 'sodiumMg', 'proteinG', 'satFatG'];
+
+/** The hour of the day a rule is judged from — its own, or the metric's fallback. */
+export function healthRuleCheckpointHour(rule: Pick<HealthRule, 'metric' | 'checkpointHour'>): number {
+  return rule.checkpointHour ?? HEALTH_METRIC_EARLIEST_HOUR[rule.metric];
+}
 
 /** The reading a rule is judged against, as much of it as this needs. */
 export interface HealthRuleReading {
   steps: number | null;
   sleepHours: number | null;
+  sodiumMg: number | null;
+  proteinG: number | null;
+  satFatG: number | null;
+}
+
+function readingValue(rule: Pick<HealthRule, 'metric'>, reading: HealthRuleReading): number | null {
+  switch (rule.metric) {
+    case 'steps': return reading.steps;
+    case 'sodiumMg': return reading.sodiumMg;
+    case 'proteinG': return reading.proteinG;
+    case 'satFatG': return reading.satFatG;
+    default: return reading.sleepHours;
+  }
 }
 
 /** How a metric is named in the rule editor. */
-export function healthMetricLabel(metric: HealthMetric): string {
-  return metric === 'steps' ? 'Steps' : 'Hours asleep';
+export function healthMetricLabel(metric: HealthRuleMetric): string {
+  switch (metric) {
+    case 'steps': return 'Steps';
+    case 'sodiumMg': return 'Sodium';
+    case 'proteinG': return 'Protein';
+    case 'satFatG': return 'Saturated fat';
+    default: return 'Hours asleep';
+  }
 }
 
-/** "under 3,000 steps" / "under 6 hours asleep" — the rule's secondary line. */
+/** "12 PM" / "6 PM" — round-hour only, the same granularity the map above uses. */
+export function formatCheckpointHour(hour: number): string {
+  return format(new Date(2000, 0, 1, hour, 0, 0, 0), 'h a');
+}
+
+/**
+ * "under 3,000 steps" / "under 6 hours asleep" / "under 2,000mg sodium" /
+ * "over 20g saturated fat" — the rule's secondary line.
+ */
 export function describeHealthRule(rule: HealthRule): string {
-  return rule.metric === 'steps'
-    ? `Under ${rule.threshold.toLocaleString()} steps, from 6 PM`
-    : `Under ${rule.threshold} ${rule.threshold === 1 ? 'hour' : 'hours'} asleep`;
+  if (rule.metric === 'steps') return `Under ${rule.threshold.toLocaleString()} steps, from 6 PM`;
+  if (rule.metric === 'sleepHours') {
+    return `Under ${rule.threshold} ${rule.threshold === 1 ? 'hour' : 'hours'} asleep`;
+  }
+  const comparator = healthRuleDirection(rule.metric) === 'over' ? 'Over' : 'Under';
+  const checkpoint = formatCheckpointHour(healthRuleCheckpointHour(rule));
+  if (rule.metric === 'sodiumMg') {
+    return `${comparator} ${rule.threshold.toLocaleString()}mg sodium, from ${checkpoint}`;
+  }
+  if (rule.metric === 'proteinG') return `${comparator} ${rule.threshold}g protein, from ${checkpoint}`;
+  return `${comparator} ${rule.threshold}g saturated fat, from ${checkpoint}`; // satFatG
 }
 
-export function clampHealthThreshold(metric: HealthMetric, value: number): number {
+export function clampHealthThreshold(metric: HealthRuleMetric, value: number): number {
   const range = HEALTH_THRESHOLDS[metric];
   if (!Number.isFinite(value)) return range.default;
   return Math.min(range.max, Math.max(range.min, Math.round(value)));
+}
+
+/** Holds an hour inside the 0–23 a checkpoint may be set to. */
+export function clampCheckpointHour(value: number): number {
+  if (!Number.isFinite(value)) return HEALTH_METRIC_EARLIEST_HOUR.sodiumMg;
+  return Math.min(23, Math.max(0, Math.round(value)));
 }
 
 /**
@@ -161,11 +275,21 @@ export function parseHealthRules(raw: string | null | undefined): HealthRule[] {
     if (typeof rule.threshold !== 'number') return [];
     // An unknown metric falls back rather than dropping the rule, the way an
     // unknown weather condition does: the title is the part somebody wrote.
-    const metric: HealthMetric = rule.metric === 'steps' ? 'steps' : 'sleepHours';
+    const metric: HealthRuleMetric =
+      rule.metric === 'steps' || rule.metric === 'sodiumMg'
+        || rule.metric === 'proteinG' || rule.metric === 'satFatG'
+        ? rule.metric
+        : 'sleepHours';
     return [{
       id: rule.id,
       metric,
       threshold: clampHealthThreshold(metric, rule.threshold),
+      // Only the three nutrients read this back; steps/sleep ignore it (see
+      // HEALTH_METRIC_EARLIEST_HOUR's comment), so there's nothing to lose by
+      // keeping it for any metric a stored rule happens to carry it under.
+      checkpointHour: typeof rule.checkpointHour === 'number'
+        ? clampCheckpointHour(rule.checkpointHour)
+        : undefined,
       title: rule.title.slice(0, HEALTH_RULE_TITLE_MAX_LENGTH),
       enabled: rule.enabled !== false,
       lastFiredDayKey: typeof rule.lastFiredDayKey === 'string' ? rule.lastFiredDayKey : null,
@@ -207,6 +331,16 @@ export function healthRuleIdOf(
  * rule that didn't match, and the idempotency mark must not be spent on it.
  * Spend it at 8am and a step rule can never fire that day.
  *
+ * This gate is symmetric across both directions — it only asks whether the
+ * checkpoint hour has arrived and the reading exists, not which way the rule
+ * compares. What differs by direction is what the *caller* does once this
+ * says yes: `checkHealthTasks` spends the idempotency mark unconditionally
+ * for an 'under' rule (a floor can only get easier to clear as the day goes
+ * on, so one look past the checkpoint is final), but only when it actually
+ * matches for an 'over' rule (a ceiling can only get easier to *cross* as the
+ * day goes on, so an early "still under" is not a day-long answer — the rule
+ * has to keep being reconsidered until it either fires or the day ends).
+ *
  * `hour` is the hour of the *logical* day, which the caller computes — this
  * module stays store-free, and `dayResetTime` lives in the settings store.
  */
@@ -215,7 +349,7 @@ export function ruleCanBeJudgedYet(
   hour: number,
   reading: HealthRuleReading,
 ): boolean {
-  if (hour < HEALTH_METRIC_EARLIEST_HOUR[rule.metric]) return false;
+  if (hour < healthRuleCheckpointHour(rule)) return false;
   // A reading that hasn't arrived is not a decision either, and this half is
   // the one that is easy to miss. A sleep rule has no hour to wait for — sleep
   // is settled by the time anybody looks — so without this the pass would judge
@@ -223,30 +357,91 @@ export function ruleCanBeJudgedYet(
   // has not happened), mark the day considered, and never fire again that day.
   // The rule would work for anybody who opens the app at eight and silently
   // never work for anybody whose phone is awake at midnight.
-  const value = rule.metric === 'steps' ? reading.steps : reading.sleepHours;
-  return value !== null;
+  return readingValue(rule, reading) !== null;
 }
 
 /**
- * Whether today's reading falls short of what this rule asks for.
+ * Whether today's reading fails what this rule asks for — under its floor,
+ * or (saturated fat only) over its ceiling. See `HEALTH_METRIC_DIRECTION`.
  *
  * **A missing reading never matches**, and that is the rule the whole feature
  * rests on rather than a null guard: HealthKit serves a refused read as an
  * empty store, so null covers "you said no" as well as "nothing recorded".
  * Reading it as zero would fire "Go for a walk" at everybody who declined to
- * share their steps, every single evening. See `docs/arch/health-data.md`.
+ * share their steps, every single evening — and, on the 'over' side, would
+ * fire a saturated-fat warning at everybody who declined to share that
+ * reading too, which is the identical failure in the other direction. See
+ * `docs/arch/health-data.md`.
  *
  * Doesn't consult `lastFiredDayKey`; the caller spends that mark itself, the
- * way `weatherTasks.ts`'s `ruleMatchesToday` leaves it to `checkWeatherTasks`.
- * Named for the shortfall rather than for matching, because weather's function
- * of that name is imported into the same file and two `ruleMatchesToday`s
- * behind an alias is a rename waiting to go to the wrong one.
+ * way `weatherTasks.ts`'s `ruleMatchesToday` leaves it to `checkWeatherTasks`
+ * — and, for an 'over' rule, spends it only when this returns true; see
+ * `ruleCanBeJudgedYet`'s comment for why the two directions can't share one
+ * spending rule. Named for the shortfall rather than for matching, because
+ * weather's function of that name is imported into the same file and two
+ * `ruleMatchesToday`s behind an alias is a rename waiting to go to the wrong
+ * one.
  */
 export function ruleShortfallToday(rule: HealthRule, reading: HealthRuleReading): boolean {
   if (!rule.enabled) return false;
-  const value = rule.metric === 'steps' ? reading.steps : reading.sleepHours;
+  const value = readingValue(rule, reading);
   if (value === null) return false;
-  return value < rule.threshold;
+  return healthRuleDirection(rule.metric) === 'over' ? value > rule.threshold : value < rule.threshold;
+}
+
+/** "1,850mg of sodium" / "42g of protein" / "28g of saturated fat". */
+function nutrientAmount(metric: 'sodiumMg' | 'proteinG' | 'satFatG', value: number): string {
+  if (metric === 'sodiumMg') return `${value.toLocaleString()}mg of sodium`;
+  if (metric === 'proteinG') return `${value}g of protein`;
+  return `${value}g of saturated fat`;
+}
+
+/**
+ * One line saying what Health has recorded for a nutrient so far today, for
+ * the row's own `notes` — the nutrient twin of `shortSleepDeloadNote`, minus
+ * the standalone menu line: nothing elsewhere in the app wants to say this
+ * outside the task it already caused.
+ *
+ * Same attribution rule for all three: nobody logged this figure by hand, so
+ * the sentence names the source rather than passing the number off as a fact
+ * the user stated, and it never advises or diagnoses (see
+ * `docs/arch/health-data.md` and `docs/arch/mood-log.md`'s rule this whole
+ * generator lives by) — true of the ceiling as much as the floors: the note
+ * reports what was recorded, never that it's "too much".
+ */
+export function sodiumShortfallNote(sodiumMg: number): string {
+  return `Apple Health has recorded ${nutrientAmount('sodiumMg', sodiumMg)} today.`;
+}
+
+/** The protein twin of `sodiumShortfallNote`. */
+export function proteinShortfallNote(proteinG: number): string {
+  return `Apple Health has recorded ${nutrientAmount('proteinG', proteinG)} today.`;
+}
+
+/** The saturated-fat twin of `sodiumShortfallNote` — a ceiling crossed, reported the same way a floor missed is. */
+export function satFatOverageNote(satFatG: number): string {
+  return `Apple Health has recorded ${nutrientAmount('satFatG', satFatG)} today.`;
+}
+
+/**
+ * The row's own `notes`, for whichever metric a rule watches — the one place
+ * `checkHealthTasks` reaches to decide, so it stays a single `draft()` line
+ * rather than a five-way ternary living in the store.
+ *
+ * Steps carries none, for `healthTaskLinkUrl`'s reason: "Go for a walk"
+ * already names its own action. The other four are the app's own inference
+ * from a reading nobody stated, so each attributes its source — see the note
+ * on `sodiumShortfallNote` above for why that matters as much for the
+ * ceiling as for a floor.
+ */
+export function healthTaskNote(rule: HealthRule, reading: HealthRuleReading): string | undefined {
+  switch (rule.metric) {
+    case 'sleepHours': return shortSleepDeloadNote(reading.sleepHours) ?? undefined;
+    case 'sodiumMg': return reading.sodiumMg === null ? undefined : sodiumShortfallNote(reading.sodiumMg);
+    case 'proteinG': return reading.proteinG === null ? undefined : proteinShortfallNote(reading.proteinG);
+    case 'satFatG': return reading.satFatG === null ? undefined : satFatOverageNote(reading.satFatG);
+    default: return undefined; // steps
+  }
 }
 
 /**
@@ -310,6 +505,6 @@ const DELOAD_LINK_URL = 'dundundun://deload';
  * title, so it carries no link — same split `shortSleepDeloadNote` draws
  * against a steps note that doesn't exist.
  */
-export function healthTaskLinkUrl(metric: HealthMetric): string | null {
+export function healthTaskLinkUrl(metric: HealthRuleMetric): string | null {
   return metric === 'sleepHours' ? DELOAD_LINK_URL : null;
 }

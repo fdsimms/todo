@@ -7,14 +7,19 @@ import { useColors } from '../theme/ThemeContext';
 import { spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { generateId } from '../utils/id';
-import type { HealthMetric } from '../utils/moodInsights';
+import type { HealthRuleMetric } from '../utils/healthRules';
 import {
   HEALTH_METRICS,
+  HEALTH_METRIC_EARLIEST_HOUR,
   HEALTH_RULE_TITLE_MAX_LENGTH,
   HEALTH_THRESHOLDS,
+  clampCheckpointHour,
   clampHealthThreshold,
   describeHealthRule,
+  formatCheckpointHour,
   healthMetricLabel,
+  healthRuleCheckpointHour,
+  healthRuleDirection,
 } from '../utils/healthRules';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
@@ -31,6 +36,32 @@ const METRIC_OPTIONS = HEALTH_METRICS.map(metric => ({
   label: healthMetricLabel(metric),
 }));
 
+/** Steps and sleep judge from a fixed, unlabelled hour; the other three pick their own. */
+function showsCheckpoint(metric: HealthRuleMetric): boolean {
+  return metric !== 'steps' && metric !== 'sleepHours';
+}
+
+/** "3,000" / "6 hrs" / "2,000 mg" / "50 g" — the stepper's own rendering, one branch per unit. */
+function formatThreshold(metric: HealthRuleMetric, n: number): string {
+  switch (metric) {
+    case 'steps': return n.toLocaleString();
+    case 'sleepHours': return `${n} ${n === 1 ? 'hr' : 'hrs'}`;
+    case 'sodiumMg': return `${n.toLocaleString()} mg`;
+    default: return `${n} g`; // proteinG, satFatG
+  }
+}
+
+/** The screen-reader version of `formatThreshold` — spells out the unit. */
+function describeThreshold(metric: HealthRuleMetric, n: number): string {
+  switch (metric) {
+    case 'steps': return `${n} steps`;
+    case 'sleepHours': return `${n} ${n === 1 ? 'hour' : 'hours'}`;
+    case 'sodiumMg': return `${n}mg`;
+    case 'proteinG': return `${n}g protein`;
+    default: return `${n}g saturated fat`; // satFatG
+  }
+}
+
 /**
  * Every health rule, in one list. The sheet is `RuleListSheet`, shared with
  * `WeatherRulesSheet` and `ScreenTimeRulesSheet`; what's here is the two ends
@@ -42,9 +73,20 @@ const METRIC_OPTIONS = HEALTH_METRICS.map(metric => ({
  *   screen time's is a number alone. The number is per rule for screen time's
  *   reason rather than weather's: six hours and four hours are two different
  *   days, so the title cannot carry the bar.
- * - **The stepper's range changes with the metric**, since steps and hours are
- *   not the same size of number. Switching the metric re-clamps the threshold
- *   into the new range rather than leaving 3,000 hours of sleep behind.
+ * - **The stepper's range changes with the metric**, since steps, hours,
+ *   milligrams and grams are not the same size of number. Switching the
+ *   metric re-clamps the threshold into the new range rather than leaving
+ *   3,000 hours of sleep behind.
+ * - **Every metric but steps and sleep also picks its own hour.** Those two
+ *   judge from a fixed point in the day (see `HEALTH_METRIC_EARLIEST_HOUR`'s
+ *   comment), but a nutrient target is naturally checked more than once — a
+ *   lunchtime sodium floor and a separate, higher dinner one, say — so a
+ *   sodium, protein or saturated-fat rule carries its own checkpoint hour
+ *   instead of sharing one.
+ * - **Saturated fat alone reads "more than", not "less than"**, and the
+ *   editor label itself changes to say so (`healthRuleDirection`) rather than
+ *   leaving it to the stepper's own wording — a ceiling that only the number
+ *   below it says is a ceiling is easy to misread as one more floor.
  * - **The read has to be on, and the card says so.** This is the one rules
  *   sheet whose feature needs a second switch elsewhere, and nothing else here
  *   would give that away: the rules look perfectly well formed either way.
@@ -64,9 +106,13 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
       onClose={onClose}
       title="Health rules"
       caption={
-        'A rule adds its task on a day the reading falls under its number. Steps are only '
-        + 'judged from 6 PM, since a step count earlier in the day has not had its chance yet. '
-        + 'Each rule adds its task at most once a day.'
+        'A rule adds its task on a day the reading crosses its number. Steps are only judged '
+        + 'from 6 PM, since a step count earlier in the day has not had its chance yet. A '
+        + 'sodium, protein or saturated fat rule is judged from whatever hour you set it to, '
+        + 'and needs another app logging food to Health, since this app never writes one of '
+        + 'those samples itself. Saturated fat is the one reading with an upper limit instead '
+        + 'of a target, so its rule fires when the day goes over its number rather than under '
+        + 'it. Each rule adds its task at most once a day.'
       }
       rules={rules}
       onChange={setRules}
@@ -79,10 +125,12 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
         lastFiredDayKey: null,
       })}
       describeRule={describeHealthRule}
-      editorLabel="On a day with less than"
+      editorLabel={rule => (healthRuleDirection(rule.metric) === 'over'
+        ? 'On a day with more than'
+        : 'On a day with less than')}
       renderEditor={(rule, update) => (
         <View style={styles.editor}>
-          <SegmentedControl<HealthMetric>
+          <SegmentedControl<HealthRuleMetric>
             options={METRIC_OPTIONS}
             value={rule.metric}
             onChange={metric => update({
@@ -91,6 +139,13 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
               // "under 3,000 steps" to hours would leave a rule asking about
               // three thousand hours of sleep.
               threshold: clampHealthThreshold(metric, rule.threshold),
+              // Only the three nutrients read this, so it's only given a
+              // starting value the first time a rule turns into one of them —
+              // everything else leaves whatever the rule already carries
+              // alone.
+              checkpointHour: showsCheckpoint(metric)
+                ? (rule.checkpointHour ?? HEALTH_METRIC_EARLIEST_HOUR[metric])
+                : rule.checkpointHour,
             })}
             label="Reading"
             surface="card"
@@ -103,21 +158,31 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
             min={HEALTH_THRESHOLDS[rule.metric].min}
             max={HEALTH_THRESHOLDS[rule.metric].max}
             step={HEALTH_THRESHOLDS[rule.metric].step}
-            format={n => (rule.metric === 'steps'
-              ? n.toLocaleString()
-              : `${n} ${n === 1 ? 'hr' : 'hrs'}`)}
+            format={n => formatThreshold(rule.metric, n)}
             label="Threshold"
-            describeValue={n => (rule.metric === 'steps'
-              ? `${n} steps`
-              : `${n} ${n === 1 ? 'hour' : 'hours'}`)}
+            describeValue={n => describeThreshold(rule.metric, n ?? HEALTH_THRESHOLDS[rule.metric].default)}
           />
+          {showsCheckpoint(rule.metric) && (
+            <CountStepper
+              value={healthRuleCheckpointHour(rule)}
+              onChange={next => update({
+                checkpointHour: clampCheckpointHour(next ?? HEALTH_METRIC_EARLIEST_HOUR[rule.metric]),
+              })}
+              min={0}
+              max={23}
+              step={1}
+              format={formatCheckpointHour}
+              label="Checked from"
+              describeValue={n => formatCheckpointHour(n ?? HEALTH_METRIC_EARLIEST_HOUR[rule.metric])}
+            />
+          )}
         </View>
       )}
       titlePlaceholder="e.g. Keep today light"
       titleMaxLength={HEALTH_RULE_TITLE_MAX_LENGTH}
       emptyIcon="footsteps-outline"
       emptyTitle="No health rules"
-      emptySubtitle="Add a rule to get a task on a day your steps or sleep come up short."
+      emptySubtitle="Add a rule to get a task on a day a reading crosses its number."
       header={
         !healthReadEnabled ? (
           <RuleSheetNoticeCard

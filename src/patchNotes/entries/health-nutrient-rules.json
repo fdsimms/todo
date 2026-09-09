@@ -1,0 +1,4 @@
+{
+  "message": "Health rules can now watch sodium and protein targets, and a saturated fat limit, each with its own checkpoint time — so a rule can ask for at least 2,000mg of sodium by lunch and a separate one for 4,000mg by dinner, or a saturated fat rule that fires if you go over your limit",
+  "date": "2026-09-09"
+}

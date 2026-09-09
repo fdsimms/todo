@@ -203,9 +203,10 @@ import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask } from '
 import {
   healthSourceId,
   parseHealthSourceId,
+  healthRuleDirection,
+  healthTaskNote,
   ruleCanBeJudgedYet,
   ruleShortfallToday,
-  shortSleepDeloadNote,
   healthTaskLinkUrl,
 } from '../utils/healthRules';
 import { isTimedTask, timerElapsed } from '../utils/timer';
@@ -5865,6 +5866,16 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
    *   fires off Health data cannot run while the app is not allowed to read
    *   any, so both switches gate the pass — and the rules sheet says so, rather
    *   than leaving somebody with a toggle that visibly does nothing.
+   * - **A ceiling rule (saturated fat) spends its mark the other way round.**
+   *   Every other rule here is a floor, so `ruleCanBeJudgedYet` returning true
+   *   is the only gate: whatever the reading says once the checkpoint has
+   *   passed is final, because more steps or more sodium later only helps.
+   *   Saturated fat only gets worse as the day goes on, so an early "still
+   *   under" is not a day-long answer — the mark is withheld until the rule
+   *   actually matches, and only then does this behave like every other
+   *   generator ("considered and it fired" spends the mark for good). See
+   *   `ruleCanBeJudgedYet`'s own comment in `healthRules.ts` for the full
+   *   argument.
    *
    * Reads whatever snapshot `useHealthStore` already has and never fetches, the
    * split `checkWeatherTasks` draws against `useWeatherStore`: a cold launch
@@ -5917,7 +5928,8 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       if (!ruleCanBeJudgedYet(rule, hoursIntoDay, reading)) return rule;
       if (rule.lastFiredDayKey === todayKey) return rule;
 
-      if (ruleShortfallToday(rule, reading)) {
+      const matched = ruleShortfallToday(rule, reading);
+      if (matched) {
         const sourceId = healthSourceId(todayKey, rule.id);
         reconcileGeneratedTask({
           kind: 'health',
@@ -5928,25 +5940,29 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           drift: () => null,
           draft: () => ({
             title: rule.title,
-            // Says which reading is behind the row and what fell short of it —
-            // a sleep task with no reason attached reads as coming from
-            // nowhere. Steps carries no note here for the same reason its rule
-            // gets no deload link below: "Go for a walk" already says what to
-            // do, where a short-night row is the app's inference and wants to
-            // attribute its source. See shortSleepDeloadNote.
-            notes: rule.metric === 'sleepHours' ? (shortSleepDeloadNote(reading.sleepHours) ?? undefined) : undefined,
+            notes: healthTaskNote(rule, reading),
             dueDate: dueDate.toISOString(),
             category: settings.healthTaskCategory,
             linkUrl: healthTaskLinkUrl(rule.metric),
             ...generatedBy('health', sourceId),
           }),
         });
+      } else if (healthRuleDirection(rule.metric) === 'over') {
+        // A ceiling can only get easier to cross as the day goes on — "still
+        // under 20g of saturated fat" at 9am says nothing about 6pm the way a
+        // floor's "still under 3,000 steps" at 6pm does. Leaving the mark
+        // unspent is what lets the next sweep judge it again once more of the
+        // day has actually happened, rather than retiring the rule the moment
+        // it happens to be checked while still safe.
+        return rule;
       }
 
       // Spent whether or not it matched, the way checkWeatherTasks spends its
       // mark: "considered and did not apply" and "considered and fired" both
       // mean this day has been answered, and without that a task swiped away
-      // comes straight back on the next foreground sweep.
+      // comes straight back on the next foreground sweep. For an 'under' rule
+      // that is true the moment it's judged at all; for an 'over' rule it's
+      // only true once matched, which is exactly the branch above this one.
       rulesChanged = true;
       return { ...rule, lastFiredDayKey: todayKey };
     });
