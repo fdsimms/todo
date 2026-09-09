@@ -204,6 +204,8 @@ jest.mock('../utils/notifications', () => ({
   // either side of it.
   scheduleStepAlarm: jest.fn().mockResolvedValue(undefined),
   cancelStepAlarm: jest.fn().mockResolvedValue(undefined),
+  scheduleCompletionTimer: jest.fn().mockResolvedValue(undefined),
+  cancelCompletionTimer: jest.fn().mockResolvedValue(undefined),
 }));
 
 // Same reason: useTaskStore.ts reaches calendarSync.ts (real react-native
@@ -1013,6 +1015,13 @@ describe('demo mode', () => {
     const withLocation = useTaskStore.getState().tasks.filter(t => !!t.location);
 
     expect(withLocation.length).toBeGreaterThan(0);
+  });
+
+  it('seeds a task with a completion timer', () => {
+    useDemoStore.getState().enterDemoMode();
+    const withTimer = useTaskStore.getState().tasks.filter(t => t.completionTimerMinutes !== null);
+
+    expect(withTimer.length).toBeGreaterThan(0);
   });
 
   it('seeds a reminder that keeps ringing until the task is completed', () => {

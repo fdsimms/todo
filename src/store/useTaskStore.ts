@@ -182,7 +182,7 @@ import { usePersonGroupStore } from './usePersonGroupStore';
 import { usePersonNoteStore } from './usePersonNoteStore';
 import { giftIdeasText } from '../utils/personNotes';
 import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
-import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges } from '../utils/notifications';
+import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import {
   deleteCalendarEvent,
@@ -217,7 +217,7 @@ import {
 // isLiveRecurring / CLAUDE.md recurrence docs for why).
 export const CONTENT_FIELDS: (keyof Task)[] = [
   'title', 'notes', 'tags', 'category', 'priority', 'effort',
-  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress', 'location',
+  'estimatedMinutes', 'timedMinutes', 'healthMetric', 'healthTarget', 'windowStart', 'windowEnd', 'timeSegments', 'reminderTime', 'reminderKind', 'reminderOffsetDays', 'linkUrl', 'phoneNumber', 'emailAddress', 'location', 'completionTimerMinutes',
   // The question, not the answer — `deliverableValue` is per-occurrence data
   // like progressCount and is deliberately absent, or a scope:'occurrence'
   // edit would capture one date's answer as the default for every date after.
@@ -544,6 +544,7 @@ function newTaskFromDraft(
     timerElapsedSeconds: draft.timerElapsedSeconds ?? 0,
     healthMetric: draft.healthMetric ?? null,
     healthTarget: draft.healthTarget ?? null,
+    completionTimerMinutes: draft.completionTimerMinutes ?? null,
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     generatedKind: draft.generatedKind ?? null,
     generatedSourceId: draft.generatedSourceId ?? null,
@@ -2903,6 +2904,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbDeleteSubtasks(id);
     dbDeleteTask(id);
     cancelTaskReminder(id);
+    cancelCompletionTimer(id);
     if (task.timerStartedAt !== null) cancelTimerAlarm(id);
     // Fire-and-forget, same as every other calendar/notification side effect
     // here. Not restored on undo below — deleting a device event isn't
@@ -3907,6 +3909,9 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     dbUpdateTask(updated);
     // Reopened, so a deadline it still carries is live again.
     reconcileDeadlineEvent(updated);
+    // The completion timer this task's own completion may have scheduled no
+    // longer means anything once that completion is undone.
+    cancelCompletionTimer(id);
 
     // Completing a recurring task spawns a fresh next occurrence. Undoing
     // that completion means it never happened, so the occurrence it
@@ -6526,7 +6531,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timedMinutes: null,
       timerElapsedSeconds: 0,
       healthMetric: null,
-      healthTarget: null,
+      healthTarget: null, completionTimerMinutes: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
@@ -6721,7 +6726,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timedMinutes: null,
       timerElapsedSeconds: 0,
       healthMetric: null,
-      healthTarget: null,
+      healthTarget: null, completionTimerMinutes: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
