@@ -89,11 +89,6 @@ interface Props {
    * state and not back out of it (#1361).
    */
   onSetCooked?: (cooked: boolean) => void;
-  /**
-   * Opens the recipe with its cook timer already running — the handoff from
-   * the plan to the pan. Present only while the entry's recipe resolves.
-   */
-  onStartCooking?: () => void;
   /** Present only while the entry's recipe still resolves. */
   onOpenRecipe?: () => void;
   /**
@@ -157,7 +152,7 @@ const TOP_INSET = 72;
 
 export function MealEntrySheet({
   visible, entry, title, weekDays, onMove, onMoveFurther, onRemove, onRename, choiceGroups = [], onChoose,
-  onScale, baseServings, baseServingsMax, onSetGuests, onSetCooked, onStartCooking, onOpenRecipe, onAddToList, onAddPrepTasks,
+  onScale, baseServings, baseServingsMax, onSetGuests, onSetCooked, onOpenRecipe, onAddToList, onAddPrepTasks,
   onLogLeftovers,
   onFinishLeftover, onSetCookTask, hasCookTask = false, onClose,
 }: Props) {
@@ -489,28 +484,6 @@ export function MealEntrySheet({
                   dismiss(() => onSetCooked(next));
                 }}
                 accessibilityLabel={cooked ? 'Mark this meal not cooked' : 'Mark this meal cooked'}
-              />
-            </>
-          )}
-
-          {/*
-            Above "Open recipe" because it's the more specific version of it,
-            and because it's the thing you want at the moment you're standing
-            in the kitchen: this sheet knows what tonight is, the recipe screen
-            has the timer, and until now nothing joined them (#1379). Starting
-            the timer here rather than passing a navigation param keeps the
-            state where it lives — on the recipe — so the screen simply opens
-            with it already running.
-          */}
-          {!!onStartCooking && (
-            <>
-              <View style={styles.sep} />
-              <SheetActionRow
-                icon="flame-outline"
-                color={colors.accent}
-                label="Start cooking"
-                onPress={() => { haptics.impactMedium(); dismiss(onStartCooking); }}
-                accessibilityLabel="Start cooking this meal, opening the recipe with its timer running"
               />
             </>
           )}

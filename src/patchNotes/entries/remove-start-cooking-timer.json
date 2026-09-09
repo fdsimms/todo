@@ -1,0 +1,4 @@
+{
+  "message": "\"Start cooking\" on a planned meal now just opens the recipe, without starting its cook timer. The row was a duplicate of \"Open recipe\" once the timer no longer auto-started, so it's gone; use \"Open recipe\" and start the timer from there.",
+  "date": "2026-09-09"
+}
