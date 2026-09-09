@@ -18,6 +18,11 @@ import { isNegativeTask } from './negativeHabits';
  *   wrong question for it.
  * - a paused vacation task — the whole point of the pause is that its
  *   schedule doesn't count while it's on.
+ * - any task with no `deadline` set. Asking about every overdue recurring
+ *   task — a daily habit with no deadline included — was heavy-handed: most
+ *   of them don't carry enough weight to warrant a daily "did you do this?"
+ *   prompt. `deadline` is the signal the user themselves chose to mark a
+ *   task as one worth chasing, so the check-in only asks about those.
  *
  * One live row per recurring task (see the Recurrence note in CLAUDE.md), so
  * "yesterday's task, unresolved" is just this row's own `dueDate` sitting in
@@ -30,6 +35,7 @@ export function isMorningCheckInCandidate(task: Task, dayResetTime?: string): bo
   if (task.vacationPause) return false;
   if (isNegativeTask(task)) return false;
   if (isHeldBack(task)) return false;
+  if (!task.deadline) return false;
   if (!task.dueDate) return false;
   return getTaskDayStart(new Date(task.dueDate), dayResetTime) < getDayStart(new Date(), dayResetTime);
 }

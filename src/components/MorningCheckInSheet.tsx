@@ -26,9 +26,12 @@ interface SheetGroup {
 
 /**
  * Shown once a day if anything qualifies (see morningCheckIn.ts): recurring
- * tasks whose day has already passed with nothing said about them yet. Lets
- * the user answer "did you get to this?" for each one instead of leaving it
- * to just sit there looking overdue, or to quietly roll over unresolved.
+ * tasks with a deadline set whose day has already passed with nothing said
+ * about them yet. Scoped to tasks the user marked with a deadline rather than
+ * every overdue recurring task, or a daily habit with no deadline would
+ * trigger this prompt every time it was missed. Lets the user answer "did
+ * you get to this?" for each one instead of leaving it to just sit there
+ * looking overdue, or to quietly roll over unresolved.
  *
  * Yes backdates the completion to the day the task was actually due — see
  * completeTask's `completedAt` option — so it reads as done last night, not
@@ -87,7 +90,7 @@ export function MorningCheckInSheet({ visible, onClose, tasks }: Props) {
           <Text style={styles.subtitle}>
             {total === 0
               ? "You're all caught up."
-              : "A few recurring tasks from yesterday are still unanswered. Did you get to them?"}
+              : "A few tasks with a deadline from yesterday are still unanswered. Did you get to them?"}
           </Text>
         </View>
 
