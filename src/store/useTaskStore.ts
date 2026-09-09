@@ -185,6 +185,7 @@ import { resolveBlocksEdit, waitingOn } from '../utils/blocking';
 import { scheduleTaskReminder, cancelTaskReminder, rescheduleAllReminders, scheduleTimerAlarm, cancelTimerAlarm, scheduleQuotaNudges, cancelQuotaNudges, cancelCompletionTimer } from '../utils/notifications';
 import { syncDeadlineEvent } from '../utils/deadlineCalendarSync';
 import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
+import { logTaskWaterToHealth } from '../utils/healthCompletionSync';
 import {
   deleteCalendarEvent,
   presentTimeBlockCreate,
@@ -554,6 +555,7 @@ function newTaskFromDraft(
     healthMetric: draft.healthMetric ?? null,
     healthTarget: draft.healthTarget ?? null,
     completionTimerMinutes: draft.completionTimerMinutes ?? null,
+    logWaterMl: draft.logWaterMl ?? null,
     previousOccurrenceId: draft.previousOccurrenceId ?? null,
     generatedKind: draft.generatedKind ?? null,
     generatedSourceId: draft.generatedSourceId ?? null,
@@ -3249,6 +3251,10 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // Opt-in and one-shot, unlike the reconcile above — only fired when the
     // task actually asked for it.
     if (task.logCompletionToCalendar) logCompletionEvent(completed, completedAt);
+    // Same shape as the calendar log one line up: opt-in, one-shot, fire and
+    // forget. See logTaskWaterToHealth's own comment for why there is no
+    // write-back id to store and no undo on uncomplete.
+    if (task.logWaterMl) void logTaskWaterToHealth(completed);
 
     cancelTaskReminder(id);
 
@@ -6609,7 +6615,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timedMinutes: null,
       timerElapsedSeconds: 0,
       healthMetric: null,
-      healthTarget: null, completionTimerMinutes: null,
+      healthTarget: null, completionTimerMinutes: null, logWaterMl: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],
@@ -6806,7 +6812,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       timedMinutes: null,
       timerElapsedSeconds: 0,
       healthMetric: null,
-      healthTarget: null, completionTimerMinutes: null,
+      healthTarget: null, completionTimerMinutes: null, logWaterMl: null,
       previousOccurrenceId: null,
       seriesId: null,
       seriesMonthDays: [],

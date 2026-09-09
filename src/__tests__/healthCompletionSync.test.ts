@@ -1,17 +1,14 @@
 import type { Task } from '../types';
 
-let mockSettings: { completionCalendarId: string | null } = { completionCalendarId: null };
+let mockSettings: { healthWriteEnabled: boolean } = { healthWriteEnabled: false };
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: { getState: () => mockSettings },
 }));
 
-jest.mock('../store/useCategoryStore', () => ({
-  useCategoryStore: { getState: () => ({ categories: [], getCategoryByName: () => null }) },
-}));
-
-const mockCreateTimedEvent = jest.fn();
-jest.mock('../utils/calendarSync', () => ({
-  createTimedEvent: (...args: unknown[]) => mockCreateTimedEvent(...args),
+const mockWriteWaterSample = jest.fn();
+let mockBridge: { writeWaterSample: (mL: number) => Promise<boolean> } | null = null;
+jest.mock('../utils/healthBridge', () => ({
+  healthBridge: () => mockBridge,
 }));
 
 let mockDemoActive = false;
@@ -19,11 +16,11 @@ jest.mock('../utils/demoState', () => ({
   isDemoModeActive: () => mockDemoActive,
 }));
 
-import { logTaskCompletionToCalendar } from '../utils/completionCalendarSync';
+import { logTaskWaterToHealth } from '../utils/healthCompletionSync';
 
 const BASE: Task = {
   id: 'task-1',
-  title: 'Pay taxes',
+  title: 'Drink water',
   notes: '',
   completed: false,
   completedAt: null,
@@ -108,7 +105,8 @@ const BASE: Task = {
   timerElapsedSeconds: 0,
   healthMetric: null,
   healthTarget: null,
-  completionTimerMinutes: null, logWaterMl: null,
+  completionTimerMinutes: null,
+  logWaterMl: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,
@@ -142,54 +140,54 @@ function makeTask(overrides: Partial<Task>): Task {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockSettings = { completionCalendarId: 'cal-1' };
+  mockSettings = { healthWriteEnabled: true };
   mockDemoActive = false;
+  mockBridge = { writeWaterSample: mockWriteWaterSample };
+  mockWriteWaterSample.mockResolvedValue(true);
 });
 
-describe('logTaskCompletionToCalendar', () => {
-  it('does nothing when no calendar is picked in settings', async () => {
-    mockSettings.completionCalendarId = null;
-    const result = await logTaskCompletionToCalendar(
-      makeTask({ logCompletionToCalendar: true }),
-      new Date('2026-08-20T12:00:00Z')
-    );
-    expect(result).toBeNull();
-    expect(mockCreateTimedEvent).not.toHaveBeenCalled();
+describe('logTaskWaterToHealth', () => {
+  it('does nothing when the setting is off', async () => {
+    mockSettings.healthWriteEnabled = false;
+    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 250 }));
+    expect(result).toBe(false);
+    expect(mockWriteWaterSample).not.toHaveBeenCalled();
   });
 
-  it('does nothing when the per-task toggle is off', async () => {
-    const result = await logTaskCompletionToCalendar(
-      makeTask({ logCompletionToCalendar: false }),
-      new Date('2026-08-20T12:00:00Z')
-    );
-    expect(result).toBeNull();
-    expect(mockCreateTimedEvent).not.toHaveBeenCalled();
+  it('does nothing when the task never asked for it', async () => {
+    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: null }));
+    expect(result).toBe(false);
+    expect(mockWriteWaterSample).not.toHaveBeenCalled();
   });
 
-  it('writes a 30-minute event starting at the completion time and returns its id', async () => {
-    mockCreateTimedEvent.mockResolvedValue('new-evt');
-    const completedAt = new Date('2026-08-20T12:00:00Z');
-    const task = makeTask({ logCompletionToCalendar: true, title: 'Pay taxes' });
-    const result = await logTaskCompletionToCalendar(task, completedAt);
-    expect(result).toBe('new-evt');
-    expect(mockCreateTimedEvent).toHaveBeenCalledWith('cal-1', {
-      title: 'Pay taxes',
-      start: completedAt,
-      end: new Date('2026-08-20T12:30:00Z'),
-    });
+  it('does nothing for a non-positive amount', async () => {
+    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 0 }));
+    expect(result).toBe(false);
+    expect(mockWriteWaterSample).not.toHaveBeenCalled();
   });
 
-  it('falls back to "Completed task" when displayTitleFor has nothing to show', async () => {
-    mockCreateTimedEvent.mockResolvedValue('evt');
-    const task = makeTask({ logCompletionToCalendar: true, title: '' });
-    await logTaskCompletionToCalendar(task, new Date('2026-08-20T12:00:00Z'));
-    expect(mockCreateTimedEvent).toHaveBeenCalledWith('cal-1', expect.objectContaining({ title: 'Completed task' }));
+  it('writes the task’s own amount and returns the bridge’s answer', async () => {
+    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 300 }));
+    expect(result).toBe(true);
+    expect(mockWriteWaterSample).toHaveBeenCalledWith(300);
   });
 
-  it('never touches the device calendar while demo mode is active', async () => {
+  it('reports false when the bridge is unavailable', async () => {
+    mockBridge = null;
+    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 250 }));
+    expect(result).toBe(false);
+  });
+
+  it('reports whatever the bridge itself reports, including a refused write', async () => {
+    mockWriteWaterSample.mockResolvedValue(false);
+    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 250 }));
+    expect(result).toBe(false);
+  });
+
+  it('never touches the device Health store while demo mode is active', async () => {
     mockDemoActive = true;
-    const task = makeTask({ logCompletionToCalendar: true });
-    expect(await logTaskCompletionToCalendar(task, new Date('2026-08-20T12:00:00Z'))).toBeNull();
-    expect(mockCreateTimedEvent).not.toHaveBeenCalled();
+    const result = await logTaskWaterToHealth(makeTask({ logWaterMl: 250 }));
+    expect(result).toBe(false);
+    expect(mockWriteWaterSample).not.toHaveBeenCalled();
   });
 });

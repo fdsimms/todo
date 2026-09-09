@@ -186,6 +186,7 @@ export interface TaskDraft {
   groupId?: string | null;
   linkUrl?: string | null;
   completionTimerMinutes?: number | null;
+  logWaterMl?: number | null;
   phoneNumber?: string | null;
   emailAddress?: string | null;
   location?: string | null;
@@ -216,7 +217,7 @@ type PickerMode = 'none' | 'reminder';
 type DraftSubtask = { id: string; title: string; completed: boolean; timedMinutes: number | null };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer' | 'logWaterMl';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -239,6 +240,12 @@ const MAX_STREAK_COUNT = 9999;
 // reasoning as the two ceilings above.
 const COMPLETION_TIMER_STEP_MINUTES = 15;
 const MAX_COMPLETION_TIMER_MINUTES = 24 * 60;
+
+// A glass at a time, up to a generous single serving — this logs one
+// completion's worth of water, not a running daily total, so there's no
+// reason for the ceiling to approach a whole day's intake.
+const LOG_WATER_STEP_ML = 50;
+const MAX_LOG_WATER_ML = 1000;
 
 
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
@@ -430,6 +437,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
   const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
+  const [logWaterMl, setLogWaterMl] = useState<number | null>(null);
   const [blockedById, setBlockedById] = useState<string | null>(null);
   const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
@@ -532,6 +540,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const deadlineCalendarId = useSettingsStore(s => s.deadlineCalendarId);
   const completionCalendarId = useSettingsStore(s => s.completionCalendarId);
+  const healthWriteEnabled = useSettingsStore(s => s.healthWriteEnabled);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const activeHoursStart = useSettingsStore(s => s.activeHoursStart);
   const activeHoursEnd = useSettingsStore(s => s.activeHoursEnd);
@@ -671,6 +680,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setLinkUrl(task.linkUrl ?? null);
       setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
+      setLogWaterMl(task.logWaterMl ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
@@ -706,6 +716,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
       setCompletionTimerMinutes(initialDraft?.completionTimerMinutes ?? null);
+      setLogWaterMl(initialDraft?.logWaterMl ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
@@ -811,6 +822,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
+      logWaterMl: task ? (task.logWaterMl ?? null) : (initialDraft?.logWaterMl ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
@@ -1101,6 +1113,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
       linkUrl: resolveLinkUrl(),
       completionTimerMinutes,
+      logWaterMl,
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
@@ -1634,6 +1647,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       streakRequiresWindow,
       linkUrl,
       completionTimerMinutes,
+      logWaterMl,
       phoneNumber,
       emailAddress,
       location,
@@ -3025,6 +3039,42 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   <View style={[styles.toggleKnob, logCompletionToCalendar && styles.toggleKnobOn]} />
                 </View>
               </TouchableOpacity>
+            ),
+          },
+          // A third "what does completing this mean" question, same family as
+          // the calendar toggle right above — opt-in, gated on a Settings
+          // switch it can't turn on for itself, same disabled/hint shape.
+          // A number rather than a toggle, unlike the calendar row: the
+          // calendar event's content is fixed (the task's own title), but
+          // "how much water" has no single obvious answer to bake in.
+          {
+            key: 'logWaterMl', label: 'Log water to Health', set: logWaterMl !== null,
+            keywords: ['water', 'hydration', 'drink', 'health', 'apple health'],
+            node: (
+              <CollapsibleField
+                label="Log water to Health"
+                summary={logWaterMl !== null ? `${logWaterMl}mL when completed` : undefined}
+                hint={
+                  healthWriteEnabled
+                    ? 'Writes a dietary water sample to Apple Health each time you complete this task.'
+                    : 'Turn on writing to Health in Settings › Health first'
+                }
+                expanded={healthWriteEnabled && fieldOpen('logWaterMl')}
+                onToggle={() => { if (!healthWriteEnabled) return; toggleField('logWaterMl'); }}
+              >
+                <CountStepper
+                  value={logWaterMl}
+                  onChange={setLogWaterMl}
+                  min={LOG_WATER_STEP_ML}
+                  max={MAX_LOG_WATER_ML}
+                  step={LOG_WATER_STEP_ML}
+                  allowNull
+                  emptyLabel="Off"
+                  label="Log water to Health"
+                  format={n => `${n}mL`}
+                  describeValue={n => (n === null ? 'off' : `${n} millilitres`)}
+                />
+              </CollapsibleField>
             ),
           },
         ]}

@@ -1,17 +1,20 @@
-# Reading Apple Health
+# Reading (mostly) and writing (once) Apple Health
 
 The whole of it: the bridge, the store, the Settings section, the row on Today,
-the Mood screen's health axis, the `health` generator and the short-night line
-under "Lighten today" — and the four rules any further reader has to be built
-against.
+the Mood screen's health axis, the `health` generator, the short-night line
+under "Lighten today", and the one thing this app writes back — a
+dietary-water sample, on completion of a task that opted into it — plus the
+rules any further reader or writer has to be built against.
 
 Read this before touching `modules/todo-health-bridge/`,
-`src/utils/healthBridge.ts`, `src/store/useHealthStore.ts`,
-`src/screens/settings/HealthSettings.tsx`, `healthContextRows` in
-`src/utils/dayContextRows.ts` or the health half of `src/utils/moodInsights.ts`
-— and before adding any reader of a health figure
-anywhere else, because three of the four rules below are about what a reader is
-allowed to claim rather than about how to get the number.
+`src/utils/healthBridge.ts`, `src/utils/healthCompletionSync.ts`,
+`src/store/useHealthStore.ts`, `src/screens/settings/HealthSettings.tsx`,
+`healthContextRows` in `src/utils/dayContextRows.ts` or the health half of
+`src/utils/moodInsights.ts` — and before adding any reader *or writer* of a
+health figure anywhere else. Most of what follows is about what a reader is
+allowed to claim rather than about how to get the number; the "Writing
+exactly one thing" section is the one place the concerns are about a writer
+instead.
 
 The rules here are settled decisions with the reasoning attached. Don't
 re-derive them from the code, and don't re-open one without a reason this note
@@ -111,9 +114,101 @@ switching the row on, and the access row's own button.
 `healthBridge()` is the one door and refuses in demo mode, which is the sharpest
 case that gate has had. Demo mode swaps the database for a throwaway one, so a
 reading taken there is the real person's, shown beside seeded fiction, in a
-database about to be discarded. Nothing is seeded in `demoSeed.ts` for it, and
-that is not an oversight: the feature writes no rows, so there is nothing a seed
-could show, and the honest demo of a health reading is its absence.
+database about to be discarded. Nothing is seeded in `demoSeed.ts` for the
+*reading* itself, and that is not an oversight: nothing here writes a row for
+it, so there is nothing a seed could show, and the honest demo of a health
+reading is its absence. (A demo task can still carry `logWaterMl` — see the
+next section for why that's a different case.)
+
+## Writing exactly one thing: dietary water
+
+Everything above this section is still exactly true: every read stays
+read-only, and this app never infers, diagnoses, or has an opinion about a
+body from a number it read. What changed is that the app now *writes* one
+thing of its own — a dietary-water sample, when a task the user set up to log
+it completes — and that capability earned enough new rules to need its own
+section rather than a footnote on the reading ones.
+
+**Read and write are not the same kind of risk, and the asymmetry runs through
+every design choice below.** A read that leaks (shown in the wrong place, or
+to the wrong person) discloses a true number. A write that fires when it
+shouldn't *creates* a false fact in somebody's permanent medical record — a
+completion that wasn't real, or a demo session's fiction, would sit in their
+actual Health app forever, survivable only by manual deletion nobody would
+know to go looking for. Every rule below is really one rule, applied
+everywhere it's relevant: writing costs more to get wrong than reading does,
+so it is asked for separately, gated separately, and triggered from exactly
+one place.
+
+- **Read and write authorization are asked for, and gated, completely
+  separately.** `healthReadEnabled` and `healthWriteEnabled`
+  (`useSettingsStore`) are two independent switches; `HealthSettings.tsx`
+  renders them as two `SettingsSection`s; the native module's
+  `requestAuthorization` (read) and `requestWriteAuthorization` (write) each
+  pass an empty set for the half they aren't asking about, so turning on
+  reading never puts a water-sharing row in front of somebody who only wanted
+  their step count on Today, and vice versa. This is the same "two different
+  permissions to give" rule `checkHealthTasks`'s own doc comment states for
+  the read + generator switches, generalized one level up.
+- **Write authorization is genuinely observable, unlike read — and the UI is
+  allowed to say so.** The whole of "Read authorization is not observable"
+  above is Apple's own deliberate design for *reads*; the same
+  `authorizationStatus(for:)` call is documented to answer truthfully for
+  share/write types. `healthWriteAuthorizationStatus()`
+  (`modules/todo-health-bridge/index.ts`) is a plain synchronous read of that
+  fact, and `HealthSettings`'s water-write access row renders a real
+  "Allowed" / "Not allowed" / "Not asked yet" — the one place in this screen
+  that gets to say what `CalendarSettings`' access row says, rather than the
+  read row's necessarily vaguer "have you been asked" phrasing.
+- **There is one write type, and adding a second is not a small decision.**
+  `writeTypes` in the Swift module is deliberately not generalized the way
+  `readTypes` is (a `Record` keyed by an ever-growing metric union) — a share
+  type is a real consequence landing in somebody's actual Health record, so
+  each one earns its own review rather than riding in with whatever the read
+  side happens to be reading that month. `dietaryWater` is the one type
+  today, chosen because it's the one thing a "drink water" task has an
+  unambiguous, undisputed amount to write — there's no equivalent obvious
+  number for, say, a stretching task.
+- **The write is triggered from exactly one place, opt-in per task, and
+  one-shot.** `Task.logWaterMl` (a number, not a boolean-plus-amount pair,
+  so "off" and "log 0mL" can't become two different ways to say nothing
+  happens) is read only by `completeTask` in `useTaskStore.ts`, which calls
+  `logTaskWaterToHealth` (`src/utils/healthCompletionSync.ts`) the moment a
+  task is marked completed — the exact shape `logTaskCompletionToCalendar`
+  already established for the completion-calendar event beside it, copied
+  deliberately rather than reinvented. Like that one, it is a historical
+  record with no delete-on-uncomplete and no reconciler: nothing calls it
+  from anywhere else, because a caller that looped it into a save or an edit
+  path would write water nobody drank.
+- **`healthBridge()`'s demo-mode gate is sharper for this write than for any
+  read it already covered.** The gate's own module comment used to describe
+  the worst case a leak could cause as "a true number in a fictional
+  context" — survivable, because nothing was created. A write leak is worse
+  in kind, not just in degree: a demo-seeded task completing during a demo
+  session would put a *real* sample, sourced from a completion that never
+  happened, into the person's *actual* Health record, outliving the demo
+  session by however long until they happen to notice and delete it by hand.
+  `logTaskWaterToHealth` checks `isDemoModeActive()` first, before anything
+  else, for exactly this reason — see its own doc comment.
+- **A demo task may still carry `logWaterMl`, and that's not a contradiction
+  of the demo-mode gate above.** The gate stops the *write*; it says nothing
+  about whether a seeded task's fields may show the feature exists. Since the
+  write path refuses unconditionally in demo mode regardless of what
+  `logWaterMl` holds, seeding a demo "Drink water" task with it set
+  demonstrates the setting exists (opening its editor shows "Log water to
+  Health" already on) without ever being able to trigger the write it
+  describes — the same reasoning that lets `demoSeed.ts` seed
+  `logCompletionToCalendar` on a task despite the calendar write it names
+  being equally gated.
+- **App Store's Info.plist strings had to change, not just get a second
+  key.** `NSHealthShareUsageDescription` and `NSHealthUpdateUsageDescription`
+  (`app.json`'s `ios.infoPlist`) both used to say, truthfully at the time,
+  that nothing was ever written. Now that something is, both strings say what
+  is actually read and actually written — see `plugins/withHealthKit.js`'s
+  own comment for why the update string was already required (App Store
+  Connect's Info.plist validator scans for the `requestAuthorization
+  (toShare:read:)` selector being linked at all, whether or not anything is
+  ever passed in `toShare`) even back when it was never truly exercised.
 
 ## The row on Today, and where it files
 
@@ -413,6 +508,14 @@ saturated fat came first; fiber, sugar, caffeine, water and calories followed
 once the checkpoint-hour and direction mechanisms both already generalized
 past three, which is why `HEALTH_METRIC_INFO` exists as a table rather than
 five more hand-written switch branches.
+
+**None of this bears on `writeTypes`, which stays at exactly one and follows a
+stricter version of the same "don't add until earned" rule.** A sixth read
+metric costs a bigger permission sheet; a second write type costs a real
+sample landing in somebody's actual Health record if anything about it is
+wrong. See "Writing exactly one thing: dietary water" above for the argument
+in full — it is deliberately not summarized here, because collapsing it to a
+sentence is exactly the kind of thing that invites re-deriving it wrong later.
 
 ## One thing worth knowing before scoping the background half
 

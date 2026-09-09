@@ -246,6 +246,15 @@ jest.mock('../store/useHealthStore', () => ({
   useHealthStore: { getState: () => ({ today: null, history: null, refreshing: false }) },
 }));
 
+// healthCompletionSync.ts (reached via useTaskStore.ts, for the water-logging
+// write path) imports healthBridge.ts directly rather than through
+// useHealthStore, so the mock above doesn't cover it — same react-native
+// module-scope problem, a different module path to it.
+jest.mock('../utils/healthBridge', () => ({
+  healthBridge: () => null,
+  isHealthSupported: () => false,
+}));
+
 // ---------------------------------------------------------------------------
 
 function realDbTaskTitles(): string[] {

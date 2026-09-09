@@ -1359,6 +1359,10 @@ export function initDatabase(): void {
     // Null on every existing row: a completion timer is something a task opts
     // into, not something to infer. See Task.completionTimerMinutes.
     'ALTER TABLE tasks ADD COLUMN completion_timer_minutes INTEGER',
+    // Null on every existing row, same reasoning as completion_timer_minutes
+    // above: writing to Health is an opt-in a task doesn't have until someone
+    // sets it. See Task.logWaterMl.
+    'ALTER TABLE tasks ADD COLUMN log_water_ml INTEGER',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -2239,6 +2243,7 @@ function rowToTask(row: Record<string, unknown>): Task {
       : null,
     healthTarget: (row.health_target as number | null) ?? null,
     completionTimerMinutes: (row.completion_timer_minutes as number | null) ?? null,
+    logWaterMl: (row.log_water_ml as number | null) ?? null,
     timerElapsedSeconds: (row.timer_elapsed_seconds as number | null) ?? 0,
     previousOccurrenceId: (row.previous_occurrence_id as string | null) ?? null,
     seriesId: (row.series_id as string | null) ?? null,
@@ -2309,8 +2314,8 @@ export function dbInsertTask(task: Task): void {
       person_ids, waiting_on_person_id, reminder_offset_days, exclude_from_suggestions,
       quota_interval_minutes, quota_reminders, quota_started_at, quota_always_visible, quota_period, location,
       prior_best_streak, reminder_time_anchor, reminder_utc_offset_minutes, polarity, slip_count, slip_date,
-      health_metric, health_target, completion_timer_minutes
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      health_metric, health_target, completion_timer_minutes, log_water_ml
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       task.id, task.title, task.notes, task.completed ? 1 : 0,
       task.completedAt, task.createdAt, task.seenAt, task.dueDate, task.deadline, task.deadlineOffsetDays ?? null, task.deadlineMonthDay ?? null, task.deferUntil,
@@ -2391,6 +2396,7 @@ export function dbInsertTask(task: Task): void {
       task.healthMetric ?? null,
       task.healthTarget ?? null,
       task.completionTimerMinutes ?? null,
+      task.logWaterMl ?? null,
     ]
   );
 }
@@ -2419,7 +2425,7 @@ export function dbUpdateTask(task: Task): void {
       person_ids=?, waiting_on_person_id=?, reminder_offset_days=?, exclude_from_suggestions=?,
       quota_interval_minutes=?, quota_reminders=?, quota_started_at=?, quota_always_visible=?, quota_period=?, location=?,
       prior_best_streak=?, reminder_time_anchor=?, reminder_utc_offset_minutes=?, polarity=?, slip_count=?, slip_date=?,
-      health_metric=?, health_target=?, completion_timer_minutes=?
+      health_metric=?, health_target=?, completion_timer_minutes=?, log_water_ml=?
     WHERE id=?`,
     [
       task.title, task.notes, task.completed ? 1 : 0, task.completedAt, task.seenAt,
@@ -2501,6 +2507,7 @@ export function dbUpdateTask(task: Task): void {
       task.healthMetric ?? null,
       task.healthTarget ?? null,
       task.completionTimerMinutes ?? null,
+      task.logWaterMl ?? null,
       task.id,
     ]
   );

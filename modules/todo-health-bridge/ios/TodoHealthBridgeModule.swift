@@ -8,10 +8,16 @@ import HealthKit
 /// The app's half of Apple Health, and deliberately the smallest half that
 /// answers a question.
 ///
-/// Everything here is read-only. Nothing writes a sample, nothing asks for
-/// share access, and the entitlement plugin claims only the read half
-/// (`plugins/withHealthKit.js`) — this app consults a number another app
-/// recorded, it never records one.
+/// Almost everything here is still read-only: this app consults a number
+/// another app recorded for steps, sleep and eight nutrients, and never
+/// records any of them. The one exception is dietary water — logged when a
+/// task that opted into it completes (`writeWaterSample` below,
+/// `healthCompletionSync.ts` on the JS side) — which is a deliberately
+/// separate ask (`writeTypes`, its own authorization functions) from
+/// everything the read half does, so reading steps never puts a share
+/// permission on screen for somebody who never asked to write anything. See
+/// `docs/arch/health-data.md` for why water is the one type that earned a
+/// write path.
 ///
 /// Every function returns a value rather than Void, the same rule
 /// TodoWidgetBridgeModule.swift states at length: RN's exception-to-JSError
@@ -31,6 +37,13 @@ import HealthKit
 /// say: whether asking again would put a sheet on screen. Every read answers
 /// `null` for "no number", and null means *no number* — refused, no data
 /// recorded, or a device that never had any, with nothing to tell them apart.
+///
+/// **The write side is the mirror of that, and genuinely can say whether it
+/// was allowed.** `authorizationStatus(for:)` is truthful for share/write
+/// types — that's the same call, the obscuring is specific to reads — so
+/// `writeAuthorizationStatus` below is a plain, synchronous, honest answer:
+/// not determined, denied, or authorized. Nothing about this file's read-side
+/// limitation applies to it.
 ///
 /// **Every async function here settles its promise on every path, including the
 /// one where the exception catcher swallows something.** Only the *start* of
@@ -93,6 +106,19 @@ public class TodoHealthBridgeModule: Module {
     }
     if let energy = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) {
       types.insert(energy)
+    }
+    return types
+  }
+
+  /// Every type this app will ever ask to *write* — one, today. Deliberately
+  /// its own set rather than folded into `readTypes`: a share type is a real
+  /// consequence (a sample landing in somebody's actual Health record) that a
+  /// read type isn't, so it's requested on its own (see `requestWriteAuthorization`)
+  /// rather than riding along with whatever's being read.
+  private var writeTypes: Set<HKSampleType> {
+    var types = Set<HKSampleType>()
+    if let water = HKQuantityType.quantityType(forIdentifier: .dietaryWater) {
+      types.insert(water)
     }
     return types
   }
@@ -269,6 +295,97 @@ public class TodoHealthBridgeModule: Module {
       if !started { promise.resolve("failed") }
       #else
       promise.resolve("unavailable")
+      #endif
+    }
+
+    // ─── Writing (dietary water only) ──────────────────────────────────────
+
+    /// "unavailable" | "notDetermined" | "sharingDenied" | "sharingAuthorized".
+    ///
+    /// The write mirror of `authorizationRequestStatus` above, and able to say
+    /// something that one structurally cannot: `authorizationStatus(for:)` is
+    /// truthful for share/write types (Apple's own docs draw this exact line),
+    /// so this reports what actually happened rather than only whether asking
+    /// again would show a sheet. Synchronous, since there is no daemon round
+    /// trip needed for a fact HealthKit already holds locally.
+    Function("writeAuthorizationStatus") { () -> String in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable(),
+            let water = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else {
+        return "unavailable"
+      }
+      var status = "unavailable"
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        switch self.store.authorizationStatus(for: water) {
+        case .notDetermined: status = "notDetermined"
+        case .sharingDenied: status = "sharingDenied"
+        case .sharingAuthorized: status = "sharingAuthorized"
+        @unknown default: status = "notDetermined"
+        }
+      }
+      return status
+      #else
+      return "unavailable"
+      #endif
+    }
+
+    /// Ask for water-write access. Same "unavailable" | "requested" | "failed"
+    /// shape as `requestAuthorization`, and the same reason it says no more
+    /// than that the sheet was shown — but unlike the read side, a caller that
+    /// wants the truth can simply call `writeAuthorizationStatus` right after
+    /// this resolves, rather than being stuck with "requested" forever.
+    /// `toShare: writeTypes, read: []` on purpose: this never asks to read
+    /// anything, so it can be triggered on its own from a task's water-logging
+    /// row without also raising the unrelated steps/sleep/nutrient read sheet.
+    AsyncFunction("requestWriteAuthorization") { (promise: Promise) in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable() else {
+        promise.resolve("unavailable")
+        return
+      }
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        self.store.requestAuthorization(toShare: self.writeTypes, read: []) { success, _ in
+          promise.resolve(success ? "requested" : "failed")
+        }
+        started = true
+      }
+      if !started { promise.resolve("failed") }
+      #else
+      promise.resolve("unavailable")
+      #endif
+    }
+
+    /// Writes one dietary-water sample dated now, for `milliliters`.
+    ///
+    /// One-shot, like a completion-calendar event: there is no update or
+    /// delete counterpart, because a logged drink is a historical record the
+    /// same way a calendar event logging a completion is (see
+    /// `completionCalendarSync.ts`). Resolves `false` for every reason there
+    /// is nothing to report success for: no native half, not authorized, a
+    /// non-positive amount, or the save itself failing — the caller
+    /// (`healthCompletionSync.ts`) treats all of them alike, since none of
+    /// them warrant surfacing an error to someone who just finished a task.
+    AsyncFunction("writeWaterSample") { (milliliters: Double, promise: Promise) in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable(), milliliters > 0,
+            let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else {
+        promise.resolve(false)
+        return
+      }
+      let quantity = HKQuantity(unit: HKUnit.literUnit(with: .milli), doubleValue: milliliters)
+      let now = Date()
+      let sample = HKQuantitySample(type: type, quantity: quantity, start: now, end: now)
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        self.store.save(sample) { success, _ in
+          promise.resolve(success)
+        }
+        started = true
+      }
+      if !started { promise.resolve(false) }
+      #else
+      promise.resolve(false)
       #endif
     }
 
