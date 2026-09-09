@@ -36,9 +36,7 @@ public class TodoDataScannerView: ExpoView {
 
   private func startScanning() {
     guard #available(iOS 16, *), !scanning else { return }
-    guard DataScannerViewController.isSupported, DataScannerViewController.isAvailable else {
-      return
-    }
+    guard dataScannerIsReady() else { return }
 
     let scanner = DataScannerViewController(
       recognizedDataTypes: [
