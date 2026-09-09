@@ -7436,6 +7436,21 @@ describe('groupRosterOf', () => {
     expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['done']);
   });
 
+  it('drops a plain successor that reads as due today alongside its completed-today predecessor', () => {
+    // The reported bug (#Supplements): after a device timezone change, a
+    // stored `dueDate` that was computed as "tomorrow" can re-derive as
+    // "today" — unlike the chain-step case above, an ordinary recurring
+    // successor has no legitimate reason to share today with the row it
+    // replaced, so the predecessor wins and the successor drops out.
+    useTaskStore.setState({
+      tasks: [
+        makeTask({ id: 'done', groupId: 'g1', completed: true, completedAt: today(), sortOrder: 1 }),
+        makeTask({ id: 'today-too', groupId: 'g1', dueDate: today(), previousOccurrenceId: 'done', sortOrder: 1 }),
+      ],
+    });
+    expect(useTaskStore.getState().groupRosterOf('g1').map(t => t.id)).toEqual(['done']);
+  });
+
   it('keeps a member that is not due today (iron every other day)', () => {
     useTaskStore.setState({
       tasks: [
