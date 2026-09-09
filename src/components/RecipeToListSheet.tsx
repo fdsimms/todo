@@ -251,18 +251,28 @@ export function RecipeToListSheet({
   // recompute below — so the dirty check in handleCancel can tell a real tap
   // apart from the set simply being recomputed out from under it.
   const tickedBaselineRef = useRef<string>('');
+  // Which rows existed after the last recompute, so the effect below can tell
+  // a row that's brand new (never manually unticked, defaults on) from one
+  // that was already there (keep whatever the user left it at). Null means
+  // "sheet just opened" — everything starts ticked.
+  const knownRowKeysRef = useRef<Set<string> | null>(null);
 
   useEffect(() => {
     if (!visible) return;
     setChoices(initialChoices ? [...initialChoices] : []);
     setUndecided([]);
     setScale(normalizeScale(initialScale));
+    knownRowKeysRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   // Re-ticks on a swapped alternative as well as on open: changing the side
   // changes which rows exist, and a row that has just appeared has never been
-  // unticked, so it belongs in the default selection.
+  // unticked, so it belongs in the default selection. A choice group only
+  // ever swaps rows in and out of *its own* alternative, so every row outside
+  // it is "already there" and must keep whatever the user left it at — this
+  // used to reset the whole set to its default on every choice, undoing an
+  // untick on a completely unrelated line.
   //
   // Not keyed on `scale`, deliberately: scaling changes the quantities on the
   // rows, never which rows there are, so a line the user just unticked must
@@ -275,9 +285,18 @@ export function RecipeToListSheet({
     // A garnish or serving suggestion (RecipeIngredient.optional) starts
     // unticked — it's still listed and one tap away, just not assumed.
     ).filter(r => !r.optional);
-    const defaultTicked = new Set(rows.map(r => r.nameKey));
-    setTicked(defaultTicked);
-    tickedBaselineRef.current = JSON.stringify([...defaultTicked].sort());
+    const rowKeys = new Set(rows.map(r => r.nameKey));
+    const knownBefore = knownRowKeysRef.current;
+    setTicked(prev => {
+      if (knownBefore === null) return rowKeys;
+      const next = new Set<string>();
+      for (const key of rowKeys) {
+        if (knownBefore.has(key) ? prev.has(key) : true) next.add(key);
+      }
+      return next;
+    });
+    knownRowKeysRef.current = rowKeys;
+    tickedBaselineRef.current = JSON.stringify([...rowKeys].sort());
     setExpandedSections(defaultExpandedSections());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, choiceKey, initialSelection]);
