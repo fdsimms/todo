@@ -172,7 +172,7 @@ private func jsonString(from content: GeneratedContent, fields: [FieldSpec]) -> 
   for element in elements {
     var row: [String: String] = [:]
     for field in fields {
-      if let value = element.value(String.self, forProperty: field.name) {
+      if let value = try? element.value(String.self, forProperty: field.name) {
         row[field.name] = value
       }
     }
