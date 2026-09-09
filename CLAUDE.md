@@ -477,6 +477,20 @@ genuinely isn't documented yet (a fresh beta, an internal API), say so at the ca
 way this file's own header comment already tried to — and say so again in the PR description as
 an open risk, rather than presenting an unverified signature as a confirmed fix.
 
+**A fetched doc page can still be wrong, so don't stop checking once you have one.** The first
+round of verification above got `GeneratedContent.Kind.array` right but still misreported
+`value(_:forProperty:)` as non-throwing and optional-returning; the real declaration throws and
+returns a non-optional value, and only the next EAS build surfaced that — the tool that fetches
+and paraphrases a doc page is itself something that can mishear a signature, not just WWDC notes
+or memory. Two things reduce how often that costs a second round trip: ask for the raw
+`declarationFragments`/`fragments` array rather than a plain-English restatement when a call's
+exact throws/optional shape matters, since a paraphrase is exactly where "throws, returns `T`"
+and "doesn't throw, returns `T?`" get blurred into each other; and where a value is genuinely
+best-effort (a field that's fine to skip if absent, same as here), write the read as `try?
+expr` rather than `if let expr` — `try? T` and `try? T?` both flatten to the same `T?`, so that
+form tolerates a throws/optional guess being wrong in either direction, where a bare `if let`
+only compiles for one specific combination.
+
 **Stay in scope.** Fix what was asked, in the pattern the surrounding file already uses.
 Adjacent code that looks improvable isn't the task; mention it instead of rewriting it.
 
