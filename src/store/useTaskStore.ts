@@ -200,7 +200,14 @@ import { weatherSourceId, parseWeatherSourceId, ruleMatchesToday } from '../util
 import { useScreenTimeStore } from './useScreenTimeStore';
 import { useHealthStore } from './useHealthStore';
 import { screenTimeSourceId, parseScreenTimeSourceId, crossingWantsTask } from '../utils/screenTimeRules';
-import { healthSourceId, parseHealthSourceId, ruleCanBeJudgedYet, ruleShortfallToday } from '../utils/healthRules';
+import {
+  healthSourceId,
+  parseHealthSourceId,
+  ruleCanBeJudgedYet,
+  ruleShortfallToday,
+  shortSleepDeloadNote,
+  healthTaskLinkUrl,
+} from '../utils/healthRules';
 import { isTimedTask, timerElapsed } from '../utils/timer';
 import { apportionedMinutes, segmentMinutesOf } from '../utils/timerSegments';
 
@@ -5916,12 +5923,21 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
           kind: 'health',
           sourceId,
           wanted: true,
-          // The title is the rule's own and never varies mid-day.
+          // The title is the rule's own and never varies mid-day; same for the
+          // reading behind the note, so nothing here needs drift either.
           drift: () => null,
           draft: () => ({
             title: rule.title,
+            // Says which reading is behind the row and what fell short of it —
+            // a sleep task with no reason attached reads as coming from
+            // nowhere. Steps carries no note here for the same reason its rule
+            // gets no deload link below: "Go for a walk" already says what to
+            // do, where a short-night row is the app's inference and wants to
+            // attribute its source. See shortSleepDeloadNote.
+            notes: rule.metric === 'sleepHours' ? (shortSleepDeloadNote(reading.sleepHours) ?? undefined) : undefined,
             dueDate: dueDate.toISOString(),
             category: settings.healthTaskCategory,
+            linkUrl: healthTaskLinkUrl(rule.metric),
             ...generatedBy('health', sourceId),
           }),
         });

@@ -63,7 +63,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, describeDayLoad
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
-- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, recipeUrlId, +23 more
+- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, recipeUrlId, +24 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, deliverableMeta, DeliverableSource, deliverableKindFor, asksOnCompletion, chainStepDatedByAnswer, deliverableDate, normalizeDeliverableValue, formatDeliverableValue, +1 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoSeed.ts` — seedDemoData
@@ -105,7 +105,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/gtin.ts` — gtinCheckDigit, normalizeGtin, isGtin, formatGtin, GTIN_MISS_TTL_DAYS, isCacheEntryFresh
 - `src/utils/haptics.ts` — haptics
 - `src/utils/healthBridge.ts` — HealthBridge, healthBridge, isHealthSupported
-- `src/utils/healthRules.ts` — HEALTH_RULE_TITLE_MAX_LENGTH, HEALTH_THRESHOLDS, HEALTH_METRIC_EARLIEST_HOUR, HEALTH_METRICS, HealthRuleReading, healthMetricLabel, describeHealthRule, clampHealthThreshold, defaultHealthRules, parseHealthRules, +8 more
+- `src/utils/healthRules.ts` — HEALTH_RULE_TITLE_MAX_LENGTH, HEALTH_THRESHOLDS, HEALTH_METRIC_EARLIEST_HOUR, HEALTH_METRICS, HealthRuleReading, healthMetricLabel, describeHealthRule, clampHealthThreshold, defaultHealthRules, parseHealthRules, +9 more
 - `src/utils/healthTarget.ts` — HealthTargetState, HealthTargetReading, HEALTH_TARGET_RANGES, hasHealthTarget, healthTargetValue, healthTargetProgress, isHealthTargetReady, describeHealthTarget
 - `src/utils/hiddenEvents.ts` — HiddenEvent, hiddenEventKey, hiddenEventFromEvent, isHiddenEventStale, pruneStaleHiddenEvents
 - `src/utils/id.ts` — generateId
