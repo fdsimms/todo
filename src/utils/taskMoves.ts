@@ -1,5 +1,6 @@
-import type { Task } from '../types';
+import type { GeneratedKind, Task } from '../types';
 import { getTaskDayStart } from './dateUtils';
+import { isNoticeTask } from './generatedTasks';
 
 /**
  * Whether a task may be swept off the day it is on, what moving it means, and
@@ -28,10 +29,35 @@ export type DeloadBlocker =
   | 'urgent'
   | 'quota'
   | 'chain'
+  | 'notice'
+  | 'day-bound'
   | 'streak'
   | 'started'
   | 'high-priority'
   | 'people';
+
+/**
+ * Generated kinds whose task is a claim about *today specifically* — today's
+ * forecast crossed a rule, today's Health reading fell short, today's screen
+ * time crossed a threshold, or this is the slot for today's actual planned
+ * meal. Each one's `generatedSourceId` names the day (and for `mealSlot`, the
+ * slot) it was raised for, so pushing the row to another day doesn't move the
+ * thing the title is about — a "Put on sunscreen" written for a sunny Tuesday
+ * doesn't become true of Wednesday by being moved there, and the day it's
+ * pushed to gets its own fresh row from the same generator if its own
+ * condition fires, doubling up rather than replacing it. Contrast `moodLog`,
+ * `moodNudge` and `weekendNudge`, which are also day-keyed but whose specs say
+ * explicitly that rescheduling them is an ordinary thing to want (see their
+ * comments in `generatedTasks.ts`) — the content of those doesn't depend on
+ * which day they land on, only when they were raised.
+ */
+const DAY_BOUND_GENERATED_KINDS: ReadonlySet<GeneratedKind> = new Set([
+  'weather',
+  'health',
+  'screenTime',
+  'mealSlot',
+  'mealCook',
+]);
 
 /**
  * Blockers that leave the task movable but unchecked — the user can opt in.
@@ -67,6 +93,15 @@ export function isDateAnchored(task: Task): boolean {
  * why the day won't get any lighter than it does.
  */
 export function deloadBlockerFor(task: Task): { blocker: DeloadBlocker; label: string } | null {
+  // A notice (calendarReview's "what's on tomorrow", mealPlanNudge's "plan the
+  // week") has no reschedule chip in its own row for the same reason it can't
+  // move here: its title is a fixed question about a fixed day, not a task to
+  // plan around. Bulk-moving what the single-task UI already refuses would be
+  // the two disagreeing about the same task.
+  if (isNoticeTask(task)) return { blocker: 'notice', label: 'About today specifically' };
+  if (task.generatedKind !== null && DAY_BOUND_GENERATED_KINDS.has(task.generatedKind)) {
+    return { blocker: 'day-bound', label: 'About today specifically' };
+  }
   if (task.pinned) return { blocker: 'pinned', label: 'Pinned to today' };
   if (task.timerStartedAt !== null) return { blocker: 'running', label: 'Timer running' };
   if (task.priority === 4) return { blocker: 'urgent', label: 'Urgent' };

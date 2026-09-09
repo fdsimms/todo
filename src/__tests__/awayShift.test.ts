@@ -43,6 +43,7 @@ const task = (over: Partial<Task> = {}): Task => ({
   chainIndex: 0,
   streakCount: 0,
   personIds: [],
+  generatedKind: null,
   ...over,
 } as unknown as Task);
 
