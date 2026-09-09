@@ -14,16 +14,16 @@ import { generatedSourceOf } from './generatedTasks';
 export type HealthRuleMetric = 'steps' | 'sleepHours' | 'sodiumMg' | 'proteinG' | 'satFatG';
 
 /**
- * Which way a metric's reading is compared against its threshold.
+ * Which way a metric's reading is compared against its threshold, by default.
  *
- * Every metric but saturated fat is a floor: the reading has to reach the
- * number, and falling short is what fires the task. Saturated fat alone is a
- * ceiling, because that is the only shape a "don't go above X" request can
- * take — nobody asks this app to make sure they eat *enough* saturated fat.
- * Both directions are still a shortfall against a number the user picked
- * (see the file-level note on why a general greater/less toggle isn't
- * offered): 'over' doesn't mean "any comparator you like", it means this one
- * metric's shortfall is measured the other way.
+ * A floor ("under") for every metric, since that is what a person usually
+ * wants from steps, sleep or a nutrient — except saturated fat, which starts
+ * as a ceiling ("over") because "don't go above X" is the far more common ask
+ * for it. Either is a real want for a nutrient depending on the diet behind
+ * it (a sodium ceiling for someone managing blood pressure is as legitimate
+ * as a sodium floor for POTS), so this is only ever the value a freshly
+ * created rule starts from — `HealthRule.direction` can override it per rule.
+ * See `healthRuleDirection`.
  */
 export const HEALTH_METRIC_DIRECTION: Record<HealthRuleMetric, 'under' | 'over'> = {
   steps: 'under',
@@ -33,9 +33,17 @@ export const HEALTH_METRIC_DIRECTION: Record<HealthRuleMetric, 'under' | 'over'>
   satFatG: 'over',
 };
 
-/** Which way `metric` is compared — see `HEALTH_METRIC_DIRECTION`. */
-export function healthRuleDirection(metric: HealthRuleMetric): 'under' | 'over' {
-  return HEALTH_METRIC_DIRECTION[metric];
+/**
+ * Which way `rule` is compared — its own choice, or the metric's default.
+ *
+ * Both directions are still a shortfall against a number the user picked
+ * (see the file-level note on why a general greater/less toggle isn't
+ * offered on every rule regardless of metric): 'over' doesn't mean "any
+ * comparator you like" on every row, it means *this* rule's shortfall is
+ * measured the other way, chosen the same way its checkpoint hour is.
+ */
+export function healthRuleDirection(rule: Pick<HealthRule, 'metric' | 'direction'>): 'under' | 'over' {
+  return rule.direction ?? HEALTH_METRIC_DIRECTION[rule.metric];
 }
 
 /**
@@ -62,16 +70,18 @@ export function healthRuleDirection(metric: HealthRuleMetric): 'under' | 'over' 
  *   hours are two different days, and this is `screenTime`'s position rather
  *   than weather's.
  *
- * **The comparator is a property of the metric, not a control on the row, and
- * that is still deliberate even now that both directions exist.** Every rule
- * here is a shortfall against a number the user picked; what changed is that
- * one metric's shortfall (saturated fat) is measured as *too much* rather
- * than *too little*. A rule that let you flip "under 3,000 steps" to "over
- * 3,000 steps" would describe something that has already happened and needs
- * no task, so that comparator is never offered — the mirror this file used to
- * rule out entirely is still ruled out, only saturated fat's own, opposite,
- * direction now exists because a nutrient ceiling is a real request the
- * mirror argument never covered. See `HEALTH_METRIC_DIRECTION`.
+ * **The comparator is a per-rule choice for the three nutrients, and a fixed
+ * one for steps and sleep.** Every rule here is a shortfall against a number
+ * the user picked; what a nutrient adds is that its shortfall can be measured
+ * either way, because a diet goal genuinely can point either direction — a
+ * sodium ceiling for blood pressure is as real a want as a sodium floor for
+ * POTS. Steps and sleep don't get the same toggle: "over 3,000 steps" or
+ * "over 6 hours asleep" describes something that has already happened and
+ * needs no task, the mirror this file used to rule out for every metric
+ * before saturated fat's ceiling showed the argument wasn't universal. The
+ * nutrients are the one place a comparator earns its control; the two clock-
+ * bound metrics still don't have a case for one. See `HealthRule.direction`
+ * and `HEALTH_METRIC_DIRECTION`.
  */
 
 /** A rule can't be an empty task title — nothing to show on Today. */
@@ -196,7 +206,7 @@ export function describeHealthRule(rule: HealthRule): string {
   if (rule.metric === 'sleepHours') {
     return `Under ${rule.threshold} ${rule.threshold === 1 ? 'hour' : 'hours'} asleep`;
   }
-  const comparator = healthRuleDirection(rule.metric) === 'over' ? 'Over' : 'Under';
+  const comparator = healthRuleDirection(rule) === 'over' ? 'Over' : 'Under';
   const checkpoint = formatCheckpointHour(healthRuleCheckpointHour(rule));
   if (rule.metric === 'sodiumMg') {
     return `${comparator} ${rule.threshold.toLocaleString()}mg sodium, from ${checkpoint}`;
@@ -215,6 +225,11 @@ export function clampHealthThreshold(metric: HealthRuleMetric, value: number): n
 export function clampCheckpointHour(value: number): number {
   if (!Number.isFinite(value)) return HEALTH_METRIC_EARLIEST_HOUR.sodiumMg;
   return Math.min(23, Math.max(0, Math.round(value)));
+}
+
+/** A stored value read back as a direction, or undefined for anything else — the metric's own default then applies. */
+function parseDirection(value: unknown): 'under' | 'over' | undefined {
+  return value === 'under' || value === 'over' ? value : undefined;
 }
 
 /**
@@ -290,6 +305,10 @@ export function parseHealthRules(raw: string | null | undefined): HealthRule[] {
       checkpointHour: typeof rule.checkpointHour === 'number'
         ? clampCheckpointHour(rule.checkpointHour)
         : undefined,
+      // Same tolerance as checkpointHour: an unrecognized or absent value
+      // just means "use the metric's own default", never a reason to drop
+      // the rule.
+      direction: parseDirection(rule.direction),
       title: rule.title.slice(0, HEALTH_RULE_TITLE_MAX_LENGTH),
       enabled: rule.enabled !== false,
       lastFiredDayKey: typeof rule.lastFiredDayKey === 'string' ? rule.lastFiredDayKey : null,
@@ -386,7 +405,7 @@ export function ruleShortfallToday(rule: HealthRule, reading: HealthRuleReading)
   if (!rule.enabled) return false;
   const value = readingValue(rule, reading);
   if (value === null) return false;
-  return healthRuleDirection(rule.metric) === 'over' ? value > rule.threshold : value < rule.threshold;
+  return healthRuleDirection(rule) === 'over' ? value > rule.threshold : value < rule.threshold;
 }
 
 /** "1,850mg of sodium" / "42g of protein" / "28g of saturated fat". */

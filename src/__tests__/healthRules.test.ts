@@ -138,6 +138,16 @@ describe('parseHealthRules', () => {
     expect(parseHealthRules(raw)[0].checkpointHour).toBe(23);
   });
 
+  it('reads a stored direction override back', () => {
+    const raw = JSON.stringify([{ ...rule({ metric: 'sodiumMg' }), direction: 'over' }]);
+    expect(parseHealthRules(raw)[0].direction).toBe('over');
+  });
+
+  it('drops a nonsense stored direction rather than keeping it', () => {
+    const raw = JSON.stringify([{ ...rule({ metric: 'sodiumMg' }), direction: 'sideways' }]);
+    expect(parseHealthRules(raw)[0].direction).toBeUndefined();
+  });
+
   it('defaults `enabled` to true, so an older row is not silently off', () => {
     const { enabled: _drop, ...withoutEnabled } = rule();
     expect(parseHealthRules(JSON.stringify([withoutEnabled]))[0].enabled).toBe(true);
@@ -267,6 +277,18 @@ describe('ruleShortfallToday', () => {
     expect(ruleShortfallToday(satFat, { ...full, satFatG: 15 })).toBe(false);
   });
 
+  it('flips direction when a rule overrides its metric’s default', () => {
+    // A sodium ceiling (blood pressure) instead of the usual floor (POTS).
+    const sodiumCeiling = rule({ metric: 'sodiumMg', threshold: 2000, direction: 'over' });
+    expect(ruleShortfallToday(sodiumCeiling, { ...full, sodiumMg: 2500 })).toBe(true);
+    expect(ruleShortfallToday(sodiumCeiling, { ...full, sodiumMg: 1500 })).toBe(false);
+
+    // And saturated fat flipped back to a floor.
+    const satFatFloor = rule({ metric: 'satFatG', threshold: 20, direction: 'under' });
+    expect(ruleShortfallToday(satFatFloor, { ...full, satFatG: 15 })).toBe(true);
+    expect(ruleShortfallToday(satFatFloor, { ...full, satFatG: 25 })).toBe(false);
+  });
+
   it('does not match a saturated-fat reading that meets its ceiling exactly', () => {
     expect(ruleShortfallToday(rule({ metric: 'satFatG', threshold: 20 }), { ...full, satFatG: 20 })).toBe(false);
   });
@@ -319,15 +341,20 @@ describe('healthMetricLabel', () => {
 });
 
 describe('healthRuleDirection', () => {
-  it('is under for every metric but saturated fat', () => {
-    expect(healthRuleDirection('steps')).toBe('under');
-    expect(healthRuleDirection('sleepHours')).toBe('under');
-    expect(healthRuleDirection('sodiumMg')).toBe('under');
-    expect(healthRuleDirection('proteinG')).toBe('under');
+  it('defaults to under for every metric but saturated fat', () => {
+    expect(healthRuleDirection(rule({ metric: 'steps' }))).toBe('under');
+    expect(healthRuleDirection(rule({ metric: 'sleepHours' }))).toBe('under');
+    expect(healthRuleDirection(rule({ metric: 'sodiumMg' }))).toBe('under');
+    expect(healthRuleDirection(rule({ metric: 'proteinG' }))).toBe('under');
   });
 
-  it('is over for saturated fat alone', () => {
-    expect(healthRuleDirection('satFatG')).toBe('over');
+  it('defaults to over for saturated fat alone', () => {
+    expect(healthRuleDirection(rule({ metric: 'satFatG' }))).toBe('over');
+  });
+
+  it('lets a rule override its metric’s default direction', () => {
+    expect(healthRuleDirection(rule({ metric: 'sodiumMg', direction: 'over' }))).toBe('over');
+    expect(healthRuleDirection(rule({ metric: 'satFatG', direction: 'under' }))).toBe('under');
   });
 });
 
@@ -363,6 +390,13 @@ describe('describeHealthRule', () => {
   it('says "Over" rather than "Under" for saturated fat', () => {
     expect(describeHealthRule(rule({ metric: 'satFatG', threshold: 20, checkpointHour: 0 })))
       .toBe('Over 20g saturated fat, from 12 AM');
+  });
+
+  it('follows a rule’s own direction override rather than the metric default', () => {
+    expect(describeHealthRule(rule({ metric: 'sodiumMg', threshold: 2000, checkpointHour: 12, direction: 'over' })))
+      .toBe('Over 2,000mg sodium, from 12 PM');
+    expect(describeHealthRule(rule({ metric: 'satFatG', threshold: 20, checkpointHour: 0, direction: 'under' })))
+      .toBe('Under 20g saturated fat, from 12 AM');
   });
 });
 

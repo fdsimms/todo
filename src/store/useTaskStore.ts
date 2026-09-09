@@ -5947,7 +5947,7 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
             ...generatedBy('health', sourceId),
           }),
         });
-      } else if (healthRuleDirection(rule.metric) === 'over') {
+      } else if (healthRuleDirection(rule) === 'over') {
         // A ceiling can only get easier to cross as the day goes on — "still
         // under 20g of saturated fat" at 9am says nothing about 6pm the way a
         // floor's "still under 3,000 steps" at 6pm does. Leaving the mark

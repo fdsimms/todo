@@ -280,41 +280,58 @@ too), each of these three rules carries its own `checkpointHour`, editable in
 but only as the value a freshly-created rule starts from — steps and sleep
 have no reason to follow, and don't.
 
-**Saturated fat reads its checkpoint the opposite way round, and that is the
-one place this generator stopped being purely a floor.** The file's own
+**A nutrient rule can read its checkpoint the opposite way round, and that is
+the one place this generator stopped being purely a floor.** The file's own
 argument used to be "Only 'under' is expressible, and that is deliberate": a
 comparator would put a control on every row to serve a case nobody had, and
 the mirror of a shortfall ("at least 10,000 steps") describes something
 already true and needing no task. A nutrient *ceiling* — "don't go over 20g of
 saturated fat" — is a different request the mirror argument never covered: it
 is still a number the user picked and a shortfall against it, just measured
-the other way. `HEALTH_METRIC_DIRECTION` makes the comparator a property of
-the metric rather than a control (`healthRuleDirection`), so there is still
-no per-row toggle — saturated fat is the one metric wired to `'over'`, and
-every other metric stays `'under'`.
+the other way. `HealthRule.direction` carries the choice, and
+`HEALTH_METRIC_DIRECTION` supplies only the default a freshly-created rule of
+a given metric starts from (a floor for everything, a ceiling for saturated
+fat) — `healthRuleDirection(rule)` always resolves the two together, and
+nothing else reads `rule.direction` raw.
+
+**It's a per-rule choice rather than a per-metric one because a diet goal
+genuinely points either way**, which is a stronger reason than "why not, it's
+cheap": a sodium ceiling for someone managing blood pressure is exactly as
+real a want as this feature's original sodium *floor* for POTS, and picking
+one meaning for sodium in code would have been choosing a side in a real
+medical disagreement the app has no business having an opinion on. Steps and
+sleep still don't get the toggle — "over 3,000 steps" or "over 6 hours asleep"
+has no case answering to it, which is the same mirror-argument line
+`showsCheckpoint`'s comment draws for the checkpoint-hour control right next
+to it in `HealthRulesSheet`.
 
 **A ceiling needs its idempotency mark spent the other way round too, and
-missing this would make the feature silently useless.** Every other rule here
-only gets easier to satisfy as the day goes on — more steps, more sodium, more
-protein all move toward the target, never away from it — so `checkHealthTasks`
-spending the mark the moment `ruleCanBeJudgedYet` says yes, matched or not, is
-correct: whatever the reading says once the checkpoint has passed is final. A
-ceiling is the mirror of that: more saturated fat only moves *toward* crossing
-it, so an early "still under 20g" checked at 9am says nothing about 6pm. Spend
-the mark on that early "safe" reading the way an under-rule does, and the rule
-is retired for the day the first time it happens to be checked while still
-under — which for most people, most days, is the very first foreground sweep.
-So `checkHealthTasks` withholds the mark for an `'over'` rule until it actually
-matches, and only then treats it like every other generator. See that
-function's own comment for the exact branch.
+missing this would make the feature silently useless.** Every rule read as
+`'under'` only gets easier to satisfy as the day goes on — more steps, more
+sodium, more protein all move toward the target, never away from it — so
+`checkHealthTasks` spending the mark the moment `ruleCanBeJudgedYet` says yes,
+matched or not, is correct for it: whatever the reading says once the
+checkpoint has passed is final. A rule read as `'over'` is the mirror of that:
+more of whatever it's watching only moves *toward* crossing it, so an early
+"still under 20g" checked at 9am says nothing about 6pm. Spend the mark on
+that early "safe" reading the way an under-rule does, and the rule is retired
+for the day the first time it happens to be checked while still under — which
+for most people, most days, is the very first foreground sweep. So
+`checkHealthTasks` withholds the mark for whichever rules resolve to `'over'`
+— which is a run-time question, `healthRuleDirection(rule)`, not "is this
+`satFatG`" — until each actually matches, and only then treats it like every
+other generator. See that function's own comment for the exact branch.
 
-Two things keep saturated fat's addition narrow rather than reopening the
+Two things keep the direction choice narrow rather than reopening the
 comparator question generally: the reading itself is unchanged in kind —
-`dietaryFatSaturated` is read, `null`-checked and shortfall-compared through
-the same `ruleCanBeJudgedYet`/`ruleShortfallToday` pair every other metric
-uses — and the direction is fixed per metric, never offered as a choice on a
-row. What changed is *which way* one metric's shortfall points and *when its
-mark may be spent*, not a new relationship between a reading and a task.
+`dietaryFatSaturated`, like `dietarySodium` and `dietaryProtein`, is read,
+`null`-checked and shortfall-compared through the same
+`ruleCanBeJudgedYet`/`ruleShortfallToday` pair every other metric uses — and
+the choice is offered only on the three nutrient rows, never on steps or
+sleep, which still have no case answering to a ceiling. What changed is
+*which way* a given rule's shortfall points and *when its mark may be spent*,
+not a new relationship between a reading and a task, and not a general
+greater/less toggle available everywhere.
 
 ## What is deliberately not built yet
 

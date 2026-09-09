@@ -343,14 +343,10 @@ export interface HealthRule {
    * steps, whole hours asleep, milligrams of sodium, or grams of protein or
    * saturated fat.
    *
-   * Which way it's compared is a property of the *metric*
-   * (`HEALTH_METRIC_DIRECTION` in `healthRules.ts`), not a control on the row:
-   * every metric but saturated fat is a floor ("under"), and saturated fat
-   * alone is a ceiling ("over") — a nutrient somebody is trying to stay
-   * *under* for a reason, where every other metric here is one they're trying
-   * to reach. Both directions still describe a shortfall against the number
-   * the user picked, which is what keeps this from being a general
-   * greater/less toggle: there is no rule here that fires on "you did enough".
+   * Both directions still describe a shortfall against the number the user
+   * picked, which is what keeps this from being a general greater/less
+   * toggle: there is no rule here that fires on "you did enough" — see
+   * `direction` below for which way this particular rule reads.
    */
   threshold: number;
   /**
@@ -363,6 +359,20 @@ export interface HealthRule {
    * where steps and sleep don't.
    */
   checkpointHour?: number;
+  /**
+   * Which way this rule compares its reading — 'under' (a floor) or 'over'
+   * (a ceiling). `undefined` reads as the metric's own default
+   * (`HEALTH_METRIC_DIRECTION` in `healthRules.ts`: a floor for everything but
+   * saturated fat, which defaults to a ceiling). Only the three nutrients let
+   * this be set per rule in `HealthRulesSheet` — steps and sleep have no case
+   * for a ceiling ("over 3,000 steps" describes something that already
+   * happened and needs no task), where a nutrient goal genuinely can point
+   * either way depending on the diet behind it (a sodium ceiling for blood
+   * pressure is as real as a sodium floor for POTS). Read through
+   * `healthRuleDirection(rule)`, never this field directly, so a rule with no
+   * override still resolves correctly.
+   */
+  direction?: 'under' | 'over';
   /** The task's title, e.g. "Keep today light". */
   title: string;
   // Off keeps the rule written down but stops it firing, same as WeatherRule.
