@@ -168,7 +168,7 @@ private func buildArraySchema(from spec: SchemaSpec) throws -> GenerationSchema 
 /// the TS side didn't ask about has nothing waiting to validate it.
 @available(iOS 26, *)
 private func jsonString(from content: GeneratedContent, fields: [FieldSpec]) -> String {
-  guard let elements = try? content.elements() else { return "[]" }
+  guard let elements = try? content.elements(of: GeneratedContent.self) else { return "[]" }
   var rows: [[String: String]] = []
   for element in elements {
     var row: [String: String] = [:]
