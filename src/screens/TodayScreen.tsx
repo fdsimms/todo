@@ -836,6 +836,17 @@ export function TodayScreen() {
     setFocusSessionVisible(true);
   }, [route.params?.openFocusSession, handledOpenFocus]);
 
+  // The same handoff again, for a short-night health task's own link
+  // (dundundun://deload — see utils/healthRules.ts). DeloadSheet already reads
+  // the short-sleep note live off the health store below, so there's nothing
+  // to pass along beyond opening it.
+  const [handledOpenDeload, setHandledOpenDeload] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (route.params?.openDeload === undefined || route.params.openDeload === handledOpenDeload) return;
+    setHandledOpenDeload(route.params.openDeload);
+    setDeloadVisible(true);
+  }, [route.params?.openDeload, handledOpenDeload]);
+
   // Claims completions queued by the Today widget's checkbox and by Live
   // Activity's Done button (see useWidgetCompletionStore / widgetSync.ts).
   // Handing a pending id off to a TaskItem via autoComplete triggers the real

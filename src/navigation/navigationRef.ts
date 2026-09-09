@@ -205,6 +205,17 @@ export function resetToPeople(personId?: string | null): void {
   if (personId) navigationRef.navigate({ name: 'PersonDetail', params: { personId } });
 }
 
+// Where `dundundun://deload` lands — a short-night health task's own link (see
+// utils/healthRules.ts). Lands on Today and asks it to pop `DeloadSheet` open,
+// the same stamped-param handoff resetToProjectPull uses and for the same
+// reason: the sheet is mounted by TodayScreen, with its own line about the
+// short night already wired up (shortSleepDeloadNote) rather than anything
+// this function needs to pass along.
+export function resetToDeload(): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({ name: 'Today', params: { openDeload: Date.now() } });
+}
+
 export function resetToProjectPull(projectId?: string | null): void {
   if (!navigationRef.isReady()) return;
   navigationRef.navigate({

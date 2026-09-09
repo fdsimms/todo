@@ -18,6 +18,7 @@ import {
   resetToMood,
   resetToProjectPull,
   resetToFocusSession,
+  resetToDeload,
   openQuickAddFromShortcut,
 } from '../navigation/navigationRef';
 import { MEAL_SLOTS, type MealSlot } from '../types';
@@ -325,6 +326,15 @@ export function peopleUrlPersonId(url: string): string | null {
   return id || null;
 }
 
+// `dundundun://deload` — a short-night health task's own link (see
+// utils/healthRules.ts), so "Keep today light" opens the sheet that actually
+// lightens the day rather than sitting there as a title with no next step.
+const DELOAD_RE = new RegExp(`^${SCHEME}:\\/\\/\\/?deload\\/?$`, 'i');
+
+export function isDeloadUrl(url: string): boolean {
+  return typeof url === 'string' && DELOAD_RE.test(url.trim());
+}
+
 // `dundundun://completeTask?id=…` — the Done button on a task's timer Live
 // Activity (see the Lock Screen/Dynamic Island button in
 // targets/todo-widget/TimerLiveActivity.swift). A Live Activity button's
@@ -464,6 +474,7 @@ export function linkIconFor(url: string | null | undefined): string {
   if (isPeopleUrl(url)) return 'people-outline';
   if (isMoodUrl(url)) return 'happy-outline';
   if (isProjectsUrl(url)) return 'briefcase-outline';
+  if (isDeloadUrl(url)) return 'leaf-outline';
   return 'link';
 }
 
@@ -513,6 +524,10 @@ export function openInAppUrl(url: string | null | undefined): boolean {
   }
   if (isProjectsUrl(url)) {
     resetToProjectPull(projectsUrlPullId(url));
+    return true;
+  }
+  if (isDeloadUrl(url)) {
+    resetToDeload();
     return true;
   }
   if (isCompleteTaskUrl(url)) {

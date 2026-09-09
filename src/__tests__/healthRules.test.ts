@@ -14,6 +14,7 @@ import {
   ruleShortfallToday,
   serializeHealthRules,
   shortSleepDeloadNote,
+  healthTaskLinkUrl,
 } from '../utils/healthRules';
 
 function rule(over: Partial<HealthRule> = {}): HealthRule {
@@ -248,5 +249,15 @@ describe('shortSleepDeloadNote', () => {
     // in front of somebody about their own body.
     const note = shortSleepDeloadNote(3) as string;
     expect(note).not.toMatch(/\btry\b|\bshould\b|tired|exhaust|rest up|take it easy/i);
+  });
+});
+
+describe('healthTaskLinkUrl', () => {
+  it('opens DeloadSheet for a sleep-shortfall rule', () => {
+    expect(healthTaskLinkUrl('sleepHours')).toBe('dundundun://deload');
+  });
+
+  it('carries no link for a steps rule, which already names its own action', () => {
+    expect(healthTaskLinkUrl('steps')).toBeNull();
   });
 });

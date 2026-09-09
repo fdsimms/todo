@@ -244,6 +244,15 @@ day. It is gated on the read alone rather than on the generator, because it is a
 line in a menu somebody opened rather than a task — the same argument
 `lowMoodDeloadNote` makes for needing no switch of its own.
 
+**The sleep-shortfall task carries the same note and an action, so it stops
+reading as coming from nowhere.** `checkHealthTasks` writes `shortSleepDeloadNote`
+straight onto the row's own `notes` (`healthTaskLinkUrl` in `healthRules.ts`
+supplies `dundundun://deload`, wired to `resetToDeload` in `navigationRef.ts`),
+so tapping "Keep today light" opens the same `DeloadSheet` the menu line points
+at rather than sitting there as a bare title. This is deliberately scoped to
+`sleepHours` — a steps-shortfall task ("Go for a walk") already names its own
+action in the title and gets neither field.
+
 ## What is deliberately not built yet
 
 Steps and sleep, and nothing else. The read-type list is one place

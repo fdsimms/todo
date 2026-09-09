@@ -11,6 +11,7 @@ const mockResetToMealPlan = jest.fn();
 const mockResetToKitchen = jest.fn();
 const mockResetToPeople = jest.fn();
 const mockResetToProjectPull = jest.fn();
+const mockResetToDeload = jest.fn();
 const mockOpenQuickAdd = jest.fn();
 const mockEnqueueWidgetCompletion = jest.fn();
 const mockStopCookTimer = jest.fn();
@@ -63,6 +64,7 @@ jest.mock('../navigation/navigationRef', () => ({
   resetToPeople: (...args: unknown[]) => mockResetToPeople(...args),
   resetToProjectPull: (...args: unknown[]) => mockResetToProjectPull(...args),
   resetToFocusSession: (...args: unknown[]) => mockResetToFocusSession(...args),
+  resetToDeload: (...args: unknown[]) => mockResetToDeload(...args),
   openQuickAddFromShortcut: (...args: unknown[]) => mockOpenQuickAdd(...args),
 }));
 
@@ -82,6 +84,7 @@ import {
   peopleUrlPersonId,
   isProjectsUrl,
   projectsUrlPullId,
+  isDeloadUrl,
   isQuickAddUrl,
   isFocusUrl,
   focusUrlAction,
@@ -483,6 +486,7 @@ describe('linkIconFor', () => {
     expect(linkIconFor('dundundun://groceries?finish=1')).toBe('cart-outline');
     expect(linkIconFor('dundundun://people?person=p1')).toBe('people-outline');
     expect(linkIconFor('dundundun://projects?pull=proj-1')).toBe('briefcase-outline');
+    expect(linkIconFor('dundundun://deload')).toBe('leaf-outline');
   });
 
   it('falls back to the plain chain link for a real external URL', () => {
@@ -502,6 +506,7 @@ describe('openInAppUrl', () => {
     mockResetToKitchen.mockClear();
     mockResetToPeople.mockClear();
     mockResetToProjectPull.mockClear();
+    mockResetToDeload.mockClear();
     mockOpenQuickAdd.mockClear();
     mockAddTask.mockClear();
     mockEnqueueWidgetCompletion.mockClear();
@@ -593,6 +598,17 @@ describe('openInAppUrl', () => {
     expect(mockStopPrepTimer).not.toHaveBeenCalled();
     expect(mockFinishCookForRecipe).not.toHaveBeenCalled();
     expect(mockResetToRecipeDetail).not.toHaveBeenCalled();
+  });
+
+  it('opens DeloadSheet for a short-night health task\'s link', () => {
+    expect(isDeloadUrl('dundundun://deload')).toBe(true);
+    expect(isDeloadUrl('dundundun:///deload')).toBe(true);
+    expect(isDeloadUrl('DUNDUNDUN://Deload')).toBe(true);
+    expect(isDeloadUrl('dundundun://deload/extra')).toBe(false);
+    expect(isDeloadUrl('dundundun://groceries')).toBe(false);
+
+    expect(openInAppUrl('dundundun://deload')).toBe(true);
+    expect(mockResetToDeload).toHaveBeenCalledTimes(1);
   });
 
   it('navigates to the week plan and claims the URL', () => {

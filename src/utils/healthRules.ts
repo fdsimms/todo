@@ -294,3 +294,22 @@ export function shortSleepDeloadNote(sleepHours: number | null): string | null {
   if (sleepHours >= SHORT_SLEEP_HOURS) return null;
   return `Apple Health recorded ${formatSleep(sleepHours)} of sleep for today.`;
 }
+
+// `dundundun://deload` — opens DeloadSheet on Today (see resetToDeload in
+// navigationRef.ts). This is the sleep rule's own row saying why it's there,
+// same argument `shortSleepDeloadNote` makes for the menu line beside it: not
+// asserting a fact nobody logged, just carrying the one action that follows
+// from it.
+const DELOAD_LINK_URL = 'dundundun://deload';
+
+/**
+ * The row's own action, for a sleep-shortfall rule only.
+ *
+ * A short night wants to open the sheet that actually lightens the day; a
+ * step-shortfall rule ("Go for a walk") already names its own action in the
+ * title, so it carries no link — same split `shortSleepDeloadNote` draws
+ * against a steps note that doesn't exist.
+ */
+export function healthTaskLinkUrl(metric: HealthMetric): string | null {
+  return metric === 'sleepHours' ? DELOAD_LINK_URL : null;
+}
