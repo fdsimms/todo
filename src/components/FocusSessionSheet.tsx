@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Alert, Linking, Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -33,7 +33,8 @@ import { DeliverablePromptQueue } from './DeliverablePromptQueue';
 import { ProgressBar } from './ProgressBar';
 import { PressableScale } from './PressableScale';
 import { SheetHeaderButton } from './SheetHeaderButton';
-import type { FocusStep, Task } from '../types';
+import { InlineAction } from './InlineAction';
+import type { FocusSession, FocusStep, Task } from '../types';
 
 /** How much time "+5 min" adds to a step that needs a little longer. */
 const EXTEND_MINUTES = 5;
@@ -83,7 +84,24 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const extendStep = useFocusStore(s => s.extendStep);
   const skipTask = useFocusStore(s => s.skipTask);
   const finishForNow = useFocusStore(s => s.finishForNow);
+  const restoreSession = useFocusStore(s => s.restoreSession);
   const endSession = useFocusStore(s => s.endSession);
+
+  // The inline "Undo" offered right after a Skip, "Done for now", or Done tap
+  // — the one action just taken, nothing further back. `sessionBefore` is
+  // what `restoreSession` puts the plan back to; `taskUndo` is only set for a
+  // real completion, where the task itself also has to be reopened (through
+  // useTaskStore's own undo, so recurrence/streaks/chains unwind the same way
+  // un-ticking the row would). Local state, not store state: it describes
+  // "what this sheet just did", not the session itself, and every other
+  // mutating tap here clears it.
+  const [pendingUndo, setPendingUndo] = useState<{
+    taskId: string;
+    label: string;
+    sessionBefore: FocusSession;
+    taskUndo: (() => void) | null;
+  } | null>(null);
+  const clearPendingUndo = () => setPendingUndo(null);
 
   const byId = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks]);
   const titleOf = (taskId: string | null): string => {
@@ -187,18 +205,21 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const onPace = quotaTask ? isQuotaOnPace(quotaTask) : false;
 
   const handleEnd = () => {
+    clearPendingUndo();
     haptics.warning();
     endSession();
     onClose();
   };
 
   const handleAdvance = () => {
+    clearPendingUndo();
     haptics.impactLight();
     advance();
   };
 
   const handleLog = () => {
     if (!quotaTask) return;
+    clearPendingUndo();
     if (quotaLogFinishes) haptics.success();
     else haptics.impactLight();
     // Same store action the row's meter tap uses, so the unit that meets the
@@ -215,16 +236,36 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     // nothing said — see utils/bulkCompletion.ts. No confirm: there is one
     // task, so there is nothing to warn about, only a question to ask.
     if (asksOnCompletion(currentTask)) {
+      clearPendingUndo();
       haptics.tap();
       enqueue([currentTask.id]);
       return;
     }
     haptics.success();
+    const sessionBefore = session;
     // Completed through the task store like any other completion, so
     // recurrence, chains, streaks and the Logbook all behave exactly as they
     // do from a task row. The session notices on the next sync and takes the
     // task's remaining stretches out of the plan.
     completeTask(currentTask.id);
+    // completeTask registers its own undo entry (uncompleteTask) as it goes —
+    // this is the same entry the row's own undo would reach for, captured by
+    // reference so the button below only fires it while it's still the
+    // top of that stack (see TitleRulesSheet for the same identity check).
+    // The session's own plan hasn't reacted yet — syncWithTasks runs off a
+    // `tasks` change in a later effect — so `sessionBefore` is what restores
+    // the pruned steps once that catches up.
+    const taskAction = useTaskStore.getState().lastAction;
+    setPendingUndo({
+      taskId: currentTask.id,
+      label: `Marked "${displayTitleFor(currentTask)}" done`,
+      sessionBefore,
+      taskUndo: taskAction
+        ? () => {
+            if (useTaskStore.getState().lastAction === taskAction) useTaskStore.getState().undoLastAction();
+          }
+        : null,
+    });
   };
 
   const handleDone = () => {
@@ -270,14 +311,45 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   const handleSkip = () => {
     if (!step) return;
     haptics.tap();
-    if (step.kind === 'rest' || step.taskId === null) advance();
-    else skipTask(step.taskId);
+    if (step.kind === 'rest' || step.taskId === null) {
+      clearPendingUndo();
+      advance();
+      return;
+    }
+    const taskId = step.taskId;
+    const sessionBefore = session;
+    skipTask(taskId);
+    setPendingUndo({ taskId, label: `Skipped "${titleOf(taskId)}"`, sessionBefore, taskUndo: null });
   };
 
   const handleFinishForNow = () => {
     if (!quotaTask) return;
     haptics.success();
-    finishForNow(quotaTask.id);
+    const taskId = quotaTask.id;
+    const sessionBefore = session;
+    finishForNow(taskId);
+    setPendingUndo({
+      taskId,
+      label: `Marked "${titleOf(taskId)}" done for now`,
+      sessionBefore,
+      taskUndo: null,
+    });
+  };
+
+  // The chevron, the settings shortcut and the modal's own swipe-down all
+  // leave the sheet without ending the session — see the module note on
+  // "closing is not stopping". The undo offer is scoped to "the sheet you're
+  // looking at just now", so it goes with the sheet rather than surviving
+  // behind FocusBar to reappear (possibly stale) next time it's reopened.
+  const handleClose = () => {
+    clearPendingUndo();
+    onClose();
+  };
+
+  const handlePauseResume = () => {
+    clearPendingUndo();
+    if (running) pause();
+    else resume();
   };
 
   const handleOpenSettings = () => {
@@ -286,7 +358,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
     // the session keeps running behind FocusBar. Lands on the group these
     // settings actually live in ("Focus sessions" inside Tasks & projects),
     // not the Settings index.
-    onClose();
+    handleClose();
     (navigation as never as { navigate: (n: string, p: object) => void })
       .navigate('SettingsGroup', { groupId: 'tasksProjects' });
   };
@@ -429,7 +501,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
         <View style={styles.actions}>
           <PressableScale
             style={styles.primaryBtn}
-            onPress={stepDone ? handleAdvance : (running ? pause : resume)}
+            onPress={stepDone ? handleAdvance : handlePauseResume}
             accessibilityLabel={
               stepDone
                 ? (nextStep === undefined ? 'Finish session' : (nextStep.kind === 'rest' ? 'Start break' : 'Next task'))
@@ -471,6 +543,7 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
             <TouchableOpacity
               style={styles.secondaryBtn}
               onPress={() => {
+                clearPendingUndo();
                 haptics.tap();
                 extendStep(EXTEND_MINUTES);
               }}
@@ -501,6 +574,22 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
               <Text style={styles.secondaryLabel}>{onPace ? 'Done for now' : 'Skip'}</Text>
             </TouchableOpacity>
           </View>
+
+          {pendingUndo && pendingUndo.sessionBefore.id === session.id && (
+            <View style={styles.undoRow}>
+              <Text style={styles.undoLabel} numberOfLines={1}>{pendingUndo.label}</Text>
+              <InlineAction
+                label="Undo"
+                onPress={() => {
+                  haptics.tap();
+                  pendingUndo.taskUndo?.();
+                  restoreSession(pendingUndo.sessionBefore);
+                  setPendingUndo(null);
+                }}
+                accessibilityLabel={`Undo: ${pendingUndo.label}`}
+              />
+            </View>
+          )}
         </View>
 
         {upcoming.length > 0 && (
@@ -528,11 +617,11 @@ export function FocusSessionSheet({ visible, onClose }: Props) {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleClose}>
       <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
           <TouchableOpacity
-            onPress={onClose}
+            onPress={handleClose}
             style={styles.closeBtn}
             activeOpacity={interaction.activeOpacity}
             accessibilityRole="button"
@@ -681,6 +770,17 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   primaryBtnText: { color: colors.onAccent, fontSize: font.md, fontWeight: fontWeight.semibold },
   secondaryRow: { flexDirection: 'row', gap: spacing.sm },
+  undoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  undoLabel: { flex: 1, color: colors.textSecondary, fontSize: font.sm },
   secondaryBtn: {
     flex: 1,
     alignItems: 'center',
