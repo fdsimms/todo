@@ -18,6 +18,8 @@ import { ProjectsScreen } from '../screens/ProjectsScreen';
 import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { MoodScreen } from '../screens/MoodScreen';
+import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
+import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
 import { BackfillScreen } from '../screens/BackfillScreen';
 import { StuckScreen } from '../screens/StuckScreen';
@@ -121,6 +123,12 @@ const PUSHED_ROUTES = new Set([
   // maintenance rather than a place to work. A pushed card like SettingsGroup,
   // so it needs no tab and can't be restored onto at launch.
   'Backfill',
+  // Reached from the Mood screen rather than from the menu. Both are the mood
+  // log read at a narrower grain — every entry there is, and one symptom —
+  // which is a place you go *from* Mood rather than a destination of its own,
+  // and neither would survive a cold-launch restore with nothing to say what
+  // it was showing.
+  'MoodHistory', 'SymptomDetail',
 ]);
 
 function MorePlaceholder() {
@@ -409,6 +417,16 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="CategoryDetail"
             component={CategoryDetailScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="MoodHistory"
+            component={MoodHistoryScreen}
+            options={{ presentation: 'card' }}
+          />
+          <RootStack.Screen
+            name="SymptomDetail"
+            component={SymptomDetailScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen
