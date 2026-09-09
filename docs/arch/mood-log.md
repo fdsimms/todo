@@ -2,8 +2,8 @@
 
 What #1223 asked for, and the decisions it deliberately left open, resolved.
 Read this before changing anything under `src/utils/moodLog.ts`,
-`src/utils/moodInsights.ts`, `src/utils/moodTasks.ts`, `src/store/useMoodStore.ts`
-or `src/screens/MoodScreen.tsx`.
+`src/utils/moodInsights.ts`, `src/utils/moodTasks.ts`, `src/store/useMoodStore.ts`,
+`src/screens/MoodScreen.tsx` or `src/components/MoodLogSheet.tsx`.
 
 The rules here are settled decisions with the reasoning attached. Don't
 re-derive them from the code, and don't re-open one without a reason this note
@@ -54,6 +54,56 @@ doesn't disappear — the user *named* it as a thing that exists. A symptom is
 named by having happened, so the honest vocabulary is exactly the set of things
 that have happened: nothing to migrate, nothing to prune, and a symptom logged
 once three years ago drops off the suggestions by itself.
+
+## Context tags — the non-symptom half of "why might today be like this"
+
+`LoggedSymptom` answers "what hurt". `MoodLog.contextTags` answers a
+different question: things going on that day that aren't symptoms but
+plausibly explain the mood anyway — "vacation", "travel day", "big deadline
+at work". Same freeform, `symptomKey`-style match as symptoms (`contextTagKey`
+is a plain alias of it), same derived vocabulary (`contextTagVocabulary`),
+same day collapse (`dayContextTags`), same contrast shape on the Mood screen
+(`contextTagMoodContrasts`, built off the same `contrastsFor` symptoms use).
+It is a second freeform field next to symptoms rather than a fold into
+`symptoms` itself, because a tag carries no severity — "vacation" is not mild
+or severe, it either applies to the day or it doesn't — and folding the two
+together would mean every reader of symptoms has to branch on whether a
+`severity` is meaningful for the row it is holding.
+
+**One deliberate departure from the symptom vocabulary's zero-registry
+rule:** `DEFAULT_CONTEXT_TAGS` is a small fixed list ('Vacation', 'Travel',
+'Sick', 'Poor sleep', 'Big deadline', 'Social event') merged into the pill
+grid alongside whatever has actually been logged. Symptoms start every
+account with an empty grid on purpose — no fixed list could guess "brain
+fog", so there was nothing worth seeding. Context is different: the useful
+half of this feature is realizing a mundane thing might be worth naming at
+all, and a blank grid on day one teaches nobody that. The list is not
+storage, not a registry to prune, and not read anywhere but the sheet's pill
+grid — it is a constant, the same kind `MOOD_LEVELS` is, and it never
+overrides what the log itself has accumulated (real usage sorts ahead of it
+in `MoodLogSheet`'s pill ordering).
+
+**The one auto-suggestion, and why it stops at one.** `MoodLogSheet`
+pre-selects "Vacation" when opening a *new* entry while `vacationMode` is on
+— visibly, as an already-picked pill the person can untap before Save, never
+written silently. That is the same "offer, don't decide" posture
+`lowMoodDeloadNote` takes below: the app can notice a fact it already tracks,
+but the log stays the user's own record of what they think was going on, not
+an automated inference dressed up as one. It is scoped to exactly one signal
+on purpose. Vacation mode is a clean boolean the app already owns and gets
+right on its own terms (see the vacation-mode note in the tasks
+architecture); most other "obvious" candidates are not nearly as clean —
+a missed-task-heavy day, a bad-sleep night from Health — and guessing wrong
+on those reads as the app telling somebody why they feel a certain way, which
+is exactly what `moodInsights.ts`'s association-not-cause rule exists to
+forbid. Widening the source list is a real feature decision each time, not a
+default to reach for.
+
+The suggestion only fires for a *new* entry on **today**. Editing an existing
+row must never retroactively add a tag it didn't say (same reason the Day
+row itself only shows for a new entry), and a backdated entry records how a
+past day went — the app's *current* vacation state says nothing about
+whether last Tuesday was one.
 
 ## Several entries a day is the normal case
 

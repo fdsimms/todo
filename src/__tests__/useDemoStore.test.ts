@@ -62,8 +62,8 @@ import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRe
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
-import { buildMoodDays, moodCompletionInsight, symptomMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
-import { symptomVocabulary } from '../utils/moodLog';
+import { buildMoodDays, contextTagMoodContrasts, moodCompletionInsight, symptomMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
 import { itemBackfillFieldCounts, ITEM_BACKFILL_FIELDS } from '../utils/itemBackfill';
@@ -1541,6 +1541,13 @@ describe('demo seed — people', () => {
     // the code and useless as a demo of what the code is for.
     const days = buildMoodDays(useMoodStore.getState().logs, [], '00:00');
     expect(symptomMoodContrasts(days).length).toBeGreaterThan(0);
+  });
+
+  it('seeds context tags, so the Mood screen has something to show for the feature', () => {
+    const logs = useMoodStore.getState().logs;
+    expect(contextTagVocabulary(logs).length).toBeGreaterThan(0);
+    const days = buildMoodDays(logs, [], '00:00');
+    expect(contextTagMoodContrasts(days).length).toBeGreaterThan(0);
   });
 
   it('leaves today unlogged, so the check-in is still worth answering', () => {

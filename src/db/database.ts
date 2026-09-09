@@ -1363,6 +1363,9 @@ export function initDatabase(): void {
     // above: writing to Health is an opt-in a task doesn't have until someone
     // sets it. See Task.logWaterMl.
     'ALTER TABLE tasks ADD COLUMN log_water_ml INTEGER',
+    // Freeform, non-symptom context ("vacation", "big deadline") — see
+    // MoodLog.contextTags. Same shape as symptoms minus severity.
+    "ALTER TABLE mood_logs ADD COLUMN context_tags TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4553,12 +4556,20 @@ function rowToMoodLog(row: Record<string, unknown>): MoodLog {
     // Same shrug the other JSON columns take: a malformed blob costs the
     // symptoms on one entry, not the entry.
   }
+  let contextTags: string[] = [];
+  try {
+    const parsed = JSON.parse((row.context_tags as string) ?? '[]');
+    if (Array.isArray(parsed)) contextTags = parsed as string[];
+  } catch {
+    // Same shrug as symptoms above.
+  }
   return {
     id: row.id as string,
     loggedAt: row.logged_at as string,
     dayKey: row.day_key as string,
     mood,
     symptoms,
+    contextTags,
     note: (row.note as string) || null,
   };
 }
@@ -4582,21 +4593,21 @@ export function dbGetAllMoodLogs(): MoodLog[] {
 
 export function dbInsertMoodLog(log: MoodLog): void {
   db.runSync(
-    `INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, note)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO mood_logs (id, logged_at, day_key, mood, symptoms, context_tags, note)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       log.id, log.loggedAt, log.dayKey, log.mood,
-      JSON.stringify(log.symptoms), log.note,
+      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note,
     ]
   );
 }
 
 export function dbUpdateMoodLog(log: MoodLog): void {
   db.runSync(
-    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, symptoms=?, note=? WHERE id=?`,
+    `UPDATE mood_logs SET logged_at=?, day_key=?, mood=?, symptoms=?, context_tags=?, note=? WHERE id=?`,
     [
       log.loggedAt, log.dayKey, log.mood,
-      JSON.stringify(log.symptoms), log.note, log.id,
+      JSON.stringify(log.symptoms), JSON.stringify(log.contextTags), log.note, log.id,
     ]
   );
 }

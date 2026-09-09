@@ -1,7 +1,14 @@
 import { format } from 'date-fns/format';
 import { logicalDayStart } from './clockTime';
 import { isRealCompletion } from './missed';
-import { dayMoodAverage, daySymptoms, symptomKey, LOW_MOOD_AT_OR_BELOW } from './moodLog';
+import {
+  contextTagKey,
+  dayContextTags,
+  dayMoodAverage,
+  daySymptoms,
+  symptomKey,
+  LOW_MOOD_AT_OR_BELOW,
+} from './moodLog';
 import type { MoodLog, Task, TimeOfDay } from '../types';
 
 /**
@@ -55,6 +62,8 @@ export interface MoodDay {
   mood: number | null;
   /** Symptom names logged that day, lowercased for matching. */
   symptomKeys: string[];
+  /** Context tag names logged that day, lowercased for matching. */
+  contextTagKeys: string[];
   /** Top-level real completions that day. Subtasks and missed rows excluded. */
   completed: number;
   /** Categories completed that day, each counted once — the "kind" of work. */
@@ -115,8 +124,8 @@ export function buildMoodDays(
     let day = days.get(dayKey);
     if (!day) {
       day = {
-        dayKey, mood: null, symptomKeys: [], completed: 0, categories: [],
-        steps: null, sleepHours: null,
+        dayKey, mood: null, symptomKeys: [], contextTagKeys: [], completed: 0,
+        categories: [], steps: null, sleepHours: null,
       };
       days.set(dayKey, day);
     }
@@ -128,14 +137,18 @@ export function buildMoodDays(
     if (day.mood === null) {
       day.mood = dayMoodAverage(logs, log.dayKey);
       day.symptomKeys = daySymptoms(logs, log.dayKey).map(s => symptomKey(s.name));
+      day.contextTagKeys = dayContextTags(logs, log.dayKey).map(contextTagKey);
     }
   }
-  // A day whose entries were all symptoms-only still needs its symptoms, and
-  // the loop above only fills them alongside a mood it found. Cheap to redo
-  // for the handful of such days rather than restructuring the pass.
+  // A day whose entries were all symptoms/tags-only still needs them, and the
+  // loop above only fills them alongside a mood it found. Cheap to redo for
+  // the handful of such days rather than restructuring the pass.
   for (const day of days.values()) {
     if (day.symptomKeys.length === 0) {
       day.symptomKeys = daySymptoms(logs, day.dayKey).map(s => symptomKey(s.name));
+    }
+    if (day.contextTagKeys.length === 0) {
+      day.contextTagKeys = dayContextTags(logs, day.dayKey).map(contextTagKey);
     }
   }
 
@@ -318,6 +331,23 @@ export function symptomMoodContrasts(days: readonly MoodDay[]): GroupContrast[] 
   const labels = new Set<string>();
   for (const day of paired) for (const s of day.symptomKeys) labels.add(s);
   return contrastsFor(paired, [...labels], (day, label) => day.symptomKeys.includes(label));
+}
+
+/**
+ * For each context tag: how your mood ran on the days it applied, against the
+ * days it didn't.
+ *
+ * Same shape and same rules as `symptomMoodContrasts` — a tag reaching this
+ * screen is exactly what #1223 called an association, never a cause, so
+ * "vacation" landing here reads the same as "headache" does: a comparison,
+ * not a diagnosis.
+ */
+export function contextTagMoodContrasts(days: readonly MoodDay[]): GroupContrast[] {
+  const paired = pairedDays(days);
+  if (paired.length < MIN_PAIRED_DAYS) return [];
+  const labels = new Set<string>();
+  for (const day of paired) for (const t of day.contextTagKeys) labels.add(t);
+  return contrastsFor(paired, [...labels], (day, label) => day.contextTagKeys.includes(label));
 }
 
 function contrastsFor(

@@ -1488,10 +1488,12 @@ function seedPeople(today: Date): void {
  * there is a fortnight of it.
  *
  * The pattern is deliberate rather than random: a low patch in the middle
- * with headaches through it, better days either side. That gives the screen a
- * real correlation to report and a real symptom contrast, which is what the
- * feature claims to do. Random moods would average out to "no clear pattern",
- * which is honest of the code and useless as a demo.
+ * with headaches through it, better days either side, and a "Big deadline"
+ * context tag on the worst of them so the context contrast has something real
+ * to show too. That gives the screen a real correlation to report and a real
+ * symptom/context contrast, which is what the feature claims to do. Random
+ * moods would average out to "no clear pattern", which is honest of the code
+ * and useless as a demo.
  *
  * Goes through `addLog` like everything else here, using its `at` parameter
  * rather than raw db inserts, so a seeded entry cannot drift from the type.
@@ -1503,16 +1505,22 @@ function seedMoodLog(today: Date): void {
   // Read bottom-up: 17 days ago at the top, yesterday at the end. Today is
   // deliberately left unlogged, so demo mode opens with the daily check-in
   // still worth answering and the sheet one tap from the Today list.
-  const history: { back: number; mood: MoodLevel; symptoms?: [string, SymptomSeverity][]; note?: string }[] = [
+  const history: {
+    back: number;
+    mood: MoodLevel;
+    symptoms?: [string, SymptomSeverity][];
+    contextTags?: string[];
+    note?: string;
+  }[] = [
     { back: 17, mood: 4 },
     { back: 16, mood: 4, note: 'Good week so far' },
-    { back: 15, mood: 5 },
+    { back: 15, mood: 5, contextTags: ['Vacation'] },
     { back: 14, mood: 3, symptoms: [['Poor sleep', 2]] },
     { back: 13, mood: 4 },
     { back: 12, mood: 3 },
-    { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]] },
-    { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch' },
-    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]] },
+    { back: 11, mood: 2, symptoms: [['Headache', 2], ['Poor sleep', 2]], contextTags: ['Big deadline'] },
+    { back: 10, mood: 2, symptoms: [['Headache', 3]], note: 'Long day, skipped lunch', contextTags: ['Big deadline'] },
+    { back: 9, mood: 1, symptoms: [['Headache', 3], ['Poor sleep', 3]], contextTags: ['Big deadline'] },
     { back: 8, mood: 2, symptoms: [['Headache', 1]] },
     { back: 7, mood: 3 },
     { back: 6, mood: 3, symptoms: [['Poor sleep', 1]] },
@@ -1533,6 +1541,7 @@ function seedMoodLog(today: Date): void {
       (day.symptoms ?? []).map(([name, severity]) => ({ name, severity })),
       day.note ?? null,
       at,
+      day.contextTags ?? [],
     );
   }
 }

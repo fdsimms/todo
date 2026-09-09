@@ -8,17 +8,23 @@ import { spacing, radius, font, fontWeight, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import {
+  DEFAULT_CONTEXT_TAGS,
   MOOD_LEVELS,
   SYMPTOM_SEVERITIES,
+  contextTagVocabulary,
+  contextTagKey,
   moodLabel,
   symptomKey,
   symptomVocabulary,
+  withContextTag,
   withSymptom,
+  withoutContextTag,
   withoutSymptom,
 } from '../utils/moodLog';
 import { useMoodStore } from '../store/useMoodStore';
 import { getLogicalToday } from '../utils/dateUtils';
 import { useTaskStore } from '../store/useTaskStore';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { EditorSheet } from './EditorSheet';
 import { SheetHeaderButton } from './SheetHeaderButton';
 import { SegmentedControl } from './SegmentedControl';
@@ -75,15 +81,21 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
   const addLog = useMoodStore(s => s.addLog);
   const updateLog = useMoodStore(s => s.updateLog);
   const completeMoodLogTaskForToday = useTaskStore(s => s.completeMoodLogTaskForToday);
+  // The one source this offers a suggestion from — see docs/arch/mood-log.md.
+  // Other data the app already has (a missed-heavy day, and so on) can follow
+  // the same offer-don't-decide shape later without redesigning this.
+  const vacationMode = useSettingsStore(s => s.vacationMode);
 
   const [mood, setMood] = useState<MoodLevel | null>(null);
   const [symptoms, setSymptoms] = useState<LoggedSymptom[]>([]);
+  const [contextTags, setContextTags] = useState<string[]>([]);
   const [note, setNote] = useState('');
   // Names typed into the pill grid this session. Held apart from the derived
   // vocabulary so a symptom you have just invented shows in the grid before it
   // has ever been saved — the vocabulary is read off saved entries, and
   // without this the pill you just created would vanish on the next render.
   const [drafted, setDrafted] = useState<string[]>([]);
+  const [draftedContext, setDraftedContext] = useState<string[]>([]);
   // Which day is being recorded. Today unless you say otherwise — the common
   // case by a mile, and the only one before this row existed.
   const [day, setDay] = useState<Date>(() => getLogicalToday());
@@ -96,11 +108,19 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
     if (!visible) return;
     setMood(editing?.mood ?? null);
     setSymptoms(editing?.symptoms ?? []);
+    // Offered, not decided: a new entry opens with "Vacation" pre-picked
+    // while vacation mode is on, exactly as if you had tapped the pill
+    // yourself, and it comes right back off with one more tap. Only for a
+    // fresh entry — editing an old one must not silently add a tag to it —
+    // and only vacation mode, the one signal this reads today (see
+    // docs/arch/mood-log.md).
+    setContextTags(editing?.contextTags ?? (vacationMode ? ['Vacation'] : []));
     setNote(editing?.note ?? '');
     setDrafted([]);
+    setDraftedContext([]);
     setDay(getLogicalToday());
     setPickerOpen(false);
-  }, [visible, editing]);
+  }, [visible, editing, vacationMode]);
 
   const vocabulary = useMemo(() => symptomVocabulary(logs), [logs]);
   const pillNames = useMemo(() => {
@@ -119,6 +139,45 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
     }
     return names;
   }, [symptoms, vocabulary, drafted]);
+
+  const contextVocabulary = useMemo(() => contextTagVocabulary(logs), [logs]);
+  const contextPillNames = useMemo(() => {
+    const seen = new Set<string>();
+    const names: string[] = [];
+    // Same order as pillNames above, with the starter suggestions slotted in
+    // ahead of what you type this session and behind everything real: what
+    // you have actually used before should always outrank a generic prompt.
+    for (const source of [contextTags, contextVocabulary, DEFAULT_CONTEXT_TAGS, draftedContext]) {
+      for (const name of source) {
+        const key = contextTagKey(name);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        names.push(name);
+      }
+    }
+    return names;
+  }, [contextTags, contextVocabulary, draftedContext]);
+
+  const toggleContextTag = (name: string) => {
+    haptics.tap();
+    animateLayout();
+    setContextTags(current =>
+      current.some(t => contextTagKey(t) === contextTagKey(name))
+        ? withoutContextTag(current, name)
+        : withContextTag(current, name)
+    );
+  };
+
+  const createContextTag = (name: string): string | null | void => {
+    const trimmed = name.trim();
+    if (!trimmed) return 'Give it a name.';
+    if (contextPillNames.some(n => contextTagKey(n) === contextTagKey(trimmed))) {
+      return 'You already have that one.';
+    }
+    setDraftedContext(current => [...current, trimmed]);
+    animateLayout();
+    setContextTags(current => withContextTag(current, trimmed));
+  };
 
   const toggleSymptom = (name: string) => {
     haptics.tap();
@@ -147,13 +206,13 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
     setSymptoms(current => withSymptom(current, trimmed, 1));
   };
 
-  const canSave = mood !== null || symptoms.length > 0 || note.trim().length > 0;
+  const canSave = mood !== null || symptoms.length > 0 || contextTags.length > 0 || note.trim().length > 0;
 
   const save = () => {
     if (!canSave) return;
     haptics.success();
     if (editing) {
-      updateLog(editing.id, { mood, symptoms, note });
+      updateLog(editing.id, { mood, symptoms, contextTags, note });
     } else {
       // Today records the actual moment; a backdated day records noon on it.
       // Noon rather than midnight for the reason StuckScreen parks its dates
@@ -162,7 +221,7 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
       // day it belongs to.
       const isToday = isSameDay(day, getLogicalToday());
       const at = isToday ? undefined : noonOn(day);
-      addLog(mood, symptoms, note, at);
+      addLog(mood, symptoms, note, at, contextTags);
       // Logging is what the daily task asks for, so answering it ticks it off.
       // Only on a new entry for today: editing last Tuesday's note is not
       // today's check-in, and neither is filling in the day you missed —
@@ -258,6 +317,25 @@ export function MoodLogSheet({ visible, editing = null, onClose }: Props) {
             />
           </View>
         ))}
+      </View>
+
+      <View style={styles.card}>
+        <Text style={styles.groupLabel}>CONTEXT</Text>
+        <Text style={styles.hint}>
+          Anything going on today that isn't a symptom but might explain how you feel.
+        </Text>
+        <PillGroup
+          noun="tag"
+          surface="card"
+          onCreate={createContextTag}
+          filterPlaceholder="Find or add a tag…"
+          options={contextPillNames.map(name => ({
+            key: contextTagKey(name),
+            label: name,
+            selected: contextTags.some(t => contextTagKey(t) === contextTagKey(name)),
+            onPress: () => toggleContextTag(name),
+          }))}
+        />
       </View>
 
       <View style={styles.card}>
