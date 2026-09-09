@@ -183,6 +183,41 @@ describe('deloadBlockerFor', () => {
     expect(deloadBlockerFor(task({ timerStartedAt: new Date().toISOString() }))!.blocker).toBe('running');
     expect(deloadBlockerFor(task({ targetCount: 8 }))!.blocker).toBe('quota');
   });
+
+  // A notice has no reschedule chip in its own row, so bulk-moving it here
+  // would be the two disagreeing about the same task.
+  it('blocks a notice outright', () => {
+    expect(deloadBlockerFor(task({ generatedKind: 'calendarReview' }))!.blocker).toBe('notice');
+    expect(deloadBlockerFor(task({ generatedKind: 'mealPlanNudge' }))!.blocker).toBe('notice');
+  });
+
+  it('is not soft — a notice can\'t be opted into moving', () => {
+    expect(SOFT_DELOAD_BLOCKERS.has('notice')).toBe(false);
+  });
+
+  // weather/health/screenTime/mealSlot(/legacy mealCook) are claims about
+  // today specifically; moving the row doesn't move what it's about.
+  it('blocks the day-bound generators', () => {
+    for (const kind of ['weather', 'health', 'screenTime', 'mealSlot', 'mealCook'] as const) {
+      expect(deloadBlockerFor(task({ generatedKind: kind }))!.blocker).toBe('day-bound');
+    }
+  });
+
+  it('is not soft — a day-bound generated task can\'t be opted into moving', () => {
+    expect(SOFT_DELOAD_BLOCKERS.has('day-bound')).toBe(false);
+  });
+
+  // moodLog, moodNudge and weekendNudge are day-keyed too, but their specs say
+  // rescheduling them is an ordinary thing to want — they stay movable.
+  it('leaves the other day-keyed generators movable', () => {
+    for (const kind of ['moodLog', 'moodNudge', 'weekendNudge', 'pantryReview'] as const) {
+      expect(deloadBlockerFor(task({ generatedKind: kind }))).toBeNull();
+    }
+  });
+
+  it('yields to nothing else — a day-bound generated task blocks even when pinned would', () => {
+    expect(deloadBlockerFor(task({ generatedKind: 'weather', pinned: true }))!.blocker).toBe('day-bound');
+  });
 });
 
 describe('scheduleMoveUpdates', () => {
