@@ -207,6 +207,7 @@ const AI_FEATURE_KEYWORDS: Record<AiFeatureId, string[]> = {
   substitutes: ['claude', 'model', 'instead of', 'swap', 'replace', 'allergy', 'out of'],
   receiptImport: ['claude', 'model', 'photo', 'till', 'shopping trip', 'prices'],
   calendarImport: ['claude', 'model', 'paste', 'appointment', 'itinerary', 'add to calendar'],
+  cookHelp: ['claude', 'model', 'cooking', 'step', 'question', 'ask', 'method', 'instead of'],
 };
 
 /** One entry per row `PrivacyAiSettings` actually renders, in the same order. */

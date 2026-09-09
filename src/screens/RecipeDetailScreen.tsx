@@ -64,7 +64,7 @@ import { cookSteps } from '../utils/cookMode';
 import { MAX_STEP_TIMER_SECONDS, formatStepDuration, parseStepDurations, stepDurationOffers } from '../utils/stepTimers';
 import { featureHidden, featureShown } from '../utils/simpleMode';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { pickRecipeImage, resolveRecipeImagePath, type RecipePhotoSource } from '../utils/recipePhoto';
@@ -125,6 +125,7 @@ export function RecipeDetailScreen() {
   const removeStep = useRecipeStore(s => s.removeStep);
   const reorderSteps = useRecipeStore(s => s.reorderSteps);
   const setStepTimerSeconds = useRecipeStore(s => s.setStepTimerSeconds);
+  const setStepNote = useRecipeStore(s => s.setStepNote);
   const setImage = useRecipeStore(s => s.setImage);
   const addComponent = useRecipeStore(s => s.addComponent);
   const removeComponent = useRecipeStore(s => s.removeComponent);
@@ -1117,6 +1118,11 @@ export function RecipeDetailScreen() {
         {stepTimerLabel(step) !== null && (
           <Text style={styles.stepTimerNote}>Timer · {stepTimerLabel(step)}</Text>
         )}
+        {/* A note kept from cook mode, on the row rather than hidden behind a
+            tap: it's the answer to a question this step raised, which is worth
+            reading while the method is being read. Removing it is in the
+            open-for-editing block below, same division as the timer length. */}
+        {!!step.note && <Text style={styles.stepNote}>{step.note}</Text>}
       </TouchableOpacity>
       <TouchableOpacity
         onLongPress={drag}
@@ -1624,6 +1630,20 @@ export function RecipeDetailScreen() {
               Cook mode offers a timer for the time written in the step. Set a length here to
               use it instead.
             </Text>
+            {/* Only when there is one to remove. Cook mode is where a note is
+                written, by keeping an answer it gave — there is nothing to
+                compose here, so this is the one control the note needs. */}
+            {!!editingStep.note && (
+              <View style={styles.stepNoteEditRow}>
+                <Text style={styles.stepNoteEditText}>{editingStep.note}</Text>
+                <InlineAction
+                  label="Remove note"
+                  icon="trash-outline"
+                  variant="neutral"
+                  onPress={() => { haptics.tap(); setStepNote(recipe.id, editingStep.id, null); }}
+                />
+              </View>
+            )}
           </>
         )}
 
@@ -2093,6 +2113,27 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     marginTop: 2,
+  },
+  // `textSecondary` rather than the tertiary the timer line uses: this is a
+  // sentence to read, where that is a label saying what a parse found.
+  stepNote: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+    lineHeight: lineHeight.sm,
+    marginTop: spacing.xs,
+  },
+  stepNoteEditRow: {
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.sm,
+  },
+  stepNoteEditText: {
+    color: colors.text,
+    fontSize: font.sm,
+    lineHeight: lineHeight.sm,
   },
   stepTimerEditRow: {
     flexDirection: 'row',

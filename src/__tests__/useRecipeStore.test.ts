@@ -6,7 +6,7 @@ import {
   dbDeleteRecipe,
 } from '../db/database';
 import type { Recipe, RecipeIngredient } from '../types';
-import { LEFTOVER_KEEP_DAYS_MAX } from '../types';
+import { LEFTOVER_KEEP_DAYS_MAX, RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 import { groceryNameKey } from '../utils/groceryParse';
 
 jest.mock('../db/database', () => ({
@@ -723,10 +723,38 @@ describe('steps', () => {
     expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].timerSeconds).toBeUndefined();
   });
 
+  it('keeps and clears a note on a step', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const step = useRecipeStore.getState().addStep(r.id, 'Simmer until it darkens')!;
+
+    useRecipeStore.getState().setStepNote(r.id, step.id, '  Two hours is not too long.  ');
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].note)
+      .toBe('Two hours is not too long.');
+
+    // Absent rather than an empty string once cleared, same as the duration
+    // above — see RecipeStep.note.
+    useRecipeStore.getState().setStepNote(r.id, step.id, null);
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0])
+      .toEqual({ id: step.id, text: 'Simmer until it darkens' });
+    useRecipeStore.getState().setStepNote(r.id, step.id, '   ');
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].note).toBeUndefined();
+  });
+
+  it('truncates a note past the cap rather than refusing it', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+    const step = useRecipeStore.getState().addStep(r.id, 'Simmer')!;
+    useRecipeStore.getState().setStepNote(r.id, step.id, 'x'.repeat(RECIPE_STEP_NOTE_MAX_LENGTH + 50));
+    expect(useRecipeStore.getState().recipeById(r.id)!.steps[0].note)
+      .toHaveLength(RECIPE_STEP_NOTE_MAX_LENGTH);
+  });
+
   it('shrugs at a recipe or step id it does not hold', () => {
     seed([]);
     expect(useRecipeStore.getState().addStep('gone', 'Preheat the oven')).toBeNull();
     useRecipeStore.getState().setStepTimerSeconds('gone', 'also gone', 240);
+    useRecipeStore.getState().setStepNote('gone', 'also gone', 'nothing to keep it on');
 
     const r = makeRecipe('Ragu');
     seed([r]);
