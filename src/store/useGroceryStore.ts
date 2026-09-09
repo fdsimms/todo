@@ -4086,6 +4086,18 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       aisleOverrides: remembered ?? aisleOverrides,
       ...commitAisleOrder(order, nextItems.map(i => i.aisle)),
     });
+
+    // The list screen's collapse state is keyed by the header's own row key
+    // (`aisle:<name>`), so a rename has to carry it the way collapsedCategories
+    // does for a category rename — otherwise the section reopens under its new
+    // name and re-collapses if the old name is ever reused.
+    const settings = useSettingsStore.getState();
+    const fromKey = `aisle:${from}`;
+    if (settings.collapsedGroceryGroups.includes(fromKey)) {
+      settings.setCollapsedGroceryGroups(
+        settings.collapsedGroceryGroups.map(k => (k === fromKey ? `aisle:${trimmed}` : k))
+      );
+    }
     return true;
   },
 
@@ -4116,6 +4128,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         nextItems.map(i => i.aisle)
       ),
     });
+
+    // The deleted aisle's header is gone, so nothing is left to fold — see
+    // the rename note above on why this is keyed the same way.
+    const settings = useSettingsStore.getState();
+    const aisleKey = `aisle:${aisle}`;
+    if (settings.collapsedGroceryGroups.includes(aisleKey)) {
+      settings.setCollapsedGroceryGroups(settings.collapsedGroceryGroups.filter(k => k !== aisleKey));
+    }
   },
 
   /**

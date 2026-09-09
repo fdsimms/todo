@@ -116,10 +116,19 @@ const GROCERIES_LINK_URL = KNOWN_LINK_APPS.find(app => app.name === 'Groceries')
  * unlike an aisle, "which recipe" isn't something placement can assign, so
  * every FAB drop zone stands down to `rest` while grouped this way, and row
  * drag is disabled for the same reason (see the `drag` prop below).
+ *
+ * Both `aisle` and `recipeHeader` are collapsible, same mechanism as `cartHeader`
+ * below: collapsing one is just not pushing its item rows (and any `unavailableHeader`
+ * run under it) into the array, with `count` carrying the total so the header can still
+ * say how much it's hiding. Unlike the cart, which is session-only, which groups are
+ * folded is remembered in `collapsedGroceryGroups` (`useSettingsStore`), keyed by
+ * this row's own `key` — the same `collapsedCategories` reasoning Today's category
+ * headers use. The header itself stays a `header` drop zone either way (see
+ * `zoneByKey`), so dropping the add button on a collapsed aisle still files into it.
  */
 type ListRow =
-  | { type: 'aisle'; key: string; aisle: string }
-  | { type: 'recipeHeader'; key: string; label: string }
+  | { type: 'aisle'; key: string; aisle: string; count: number }
+  | { type: 'recipeHeader'; key: string; label: string; count: number }
   | { type: 'unavailableHeader'; key: string; groupKey: string; count: number }
   | { type: 'cartHeader'; key: string; count: number }
   | { type: 'item'; key: string; item: GroceryItem; inCart: boolean; unavailableHere: boolean };
@@ -206,6 +215,25 @@ export function GroceryScreen() {
   const endTrip = useGroceryStore(s => s.endTrip);
   const checkTripExpiry = useGroceryStore(s => s.checkTripExpiry);
   const addTask = useTaskStore(s => s.addTask);
+
+  // Which aisle/recipe groups are folded shut. Set here (as `collapsedCategories`
+  // is on Today) rather than read fresh each place: the three call sites below
+  // all ask "is this one collapsed", and a plain useState(new Set()) would give
+  // each of them a fresh Set identity every render.
+  const storedCollapsedGroups = useSettingsStore(useShallow(s => s.collapsedGroceryGroups));
+  const setStoredCollapsedGroups = useSettingsStore(s => s.setCollapsedGroceryGroups);
+  const collapsedGroups = useMemo(() => new Set(storedCollapsedGroups), [storedCollapsedGroups]);
+  const toggleGroupCollapsed = useCallback(
+    (key: string) => {
+      haptics.tap();
+      animateLayout();
+      const next = new Set(storedCollapsedGroups);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      setStoredCollapsedGroups([...next]);
+    },
+    [storedCollapsedGroups, setStoredCollapsedGroups]
+  );
 
   // ==== local state (the sheets this screen opens, selection, editing) ====
   const [cartOpen, setCartOpen] = useState(false);
@@ -517,6 +545,7 @@ export function GroceryScreen() {
     // groupings, which differ only in the header row they push.
     const pushSection = (header: ListRow, groupKey: string, data: GroceryItem[]) => {
       out.push(header);
+      if (collapsedGroups.has(groupKey)) return;
       const notHere: GroceryItem[] = [];
       for (const item of data) {
         if (storeMarkers.get(item.id)?.unavailable) {
@@ -540,12 +569,20 @@ export function GroceryScreen() {
     if (grouped.kind === 'recipe') {
       for (const section of grouped.sections) {
         const key = `recipe:${section.recipeId ?? 'none'}`;
-        pushSection({ type: 'recipeHeader', key, label: section.recipeTitle }, key, section.data);
+        pushSection(
+          { type: 'recipeHeader', key, label: section.recipeTitle, count: section.data.length },
+          key,
+          section.data
+        );
       }
     } else {
       for (const section of grouped.sections) {
         const key = `aisle:${section.aisle}`;
-        pushSection({ type: 'aisle', key, aisle: section.aisle }, key, section.data);
+        pushSection(
+          { type: 'aisle', key, aisle: section.aisle, count: section.data.length },
+          key,
+          section.data
+        );
       }
     }
     if (inCart.length > 0) {
@@ -557,7 +594,7 @@ export function GroceryScreen() {
       }
     }
     return out;
-  }, [grouped, inCart, cartOpen, storeMarkers]);
+  }, [grouped, inCart, cartOpen, storeMarkers, collapsedGroups]);
 
   // What's actually selectable right now — the cart's rows only join this
   // when the cart is expanded, same as what's tappable on screen.
@@ -1119,18 +1156,28 @@ export function GroceryScreen() {
       const withZone = (content: React.ReactNode) => (
         <FabDropZone zone={isActive ? null : zoneByKey.get(row.key) ?? null}>{content}</FabDropZone>
       );
-      if (row.type === 'aisle') {
+      if (row.type === 'aisle' || row.type === 'recipeHeader') {
+        const label = row.type === 'aisle' ? row.aisle : row.label;
+        const collapsed = collapsedGroups.has(row.key);
         return withZone(
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{row.aisle}</Text>
-          </View>
-        );
-      }
-      if (row.type === 'recipeHeader') {
-        return withZone(
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{row.label}</Text>
-          </View>
+          <TouchableOpacity
+            style={styles.groupSectionHeader}
+            activeOpacity={interaction.activeOpacity}
+            onPress={() => toggleGroupCollapsed(row.key)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: !collapsed }}
+            accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
+          >
+            <Text style={styles.sectionTitle}>
+              {label}
+              {collapsed ? ` (${row.count})` : ''}
+            </Text>
+            <Ionicons
+              name={collapsed ? 'chevron-down' : 'chevron-up'}
+              size={iconSize.sm}
+              color={colors.textTertiary}
+            />
+          </TouchableOpacity>
         );
       }
       if (row.type === 'unavailableHeader') {
@@ -1205,7 +1252,7 @@ export function GroceryScreen() {
         />
       );
     },
-    [styles, colors, cartOpen, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers, tripPriceById, handleSetTripPrice]
+    [styles, colors, cartOpen, collapsedGroups, toggleGroupCollapsed, handleToggle, handleEdit, handleOpenSubstitutes, handleSwapForSubstitute, zoneByKey, selectionMode, selectedIds, toggleSelection, enterSelectionMode, alternativeCaptionById, stockedForById, storeMarkers, tripPriceById, handleSetTripPrice]
   );
 
   // The "Start shopping" card, mounted either as the list's header or as a
@@ -1572,6 +1619,14 @@ function makeStyles(colors: Colors) {
       opacity: 0.55,
     },
     sectionHeader: {
+      paddingHorizontal: spacing.md + spacing.xs,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.xs,
+    },
+    groupSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
       paddingHorizontal: spacing.md + spacing.xs,
       paddingTop: spacing.md,
       paddingBottom: spacing.xs,
