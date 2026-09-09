@@ -34,7 +34,7 @@ import Reanimated, {
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { format } from 'date-fns';
 import { PinIcon } from './PinIcon';
-import type { Task, GroceryItem, ItemSubLink, Recipe } from '../types';
+import type { Task, GroceryItem, ItemSubLink, ItemProduct, Recipe } from '../types';
 import { MEAL_SLOT_ICONS, MEAL_SLOT_LABELS, PRIORITY_COLORS, TITLE_MAX_LENGTH } from '../types';
 import { useColors } from '../theme/ThemeContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -58,7 +58,11 @@ import { chainPreview, isChainFinish } from '../utils/chain';
 import { formatQuotaProgress } from '../utils/quotaUnit';
 import { clampSupplyReorderAt, describeSupply } from '../utils/supply';
 import { haptics } from '../utils/haptics';
-import { openInAppUrl, linkIconFor } from '../utils/deepLinks';
+import { openInAppUrl, linkIconFor, isDeloadUrl } from '../utils/deepLinks';
+import { parseHealthSourceId } from '../utils/healthRules';
+import { pantryCheckItemId, pantryCheckLapse } from '../utils/pantryCheckTasks';
+import { pantryReviewDayKey } from '../utils/pantryReviewTasks';
+import { buildPantryReviewDeck } from '../utils/pantryReview';
 import { telUrl, smsUrl } from '../utils/phone';
 import { mailtoUrl } from '../utils/email';
 import { directionsUrl } from '../utils/maps';
@@ -141,6 +145,7 @@ const EMPTY_BUSY_EVENTS: BusyEvent[] = [];
 const EMPTY_GROCERY_ITEMS: GroceryItem[] = [];
 const EMPTY_ITEM_SUBS: ItemSubLink[] = [];
 const EMPTY_RECIPES: Recipe[] = [];
+const EMPTY_ITEM_PRODUCTS: ItemProduct[] = [];
 
 interface Props {
   task: Task;
@@ -839,6 +844,48 @@ export const TaskItem = React.memo(function TaskItem({
   // (see mealPlanNudge.ts on why nothing here completes a task by itself).
   const mealPlanReady =
     plannedMeals !== undefined && plannedMeals >= MEAL_PLAN_NUDGE_SLOT_COUNT && !task.completed;
+
+  // Three more generated-task readinesses, same "nudge, not a lock" treatment
+  // as the ones above: the question this row asked has already been answered
+  // by a flow elsewhere, and the row itself is still sitting here only
+  // because the maintenance sweep that would otherwise clear it silently
+  // (stalePantryCheckTasks, stalePantryReviewTasks) hasn't run yet.
+  //
+  // "Check if you still have X" — ready once the item's own probablyHave
+  // question has an answer again (pantryCheckLapse back to null), the same
+  // predicate stalePantryCheckTasks judges the row stale against.
+  const pantryCheckId = pantryCheckItemId(task);
+  const pantryCheckItem = useGroceryStore(s => (pantryCheckId ? s.itemById(pantryCheckId) : null));
+  const pantryCheckReady =
+    !!pantryCheckItem && !task.completed && pantryCheckLapse(pantryCheckItem, new Date()) === null;
+
+  // "Review what's in the pantry" — ready once the deck it opens is empty,
+  // the same predicate stalePantryReviewTasks judges the row stale against.
+  // Gated behind isPantryReviewTask so every other row on Today keeps the
+  // stable EMPTY_* references and re-renders no more often than it did.
+  const isPantryReviewTask = pantryReviewDayKey(task) !== null;
+  const pantryReviewItems = useGroceryStore(s => (isPantryReviewTask ? s.items : EMPTY_GROCERY_ITEMS));
+  const pantryReviewItemProducts = useGroceryStore(s =>
+    isPantryReviewTask ? s.itemProducts : EMPTY_ITEM_PRODUCTS
+  );
+  const pantryReviewReady = useMemo(
+    () =>
+      isPantryReviewTask &&
+      !task.completed &&
+      buildPantryReviewDeck(pantryReviewItems, new Date(), pantryReviewItemProducts).cards.length === 0,
+    [isPantryReviewTask, task.completed, pantryReviewItems, pantryReviewItemProducts]
+  );
+
+  // "Keep today light" — ready once the day it named has actually been
+  // lightened via DeloadSheet's "Lighten this day", not merely opened.
+  // Gated on the row's own deload link (only a sleep-shortfall health rule
+  // carries one) and its day key rather than on healthRuleIdOf's rule id, so
+  // this reads no settings.healthRules the row wasn't already reading.
+  const lastDeloadAppliedDayKey = useSettingsStore(s => s.lastDeloadAppliedDayKey);
+  const deloadReady =
+    isDeloadUrl(task.linkUrl ?? '') &&
+    !task.completed &&
+    parseHealthSourceId(task.generatedSourceId)?.dayKey === lastDeloadAppliedDayKey;
 
   // Which meal an auto-generated meal task is for (mealSlotOf, off the row's
   // own source id — no store read). Only its unanswered steps name the meal
@@ -1791,6 +1838,8 @@ export const TaskItem = React.memo(function TaskItem({
                       ? `${task.title}, health target reached, complete`
                     : mealPlanReady
                       ? `${task.title}, all ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned, complete`
+                    : pantryCheckReady || pantryReviewReady || deloadReady
+                      ? `${task.title}, ready, complete`
                     : mealSlotChooseSource
                       ? `${task.title}, pick a meal`
                     : asksOnComplete
@@ -1816,7 +1865,15 @@ export const TaskItem = React.memo(function TaskItem({
           // green already means done-or-ready on this row, and a second colour
           // for a second kind of "you can tick this now" would be teaching the
           // reader two vocabularies for one idea.
-          !completing && !completionLocked && (timerReady || mealPlanReady || healthReady) && styles.circleReady,
+          !completing &&
+            !completionLocked &&
+            (timerReady ||
+              mealPlanReady ||
+              healthReady ||
+              pantryCheckReady ||
+              pantryReviewReady ||
+              deloadReady) &&
+            styles.circleReady,
           (showQuotaMeter || quotaPartial) && styles.circleQuota,
           // Last of the state styles, so a broken day wins the box outright:
           // it's the one thing on this row that has just gone wrong.
