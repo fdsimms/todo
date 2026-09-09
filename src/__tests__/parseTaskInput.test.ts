@@ -461,6 +461,11 @@ describe('parseTaskInput — recurrence', () => {
     expect(r2.schedule.recurrenceFromCompletion).toBe(true);
   });
 
+  it('maps "on completion" to recurrenceFromCompletion, same as "after completion"', () => {
+    const r = parseTaskInput('water plants every 3 days on completion', NOW)!;
+    expect(r.schedule.recurrenceFromCompletion).toBe(true);
+  });
+
   it('maps an "until <date>" clause to recurrenceEndDate', () => {
     const r = parseTaskInput('gym every monday until december', NOW)!;
     expect(r.schedule.recurrenceType).toBe('weekly');
@@ -950,6 +955,10 @@ describe('parseFromCompletionSuffix', () => {
     expect(parseFromCompletionSuffix("go running after it's done")?.cleanTitle).toBe('go running');
     expect(parseFromCompletionSuffix('go running after I finish it')?.cleanTitle).toBe('go running');
     expect(parseFromCompletionSuffix('go running after done')?.cleanTitle).toBe('go running');
+  });
+
+  it('accepts "on completion" the same as "after completion"', () => {
+    expect(parseFromCompletionSuffix('go running on completion')?.cleanTitle).toBe('go running');
   });
 
   it('keeps the original casing and trims trailing punctuation', () => {
