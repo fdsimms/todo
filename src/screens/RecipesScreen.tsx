@@ -643,6 +643,21 @@ export function RecipesScreen() {
       />
       <HubPills hub="kitchen" active="Recipes" />
       <TipHost screen="recipes" />
+      {/* A shelf for recipes rather than a fifth Kitchen-hub tab: it isn't a
+          working surface the way Groceries/Recipes/Meal plan/Pantry are, so
+          it doesn't need equal billing in the pill row — just a way in from
+          the recipe box it organizes. */}
+      <TouchableOpacity
+        style={styles.cookbooksLink}
+        onPress={() => { haptics.tap(); navigation.navigate('Cookbooks'); }}
+        activeOpacity={interaction.activeOpacity}
+        accessibilityRole="button"
+        accessibilityLabel="Open cookbooks"
+      >
+        <Ionicons name="albums-outline" size={13} color={colors.textTertiary} />
+        <Text style={styles.cookbooksLinkText}>Cookbooks</Text>
+        <Ionicons name="chevron-forward" size={13} color={colors.textTertiary} />
+      </TouchableOpacity>
       {!selectionMode && !!activeTripShop && (
         <ActiveTripBanner
           shopName={activeTripShop.name}
@@ -944,6 +959,19 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  cookbooksLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    alignSelf: 'flex-end',
+    marginHorizontal: spacing.md,
+    marginTop: spacing.xs,
+  },
+  cookbooksLinkText: {
+    color: colors.textTertiary,
+    fontSize: font.xs,
+    fontWeight: fontWeight.medium,
   },
   searchWrap: {
     flexDirection: 'row',
