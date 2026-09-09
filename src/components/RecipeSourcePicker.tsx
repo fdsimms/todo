@@ -224,6 +224,7 @@ export function RecipeSourcePicker({
             <>
               {renderPhotoButton('camera', 'Take a photo', 'camera-outline')}
               {renderPhotoButton('library', 'Choose a photo', 'images-outline')}
+              {renderPhotoButton('clipboard', 'Paste image', 'copy-outline')}
               <Text style={styles.photoHint}>
                 {photoHint
                   ?? 'Works on a cookbook page, a recipe card, a clipping: anything with the ingredients readable.'}

@@ -23,6 +23,7 @@ import {
   type RawSuggestedSubstitute, type SuggestedSubstitute,
 } from '../utils/substituteSuggestions';
 import { useSettingsStore } from '../store/useSettingsStore';
+import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
 import { routeForFeature, type AiRoute } from '../utils/aiRouting';
 import { canReadReceiptOnDevice } from '../utils/receiptOcr';
@@ -1832,9 +1833,15 @@ export async function extractCalendarEvents(source: string | RecipeImage): Promi
   // Same "nothing in, no network call" guard extractRecipe/extractReceipt use.
   if (image ? !image.base64 : !text) return [];
 
+  // A ticket or confirmation that gives a date with no year ("Thu, Sep 10")
+  // is common — the model has no other way to resolve which year that is, so
+  // it needs today's date the same way the offline parseEventText path
+  // already gets it via getLogicalToday.
+  const today = dayKeyOf(getLogicalToday(useSettingsStore.getState().dayResetTime));
+
   const eventFields = [
     'For each event give: its title, in a few words a person would recognize on their own calendar ("Dentist appointment", "Flight to Chicago", "Dinner at Marea") — not the page\'s own heading verbatim when that heading is generic ("Appointment Details", "Booking Confirmed").',
-    'Its date, as YYYY-MM-DD, and its time as 24-hour HH:MM — only when a specific time is actually stated. Leave the time empty for an all-day event or a date given with no time.',
+    `Its date, as YYYY-MM-DD, and its time as 24-hour HH:MM — only when a specific time is actually stated. Leave the time empty for an all-day event or a date given with no time. Today is ${today}: when a date is given with no year, use the year that makes it the soonest such date on or after today, not a year already passed.`,
     'Its location: a physical address or venue name, exactly as given. Empty string when the event has no physical location (a phone call, a virtual meeting) or none is stated.',
     'Anything else worth keeping, in one short line: a phone number, a confirmation or reservation number, what to bring or do to prepare. Empty string if there is nothing beyond what the other fields already capture.',
   ];

@@ -18,6 +18,12 @@ jest.mock('expo-image-picker', () => ({
   launchImageLibraryAsync: (...args: unknown[]) => mockLaunchLibrary(...args),
 }));
 
+const mockGetImage = jest.fn();
+
+jest.mock('expo-clipboard', () => ({
+  getImageAsync: (...args: unknown[]) => mockGetImage(...args),
+}));
+
 const mockResize = jest.fn();
 const mockSaveAsync = jest.fn();
 const mockRenderAsync = jest.fn();
@@ -77,7 +83,7 @@ jest.mock('expo-file-system', () => {
       this.exists = mockDirExists;
       this.create = () => mockDirCreate(this.uri);
     },
-    Paths: { document: { uri: 'file:///documents' } },
+    Paths: { document: { uri: 'file:///documents' }, cache: { uri: 'file:///cache' } },
     EncodingType: { UTF8: 'utf8', Base64: 'base64' },
   };
 });
@@ -266,6 +272,58 @@ describe('pickRecipePhoto', () => {
     stubPipeline({ base64: null });
 
     await expect(pickRecipePhoto('library')).resolves.toMatchObject({ status: 'failed' });
+  });
+});
+
+describe('pickRecipePhoto clipboard paste', () => {
+  it('reports a failure without touching any permission when nothing is copied', async () => {
+    mockGetImage.mockResolvedValue(null);
+
+    await expect(pickRecipePhoto('clipboard')).resolves.toMatchObject({ status: 'failed' });
+    expect(mockRequestCamera).not.toHaveBeenCalled();
+    expect(mockRequestLibrary).not.toHaveBeenCalled();
+  });
+
+  it('writes the pasted image to a temp file and runs it through the same encode pipeline', async () => {
+    mockGetImage.mockResolvedValue({
+      data: 'data:image/png;base64,QUJD',
+      size: { width: 1200, height: 900 },
+    });
+    stubPipeline();
+
+    const result = await pickRecipePhoto('clipboard');
+
+    // The data: URI prefix is stripped before it's written to disk.
+    expect(mockWrite).toHaveBeenCalledWith(expect.stringContaining('file:///cache/'), 'QUJD', { encoding: 'base64' });
+    expect(mockManipulate).toHaveBeenCalledWith(expect.stringContaining('file:///cache/'));
+    expect(result).toMatchObject({
+      status: 'ok',
+      photo: { mediaType: 'image/jpeg', sourceUri: expect.stringContaining('file:///cache/') },
+    });
+  });
+
+  it('downscales a pasted image over the cap on its long edge', async () => {
+    mockGetImage.mockResolvedValue({
+      data: 'data:image/png;base64,QUJD',
+      size: { width: 4032, height: 3024 },
+    });
+    stubPipeline();
+
+    await pickRecipePhoto('clipboard');
+
+    expect(mockResize).toHaveBeenCalledWith({ width: MAX_PHOTO_EDGE });
+  });
+
+  it('reports a failure rather than rejecting when the manipulator throws', async () => {
+    mockGetImage.mockResolvedValue({
+      data: 'data:image/png;base64,QUJD',
+      size: { width: 1200, height: 900 },
+    });
+    mockManipulate.mockImplementation(() => { throw new Error('corrupt image'); });
+
+    await expect(pickRecipePhoto('clipboard')).resolves.toEqual({
+      status: 'failed', message: 'corrupt image',
+    });
   });
 });
 

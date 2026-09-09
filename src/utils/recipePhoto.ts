@@ -38,7 +38,7 @@ export const MAX_PHOTO_EDGE = 1568;
 /** JPEG quality for the downscaled copy. Text on a page survives this easily. */
 const PHOTO_COMPRESS = 0.7;
 
-export type RecipePhotoSource = 'camera' | 'library';
+export type RecipePhotoSource = 'camera' | 'library' | 'clipboard';
 
 export interface RecipePhoto extends RecipeImage {
   /** Always JPEG — see the note above about HEIC. */
@@ -103,6 +103,10 @@ function fileSystem(): typeof import('expo-file-system') {
   return require('expo-file-system');
 }
 
+function clipboard(): typeof import('expo-clipboard') {
+  return require('expo-clipboard');
+}
+
 /**
  * The temp file `saveAsync` writes to the cache directory. We only ever wanted
  * the string, so the copy of the user's photo goes straight back out — best
@@ -117,9 +121,80 @@ function discardTempPhoto(uri: string): void {
   }
 }
 
-/** Takes or picks a photo and returns it sized and encoded for the Messages API. */
+/**
+ * The shared downscale-and-re-encode step, run against a file already sitting
+ * on disk — a picker asset, or a clipboard paste written to a temp file by
+ * `pickClipboardPhoto` below. Both callers want the same JPEG-at-a-cap output;
+ * only how they get a `uri`/`width`/`height` to hand it differs.
+ */
+async function encodePickedPhoto(uri: string, width: number, height: number): Promise<
+  | { ok: true; base64: string; mediaType: 'image/jpeg'; width: number; height: number }
+  | { ok: false; message: string }
+> {
+  const { ImageManipulator, SaveFormat } = imageManipulator();
+  const context = ImageManipulator.manipulate(uri);
+  const target = photoTargetSize(width, height);
+  if (target) context.resize(target);
+
+  const rendered = await context.renderAsync();
+  const saved = await rendered.saveAsync({
+    compress: PHOTO_COMPRESS,
+    format: SaveFormat.JPEG,
+    base64: true,
+  });
+
+  if (saved.uri) discardTempPhoto(saved.uri);
+  if (!saved.base64) return { ok: false, message: 'That photo could not be read.' };
+
+  return { ok: true, base64: saved.base64, mediaType: 'image/jpeg', width: saved.width, height: saved.height };
+}
+
+/**
+ * The clipboard half of `pickRecipePhoto` — reads whatever image the user
+ * last copied (a screenshot, a photo copied out of Messages or Safari) rather
+ * than sending them back through the camera or library to find it again.
+ *
+ * No permission prompt: unlike camera/library access, `expo-clipboard` needs
+ * none, and iOS shows its own one-time paste banner rather than an app-level
+ * grant — there is nothing here to check before reading.
+ *
+ * The pasted bytes are written to a temp PNG in the cache directory first,
+ * because `encodePickedPhoto` (and, for a receipt, the on-device OCR read
+ * that follows it) both work from a file `uri`, not from bytes already in JS.
+ */
+async function pickClipboardPhoto(): Promise<RecipePhotoResult> {
+  const Clipboard = clipboard();
+  const image = await Clipboard.getImageAsync({ format: 'png' });
+  if (!image) {
+    return { status: 'failed', message: 'No image on the clipboard. Copy one, then try pasting.' };
+  }
+
+  const base64 = image.data.replace(/^data:image\/\w+;base64,/, '');
+  const { File, Paths } = fileSystem();
+  const temp = new File(Paths.cache, `${generateId()}.png`);
+  temp.create();
+  temp.write(base64, { encoding: 'base64' });
+
+  const encoded = await encodePickedPhoto(temp.uri, image.size.width, image.size.height);
+  if (!encoded.ok) return { status: 'failed', message: encoded.message };
+
+  return {
+    status: 'ok',
+    photo: {
+      base64: encoded.base64,
+      mediaType: encoded.mediaType,
+      width: encoded.width,
+      height: encoded.height,
+      sourceUri: temp.uri,
+    },
+  };
+}
+
+/** Takes, picks, or pastes a photo and returns it sized and encoded for the Messages API. */
 export async function pickRecipePhoto(source: RecipePhotoSource): Promise<RecipePhotoResult> {
   try {
+    if (source === 'clipboard') return await pickClipboardPhoto();
+
     const ImagePicker = imagePicker();
 
     const permission = source === 'camera'
@@ -147,28 +222,16 @@ export async function pickRecipePhoto(source: RecipePhotoSource): Promise<Recipe
     const asset = result.assets?.[0];
     if (!asset?.uri) return { status: 'failed', message: 'No photo came back from the picker.' };
 
-    const { ImageManipulator, SaveFormat } = imageManipulator();
-    const context = ImageManipulator.manipulate(asset.uri);
-    const target = photoTargetSize(asset.width, asset.height);
-    if (target) context.resize(target);
-
-    const rendered = await context.renderAsync();
-    const saved = await rendered.saveAsync({
-      compress: PHOTO_COMPRESS,
-      format: SaveFormat.JPEG,
-      base64: true,
-    });
-
-    if (saved.uri) discardTempPhoto(saved.uri);
-    if (!saved.base64) return { status: 'failed', message: 'That photo could not be read.' };
+    const encoded = await encodePickedPhoto(asset.uri, asset.width, asset.height);
+    if (!encoded.ok) return { status: 'failed', message: encoded.message };
 
     return {
       status: 'ok',
       photo: {
-        base64: saved.base64,
-        mediaType: 'image/jpeg',
-        width: saved.width,
-        height: saved.height,
+        base64: encoded.base64,
+        mediaType: encoded.mediaType,
+        width: encoded.width,
+        height: encoded.height,
         sourceUri: asset.uri,
       },
     };
