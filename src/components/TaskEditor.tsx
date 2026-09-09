@@ -185,6 +185,7 @@ export interface TaskDraft {
   /** Same, for a stack. The task adopts the stack's category on the way in, as it would through addExistingToGroup. */
   groupId?: string | null;
   linkUrl?: string | null;
+  completionTimerMinutes?: number | null;
   phoneNumber?: string | null;
   emailAddress?: string | null;
   location?: string | null;
@@ -215,7 +216,7 @@ type PickerMode = 'none' | 'reminder';
 type DraftSubtask = { id: string; title: string; completed: boolean; timedMinutes: number | null };
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable';
+type FieldKey = 'stack' | 'category' | 'project' | 'tags' | 'people' | 'waitingOnPerson' | 'priority' | 'effort' | 'duration' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer';
 
 // Presets for the Duration field, in minutes — the common "do this for a bit"
 // spans, including the 25-minute pomodoro.
@@ -233,6 +234,11 @@ const SUBTASK_CHECKBOX_SIZE = 16;
 // to nonsense.
 const MAX_DEADLINE_OFFSET_DAYS = 365;
 const MAX_STREAK_COUNT = 9999;
+// A completion timer steps in quarter-hours up to 24h — well past a real wait
+// (the iron-pill case this shipped for is 2h), same "past any real value"
+// reasoning as the two ceilings above.
+const COMPLETION_TIMER_STEP_MINUTES = 15;
+const MAX_COMPLETION_TIMER_MINUTES = 24 * 60;
 
 
 export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
@@ -423,6 +429,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [linkUrl, setLinkUrl] = useState<string | null>(null);
+  const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
   const [blockedById, setBlockedById] = useState<string | null>(null);
   const [waitingOnPersonId, setWaitingOnPersonId] = useState<string | null>(null);
   const [deliverableKind, setDeliverableKind] = useState<DeliverableKind | null>(null);
@@ -663,6 +670,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setQuotaPeriod(task.quotaPeriod ?? 'day');
       setStreakRequiresWindow(task.streakRequiresWindow ?? false);
       setLinkUrl(task.linkUrl ?? null);
+      setCompletionTimerMinutes(task.completionTimerMinutes ?? null);
       setPhoneNumber(task.phoneNumber ?? null);
       setEmailAddress(task.emailAddress ?? null);
       setLocation(task.location ?? null);
@@ -697,6 +705,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setShowStreak(false);
       setStreakRequiresWindow(false);
       setLinkUrl(initialDraft?.linkUrl ?? null);
+      setCompletionTimerMinutes(initialDraft?.completionTimerMinutes ?? null);
       setPhoneNumber(initialDraft?.phoneNumber ?? null);
       setEmailAddress(initialDraft?.emailAddress ?? null);
       setLocation(initialDraft?.location ?? null);
@@ -801,6 +810,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       quotaPeriod: task?.quotaPeriod ?? 'day',
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
+      completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
       phoneNumber: task ? (task.phoneNumber ?? null) : (initialDraft?.phoneNumber ?? null),
       emailAddress: task ? (task.emailAddress ?? null) : (initialDraft?.emailAddress ?? null),
       location: task ? (task.location ?? null) : (initialDraft?.location ?? null),
@@ -1090,6 +1100,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // still be set — only the editor's own row is gated on that.
       streakRequiresWindow: recurrenceType !== 'none' && streakRequiresWindow,
       linkUrl: resolveLinkUrl(),
+      completionTimerMinutes,
       phoneNumber: resolvePhoneNumber(),
       emailAddress: resolveEmailAddress(),
       location: resolveLocation(),
@@ -1622,6 +1633,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       showStreak,
       streakRequiresWindow,
       linkUrl,
+      completionTimerMinutes,
       phoneNumber,
       emailAddress,
       location,
@@ -3435,6 +3447,34 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
               onPress={() => openPicker('reminder')}
               onClear={reminderTime ? () => { setReminderTime(null); setReminderKind('notification'); setReminderOffsetDays(null); setReminderTimeAnchor('wallClock'); setReminderTouched(true); } : undefined}
             />
+              </>
+            ),
+          },
+          {
+            key: 'completionTimer', label: 'Completion timer', set: completionTimerMinutes !== null,
+            keywords: ['timer', 'alarm', 'after', 'later', 'reminder', 'wait'],
+            node: (
+              <>
+            <CollapsibleField
+              label="Completion timer"
+              summary={completionTimerMinutes !== null ? `${formatDuration(completionTimerMinutes)} after completing` : undefined}
+              hint="Asks to set a reminder this long after you complete the task, e.g. a two-hour wait before eating after a medication."
+              expanded={fieldOpen('completionTimer')}
+              onToggle={() => toggleField('completionTimer')}
+            >
+              <CountStepper
+                value={completionTimerMinutes}
+                onChange={setCompletionTimerMinutes}
+                min={COMPLETION_TIMER_STEP_MINUTES}
+                max={MAX_COMPLETION_TIMER_MINUTES}
+                step={COMPLETION_TIMER_STEP_MINUTES}
+                allowNull
+                emptyLabel="Off"
+                label="Completion timer"
+                format={formatDuration}
+                describeValue={n => (n === null ? 'off' : formatDuration(n))}
+              />
+            </CollapsibleField>
               </>
             ),
           },

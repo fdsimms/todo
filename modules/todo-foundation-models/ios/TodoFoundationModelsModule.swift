@@ -7,19 +7,14 @@ import ExpoModulesCore
 // *using* the symbols that must be guarded, and the containing project has to
 // link against the iOS 26 SDK (Xcode 26+).
 //
-// NOTE: the exact signatures below were written against Apple's WWDC25
-// "Meet the Foundation Models framework" material and public writeups, not a
-// compiled iOS 26 SDK (unavailable in the sandbox this was written in) — the
-// same caveat TodoAlarmKitModule.swift carries, for the same reason. Before
-// shipping, verify every one against the real headers in Xcode 26 (Cmd-click
-// into the framework) and adjust. Most likely candidates for drift:
-//   - `SystemLanguageModel.default.availability` and the exact spelling of its
-//     `.unavailable(reason:)` cases.
-//   - `DynamicGenerationSchema.Property(name:schema:)` argument labels, and
-//     whether the array root is built with `DynamicGenerationSchema(arrayOf:)`
-//     or an explicit element/array pair.
-//   - Whether `LanguageModelSession.respond(to:schema:)` takes the schema as
-//     `GenerationSchema` or a generable type, and its exact return property.
+// NOTE: this was originally written against Apple's WWDC25 "Meet the
+// Foundation Models framework" material and public writeups rather than a
+// compiled iOS 26 SDK, and shipped with a wrong signature as a result
+// (`GeneratedContent` has no `elements()` — array payloads come out through
+// `GeneratedContent.Kind.array`, via the `kind` property). Signatures below
+// have since been checked against Apple's published FoundationModels
+// reference; an actual Xcode 26 build is still the real test, since the docs
+// site can lag or omit an overload.
 #if canImport(FoundationModels)
 import FoundationModels
 #endif
@@ -78,7 +73,11 @@ public class TodoFoundationModelsModule: Module {
           Task {
             do {
               let schema = try buildArraySchema(from: spec)
-              let session = LanguageModelSession()
+              // There is no no-argument initializer: `instructions` is a
+              // required `@InstructionsBuilder` closure, only `model` and
+              // `tools` default. The schema is what actually constrains the
+              // output, so this is a minimal, generic instruction.
+              let session = LanguageModelSession(instructions: "Generate content that matches the requested schema.")
               let response = try await session.respond(to: prompt, schema: schema)
               output = jsonString(from: response.content, fields: spec.fields)
             } catch {
@@ -168,12 +167,12 @@ private func buildArraySchema(from spec: SchemaSpec) throws -> GenerationSchema 
 /// the TS side didn't ask about has nothing waiting to validate it.
 @available(iOS 26, *)
 private func jsonString(from content: GeneratedContent, fields: [FieldSpec]) -> String {
-  guard let elements = try? content.elements() else { return "[]" }
+  guard case .array(let elements) = content.kind else { return "[]" }
   var rows: [[String: String]] = []
   for element in elements {
     var row: [String: String] = [:]
     for field in fields {
-      if let value = try? element.value(String.self, forProperty: field.name) {
+      if let value = element.value(String.self, forProperty: field.name) {
         row[field.name] = value
       }
     }

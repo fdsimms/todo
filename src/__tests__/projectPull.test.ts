@@ -117,7 +117,7 @@ const BASE: Task = {
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null,
+  healthTarget: null, completionTimerMinutes: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,

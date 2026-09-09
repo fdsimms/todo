@@ -363,9 +363,9 @@ exports.
 **Read narrowly.** 51 files are over 1,000 lines, 33 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (8.1k), `components/TaskEditor.tsx` (5.3k), `db/database.ts` (5.2k),
-`types/index.ts` (4.8k), `store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.6k),
-`components/TaskItem.tsx` (4.2k), `store/useSettingsStore.ts` (3.3k),
+`store/useTaskStore.ts` (8.1k), `components/TaskEditor.tsx` (5.4k), `db/database.ts` (5.2k),
+`types/index.ts` (4.9k), `store/useGroceryStore.ts` (4.8k), `screens/TodayScreen.tsx` (4.6k),
+`components/TaskItem.tsx` (4.3k), `store/useSettingsStore.ts` (3.3k),
 `utils/demoSeed.ts` (3.2k), `components/QuickAddModal.tsx` (3.1k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
@@ -458,6 +458,24 @@ and nothing about gestures, animation or `SwipeableRow` is being exercised. It p
 numbers and the visual hierarchy and nothing else, so label it that way when you send it. Skip
 it for logic changes and one-line tweaks; reach for it whenever the question is "does this look
 right".
+
+**Verify an unfamiliar API instead of guessing it, when verification is possible.** Native code
+under `modules/` can't be compiled or type-checked from this sandbox, so a wrong signature against
+a framework like FoundationModels or AlarmKit doesn't fail fast — it ships and only surfaces days
+later as a red EAS build, with a log that names the broken member but not the fix. That happened
+for real: `TodoFoundationModelsModule.swift` invented `GeneratedContent.elements()`, the build
+failed, and the first attempted fix (`elements(of:)`) was *also* invented rather than checked —
+same mistake twice, because "the compiler will catch it" isn't true here. There usually **is** a
+way to check before writing the call: Apple's developer docs serve a JSON form of any framework
+page at `https://developer.apple.com/tutorials/data/documentation/<framework>/<symbol>.json`
+(fetch it with WebFetch) with real declaration fragments, argument labels and default values —
+that's how the actual fix (`GeneratedContent.Kind.array` via the `kind` property, plus a second
+latent bug in the same file, `LanguageModelSession()` having no no-argument initializer) was
+found. Reach for that before trusting WWDC session notes, a blog post's paraphrase, or memory of
+an older SDK version, and before re-guessing a fix to a guess that just failed. If a symbol
+genuinely isn't documented yet (a fresh beta, an internal API), say so at the call site — the
+way this file's own header comment already tried to — and say so again in the PR description as
+an open risk, rather than presenting an unverified signature as a confirmed fix.
 
 **Stay in scope.** Fix what was asked, in the pattern the surrounding file already uses.
 Adjacent code that looks improvable isn't the task; mention it instead of rewriting it.

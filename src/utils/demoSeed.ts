@@ -600,7 +600,10 @@ export function seedDemoData(): void {
   // make the demo's own pin-all miss Iron until that time of day arrives.
   updateTask(vitaminD.id, { dueDate: today.toISOString() });
   updateTask(omega3.id, { dueDate: today.toISOString() });
-  updateTask(iron.id, { dueDate: today.toISOString() });
+  // Iron needs food kept away for a couple of hours either side, so it's
+  // also the seed's one example of a completion timer — see
+  // Task.completionTimerMinutes.
+  updateTask(iron.id, { dueDate: today.toISOString(), completionTimerMinutes: 120 });
   // Pinned as a whole via the stack editor's pin button, so the Pinned Tasks
   // block shows a copy of all three alongside the lone pinned task above.
   pinGroup(supplements.id);

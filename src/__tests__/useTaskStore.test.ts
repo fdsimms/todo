@@ -238,6 +238,8 @@ jest.mock('../utils/notifications', () => ({
   // startTrip/endTrip.
   scheduleTripReminder: jest.fn().mockResolvedValue(undefined),
   cancelTripReminder: jest.fn().mockResolvedValue(undefined),
+  scheduleCompletionTimer: jest.fn().mockResolvedValue(undefined),
+  cancelCompletionTimer: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('../utils/deadlineCalendarSync', () => ({
@@ -358,7 +360,7 @@ const makeTask = (overrides: Partial<Task> = {}): Task => ({
   timedMinutes: null,
   timerElapsedSeconds: 0,
   healthMetric: null,
-  healthTarget: null,
+  healthTarget: null, completionTimerMinutes: null,
   actualMinutes: null,
   previousOccurrenceId: null,
   seriesId: null,

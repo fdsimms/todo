@@ -23,6 +23,7 @@ import { PRIORITY_LABELS, EFFORT_LABELS, EFFORT_HINTS, TITLE_MAX_LENGTH } from '
 import { useColors, useTheme } from '../theme/ThemeContext';
 import { spacing, radius, font, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { formatDuration } from '../utils/effort';
 import { animateLayout } from '../utils/layoutAnimation';
 import { tagColor } from '../utils/tagColor';
 import { useTaskStore } from '../store/useTaskStore';
@@ -66,10 +67,12 @@ import { CountStepper } from './CountStepper';
 // at, and an unbounded stepper is one a long press can run to nonsense.
 const MAX_REMINDER_OFFSET_MINUTES = 10080;   // a week, in 15-minute steps
 const MAX_CUSTOM_ESTIMATE_MINUTES = 600;     // ten hours
+const COMPLETION_TIMER_STEP_MINUTES = 15;
+const MAX_COMPLETION_TIMER_MINUTES = 24 * 60; // matches TaskEditor's own ceiling
 
 
 /** Editor sections that collapse to a one-line summary of their current value. */
-type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable';
+type FieldKey = 'blanks' | 'conditions' | 'category' | 'tags' | 'priority' | 'effort' | 'subtasks' | 'chainSteps' | 'deliverable' | 'completionTimer';
 
 interface Props {
   visible: boolean;
@@ -128,6 +131,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
   const [priority, setPriority] = useState<Priority>(0);
   const [effort, setEffort] = useState<Effort>(0);
   const [estimatedMinutes, setEstimatedMinutes] = useState<number | null>(null);
+  const [completionTimerMinutes, setCompletionTimerMinutes] = useState<number | null>(null);
   const [vacationPause, setVacationPause] = useState(false);
   const [excludeFromSuggestions, setExcludeFromSuggestions] = useState(false);
   const [polarity, setPolarity] = useState<Polarity>('positive');
@@ -183,6 +187,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
     setPriority(item?.priority ?? draft?.priority ?? 0);
     setEffort(item?.effort ?? draft?.effort ?? 0);
     setEstimatedMinutes(item?.estimatedMinutes ?? draft?.estimatedMinutes ?? null);
+    setCompletionTimerMinutes(item?.completionTimerMinutes ?? draft?.completionTimerMinutes ?? null);
     setVacationPause(item?.vacationPause ?? draft?.vacationPause ?? false);
     setExcludeFromSuggestions(item?.excludeFromSuggestions ?? draft?.excludeFromSuggestions ?? false);
     setPolarity(item?.polarity ?? draft?.polarity ?? 'positive');
@@ -294,6 +299,7 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
       priority,
       effort,
       estimatedMinutes,
+      completionTimerMinutes,
       vacationPause,
       excludeFromSuggestions,
       // Belt and braces with the row above being hidden for a chain: the two
@@ -830,6 +836,27 @@ export function TemplateItemEditor({ visible, templateId, templateName, item, in
             <View style={[styles.toggleKnob, excludeFromSuggestions && styles.toggleKnobOn]} />
           </View>
         </TouchableOpacity>
+        <View style={styles.sep} />
+        <CollapsibleField
+          label="Completion timer"
+          summary={completionTimerMinutes !== null ? `${formatDuration(completionTimerMinutes)} after completing` : undefined}
+          hint="Asks to set a reminder this long after a task made from this item is completed, e.g. a two-hour wait before eating after a medication."
+          expanded={fieldOpen('completionTimer')}
+          onToggle={() => toggleField('completionTimer')}
+        >
+          <CountStepper
+            value={completionTimerMinutes}
+            onChange={setCompletionTimerMinutes}
+            min={COMPLETION_TIMER_STEP_MINUTES}
+            max={MAX_COMPLETION_TIMER_MINUTES}
+            step={COMPLETION_TIMER_STEP_MINUTES}
+            allowNull
+            emptyLabel="Off"
+            label="Completion timer"
+            format={formatDuration}
+            describeValue={n => (n === null ? 'off' : formatDuration(n))}
+          />
+        </CollapsibleField>
         {/* The template-side half of Task.polarity. A "quit smoking" template
             that could only produce ordinary tasks would be missing the one
             thing it exists to set up.
