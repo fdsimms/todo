@@ -372,6 +372,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const [deadlineOffsetDays, setDeadlineOffsetDays] = useState<number | null>(null);
   const [deadlineMonthDay, setDeadlineMonthDay] = useState<number | null>(null);
   const [deadlineOnCalendar, setDeadlineOnCalendar] = useState(false);
+  const [logCompletionToCalendar, setLogCompletionToCalendar] = useState(false);
   const [showDeadlinePicker, setShowDeadlinePicker] = useState(false);
   const [timeSegments, setTimeSegments] = useState<TimeOfDay[]>([]);
   const [targetCount, setTargetCount] = useState<number | null>(null);
@@ -530,6 +531,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
   const calendarReadEnabled = useSettingsStore(s => s.calendarReadEnabled);
   const reminderMeetingNudgeEnabled = useSettingsStore(s => s.reminderMeetingNudgeEnabled);
   const deadlineCalendarId = useSettingsStore(s => s.deadlineCalendarId);
+  const completionCalendarId = useSettingsStore(s => s.completionCalendarId);
   const use24HourTime = useSettingsStore(s => s.use24HourTime);
   const activeHoursStart = useSettingsStore(s => s.activeHoursStart);
   const activeHoursEnd = useSettingsStore(s => s.activeHoursEnd);
@@ -624,6 +626,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       setDeadlineOffsetDays(task.deadlineOffsetDays ?? null);
       setDeadlineMonthDay(task.deadlineMonthDay ?? null);
       setDeadlineOnCalendar(task.deadlineOnCalendar ?? false);
+      setLogCompletionToCalendar(task.logCompletionToCalendar ?? false);
       setTimeSegments(task.timeSegments ?? []);
       setWindowStart(task.windowStart ?? null);
       setWindowEnd(task.windowEnd ?? null);
@@ -748,6 +751,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadlineOffsetDays: task?.deadlineOffsetDays ?? null,
       deadlineMonthDay: task?.deadlineMonthDay ?? null,
       deadlineOnCalendar: task?.deadlineOnCalendar ?? false,
+      logCompletionToCalendar: task?.logCompletionToCalendar ?? false,
       timeSegments: task ? (task.timeSegments ?? []) : (initialDraft?.timeSegments ?? []),
       windowStart: task?.windowStart ?? null,
       windowEnd: task?.windowEnd ?? null,
@@ -1017,6 +1021,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       // task that no longer has one doesn't quietly keep the flag armed for
       // whenever a deadline comes back.
       deadlineOnCalendar: deadline ? deadlineOnCalendar : false,
+      logCompletionToCalendar,
       timeSegments, windowStart, windowEnd, targetCount,
       // Cleared with the count it labels — a unit left behind on a task that is
       // no longer a target has nothing to sit beside, and would come back the
@@ -1599,6 +1604,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       deadlineOffsetDays,
       deadlineMonthDay,
       deadlineOnCalendar,
+      logCompletionToCalendar,
       timeSegments,
       windowStart, windowEnd,
       targetCount,
@@ -2979,6 +2985,46 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
                   onChange={kind => { setDeliverableKind(kind); closeField('deliverable'); }}
                 />
               </CollapsibleField>
+            ),
+          },
+          // Another "what does completing this mean" question, and — like
+          // deliverable above — not gated on any other field: it answers to
+          // completion itself, not to a deadline the way the calendar toggle
+          // in the Schedule group does.
+          {
+            key: 'logCompletionToCalendar', label: 'Log to calendar',
+            keywords: ['calendar', 'event', 'log', 'history', 'record'],
+            node: (
+              <TouchableOpacity
+                style={styles.optionRow}
+                onPress={() => {
+                  if (!completionCalendarId) return;
+                  haptics.tap();
+                  setLogCompletionToCalendar(v => !v);
+                }}
+                activeOpacity={interaction.activeOpacity}
+                disabled={!completionCalendarId}
+                accessibilityRole="switch"
+                accessibilityLabel="Log this task's completion to your calendar"
+                accessibilityState={{ checked: logCompletionToCalendar, disabled: !completionCalendarId }}
+              >
+                <Ionicons
+                  name="calendar-outline"
+                  size={18}
+                  color={logCompletionToCalendar ? colors.accent : colors.textSecondary}
+                />
+                <View style={styles.optionContent}>
+                  <Text style={styles.optionLabel}>Log to calendar</Text>
+                  <Text style={styles.optionHint}>
+                    {completionCalendarId
+                      ? 'A calendar event when you complete this task'
+                      : 'Pick a calendar to write to in Settings › Calendar first'}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, logCompletionToCalendar && styles.toggleOn]}>
+                  <View style={[styles.toggleKnob, logCompletionToCalendar && styles.toggleKnobOn]} />
+                </View>
+              </TouchableOpacity>
             ),
           },
         ]}

@@ -264,7 +264,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
  *   notification schedules. Shared, both devices would fire the same
  *   notification and every reminder would arrive twice.
  * - `calendarIds`, `calendarReadEnabled`, `calendarPeopleHistory`,
- *   `deadlineCalendarId`, `mealCalendarId`, `remindersImport*`,
+ *   `deadlineCalendarId`, `completionCalendarId`, `mealCalendarId`, `remindersImport*`,
  *   `groceryImport*` — identifiers for calendars and lists that exist on one
  *   device. Wrong, not just useless, on the other. `calendarPeopleHistory`
  *   is a preference rather than an id, but it refines `calendarReadEnabled`

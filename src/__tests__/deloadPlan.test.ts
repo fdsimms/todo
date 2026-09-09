@@ -121,6 +121,8 @@ const BASE: Task = {
   generatedSourceId: null,
   deadlineOnCalendar: false,
   calendarEventId: null,
+  logCompletionToCalendar: false,
+  completionCalendarEventId: null,
   timeBlockEventId: null,
   pendingImport: null,
   backfillDismissedFields: [],

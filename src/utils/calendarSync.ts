@@ -334,6 +334,43 @@ export async function deleteCalendarEvent(eventId: string): Promise<void> {
   }
 }
 
+/**
+ * The title and span a point-in-time event carries. Separate from
+ * `AllDayEventFields` rather than a shared shape with an optional end: an
+ * all-day event is a whole calendar day and a timed one is a real interval,
+ * and giving the timed shape its own `start`/`end` keeps a caller from
+ * passing a bare `date` here and getting a zero-length event by accident.
+ */
+export interface TimedEventFields {
+  title: string;
+  start: Date;
+  end: Date;
+}
+
+/**
+ * Writes a fresh, silent, point-in-time event and returns its id, or null on
+ * any failure — same resolve-or-shrug shape as `createAllDayEvent` above.
+ * Modeled on it directly: only `allDay: false` and a real `start`/`end`
+ * differ, since a timed event has no exclusive-end-date quirk to work around.
+ */
+export async function createTimedEvent(
+  calendarId: string,
+  fields: TimedEventFields
+): Promise<string | null> {
+  if (Platform.OS !== 'ios') return null;
+  try {
+    const id = await calendar().createEventAsync(calendarId, {
+      title: fields.title,
+      startDate: fields.start,
+      endDate: fields.end,
+      allDay: false,
+    });
+    return id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ---- Time blocks (#1492) -------------------------------------------------
 //
 // The other half of the write, and it works the opposite way round to the

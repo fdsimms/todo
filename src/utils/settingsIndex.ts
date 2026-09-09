@@ -438,6 +438,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['friends', 'family', 'history', 'together', 'name', 'title', 'suggest', 'past'] },
   { id: 'deadlineCalendar', groupId: 'capture', label: 'Write deadlines to', section: 'Deadlines on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync'] },
+  { id: 'completionCalendar', groupId: 'capture', label: 'Write completions to', section: 'Completions on your calendar',
+    keywords: ['event', 'export', 'google', 'sync', 'log', 'history', 'record'] },
   { id: 'mealCalendar', groupId: 'capture', label: 'Write meals to', section: 'Meals on your calendar',
     keywords: ['all-day', 'event', 'export', 'google', 'sync', 'meal plan', 'dinner', 'share', 'household', 'family'],
     kitchen: true },

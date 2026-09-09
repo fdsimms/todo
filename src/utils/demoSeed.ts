@@ -172,6 +172,12 @@ export function seedDemoData(): void {
     // notes and a link only show on that screen once a task in the plan
     // actually carries one.
     linkUrl: 'https://example.com/q3-roadmap-draft',
+    // Nothing here says logCompletionToCalendar reads as a feature the app
+    // doesn't have — no calendar is picked in demo mode's own settings, so
+    // completing this task shows the toggle without ever reaching a real
+    // device calendar (completionCalendarSync.ts's demo-mode gate covers it
+    // either way).
+    logCompletionToCalendar: true,
   });
 
   // Nothing here says Work, #admin or XXS — the seeded title rule above does,
