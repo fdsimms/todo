@@ -120,6 +120,11 @@ function stubPipeline(saved: { base64?: string | null; uri?: string; width?: num
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // clearAllMocks only clears calls/results, not an implementation set with
+  // mockImplementation — mockDelete's own override is harmless (discardTempPhoto
+  // swallows it), but a test that throws through mockMove leaves every later
+  // test's move() throwing too unless it's reset back to a no-op here.
+  mockMove.mockReset();
   mockFileExists = true;
   mockDirExists = false;
 });
@@ -450,6 +455,44 @@ describe('pickRecipeImage', () => {
 
     await expect(pickRecipeImage('library')).resolves.toMatchObject({ status: 'failed' });
     expect(mockMove).not.toHaveBeenCalled();
+  });
+
+  describe('clipboard paste', () => {
+    it('reports a failure without touching any permission when nothing is copied', async () => {
+      mockGetImage.mockResolvedValue(null);
+
+      await expect(pickRecipeImage('clipboard')).resolves.toMatchObject({ status: 'failed' });
+      expect(mockRequestCamera).not.toHaveBeenCalled();
+      expect(mockRequestLibrary).not.toHaveBeenCalled();
+    });
+
+    it('writes the pasted image to a temp file, resizes on the display-size cap, and moves it into the document directory', async () => {
+      mockGetImage.mockResolvedValue({
+        data: 'data:image/png;base64,QUJD',
+        size: { width: 4032, height: 3024 },
+      });
+      stubPipeline({ uri: 'file:///cache/out.jpg', width: 1568, height: 1176 });
+
+      const result = await pickRecipeImage('clipboard');
+
+      expect(mockWrite).toHaveBeenCalledWith(expect.stringContaining('file:///cache/'), 'QUJD', { encoding: 'base64' });
+      expect(mockManipulate).toHaveBeenCalledWith(expect.stringContaining('file:///cache/'));
+      expect(mockResize).toHaveBeenCalledWith({ width: MAX_IMAGE_EDGE });
+      expect(mockMove).toHaveBeenCalledTimes(1);
+      expect(result).toMatchObject({ status: 'ok', image: { width: 1568, height: 1176 } });
+    });
+
+    it('reports a failure rather than rejecting when the manipulator throws', async () => {
+      mockGetImage.mockResolvedValue({
+        data: 'data:image/png;base64,QUJD',
+        size: { width: 1200, height: 900 },
+      });
+      mockManipulate.mockImplementation(() => { throw new Error('corrupt image'); });
+
+      await expect(pickRecipeImage('clipboard')).resolves.toEqual({
+        status: 'failed', message: 'corrupt image',
+      });
+    });
   });
 });
 

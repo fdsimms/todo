@@ -150,24 +150,25 @@ async function encodePickedPhoto(uri: string, width: number, height: number): Pr
 }
 
 /**
- * The clipboard half of `pickRecipePhoto` — reads whatever image the user
- * last copied (a screenshot, a photo copied out of Messages or Safari) rather
- * than sending them back through the camera or library to find it again.
+ * Reads whatever image is on the system clipboard — a screenshot, a photo
+ * copied out of Messages or Safari — and writes it to a temp PNG in the
+ * cache directory, since every downstream step (`encodePickedPhoto`, the
+ * manipulator move in `pickRecipeImage`, and, for a receipt, the on-device
+ * OCR read that follows) works from a file `uri`, not from bytes already in
+ * JS. Shared by the clipboard branches of `pickRecipePhoto` and
+ * `pickRecipeImage` below.
  *
  * No permission prompt: unlike camera/library access, `expo-clipboard` needs
  * none, and iOS shows its own one-time paste banner rather than an app-level
  * grant — there is nothing here to check before reading.
  *
- * The pasted bytes are written to a temp PNG in the cache directory first,
- * because `encodePickedPhoto` (and, for a receipt, the on-device OCR read
- * that follows it) both work from a file `uri`, not from bytes already in JS.
+ * Null rather than a `RecipePhotoResult`/`RecipeImageResult` itself, so each
+ * caller can word its own "nothing to paste" message for what it's about
+ * to attach.
  */
-async function pickClipboardPhoto(): Promise<RecipePhotoResult> {
-  const Clipboard = clipboard();
-  const image = await Clipboard.getImageAsync({ format: 'png' });
-  if (!image) {
-    return { status: 'failed', message: 'No image on the clipboard. Copy one, then try pasting.' };
-  }
+async function writeClipboardImageToTempFile(): Promise<{ uri: string; width: number; height: number } | null> {
+  const image = await clipboard().getImageAsync({ format: 'png' });
+  if (!image) return null;
 
   const base64 = image.data.replace(/^data:image\/\w+;base64,/, '');
   const { File, Paths } = fileSystem();
@@ -175,7 +176,17 @@ async function pickClipboardPhoto(): Promise<RecipePhotoResult> {
   temp.create();
   temp.write(base64, { encoding: 'base64' });
 
-  const encoded = await encodePickedPhoto(temp.uri, image.size.width, image.size.height);
+  return { uri: temp.uri, width: image.size.width, height: image.size.height };
+}
+
+/** The clipboard half of `pickRecipePhoto` — see `writeClipboardImageToTempFile`. */
+async function pickClipboardPhoto(): Promise<RecipePhotoResult> {
+  const pasted = await writeClipboardImageToTempFile();
+  if (!pasted) {
+    return { status: 'failed', message: 'No image on the clipboard. Copy one, then try pasting.' };
+  }
+
+  const encoded = await encodePickedPhoto(pasted.uri, pasted.width, pasted.height);
   if (!encoded.ok) return { status: 'failed', message: encoded.message };
 
   return {
@@ -185,7 +196,7 @@ async function pickClipboardPhoto(): Promise<RecipePhotoResult> {
       mediaType: encoded.mediaType,
       width: encoded.width,
       height: encoded.height,
-      sourceUri: temp.uri,
+      sourceUri: pasted.uri,
     },
   };
 }
@@ -277,8 +288,40 @@ function recipeImageDirectory(): import('expo-file-system').Directory {
 }
 
 /**
- * Takes or picks a photo and saves it into the app's document directory,
- * sized for display.
+ * The shared downscale-and-persist step behind `pickRecipeImage`, run against
+ * a file already on disk — a picker asset, or a clipboard paste written to a
+ * temp file by `writeClipboardImageToTempFile`. Moves the result into the
+ * document directory so it survives the app being closed and reopened.
+ */
+async function saveIntoRecipeImageDirectory(uri: string, width: number, height: number): Promise<RecipeImageResult> {
+  const { ImageManipulator, SaveFormat } = imageManipulator();
+  const context = ImageManipulator.manipulate(uri);
+  const target = photoTargetSize(width, height, MAX_IMAGE_EDGE);
+  if (target) context.resize(target);
+
+  const rendered = await context.renderAsync();
+  const saved = await rendered.saveAsync({
+    compress: PHOTO_COMPRESS,
+    format: SaveFormat.JPEG,
+  });
+  if (!saved.uri) return { status: 'failed', message: 'That photo could not be read.' };
+
+  const { File } = fileSystem();
+  const dest = new File(recipeImageDirectory(), `${generateId()}.jpg`);
+  // Awaited, not fire-and-forget: `move()` became asynchronous in SDK 57
+  // (it was synchronous through SDK 54). Left floating, this returned `ok`
+  // with `dest.uri` before the move had necessarily landed, and a rejection
+  // escaped the try/catch below as an unhandled rejection — so a photo that
+  // failed to save still reported success. `tsc` can't catch that: ignoring
+  // a returned promise isn't a type error.
+  await new File(saved.uri).move(dest);
+
+  return { status: 'ok', image: { uri: dest.uri, width: saved.width, height: saved.height } };
+}
+
+/**
+ * Takes, picks, or pastes a photo and saves it into the app's document
+ * directory, sized for display.
  *
  * Unlike `pickRecipePhoto` above — which exists to feed the Messages API and
  * is deliberately never asked to persist anything — this *is* the persistence
@@ -289,6 +332,14 @@ function recipeImageDirectory(): import('expo-file-system').Directory {
  */
 export async function pickRecipeImage(source: RecipePhotoSource): Promise<RecipeImageResult> {
   try {
+    if (source === 'clipboard') {
+      const pasted = await writeClipboardImageToTempFile();
+      if (!pasted) {
+        return { status: 'failed', message: 'No image on the clipboard. Copy one, then try pasting.' };
+      }
+      return await saveIntoRecipeImageDirectory(pasted.uri, pasted.width, pasted.height);
+    }
+
     const ImagePicker = imagePicker();
 
     const permission = source === 'camera'
@@ -315,29 +366,7 @@ export async function pickRecipeImage(source: RecipePhotoSource): Promise<Recipe
     const asset = result.assets?.[0];
     if (!asset?.uri) return { status: 'failed', message: 'No photo came back from the picker.' };
 
-    const { ImageManipulator, SaveFormat } = imageManipulator();
-    const context = ImageManipulator.manipulate(asset.uri);
-    const target = photoTargetSize(asset.width, asset.height, MAX_IMAGE_EDGE);
-    if (target) context.resize(target);
-
-    const rendered = await context.renderAsync();
-    const saved = await rendered.saveAsync({
-      compress: PHOTO_COMPRESS,
-      format: SaveFormat.JPEG,
-    });
-    if (!saved.uri) return { status: 'failed', message: 'That photo could not be read.' };
-
-    const { File } = fileSystem();
-    const dest = new File(recipeImageDirectory(), `${generateId()}.jpg`);
-    // Awaited, not fire-and-forget: `move()` became asynchronous in SDK 57
-    // (it was synchronous through SDK 54). Left floating, this returned `ok`
-    // with `dest.uri` before the move had necessarily landed, and a rejection
-    // escaped the try/catch below as an unhandled rejection — so a photo that
-    // failed to save still reported success. `tsc` can't catch that: ignoring
-    // a returned promise isn't a type error.
-    await new File(saved.uri).move(dest);
-
-    return { status: 'ok', image: { uri: dest.uri, width: saved.width, height: saved.height } };
+    return await saveIntoRecipeImageDirectory(asset.uri, asset.width, asset.height);
   } catch (e) {
     return {
       status: 'failed',
