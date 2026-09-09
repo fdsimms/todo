@@ -360,7 +360,6 @@ export function MealPlanScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipesById = useMemo(() => recipeIndex(recipes), [recipes]);
   const markRecipeCooked = useRecipeStore(s => s.markCooked);
-  const startCookTimer = useRecipeStore(s => s.startCookTimer);
   const restoreCookStats = useRecipeStore(s => s.restoreCookStats);
 
   const leftovers = useLeftoverStore(useShallow(s => s.leftovers));
@@ -1952,17 +1951,6 @@ export function MealPlanScreen() {
         baseServingsMax={selectedRecipe?.servingsMax}
         onSetGuests={selected ? ids => setMealGuests(selected.id, ids) : undefined}
         onSetCooked={selected ? cooked => setCooked(selected, cooked) : undefined}
-        onStartCooking={
-          selected?.recipeId && recipesById.has(selected.recipeId)
-            ? () => {
-                // The timer lives on the recipe, so starting it here means the
-                // screen opens with it already running — no navigation param,
-                // no second source of truth. Idempotent if one is already going.
-                startCookTimer(selected.recipeId!);
-                navigation.navigate('RecipeDetail', { recipeId: selected.recipeId });
-              }
-            : undefined
-        }
         onOpenRecipe={
           selected?.recipeId && recipesById.has(selected.recipeId)
             ? () => navigation.navigate('RecipeDetail', { recipeId: selected.recipeId })

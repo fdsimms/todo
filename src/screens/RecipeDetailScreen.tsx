@@ -1712,13 +1712,9 @@ export function RecipeDetailScreen() {
               it leads. Its label is a word where the others are two, which is
               what keeps three buttons on a 390pt line.
 
-              It says "Steps", not "Cook", because "cook" was already taken:
-              a planned meal's sheet has a "Start cooking" row that starts the
-              recipe's timer and navigates here, so arriving that way and being
-              offered "Cook" read as though the tap hadn't worked. Both wore the
-              same flame glyph too. The button is named for what it shows
-              instead, matching the "Steps" section further up this screen, and
-              the flame stays with the timer. */}
+              It says "Steps", not "Cook" — named for what it shows, matching
+              the "Steps" section further up this screen, and leaving the
+              flame glyph to the timer. */}
           {cookableCount > 0 && !featureHidden('cookMode', simpleMode) && (
             <TouchableOpacity
               style={styles.secondary}
