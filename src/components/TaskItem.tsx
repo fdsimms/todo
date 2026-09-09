@@ -980,9 +980,9 @@ export const TaskItem = React.memo(function TaskItem({
   const shortfallGroceryItems = useGroceryStore(s => (shortfallEntry ? s.items : EMPTY_GROCERY_ITEMS));
   const shortfallItemSubs = useGroceryStore(s => (shortfallEntry ? s.itemSubs : EMPTY_ITEM_SUBS));
   const shortfallRecipes = useRecipeStore(s => (shortfallEntry ? s.recipes : EMPTY_RECIPES));
-  const missingCount = useMemo(() => {
+  const shortfallRows = useMemo(() => {
     if (!shortfallEntry) return null;
-    const rows = mealShortfallRows(
+    return mealShortfallRows(
       shortfallEntry,
       recipeMap(shortfallRecipes),
       shortfallGroceryItems,
@@ -990,13 +990,19 @@ export const TaskItem = React.memo(function TaskItem({
       standingSwapMap(shortfallItemSubs, shortfallGroceryItems),
       new Date()
     );
-    // No chip rather than "0 to buy" — a shortfall task can outlive its own
-    // reason by up to one sweep (the item got bought some other way, the
-    // meal's ingredients changed), and naming a shortfall of zero would be
-    // the app stating something false. Covers both null ("not shoppable any
-    // more" — cooked, unlinked, deleted recipe) and an empty row list.
-    return rows && rows.length > 0 ? rows.length : null;
   }, [shortfallEntry, shortfallRecipes, shortfallGroceryItems, shortfallItemSubs]);
+  // No chip rather than "0 to buy" — a shortfall task can outlive its own
+  // reason by up to one sweep (the item got bought some other way, the
+  // meal's ingredients changed), and naming a shortfall of zero would be
+  // the app stating something false. Covers both null ("not shoppable any
+  // more" — cooked, unlinked, deleted recipe) and an empty row list.
+  const missingCount = shortfallRows && shortfallRows.length > 0 ? shortfallRows.length : null;
+  // Same "nudge, not a lock" treatment as pantryCheckReady/pantryReviewReady/
+  // deloadReady just below: everything on the list got bought, so the row is
+  // still sitting here only because the sweep that clears it (see
+  // staleMealShortfallTasks) hasn't run yet. Ready once the row resolves to a
+  // real, still-imminent meal with nothing left to buy.
+  const mealShortfallReady = shortfallRows !== null && shortfallRows.length === 0 && !task.completed;
 
   // The stretches the subtasks split the countdown into, and which one the
   // clock is in. Empty for a timed task nobody apportioned, which is what keeps
@@ -1838,7 +1844,7 @@ export const TaskItem = React.memo(function TaskItem({
                       ? `${task.title}, health target reached, complete`
                     : mealPlanReady
                       ? `${task.title}, all ${MEAL_PLAN_NUDGE_SLOT_COUNT} meals planned, complete`
-                    : pantryCheckReady || pantryReviewReady || deloadReady
+                    : pantryCheckReady || pantryReviewReady || deloadReady || mealShortfallReady
                       ? `${task.title}, ready, complete`
                     : mealSlotChooseSource
                       ? `${task.title}, pick a meal`
@@ -1872,7 +1878,8 @@ export const TaskItem = React.memo(function TaskItem({
               healthReady ||
               pantryCheckReady ||
               pantryReviewReady ||
-              deloadReady) &&
+              deloadReady ||
+              mealShortfallReady) &&
             styles.circleReady,
           (showQuotaMeter || quotaPartial) && styles.circleQuota,
           // Last of the state styles, so a broken day wins the box outright:
