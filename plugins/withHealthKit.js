@@ -11,16 +11,16 @@ const { withEntitlementsPlist } = require('@expo/config-plugins');
 //   terminated at the first read if the key is missing. It lives in app.json's
 //   ios.infoPlist beside NSAlarmKitUsageDescription, which is where every other
 //   usage string in this project lives.
-// - **Only the read half is ever exercised, but the write string is still
-//   required.** Nothing here writes: this app reads a number somebody else's
-//   app recorded, and every `requestAuthorization`/`getRequestStatusForAuthorization`
-//   call in TodoHealthBridgeModule.swift passes `toShare: []`, so no write
-//   type is ever requested and the system permission sheet shows no share row.
-//   But App Store Connect's Info.plist validator scans for the *selector*
-//   `requestAuthorization(toShare:read:)` being linked at all, not for what's
-//   in the set passed to it — so NSHealthUpdateUsageDescription still has to
-//   exist in app.json's ios.infoPlist, worded to say plainly that nothing is
-//   ever written, or every build is rejected before it reaches a device.
+// - **One write type, requested on its own.** Almost everything here still
+//   reads: steps, sleep and eight nutrients, none of them ever written. The
+//   one exception is dietary water, logged when a task that opted into it
+//   completes (see healthCompletionSync.ts) — its own `requestWriteAuthorization`
+//   call in TodoHealthBridgeModule.swift passes only `dietaryWater` in
+//   `toShare`, separately from the read call, so reading steps never puts a
+//   water-sharing row on the same permission sheet. NSHealthUpdateUsageDescription
+//   in app.json's ios.infoPlist has to say what's actually written now, not
+//   the "nothing, ever" wording this comment used to carry when the write
+//   string was required but never truly exercised.
 // - **No distribution approval to wait for.** Screen Time's entitlement is
 //   granted per bundle id by a manual request that dev builds don't need and
 //   TestFlight does. HealthKit has no such gate: turning the capability on is

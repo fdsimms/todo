@@ -14,11 +14,17 @@ import { isDemoModeActive } from './demoState';
  * it is a real read the demo has no business making, and anything derived from
  * it is a claim about someone that outlives the demo only by luck.
  *
- * Unlike the Screen Time gate there is nothing here that *writes* anywhere, and
- * nothing that drains a queue: every call is a read, and the worst a leak could
- * do is show a true number in a fictional context. That is still enough. The
- * gate is also what keeps the permission sheet from ever being raised by a demo
- * session, which is the visible half.
+ * This gate now covers one write as well as every read — a dietary-water
+ * sample, logged when a task that opted into it completes (see
+ * `healthCompletionSync.ts`) — and demo mode is the sharper case for that
+ * half, not the milder one the note above still describes for reads. A read
+ * leak shows a true number in a fictional context; a write leak would put a
+ * *real* sample in the person's *real* Health record, sourced from a
+ * demo-seeded completion that never happened. Nothing here drains a queue the
+ * way the Screen Time/widget gates' writes do, but "worse than a read leak"
+ * is still the operative comparison, not "as harmless as one". The gate is
+ * also what keeps either permission sheet — read or write — from ever being
+ * raised by a demo session, which is the visible half.
  *
  * Returns null for every reason a caller has nothing to do — not iOS, demo mode
  * on, or no native module in the binary — so a caller is one `if` rather than a

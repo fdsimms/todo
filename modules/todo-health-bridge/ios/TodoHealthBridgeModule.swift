@@ -8,10 +8,16 @@ import HealthKit
 /// The app's half of Apple Health, and deliberately the smallest half that
 /// answers a question.
 ///
-/// Everything here is read-only. Nothing writes a sample, nothing asks for
-/// share access, and the entitlement plugin claims only the read half
-/// (`plugins/withHealthKit.js`) — this app consults a number another app
-/// recorded, it never records one.
+/// Almost everything here is still read-only: this app consults a number
+/// another app recorded for steps, sleep and eight nutrients, and never
+/// records any of them. The one exception is dietary water — logged when a
+/// task that opted into it completes (`writeWaterSample` below,
+/// `healthCompletionSync.ts` on the JS side) — which is a deliberately
+/// separate ask (`writeTypes`, its own authorization functions) from
+/// everything the read half does, so reading steps never puts a share
+/// permission on screen for somebody who never asked to write anything. See
+/// `docs/arch/health-data.md` for why water is the one type that earned a
+/// write path.
 ///
 /// Every function returns a value rather than Void, the same rule
 /// TodoWidgetBridgeModule.swift states at length: RN's exception-to-JSError
@@ -31,6 +37,13 @@ import HealthKit
 /// say: whether asking again would put a sheet on screen. Every read answers
 /// `null` for "no number", and null means *no number* — refused, no data
 /// recorded, or a device that never had any, with nothing to tell them apart.
+///
+/// **The write side is the mirror of that, and genuinely can say whether it
+/// was allowed.** `authorizationStatus(for:)` is truthful for share/write
+/// types — that's the same call, the obscuring is specific to reads — so
+/// `writeAuthorizationStatus` below is a plain, synchronous, honest answer:
+/// not determined, denied, or authorized. Nothing about this file's read-side
+/// limitation applies to it.
 ///
 /// **Every async function here settles its promise on every path, including the
 /// one where the exception catcher swallows something.** Only the *start* of
@@ -70,35 +83,125 @@ public class TodoHealthBridgeModule: Module {
     if let sleep = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis) {
       types.insert(sleep)
     }
+    if let sodium = HKQuantityType.quantityType(forIdentifier: .dietarySodium) {
+      types.insert(sodium)
+    }
+    if let protein = HKQuantityType.quantityType(forIdentifier: .dietaryProtein) {
+      types.insert(protein)
+    }
+    if let satFat = HKQuantityType.quantityType(forIdentifier: .dietaryFatSaturated) {
+      types.insert(satFat)
+    }
+    if let fiber = HKQuantityType.quantityType(forIdentifier: .dietaryFiber) {
+      types.insert(fiber)
+    }
+    if let sugar = HKQuantityType.quantityType(forIdentifier: .dietarySugar) {
+      types.insert(sugar)
+    }
+    if let caffeine = HKQuantityType.quantityType(forIdentifier: .dietaryCaffeine) {
+      types.insert(caffeine)
+    }
+    if let water = HKQuantityType.quantityType(forIdentifier: .dietaryWater) {
+      types.insert(water)
+    }
+    if let energy = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) {
+      types.insert(energy)
+    }
     return types
   }
 
-  /// The step total to report for one statistics bucket, or nil for no samples.
+  /// Every type this app will ever ask to *write* — one, today. Deliberately
+  /// its own set rather than folded into `readTypes`: a share type is a real
+  /// consequence (a sample landing in somebody's actual Health record) that a
+  /// read type isn't, so it's requested on its own (see `requestWriteAuthorization`)
+  /// rather than riding along with whatever's being read.
+  private var writeTypes: Set<HKSampleType> {
+    var types = Set<HKSampleType>()
+    if let water = HKQuantityType.quantityType(forIdentifier: .dietaryWater) {
+      types.insert(water)
+    }
+    return types
+  }
+
+  /// The total to report for one statistics bucket, in `unit`, or nil for no
+  /// samples.
   ///
-  /// `.separateBySource` on top of the sum because a phone and a watch both
-  /// record steps for the same walk, and HealthKit does not de-duplicate them
-  /// for a statistics query — the Health app's own total is computed by logic
-  /// Apple has never exposed. Summing every source double-counts anyone wearing
-  /// a Watch, which is most of the people this is for. Taking the largest
-  /// single source under-counts a day split between devices, and that is the
-  /// error to prefer: it never claims more steps than some one device actually
-  /// recorded, which is the difference between a reading and a guess.
+  /// `.separateBySource` on top of the sum because two sources can both record
+  /// the same real-world thing — a phone and a watch both counting steps for
+  /// one walk, or two food-logging apps both writing the same meal's sodium —
+  /// and HealthKit does not de-duplicate for a statistics query. Summing every
+  /// source double-counts whichever of those applies to a given person.
+  /// Taking the largest single source under-counts a day split across devices
+  /// or apps instead, and that is the error to prefer: it never claims more
+  /// than some one source actually recorded, which is the difference between a
+  /// reading and a guess.
   ///
-  /// Shared by the one-window read and the daily one so the rule cannot drift
-  /// between them, which is the whole reason it is a function.
-  private static func bestSum(_ statistics: HKStatistics) -> Double? {
+  /// Shared by every cumulative quantity this reads (steps and the eight
+  /// nutrients) so the rule cannot drift between them, which is the whole
+  /// reason it is a function rather than being written out at each call site.
+  private static func bestSum(_ statistics: HKStatistics, unit: HKUnit) -> Double? {
     var best: Double? = nil
     if let sources = statistics.sources, !sources.isEmpty {
       for source in sources {
         guard let quantity = statistics.sumQuantity(for: source) else { continue }
-        let value = quantity.doubleValue(for: HKUnit.count())
+        let value = quantity.doubleValue(for: unit)
         if best == nil || value > best! { best = value }
       }
     }
     if best == nil, let total = statistics.sumQuantity() {
-      best = total.doubleValue(for: HKUnit.count())
+      best = total.doubleValue(for: unit)
     }
     return best
+  }
+
+  /// One `HKStatisticsCollectionQuery` over `identifier`, bucketed the same
+  /// way steps and sodium already were, writing each day's `bestSum` through
+  /// `write` and calling `finish` when the query's own callback fires.
+  ///
+  /// Pulled out once a fourth cumulative quantity (saturated fat) would have
+  /// made this the fourth near-identical fifteen-line block in this
+  /// function — same predicate, same options, same anchor, differing only in
+  /// which identifier and unit feed `bestSum` and which array the result
+  /// lands in. `write` closes over that array directly rather than this
+  /// taking an `inout` parameter, because an `inout` can't survive across the
+  /// query's own escaping completion handler.
+  private func runDietQuery(
+    identifier: HKQuantityTypeIdentifier,
+    unit: HKUnit,
+    anchor: Date,
+    end: Date,
+    starts: [Date],
+    write: @escaping (Int, Double) -> Void,
+    finish: @escaping () -> Void
+  ) {
+    guard let type = HKQuantityType.quantityType(forIdentifier: identifier) else {
+      finish()
+      return
+    }
+    let query = HKStatisticsCollectionQuery(
+      quantityType: type,
+      quantitySamplePredicate: HKQuery.predicateForSamples(
+        withStart: anchor, end: end, options: .strictStartDate
+      ),
+      options: [.cumulativeSum, .separateBySource],
+      anchorDate: anchor,
+      intervalComponents: DateComponents(day: 1)
+    )
+    query.initialResultsHandler = { _, collection, _ in
+      collection?.enumerateStatistics(from: anchor, to: end) { statistics, _ in
+        // Which bucket a result falls *in*, rather than which bucket start it
+        // equals. The enumeration is anchored to the same instants `starts`
+        // was built from, so the two should match exactly — but "should" here
+        // means every day silently reads null if they ever don't, and a
+        // feature whose absent value is indistinguishable from a refusal
+        // cannot afford a failure that looks like no data. Same containment
+        // rule the sleep query below uses.
+        guard let i = starts.lastIndex(where: { $0 <= statistics.startDate }) else { return }
+        if let value = Self.bestSum(statistics, unit: unit) { write(i, value) }
+      }
+      finish()
+    }
+    self.store.execute(query)
   }
 
   /// The category values that count as asleep.
@@ -195,10 +298,103 @@ public class TodoHealthBridgeModule: Module {
       #endif
     }
 
+    // ─── Writing (dietary water only) ──────────────────────────────────────
+
+    /// "unavailable" | "notDetermined" | "sharingDenied" | "sharingAuthorized".
+    ///
+    /// The write mirror of `authorizationRequestStatus` above, and able to say
+    /// something that one structurally cannot: `authorizationStatus(for:)` is
+    /// truthful for share/write types (Apple's own docs draw this exact line),
+    /// so this reports what actually happened rather than only whether asking
+    /// again would show a sheet. Synchronous, since there is no daemon round
+    /// trip needed for a fact HealthKit already holds locally.
+    Function("writeAuthorizationStatus") { () -> String in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable(),
+            let water = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else {
+        return "unavailable"
+      }
+      var status = "unavailable"
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        switch self.store.authorizationStatus(for: water) {
+        case .notDetermined: status = "notDetermined"
+        case .sharingDenied: status = "sharingDenied"
+        case .sharingAuthorized: status = "sharingAuthorized"
+        @unknown default: status = "notDetermined"
+        }
+      }
+      return status
+      #else
+      return "unavailable"
+      #endif
+    }
+
+    /// Ask for water-write access. Same "unavailable" | "requested" | "failed"
+    /// shape as `requestAuthorization`, and the same reason it says no more
+    /// than that the sheet was shown — but unlike the read side, a caller that
+    /// wants the truth can simply call `writeAuthorizationStatus` right after
+    /// this resolves, rather than being stuck with "requested" forever.
+    /// `toShare: writeTypes, read: []` on purpose: this never asks to read
+    /// anything, so it can be triggered on its own from a task's water-logging
+    /// row without also raising the unrelated steps/sleep/nutrient read sheet.
+    AsyncFunction("requestWriteAuthorization") { (promise: Promise) in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable() else {
+        promise.resolve("unavailable")
+        return
+      }
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        self.store.requestAuthorization(toShare: self.writeTypes, read: []) { success, _ in
+          promise.resolve(success ? "requested" : "failed")
+        }
+        started = true
+      }
+      if !started { promise.resolve("failed") }
+      #else
+      promise.resolve("unavailable")
+      #endif
+    }
+
+    /// Writes one dietary-water sample dated now, for `milliliters`.
+    ///
+    /// One-shot, like a completion-calendar event: there is no update or
+    /// delete counterpart, because a logged drink is a historical record the
+    /// same way a calendar event logging a completion is (see
+    /// `completionCalendarSync.ts`). Resolves `false` for every reason there
+    /// is nothing to report success for: no native half, not authorized, a
+    /// non-positive amount, or the save itself failing — the caller
+    /// (`healthCompletionSync.ts`) treats all of them alike, since none of
+    /// them warrant surfacing an error to someone who just finished a task.
+    AsyncFunction("writeWaterSample") { (milliliters: Double, promise: Promise) in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable(), milliliters > 0,
+            let type = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else {
+        promise.resolve(false)
+        return
+      }
+      let quantity = HKQuantity(unit: HKUnit.literUnit(with: .milli), doubleValue: milliliters)
+      let now = Date()
+      let sample = HKQuantitySample(type: type, quantity: quantity, start: now, end: now)
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        self.store.save(sample) { success, _ in
+          promise.resolve(success)
+        }
+        started = true
+      }
+      if !started { promise.resolve(false) }
+      #else
+      promise.resolve(false)
+      #endif
+    }
+
     // ─── Reading ────────────────────────────────────────────────────────────
 
     /// One entry per logical day, as JSON:
-    /// `[{"start":"…","steps":4120,"sleepMinutes":437}, …]`, either number null.
+    /// `[{"start":"…","steps":4120,"sleepMinutes":437,"sodiumMg":1850,
+    /// "proteinG":42,"satFatG":18,"fiberG":22,"sugarG":35,"caffeineMg":180,
+    /// "waterMl":1900,"calorieKcal":2100}, …]`, any number null.
     ///
     /// The window is described as an anchor plus a day count rather than as a
     /// list of boundaries, because a logical day is exactly 1 calendar day long
@@ -213,9 +409,9 @@ public class TodoHealthBridgeModule: Module {
     /// reader uses, so there is exactly one implementation of "which day is
     /// this" in the app and it is the one with the setting.
     ///
-    /// Both numbers are nullable per day and null is not zero — a day with no
-    /// samples, a day before the phone was set up, and a day whose type was
-    /// refused all read the same way. See the module note above.
+    /// All ten numbers are nullable per day and null is not zero — a day
+    /// with no samples, a day before the phone was set up, and a day whose
+    /// type was refused all read the same way. See the module note above.
     AsyncFunction("readDailyHealth") { (anchorISO: String, days: Int, promise: Promise) in
       #if canImport(HealthKit)
       let calendar = Calendar.current
@@ -241,57 +437,82 @@ public class TodoHealthBridgeModule: Module {
 
       var steps = [Double?](repeating: nil, count: days)
       var sleepMinutes = [Double?](repeating: nil, count: days)
-      // Two queries, one promise. `resolve` is called by whichever finishes
+      var sodiumMg = [Double?](repeating: nil, count: days)
+      var proteinG = [Double?](repeating: nil, count: days)
+      var satFatG = [Double?](repeating: nil, count: days)
+      var fiberG = [Double?](repeating: nil, count: days)
+      var sugarG = [Double?](repeating: nil, count: days)
+      var caffeineMg = [Double?](repeating: nil, count: days)
+      var waterMl = [Double?](repeating: nil, count: days)
+      var calorieKcal = [Double?](repeating: nil, count: days)
+      // Ten queries, one promise. `resolve` is called by whichever finishes
       // last, and `pending` is only ever touched on the health store's own
       // serial callback queue, so the count needs no lock.
-      var pending = 2
+      var pending = 10
       let finish = {
         pending -= 1
         guard pending == 0 else { return }
         let entries: [String] = (0..<days).map { i in
-          let stepPart = steps[i].map { "\(Int($0.rounded()))" } ?? "null"
-          let sleepPart = sleepMinutes[i].map { "\(Int($0.rounded()))" } ?? "null"
-          return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"steps\":\(stepPart),\"sleepMinutes\":\(sleepPart)}"
+          let part: (Double?) -> String = { $0.map { "\(Int($0.rounded()))" } ?? "null" }
+          return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"steps\":\(part(steps[i])),"
+            + "\"sleepMinutes\":\(part(sleepMinutes[i])),\"sodiumMg\":\(part(sodiumMg[i])),"
+            + "\"proteinG\":\(part(proteinG[i])),\"satFatG\":\(part(satFatG[i])),\"fiberG\":\(part(fiberG[i])),"
+            + "\"sugarG\":\(part(sugarG[i])),\"caffeineMg\":\(part(caffeineMg[i])),\"waterMl\":\(part(waterMl[i])),"
+            + "\"calorieKcal\":\(part(calorieKcal[i]))}"
         }
         promise.resolve("[" + entries.joined(separator: ",") + "]")
       }
 
       var started = false
       TodoHealthExceptionCatcher.runCatchingExceptions {
-        // ─── Steps: one collection query over the whole span ───────────────
+        // ─── Steps and nine nutrients: one collection query each, over the
+        // whole span ─────────────────────────────────────────────────────────
         //
         // A collection query rather than one statistics query per day, which
         // is what an anchor-plus-interval window is for: 90 round trips to the
         // health daemon to draw one insight is the version of this that gets
-        // noticed.
-        if let type = HKQuantityType.quantityType(forIdentifier: .stepCount) {
-          let query = HKStatisticsCollectionQuery(
-            quantityType: type,
-            quantitySamplePredicate: HKQuery.predicateForSamples(
-              withStart: anchor, end: end, options: .strictStartDate
-            ),
-            options: [.cumulativeSum, .separateBySource],
-            anchorDate: anchor,
-            intervalComponents: DateComponents(day: 1)
-          )
-          query.initialResultsHandler = { _, collection, _ in
-            collection?.enumerateStatistics(from: anchor, to: end) { statistics, _ in
-              // Which bucket a result falls *in*, rather than which bucket start
-              // it equals. The enumeration is anchored to the same instants
-              // `starts` was built from, so the two should match exactly — but
-              // "should" here means every day silently reads null if they ever
-              // don't, and a feature whose absent value is indistinguishable
-              // from a refusal cannot afford a failure that looks like no data.
-              // Same containment rule the sleep half below uses.
-              guard let i = starts.lastIndex(where: { $0 <= statistics.startDate }) else { return }
-              steps[i] = Self.bestSum(statistics)
-            }
-            finish()
-          }
-          self.store.execute(query)
-        } else {
-          finish()
-        }
+        // noticed. All ten are cumulative and per-source for the same reason:
+        // a phone and a watch both counting steps for one walk, or two
+        // food-logging apps both writing the same meal's sodium, would
+        // otherwise be double-counted — see `bestSum`. This app never writes
+        // any of the nine nutrients itself, so every number here came from
+        // whatever food-logging app the person already uses.
+        self.runDietQuery(
+          identifier: .stepCount, unit: .count(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in steps[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietarySodium, unit: HKUnit.gramUnit(with: .milli), anchor: anchor, end: end, starts: starts,
+          write: { i, value in sodiumMg[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryProtein, unit: .gram(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in proteinG[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryFatSaturated, unit: .gram(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in satFatG[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryFiber, unit: .gram(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in fiberG[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietarySugar, unit: .gram(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in sugarG[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryCaffeine, unit: HKUnit.gramUnit(with: .milli), anchor: anchor, end: end, starts: starts,
+          write: { i, value in caffeineMg[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryWater, unit: HKUnit.literUnit(with: .milli), anchor: anchor, end: end, starts: starts,
+          write: { i, value in waterMl[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryEnergyConsumed, unit: .kilocalorie(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in calorieKcal[i] = value }, finish: finish
+        )
 
         // ─── Sleep: one sample query, bucketed here ────────────────────────
         //

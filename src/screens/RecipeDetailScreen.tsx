@@ -642,6 +642,7 @@ export function RecipeDetailScreen() {
     const options: Array<{ text: string; style?: 'default' | 'cancel' | 'destructive'; onPress?: () => void }> = [
       { text: 'Take photo', onPress: () => pickImage('camera') },
       { text: 'Choose from library', onPress: () => pickImage('library') },
+      { text: 'Paste image', onPress: () => pickImage('clipboard') },
     ];
     if (recipe.imagePath) {
       options.push({ text: 'Remove photo', style: 'destructive', onPress: () => setImage(recipe.id, null) });
