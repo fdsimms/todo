@@ -444,14 +444,18 @@ export function seedDemoData(): void {
   // in and closes out in without it counting as a miss.
   updateTask(eyes.id, { progressCount: 7 });
 
-  // A recurring task still sitting on yesterday's date, unresolved — the one
-  // row that makes the morning check-in sheet actually have something to
-  // show. Without this the feature is invisible in the demo: nothing else
-  // seeded above is both recurring and left dangling on a past day.
+  // A recurring task still sitting on yesterday's date, unresolved, with a
+  // deadline set — the one row that makes the morning check-in sheet
+  // actually have something to show. The check-in only asks about tasks
+  // with a deadline (see morningCheckIn.ts), so without one this row would
+  // be invisible to it — and without this row the feature is invisible in
+  // the demo altogether: nothing else seeded above is recurring, left
+  // dangling on a past day, and deadlined.
   addTask({
     title: 'Floss',
     category: 'Health',
     dueDate: addDays(today, -1).toISOString(),
+    deadline: addDays(today, -1).toISOString(),
     recurrenceType: 'daily',
     recurrenceInterval: 1,
   });
