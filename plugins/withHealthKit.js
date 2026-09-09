@@ -11,11 +11,16 @@ const { withEntitlementsPlist } = require('@expo/config-plugins');
 //   terminated at the first read if the key is missing. It lives in app.json's
 //   ios.infoPlist beside NSAlarmKitUsageDescription, which is where every other
 //   usage string in this project lives.
-// - **Only the read half is claimed.** There is no
-//   NSHealthUpdateUsageDescription and no share request, because nothing here
-//   writes: this app reads a number somebody else's app recorded. Asking for
-//   write access it never uses would put a second, unearned row in the
-//   permission sheet.
+// - **Only the read half is ever exercised, but the write string is still
+//   required.** Nothing here writes: this app reads a number somebody else's
+//   app recorded, and every `requestAuthorization`/`getRequestStatusForAuthorization`
+//   call in TodoHealthBridgeModule.swift passes `toShare: []`, so no write
+//   type is ever requested and the system permission sheet shows no share row.
+//   But App Store Connect's Info.plist validator scans for the *selector*
+//   `requestAuthorization(toShare:read:)` being linked at all, not for what's
+//   in the set passed to it — so NSHealthUpdateUsageDescription still has to
+//   exist in app.json's ios.infoPlist, worded to say plainly that nothing is
+//   ever written, or every build is rejected before it reaches a device.
 // - **No distribution approval to wait for.** Screen Time's entitlement is
 //   granted per bundle id by a manual request that dev builds don't need and
 //   TestFlight does. HealthKit has no such gate: turning the capability on is
