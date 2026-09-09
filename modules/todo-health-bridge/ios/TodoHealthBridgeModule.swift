@@ -79,6 +79,21 @@ public class TodoHealthBridgeModule: Module {
     if let satFat = HKQuantityType.quantityType(forIdentifier: .dietaryFatSaturated) {
       types.insert(satFat)
     }
+    if let fiber = HKQuantityType.quantityType(forIdentifier: .dietaryFiber) {
+      types.insert(fiber)
+    }
+    if let sugar = HKQuantityType.quantityType(forIdentifier: .dietarySugar) {
+      types.insert(sugar)
+    }
+    if let caffeine = HKQuantityType.quantityType(forIdentifier: .dietaryCaffeine) {
+      types.insert(caffeine)
+    }
+    if let water = HKQuantityType.quantityType(forIdentifier: .dietaryWater) {
+      types.insert(water)
+    }
+    if let energy = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) {
+      types.insert(energy)
+    }
     return types
   }
 
@@ -95,8 +110,8 @@ public class TodoHealthBridgeModule: Module {
   /// than some one source actually recorded, which is the difference between a
   /// reading and a guess.
   ///
-  /// Shared by every cumulative quantity this reads (steps, sodium, protein,
-  /// saturated fat) so the rule cannot drift between them, which is the whole
+  /// Shared by every cumulative quantity this reads (steps and the eight
+  /// nutrients) so the rule cannot drift between them, which is the whole
   /// reason it is a function rather than being written out at each call site.
   private static func bestSum(_ statistics: HKStatistics, unit: HKUnit) -> Double? {
     var best: Double? = nil
@@ -261,7 +276,8 @@ public class TodoHealthBridgeModule: Module {
 
     /// One entry per logical day, as JSON:
     /// `[{"start":"…","steps":4120,"sleepMinutes":437,"sodiumMg":1850,
-    /// "proteinG":42,"satFatG":18}, …]`, any number null.
+    /// "proteinG":42,"satFatG":18,"fiberG":22,"sugarG":35,"caffeineMg":180,
+    /// "waterMl":1900,"calorieKcal":2100}, …]`, any number null.
     ///
     /// The window is described as an anchor plus a day count rather than as a
     /// list of boundaries, because a logical day is exactly 1 calendar day long
@@ -276,7 +292,7 @@ public class TodoHealthBridgeModule: Module {
     /// reader uses, so there is exactly one implementation of "which day is
     /// this" in the app and it is the one with the setting.
     ///
-    /// All five numbers are nullable per day and null is not zero — a day
+    /// All ten numbers are nullable per day and null is not zero — a day
     /// with no samples, a day before the phone was set up, and a day whose
     /// type was refused all read the same way. See the module note above.
     AsyncFunction("readDailyHealth") { (anchorISO: String, days: Int, promise: Promise) in
@@ -307,40 +323,43 @@ public class TodoHealthBridgeModule: Module {
       var sodiumMg = [Double?](repeating: nil, count: days)
       var proteinG = [Double?](repeating: nil, count: days)
       var satFatG = [Double?](repeating: nil, count: days)
-      // Five queries, one promise. `resolve` is called by whichever finishes
+      var fiberG = [Double?](repeating: nil, count: days)
+      var sugarG = [Double?](repeating: nil, count: days)
+      var caffeineMg = [Double?](repeating: nil, count: days)
+      var waterMl = [Double?](repeating: nil, count: days)
+      var calorieKcal = [Double?](repeating: nil, count: days)
+      // Ten queries, one promise. `resolve` is called by whichever finishes
       // last, and `pending` is only ever touched on the health store's own
       // serial callback queue, so the count needs no lock.
-      var pending = 5
+      var pending = 10
       let finish = {
         pending -= 1
         guard pending == 0 else { return }
         let entries: [String] = (0..<days).map { i in
-          let stepPart = steps[i].map { "\(Int($0.rounded()))" } ?? "null"
-          let sleepPart = sleepMinutes[i].map { "\(Int($0.rounded()))" } ?? "null"
-          let sodiumPart = sodiumMg[i].map { "\(Int($0.rounded()))" } ?? "null"
-          let proteinPart = proteinG[i].map { "\(Int($0.rounded()))" } ?? "null"
-          let satFatPart = satFatG[i].map { "\(Int($0.rounded()))" } ?? "null"
-          return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"steps\":\(stepPart),\"sleepMinutes\":\(sleepPart),"
-            + "\"sodiumMg\":\(sodiumPart),\"proteinG\":\(proteinPart),\"satFatG\":\(satFatPart)}"
+          let part: (Double?) -> String = { $0.map { "\(Int($0.rounded()))" } ?? "null" }
+          return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"steps\":\(part(steps[i])),"
+            + "\"sleepMinutes\":\(part(sleepMinutes[i])),\"sodiumMg\":\(part(sodiumMg[i])),"
+            + "\"proteinG\":\(part(proteinG[i])),\"satFatG\":\(part(satFatG[i])),\"fiberG\":\(part(fiberG[i])),"
+            + "\"sugarG\":\(part(sugarG[i])),\"caffeineMg\":\(part(caffeineMg[i])),\"waterMl\":\(part(waterMl[i])),"
+            + "\"calorieKcal\":\(part(calorieKcal[i]))}"
         }
         promise.resolve("[" + entries.joined(separator: ",") + "]")
       }
 
       var started = false
       TodoHealthExceptionCatcher.runCatchingExceptions {
-        // ─── Steps, sodium, protein, saturated fat: one collection query each,
-        // over the whole span ───────────────────────────────────────────────
+        // ─── Steps and nine nutrients: one collection query each, over the
+        // whole span ─────────────────────────────────────────────────────────
         //
         // A collection query rather than one statistics query per day, which
         // is what an anchor-plus-interval window is for: 90 round trips to the
         // health daemon to draw one insight is the version of this that gets
-        // noticed. All four are cumulative and per-source for the same
-        // reason: a phone and a watch both counting steps for one walk, or two
-        // food-logging apps both writing the same meal's sodium, protein or
-        // saturated fat, would otherwise be double-counted — see `bestSum`.
-        // This app never writes any of the three nutrients itself, so every
-        // gram or milligram here came from whatever food-logging app the
-        // person already uses.
+        // noticed. All ten are cumulative and per-source for the same reason:
+        // a phone and a watch both counting steps for one walk, or two
+        // food-logging apps both writing the same meal's sodium, would
+        // otherwise be double-counted — see `bestSum`. This app never writes
+        // any of the nine nutrients itself, so every number here came from
+        // whatever food-logging app the person already uses.
         self.runDietQuery(
           identifier: .stepCount, unit: .count(), anchor: anchor, end: end, starts: starts,
           write: { i, value in steps[i] = value }, finish: finish
@@ -356,6 +375,26 @@ public class TodoHealthBridgeModule: Module {
         self.runDietQuery(
           identifier: .dietaryFatSaturated, unit: .gram(), anchor: anchor, end: end, starts: starts,
           write: { i, value in satFatG[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryFiber, unit: .gram(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in fiberG[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietarySugar, unit: .gram(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in sugarG[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryCaffeine, unit: HKUnit.gramUnit(with: .milli), anchor: anchor, end: end, starts: starts,
+          write: { i, value in caffeineMg[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryWater, unit: HKUnit.literUnit(with: .milli), anchor: anchor, end: end, starts: starts,
+          write: { i, value in waterMl[i] = value }, finish: finish
+        )
+        self.runDietQuery(
+          identifier: .dietaryEnergyConsumed, unit: .kilocalorie(), anchor: anchor, end: end, starts: starts,
+          write: { i, value in calorieKcal[i] = value }, finish: finish
         )
 
         // ─── Sleep: one sample query, bucketed here ────────────────────────

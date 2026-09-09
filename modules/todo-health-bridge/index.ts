@@ -69,6 +69,16 @@ export interface HealthDayReading {
   proteinG: number | null;
   /** Grams of dietary saturated fat logged for the day, or null. Same source as `sodiumMg`. */
   satFatG: number | null;
+  /** Grams of dietary fiber logged for the day, or null. Same source as `sodiumMg`. */
+  fiberG: number | null;
+  /** Grams of dietary sugar logged for the day, or null. Same source as `sodiumMg`. */
+  sugarG: number | null;
+  /** Milligrams of dietary caffeine logged for the day, or null. Same source as `sodiumMg`. */
+  caffeineMg: number | null;
+  /** Millilitres of dietary water logged for the day, or null. Same source as `sodiumMg`. */
+  waterMl: number | null;
+  /** Kilocalories of dietary energy logged for the day, or null. Same source as `sodiumMg`. */
+  calorieKcal: number | null;
 }
 
 interface TodoHealthNativeModule {
@@ -140,8 +150,9 @@ function countOrNull(value: unknown): number | null {
 }
 
 /**
- * Steps, sleep, and sodium/protein/saturated fat for each of `days` logical
- * days starting at `anchorISO`.
+ * Steps, sleep, and eight nutrients (sodium, protein, saturated fat, fiber,
+ * sugar, caffeine, water, calories) for each of `days` logical days starting
+ * at `anchorISO`.
  *
  * The window is an anchor plus a count rather than a pair of instants, because
  * a logical day is exactly one calendar day long under any reset time — so the
@@ -172,7 +183,9 @@ export async function readDailyHealth(
     const out: HealthDayReading[] = [];
     for (const entry of parsed) {
       if (typeof entry !== 'object' || entry === null) continue;
-      const { start, steps, sleepMinutes, sodiumMg, proteinG, satFatG } = entry as Record<string, unknown>;
+      const {
+        start, steps, sleepMinutes, sodiumMg, proteinG, satFatG, fiberG, sugarG, caffeineMg, waterMl, calorieKcal,
+      } = entry as Record<string, unknown>;
       // A row with no instant cannot be filed under a day, so it is dropped
       // rather than guessed at — the same refusal the native side makes when
       // it cannot work out which bucket a sample belongs in.
@@ -184,6 +197,11 @@ export async function readDailyHealth(
         sodiumMg: countOrNull(sodiumMg),
         proteinG: countOrNull(proteinG),
         satFatG: countOrNull(satFatG),
+        fiberG: countOrNull(fiberG),
+        sugarG: countOrNull(sugarG),
+        caffeineMg: countOrNull(caffeineMg),
+        waterMl: countOrNull(waterMl),
+        calorieKcal: countOrNull(calorieKcal),
       });
     }
     return out;

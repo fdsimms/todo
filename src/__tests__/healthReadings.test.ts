@@ -33,6 +33,19 @@ beforeEach(() => {
   mockNative.readDailyHealth.mockReset();
 });
 
+// Every field `readDailyHealth` reads besides `start`, so a test can build a
+// row without hand-listing all ten every time.
+const FIELDS = [
+  'steps', 'sleepMinutes', 'sodiumMg', 'proteinG', 'satFatG', 'fiberG', 'sugarG', 'caffeineMg', 'waterMl', 'calorieKcal',
+] as const;
+
+/** One JSON row with `start` plus every field set from `values` (default 0 for the rest). */
+function row(start: string, values: Partial<Record<(typeof FIELDS)[number], unknown>> = {}): string {
+  const obj: Record<string, unknown> = { start };
+  for (const field of FIELDS) obj[field] = field in values ? values[field] : 0;
+  return JSON.stringify(obj);
+}
+
 describe('readDailyHealth', () => {
   const ANCHOR = '2026-08-04T00:00:00.000Z';
 
@@ -40,12 +53,16 @@ describe('readDailyHealth', () => {
     mockNative.readDailyHealth.mockResolvedValue(json);
   }
 
-  it('reads a day through, all five numbers', async () => {
-    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":4120,"sleepMinutes":437,'
-      + '"sodiumMg":1850,"proteinG":42,"satFatG":18}]');
-    await expect(readDailyHealth(ANCHOR, 1)).resolves.toEqual([
-      { start: '2026-08-04T00:00:00.000Z', steps: 4120, sleepMinutes: 437, sodiumMg: 1850, proteinG: 42, satFatG: 18 },
-    ]);
+  it('reads a day through, every field', async () => {
+    answering(`[${row('2026-08-04T00:00:00.000Z', {
+      steps: 4120, sleepMinutes: 437, sodiumMg: 1850, proteinG: 42, satFatG: 18,
+      fiberG: 22, sugarG: 35, caffeineMg: 180, waterMl: 1900, calorieKcal: 2100,
+    })}]`);
+    await expect(readDailyHealth(ANCHOR, 1)).resolves.toEqual([{
+      start: '2026-08-04T00:00:00.000Z',
+      steps: 4120, sleepMinutes: 437, sodiumMg: 1850, proteinG: 42, satFatG: 18,
+      fiberG: 22, sugarG: 35, caffeineMg: 180, waterMl: 1900, calorieKcal: 2100,
+    }]);
   });
 
   it('passes the anchor and the count through, since only JS knows the logical day', async () => {
@@ -54,47 +71,38 @@ describe('readDailyHealth', () => {
     expect(mockNative.readDailyHealth).toHaveBeenCalledWith(ANCHOR, 30);
   });
 
-  it('keeps all five numbers independently nullable', async () => {
+  it('keeps every field independently nullable', async () => {
     // The common case for anybody without a Watch or a food-logging app:
-    // steps every day, the other four never. A day is not dropped for
-    // missing any of them.
-    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":6000,"sleepMinutes":null,'
-      + '"sodiumMg":null,"proteinG":null,"satFatG":null}]');
+    // steps every day, nothing else. A day is not dropped for missing any
+    // of the rest.
+    const nulls = Object.fromEntries(FIELDS.filter(f => f !== 'steps').map(f => [f, null]));
+    answering(`[${row('2026-08-04T00:00:00.000Z', { steps: 6000, ...nulls })}]`);
     const [day] = await readDailyHealth(ANCHOR, 1);
     expect(day.steps).toBe(6000);
-    expect(day.sleepMinutes).toBeNull();
-    expect(day.sodiumMg).toBeNull();
-    expect(day.proteinG).toBeNull();
-    expect(day.satFatG).toBeNull();
+    for (const field of FIELDS) {
+      if (field === 'steps') continue;
+      expect(day[field]).toBeNull();
+    }
   });
 
-  it('keeps a real zero on any of the five numbers', async () => {
-    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":0,"sleepMinutes":0,'
-      + '"sodiumMg":0,"proteinG":0,"satFatG":0}]');
+  it('keeps a real zero on every field', async () => {
+    answering(`[${row('2026-08-04T00:00:00.000Z')}]`); // row() defaults every field to 0
     const [day] = await readDailyHealth(ANCHOR, 1);
-    expect(day.steps).toBe(0);
-    expect(day.sleepMinutes).toBe(0);
-    expect(day.sodiumMg).toBe(0);
-    expect(day.proteinG).toBe(0);
-    expect(day.satFatG).toBe(0);
+    for (const field of FIELDS) expect(day[field]).toBe(0);
   });
 
   it('reads a broken number as no number rather than as a small one', async () => {
-    answering('[{"start":"2026-08-04T00:00:00.000Z","steps":-1,"sleepMinutes":"437",'
-      + '"sodiumMg":-5,"proteinG":-1,"satFatG":"18"}]');
+    const broken = Object.fromEntries(FIELDS.map((f, i) => [f, i % 2 === 0 ? -1 : '18']));
+    answering(`[${row('2026-08-04T00:00:00.000Z', broken)}]`);
     const [day] = await readDailyHealth(ANCHOR, 1);
-    expect(day.steps).toBeNull();
-    expect(day.sleepMinutes).toBeNull();
-    expect(day.sodiumMg).toBeNull();
-    expect(day.proteinG).toBeNull();
-    expect(day.satFatG).toBeNull();
+    for (const field of FIELDS) expect(day[field]).toBeNull();
   });
 
   it('drops a row with no instant instead of guessing which day it is', async () => {
-    answering('[{"steps":100,"sleepMinutes":10,"sodiumMg":100,"proteinG":10,"satFatG":5},'
-      + '{"start":"","steps":1,"sleepMinutes":1,"sodiumMg":1,"proteinG":1,"satFatG":1},'
-      + '{"start":"2026-08-05T00:00:00.000Z","steps":7,"sleepMinutes":null,'
-      + '"sodiumMg":null,"proteinG":null,"satFatG":null}]');
+    const withoutStart = JSON.stringify(
+      Object.fromEntries(FIELDS.map(f => [f, 0])), // no `start` key at all
+    );
+    answering(`[${withoutStart},${row('')},${row('2026-08-05T00:00:00.000Z', { sleepMinutes: null })}]`);
     const days = await readDailyHealth(ANCHOR, 3);
     expect(days.map(d => d.start)).toEqual(['2026-08-05T00:00:00.000Z']);
   });

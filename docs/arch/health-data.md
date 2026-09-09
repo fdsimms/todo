@@ -209,14 +209,14 @@ this gets no sleep until somebody taps the access row in Settings, and because a
 refused read and an unasked one look identical, nothing can tell them that is
 why. Weigh that against what the type buys before extending the list again.
 
-**None of the three nutrients (see below) join this axis.** `MoodDay` carries
-no sodium, protein or saturated-fat field, and `healthInsight` gains no third
-metric for any of them. A join against mood asks whether a *pattern*
-correlates with how somebody feels; a nutrient rule here is a person's own
-medically-set target, checked against a number they picked, not a candidate
-for "no clear pattern" alongside steps and sleep. Nothing about adding one is
-technically hard — it would be one more pairing in `healthInsight` — the
-decision was that none of them answers the same question steps and sleep do.
+**None of the eight nutrients (see below) join this axis.** `MoodDay` carries
+no nutrient fields, and `healthInsight` gains no extra metric for any of them.
+A join against mood asks whether a *pattern* correlates with how somebody
+feels; a nutrient rule here is a person's own medically-set target, checked
+against a number they picked, not a candidate for "no clear pattern" alongside
+steps and sleep. Nothing about adding one is technically hard — it would be
+one more pairing in `healthInsight` — the decision was that none of them
+answers the same question steps and sleep do.
 
 ## The generator, and the line under "Lighten today"
 
@@ -255,28 +255,43 @@ line in a menu somebody opened rather than a task — the same argument
 
 **Every shortfall task past steps carries the same note, and only sleep
 carries a link too.** `checkHealthTasks` writes the metric's own note
-(`healthTaskNote` in `healthRules.ts`, dispatching to `shortSleepDeloadNote` /
-`sodiumShortfallNote` / `proteinShortfallNote` / `satFatOverageNote`) straight
-onto the row's own `notes`, so a sleep, sodium, protein or saturated-fat task
-never reads as coming from nowhere the way a bare title would. Only sleep also
-gets `healthTaskLinkUrl`'s `dundundun://deload`, wired to `resetToDeload` in
+(`healthTaskNote` in `healthRules.ts`, dispatching to `shortSleepDeloadNote`
+for sleep and `nutrientReadingNote` for every one of the eight nutrients)
+straight onto the row's own `notes`, so a sleep or nutrient task never reads
+as coming from nowhere the way a bare title would. Only sleep also gets
+`healthTaskLinkUrl`'s `dundundun://deload`, wired to `resetToDeload` in
 `navigationRef.ts`, so tapping "Keep today light" opens the same `DeloadSheet`
 the menu line points at. Steps carries neither field ("Go for a walk" already
-names its own action), and none of the three nutrients has a comparable sheet
+names its own action), and none of the eight nutrients has a comparable sheet
 to open, so they get the note and stop there.
 
-**Sodium, protein and saturated fat are shortfall rules with more than one
-checkpoint a day, and that is what `HealthRule.checkpointHour` exists for.**
-Steps and sleep judge from one fixed hour per metric
-(`HEALTH_METRIC_EARLIEST_HOUR`), because one evening floor is what a step
-count or a night's sleep needs. A nutrient target set by a doctor is routinely
-phrased as more than one number over a day — "at least 2,000mg of sodium by
-lunch, 4,000mg by dinner" — which is two *rules*, not one, and they need two
-different hours. Rather than growing a second fixed map entry per checkpoint
-(and a third, and a fourth, the moment somebody wants a mid-afternoon one
-too), each of these three rules carries its own `checkpointHour`, editable in
-`HealthRulesSheet` for any metric but steps and sleep.
-`HEALTH_METRIC_EARLIEST_HOUR`'s entries for the three nutrients still exist,
+**`nutrientReadingNote` is one function for all eight nutrients, not eight
+near-copies.** An earlier version of this file had three separate functions
+(`sodiumShortfallNote`, `proteinShortfallNote`, `satFatOverageNote`) — the
+right shape at three, already the wrong one to keep growing by one function
+per metric. `HEALTH_METRIC_INFO` (a private table in `healthRules.ts`, one row
+per nutrient: its label, its default direction, its default checkpoint hour,
+its threshold range, and how its amount renders) is what let this collapse to
+one function instead of eight: `nutrientReadingNote(metric, value)` looks up
+the metric's own unit and noun and composes the sentence, with calories the
+one irregular case (see below). The same table backs `healthMetricLabel`,
+`describeHealthRule`'s amount phrase, and the rule editor's own stepper
+rendering in `HealthRulesSheet`, so a ninth nutrient is one row in the table
+plus a native read, not four functions to remember to update in step.
+
+**Every nutrient is a shortfall rule with more than one checkpoint a day, and
+that is what `HealthRule.checkpointHour` exists for.** Steps and sleep judge
+from one fixed hour per metric (`HEALTH_METRIC_EARLIEST_HOUR`), because one
+evening floor is what a step count or a night's sleep needs. A nutrient target
+set by a doctor is routinely phrased as more than one number over a day — "at
+least 2,000mg of sodium by lunch, 4,000mg by dinner" — which is two *rules*,
+not one, and they need two different hours. Rather than growing a second
+fixed map entry per checkpoint (and a third, and a fourth, the moment somebody
+wants a mid-afternoon one too), every nutrient rule carries its own
+`checkpointHour`, editable in `HealthRulesSheet` for any metric but steps and
+sleep (`usesCheckpoint`, the one gate both the checkpoint stepper and the
+direction control below share, for the identical reason).
+`HEALTH_METRIC_EARLIEST_HOUR`'s entries for the eight nutrients still exist,
 but only as the value a freshly-created rule starts from — steps and sleep
 have no reason to follow, and don't.
 
@@ -297,13 +312,18 @@ nothing else reads `rule.direction` raw.
 **It's a per-rule choice rather than a per-metric one because a diet goal
 genuinely points either way**, which is a stronger reason than "why not, it's
 cheap": a sodium ceiling for someone managing blood pressure is exactly as
-real a want as this feature's original sodium *floor* for POTS, and picking
-one meaning for sodium in code would have been choosing a side in a real
-medical disagreement the app has no business having an opinion on. Steps and
-sleep still don't get the toggle — "over 3,000 steps" or "over 6 hours asleep"
-has no case answering to it, which is the same mirror-argument line
-`showsCheckpoint`'s comment draws for the checkpoint-hour control right next
-to it in `HealthRulesSheet`.
+real a want as this feature's original sodium *floor* for POTS, and a calorie
+floor for bulking is exactly as real as a calorie ceiling for cutting. Picking
+one fixed meaning for a nutrient in code would have been choosing a side in a
+real dietary disagreement the app has no business having an opinion on.
+`HEALTH_METRIC_DIRECTION` still supplies a default per metric — a floor for
+most, a ceiling for the three where "don't go above X" is the far more common
+ask (saturated fat, sugar, caffeine) — but it's only the value a freshly
+created rule starts from before the user can change it. Steps and sleep still
+don't get the toggle — "over 3,000 steps" or "over 6 hours asleep" has no case
+answering to it, which is the same mirror-argument line `usesCheckpoint`'s
+comment draws for the checkpoint-hour control right next to it in
+`HealthRulesSheet`.
 
 **A ceiling needs its idempotency mark spent the other way round too, and
 missing this would make the feature silently useless.** Every rule read as
@@ -323,11 +343,10 @@ for most people, most days, is the very first foreground sweep. So
 other generator. See that function's own comment for the exact branch.
 
 Two things keep the direction choice narrow rather than reopening the
-comparator question generally: the reading itself is unchanged in kind —
-`dietaryFatSaturated`, like `dietarySodium` and `dietaryProtein`, is read,
-`null`-checked and shortfall-compared through the same
-`ruleCanBeJudgedYet`/`ruleShortfallToday` pair every other metric uses — and
-the choice is offered only on the three nutrient rows, never on steps or
+comparator question generally: the reading itself is unchanged in kind — all
+eight nutrients are read, `null`-checked and shortfall-compared through the
+same `ruleCanBeJudgedYet`/`ruleShortfallToday` pair every other metric uses —
+and the choice is offered only on the eight nutrient rows, never on steps or
 sleep, which still have no case answering to a ceiling. What changed is
 *which way* a given rule's shortfall points and *when its mark may be spent*,
 not a new relationship between a reading and a task, and not a general
@@ -335,17 +354,18 @@ greater/less toggle available everywhere.
 
 ## What is deliberately not built yet
 
-Steps, sleep, sodium, protein and saturated fat — nothing past those five. The
-read-type list is one place (`readTypes`) and the note beside it says what
-adding to it costs; every metric this file still rules out — resting heart
-rate, HRV, weight, glucose, cycle tracking — stays ruled out for the reason
-given there, which is that a generator firing on one of them can be wrong
-about a body rather than about a day. The set of read types is one list in the
-Swift module (`readTypes`) because the permission sheet is shown once for
-whatever is asked for, and a type added there is a type the sheet will list —
-so nothing goes in until something reads it.
+Steps, sleep, and eight nutrients (sodium, protein, saturated fat, fiber,
+sugar, caffeine, water, calories) — nothing past those ten. The read-type list
+is one place (`readTypes`) and the note beside it says what adding to it
+costs; every metric this file still rules out — resting heart rate, HRV,
+weight, glucose, cycle tracking — stays ruled out for the reason given there,
+which is that a generator firing on one of them can be wrong about a body
+rather than about a day. The set of read types is one list in the Swift
+module (`readTypes`) because the permission sheet is shown once for whatever
+is asked for, and a type added there is a type the sheet will list — so
+nothing goes in until something reads it.
 
-**The three nutrients are not an exception to that reasoning; they sit on the
+**The eight nutrients are not an exception to that reasoning; they sit on the
 other side of the line it draws.** The ruled-out metrics are all a device's
 own guess about a body a person never entered a number for — an app cannot ask
 "is this HRV reading meaningfully low for *you*" without inventing a
@@ -354,11 +374,20 @@ because a person (or their own food-logging app) entered it, and the
 threshold it is judged against is a number *they* typed into
 `HealthRulesSheet`, the same as "under 3,000 steps" or "under 6 hours asleep"
 already is. The generator still never says "your sodium is low" or "you ate
-too much saturated fat" — every note function attributes its figure to Apple
-Health exactly as `shortSleepDeloadNote` does, ceiling included — it only
-reports the reading against the target the user set. Nothing here licenses
-adding a metric the app would be interpreting on the user's behalf; it
-licenses adding one whose bar, and whose direction, is entirely theirs.
+too much saturated fat" — `nutrientReadingNote` attributes every figure to
+Apple Health exactly as `shortSleepDeloadNote` does, ceiling included — it
+only reports the reading against the target the user set. Nothing here
+licenses adding a metric the app would be interpreting on the user's behalf;
+it licenses adding one whose bar, and whose direction, is entirely theirs.
+
+**Calories are the one nutrient whose note and description drop the "of".**
+Every other nutrient reads as "50g of protein" / "1,850mg of sodium" because
+its `HEALTH_METRIC_INFO.amount` is a bare number-plus-unit that needs a noun
+after it. `calorieKcal`'s label ("Calories") already *is* a complete noun, so
+`nutrientReadingNote` and `healthMetricAmount` special-case it to
+"2,000 calories" rather than produce "2,000 calories of calories" or
+"2,000kcal calories" — the one place the table-driven approach still needed a
+metric-specific branch rather than a uniform composition.
 
 The four things this was built to make possible, in the order they are worth
 doing, none of them started:
@@ -374,12 +403,16 @@ read, with the cost of adding a type written down beside `readTypes`. And a task
 `isTimerReady`'s shape, never as a completion. See the section above for why
 that shape and no other.
 
-Sodium, protein and saturated fat (kind #19's three nutrient metrics) are a
-fifth thing this file's earlier "deliberately not built" list didn't
-anticipate, added for a specific, medically-motivated request rather than as a
-general widening of what this generator may watch — see the sections above for
-the reasoning and the two lines (which metrics are eligible at all, and which
-way a shortfall may point) it does and doesn't cross.
+The eight nutrients (kind #19's non-steps, non-sleep metrics) are a fifth
+thing this file's earlier "deliberately not built" list didn't anticipate,
+added for a specific, medically-motivated request rather than as a general
+widening of what this generator may watch — see the sections above for the
+reasoning and the two lines (which metrics are eligible at all, and which way
+a shortfall may point) it does and doesn't cross. Sodium and protein and
+saturated fat came first; fiber, sugar, caffeine, water and calories followed
+once the checkpoint-hour and direction mechanisms both already generalized
+past three, which is why `HEALTH_METRIC_INFO` exists as a table rather than
+five more hand-written switch branches.
 
 ## One thing worth knowing before scoping the background half
 

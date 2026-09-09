@@ -337,11 +337,14 @@ export interface ScreenTimeRule {
 export interface HealthRule {
   id: string;
   /** Which reading this rule watches. */
-  metric: 'steps' | 'sleepHours' | 'sodiumMg' | 'proteinG' | 'satFatG';
+  metric:
+    | 'steps' | 'sleepHours'
+    | 'sodiumMg' | 'proteinG' | 'satFatG' | 'fiberG' | 'sugarG' | 'caffeineMg' | 'waterMl' | 'calorieKcal';
   /**
    * The number the reading is compared against, in the metric's own unit —
-   * steps, whole hours asleep, milligrams of sodium, or grams of protein or
-   * saturated fat.
+   * steps, whole hours asleep, milligrams of sodium or caffeine, grams of
+   * protein, saturated fat, fiber or sugar, millilitres of water, or
+   * kilocalories.
    *
    * Both directions still describe a shortfall against the number the user
    * picked, which is what keeps this from being a general greater/less
@@ -351,24 +354,24 @@ export interface HealthRule {
   threshold: number;
   /**
    * The hour of the logical day this rule is judged from, for a metric that
-   * wants more than one checkpoint in a day rather than one fixed floor —
-   * sodium, protein and saturated fat, today. Steps and sleep take a fixed
-   * hour from `HEALTH_METRIC_EARLIEST_HOUR` instead and ignore this field.
-   * `undefined` for those two; see `HEALTH_METRIC_EARLIEST_HOUR`'s own comment
-   * in `healthRules.ts` for why the nutrient rules needed a per-rule hour
-   * where steps and sleep don't.
+   * wants more than one checkpoint in a day rather than one fixed floor — the
+   * eight nutrients, today. Steps and sleep take a fixed hour from
+   * `HEALTH_METRIC_EARLIEST_HOUR` instead and ignore this field. `undefined`
+   * for those two; see `HEALTH_METRIC_EARLIEST_HOUR`'s own comment in
+   * `healthRules.ts` for why the nutrient rules needed a per-rule hour where
+   * steps and sleep don't.
    */
   checkpointHour?: number;
   /**
    * Which way this rule compares its reading — 'under' (a floor) or 'over'
    * (a ceiling). `undefined` reads as the metric's own default
-   * (`HEALTH_METRIC_DIRECTION` in `healthRules.ts`: a floor for everything but
-   * saturated fat, which defaults to a ceiling). Only the three nutrients let
-   * this be set per rule in `HealthRulesSheet` — steps and sleep have no case
-   * for a ceiling ("over 3,000 steps" describes something that already
-   * happened and needs no task), where a nutrient goal genuinely can point
-   * either way depending on the diet behind it (a sodium ceiling for blood
-   * pressure is as real as a sodium floor for POTS). Read through
+   * (`HEALTH_METRIC_DIRECTION` in `healthRules.ts`: a floor for most
+   * nutrients, a ceiling for saturated fat, sugar and caffeine). Only the
+   * eight nutrients let this be set per rule in `HealthRulesSheet` — steps and
+   * sleep have no case for a ceiling ("over 3,000 steps" describes something
+   * that already happened and needs no task), where a nutrient goal genuinely
+   * can point either way depending on the diet behind it (a sodium ceiling
+   * for blood pressure is as real as a sodium floor for POTS). Read through
    * `healthRuleDirection(rule)`, never this field directly, so a rule with no
    * override still resolves correctly.
    */

@@ -18,9 +18,11 @@ import {
   clampHealthThreshold,
   describeHealthRule,
   formatCheckpointHour,
+  healthMetricAmount,
   healthMetricLabel,
   healthRuleCheckpointHour,
   healthRuleDirection,
+  usesCheckpoint,
 } from '../utils/healthRules';
 import { CountStepper } from './CountStepper';
 import { InlineAction } from './InlineAction';
@@ -43,37 +45,6 @@ const DIRECTION_OPTIONS: { value: 'under' | 'over'; label: string }[] = [
 ];
 
 /**
- * Steps and sleep judge from a fixed, unlabelled hour and a fixed direction;
- * the three nutrients pick their own of both. Same gate for both controls,
- * since the reason is the same one `HEALTH_METRIC_EARLIEST_HOUR`'s comment
- * gives for the hour: steps and sleep have no case for either kind of choice.
- */
-function showsCheckpoint(metric: HealthRuleMetric): boolean {
-  return metric !== 'steps' && metric !== 'sleepHours';
-}
-
-/** "3,000" / "6 hrs" / "2,000 mg" / "50 g" — the stepper's own rendering, one branch per unit. */
-function formatThreshold(metric: HealthRuleMetric, n: number): string {
-  switch (metric) {
-    case 'steps': return n.toLocaleString();
-    case 'sleepHours': return `${n} ${n === 1 ? 'hr' : 'hrs'}`;
-    case 'sodiumMg': return `${n.toLocaleString()} mg`;
-    default: return `${n} g`; // proteinG, satFatG
-  }
-}
-
-/** The screen-reader version of `formatThreshold` — spells out the unit. */
-function describeThreshold(metric: HealthRuleMetric, n: number): string {
-  switch (metric) {
-    case 'steps': return `${n} steps`;
-    case 'sleepHours': return `${n} ${n === 1 ? 'hour' : 'hours'}`;
-    case 'sodiumMg': return `${n}mg`;
-    case 'proteinG': return `${n}g protein`;
-    default: return `${n}g saturated fat`; // satFatG
-  }
-}
-
-/**
  * Every health rule, in one list. The sheet is `RuleListSheet`, shared with
  * `WeatherRulesSheet` and `ScreenTimeRulesSheet`; what's here is the two ends
  * that differ.
@@ -84,24 +55,27 @@ function describeThreshold(metric: HealthRuleMetric, n: number): string {
  *   screen time's is a number alone. The number is per rule for screen time's
  *   reason rather than weather's: six hours and four hours are two different
  *   days, so the title cannot carry the bar.
- * - **The stepper's range changes with the metric**, since steps, hours,
- *   milligrams and grams are not the same size of number. Switching the
- *   metric re-clamps the threshold into the new range rather than leaving
- *   3,000 hours of sleep behind.
+ * - **The stepper's range and rendering both change with the metric**, since
+ *   steps, hours, milligrams, grams and millilitres are not the same size of
+ *   number or the same unit. Switching the metric re-clamps the threshold
+ *   into the new range rather than leaving 3,000 hours of sleep behind, and
+ *   `healthMetricAmount` — the same function `describeHealthRule` builds its
+ *   own line from — renders the stepper's value so the two can't drift on how
+ *   a given metric's number reads.
  * - **Every metric but steps and sleep also picks its own hour.** Those two
  *   judge from a fixed point in the day (see `HEALTH_METRIC_EARLIEST_HOUR`'s
  *   comment), but a nutrient target is naturally checked more than once — a
- *   lunchtime sodium floor and a separate, higher dinner one, say — so a
- *   sodium, protein or saturated-fat rule carries its own checkpoint hour
- *   instead of sharing one.
- * - **Under/over is a per-rule choice for the same three metrics**, not a
+ *   lunchtime sodium floor and a separate, higher dinner one, say — so any of
+ *   the eight nutrient rules carries its own checkpoint hour instead of
+ *   sharing one.
+ * - **Under/over is a per-rule choice for the same eight metrics**, not a
  *   fixed property read off the metric — a sodium ceiling (blood pressure) and
  *   a sodium floor (POTS) are both real diets, so the direction is a control
- *   next to the checkpoint hour rather than something `satFatG` alone gets to
- *   flip. The editor label itself changes with it (`healthRuleDirection`)
- *   rather than leaving the direction to the stepper's own wording — a
- *   ceiling that only the number below it says is a ceiling is easy to
- *   misread as one more floor.
+ *   next to the checkpoint hour rather than something only saturated fat,
+ *   sugar or caffeine get to flip. The editor label itself changes with it
+ *   (`healthRuleDirection`) rather than leaving the direction to the
+ *   stepper's own wording — a ceiling that only the number below it says is a
+ *   ceiling is easy to misread as one more floor.
  * - **The read has to be on, and the card says so.** This is the one rules
  *   sheet whose feature needs a second switch elsewhere, and nothing else here
  *   would give that away: the rules look perfectly well formed either way.
@@ -123,11 +97,11 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
       caption={
         'A rule adds its task on a day the reading crosses its number. Steps are only judged '
         + 'from 6 PM, since a step count earlier in the day has not had its chance yet. A '
-        + 'sodium, protein or saturated fat rule is judged from whatever hour you set it to, '
-        + 'and needs another app logging food to Health, since this app never writes one of '
-        + 'those samples itself. Those three can also be set as a ceiling instead of a floor, '
-        + 'so its rule fires when the day goes over its number rather than under it. Each rule '
-        + 'adds its task at most once a day.'
+        + 'nutrient rule is judged from whatever hour you set it to, and needs another app '
+        + 'logging food to Health, since this app never writes one of those samples itself. A '
+        + 'nutrient rule can also be set as a ceiling instead of a floor, so it fires when the '
+        + 'day goes over its number rather than under it. Each rule adds its task at most once '
+        + 'a day.'
       }
       rules={rules}
       onChange={setRules}
@@ -158,10 +132,10 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
               // nutrients, so both are only given a starting value the first
               // time a rule turns into one of them — everything else leaves
               // whatever the rule already carries alone.
-              checkpointHour: showsCheckpoint(metric)
+              checkpointHour: usesCheckpoint(metric)
                 ? (rule.checkpointHour ?? HEALTH_METRIC_EARLIEST_HOUR[metric])
                 : rule.checkpointHour,
-              direction: showsCheckpoint(metric)
+              direction: usesCheckpoint(metric)
                 ? (rule.direction ?? HEALTH_METRIC_DIRECTION[metric])
                 : rule.direction,
             })}
@@ -176,11 +150,11 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
             min={HEALTH_THRESHOLDS[rule.metric].min}
             max={HEALTH_THRESHOLDS[rule.metric].max}
             step={HEALTH_THRESHOLDS[rule.metric].step}
-            format={n => formatThreshold(rule.metric, n)}
+            format={n => healthMetricAmount(rule.metric, n)}
             label="Threshold"
-            describeValue={n => describeThreshold(rule.metric, n ?? HEALTH_THRESHOLDS[rule.metric].default)}
+            describeValue={n => healthMetricAmount(rule.metric, n ?? HEALTH_THRESHOLDS[rule.metric].default)}
           />
-          {showsCheckpoint(rule.metric) && (
+          {usesCheckpoint(rule.metric) && (
             <SegmentedControl<'under' | 'over'>
               options={DIRECTION_OPTIONS}
               value={healthRuleDirection(rule)}
@@ -189,7 +163,7 @@ export function HealthRulesSheet({ visible, onClose }: Props) {
               surface="card"
             />
           )}
-          {showsCheckpoint(rule.metric) && (
+          {usesCheckpoint(rule.metric) && (
             <CountStepper
               value={healthRuleCheckpointHour(rule)}
               onChange={next => update({

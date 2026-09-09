@@ -73,6 +73,16 @@ export interface HealthDay {
   proteinG: number | null;
   /** Grams of saturated fat logged for today so far, or null. Same rules as `sodiumMg`. */
   satFatG: number | null;
+  /** Grams of fiber logged for today so far, or null. Same rules as `sodiumMg`. */
+  fiberG: number | null;
+  /** Grams of sugar logged for today so far, or null. Same rules as `sodiumMg`. */
+  sugarG: number | null;
+  /** Milligrams of caffeine logged for today so far, or null. Same rules as `sodiumMg`. */
+  caffeineMg: number | null;
+  /** Millilitres of water logged for today so far, or null. Same rules as `sodiumMg`. */
+  waterMl: number | null;
+  /** Kilocalories logged for today so far, or null. Same rules as `sodiumMg`. */
+  calorieKcal: number | null;
   /** When this was read, for a caller that wants to say how fresh it is. */
   readAt: string;
 }
@@ -147,6 +157,11 @@ export const useHealthStore = create<HealthState>((set, get) => ({
           sodiumMg: reading?.sodiumMg ?? null,
           proteinG: reading?.proteinG ?? null,
           satFatG: reading?.satFatG ?? null,
+          fiberG: reading?.fiberG ?? null,
+          sugarG: reading?.sugarG ?? null,
+          caffeineMg: reading?.caffeineMg ?? null,
+          waterMl: reading?.waterMl ?? null,
+          calorieKcal: reading?.calorieKcal ?? null,
           readAt: now.toISOString(),
         },
       });
