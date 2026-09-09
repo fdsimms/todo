@@ -93,9 +93,6 @@ const KITCHEN_HUB: NavHub = {
     // still `Kitchen` — the same split as "Stack" over `TaskGroup`, and the
     // reason is written up where the label was chosen.
     { route: 'Kitchen', label: 'Pantry', keywords: ['fridge', 'freezer', 'kitchen', 'inventory', 'use by'] },
-    // Folded in from its own menu row: it is a shelf for recipes, so it
-    // belongs beside them rather than one tap away among the task shelves.
-    { route: 'Cookbooks', label: 'Cookbooks', keywords: ['collections', 'shelf'] },
   ],
 };
 

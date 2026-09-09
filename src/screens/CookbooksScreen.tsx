@@ -7,7 +7,6 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { ScreenHeader } from '../components/ScreenHeader';
-import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { CookbookEditor } from '../components/CookbookEditor';
 import { useColors } from '../theme/ThemeContext';
@@ -95,8 +94,6 @@ export function CookbooksScreen() {
           ? `${sorted.length} ${sorted.length === 1 ? 'book' : 'books'}`
           : undefined}
       />
-      <HubPills hub="kitchen" active="Cookbooks" />
-
       {sorted.length === 0 ? (
         <EmptyState
           icon="library-outline"
