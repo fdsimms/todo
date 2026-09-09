@@ -3628,6 +3628,45 @@ describe('setOnHandUntil', () => {
     expect(useGroceryStore.getState().items[0].onHandUntil).toBeNull();
   });
 
+  it('leaves an active "Got it" carrying whatever the box already said', () => {
+    const milk = makeItem({
+      name: 'Milk',
+      expiresAt: '2026-08-10T00:00:00.000Z',
+      frozenAt: '2026-08-05T00:00:00.000Z',
+      openedAt: '2026-08-06T00:00:00.000Z',
+    });
+    seed([milk]);
+
+    useGroceryStore.getState().setOnHandUntil(milk.id, '2026-08-21T00:00:00.000Z');
+
+    const after = useGroceryStore.getState().items[0];
+    expect(after.expiresAt).toBe('2026-08-10T00:00:00.000Z');
+    expect(after.frozenAt).toBe('2026-08-05T00:00:00.000Z');
+    expect(after.openedAt).toBe('2026-08-06T00:00:00.000Z');
+  });
+
+  it('clears the disposed box\'s facts when marking out of it, so a re-add finds no stale batch', () => {
+    // Same sentinel markOutOfMany writes — this is the item sheet's own
+    // "Out of it" pill and GroceryAddField's inline offer, both bypassing
+    // markOutOfMany, so they need the same clear or a bare re-add
+    // (addToPantry, which never touches these) reads the old box's use-by
+    // day as the new one's.
+    const tortillas = makeItem({
+      name: 'Tortillas',
+      expiresAt: '2026-08-10T00:00:00.000Z',
+      frozenAt: '2026-08-05T00:00:00.000Z',
+      openedAt: '2026-08-06T00:00:00.000Z',
+    });
+    seed([tortillas]);
+
+    useGroceryStore.getState().setOnHandUntil(tortillas.id, OUT_OF_IT_UNTIL);
+
+    const after = useGroceryStore.getState().items[0];
+    expect(after.expiresAt).toBeNull();
+    expect(after.frozenAt).toBeNull();
+    expect(after.openedAt).toBeNull();
+  });
+
   it('shrugs at an id it does not hold', () => {
     seed([]);
     useGroceryStore.getState().setOnHandUntil('gone', '2026-08-21T00:00:00.000Z');
@@ -3658,6 +3697,33 @@ describe('markOutOfMany', () => {
 
     const after = useGroceryStore.getState().items[0];
     expect(after).toEqual({ ...soy, onHandUntil: OUT_OF_IT_UNTIL });
+  });
+
+  it('clears the box this batch was about, and undo puts it back', () => {
+    // The bug this guards: pantry-check disposal left a stale expiresAt/
+    // frozenAt/openedAt standing, so re-adding the same name by hand
+    // (addToPantry, which never sets any of these) came back reading the
+    // disposed batch's use-by day as if it were about the new one.
+    const tortillas = makeItem({
+      name: 'Tortillas',
+      expiresAt: '2026-08-10T00:00:00.000Z',
+      frozenAt: '2026-08-05T00:00:00.000Z',
+      openedAt: '2026-08-06T00:00:00.000Z',
+    });
+    seed([tortillas]);
+
+    useGroceryStore.getState().markOutOfMany([tortillas.id]);
+
+    let after = useGroceryStore.getState().items[0];
+    expect(after.expiresAt).toBeNull();
+    expect(after.frozenAt).toBeNull();
+    expect(after.openedAt).toBeNull();
+
+    useGroceryStore.getState().undoLastAction();
+    after = useGroceryStore.getState().items[0];
+    expect(after.expiresAt).toBe('2026-08-10T00:00:00.000Z');
+    expect(after.frozenAt).toBe('2026-08-05T00:00:00.000Z');
+    expect(after.openedAt).toBe('2026-08-06T00:00:00.000Z');
   });
 
   it('is one undo for the whole cook, not one per row', () => {
@@ -6038,6 +6104,44 @@ describe('per-box pantry state', () => {
     useGroceryStore.getState().lastAction!.undo();
     expect(useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!.onHandUntil)
       .toBe('2026-09-01T00:00:00.000Z');
+  });
+
+  /** Stamps a box's use-by/opened/frozen facts directly, same shape a scan or a hand-edit leaves. */
+  function dateBox(id: string, patch: Partial<ItemProduct>) {
+    useGroceryStore.setState(s => ({
+      itemProducts: s.itemProducts.map(p => (p.id === id ? { ...p, ...patch } : p)),
+    }));
+  }
+
+  it('clears a box\'s use-by/opened/frozen facts when marking it out, mirroring the item-level clear', () => {
+    const { box } = withBox();
+    dateBox(box.id, {
+      expiresAt: '2026-08-10T00:00:00.000Z',
+      frozenAt: '2026-08-05T00:00:00.000Z',
+      openedAt: '2026-08-06T00:00:00.000Z',
+    });
+
+    useGroceryStore.getState().markProductsOutOf([box.id]);
+
+    const after = useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!;
+    expect(after.expiresAt).toBeNull();
+    expect(after.frozenAt).toBeNull();
+    expect(after.openedAt).toBeNull();
+
+    useGroceryStore.getState().lastAction!.undo();
+    const restored = useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!;
+    expect(restored.expiresAt).toBe('2026-08-10T00:00:00.000Z');
+    expect(restored.frozenAt).toBe('2026-08-05T00:00:00.000Z');
+    expect(restored.openedAt).toBe('2026-08-06T00:00:00.000Z');
+  });
+
+  it('setProductOnHandUntil clears the same facts when the caller passes the "out" sentinel directly', () => {
+    const { box } = withBox();
+    dateBox(box.id, { expiresAt: '2026-08-10T00:00:00.000Z' });
+
+    useGroceryStore.getState().setProductOnHandUntil(box.id, OUT_OF_IT_UNTIL);
+
+    expect(useGroceryStore.getState().itemProducts.find(p => p.id === box.id)!.expiresAt).toBeNull();
   });
 
   it('freezes one box and leaves its sibling out of the freezer', () => {

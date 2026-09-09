@@ -1,0 +1,4 @@
+{
+  "message": "Fixed: an item marked out of it and then added back could still show the disposed batch's old use-by date",
+  "date": "2026-09-09"
+}
