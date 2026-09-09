@@ -12,7 +12,16 @@ say why instead of opening one silently.
 Don't subscribe to PR activity and don't schedule follow-up check-ins after opening a PR unless
 the user explicitly asks for that. Just open the PR and stop.
 
-## Bugs found in passing
+**Before pushing a follow-up fix to a PR you opened, check whether it already merged.** A build
+or submission failure reported after the fact (an EAS log, an App Store Connect rejection) often
+arrives once the PR that introduced the problem is already merged into `main` — `git fetch origin
+main && git merge-base --is-ancestor <your-branch> origin/main` says so in one line. Pushing more
+commits onto an already-merged branch doesn't reach `main` again; nothing rebuilds it and the fix
+sits stranded on a branch nobody looks at. When it's merged, cut a fresh branch off the latest
+`main` for the fix (`git checkout -b <new-branch> origin/main`) and open a new PR, same as the
+"merged PR" case this session's own designated-branch instructions already describe — this is
+that same situation recurring mid-task, not a one-off. When it's *not* merged yet, push the fix to
+the existing branch and PR as usual; don't open a new one just because a build failed once.
 
 If you notice a real bug while working on something else — not a style nit, an actual wrong
 behavior — and the fix is small (a couple of lines, one clear place, no design judgment call),
