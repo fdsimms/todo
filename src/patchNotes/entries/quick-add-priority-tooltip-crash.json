@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a crash when typing a priority shorthand like \"!urgent\" in quick add",
+  "date": "2026-09-09"
+}
