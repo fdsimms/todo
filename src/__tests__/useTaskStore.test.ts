@@ -4794,6 +4794,7 @@ describe('checkMoodTasks', () => {
     dayKey,
     mood,
     symptoms: [],
+    contextTags: [],
     note: null,
   });
 

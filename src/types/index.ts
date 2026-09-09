@@ -1144,6 +1144,18 @@ export interface MoodLog {
   mood: MoodLevel | null;
   /** Empty is the common case and means no symptoms, never "not asked". */
   symptoms: LoggedSymptom[];
+  /**
+   * Things going on that day that aren't symptoms but plausibly explain the
+   * mood anyway — "vacation", "big deadline at work", "travel day". Freeform,
+   * on the same `symptomKey`-style match `LoggedSymptom.name` uses, and for
+   * the same reason: no fixed list was ever going to guess what belongs here,
+   * and the app has no business deciding two spellings are the same tag.
+   *
+   * Unlike a symptom, a tag carries no severity — it either applies to the day
+   * or it doesn't, so it is stored as plain names rather than `{ name,
+   * severity }` pairs.
+   */
+  contextTags: string[];
   /** Whatever you wanted to say about it. Null rather than empty string. */
   note: string | null;
 }
