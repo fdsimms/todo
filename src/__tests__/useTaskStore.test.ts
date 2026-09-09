@@ -4062,7 +4062,7 @@ describe('checkPantryCheckTasks', () => {
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
     shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
-    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, backfillDismissedFields: [],
+    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   });
@@ -4299,7 +4299,7 @@ describe('checkPantryReviewTasks', () => {
     onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
     isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
     shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
-    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, backfillDismissedFields: [],
+    usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
     ...overrides,
   });
@@ -5885,7 +5885,7 @@ describe('checkMealShortfallTasks', () => {
         onHandUntil: null, sourceRecipeId: null, sourceRecipeTitle: null, choiceGroup: null,
         isStaple: false, expiresAt: null, frozenAt: null, openedAt: null, runningLowAt: null,
         shelfLifeDays: null, useUpTask: null, pantryCheckDeclinedAt: null, pantryReviewedAt: null,
-        usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, backfillDismissedFields: [],
+        usedUpCount: 0, spoiledCount: 0, lastSpoiledAt: null, varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
         lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
       }],
     });
@@ -12396,7 +12396,7 @@ describe('deleting a use-up task', () => {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };
 
@@ -12449,7 +12449,7 @@ describe('completing a use-up task', () => {
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null, lastPricedAt: null, lastPriceQuantity: null, priceHistory: [],
   };
   const seedItem = () => {

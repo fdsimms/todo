@@ -2102,7 +2102,7 @@ function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: s
     usedUpCount: 0,
     spoiledCount: 0,
     lastSpoiledAt: null,
-    varietyOfKey: null, backfillDismissedFields: [],
+    varietyOfKey: null, nutrition: null, backfillDismissedFields: [],
     lastPriceMinor: null,
     lastPricedAt: null,
     lastPriceQuantity: null, priceHistory: [],
@@ -2120,6 +2120,7 @@ function makeProduct(
     variant,
     productKey: `${(brand ?? '').toLowerCase()}|${(variant ?? '').toLowerCase()}`,
     rating: null,
+    nutrition: null,
     note: '',
     purchaseCount: 0,
     lastPurchasedAt: null,
@@ -2184,7 +2185,20 @@ describe('grocery items', () => {
       usedUpCount: 0,
       spoiledCount: 0,
       lastSpoiledAt: null,
-      varietyOfKey: null, backfillDismissedFields: ['substitutes'],
+      varietyOfKey: null,
+      nutrition: {
+        basis: 'per100g',
+        servingGrams: 240,
+        servingText: '1 cup (240ml)',
+        // Deliberately a partial panel: a source that never mentioned fibre is
+        // the ordinary case, and the absent key has to survive the column
+        // rather than come back as a confident zero.
+        amounts: { calorieKcal: 61, proteinG: 3.2, fatG: 3.3, sugarG: 5.1 },
+        source: 'fdc',
+        sourceId: '746782',
+        recordedAt: '2026-08-21T10:00:00.000Z',
+      },
+      backfillDismissedFields: ['substitutes'],
       preferredProductId: 'p1',
       productStrict: true,
     });
@@ -2295,6 +2309,28 @@ describe('grocery items', () => {
       note: 'the green packet',
       gtin: '00850003201115',
     });
+  });
+
+  // A box's own label panel, unlike its barcode, is an ordinary column of the
+  // upsert: rewriting the row is how a corrected or re-fetched panel lands.
+  it('round-trips a box’s nutrition, and lets a rewrite replace it', () => {
+    insertListedGroceryItem(makeGroceryItem({ id: 'g1', name: 'Yogurt' }));
+    const panel = {
+      basis: 'perServing' as const,
+      servingGrams: 170,
+      servingText: '1 container (170g)',
+      amounts: { calorieKcal: 90, proteinG: 15, sugarG: 4 },
+      source: 'openFoodFacts' as const,
+      sourceId: '0894700010045',
+      recordedAt: '2026-08-21T10:00:00.000Z',
+    };
+    const product = makeProduct({ id: 'p1', itemId: 'g1', brand: 'Fage', variant: '0%', nutrition: panel });
+    dbSetItemProduct(product);
+    expect(dbGetAllItemProducts()[0].nutrition).toEqual(panel);
+
+    const corrected = { ...panel, amounts: { ...panel.amounts, proteinG: 18 }, source: 'manual' as const };
+    dbSetItemProduct({ ...product, nutrition: corrected });
+    expect(dbGetAllItemProducts()[0].nutrition).toEqual(corrected);
   });
 
   // A GTIN denotes one box in the world, so pointing it at a second one has to
