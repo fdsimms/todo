@@ -452,6 +452,10 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['count', 'reading', 'walked'] },
   { id: 'healthCategory', groupId: 'health', label: 'Show steps under', section: 'Apple Health',
     keywords: ['category', 'section', 'today', 'where', 'hide', 'nowhere'] },
+  { id: 'healthWrite', groupId: 'health', label: 'Log water to Health', section: 'Log to Health',
+    keywords: ['hydration', 'drink', 'write', 'healthkit'] },
+  { id: 'healthWriteAccess', groupId: 'health', label: 'Water-write access', section: 'Log to Health',
+    keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing'] },
 
   // ── Tasks & projects ──────────────────────────────────────────────────────
   // In the order the screen renders them, which the registry's own comment
@@ -492,7 +496,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['screen time', 'usage', 'phone', 'apps', 'threshold', 'minutes', 'distraction',
       'social media', 'doomscroll', 'limit', 'screen time rule'] },
   { id: 'healthRules', groupId: 'generated', label: 'Rules', section: 'Health tasks',
-    keywords: ['apple health', 'steps', 'sleep', 'walk', 'threshold', 'under'] },
+    keywords: ['apple health', 'steps', 'sleep', 'walk', 'sodium', 'salt', 'protein',
+      'saturated fat', 'fiber', 'sugar', 'caffeine', 'water', 'hydration', 'calories',
+      'nutrition', 'diet', 'threshold', 'under', 'over', 'ceiling', 'floor'] },
   { id: 'simpleTaskForm', groupId: 'tasksProjects', label: 'Show fewer fields', section: 'Task form',
     keywords: ['simple', 'quick add', 'chips', 'declutter', 'basic', 'minimal'] },
   { id: 'hideCategories', groupId: 'tasksProjects', label: 'Hide categories', section: 'Today',

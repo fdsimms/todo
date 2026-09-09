@@ -61,8 +61,13 @@ interface Props<T extends EditableRule> {
   makeRule: () => T;
   /** The secondary line under a rule's title, e.g. "After 30 min". */
   describeRule: (rule: T) => string;
-  /** Uppercase label above `renderEditor`'s control. */
-  editorLabel: string;
+  /**
+   * Uppercase label above `renderEditor`'s control. A function when the
+   * wording depends on the rule itself — health's ceiling rule reads "more
+   * than" where every other rule here reads "less than" — a plain string
+   * otherwise.
+   */
+  editorLabel: string | ((rule: T) => string);
   renderEditor: (rule: T, update: (patch: Partial<T>) => void) => ReactNode;
   titlePlaceholder: string;
   titleMaxLength: number;
@@ -208,7 +213,9 @@ export function RuleListSheet<T extends EditableRule>({
                     </View>
                     {expanded && (
                       <View style={styles.editor}>
-                        <Text style={styles.editorLabel}>{editorLabel}</Text>
+                        <Text style={styles.editorLabel}>
+                          {typeof editorLabel === 'function' ? editorLabel(rule) : editorLabel}
+                        </Text>
                         {renderEditor(rule, patch => update(rule.id, patch))}
                         <Text style={[styles.editorLabel, styles.editorLabelSpaced]}>Add this task</Text>
                         <TextInput

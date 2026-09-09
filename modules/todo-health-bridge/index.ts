@@ -2,7 +2,8 @@ import { Platform } from 'react-native';
 import { requireNativeModule } from 'expo-modules-core';
 
 /**
- * Apple Health, as much of it as this app reads — which is one number.
+ * Apple Health: a small handful of numbers read, and — for exactly one type —
+ * a number written.
  *
  * The shape of this module is dictated by one hard limit in Apple's API, and
  * it is worth knowing before adding to it:
@@ -20,6 +21,30 @@ import { requireNativeModule } from 'expo-modules-core';
  * says less than it looks like: `unnecessary` means asking again would show no
  * sheet, which is equally true of everything-allowed and everything-refused.
  * It answers "have you been asked yet", and that is all it is used for.
+ *
+ * - **Write authorization is the mirror case, and genuinely observable.** The
+ *   same Apple doc that obscures reads says so explicitly: `authorizationStatus`
+ *   "checks the authorization status for saving data to the HealthKit store"
+ *   and answers truthfully — `.notDetermined` / `.sharingDenied` /
+ *   `.sharingAuthorized` are three different, real answers, not one obscured
+ *   one. `healthWriteAuthorizationStatus` is a plain synchronous read of that,
+ *   unlike anything on the read side, and `HealthSettings` can and does show a
+ *   real Allowed/Not allowed/Not asked row for it — see
+ *   `docs/arch/health-data.md` for why that would be dishonest for reads and
+ *   isn't for this.
+ * - **Read and write ask separately, on purpose.** One `requestAuthorization`
+ *   call could ask for both a read type and a share type in the same sheet,
+ *   but folding water's write ask into the existing read flow would mean
+ *   somebody who only ever wanted to read steps gets asked about writing
+ *   water too, the first time they tap "Turn on" for reading. Two asks, two
+ *   switches (`healthReadEnabled` / `healthWriteEnabled`), same as the
+ *   generator's own two-switch rule one level up.
+ * - **There is exactly one write type, and it stays that way until something
+ *   needs another.** `writeTypes` in the Swift module is deliberately not
+ *   `readTypes`'s shape generalized — a new share type is a new consequence
+ *   (a real sample lands in somebody's Health record), not a new column in a
+ *   read tuple, so it earns its own review each time rather than riding in
+ *   with whatever's being read.
  *
  * The native module is resolved once, lazily, and every export degrades to an
  * "unavailable" answer if it isn't there — the todo-screentime-bridge shape,
@@ -46,6 +71,14 @@ export type HealthRequestStatus = 'unavailable' | 'shouldRequest' | 'unnecessary
 export type HealthAuthorizationResult = 'unavailable' | 'requested' | 'failed';
 
 /**
+ * The real write-authorization state for dietary water — unlike
+ * `HealthRequestStatus`, this one is allowed to say what actually happened.
+ * `unavailable` covers "this build/device can't", same meaning it has for
+ * every other status here.
+ */
+export type HealthWriteStatus = 'unavailable' | 'notDetermined' | 'sharingDenied' | 'sharingAuthorized';
+
+/**
  * One logical day's readings, as the daily read hands them back.
  *
  * `start` is the instant the day began, not a day key: which day that *is*
@@ -54,13 +87,31 @@ export type HealthAuthorizationResult = 'unavailable' | 'requested' | 'failed';
  * uses. One implementation of "which day is this", and it is the one that has
  * the setting.
  *
- * Both numbers are independently nullable, and null is never zero — see the
+ * Every number is independently nullable, and null is never zero — see the
  * module note above.
  */
 export interface HealthDayReading {
   start: string;
   steps: number | null;
   sleepMinutes: number | null;
+  /** Milligrams of dietary sodium logged for the day, or null. Not read from
+   * this app's own writes — nothing here writes to Health — but from whatever
+   * food-logging app the person already uses; see the module note above. */
+  sodiumMg: number | null;
+  /** Grams of dietary protein logged for the day, or null. Same source as `sodiumMg`. */
+  proteinG: number | null;
+  /** Grams of dietary saturated fat logged for the day, or null. Same source as `sodiumMg`. */
+  satFatG: number | null;
+  /** Grams of dietary fiber logged for the day, or null. Same source as `sodiumMg`. */
+  fiberG: number | null;
+  /** Grams of dietary sugar logged for the day, or null. Same source as `sodiumMg`. */
+  sugarG: number | null;
+  /** Milligrams of dietary caffeine logged for the day, or null. Same source as `sodiumMg`. */
+  caffeineMg: number | null;
+  /** Millilitres of dietary water logged for the day, or null. Same source as `sodiumMg`. */
+  waterMl: number | null;
+  /** Kilocalories of dietary energy logged for the day, or null. Same source as `sodiumMg`. */
+  calorieKcal: number | null;
 }
 
 interface TodoHealthNativeModule {
@@ -68,6 +119,9 @@ interface TodoHealthNativeModule {
   authorizationRequestStatus(): Promise<HealthRequestStatus>;
   requestAuthorization(): Promise<HealthAuthorizationResult>;
   readDailyHealth(anchorISO: string, days: number): Promise<string>;
+  writeAuthorizationStatus(): HealthWriteStatus;
+  requestWriteAuthorization(): Promise<HealthAuthorizationResult>;
+  writeWaterSample(milliliters: number): Promise<boolean>;
 }
 
 let nativeModule: TodoHealthNativeModule | null = null;
@@ -119,6 +173,40 @@ export function requestHealthAuthorization(): Promise<HealthAuthorizationResult>
 }
 
 /**
+ * The real, current write-authorization state for dietary water. Synchronous,
+ * because `HKHealthStore.authorizationStatus(for:)` is — there is no sheet to
+ * wait on here, only a fact to read. Call it again right after
+ * `requestHealthWriteAuthorization` resolves to find out what was actually
+ * chosen, which the read side can never do for itself.
+ */
+export function healthWriteAuthorizationStatus(): HealthWriteStatus {
+  return degradeOnThrow(() => nativeModule!.writeAuthorizationStatus(), 'unavailable');
+}
+
+/**
+ * Present the Health share sheet for dietary water. Resolving `requested`
+ * says the sheet was shown, nothing about what was chosen — same shape as
+ * `requestHealthAuthorization` — but unlike that one, the truth is available
+ * right afterward: call `healthWriteAuthorizationStatus()` rather than
+ * inferring anything from this call's own result.
+ */
+export function requestHealthWriteAuthorization(): Promise<HealthAuthorizationResult> {
+  return degradeOnReject(() => nativeModule!.requestWriteAuthorization(), 'unavailable');
+}
+
+/**
+ * Writes one dietary-water sample dated now, for `milliliters` — the write
+ * half of this bridge, and currently the only one. Resolves `false` for every
+ * reason there's nothing to report success for (no native half, not
+ * authorized, a non-positive amount, the save itself failing); the caller
+ * (`healthCompletionSync.ts`) treats all of them alike, since none of them
+ * are worth surfacing as an error to someone who just finished a task.
+ */
+export function writeWaterSample(milliliters: number): Promise<boolean> {
+  return degradeOnReject(() => nativeModule!.writeWaterSample(milliliters), false);
+}
+
+/**
  * A count that came back over the bridge, or null.
  *
  * Shared by both reads so the "absent is not zero" rule has one implementation:
@@ -132,7 +220,9 @@ function countOrNull(value: unknown): number | null {
 }
 
 /**
- * Steps and sleep for each of `days` logical days starting at `anchorISO`.
+ * Steps, sleep, and eight nutrients (sodium, protein, saturated fat, fiber,
+ * sugar, caffeine, water, calories) for each of `days` logical days starting
+ * at `anchorISO`.
  *
  * The window is an anchor plus a count rather than a pair of instants, because
  * a logical day is exactly one calendar day long under any reset time — so the
@@ -163,7 +253,9 @@ export async function readDailyHealth(
     const out: HealthDayReading[] = [];
     for (const entry of parsed) {
       if (typeof entry !== 'object' || entry === null) continue;
-      const { start, steps, sleepMinutes } = entry as Record<string, unknown>;
+      const {
+        start, steps, sleepMinutes, sodiumMg, proteinG, satFatG, fiberG, sugarG, caffeineMg, waterMl, calorieKcal,
+      } = entry as Record<string, unknown>;
       // A row with no instant cannot be filed under a day, so it is dropped
       // rather than guessed at — the same refusal the native side makes when
       // it cannot work out which bucket a sample belongs in.
@@ -172,6 +264,14 @@ export async function readDailyHealth(
         start,
         steps: countOrNull(steps),
         sleepMinutes: countOrNull(sleepMinutes),
+        sodiumMg: countOrNull(sodiumMg),
+        proteinG: countOrNull(proteinG),
+        satFatG: countOrNull(satFatG),
+        fiberG: countOrNull(fiberG),
+        sugarG: countOrNull(sugarG),
+        caffeineMg: countOrNull(caffeineMg),
+        waterMl: countOrNull(waterMl),
+        calorieKcal: countOrNull(calorieKcal),
       });
     }
     return out;
