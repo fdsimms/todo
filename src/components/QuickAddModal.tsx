@@ -1623,15 +1623,17 @@ export function QuickAddModal({
                               : parsed.schedule.deadline ? 'flag-outline' : 'calendar-outline')
                           : categoryTagsParsed
                             ? (categoryTagsParsed.category ? 'pricetag-outline' : 'pricetags-outline')
-                            : linkParsed
-                              ? 'link-outline'
-                              : phoneParsed
-                                ? 'call-outline'
-                                : emailParsed
-                                  ? 'mail-outline'
-                                  : durationParsed
-                                    ? 'timer-outline'
-                                    : 'cube-outline'
+                            : priorityParsed
+                              ? 'alert-circle-outline'
+                              : linkParsed
+                                ? 'link-outline'
+                                : phoneParsed
+                                  ? 'call-outline'
+                                  : emailParsed
+                                    ? 'mail-outline'
+                                    : durationParsed
+                                      ? 'timer-outline'
+                                      : 'cube-outline'
                       }
                       size={14}
                       color={colors.onAccent}
@@ -1641,15 +1643,17 @@ export function QuickAddModal({
                         ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
                         : categoryTagsParsed
                           ? categoryTagsLabel(categoryTagsParsed, categories)
-                          : linkParsed
-                            ? linkLabel(linkParsed.url)
-                            : phoneParsed
-                              ? `Call ${phoneParsed.number}`
-                              : emailParsed
-                                ? `Email ${emailParsed.address}`
-                                : durationParsed
-                                  ? `Timer · ${formatDuration(durationParsed.minutes)}`
-                                  : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
+                          : priorityParsed
+                            ? `Priority · ${PRIORITY_LABELS_SHORT[priorityParsed.priority]}`
+                            : linkParsed
+                              ? linkLabel(linkParsed.url)
+                              : phoneParsed
+                                ? `Call ${phoneParsed.number}`
+                                : emailParsed
+                                  ? `Email ${emailParsed.address}`
+                                  : durationParsed
+                                    ? `Timer · ${formatDuration(durationParsed.minutes)}`
+                                    : `Supply · ${formatSupplyLeft(supplyParsed!.count, supplyParsed!.unit)}`}
                     </Text>
                     <View style={styles.tooltipDot} />
                     <Text style={styles.tooltipHint}>Tap to set</Text>
