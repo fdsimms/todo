@@ -353,7 +353,8 @@ function extractStartingClause(text: string, now: Date): { date: Date; rest: str
 }
 
 /**
- * Peels a trailing "after completion" clause, mapping to recurrenceFromCompletion.
+ * Peels a trailing "after completion" (or "on completion") clause, mapping to
+ * recurrenceFromCompletion.
  *
  * Case-insensitive so it can be run against original-cased input as well as the
  * lowercased suffix the parser normally hands it — see
@@ -361,7 +362,7 @@ function extractStartingClause(text: string, now: Date): { date: Date; rest: str
  * of `rest` and would mis-slice if this only matched lowercase.
  */
 function extractFromCompletionClause(text: string): { rest: string } | null {
-  const m = text.match(/^(.*?)\s+after\s+(?:completion|completing|finishing|finished|it'?s?\s+done|i\s+(?:complete|finish)\s+it|done)$/i);
+  const m = text.match(/^(.*?)\s+(?:after|on)\s+(?:completion|completing|finishing|finished|it'?s?\s+done|i\s+(?:complete|finish)\s+it|done)$/i);
   return m ? { rest: m[1] } : null;
 }
 
