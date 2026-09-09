@@ -145,6 +145,7 @@ let mockUseUpLeadDays = 1;
 let mockUseUpCategory: string | null = null;
 let mockActiveListDrivenBy: string | null = null;
 let mockProjects: any[] = [];
+let mockCollapsedGroceryGroups: string[] = [];
 
 jest.mock('../store/useSettingsStore', () => ({
   useSettingsStore: {
@@ -155,6 +156,8 @@ jest.mock('../store/useSettingsStore', () => ({
       dayResetTime: '00:00',
       get activeListDrivenBy() { return mockActiveListDrivenBy; },
       setActiveListDrivenBy: (id: string | null) => { mockActiveListDrivenBy = id; },
+      get collapsedGroceryGroups() { return mockCollapsedGroceryGroups; },
+      setCollapsedGroceryGroups: (groups: string[]) => { mockCollapsedGroceryGroups = groups; },
     }),
   },
 }));
@@ -336,6 +339,7 @@ beforeEach(() => {
   mockUseUpTasks = false;
   mockUseUpLeadDays = 1;
   mockUseUpCategory = null;
+  mockCollapsedGroceryGroups = [];
   seed([]);
   // Every test starts with an empty history. Undo used to null a single slot,
   // so a test that ended on an undo left one behind that looked clean; a stack
@@ -1430,6 +1434,22 @@ describe('renameAisle', () => {
     expect(useGroceryStore.getState().renameAisle('Deli', 'DELI')).toBe(true);
     expect(useGroceryStore.getState().aisleOrder).toContain('DELI');
   });
+
+  it('carries a collapsed header onto the new name', () => {
+    mockCollapsedGroceryGroups = ['aisle:Deli', 'aisle:Frozen'];
+
+    useGroceryStore.getState().renameAisle('Deli', 'Charcuterie');
+
+    expect(mockCollapsedGroceryGroups).toEqual(['aisle:Charcuterie', 'aisle:Frozen']);
+  });
+
+  it('leaves collapse state alone when the renamed aisle was not collapsed', () => {
+    mockCollapsedGroceryGroups = ['aisle:Frozen'];
+
+    useGroceryStore.getState().renameAisle('Deli', 'Charcuterie');
+
+    expect(mockCollapsedGroceryGroups).toEqual(['aisle:Frozen']);
+  });
 });
 
 describe('deleteAisle', () => {
@@ -1493,6 +1513,14 @@ describe('deleteAisle', () => {
 
     expect(useGroceryStore.getState().aisleOrder).toContain(OTHER_AISLE);
     expect(dbSetGroceryAisleOrder).not.toHaveBeenCalled();
+  });
+
+  it('drops a collapsed header for the aisle it deletes — nothing left to fold', () => {
+    mockCollapsedGroceryGroups = ['aisle:Snacks', 'aisle:Frozen'];
+
+    useGroceryStore.getState().deleteAisle('Snacks');
+
+    expect(mockCollapsedGroceryGroups).toEqual(['aisle:Frozen']);
   });
 });
 
