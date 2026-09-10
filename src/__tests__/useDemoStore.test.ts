@@ -30,6 +30,8 @@ import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
+import { targetedNutrients } from '../utils/nutritionTargets';
+import { NUTRIENT_KEYS } from '../types';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { extractPlaceholders, declaresRunPlaceholder } from '../utils/templateUtils';
 import { awaySpanOf, awayStatus, awayNights, nextAwayProject } from '../utils/awayDates';
@@ -1566,6 +1568,16 @@ describe('demo seed — people', () => {
     expect(rows.length).toBeGreaterThan(0);
     const titles = taskContrastTitles(tasks);
     expect(rows.map(r => titles.get(r.label))).toContain('Take the vitamin D');
+  });
+
+  it('seeds a couple of nutrition targets, so the totals read against something', () => {
+    // A target is invisible until something reads against it. Two rather than
+    // ten: somebody watching what they eat watches a couple of numbers, and
+    // ten set would suggest the app expects that.
+    const targets = useSettingsStore.getState().nutritionTargets;
+    expect(targetedNutrients(targets).length).toBeGreaterThan(0);
+    expect(targets.calorieKcal).toBeGreaterThan(0);
+    expect(targetedNutrients(targets).length).toBeLessThan(NUTRIENT_KEYS.length);
   });
 
   it('seeds a meal that has opted out of being logged', () => {
