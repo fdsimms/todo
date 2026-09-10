@@ -3,6 +3,7 @@ import {
   dbCountFoodLogEntries,
   dbDeleteFoodLogEntry,
   dbGetFoodLogEntries,
+  dbGetFoodLogEntry,
   dbInsertFoodLogEntry,
   dbUpdateFoodLogEntry,
 } from '../db/database';
@@ -10,10 +11,16 @@ import type { FoodNutrition } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetFoodLogEntries: jest.fn(() => []),
+  dbGetFoodLogEntry: jest.fn(() => undefined),
   dbCountFoodLogEntries: jest.fn(() => 0),
   dbInsertFoodLogEntry: jest.fn(),
   dbUpdateFoodLogEntry: jest.fn(),
   dbDeleteFoodLogEntry: jest.fn(),
+}));
+
+jest.mock('../utils/healthFoodSync', () => ({
+  logFoodEntryToHealth: jest.fn(() => Promise.resolve({ outcome: 'unavailable', sampleIds: [] })),
+  retractFoodEntryFromHealth: jest.fn(() => Promise.resolve(true)),
 }));
 
 jest.mock('../utils/dateUtils', () => ({
