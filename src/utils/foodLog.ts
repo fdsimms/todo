@@ -248,6 +248,31 @@ export function describeFoodLogTotals(totals: FoodLogTotals): string | null {
   return `${parts.join(', ')}${clause}`;
 }
 
+/** One entry's stated amount of a nutrient, or `null` when it never said. */
+export interface NutrientContribution {
+  entry: FoodLogEntry;
+  amount: number | null;
+}
+
+/**
+ * What each of a run of entries put toward one nutrient, most first.
+ *
+ * This is `foodLogTotals` broken back out by entry, for the one place a total
+ * needs to answer "which of these": the coverage clause on the day's card
+ * says a figure speaks for 5 of 7 entries and nothing else there says which
+ * five. An entry that never stated the nutrient sorts to the bottom rather
+ * than being dropped, so the list still accounts for every entry the total's
+ * coverage count is measured against.
+ */
+export function nutrientContributions(
+  entries: readonly FoodLogEntry[],
+  key: NutrientKey,
+): NutrientContribution[] {
+  return entries
+    .map(entry => ({ entry, amount: entry.nutrition.amounts[key] ?? null }))
+    .sort((a, b) => (b.amount ?? -1) - (a.amount ?? -1));
+}
+
 /**
  * How an entry's amount and provenance read on its row.
  *
