@@ -856,6 +856,11 @@ export function KitchenScreen() {
         onReopen={() => openLeftover && reopenLeftover(openLeftover.id)}
         onDelete={() => openLeftover && deleteLeftover(openLeftover.id)}
         onClose={() => setOpenLeftoverId(null)}
+        onOpenRecipe={
+          openLeftover?.recipeId && recipes.some(r => r.id === openLeftover.recipeId)
+            ? () => navigation.navigate('RecipeDetail', { recipeId: openLeftover.recipeId })
+            : undefined
+        }
       />
     </View>
   );

@@ -26,10 +26,11 @@ jest.mock('../db/database', () => ({
   dbBulkUpdateFoodLogPlacement: jest.fn(),
 }));
 
-// This store reaches useFoodLogStore only to set a pending meal-log offer
-// (see setPendingMealLog below); it never needs the real Health write path.
-// Mocked because the real module reaches healthBridge.ts → react-native,
-// which Jest's node environment can't parse, and which nothing here tests.
+// useLeftoverStore reaches useFoodLogStore only to set a pending meal-log
+// offer (see setPendingMealLog below), but the real healthFoodSync module
+// reaches healthBridge.ts → react-native, which Jest's node environment can't
+// parse — left unmocked it fails every test in this file at module load, and
+// nothing here calls into Health anyway.
 jest.mock('../utils/healthFoodSync', () => ({
   logFoodEntryToHealth: jest.fn(() => Promise.resolve({ outcome: 'unavailable', sampleIds: [] })),
   retractFoodEntryFromHealth: jest.fn(() => Promise.resolve(true)),

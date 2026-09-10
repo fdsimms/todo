@@ -32,6 +32,19 @@ import { applyStandingSwap, NO_STANDING_SWAPS, type StandingSwapMap } from './st
  * its default, which is what every caller that predates this does implicitly —
  * so an unresolved read is always a complete, cookable dish rather than a
  * partial one.
+ *
+ * **A label can be shared across the two lists** — an ingredient and a
+ * component both carrying `choiceGroup: 'Rice'` resolve as one exclusive
+ * either/or ("buy rice, or cook this component instead"), not two independent
+ * ones that both land on the shopping list. `resolveGroupWinners` is the one
+ * place that reads a label across both `recipe.ingredients` and
+ * `recipe.components` together; everything downstream (`activeComponents`,
+ * `activeIngredients`, `recipeChoiceGroups`) goes through it, the same
+ * discipline `activeIn` used to keep the two per-type resolvers from drifting
+ * apart. **Ingredients are tried before components** when nothing is chosen,
+ * so pairing an existing ingredient with a new alternative component never
+ * flips what the recipe already buys by default — an explicit pick in
+ * `chosen` can still name either side, same as it always could.
  */
 
 /** Tolerates a null column, a corrupt blob, or a shape from a newer app version — same as parseRecipeIngredients. */
@@ -169,40 +182,45 @@ interface Groupable {
 }
 
 /**
- * The rows of `list` that actually contribute under `resolution`: every
- * ungrouped row, plus one option per choice group.
+ * Which ingredient(s) and component(s) win each of `recipe`'s choice groups —
+ * the one place a label is read across both lists together. A group made of
+ * options from only one list resolves exactly as it always did; a group with
+ * members in both resolves as a single either/or, with the winner named in
+ * `chosen` if there is one, else the first option in **ingredients-before-
+ * components** order (see the module doc comment for why that order, not the
+ * reverse, is the one that keeps a recipe's existing default from moving).
  *
- * List order is preserved, so a resolved list reads exactly as the recipe is
- * written. The winner of a group is the first of its options named in `chosen`,
- * falling back to the first option in list order — which is what makes "the
- * default is the first one" true (see RecipeComponent.choiceGroup) and keeps
- * the result deterministic even if a stored list somehow names two options of
- * one group.
- *
- * Generic over components and ingredients because the rule is genuinely the
- * same one, and having written it twice is how they'd drift apart. It stays a
- * shared *function* rather than a shared type — see RecipeIngredient.choiceGroup
- * for why a dish and a shopping line don't belong in one list.
+ * `undecided` — see ChoiceResolution.undecided — only ever applies to a group
+ * with no component members at all: a component names a dish, and leaving a
+ * dish undecided has no shelf-side tick that could ever take it back off.
  */
-function activeIn<T extends Groupable>(
-  list: readonly T[],
-  resolution?: ChoiceResolution,
-  /** Labels within `list` left open — see ChoiceResolution.undecided. */
-  undecided?: ReadonlySet<string>,
-): T[] {
-  if (resolution?.allOptions) return [...list];
-  const groups = groupOptions(list);
-  if (groups.size === 0) return [...list];
+function resolveGroupWinners(
+  recipe: Recipe,
+  resolution: ChoiceResolution | undefined,
+  undecided: ReadonlySet<string> | undefined,
+): { ingredientIds: Set<string>; componentIds: Set<string> } {
+  const ingredientIds = new Set<string>();
+  const componentIds = new Set<string>();
+  const componentGroups = groupOptions(recipe.components);
+  const ingredientGroups = groupOptions(recipe.ingredients);
   const chosen = new Set(resolution?.chosen ?? []);
-  const winners = new Set<string>();
-  for (const [label, options] of groups) {
-    if (undecided?.has(label)) {
-      for (const option of options) winners.add(option.id);
+  const labels = new Set([...ingredientGroups.keys(), ...componentGroups.keys()]);
+  for (const label of labels) {
+    const ingredients = ingredientGroups.get(label) ?? [];
+    const components = componentGroups.get(label) ?? [];
+    if (components.length === 0 && undecided?.has(label)) {
+      for (const ingredient of ingredients) ingredientIds.add(ingredient.id);
       continue;
     }
-    winners.add((options.find(o => chosen.has(o.id)) ?? options[0]).id);
+    const options: { id: string; kind: 'ingredient' | 'component' }[] = [
+      ...ingredients.map(i => ({ id: i.id, kind: 'ingredient' as const })),
+      ...components.map(c => ({ id: c.id, kind: 'component' as const })),
+    ];
+    const winner = options.find(o => chosen.has(o.id)) ?? options[0];
+    if (!winner) continue;
+    (winner.kind === 'ingredient' ? ingredientIds : componentIds).add(winner.id);
   }
-  return list.filter(row => !row.choiceGroup || winners.has(row.id));
+  return { ingredientIds, componentIds };
 }
 
 /** The labels of `recipe`'s own ingredient groups the resolution leaves open. */
@@ -223,13 +241,17 @@ export function activeComponents(
   recipe: Recipe,
   resolution?: ChoiceResolution,
 ): RecipeComponent[] {
-  return activeIn(recipe.components, resolution);
+  if (resolution?.allOptions) return [...recipe.components];
+  if (recipe.components.every(c => !c.choiceGroup)) return [...recipe.components];
+  const { componentIds } = resolveGroupWinners(recipe, resolution, undecidedLabelsOf(recipe, resolution));
+  return recipe.components.filter(c => !c.choiceGroup || componentIds.has(c.id));
 }
 
 /**
  * The ingredient lines a meal of `recipe` actually buys under `resolution` —
  * "serrano" or "jalapeño", never both, and never the string "serrano or
- * jalapeño".
+ * jalapeño". Also where a component wins a group it shares with an ingredient:
+ * the ingredient line drops out exactly as a losing ingredient sibling would.
  *
  * Every shopping read reaches this through flattenRecipeIngredients rather than
  * calling it directly; it's exported for the authoring surfaces that need to
@@ -239,7 +261,10 @@ export function activeIngredients(
   recipe: Recipe,
   resolution?: ChoiceResolution,
 ): RecipeIngredient[] {
-  return activeIn(recipe.ingredients, resolution, undecidedLabelsOf(recipe, resolution));
+  if (resolution?.allOptions) return [...recipe.ingredients];
+  if (recipe.ingredients.every(i => !i.choiceGroup)) return [...recipe.ingredients];
+  const { ingredientIds } = resolveGroupWinners(recipe, resolution, undecidedLabelsOf(recipe, resolution));
+  return recipe.ingredients.filter(i => !i.choiceGroup || ingredientIds.has(i.id));
 }
 
 /** label → its rows, in list order. Empty for a list with no alternatives. */
@@ -519,10 +544,14 @@ export interface ChoiceGroup {
   /** The `choiceGroup` label the options share — "Side", "Pepper". */
   label: string;
   /**
-   * Which list the options came from. Pickers render both identically; this is
-   * for a caller that needs to say "side" rather than "ingredient" in a label.
+   * Which list the options came from — `'mixed'` when the group has members
+   * in both. Pickers render every kind identically; this is for a caller that
+   * needs to say "side" rather than "ingredient" in a label, or (like
+   * RecipeToListSheet's "Decide at the store" chip) that must refuse a group
+   * with any component in it — `'mixed'` fails that check exactly as
+   * `'component'` already does, without the caller needing to know about it.
    */
-  kind: 'component' | 'ingredient';
+  kind: 'component' | 'ingredient' | 'mixed';
   /** The alternatives, in list order. The first is the group's default. */
   options: ChoiceOption[];
   /** Whichever option the resolution selects: the chosen one, else the default. */
@@ -563,16 +592,32 @@ export function recipeChoiceGroups(
       active: options.find(o => chosen.has(o.id)) ?? options[0],
     });
   };
+  // Ingredients before components within one group's *options* (see
+  // resolveGroupWinners), but a label is emitted at the point a component
+  // names it, same as before — components still read as the bigger decision
+  // when a node poses more than one distinct question.
   walk(recipe, recipesById, new Set([recipe.id]), 0, resolution, node => {
-    for (const [label, components] of groupOptions(node.recipe.components)) {
-      push(node.recipe, label, 'component', components.map(component => {
+    const componentsByLabel = groupOptions(node.recipe.components);
+    const ingredientsByLabel = groupOptions(node.recipe.ingredients);
+    const optionsFor = (label: string): ChoiceOption[] => [
+      ...(ingredientsByLabel.get(label) ?? []).map(ingredient =>
+        ({ id: ingredient.id, name: ingredient.name, broken: false })),
+      ...(componentsByLabel.get(label) ?? []).map(component => {
         const resolved = resolveComponent(component, recipesById);
         return { id: component.id, name: resolved.name, broken: !resolved.recipe };
-      }));
+      }),
+    ];
+    const kindFor = (label: string): ChoiceGroup['kind'] =>
+      ingredientsByLabel.has(label) && componentsByLabel.has(label) ? 'mixed'
+        : componentsByLabel.has(label) ? 'component' : 'ingredient';
+    const emitted = new Set<string>();
+    for (const label of componentsByLabel.keys()) {
+      push(node.recipe, label, kindFor(label), optionsFor(label));
+      emitted.add(label);
     }
-    for (const [label, ingredients] of groupOptions(node.recipe.ingredients)) {
-      push(node.recipe, label, 'ingredient',
-        ingredients.map(ingredient => ({ id: ingredient.id, name: ingredient.name, broken: false })));
+    for (const label of ingredientsByLabel.keys()) {
+      if (emitted.has(label)) continue;
+      push(node.recipe, label, kindFor(label), optionsFor(label));
     }
   });
   return out;
@@ -681,6 +726,40 @@ export function alternativeCaptions(
     for (const row of options) {
       const others = options.filter(o => o.id !== row.id).map(o => o.name.trim() || 'unnamed');
       out.set(row.id, `or ${others.join(' or ')}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * `alternativeCaptions`, crossing the two lists — the ingredient half of "corn
+ * tortillas or Tortillas de Maíz" has to name the component alternative, and
+ * the component half has to name the ingredient back. Not built by calling
+ * `alternativeCaptions` twice: each of those calls only ever sees its own
+ * list, which is exactly the bug this fixes (a shared label used to open two
+ * separate "Choose one" headers instead of one shared caption on each side).
+ * `recipe`'s own groups only, same as `alternativeCaptions`'s callers — a
+ * caption for a component two levels down is a question for that recipe's own
+ * detail screen, not this one's.
+ */
+export function recipeAlternativeCaptions(
+  recipe: Recipe,
+  recipesById: ReadonlyMap<string, Recipe>,
+): Map<string, string> {
+  const componentGroups = groupOptions(recipe.components);
+  const ingredientGroups = groupOptions(recipe.ingredients);
+  const labels = new Set([...ingredientGroups.keys(), ...componentGroups.keys()]);
+  const out = new Map<string, string>();
+  for (const label of labels) {
+    const options = [
+      ...(ingredientGroups.get(label) ?? []).map(i => ({ id: i.id, name: i.name })),
+      ...(componentGroups.get(label) ?? []).map(c =>
+        ({ id: c.id, name: resolveComponent(c, recipesById).name || 'Deleted recipe' })),
+    ];
+    if (options.length < 2) continue;
+    for (const option of options) {
+      const others = options.filter(o => o.id !== option.id).map(o => o.name.trim() || 'unnamed');
+      out.set(option.id, `or ${others.join(' or ')}`);
     }
   }
   return out;

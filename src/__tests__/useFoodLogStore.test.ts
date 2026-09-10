@@ -15,6 +15,8 @@ import type { FoodNutrition } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetFoodLogEntries: jest.fn(() => []),
+  // Matches the real dbGetFoodLogEntry's own miss case (a null row reads as
+  // null, never undefined) — see database.ts.
   dbGetFoodLogEntry: jest.fn(() => null),
   dbCountFoodLogEntries: jest.fn(() => 0),
   dbInsertFoodLogEntry: jest.fn(),
