@@ -219,6 +219,9 @@ export type MealCopyDraft = Omit<MealPlanEntry, 'id' | 'createdAt' | 'calendarEv
  * - **`shopTask` carries** on the same reading — "don't warn me about this
  *   one, I buy it fresh on the day" is a fact about the dish, and a copied week
  *   that dropped it would ask again about every meal already answered.
+ * - **`logMeal` carries** for the third time on that reading: whether a dish
+ *   is one you want counted is a fact about the dish, so a copied week that
+ *   dropped it would start asking again about a meal already answered.
  *
  * `sortOrder` carries as well, so two things on one dinner keep their order
  * relative to each other.
@@ -242,6 +245,7 @@ export function weekCopyDrafts(
       recipeScale: e.recipeScale,
       cookTask: e.cookTask,
       shopTask: e.shopTask,
+      logMeal: e.logMeal,
     }));
 }
 

@@ -5568,7 +5568,7 @@ describe('checkMealSlotTasks', () => {
     return {
       id: `m-${date}-${slot}`, date, slot, recipeId: null, title: 'Chili', sortOrder: 1,
       createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
       ...over,
     };
   }
@@ -5917,7 +5917,7 @@ describe('checkMealShortfallTasks', () => {
     return {
       id: `m-${date}-${over.slot ?? 'dinner'}`, date, slot: 'dinner', recipeId, title: 'Ragu',
       sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: null,
-      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+      recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
       ...over,
     };
   }
@@ -12645,7 +12645,7 @@ describe('completing a leftover-backed meal task', () => {
   const entry: MealPlanEntry = {
     id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
-    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
   };
   const seedEntry = (overrides: Partial<MealPlanEntry> = {}) => {
     const merged = { ...entry, ...overrides };
@@ -12735,7 +12735,7 @@ describe('completing a use-up task and its meal task for the same leftover', () 
   const entry: MealPlanEntry = {
     id: 'm-1', date: '2026-08-22', slot: 'dinner', recipeId: null, title: 'Chicken stir-fry',
     sortOrder: 1, createdAt: '2026-01-01T00:00:00.000Z', cookedAt: null, leftoverId: 'l-1',
-    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, calendarEventId: null,
+    recipeChoices: [], personIds: [], recipeScale: 1, cookTask: null, shopTask: null, logMeal: null, calendarEventId: null,
   };
   const seedEntry = () => {
     (dbGetMealPlanEntries as jest.Mock).mockReturnValue([entry]);

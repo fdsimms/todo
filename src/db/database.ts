@@ -1420,6 +1420,11 @@ export function initDatabase(): void {
     // did above, and it's the honest reading: nothing recorded whether these
     // stacks were on Today before now. See TaskGroup.onToday.
     'ALTER TABLE task_groups ADD COLUMN on_today INTEGER NOT NULL DEFAULT 0',
+    // Nullable with no default, for cook_task's reason: NULL is the third state
+    // meaning "the user hasn't said, so the setting decides", and a DEFAULT 0
+    // would record every meal ever planned as an explicit "never ask me about
+    // this one". See MealPlanEntry.logMeal.
+    'ALTER TABLE meal_plan_entries ADD COLUMN log_meal INTEGER',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4526,6 +4531,10 @@ function rowToMealPlanEntry(row: Record<string, unknown>): MealPlanEntry {
     shopTask: row.shop_task === null || row.shop_task === undefined
       ? null
       : Boolean(row.shop_task),
+    // And again — see MealPlanEntry.logMeal.
+    logMeal: row.log_meal === null || row.log_meal === undefined
+      ? null
+      : Boolean(row.log_meal),
     calendarEventId: (row.calendar_event_id as string | null) ?? null,
   };
 }
@@ -4835,8 +4844,8 @@ export function dbGetMealPlanEntries(startKey: string, endKey: string): MealPlan
 
 export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, calendar_event_id, person_ids)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO meal_plan_entries (id, date, slot, recipe_id, title, sort_order, created_at, cooked_at, leftover_id, recipe_choices, recipe_scale, cook_task, shop_task, log_meal, calendar_event_id, person_ids)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       entry.id, entry.date, entry.slot, entry.recipeId ?? null,
       entry.title, entry.sortOrder, entry.createdAt, entry.cookedAt ?? null,
@@ -4844,6 +4853,7 @@ export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
       normalizeScale(entry.recipeScale),
       entry.cookTask === null || entry.cookTask === undefined ? null : (entry.cookTask ? 1 : 0),
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
+      entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
       JSON.stringify(entry.personIds ?? []),
     ]
@@ -4852,13 +4862,14 @@ export function dbInsertMealPlanEntry(entry: MealPlanEntry): void {
 
 export function dbUpdateMealPlanEntry(entry: MealPlanEntry): void {
   db.runSync(
-    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, calendar_event_id=?, person_ids=? WHERE id=?`,
+    `UPDATE meal_plan_entries SET date=?, slot=?, recipe_id=?, title=?, sort_order=?, cooked_at=?, leftover_id=?, recipe_choices=?, recipe_scale=?, cook_task=?, shop_task=?, log_meal=?, calendar_event_id=?, person_ids=? WHERE id=?`,
     [
       entry.date, entry.slot, entry.recipeId ?? null, entry.title, entry.sortOrder,
       entry.cookedAt ?? null, entry.leftoverId ?? null,
       JSON.stringify(entry.recipeChoices ?? []), normalizeScale(entry.recipeScale),
       entry.cookTask === null || entry.cookTask === undefined ? null : (entry.cookTask ? 1 : 0),
       entry.shopTask === null || entry.shopTask === undefined ? null : (entry.shopTask ? 1 : 0),
+      entry.logMeal === null || entry.logMeal === undefined ? null : (entry.logMeal ? 1 : 0),
       entry.calendarEventId ?? null,
       JSON.stringify(entry.personIds ?? []),
       entry.id,

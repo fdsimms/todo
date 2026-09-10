@@ -647,6 +647,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['rate', 'rating', 'review', 'leftovers', 'used up', 'out of', 'sheet', 'prompt', 'cooked'] },
   { id: 'restockOfferEnabled', requires: 'cookRecapEnabled', groupId: 'kitchen', label: 'Restock after cooking', section: 'Meals on Today',
     keywords: ['ingredients', 'shopping list', 'offer', 'buy again', 'cooked'] },
+  { id: 'mealLogPrompt', groupId: 'kitchen', label: 'Ask what you ate', section: 'Meals on Today',
+    keywords: ['food log', 'calories', 'nutrition', 'diary', 'eaten', 'leftovers', 'prompt'] },
   { id: 'tripLiveActivity', iosOnly: true, groupId: 'kitchen', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'],
     simple: true },

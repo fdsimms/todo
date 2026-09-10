@@ -101,6 +101,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
+    logMeal: null,
     calendarEventId: null,
     ...overrides,
   };
