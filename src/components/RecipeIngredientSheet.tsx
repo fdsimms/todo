@@ -405,6 +405,10 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
           placeholderTextColor={colors.textTertiary}
           maxLength={GROCERY_NAME_MAX_LENGTH}
           autoCapitalize="none"
+          // An ingredient is a shelf word and bridges to the catalog by name
+          // key, so a correction here strands the match — see GroceryRow.
+          autoCorrect={false}
+          spellCheck={false}
           accessibilityLabel="Ingredient name"
         />
         {!!alternatives && (

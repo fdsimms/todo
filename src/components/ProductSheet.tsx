@@ -298,6 +298,9 @@ export function ProductSheet({ visible, itemId, editingProductId = null, onClose
             onChangeText={t => { setVariant(t); setClash(false); }}
             placeholder="e.g. whole wheat"
             placeholderTextColor={colors.textTertiary}
+            // Matching the brand field right above it — both name a box.
+            autoCorrect={false}
+            spellCheck={false}
             maxLength={GROCERY_VARIANT_MAX_LENGTH}
             accessibilityLabel="Variant"
           />
