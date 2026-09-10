@@ -31,6 +31,7 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
 import { hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
+import { packageHelping } from '../utils/scanPortion';
 import { targetedNutrients } from '../utils/nutritionTargets';
 import { NUTRIENT_KEYS } from '../types';
 import { useTemplateStore } from '../store/useTemplateStore';
@@ -1659,16 +1660,24 @@ describe('demo seed — people', () => {
     const window = cookingWindow(getLogicalToday(), 30);
     useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
     const items = useGroceryStore.getState().items;
+    const products = useGroceryStore.getState().itemProducts;
     let checked = 0;
     for (const e of useFoodLogStore.getState().windowEntries) {
-      // A cooked dish is measured from its ingredients rather than from a
-      // catalog row's panel, and carries a recipe instead of an item. Its own
-      // arithmetic is pinned by the source assertion below.
+      // A cooked dish is measured from its ingredients rather than from any one
+      // panel, and carries a recipe instead of an item. Its own arithmetic is
+      // pinned by the source assertion below.
       if (e.recipeId) continue;
       const item = items.find(i => i.id === e.itemId);
-      expect(item?.nutrition).toBeDefined();
-      const rebuilt = scalePanelToAmount(item!.nutrition!, e.quantity, null);
-      expect(rebuilt?.nutrition.amounts).toEqual(e.nutrition.amounts);
+      const product = products.find(p => p.id === e.productId);
+      const panel = nutritionFor(item, product);
+      expect(panel).not.toBeNull();
+      // A scanned entry is measured in the panel's own servings, since that is
+      // the only amount a label states; a catalog food is measured against its
+      // portion table. Two paths, both arithmetic rather than typing.
+      const rebuilt = e.productId
+        ? packageHelping(panel!, 1, e.quantity)
+        : scalePanelToAmount(panel!, e.quantity, null)?.nutrition;
+      expect(rebuilt?.amounts).toEqual(e.nutrition.amounts);
       checked += 1;
     }
     expect(checked).toBeGreaterThan(0);
@@ -1684,6 +1693,20 @@ describe('demo seed — people', () => {
     expect(mix.estimated).toBeGreaterThan(0);
     expect(mix.database).toBeGreaterThan(0);
     expect(mix.fromRecipe).toBeGreaterThan(0);
+  });
+
+  it('seeds one entry that came off a barcode, carrying that box’s own figures', () => {
+    // The point of a scan is that a specific loaf states its own label where
+    // the catalog row can only state an average, so the entry has to carry the
+    // box's panel rather than the item's, or the feature reads as the picker again.
+    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
+    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    const scanned = useFoodLogStore.getState().entries.filter(e => e.productId);
+    expect(scanned.length).toBe(1);
+    const product = useGroceryStore.getState().itemProducts
+      .find(p => p.id === scanned[0].productId);
+    expect(product?.gtin).toBeTruthy();
+    expect(product?.nutrition).toBeTruthy();
   });
 
   it('seeds a day whose totals do not all speak for every entry', () => {
