@@ -1,0 +1,4 @@
+{
+  "message": "Added a \"Search a food database\" button when logging food turns up nothing, so a food with no catalog item can be logged right away.",
+  "date": "2026-09-10"
+}
