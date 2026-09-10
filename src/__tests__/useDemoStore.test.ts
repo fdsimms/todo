@@ -1730,6 +1730,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // ...and the one portion the loaf states, which is what lets a recipe
     // line written as "2 slices" become a weight at all. See FoodPortion.
     expect(panel!.portions).toEqual([{ amount: 1, label: 'slice', grams: 45 }]);
+    // ...and, on a different box, a panel somebody typed off the tag rather
+    // than fetched. The bakery loaf has no barcode either database knows, so
+    // without a manual path it would be permanently un-loggable — and without
+    // one of each in the seed, `source`'s whole reason for existing has
+    // nothing showing it.
+    const typed = itemProducts.find(p => p.nutrition?.source === 'manual');
+    expect(typed).toBeDefined();
+    expect(typed!.gtin).toBeNull();
+    expect(typed!.nutrition!.basis).toBe('perServing');
+    expect(typed!.nutrition!.servingGrams).toBeGreaterThan(0);
+    // A bakery tag prints no gram weight per stated portion, so this one has
+    // no portion table, which is the honest shape rather than a thin seed.
+    expect(typed!.nutrition!.portions).toEqual([]);
+    expect(typed!.nutrition!.sourceId).toBeNull();
     // ...and a rating, on a box that isn't the preferred one — "the one I
     // avoid" and "the one I want" being the same row would read as a bug.
     const avoided = itemProducts.find(p => p.rating === 'avoid');

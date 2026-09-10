@@ -2206,6 +2206,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     dismissDisposalOffer,
     setExpiresAt,
     setItemNutrition,
+    setProductNutrition,
     setShelfLifeDays,
     setUseUpTask,
     setVarietyOfKey,
@@ -2360,6 +2361,35 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // Already the preference by virtue of being added first — set explicitly so
   // the seed says what it means rather than depending on insertion order.
   if (arnolds) setPreferredProduct(bread, arnolds.id);
+
+  /**
+   * The bakery loaf's panel, typed in by hand — the case no database answers.
+   *
+   * **Put on the brandless one deliberately.** A store's own seeded sourdough
+   * has no barcode either database knows, and Open Food Facts is crowd-sourced
+   * and patchy outside Europe, so the only way this food ever gets figures is
+   * somebody copying them off the tag. `source: 'manual'` is what says so, and
+   * it is a different claim from the manufacturer's declared label on the
+   * Dave's Killer box below: without one of each in the seed, the distinction
+   * the record is built around has nothing showing it.
+   *
+   * No portion table, which is honest rather than thin: a bakery tag prints a
+   * serving and no gram weights per stated portion, so a recipe line written
+   * as "2 slices" of this cannot become a weight. `servingGrams` is the one
+   * number it does state, and it is what a per-serving basis needs.
+   */
+  if (sourdough) {
+    setProductNutrition(sourdough.id, {
+      basis: 'perServing',
+      servingGrams: 50,
+      servingText: '1 slice (50g)',
+      amounts: { calorieKcal: 130, proteinG: 5, carbsG: 25, fatG: 1.5, fiberG: 2, sodiumMg: 260 },
+      portions: [],
+      source: 'manual',
+      sourceId: null,
+      recordedAt: subDays(today, 12).toISOString(),
+    });
+  }
 
   // A box with the barcode that names it, which is invisible until something
   // uses it: the demo has no camera, so without a seeded link "scanning this
