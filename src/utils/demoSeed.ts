@@ -1544,6 +1544,59 @@ function seedMoodLog(today: Date): void {
       day.contextTags ?? [],
     );
   }
+
+  seedRepeatedHealthTask(today);
+}
+
+/**
+ * A daily task finished on most of the logged days and missed on a few, so the
+ * Mood screen's "mood and your repeating tasks" card has a row to draw.
+ *
+ * This is the app's answer to medication tracking (see `taskMoodContrasts`) and
+ * it is invisible until something has actually been repeated across the days
+ * the mood log covers — the exact case the demo seed exists for, since a
+ * capability with no row in the seed reads as one the app does not have.
+ *
+ * Driven by `completeTask` rather than by writing rows, like everything else
+ * here: each completion spawns the next occurrence and stamps it with the
+ * `previousOccurrenceId` that `taskIdentityKey` walks to collapse the run back
+ * into one label, which is precisely the mechanism under test. Only the
+ * timestamp is written afterwards, because `completeTask` stamps "now" and
+ * takes no date. The occurrence left standing at the end is a live daily task,
+ * which is what a real one of these looks like.
+ *
+ * The gaps are deliberate: a row needs `MIN_CONTRAST_DAYS` days on *both* sides,
+ * so a task finished every single day would have no "without" to compare
+ * against and no row would appear at all.
+ */
+function seedRepeatedHealthTask(today: Date): void {
+  const { addTask, updateTask, completeTask } = useTaskStore.getState();
+  // Oldest first. The four missing days (11 through 8 back) are the low patch
+  // in the seeded mood log, which is what gives the contrast two sides.
+  const takenOn = [17, 16, 15, 14, 13, 12, 7, 6, 5, 4, 3, 2, 1];
+
+  let occurrence = addTask({
+    title: 'Take the vitamin D',
+    category: 'Health',
+    effort: 1,
+    recurrenceType: 'daily',
+  });
+  for (const back of takenOn) {
+    const day = subDays(today, back);
+    const completedId = occurrence.id;
+    // Dated onto the day before it is ticked, because `completeTask` refuses a
+    // recurring occurrence that isn't due yet (`isRecurrenceNotYetDue`) — the
+    // successor it spawns lands on tomorrow, so a loop that only back-dated the
+    // *completion* would stop after one step.
+    updateTask(completedId, { dueDate: day.toISOString() });
+    completeTask(completedId, { completedAt: setHours(day, 8).toISOString() });
+    const next = useTaskStore.getState().tasks
+      .find(t => t.previousOccurrenceId === completedId && !t.completed);
+    // Nothing spawned means the chain ended early, which would leave the loop
+    // completing one row over and over. Stop rather than seed a lie.
+    if (!next) return;
+    occurrence = next;
+  }
 }
 
 // ---------------------------------------------------------------------------

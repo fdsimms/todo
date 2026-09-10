@@ -1,6 +1,10 @@
 import {
   MIN_PAIRED_DAYS,
   buildMoodDays,
+  taskContrastTitles,
+  taskIdentityKey,
+  taskMoodContrasts,
+  taskPairedDays,
   categoryMoodContrasts,
   completionDayKey,
   contextTagMoodContrasts,
@@ -42,6 +46,9 @@ function task(completedAt: string | null, over: Partial<Task> = {}): Task {
     parentId: over.parentId ?? null,
     missedAt: over.missedAt ?? null,
     category: over.category ?? null,
+    // Spread last so a case that cares about a field this helper does not name
+    // — a title, a seriesId, a previousOccurrenceId — can set it.
+    ...over,
   } as unknown as Task;
 }
 
@@ -54,6 +61,7 @@ function daysWithMoods(moods: (number | null)[], completed: number[] = []): Mood
     contextTagKeys: [],
     completed: completed[i] ?? 0,
     categories: [],
+    taskKeys: [],
     steps: null,
     sleepHours: null,
   }));
@@ -189,7 +197,7 @@ describe('mood against what you finish', () => {
 });
 
 describe('contrasts', () => {
-  const build = (rows: { mood: number; categories?: string[]; symptomKeys?: string[]; contextTagKeys?: string[] }[]): MoodDay[] =>
+  const build = (rows: { mood: number; categories?: string[]; symptomKeys?: string[]; contextTagKeys?: string[]; taskKeys?: string[] }[]): MoodDay[] =>
     rows.map((r, i) => ({
       dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
       mood: r.mood,
@@ -197,6 +205,7 @@ describe('contrasts', () => {
       contextTagKeys: r.contextTagKeys ?? [],
       completed: 0,
       categories: r.categories ?? [],
+      taskKeys: r.taskKeys ?? [],
       steps: null,
       sleepHours: null,
     }));
@@ -297,8 +306,8 @@ describe('the summary', () => {
 
   it('counts a symptom-only day as logged but not toward the average', () => {
     const days: MoodDay[] = [
-      { dayKey: '2026-08-01', mood: null, symptomKeys: ['headache'], contextTagKeys: [], completed: 0, categories: [], steps: null, sleepHours: null },
-      { dayKey: '2026-08-02', mood: 4, symptomKeys: [], contextTagKeys: [], completed: 0, categories: [], steps: null, sleepHours: null },
+      { dayKey: '2026-08-01', mood: null, symptomKeys: ['headache'], contextTagKeys: [], completed: 0, categories: [], taskKeys: [], steps: null, sleepHours: null },
+      { dayKey: '2026-08-02', mood: 4, symptomKeys: [], contextTagKeys: [], completed: 0, categories: [], taskKeys: [], steps: null, sleepHours: null },
     ];
     const summary = moodSummary(days, '2026-08-02');
     expect(summary.loggedDays).toBe(2);
@@ -310,7 +319,7 @@ describe('the summary', () => {
 describe('the logging streak', () => {
   const dayRows = (keys: string[]): MoodDay[] =>
     keys.map(dayKey => ({
-      dayKey, mood: 3, symptomKeys: [], contextTagKeys: [], completed: 0, categories: [],
+      dayKey, mood: 3, symptomKeys: [], contextTagKeys: [], completed: 0, categories: [], taskKeys: [],
       steps: null, sleepHours: null,
     }));
 
@@ -347,6 +356,7 @@ describe('the health axis', () => {
       contextTagKeys: [],
       completed: opts.completed?.[i] ?? 0,
       categories: [],
+    taskKeys: [],
       steps: s,
       sleepHours: opts.sleepHours ? (opts.sleepHours[i] ?? null) : null,
     }));
@@ -512,5 +522,144 @@ describe('describing a health insight', () => {
       expect(text).not.toMatch(/\btry\b|\bshould\b|\bwhy not\b|helps|because|causes?\b/i);
       expect(text).not.toContain('0.');
     }
+  });
+});
+
+describe('a purged task record', () => {
+  // completedRetentionDays deletes completed rows while the mood log keeps
+  // every entry forever, so without a horizon the days behind the window read
+  // as days on which nothing was finished. That is rule 3's exact failure
+  // mode, arriving through the app's own housekeeping.
+  const logs = [log('2026-05-01', 2), log('2026-08-17', 4)];
+  const tasks = [task('2026-08-17T10:00:00')];
+
+  it('counts a day as zero completions when nothing tells it otherwise', () => {
+    const days = buildMoodDays(logs, tasks, '00:00');
+    expect(days.find(d => d.dayKey === '2026-05-01')?.completed).toBe(0);
+  });
+
+  it('reports null, not zero, for a day before the horizon', () => {
+    const days = buildMoodDays(logs, tasks, '00:00', [], '2026-08-01');
+    expect(days.find(d => d.dayKey === '2026-05-01')?.completed).toBeNull();
+    expect(days.find(d => d.dayKey === '2026-08-17')?.completed).toBe(1);
+  });
+
+  it('drops the categories and the task keys of a purged day too', () => {
+    const days = buildMoodDays(
+      [log('2026-05-01', 2)],
+      [task('2026-05-01T10:00:00', { category: 'Work' })],
+      '00:00', [], '2026-08-01',
+    );
+    expect(days[0]).toMatchObject({ completed: null, categories: [], taskKeys: [] });
+  });
+
+  // A row that outlived the window — an archived one, or a decision task
+  // holding an answer — must not make a purged day look fully recorded.
+  it('clears a day even when one row survived the purge', () => {
+    const days = buildMoodDays(
+      [log('2026-05-01', 2)],
+      [task('2026-05-01T10:00:00')],
+      '00:00', [], '2026-08-01',
+    );
+    expect(days[0].completed).toBeNull();
+  });
+
+  it('keeps the mood and the symptoms of a purged day', () => {
+    const days = buildMoodDays(
+      [log('2026-05-01', 2, { symptoms: [{ name: 'Headache', severity: 2 }] })],
+      [], '00:00', [], '2026-08-01',
+    );
+    expect(days[0]).toMatchObject({ mood: 2, symptomKeys: ['headache'] });
+  });
+
+  it('leaves every day alone when retention is off', () => {
+    const days = buildMoodDays(logs, tasks, '00:00', [], null);
+    expect(days.every(d => d.completed !== null)).toBe(true);
+  });
+
+  it('keeps purged days out of the reads that are about what got done', () => {
+    const days = buildMoodDays(logs, tasks, '00:00', [], '2026-08-01');
+    expect(taskPairedDays(days).map(d => d.dayKey)).toEqual(['2026-08-17']);
+    // Symptoms and context only touch the mood side, so they keep everything.
+    expect(days.filter(d => d.mood !== null)).toHaveLength(2);
+  });
+});
+
+describe('a task\'s identity across its occurrences', () => {
+  const byId = (tasks: Task[]) => new Map(tasks.map(t => [t.id, t]));
+
+  it('walks the completion chain back to its root', () => {
+    const first = task('2026-08-15T09:00:00', { id: 'a' });
+    const second = task('2026-08-16T09:00:00', { id: 'b', previousOccurrenceId: 'a' } as Partial<Task>);
+    const third = task('2026-08-17T09:00:00', { id: 'c', previousOccurrenceId: 'b' } as Partial<Task>);
+    const map = byId([first, second, third]);
+    expect(taskIdentityKey(third, map)).toBe('a');
+    expect(taskIdentityKey(second, map)).toBe('a');
+  });
+
+  it('uses the series when there is one', () => {
+    const row = task('2026-08-17T09:00:00', { id: 'x', seriesId: 's1' } as Partial<Task>);
+    expect(taskIdentityKey(row, byId([row]))).toBe('series:s1');
+  });
+
+  // Resolve-or-shrug, like every other chain walk in the app: a pointer at a
+  // row a purge deleted stops the walk rather than throwing.
+  it('stops where a pointer dangles', () => {
+    const row = task('2026-08-17T09:00:00', { id: 'b', previousOccurrenceId: 'gone' } as Partial<Task>);
+    expect(taskIdentityKey(row, byId([row]))).toBe('b');
+  });
+});
+
+describe('mood against one repeating task', () => {
+  /** Ten logged days; the task is completed on the ones named. */
+  const build = (moods: number[], completedOn: number[]) => {
+    const logs = moods.map((mood, i) => log(`2026-08-${String(i + 1).padStart(2, '0')}`, mood));
+    const tasks: Task[] = [];
+    let previous: string | null = null;
+    for (const dayIndex of completedOn) {
+      const id = `occ-${dayIndex}`;
+      tasks.push(task(`2026-08-${String(dayIndex + 1).padStart(2, '0')}T10:00:00`, {
+        id, title: 'Take the tablets', previousOccurrenceId: previous,
+      } as Partial<Task>));
+      previous = id;
+    }
+    return buildMoodDays(logs, tasks, '00:00');
+  };
+
+  it('contrasts the days it was done against the days it was not', () => {
+    const days = build([5, 5, 5, 5, 5, 2, 2, 2, 2, 2], [0, 1, 2, 3, 4]);
+    const rows = taskMoodContrasts(days);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ withDays: 5, withoutDays: 5, moodWith: 5, moodWithout: 2 });
+  });
+
+  it('collapses the occurrences of one task into one row', () => {
+    const days = build([5, 5, 5, 5, 5, 2, 2, 2, 2, 2], [0, 1, 2, 3, 4]);
+    // Five completed rows, one label: keyed on the row id instead, this would
+    // be five tasks with one day apiece and no contrast at all.
+    expect(taskMoodContrasts(days).map(r => r.label)).toEqual(['occ-0']);
+  });
+
+  it('says nothing about a one-off, which cannot clear the both-sides gate', () => {
+    const days = build([5, 5, 5, 5, 5, 2, 2, 2, 2, 2], [0]);
+    expect(taskMoodContrasts(days)).toEqual([]);
+  });
+
+  it('says nothing below the paired-day floor', () => {
+    const days = build([5, 5, 5, 4, 2, 2], [0, 1, 2]);
+    expect(taskMoodContrasts(days)).toEqual([]);
+  });
+
+  it('says nothing about a task done every single day, which has no without', () => {
+    const days = build([5, 5, 5, 5, 5, 2, 2, 2, 2, 2], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    expect(taskMoodContrasts(days)).toEqual([]);
+  });
+
+  it('titles a row from the most recent occurrence, so a rename is honoured', () => {
+    const first = task('2026-08-15T09:00:00', { id: 'a', title: 'Take tablets' } as Partial<Task>);
+    const second = task('2026-08-17T09:00:00', {
+      id: 'b', title: 'Take the tablets', previousOccurrenceId: 'a',
+    } as Partial<Task>);
+    expect(taskContrastTitles([first, second]).get('a')).toBe('Take the tablets');
   });
 });

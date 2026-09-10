@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { format } from 'date-fns/format';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { MoodLog } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
@@ -18,13 +19,11 @@ import { segmentOf } from '../utils/rhythms';
 import {
   contextTagKey,
   contextTagVocabulary,
-  moodEmoji,
-  moodLabel,
-  moodLogSummary,
-  severityLabel,
   symptomKey,
   symptomVocabulary,
 } from '../utils/moodLog';
+import { symptomStats } from '../utils/moodHistory';
+import { retentionCutoff, retentionLabel } from '../utils/retention';
 import {
   buildMoodDays,
   categoryMoodContrasts,
@@ -36,12 +35,16 @@ import {
   moodCompletionInsight,
   moodSummary,
   symptomMoodContrasts,
+  taskContrastTitles,
+  taskMoodContrasts,
   MIN_PAIRED_DAYS,
 } from '../utils/moodInsights';
 import { ScreenHeader } from '../components/ScreenHeader';
 import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { MoodLogSheet } from '../components/MoodLogSheet';
+import { MoodEntryRow } from '../components/MoodEntryRow';
+import { MoodExportSheet } from '../components/MoodExportSheet';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
@@ -63,6 +66,7 @@ const BAR_HEIGHT = 90;
  * a finding built on eleven days reads as one.
  */
 export function MoodScreen() {
+  const navigation = useNavigation<{ navigate: (screen: string, params?: object) => void }>();
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
@@ -83,6 +87,7 @@ export function MoodScreen() {
   }, [healthReadEnabled, refreshHealthHistory]);
   const settings = useSettingsStore(useShallow(s => ({
     dayResetTime: s.dayResetTime,
+    completedRetentionDays: s.completedRetentionDays,
     morningStart: s.morningStart,
     afternoonStart: s.afternoonStart,
     eveningStart: s.eveningStart,
@@ -90,6 +95,7 @@ export function MoodScreen() {
   })));
 
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [editing, setEditing] = useState<MoodLog | null>(null);
 
   // `dundundun://mood?log=1` — the daily check-in task's link button. Stamped
@@ -106,10 +112,35 @@ export function MoodScreen() {
   }, [route.params?.openLog, handledOpenLog]);
 
   const todayKey = dayKeyOf(getCurrentDayStart());
+
+  // The first day the task record is complete for. `completedRetentionDays`
+  // deletes completed rows on a schedule while the mood log keeps every entry
+  // forever, so without this the days behind the window read as days on which
+  // nothing was finished — see `MoodDay.completed`. Null when retention is off,
+  // which is the default and leaves every read exactly as it was.
+  const completionsKnownFrom = useMemo(() => {
+    const cutoff = retentionCutoff(
+      settings.completedRetentionDays, new Date(), settings.dayResetTime,
+    );
+    return cutoff === null ? null : dayKeyOf(cutoff);
+  }, [settings.completedRetentionDays, settings.dayResetTime]);
+
   const days = useMemo(
-    () => buildMoodDays(logs, tasks, settings.dayResetTime, healthHistory ?? []),
-    [logs, tasks, settings.dayResetTime, healthHistory],
+    () => buildMoodDays(
+      logs, tasks, settings.dayResetTime, healthHistory ?? [], completionsKnownFrom,
+    ),
+    [logs, tasks, settings.dayResetTime, healthHistory, completionsKnownFrom],
   );
+
+  // Days the mood log covers that the task history no longer does. Said out
+  // loud on the screen rather than left to quietly weaken the numbers: a
+  // correlation drawn over half a record is a different claim from one drawn
+  // over all of it, and the person who set the window is the only one who can
+  // decide whether that matters.
+  const clippedDays = useMemo(() => {
+    if (completionsKnownFrom === null) return 0;
+    return days.filter(d => d.dayKey < completionsKnownFrom && d.mood !== null).length;
+  }, [days, completionsKnownFrom]);
 
   // Every pairing the data can actually speak to, in the order they read: what
   // you got done first, because that is the join no health app can make, and
@@ -157,10 +188,31 @@ export function MoodScreen() {
   const symptomRows = useMemo(
     () => symptomMoodContrasts(days).slice(0, 4).map(row => ({
       ...row,
+      // The match key kept alongside the display name, so the row can open the
+      // symptom's own page — which is addressed by key, not by what it is
+      // called this week.
+      key: row.label,
       label: symptomNames.get(row.label) ?? row.label,
     })),
     [days, symptomNames],
   );
+
+  // Every symptom the log holds, most days first — the directory the contrast
+  // rows above cannot be. Those need ten paired days and show the top four by
+  // gap size, so without this a symptom logged three times has no page reachable
+  // from anywhere.
+  const symptomList = useMemo(() => symptomStats(logs), [logs]);
+
+  // Mood on the days one repeating task got done, against the days it didn't.
+  // The app's answer to medication tracking: a tablet, a supplement or a walk
+  // is already a repeating task here, so this needs no second list to keep.
+  const taskRows = useMemo(() => {
+    const titles = taskContrastTitles(tasks);
+    return taskMoodContrasts(days).slice(0, 4).map(row => ({
+      ...row,
+      label: titles.get(row.label) ?? row.label,
+    }));
+  }, [days, tasks]);
   // Same key-to-casing resolution as symptomNames, for the same reason: a
   // contrast is keyed on the lowercased match, not what the user typed.
   const contextTagNames = useMemo(() => {
@@ -246,11 +298,18 @@ export function MoodScreen() {
         subtitle={summary.loggedDays > 0
           ? `${summary.loggedDays} ${summary.loggedDays === 1 ? 'day' : 'days'} logged`
           : undefined}
-        actions={[{
-          icon: 'add-circle-outline',
-          onPress: openNew,
-          accessibilityLabel: 'Log how you\'re feeling',
-        }]}
+        actions={[
+          ...(logs.length > 0 ? [{
+            icon: 'share-outline' as const,
+            onPress: () => { haptics.tap(); setExportOpen(true); },
+            accessibilityLabel: 'Export your mood log',
+          }] : []),
+          {
+            icon: 'add-circle-outline' as const,
+            onPress: openNew,
+            accessibilityLabel: 'Log how you\'re feeling',
+          },
+        ]}
       />
       <HubPills hub="history" active="Mood" />
 
@@ -360,6 +419,14 @@ export function MoodScreen() {
                 </View>
               </View>
             )}
+            {clippedDays > 0 && (
+              <Text style={styles.chartCaption}>
+                {clippedDays} earlier logged {clippedDays === 1 ? 'day is' : 'days are'} left out
+                here. Completed tasks are only kept for
+                {' '}{retentionLabel(settings.completedRetentionDays).toLowerCase()}, so there is
+                nothing left to compare those days against. Your entries are still there.
+              </Text>
+            )}
           </View>
 
           {(healthFindings.length > 0 || averageSteps !== null || averageSleep !== null) && (
@@ -427,22 +494,53 @@ export function MoodScreen() {
             </>
           )}
 
-          {symptomRows.length > 0 && (
+          {taskRows.length > 0 && (
             <>
-              <Text style={styles.sectionTitle}>MOOD WITH SYMPTOMS</Text>
+              <Text style={styles.sectionTitle}>MOOD AND YOUR REPEATING TASKS</Text>
               <View style={styles.card}>
-                {symptomRows.map(row => (
+                {taskRows.map(row => (
                   <View
                     key={row.label}
                     style={styles.contrastRow}
                     accessible
-                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you logged it, ${row.moodWithout.toFixed(1)} on days you didn't`}
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on the ${row.withDays} days you finished it, ${row.moodWithout.toFixed(1)} on the ${row.withoutDays} days you didn't`}
                   >
                     <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
                     <Text style={styles.contrastValue}>
                       {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
                     </Text>
                   </View>
+                ))}
+                <Text style={styles.chartCaption}>
+                  Your average mood on days you finished a repeating task, against days you
+                  didn't. Two averages side by side, not a cause.
+                </Text>
+              </View>
+            </>
+          )}
+
+          {symptomRows.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>MOOD WITH SYMPTOMS</Text>
+              <View style={styles.card}>
+                {symptomRows.map(row => (
+                  <TouchableOpacity
+                    key={row.label}
+                    style={styles.contrastRow}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => {
+                      haptics.tap();
+                      navigation.navigate('SymptomDetail', { symptomKey: row.key });
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you logged it, ${row.moodWithout.toFixed(1)} on days you didn't`}
+                  >
+                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
+                    <Text style={styles.contrastValue}>
+                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
+                    </Text>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textTertiary} />
+                  </TouchableOpacity>
                 ))}
                 <Text style={styles.chartCaption}>
                   Your average mood on days you logged it, against days you didn't.
@@ -498,43 +596,62 @@ export function MoodScreen() {
             </>
           )}
 
+          <Text style={styles.sectionTitle}>SYMPTOMS</Text>
+          {symptomList.length === 0 ? (
+            <View style={styles.card}>
+              <Text style={styles.pending}>
+                Nothing logged yet. Add a symptom to an entry and it gets its own page here,
+                with how often it happens and how bad it gets.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.card}>
+              {symptomList.map(stat => (
+                <TouchableOpacity
+                  key={stat.key}
+                  style={styles.linkRow}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => {
+                    haptics.tap();
+                    navigation.navigate('SymptomDetail', { symptomKey: stat.key });
+                  }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`${stat.name}, ${stat.dayCount} ${stat.dayCount === 1 ? 'day' : 'days'}, last logged ${format(dayKeyToDate(stat.lastDayKey), 'd MMMM')}`}
+                >
+                  <View style={styles.linkBody}>
+                    <Text style={styles.linkLabel} numberOfLines={1}>{stat.name}</Text>
+                    <Text style={styles.linkMeta}>
+                      {stat.dayCount} {stat.dayCount === 1 ? 'day' : 'days'} · last on{' '}
+                      {format(dayKeyToDate(stat.lastDayKey), 'd MMM')}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
           <Text style={styles.sectionTitle}>RECENT ENTRIES</Text>
           {recent.map(log => (
-            <TouchableOpacity
+            <MoodEntryRow
               key={log.id}
-              style={styles.entryRow}
-              activeOpacity={interaction.activeOpacity}
+              log={log}
               onPress={() => openEdit(log)}
               onLongPress={() => confirmDelete(log)}
-              delayLongPress={interaction.delayLongPress}
-              accessibilityLabel={`${format(dayKeyToDate(log.dayKey), 'EEEE d MMMM')}: ${moodLogSummary(log)}`}
-            >
-              <Text style={styles.entryEmoji}>
-                {log.mood === null ? '·' : moodEmoji(log.mood)}
-              </Text>
-              <View style={styles.entryBody}>
-                <Text style={styles.entryTitle} numberOfLines={1}>
-                  {log.mood === null ? 'Logged' : moodLabel(log.mood)}
-                </Text>
-                <Text style={styles.entryMeta} numberOfLines={1}>
-                  {format(new Date(log.loggedAt), 'EEE d MMM, h:mm a')}
-                </Text>
-                {log.symptoms.length > 0 && (
-                  <Text style={styles.entrySymptoms} numberOfLines={2}>
-                    {log.symptoms.map(s => `${s.name} (${severityLabel(s.severity).toLowerCase()})`).join(', ')}
-                  </Text>
-                )}
-                {log.contextTags.length > 0 && (
-                  <Text style={styles.entryContextTags} numberOfLines={2}>
-                    {log.contextTags.join(', ')}
-                  </Text>
-                )}
-                {!!log.note && (
-                  <Text style={styles.entryNote} numberOfLines={2}>{log.note}</Text>
-                )}
-              </View>
-            </TouchableOpacity>
+            />
           ))}
+          {logs.length > recent.length && (
+            <TouchableOpacity
+              style={styles.seeAllRow}
+              activeOpacity={interaction.activeOpacity}
+              onPress={() => { haptics.tap(); navigation.navigate('MoodHistory'); }}
+              accessibilityRole="button"
+              accessibilityLabel={`See all ${logs.length} entries`}
+            >
+              <Text style={styles.seeAllText}>See all {logs.length} entries</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+            </TouchableOpacity>
+          )}
         </ScrollView>
       )}
 
@@ -542,6 +659,12 @@ export function MoodScreen() {
         visible={sheetOpen}
         editing={editing}
         onClose={() => { setSheetOpen(false); setEditing(null); }}
+      />
+
+      <MoodExportSheet
+        visible={exportOpen}
+        logs={logs}
+        onClose={() => setExportOpen(false)}
       />
     </View>
   );
@@ -620,20 +743,21 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   contrastLabel: { flex: 1, fontSize: font.sm, color: colors.text },
   contrastValue: { fontSize: font.sm, color: colors.textSecondary, fontWeight: fontWeight.medium },
-  entryRow: {
+  linkRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    backgroundColor: colors.bgSecondary,
-    borderRadius: radius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+    alignItems: 'center',
     gap: spacing.sm,
+    paddingVertical: spacing.sm,
   },
-  entryEmoji: { fontSize: font.lg, width: 28, textAlign: 'center' },
-  entryBody: { flex: 1 },
-  entryTitle: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
-  entryMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
-  entrySymptoms: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs },
-  entryContextTags: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },
-  entryNote: { fontSize: font.sm, color: colors.textTertiary, marginTop: spacing.xs },
+  linkBody: { flex: 1 },
+  linkLabel: { fontSize: font.sm, color: colors.text },
+  linkMeta: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2 },
+  seeAllRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    paddingVertical: spacing.md,
+  },
+  seeAllText: { fontSize: font.sm, color: colors.accent, fontWeight: fontWeight.medium },
 });
