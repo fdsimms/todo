@@ -220,7 +220,7 @@ describe('useUpRecipes', () => {
 describe('describeUseUpRecipe', () => {
   it('names what it would use, because the names are the reason to tap', () => {
     const one = useUpRecipes([entry('Spinach', 'due')], [recipe('Soup', ['spinach'])]);
-    expect(describeUseUpRecipe(one[0])).toBe('Uses your Spinach');
+    expect(describeUseUpRecipe(one[0])).toBe('Uses up your Spinach');
   });
 
   it('joins a pair with "and"', () => {
@@ -228,7 +228,7 @@ describe('describeUseUpRecipe', () => {
       [entry('Spinach', 'due'), entry('Mushrooms', 'due')],
       [recipe('Pasta', ['spinach', 'mushrooms'])]
     );
-    expect(describeUseUpRecipe(two[0])).toBe('Uses your Mushrooms and Spinach');
+    expect(describeUseUpRecipe(two[0])).toBe('Uses up your Mushrooms and Spinach');
   });
 
   it('caps at two names and counts the rest, which is where the line stops fitting', () => {
@@ -236,6 +236,6 @@ describe('describeUseUpRecipe', () => {
       [entry('Spinach', 'due'), entry('Mushrooms', 'due'), entry('Tomatoes', 'due')],
       [recipe('Pasta', ['spinach', 'mushrooms', 'tomatoes'])]
     );
-    expect(describeUseUpRecipe(three[0])).toBe('Uses your Mushrooms, Spinach and 1 more');
+    expect(describeUseUpRecipe(three[0])).toBe('Uses up your Mushrooms, Spinach and 1 more');
   });
 });
