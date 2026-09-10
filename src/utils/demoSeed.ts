@@ -1438,6 +1438,16 @@ function seedFoodLog(today: Date): void {
     if (!lean) {
       meals.push({ name: 'Butter', quantity: '1 tbsp', slot: 'dinner', hour: 19, daysAgo });
     }
+    // Coffee on three of the four hard days and on three ordinary ones, which
+    // is the shape the symptom read on `SymptomDetailScreen` needs to show
+    // anything honest. All four would make it a clean sweep — "4 of 4 days
+    // against 0 of 11" — and a demo of an association has no business looking
+    // like a proof, least of all the one read in the app somebody might act on
+    // medically. Three of six against one of nine is a pattern you can see and
+    // still doubt, which is the whole posture of that card.
+    if ([8, 9, 10, 13, 15, 17].includes(daysAgo)) {
+      meals.push({ name: 'Coffee', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo });
+    }
   }
 
   /**
@@ -2594,6 +2604,24 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     portions: [{ amount: 1, label: 'cup', grams: 244 }],
     source: 'fdc',
     sourceId: '171265',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
+  // **The one panel here that states caffeine**, and the only food in the seed
+  // that does — which is the ordinary case rather than a thin seed, and is
+  // exactly why caffeine is not one of `NUTRIENT_INSIGHT_KEYS`. A day of coffee
+  // and two other things has one entry out of three carrying a caffeine figure,
+  // so `foodDayInputs`' coverage rule drops it for the day and the mood pairing
+  // never sees it. Worth having in the seed anyway: it is what the panel on the
+  // day's card actually looks like, and it is what makes the demo's food
+  // contrasts about something a person recognises.
+  setItemNutrition(itemNamed('Coffee').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 1, proteinG: 0.1, carbsG: 0, fatG: 0, sugarG: 0, sodiumMg: 2, caffeineMg: 40 },
+    portions: [{ amount: 1, label: 'cup', grams: 237 }],
+    source: 'fdc',
+    sourceId: '171890',
     recordedAt: subDays(today, 30).toISOString(),
   });
   // Lemon garlic salmon calls for a lemon, and without a fact of its own here

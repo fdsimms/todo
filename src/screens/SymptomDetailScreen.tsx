@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, ScrollView, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import type { MoodLog, SymptomSeverity } from '../types';
 import { useMoodStore } from '../store/useMoodStore';
@@ -16,8 +17,10 @@ import {
   logsWithSymptom, symptomSeverityOnDay, symptomStatFor,
 } from '../utils/moodHistory';
 import {
-  MIN_PAIRED_DAYS, buildMoodDays, symptomMoodContrasts,
+  MIN_PAIRED_DAYS, buildMoodDays, symptomFoodContrasts, symptomMoodContrasts,
 } from '../utils/moodInsights';
+import { foodDayInputs } from '../utils/nutritionStats';
+import { useFoodLogStore, FOOD_INSIGHT_DAYS } from '../store/useFoodLogStore';
 import { DetailHeader } from '../components/DetailHeader';
 import { EmptyState } from '../components/EmptyState';
 import { MoodEntryRow } from '../components/MoodEntryRow';
@@ -95,13 +98,53 @@ export function SymptomDetailScreen() {
     return out;
   }, [logs, key]);
 
+  // The food log's own window, on the same terms the Mood screen reads it —
+  // see `loadInsightWindow`, and `kitchenEnabled` gating it for the reason the
+  // readings card is gated on `healthReadEnabled`.
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const foodEntries = useFoodLogStore(s => s.insightEntries);
+  const loadFoodInsightWindow = useFoodLogStore(s => s.loadInsightWindow);
+  useFocusEffect(
+    useCallback(() => {
+      if (!kitchenEnabled) return;
+      const today = getCurrentDayStart();
+      loadFoodInsightWindow(
+        dayKeyOf(addDays(today, -(FOOD_INSIGHT_DAYS - 1))),
+        dayKeyOf(today),
+      );
+    }, [kitchenEnabled, loadFoodInsightWindow]),
+  );
+
+  const days = useMemo(() => buildMoodDays(
+    logs, tasks, dayResetTime, [], null,
+    kitchenEnabled ? foodDayInputs(foodEntries) : [],
+  ), [logs, tasks, dayResetTime, kitchenEnabled, foodEntries]);
+
   // The contrast, with `moodInsights`' own gates rather than a looser read for
   // one symptom: below MIN_PAIRED_DAYS, or with too few days on either side,
   // there is simply no row and the card does not render.
-  const contrast = useMemo(() => {
-    const days = buildMoodDays(logs, tasks, dayResetTime);
-    return symptomMoodContrasts(days).find(row => row.label === key) ?? null;
-  }, [logs, tasks, dayResetTime, key]);
+  const contrast = useMemo(
+    () => symptomMoodContrasts(days).find(row => row.label === key) ?? null,
+    [days, key],
+  );
+
+  // How often it turned up on the days a food was logged. The most loaded read
+  // in the app, which is why it is scoped to the one symptom this page is
+  // about rather than searching every symptom against every food — see
+  // `symptomFoodContrasts`. Four rows, like every other contrast list.
+  const foodRows = useMemo(
+    () => (kitchenEnabled ? symptomFoodContrasts(days, key).slice(0, 4) : []),
+    [days, key, kitchenEnabled],
+  );
+  // The label as it was typed, not the lowercased match key.
+  const foodNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const entry of foodEntries) {
+      const label = entry.label.trim();
+      if (label) names.set(label.toLowerCase(), label);
+    }
+    return names;
+  }, [foodEntries]);
 
   const confirmDelete = (log: MoodLog) => {
     Alert.alert(
@@ -245,6 +288,37 @@ export function SymptomDetailScreen() {
               <Text style={styles.caption}>
                 Your average mood on days you logged it, against days you didn't. This is a
                 comparison of two averages, not a cause.
+              </Text>
+            </View>
+          </>
+        )}
+
+        {foodRows.length > 0 && (
+          <>
+            <Text style={styles.sectionTitle}>BY WHAT YOU ATE</Text>
+            <View style={styles.card}>
+              {foodRows.map(row => (
+                <View
+                  key={row.label}
+                  style={styles.severityRow}
+                  accessible
+                  accessibilityLabel={`${foodNames.get(row.label) ?? row.label}: logged on ${row.withHits} of the ${row.withDays} days you ate it, and ${row.withoutHits} of the ${row.withoutDays} days you didn't`}
+                >
+                  <Text style={styles.severityLabel} numberOfLines={1}>
+                    {foodNames.get(row.label) ?? row.label}
+                  </Text>
+                  {/* Days rather than percentages, so the sample travels with
+                      the figure. "67% against 14%" hides that the first number
+                      is six days. */}
+                  <Text style={styles.severityCount}>
+                    {row.withHits} of {row.withDays} vs {row.withoutHits} of {row.withoutDays}
+                  </Text>
+                </View>
+              ))}
+              <Text style={styles.caption}>
+                How often you logged {stat.name.toLowerCase()} on the days you ate that food,
+                against the days you logged food without it. This counts days. It cannot tell a
+                food apart from everything else about the days you ate it.
               </Text>
             </View>
           </>

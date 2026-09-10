@@ -205,15 +205,27 @@ export interface FoodDayInput {
  * against the one that happened to hit, so the count is held down at the
  * source instead.
  *
- * Three, each for a stated reason rather than because it was in the type:
+ * Two, each for a stated reason rather than because it was in the type:
  *
  * - **Calories**, because "did I eat enough today" is the question the thin-day
  *   rule above exists to keep answerable, and it is the figure nearly every
  *   source states.
- * - **Caffeine**, the one here with an uncontroversial same-day mechanism, and
- *   the thing people actually wonder about.
  * - **Sugar**, the folk hypothesis everybody has and almost nobody has ever
  *   held up against their own days.
+ *
+ * **Caffeine is the one that should be here and cannot be**, which is worth
+ * writing down because it is the first thing anybody will try to add. It has
+ * the best same-day mechanism of anything in the list and it is what people
+ * actually wonder about. But `FoodDayInput`'s coverage rule needs every entry
+ * on a day to state a nutrient before the day's total is comparable, and
+ * almost nothing states caffeine: a day of coffee, toast and a bowl of pasta
+ * has one entry out of three carrying a figure. `nutritionParse.ts` makes the
+ * same call from the other end — `OFF_UNINFORMATIVE_ZERO` throws away a
+ * *stated* caffeine zero from Open Food Facts as untrustworthy — so the app
+ * already holds that an absent caffeine figure is not a zero and a declared
+ * one often isn't either. Adding the key back would ship a row that silently
+ * never appears. Making it appear would mean summing absent caffeine as zero,
+ * which is the one thing `foodLog.ts` refuses outright.
  *
  * **Protein was the fourth and was cut for a reason worth keeping written
  * down**, because it is the one somebody would think to add back: it is the
@@ -229,7 +241,7 @@ export interface FoodDayInput {
  * ever grows unless somebody says so.
  */
 export const NUTRIENT_INSIGHT_KEYS = [
-  'calorieKcal', 'caffeineMg', 'sugarG',
+  'calorieKcal', 'sugarG',
 ] as const satisfies readonly NutrientKey[];
 
 /**
@@ -903,7 +915,6 @@ export function describeHealthInsight(insight: HealthInsight): string | null {
  */
 const NUTRIENT_PHRASE: Record<InsightNutrient, { subject: string; onDays: string }> = {
   calorieKcal: { subject: 'how much you eat', onDays: 'the days you eat more' },
-  caffeineMg: { subject: 'your caffeine', onDays: 'the days you have more caffeine' },
   sugarG: { subject: 'your sugar', onDays: 'the days you eat more sugar' },
 };
 
@@ -1034,6 +1045,132 @@ export function foodMoodContrasts(days: readonly MoodDay[]): GroupContrast[] {
 }
 
 /**
+ * Whether the day carries a log entry at all.
+ *
+ * The definition `moodSummary` has always used, named here because the symptom
+ * read below depends on it being exactly right: a day is "logged" if it has a
+ * mood *or* a symptom, since an entry can carry either without the other.
+ */
+export function hasMoodEntry(day: MoodDay): boolean {
+  return day.mood !== null || day.symptomKeys.length > 0;
+}
+
+/**
+ * How often a symptom turned up, on the days a food was logged against the
+ * days it wasn't.
+ *
+ * A rate rather than a mean, so it gets its own shape rather than being forced
+ * through `GroupContrast`: "how often did this happen" and "what was the
+ * average" are different questions, and a `moodWith` field holding a frequency
+ * is how a reader ends up rendering one as the other.
+ */
+export interface RateContrast {
+  /** The food, lowercased for matching, as `foodKeys` holds it. */
+  label: string;
+  /** Days in each group. Both reported, never hidden — they are the sample. */
+  withDays: number;
+  withoutDays: number;
+  /** Days in the group that carried the symptom. */
+  withHits: number;
+  withoutHits: number;
+  /** `withHits / withDays`, 0..1. */
+  rateWith: number;
+  rateWithout: number;
+  /** Positive means the symptom turned up more often on the days you ate it. */
+  delta: number;
+}
+
+/**
+ * The days that can answer a symptom-against-food question at all.
+ *
+ * Two conditions, and the second is the one a naive version drops.
+ *
+ * `nutrients !== null` is `foodPairedDays`' bar, for its reason: on a thinly
+ * logged day an absent food may be a dinner nobody wrote down, so "the days you
+ * didn't eat it" would not mean that.
+ *
+ * **And the day has to carry a log entry, or its silence would read as a day
+ * without the symptom.** This is rule 3 in the place it does the most damage in
+ * the whole file: a day nobody logged is not a day nobody had a headache on,
+ * and counting it as one deflates the rate on whichever side of the contrast
+ * holds more unlogged days. The mood side takes care of itself for every other
+ * read here, because `pairedDays` needs a *number*; a symptom is a presence, and
+ * absence-of-record and absence-of-symptom look identical unless something
+ * insists on the difference.
+ *
+ * What is still not fixable, and is why the copy stays a count of days: a day
+ * somebody logged their mood on and did not bother recording a headache reads
+ * as a headache-free day. The log is the record, and self-report is what it is.
+ */
+export function symptomFoodDays(days: readonly MoodDay[]): MoodDay[] {
+  return days.filter(d => d.nutrients !== null && hasMoodEntry(d));
+}
+
+/**
+ * For each food: how often you logged a symptom on the days you ate it,
+ * against the days you logged food without it.
+ *
+ * **The elimination-diet question, and the most loaded read in the app.** It is
+ * one step past `foodMoodContrasts` in what a person might do about it: a mood
+ * comparison invites a shrug, and "you logged a headache on most of the days
+ * you ate bread" invites somebody to stop eating bread. Which is exactly why
+ * it is here rather than nowhere — a person tracking a symptom is *already*
+ * forming that hypothesis, and every symptom tracker that supports it makes
+ * them keep a second food diary to do it. Four things keep it honest:
+ *
+ * 1. **It is scoped to one symptom the person opened.** It lives on
+ *    `SymptomDetailScreen` and takes the symptom as an argument, rather than
+ *    searching every symptom against every food for whatever pair lands. Ten
+ *    symptoms against twenty foods is two hundred comparisons and a guaranteed
+ *    finding; this is one question a person asked.
+ * 2. **Both gates, unchanged.** `MIN_PAIRED_DAYS` of days that can answer at
+ *    all, and `MIN_CONTRAST_DAYS` on each side — which is also what keeps a
+ *    food eaten once off the screen, by the same honest route one-off tasks
+ *    take.
+ * 3. **Days, not percentages, at the call site.** "6 of 9 days against 2 of 14"
+ *    carries its own sample size in a way "67% against 14%" does not, and the
+ *    shape returned here reports the counts alongside the rates so a caller
+ *    cannot render the second without the first.
+ * 4. **It is a count and never a cause.** The file's own rule, and the place it
+ *    matters most: this cannot tell a food apart from everything else about the
+ *    days that food was eaten on, and the card says so.
+ */
+export function symptomFoodContrasts(
+  days: readonly MoodDay[],
+  symptom: string,
+): RateContrast[] {
+  const paired = symptomFoodDays(days);
+  if (paired.length < MIN_PAIRED_DAYS) return [];
+  const labels = new Set<string>();
+  for (const day of paired) for (const key of day.foodKeys) labels.add(key);
+
+  const rows: RateContrast[] = [];
+  for (const label of labels) {
+    const withIt = paired.filter(d => d.foodKeys.includes(label));
+    const without = paired.filter(d => !d.foodKeys.includes(label));
+    if (withIt.length < MIN_CONTRAST_DAYS || without.length < MIN_CONTRAST_DAYS) continue;
+    const withHits = withIt.filter(d => d.symptomKeys.includes(symptom)).length;
+    const withoutHits = without.filter(d => d.symptomKeys.includes(symptom)).length;
+    const rateWith = withHits / withIt.length;
+    const rateWithout = withoutHits / without.length;
+    rows.push({
+      label,
+      withDays: withIt.length,
+      withoutDays: without.length,
+      withHits,
+      withoutHits,
+      rateWith,
+      rateWithout,
+      delta: rateWith - rateWithout,
+    });
+  }
+  // By the size of the gap in either direction, like every other contrast here:
+  // "it happens less on the days I eat that" is exactly as interesting as the
+  // reverse, and a one-sided sort would only ever show bad news.
+  return rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+}
+
+/**
  * The metric's own average across the days it was recorded, or null.
  *
  * For the one line an insight needs beside its direction: "you averaged 6,400
@@ -1121,7 +1258,7 @@ export interface MoodSummary {
 
 /** The header numbers on the Mood screen. */
 export function moodSummary(days: readonly MoodDay[], todayKey: string): MoodSummary {
-  const logged = days.filter(d => d.mood !== null || d.symptomKeys.length > 0);
+  const logged = days.filter(hasMoodEntry);
   const withMood = days.filter(d => d.mood !== null);
   return {
     loggedDays: logged.length,

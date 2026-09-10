@@ -39,6 +39,24 @@ import { logFoodEntryToHealth, retractFoodEntryFromHealth } from '../utils/healt
  */
 
 /**
+ * How far back `loadInsightWindow` reads for the mood pairings.
+ *
+ * `HEALTH_HISTORY_DAYS`' span, matched to it on purpose: both are the same kind
+ * of second dataset paired against the same days, and two windows would mean a
+ * finding about steps and a finding about calories on one screen quietly
+ * speaking for different stretches of somebody's life.
+ *
+ * It is a ceiling on the read rather than on what counts. The thin-day rule
+ * (see `foodDayInputs`) drops most of what comes back for anybody logging
+ * casually, which is why the window is wide: ninety days of ordinary logging is
+ * what it takes to clear `MIN_PAIRED_DAYS` of days complete enough to pair.
+ *
+ * Here rather than on a screen because two screens read this window now, the
+ * same reason `HEALTH_HISTORY_DAYS` sits in the store that fetches it.
+ */
+export const FOOD_INSIGHT_DAYS = 90;
+
+/**
  * A new entry, before the store stamps the parts only it can decide.
  *
  * `nutrition` arrives already built and already scaled — see

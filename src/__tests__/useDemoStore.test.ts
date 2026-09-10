@@ -70,7 +70,7 @@ import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRe
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
-import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, symptomFoodContrasts, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
@@ -1645,6 +1645,42 @@ describe('demo seed — people', () => {
     // Something sayable on both cards, rather than a pair of empty ones.
     expect(describeNutrientInsight(nutrientInsight(days, 'calorieKcal', 'mood'))).toBeTruthy();
     expect(foodMoodContrasts(days).length).toBeGreaterThan(0);
+  });
+
+  it('seeds a symptom against a food, without making it look like a proof', () => {
+    // The most loaded read in the app, so the seed has to show it working and
+    // must not show it as a clean sweep — see the coffee note in demoSeed.
+    const window = cookingWindow(getLogicalToday(), 90);
+    useFoodLogStore.getState().loadInsightWindow(window.startKey, window.endKey);
+    const days = buildMoodDays(
+      useMoodStore.getState().logs,
+      useTaskStore.getState().tasks,
+      '00:00',
+      [],
+      null,
+      foodDayInputs(useFoodLogStore.getState().insightEntries),
+    );
+    const rows = symptomFoodContrasts(days, 'headache');
+    const coffee = rows.find(r => r.label === 'coffee');
+    expect(coffee).toBeDefined();
+    // Present on both sides, so neither group is the empty one.
+    expect(coffee!.withHits).toBeGreaterThan(0);
+    expect(coffee!.withoutHits).toBeGreaterThan(0);
+    // And not every day it was drunk, which is what would read as a proof.
+    expect(coffee!.rateWith).toBeLessThan(1);
+  });
+
+  it('seeds the one food that states caffeine, and it still cannot clear the coverage rule', () => {
+    // Deliberate, and the reason caffeine is not a NUTRIENT_INSIGHT_KEY: one
+    // entry of three carrying a figure is the ordinary case, and a day's total
+    // built from it would not be a measurement.
+    const window = cookingWindow(getLogicalToday(), 90);
+    useFoodLogStore.getState().loadInsightWindow(window.startKey, window.endKey);
+    const entries = useFoodLogStore.getState().insightEntries;
+    expect(entries.some(e => e.nutrition.amounts.caffeineMg !== undefined)).toBe(true);
+    const rows = foodDayInputs(entries);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every(r => r.nutrients.caffeineMg === undefined)).toBe(true);
   });
 
   it('seeds a ragged log, so the two day counts are different numbers', () => {

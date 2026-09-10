@@ -423,12 +423,54 @@ behind that switch, and reading a log somebody has switched away from to tell
 them about their eating is the same mistake as reading Health without
 permission.
 
-**Symptoms are deliberately not contrasted against food.** `foodMoodContrasts`
-compares *mood*, and the same machinery pointed at `symptomKeys` would say "you
-had a headache on most of the days you ate bread" — which is the one claim on
-this screen that a person would reasonably act on medically, off a self-reported
-food diary. It is a real feature decision rather than a gap, and it is the one
-this note would want re-opened deliberately if at all.
+**The nutrient vocabulary has one deliberate hole, and caffeine is it.**
+Caffeine has the best same-day mechanism of anything on the list and it is what
+people actually wonder about, so it is the first thing anybody will try to add.
+It cannot work: the coverage rule needs every entry on a day to state a nutrient,
+and almost nothing states caffeine, so a day of coffee, toast and pasta carries
+one figure out of three. `nutritionParse.ts` reaches the same conclusion from the
+other end, throwing away a *stated* caffeine zero from Open Food Facts
+(`OFF_UNINFORMATIVE_ZERO`) as untrustworthy. Adding the key back ships a row that
+silently never appears; making it appear means summing absent caffeine as zero,
+which `foodLog.ts` refuses outright. The demo seed keeps a coffee panel that
+states caffeine precisely so this is visible rather than theoretical.
+
+## A symptom against what you ate
+
+`symptomFoodContrasts` is the elimination-diet question, and **the most loaded
+read in the app.** It is one step past `foodMoodContrasts` in what somebody might
+do about it: a mood comparison invites a shrug, and "you logged a headache on
+most of the days you ate bread" invites somebody to stop eating bread. Which is
+the reason it exists rather than the reason to leave it out. A person tracking a
+symptom is already forming that hypothesis, and every symptom tracker that
+supports it makes them keep a second food diary next to the log they already
+keep. Four things hold it:
+
+- **It is scoped to one symptom somebody opened.** It lives on
+  `SymptomDetailScreen` and takes the symptom as an argument, rather than
+  searching every symptom against every food for whatever pair happens to land.
+  Ten symptoms against twenty foods is two hundred comparisons and a guaranteed
+  finding; this is one question a person asked.
+- **`symptomFoodDays`, not `foodPairedDays`.** The food-log bar is the same, but
+  the day must also carry a log entry (`hasMoodEntry`) or its silence reads as a
+  day without the symptom. This is rule 3 in the place it does the most damage:
+  a symptom is a *presence*, so absence-of-record and absence-of-symptom look
+  identical unless something insists on the difference. Every other read here is
+  safe by accident, because `pairedDays` needs a number. What stays unfixable is
+  self-report itself: a day somebody logged a mood on and did not bother
+  recording a headache reads as headache-free.
+- **Days, never percentages.** `RateContrast` carries `withHits`/`withDays`
+  alongside the rates so a caller cannot render "67% against 14%" without the
+  sample it came from. It is its own type rather than a `GroupContrast` with a
+  frequency in `moodWith`, because a mean and a rate rendered by the same code is
+  how one gets shown as the other.
+- **It counts and never causes**, and the card says so in those words: it cannot
+  tell a food apart from everything else about the days that food was eaten on.
+
+The demo seeds coffee on three of the four hard days and three ordinary ones,
+deliberately not all four. A clean sweep ("4 of 4 against 0 of 11") would read as
+a proof, and a demo of an association has no business looking like one, least of
+all for the read somebody might act on medically.
 
 ## Getting it off the device
 

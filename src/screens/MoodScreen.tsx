@@ -12,7 +12,7 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, HEALTH_HISTORY_DAYS } from '../store/useHealthStore';
-import { useFoodLogStore } from '../store/useFoodLogStore';
+import { useFoodLogStore, FOOD_INSIGHT_DAYS } from '../store/useFoodLogStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -53,21 +53,6 @@ import { MoodExportSheet } from '../components/MoodExportSheet';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
-
-/**
- * How far back the food log is read for the insight pairings.
- *
- * `HEALTH_HISTORY_DAYS`' span, and matched to it on purpose: both are the same
- * kind of second dataset paired against the same days, and two windows would
- * mean a finding about steps and a finding about calories on one screen quietly
- * speaking for different stretches of somebody's life.
- *
- * It is a ceiling on the read rather than on what counts. The thin-day rule
- * (see `foodDayInputs`) drops most of what comes back for anybody logging
- * casually, which is why the window is wide: ninety days of ordinary logging is
- * what it takes to clear `MIN_PAIRED_DAYS` of days complete enough to pair.
- */
-const FOOD_INSIGHT_DAYS = HEALTH_HISTORY_DAYS;
 
 const BAR_HEIGHT = 90;
 
