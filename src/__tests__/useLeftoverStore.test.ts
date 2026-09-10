@@ -9,6 +9,8 @@ import {
 import type { Leftover, Task } from '../types';
 import { daysInFridge, isLiveLeftover, keepDaysBetween, needsAttention } from '../utils/leftovers';
 
+jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+
 jest.mock('../db/database', () => ({
   dbGetAllLeftovers: jest.fn().mockReturnValue([]),
   dbInsertLeftover: jest.fn(),

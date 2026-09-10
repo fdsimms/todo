@@ -480,6 +480,7 @@ export function FoodLogScreen() {
         at={loggingAt}
         seedRecipeId={seedRecipeId}
         onClose={() => { setAddOpen(false); setSeedRecipeId(null); }}
+        onEstimate={estimateRoute !== 'unavailable' ? () => { setAddOpen(false); setEstimateOpen(true); } : undefined}
       />
       <BarcodeScanSheet
         visible={scanOpen}

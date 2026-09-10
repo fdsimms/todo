@@ -8,8 +8,11 @@ import {
 } from '../db/database';
 import type { FoodNutrition } from '../types';
 
+jest.mock('react-native', () => ({ Platform: { OS: 'ios' } }));
+
 jest.mock('../db/database', () => ({
   dbGetFoodLogEntries: jest.fn(() => []),
+  dbGetFoodLogEntry: jest.fn(() => null),
   dbCountFoodLogEntries: jest.fn(() => 0),
   dbInsertFoodLogEntry: jest.fn(),
   dbUpdateFoodLogEntry: jest.fn(),

@@ -75,6 +75,13 @@ interface Props {
    */
   seedRecipeId?: string | null;
   onClose: () => void;
+  /**
+   * Offers to describe the meal instead of searching for it, handing off to
+   * the estimate sheet. Omitted by a caller that has nowhere to send that
+   * (no API key, no on-device engine) — same gate `FoodLogScreen`'s own
+   * sparkles action uses, just read by the caller instead of duplicated here.
+   */
+  onEstimate?: () => void;
 }
 
 /** One thing that can be logged: a catalog food, a box of one, or a cooked dish. */
@@ -92,7 +99,7 @@ interface Candidate {
   servingPanel: FoodNutrition | null;
 }
 
-export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: Props) {
+export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, onEstimate }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
 
@@ -455,6 +462,15 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
                 autoCorrect={false}
               />
             </View>
+            {!!onEstimate && (
+              <InlineAction
+                label="Describe what you ate instead"
+                icon="sparkles-outline"
+                variant="neutral"
+                onPress={() => { haptics.tap(); onEstimate(); }}
+                style={styles.estimateAction}
+              />
+            )}
             <FlatList
               style={styles.list}
               contentContainerStyle={styles.listContent}
@@ -564,6 +580,7 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.md,
     },
     searchInput: { flex: 1, color: colors.text, fontSize: font.md, padding: 0 },
+    estimateAction: { alignSelf: 'flex-start', marginHorizontal: spacing.md, marginBottom: spacing.sm },
     list: { flex: 1 },
     listContent: { flexGrow: 1, paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
     row: {
