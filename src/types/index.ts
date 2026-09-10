@@ -4015,6 +4015,16 @@ export const PREP_MAX_LENGTH = 60;
 // component name, same order of magnitude as an aisle's.
 export const RECIPE_SECTION_MAX_LENGTH = 40;
 
+/**
+ * How long a note kept on a recipe step may be.
+ *
+ * Generous next to `PREP_MAX_LENGTH` because this holds a sentence or two of
+ * prose rather than a label, and tight enough that the step it sits under stays
+ * the thing being read — see `clampCookAnswer`, which does the shortening that
+ * matters before the text ever reaches here.
+ */
+export const RECIPE_STEP_NOTE_MAX_LENGTH = 500;
+
 // One line of a recipe's shopping implication — deliberately not a GroceryItem.
 // A GroceryItem is a forever-row carrying purchase counters and everything the
 // app knows about a food; "1 tsp smoked paprika" is a line of a recipe. Minting
@@ -4503,6 +4513,21 @@ export interface RecipeStep {
    * changes gets a new reading rather than an old answer.
    */
   timerSeconds?: number | null;
+  /**
+   * A note kept alongside the step, shown under it in cook mode and on the
+   * recipe screen; absent on a step nobody has written one for.
+   *
+   * The first writer is cook mode's own "ask about this step" answer (see
+   * `cookQuestions.ts`), which is why the field is a plain note rather than
+   * anything naming where the text came from: by the third time the dish is
+   * cooked, what matters is that the answer is there, not that a model once
+   * supplied it. Kept only when someone presses Keep — nothing is written by
+   * asking, the same call `RecipeStep.timerSeconds` makes about a parse.
+   *
+   * Stored absent rather than null when cleared, so a step that never had one
+   * round-trips byte for byte (`normalizeStep`).
+   */
+  note?: string;
 }
 
 /**

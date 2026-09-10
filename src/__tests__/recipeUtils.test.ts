@@ -47,6 +47,7 @@ import {
   recipeHasAttribution,
 } from '../utils/recipeUtils';
 import type { GroceryItem, ItemSubLink, Recipe, RecipeComponent, RecipeIngredient, RecipePrepTask } from '../types';
+import { RECIPE_STEP_NOTE_MAX_LENGTH } from '../types';
 
 // recipeUtils now reaches mealPlanGroceries.ts (for countLikelyInPantry) and,
 // through it, mealPlan.ts → dateUtils.ts → the settings store — which
@@ -524,6 +525,18 @@ describe('normalizeStep', () => {
     expect(normalizeStep({ id: 's1', text: 'Sear', timerSeconds: 0 })!.timerSeconds).toBeUndefined();
     expect(normalizeStep({ id: 's1', text: 'Sear', timerSeconds: 48 * 3600 })!.timerSeconds).toBeUndefined();
     expect(normalizeStep({ id: 's1', text: 'Sear', timerSeconds: 'soon' })!.timerSeconds).toBeUndefined();
+  });
+
+  it('keeps a stored note, trimmed and capped', () => {
+    expect(normalizeStep({ id: 's1', text: 'Sear', note: '  Four minutes a side.  ' })!.note)
+      .toBe('Four minutes a side.');
+    expect(normalizeStep({ id: 's1', text: 'Sear', note: 'x'.repeat(999) })!.note)
+      .toHaveLength(RECIPE_STEP_NOTE_MAX_LENGTH);
+  });
+
+  it('leaves the note off a step that has none, and ignores a stored non-string', () => {
+    expect(normalizeStep({ id: 's1', text: 'Sear', note: '   ' })).toEqual({ id: 's1', text: 'Sear' });
+    expect(normalizeStep({ id: 's1', text: 'Sear', note: 7 })).toEqual({ id: 's1', text: 'Sear' });
   });
 });
 

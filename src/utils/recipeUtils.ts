@@ -7,6 +7,7 @@ import {
   RECIPE_NAME_MAX_LENGTH,
   RECIPE_SOURCE_MAX_LENGTH,
   RECIPE_SECTION_MAX_LENGTH,
+  RECIPE_STEP_NOTE_MAX_LENGTH,
   PREP_MAX_LENGTH,
   GROCERY_NAME_MAX_LENGTH,
   GROCERY_QUANTITY_MAX_LENGTH,
@@ -266,10 +267,15 @@ export function normalizeStep(raw: unknown): RecipeStep | null {
     && seconds <= MAX_STEP_TIMER_SECONDS
     ? seconds
     : null;
+  // Same "only when it's there" treatment the duration gets above, and for the
+  // same round-trip reason: a step nobody has kept a note on serializes exactly
+  // as it did before the field existed.
+  const note = typeof r.note === 'string' ? r.note.trim().slice(0, RECIPE_STEP_NOTE_MAX_LENGTH) : '';
   return {
     id: typeof r.id === 'string' && r.id ? r.id : generateId(),
     text,
     ...(timerSeconds === null ? {} : { timerSeconds }),
+    ...(note ? { note } : {}),
   };
 }
 

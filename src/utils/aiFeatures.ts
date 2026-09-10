@@ -5,11 +5,13 @@
 
 export type AiFeatureId =
   | 'taskBreakdown' | 'templateSuggestions' | 'projectTaskSuggestions' | 'groceryAisles'
-  | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport';
+  | 'recipeExtraction' | 'mealIdeas' | 'substitutes' | 'receiptImport' | 'calendarImport'
+  | 'cookHelp';
 
 export const AI_FEATURE_IDS: AiFeatureId[] = [
   'taskBreakdown', 'templateSuggestions', 'projectTaskSuggestions', 'groceryAisles',
   'recipeExtraction', 'mealIdeas', 'substitutes', 'receiptImport', 'calendarImport',
+  'cookHelp',
 ];
 
 export type AiModelId = 'claude-haiku-4-5-20251001' | 'claude-sonnet-5' | 'claude-opus-5';
@@ -95,6 +97,16 @@ export const AI_FEATURES: AiFeatureMeta[] = [
     simple: true,
   },
   {
+    id: 'cookHelp',
+    label: 'Cook mode help',
+    hint: 'Answers a question about the recipe step you\'re on while cooking',
+    kitchen: true,
+    // Cook mode is itself one of the things simplified mode takes away
+    // (`cookMode` in simpleMode.ts), so the surface this configures is already
+    // gone and a row left behind would configure nothing.
+    simple: true,
+  },
+  {
     id: 'calendarImport',
     label: 'Import event from photo or text',
     hint: 'Reads a title, date, time, and location out of a pasted confirmation or a photo of one',
@@ -151,5 +163,12 @@ export function defaultAiFeatureConfig(): AiFeatureConfigMap {
     // over the default: a misread date or address is expensive to have
     // wrong, and the cost difference per import is negligible.
     calendarImport: { enabled: false, model: 'claude-sonnet-5' },
+    // Sonnet for the reason receiptImport and calendarImport both picked it over
+    // the default: the cost difference per question is a fraction of a cent, and
+    // the expensive failure here is a confident wrong answer about whether
+    // something is cooked through. Free text typed by the user goes out with
+    // this one — the first feature here for which that's true — which is the
+    // other reason to spend on the better read of it.
+    cookHelp: { enabled: true, model: 'claude-sonnet-5' },
   };
 }

@@ -1,14 +1,24 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  ActivityIndicator, Keyboard, Modal, View, Text, ScrollView, TextInput, TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useKeepAwake } from 'expo-keep-awake';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
 import type { Recipe } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useRecipeTimer } from '../hooks/useRecipeTimer';
 import { useStepTimers } from '../hooks/useStepTimers';
+import { useAiRoute } from '../hooks/useOnDeviceAi';
+import { useKeyboardInsetScroll } from '../hooks/useKeyboardInsetScroll';
+import { askCookQuestion, describeAIError } from '../services/aiSuggestions';
+import {
+  COOK_QUESTION_MAX_LENGTH, cookQuestionContext, suggestedCookQuestions,
+} from '../utils/cookQuestions';
 import { DetailHeader } from './DetailHeader';
 import { EmptyState } from './EmptyState';
 import { ProgressBar } from './ProgressBar';
@@ -17,7 +27,7 @@ import { NumberPadAccessory } from './NumberPadAccessory';
 import { StepTimerRow } from './StepTimerRow';
 import { InlineAction } from './InlineAction';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, lineHeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { clampStepIndex, cookSteps, describeStepPosition } from '../utils/cookMode';
@@ -90,6 +100,10 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
   const insets = useSafeAreaInsets();
+  // The step view holds the question field, so it has to lift clear of the
+  // keyboard — and `automaticallyAdjustKeyboardInsets` is never passed bare
+  // here, for the 30,000pt reason the hook's own doc comment gives.
+  const keyboardScroll = useKeyboardInsetScroll<ScrollView>();
   const unitSystem = useSettingsStore(s => s.unitSystem);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
@@ -121,6 +135,16 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
 
   const [rawIndex, setRawIndex] = useState(0);
   const [ingredientsOpen, setIngredientsOpen] = useState(false);
+  // One question at a time, about the step on screen, and none of it outlives
+  // that step: the answer is screen state like the position and the panel's
+  // fold, and a step only gains a `note` when someone presses Keep. There is no
+  // transcript on purpose — a scrolling log of turns is the shape this screen
+  // was built to avoid, and the kept note is what a second cooking wants anyway.
+  const [askOpen, setAskOpen] = useState(false);
+  const [question, setQuestion] = useState('');
+  const [asking, setAsking] = useState(false);
+  const [answer, setAnswer] = useState<string | null>(null);
+  const [askError, setAskError] = useState<string | null>(null);
   // The method is read live off the store, so it can shrink underneath a cook
   // whose recipe is being edited on the screen behind this — clamping at read
   // time is what keeps a stale index off the end of it.
@@ -139,10 +163,70 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
     }
   }, [visible]);
 
+  // An answer belongs to the sentence it was given about, so moving off that
+  // step takes it with it — including a half-typed question, which on the next
+  // step would be a question about something else.
+  const stepId = step?.id ?? null;
+  useEffect(() => {
+    setAskOpen(false);
+    setQuestion('');
+    setAsking(false);
+    setAnswer(null);
+    setAskError(null);
+  }, [stepId]);
+
   // Read off the step being shown, and only that one: parsing the whole method
   // up front would cost every open of the sheet a pass over text nobody is
   // looking at, and the offer is only ever made about the step on screen.
   const offers = useMemo(() => (step === null ? [] : stepDurationOffers(step)), [step]);
+
+  // Which engine would answer, so the entry point can't exist for a call that
+  // would refuse — `routeForFeature` has no on-device arm for this one (a free
+  // question over a whole ingredient list wants world knowledge and more window
+  // than the on-device model has), so no key means no Ask button rather than a
+  // button that apologises.
+  const canAsk = useAiRoute('cookHelp') !== 'unavailable';
+  const setStepNote = useRecipeStore(s => s.setStepNote);
+
+  // Derived from the step's own words, with no round trip: typing a question
+  // with wet hands is the thing worth saving, and paying a request to save a
+  // request is not.
+  const suggestions = useMemo(
+    () => (step === null || !askOpen
+      ? []
+      : suggestedCookQuestions(step.text, ingredients.map(flat => flat.ingredient.name))),
+    [step, askOpen, ingredients]
+  );
+
+  const ask = useCallback(async (text: string) => {
+    const asked = text.trim();
+    if (!asked || asking) return;
+    const context = cookQuestionContext(recipe.name, steps, index, ingredients, scale, unitSystem);
+    if (!context) return;
+    haptics.tap();
+    // The keyboard goes as the request does: the answer lands below the field
+    // it was typed into, and a cook who has just asked is done typing.
+    Keyboard.dismiss();
+    setQuestion(asked);
+    setAsking(true);
+    setAskError(null);
+    setAnswer(null);
+    try {
+      const reply = await askCookQuestion(context, asked);
+      setAnswer(reply);
+      haptics.success();
+      // An answer arriving under a kept note, under the step, can land below
+      // the fold with its own Keep button — which is the one control it came
+      // with. Same delayed scroll the AI settings rows use, for the same
+      // reason: the row has to be laid out before it can be scrolled to.
+      setTimeout(() => keyboardScroll.ref.current?.scrollToEnd({ animated: true }), 100);
+    } catch (e) {
+      setAskError(describeAIError(e));
+      haptics.error();
+    } finally {
+      setAsking(false);
+    }
+  }, [asking, recipe.name, steps, index, ingredients, scale, unitSystem, keyboardScroll.ref]);
 
   const atLast = index >= 0 && index === steps.length - 1;
 
@@ -196,7 +280,12 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
               <ProgressBar progress={(index + 1) / steps.length} height={4} />
             </View>
 
-            <ScrollView style={styles.stepScrollView} contentContainerStyle={styles.stepScroll}>
+            <ScrollView
+              ref={keyboardScroll.ref}
+              style={styles.stepScrollView}
+              contentContainerStyle={styles.stepScroll}
+              {...keyboardScroll.props}
+            >
               {/* Whose step it is, and only when that isn't obvious. The walk
                   puts the root's steps first and each component's after, in
                   component order — the app has no way to know the mash wants
@@ -245,6 +334,93 @@ export function CookModeSheet({ visible, recipe, recipesById, scale, onClose }: 
                 <Text style={styles.offersNote}>
                   Where the step gives a range, the timer runs for the shorter time.
                 </Text>
+              )}
+
+              {/* A note kept on this step, shown without being asked for: not
+                  having to ask again is the entire reason it was kept. */}
+              {!!step.note && (
+                <View style={styles.noteCard}>
+                  <Ionicons name="bookmark" size={iconSize.xs} color={colors.purple} />
+                  <Text style={styles.noteText}>{step.note}</Text>
+                </View>
+              )}
+
+              {/* Asking sits under the sentence it's about, for the same reason
+                  the timer chips do: the question is about this step, and the
+                  answer is worthless next to a different one. It stays in this
+                  scroll view rather than opening a sheet of its own, so a
+                  running timer and the step controls never leave the screen to
+                  make room for it. */}
+              {canAsk && (
+                <View style={styles.ask}>
+                  {!askOpen ? (
+                    <InlineAction
+                      icon="help-circle-outline"
+                      label="Ask about this step"
+                      tint={colors.purple}
+                      onPress={() => { haptics.tap(); animateLayout(); setAskOpen(true); }}
+                    />
+                  ) : (
+                    <>
+                      <TextInput
+                        style={styles.askInput}
+                        value={question}
+                        onChangeText={setQuestion}
+                        placeholder="e.g. how do I know when it's done?"
+                        placeholderTextColor={colors.textTertiary}
+                        maxLength={COOK_QUESTION_MAX_LENGTH}
+                        returnKeyType="send"
+                        autoFocus
+                        editable={!asking}
+                        onSubmitEditing={() => ask(question)}
+                        accessibilityLabel="Your question about this step"
+                      />
+                      {!asking && answer === null && (
+                        <View style={styles.askSuggestions}>
+                          {suggestions.map(suggestion => (
+                            <InlineAction
+                              key={suggestion}
+                              label={suggestion}
+                              variant="neutral"
+                              surface="page"
+                              onPress={() => ask(suggestion)}
+                            />
+                          ))}
+                        </View>
+                      )}
+                      {asking && (
+                        <View style={styles.asking}>
+                          <ActivityIndicator color={colors.purple} />
+                          <Text style={styles.askingText}>Asking…</Text>
+                        </View>
+                      )}
+                      {!!askError && <Text style={styles.askError}>{askError}</Text>}
+                      {/* Gone once it's been kept: the note card above is now
+                          holding the same words, and two copies of one answer
+                          reads as two answers. */}
+                      {!!answer && answer !== step.note && (
+                        <View style={styles.answerCard}>
+                          <Text style={styles.answerText}>{answer}</Text>
+                          {/* A step read out of `notes` has no row to keep it
+                              on — see CookStep.note. */}
+                          {!step.fromNotes && (
+                            <InlineAction
+                              icon="bookmark-outline"
+                              label="Keep this note"
+                              tint={colors.purple}
+                              accessibilityLabel="Keep this answer as a note on this step"
+                              onPress={() => {
+                                haptics.success();
+                                animateLayout();
+                                setStepNote(step.recipe.id, step.id, answer);
+                              }}
+                            />
+                          )}
+                        </View>
+                      )}
+                    </>
+                  )}
+                </View>
               )}
             </ScrollView>
           </>
@@ -424,6 +600,76 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     color: colors.textTertiary,
     fontSize: font.xs,
     marginTop: spacing.sm,
+  },
+  // Margin on both sides: the offers above it have their own top margin and the
+  // step text below has none, so a block landing between them has to clear both.
+  noteCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+  },
+  noteText: {
+    flex: 1,
+    color: colors.text,
+    fontSize: font.md,
+    lineHeight: lineHeight.md,
+  },
+  ask: {
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  // No `lineHeight` on a TextInput — see CLAUDE.md; `minHeight` is what keeps
+  // the field from resizing between empty and typed.
+  askInput: {
+    alignSelf: 'stretch',
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: 44,
+    color: colors.text,
+    fontSize: font.md,
+  },
+  askSuggestions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  asking: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  askingText: {
+    color: colors.textSecondary,
+    fontSize: font.sm,
+  },
+  askError: {
+    color: colors.red,
+    fontSize: font.sm,
+    lineHeight: lineHeight.sm,
+  },
+  answerCard: {
+    alignSelf: 'stretch',
+    alignItems: 'flex-start',
+    gap: spacing.md,
+    backgroundColor: colors.bgSecondary,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  // A size up from the note and the error: this is the thing someone stopped
+  // cooking to read, even though the step above it stays the bigger text.
+  answerText: {
+    color: colors.text,
+    fontSize: font.lg,
+    lineHeight: lineHeight.lg,
   },
   root: {
     flex: 1,
