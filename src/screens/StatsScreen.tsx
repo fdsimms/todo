@@ -1273,7 +1273,7 @@ const makeStyles = (colors: Colors) =>
       paddingVertical: 3,
       borderRadius: radius.full,
     },
-    badgeText: { fontSize: font.sm, fontWeight: '700' },
+    badgeText: { fontSize: font.sm, fontWeight: '700', color: colors.text },
     // Sits between the title and the badge, quiet enough to read as context
     // for the number rather than as a second number competing with it.
     streakBest: {

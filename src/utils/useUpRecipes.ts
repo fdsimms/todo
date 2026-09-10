@@ -161,17 +161,22 @@ function compareByUrgency(a: KitchenEntry, b: KitchenEntry): number {
 }
 
 /**
- * "Uses your spinach and mushrooms" — what a suggestion row says under the
+ * "Uses up your spinach and mushrooms" — what a suggestion row says under the
  * recipe's name.
  *
  * Names the food rather than counting it ("uses 2 things going off"), because
  * the names are the reason to tap: the whole question the row answers is
  * *which* of tonight's casualties this would deal with. Capped at two names
  * plus a count, which is where the line stops fitting.
+ *
+ * "Uses up", not "Uses": under an unfamiliar recipe name ("Feta Oil"), "Uses
+ * your baguette" reads as a fact about a dish you already have rather than
+ * what tapping this row would do. "Uses up" only makes sense as an action on
+ * something still in the kitchen, so it can't be misread as already done.
  */
 export function describeUseUpRecipe(suggestion: UseUpRecipe): string {
   const names = suggestion.uses.map(e => e.title);
-  if (names.length === 1) return `Uses your ${names[0]}`;
-  if (names.length === 2) return `Uses your ${names[0]} and ${names[1]}`;
-  return `Uses your ${names[0]}, ${names[1]} and ${names.length - 2} more`;
+  if (names.length === 1) return `Uses up your ${names[0]}`;
+  if (names.length === 2) return `Uses up your ${names[0]} and ${names[1]}`;
+  return `Uses up your ${names[0]}, ${names[1]} and ${names.length - 2} more`;
 }

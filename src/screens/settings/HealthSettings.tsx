@@ -18,6 +18,19 @@ import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 
 /**
+ * HealthKit sharing lives in the Health app's own Sharing tab, not in this
+ * app's page under iOS Settings — Settings has no Health row to show. Try the
+ * Health app's URL scheme first and only fall back to Settings if that fails.
+ */
+async function openHealthApp() {
+  try {
+    await Linking.openURL('x-apple-health://');
+  } catch {
+    await Linking.openSettings();
+  }
+}
+
+/**
  * Reading Apple Health, and — in a section of its own below — writing the two
  * things this app writes to it.
  *
@@ -37,8 +50,9 @@ import { haptics } from '../../utils/haptics';
  *
  * - The access row says whether the app has *asked* yet, which is the one thing
  *   `getRequestStatusForAuthorization` will answer, and offers the sheet when it
- *   hasn't. Once it has asked, the row points at the Settings app rather than
- *   claiming an outcome.
+ *   hasn't. Once it has asked, the row points at the Health app's own Sharing
+ *   tab rather than claiming an outcome — sharing lives there, not in iOS
+ *   Settings, which has no Health row for a third-party app to show.
  * - The reading row shows the number or says there isn't one. "No number" is
  *   the honest reading of both a refusal and an empty day, and it is never
  *   drawn as a zero.
@@ -259,12 +273,12 @@ export function HealthSettings() {
             alwaysShowHint
             value={
               requestStatus === 'shouldRequest' ? 'Allow'
-                : requestStatus === 'unnecessary' ? 'Open Settings'
+                : requestStatus === 'unnecessary' ? 'Open Health'
                   : undefined
             }
             onPress={
               requestStatus === 'shouldRequest' ? askForAccess
-                : requestStatus === 'unnecessary' ? () => Linking.openSettings()
+                : requestStatus === 'unnecessary' ? () => { void openHealthApp(); }
                   : undefined
             }
           />
@@ -405,7 +419,7 @@ interface WriteAccessRowProps {
  *
  * A component rather than the row written twice because the two differ only in
  * their label and in which sharing row to point somebody at: the four-state
- * ladder, which state offers a button, and which offers the Settings app are
+ * ladder, which state offers a button, and which opens the Health app are
  * the same decision for every share type, and a second hand-written copy is
  * how one of them ends up still saying "water" after a third is added.
  */
@@ -431,12 +445,12 @@ function WriteAccessRow({ entryId, label, deniedHint, status, colors, onAsk }: W
       alwaysShowHint
       value={
         status === 'notDetermined' ? 'Allow'
-          : status === 'sharingDenied' ? 'Open Settings'
+          : status === 'sharingDenied' ? 'Open Health'
             : undefined
       }
       onPress={
         status === 'notDetermined' ? onAsk
-          : status === 'sharingDenied' ? () => Linking.openSettings()
+          : status === 'sharingDenied' ? () => { void openHealthApp(); }
             : undefined
       }
     />

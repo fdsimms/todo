@@ -335,6 +335,13 @@ function readOffServingGrams(product: Record<string, unknown>): number | null {
   return grams !== null && grams > 0 ? grams : null;
 }
 
+/** The same reading as `readOffServingGrams`, for a serving stated in millilitres. */
+function readOffServingMilliliters(product: Record<string, unknown>): number | null {
+  if (readSourceUnit(product.serving_quantity_unit) !== 'ml') return null;
+  const ml = readSourceNumber(product.serving_quantity);
+  return ml !== null && ml > 0 ? ml : null;
+}
+
 /**
  * The unit Open Food Facts states this product's own quantity in.
  *
@@ -395,10 +402,36 @@ export function readOffNutrition(
   const salt = readSourceNumber(nutriments.salt_100g);
   if (salt !== null) setPer100(amounts, 'sodiumMg', salt / SALT_TO_SODIUM, 'g');
 
+  const basis = basisFor(readOffMeasuredUnit(product));
+
+  // A contributor who types the per-serving line into the per-100 field
+  // leaves no trace `PER_100_CEILING` above can catch, since the number that
+  // results is a real calorie count for a real food, just filed under the
+  // wrong portion — this is exactly that mistake. What does give it away is
+  // that OFF also carries the true per-serving figure in a sibling field
+  // (`energy-kcal_serving`), and a misfiled row's "per 100" figure is that
+  // same number by construction, where a correctly-filed one is unrelated to
+  // it (Nutella's 539kcal/100g bears no resemblance to its ~81kcal/15g
+  // serving). A serving genuinely close to 100 units is left alone, since the
+  // two figures are expected to nearly agree there regardless.
+  if (amounts.calorieKcal !== undefined) {
+    const servingUnits = basis === 'per100ml'
+      ? readOffServingMilliliters(product)
+      : readOffServingGrams(product);
+    const servingEnergy = readSourceNumber(nutriments['energy-kcal_serving']);
+    if (
+      servingUnits !== null && servingEnergy !== null
+      && Math.abs(servingUnits - 100) > 15
+      && Math.abs(amounts.calorieKcal - servingEnergy) <= Math.max(1, amounts.calorieKcal * 0.02)
+    ) {
+      delete amounts.calorieKcal;
+    }
+  }
+
   if (Object.keys(amounts).length === 0) return null;
 
   return {
-    basis: basisFor(readOffMeasuredUnit(product)),
+    basis,
     servingGrams: readOffServingGrams(product),
     servingText: readSourceText(product.serving_size),
     amounts,
