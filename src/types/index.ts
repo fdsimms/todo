@@ -4364,6 +4364,17 @@ export interface RecipeIngredient {
   // mealPlanGroceries.ts), where an optional line starts unticked instead of
   // ticked. Same optional-boolean convention as noSwap, for the same reason.
   optional?: boolean;
+  // "Not now" on the catalog-match signpost pill (see ingredientCatalogMatch.ts
+  // and RecipeDetailScreen), remembered permanently rather than for the
+  // current screen visit. Holds the *suggested name* that was turned down, not
+  // a boolean, so the pill comes back on its own the moment the offer changes
+  // (a rename, a different catalog match) instead of hiding a pill that's now
+  // suggesting something new. Same optional-string convention as `aisle`.
+  dismissedCatalogSuggestion?: string;
+  // Same "not now", for the split-into-alternatives pill. Keyed on the line's
+  // own name rather than the suggested split, since that's what the pill's
+  // offer is keyed on (see splittableInto in RecipeDetailScreen).
+  dismissedSplitSuggestion?: string;
 }
 
 // One recipe used as a part of another — "mashed potatoes" inside both "Steak

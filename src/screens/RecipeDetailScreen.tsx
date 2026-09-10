@@ -111,6 +111,7 @@ export function RecipeDetailScreen() {
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const recipe = recipes.find(r => r.id === recipeId);
   const addIngredient = useRecipeStore(s => s.addIngredient);
+  const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
   const removeIngredient = useRecipeStore(s => s.removeIngredient);
   const reorderIngredients = useRecipeStore(s => s.reorderIngredients);
@@ -437,13 +438,6 @@ export function RecipeDetailScreen() {
     [catalogMatches],
   );
 
-  // Session-only "not now" for the two signpost pills below: dismissing one
-  // doesn't touch the ingredient, so it's keyed on what the pill was
-  // offering rather than a boolean, and clears itself the moment that offer
-  // changes (a rename, a different catalog match) rather than hiding a pill
-  // that's now suggesting something new.
-  const [dismissedMatchPills, setDismissedMatchPills] = useState<Map<string, string>>(new Map());
-  const [dismissedSplitPills, setDismissedSplitPills] = useState<Map<string, string>>(new Map());
 
   // The row can be gone while the screen is still mounted (deleted from the
   // editor), so this renders rather than crashing on the next read.
@@ -694,15 +688,22 @@ export function RecipeDetailScreen() {
     setHoveredRowId(index === null ? null : mergedIngredientRows[index]?.id ?? null);
   };
 
+  // Persisted on the ingredient itself (dismissedCatalogSuggestion /
+  // dismissedSplitSuggestion), not session state — a "not now" here used to
+  // reset the moment the screen unmounted, which made the pill feel
+  // impossible to turn off (#2246). Keyed on what the pill was offering
+  // rather than a boolean, so it clears itself the moment that offer changes
+  // (a rename, a different catalog match) rather than hiding a pill that's
+  // now suggesting something new.
   const dismissMatchPill = (ingredientId: string, suggestedName: string) => {
     haptics.tap();
     animateLayout();
-    setDismissedMatchPills(prev => new Map(prev).set(ingredientId, suggestedName));
+    updateIngredient(recipe.id, ingredientId, { dismissedCatalogSuggestion: suggestedName });
   };
   const dismissSplitPill = (ingredientId: string, name: string) => {
     haptics.tap();
     animateLayout();
-    setDismissedSplitPills(prev => new Map(prev).set(ingredientId, name));
+    updateIngredient(recipe.id, ingredientId, { dismissedSplitSuggestion: name });
   };
 
   const renderIngredient = (
@@ -750,7 +751,7 @@ export function RecipeDetailScreen() {
     // two" shouldn't hand the row over to a catalog suggestion it was never
     // going to show.
     const splittableInto = splittableCounts.get(ingredient.id);
-    const splitInto = splittableInto && dismissedSplitPills.get(ingredient.id) !== ingredient.name
+    const splitInto = splittableInto && ingredient.dismissedSplitSuggestion !== ingredient.name
       ? splittableInto
       : undefined;
     // Only a line with something to act on gets a badge: an exact match is the
@@ -765,7 +766,7 @@ export function RecipeDetailScreen() {
     // is. Two competing offers on one row is a row nobody reads.
     const catalogMatch = catalogMatches.get(ingredient.id);
     const catalogSuggestion = !splittableInto && catalogMatch?.kind === 'suggested'
-      && catalogMatch.suggestedName !== dismissedMatchPills.get(ingredient.id)
+      && catalogMatch.suggestedName !== ingredient.dismissedCatalogSuggestion
       ? catalogMatch
       : null;
     return (
