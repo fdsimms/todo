@@ -27,6 +27,9 @@ import {
 import { canReadTextOnDevice } from '../utils/receiptOcr';
 import { readLabelPhoto, type LabelReading } from '../utils/labelOcr';
 import { pickRecipePhoto } from '../utils/recipePhoto';
+import {
+  describeAIError, nutritionLabelPhotoAiAvailable, readLabelPhotoWithAi,
+} from '../services/aiSuggestions';
 import { haptics } from '../utils/haptics';
 import { InlineAction } from './InlineAction';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from './NumberPadAccessory';
@@ -71,6 +74,16 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * at it. The button is absent rather than disabled where Vision cannot run,
  * since there is no second opinion to offer and a control that would only ever
  * refuse is worse than no control.
+ *
+ * **A panel Vision can't transcribe — a curved tub, a steep angle, glare on
+ * the wrap — gets one more try from Claude**, when a key is configured for
+ * `nutritionLabelPhoto` (`aiSuggestions.ts`'s `readLabelPhotoWithAi`). Same
+ * photo, same fields, same person checking the result before Save; the two
+ * paths differ only in who read the panel. Attempted only when there's a key
+ * to spend it on, so "the photo didn't read" stays the whole story for
+ * everyone who hasn't set one up — a real failure on the fallback itself
+ * (a timeout, a rate limit) gets its own message rather than being folded
+ * into that one.
  */
 
 interface Props {
@@ -173,11 +186,26 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
       // file for free and a nutrition panel is set in small type, so the long
       // edge cut lands hardest on exactly the rows worth reading. Same call
       // `receiptOcr`'s path makes, for the same reason.
-      const read = await readLabelPhoto(picked.photo.sourceUri);
+      let read = await readLabelPhoto(picked.photo.sourceUri);
+      let aiFailure: string | null = null;
+      // Vision transcribes for free and gets most panels; a curved tub, a
+      // steep angle, or glare it couldn't see past gets a second try from
+      // Claude, using the same downscaled copy already encoded for it. Only
+      // attempted when there's actually a key to spend — see the doc comment
+      // on `nutritionLabelPhotoAiAvailable`.
+      if (!read && nutritionLabelPhotoAiAvailable()) {
+        try {
+          read = await readLabelPhotoWithAi(picked.photo);
+        } catch (e) {
+          aiFailure = describeAIError(e);
+        }
+      }
       if (!read) {
         haptics.warning();
         setLabel(null);
-        setPhotoError("That photo didn't read as a nutrition panel. Try again with the whole panel in frame and more light on it, or type the figures in below.");
+        setPhotoError(aiFailure
+          ? `Claude couldn't read that photo either: ${aiFailure}`
+          : "That photo didn't read as a nutrition panel. Try again with the whole panel in frame and more light on it, or type the figures in below.");
         return;
       }
       haptics.success();

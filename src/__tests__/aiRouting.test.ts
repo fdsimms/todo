@@ -20,7 +20,9 @@ describe('supportsOnDevice', () => {
   // these are photographs. If one is ever added, it should be because it was
   // measured, not because the set looked short.
   it('carries nothing that needs vision or long context', () => {
-    for (const id of ['recipeExtraction', 'receiptImport', 'calendarImport', 'mealIdeas'] as const) {
+    for (const id of [
+      'recipeExtraction', 'receiptImport', 'calendarImport', 'mealIdeas', 'nutritionLabelPhoto',
+    ] as const) {
       expect(supportsOnDevice(id)).toBe(false);
     }
   });
