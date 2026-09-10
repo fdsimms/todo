@@ -1,0 +1,4 @@
+{
+  "message": "When a nutrition search can't run because a FoodData Central key is missing or lookups are off, an Open Settings button now takes you straight to that row instead of leaving you to find it yourself.",
+  "date": "2026-09-10"
+}

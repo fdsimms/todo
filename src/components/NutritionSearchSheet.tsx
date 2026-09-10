@@ -10,10 +10,17 @@ import {
   View,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { useColors } from '../theme/ThemeContext';
 import { border, font, fontWeight, iconSize, interaction, radius, spacing, type Colors } from '../theme';
 import { rankFoodCandidates, type RankedFood } from '../utils/foodSearchMatch';
-import { describeFoodSearchError, fetchFoodPortions, searchFoods, type FoodSearchHit } from '../services/foodSearch';
+import {
+  describeFoodSearchError,
+  fetchFoodPortions,
+  foodSearchErrorSettingsEntryId,
+  searchFoods,
+  type FoodSearchHit,
+} from '../services/foodSearch';
 import { haptics } from '../utils/haptics';
 import { EmptyState } from './EmptyState';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -58,12 +65,14 @@ interface Props {
 export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation();
 
   const [query, setQuery] = useState(itemName);
   const [hits, setHits] = useState<FoodSearchHit[]>([]);
   const [searching, setSearching] = useState(false);
   const [picking, setPicking] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorSettingsEntryId, setErrorSettingsEntryId] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
 
   const run = useCallback(async (text: string) => {
@@ -71,16 +80,28 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Pro
     if (!trimmed) return;
     setSearching(true);
     setError(null);
+    setErrorSettingsEntryId(null);
     try {
       setHits(await searchFoods(trimmed));
     } catch (e) {
       setHits([]);
       setError(describeFoodSearchError(e));
+      setErrorSettingsEntryId(foodSearchErrorSettingsEntryId(e));
     } finally {
       setSearching(false);
       setSearched(true);
     }
   }, []);
+
+  // The sheet's own dismiss, then the row that fixes the error — mirrors
+  // FocusSetupSheet's openSettings: close first so the pushed screen shows
+  // once this sheet is gone, not stacked behind it.
+  const openSettings = () => {
+    haptics.tap();
+    (navigation as never as { navigate: (n: string, p: object) => void })
+      .navigate('SettingsGroup', { groupId: 'privacyAi', entryId: errorSettingsEntryId });
+    onClose();
+  };
 
   // Opening with the item's own name already searched: the answer is nearly
   // always among the first results for it, and making someone retype the name
@@ -90,6 +111,7 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Pro
     setQuery(itemName);
     setHits([]);
     setError(null);
+    setErrorSettingsEntryId(null);
     setSearched(false);
     setPicking(null);
     void run(itemName);
@@ -194,6 +216,8 @@ export function NutritionSearchSheet({ visible, itemName, onClose, onPick }: Pro
                     ? 'The search could not be run, so there is nothing to choose from.'
                     : 'Try a plainer name. This database files foods as "Onions, raw" rather than by brand.'
                 }
+                actionLabel={errorSettingsEntryId ? 'Open Settings' : undefined}
+                onAction={errorSettingsEntryId ? openSettings : undefined}
               />
             )
           }
