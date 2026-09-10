@@ -107,20 +107,52 @@ public class TodoHealthBridgeModule: Module {
     if let energy = HKQuantityType.quantityType(forIdentifier: .dietaryEnergyConsumed) {
       types.insert(energy)
     }
+    if let bodyMass = HKQuantityType.quantityType(forIdentifier: .bodyMass) {
+      types.insert(bodyMass)
+    }
     return types
   }
 
-  /// Every type this app will ever ask to *write* — one, today. Deliberately
+  /// Every type this app will ever ask to *write* — two, today. Deliberately
   /// its own set rather than folded into `readTypes`: a share type is a real
   /// consequence (a sample landing in somebody's actual Health record) that a
   /// read type isn't, so it's requested on its own (see `requestWriteAuthorization`)
   /// rather than riding along with whatever's being read.
+  ///
+  /// Body mass is the second, and it earned its own review the way the note
+  /// here has always said a second type would have to. What licensed it is the
+  /// same thing that licensed reading the eight nutrients: a weight exists at
+  /// all only because a person stepped on a scale or typed it in, so recording
+  /// one is writing down their number rather than the app forming an opinion
+  /// about a body. The guardrail that replaces "there is only one write type"
+  /// is that nothing *derives* anything from it — no rule metric, no generated
+  /// task, no BMI, no verdict against a goal. See `docs/arch/health-data.md`.
   private var writeTypes: Set<HKSampleType> {
     var types = Set<HKSampleType>()
     if let water = HKQuantityType.quantityType(forIdentifier: .dietaryWater) {
       types.insert(water)
     }
+    if let bodyMass = HKQuantityType.quantityType(forIdentifier: .bodyMass) {
+      types.insert(bodyMass)
+    }
     return types
+  }
+
+  /// The share type a write-side call is asking about, resolved from the key
+  /// the JS side passes.
+  ///
+  /// A key rather than a second copy of each write function, because
+  /// `authorizationStatus(for:)` is per-type and the settings screen has to be
+  /// able to say "water: allowed, weight: not asked" separately — the two
+  /// permissions are genuinely independent in Health, and a single status for
+  /// "writing" would be a lie as soon as somebody allowed one and refused the
+  /// other.
+  private static func writeType(for key: String) -> HKQuantityType? {
+    switch key {
+    case "water": return HKQuantityType.quantityType(forIdentifier: .dietaryWater)
+    case "weight": return HKQuantityType.quantityType(forIdentifier: .bodyMass)
+    default: return nil
+    }
   }
 
   /// The total to report for one statistics bucket, in `unit`, or nil for no
@@ -298,9 +330,10 @@ public class TodoHealthBridgeModule: Module {
       #endif
     }
 
-    // ─── Writing (dietary water only) ──────────────────────────────────────
+    // ─── Writing (dietary water and body mass) ─────────────────────────────
 
-    /// "unavailable" | "notDetermined" | "sharingDenied" | "sharingAuthorized".
+    /// "unavailable" | "notDetermined" | "sharingDenied" | "sharingAuthorized",
+    /// for the one share type named by `kind` ("water" | "weight").
     ///
     /// The write mirror of `authorizationRequestStatus` above, and able to say
     /// something that one structurally cannot: `authorizationStatus(for:)` is
@@ -308,15 +341,20 @@ public class TodoHealthBridgeModule: Module {
     /// so this reports what actually happened rather than only whether asking
     /// again would show a sheet. Synchronous, since there is no daemon round
     /// trip needed for a fact HealthKit already holds locally.
-    Function("writeAuthorizationStatus") { () -> String in
+    ///
+    /// Per type rather than one answer for "writing", because Health lets
+    /// somebody allow water and refuse weight in the same sheet, and a settings
+    /// row that reported one status for both would tell half of those people
+    /// something false.
+    Function("writeAuthorizationStatus") { (kind: String) -> String in
       #if canImport(HealthKit)
       guard HKHealthStore.isHealthDataAvailable(),
-            let water = HKQuantityType.quantityType(forIdentifier: .dietaryWater) else {
+            let type = Self.writeType(for: kind) else {
         return "unavailable"
       }
       var status = "unavailable"
       TodoHealthExceptionCatcher.runCatchingExceptions {
-        switch self.store.authorizationStatus(for: water) {
+        switch self.store.authorizationStatus(for: type) {
         case .notDetermined: status = "notDetermined"
         case .sharingDenied: status = "sharingDenied"
         case .sharingAuthorized: status = "sharingAuthorized"
@@ -376,6 +414,48 @@ public class TodoHealthBridgeModule: Module {
       let quantity = HKQuantity(unit: HKUnit.literUnit(with: .milli), doubleValue: milliliters)
       let now = Date()
       let sample = HKQuantitySample(type: type, quantity: quantity, start: now, end: now)
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        self.store.save(sample) { success, _ in
+          promise.resolve(success)
+        }
+        started = true
+      }
+      if !started { promise.resolve(false) }
+      #else
+      promise.resolve(false)
+      #endif
+    }
+
+    /// Writes one body-mass sample of `kilograms`, dated `whenISO`.
+    ///
+    /// Takes its date rather than stamping `Date()` the way `writeWaterSample`
+    /// does, and that difference is the feature: a glass of water is logged by
+    /// finishing a task, so the moment it happens *is* now, while a weight is
+    /// typed in by somebody who may well be entering this morning's reading in
+    /// the evening. An unparseable date falls back to now rather than refusing,
+    /// since a weight filed at the wrong hour of the right day is worth more
+    /// than no weight at all.
+    ///
+    /// Same one-shot shape as the water write: no update, no delete, no id kept.
+    /// Health is the record, and correcting a weight is something the Health app
+    /// itself does better than a mirror of it here would.
+    ///
+    /// The ceiling is an absurdity check, not a judgement — it exists so a
+    /// mistyped "725" can't put a permanent outlier in somebody's medical
+    /// record, and it sits far above any real body mass so it can never be the
+    /// thing that refuses a genuine reading.
+    AsyncFunction("writeBodyMassSample") { (kilograms: Double, whenISO: String, promise: Promise) in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable(),
+            kilograms > 0, kilograms < 1000, kilograms.isFinite,
+            let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else {
+        promise.resolve(false)
+        return
+      }
+      let quantity = HKQuantity(unit: HKUnit.gramUnit(with: .kilo), doubleValue: kilograms)
+      let when = Self.parseISO(whenISO) ?? Date()
+      let sample = HKQuantitySample(type: type, quantity: quantity, start: when, end: when)
       var started = false
       TodoHealthExceptionCatcher.runCatchingExceptions {
         self.store.save(sample) { success, _ in
@@ -557,6 +637,95 @@ public class TodoHealthBridgeModule: Module {
         } else {
           finish()
         }
+        started = true
+      }
+      if !started { promise.resolve("[]") }
+      #else
+      promise.resolve("[]")
+      #endif
+    }
+
+    /// One entry per logical day, as JSON:
+    /// `[{"start":"…","grams":72400}, …]`, `grams` null for a day with no
+    /// weigh-in. Same anchor-plus-day-count window as `readDailyHealth`, and
+    /// the same rule about where the anchor comes from.
+    ///
+    /// **Its own function rather than an eleventh column on `readDailyHealth`,
+    /// for three reasons that all point the same way.** That call runs on every
+    /// foreground to refresh today's snapshot and again over 90 days for the
+    /// mood correlations, so a column there would cost a query on every
+    /// foreground for a number only one screen reads. Its statistics are the
+    /// wrong kind: every metric it collects is cumulative, and `.cumulativeSum`
+    /// on body mass would *add up* the day's weigh-ins — step on the scale
+    /// twice and you weigh 145kg. And its wire format rounds every value
+    /// through `Int()`, which would land 72.4kg as 72.
+    ///
+    /// **Deliberately no `.separateBySource`, unlike every cumulative read
+    /// above.** That option exists there because a phone and a watch counting
+    /// one walk get *summed* into double the steps, so the reading has to be
+    /// pinned to a single source. An average has no such failure: two apps
+    /// reporting the same morning's weight average to that weight, and a scale
+    /// and a manual entry that genuinely disagree average to something between
+    /// them, which is the honest answer rather than a coin flip on which source
+    /// happens to be "best". So the plain `averageQuantity()` is both simpler
+    /// and more correct here, and `bestSum`'s reasoning does not transfer.
+    ///
+    /// **Grams as an integer on the wire, divided back on the JS side.** A
+    /// weight is the first fractional number this bridge has had to carry, and
+    /// formatting a `Double` into hand-built JSON invites a locale putting a
+    /// comma where the parser wants a point. Whole grams are 0.001kg of
+    /// precision, which is three digits finer than any bathroom scale reports,
+    /// so nothing is lost by staying in the integer format every other reading
+    /// already uses.
+    AsyncFunction("readWeightSeries") { (anchorISO: String, days: Int, promise: Promise) in
+      #if canImport(HealthKit)
+      let calendar = Calendar.current
+      guard HKHealthStore.isHealthDataAvailable(),
+            days > 0, days <= 400,
+            let anchor = Self.parseISO(anchorISO),
+            let end = calendar.date(byAdding: .day, value: days, to: anchor),
+            let type = HKQuantityType.quantityType(forIdentifier: .bodyMass) else {
+        promise.resolve("[]")
+        return
+      }
+
+      var starts: [Date] = []
+      for offset in 0..<days {
+        guard let day = calendar.date(byAdding: .day, value: offset, to: anchor) else { break }
+        starts.append(day)
+      }
+      guard starts.count == days else {
+        promise.resolve("[]")
+        return
+      }
+
+      var grams = [Double?](repeating: nil, count: days)
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        let query = HKStatisticsCollectionQuery(
+          quantityType: type,
+          quantitySamplePredicate: HKQuery.predicateForSamples(
+            withStart: anchor, end: end, options: .strictStartDate
+          ),
+          options: [.discreteAverage],
+          anchorDate: anchor,
+          intervalComponents: DateComponents(day: 1)
+        )
+        query.initialResultsHandler = { _, collection, _ in
+          collection?.enumerateStatistics(from: anchor, to: end) { statistics, _ in
+            // Same containment rule as `runDietQuery`: which bucket a result
+            // falls in, not which start it equals.
+            guard let i = starts.lastIndex(where: { $0 <= statistics.startDate }), i < days else { return }
+            guard let quantity = statistics.averageQuantity() else { return }
+            grams[i] = quantity.doubleValue(for: HKUnit.gramUnit(with: .kilo)) * 1000
+          }
+          let entries: [String] = (0..<days).map { i in
+            let part = grams[i].map { "\(Int($0.rounded()))" } ?? "null"
+            return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"grams\":\(part)}"
+          }
+          promise.resolve("[" + entries.joined(separator: ",") + "]")
+        }
+        self.store.execute(query)
         started = true
       }
       if !started { promise.resolve("[]") }

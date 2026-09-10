@@ -8,16 +8,18 @@ import { useCategoryStore, ensureHealthCategory } from '../../store/useCategoryS
 import { categoryLabel } from '../../utils/categoryLabel';
 import { PillGroup } from '../../components/PillGroup';
 import { healthBridge, isHealthSupported } from '../../utils/healthBridge';
+import type { WeightUnit } from '../../utils/weightLog';
 import { dayKeyOf, getCurrentDayStart } from '../../utils/dateUtils';
 import { useColors } from '../../theme/ThemeContext';
 import { SettingsSection } from './SettingsSection';
 import { SettingsRow } from './SettingsRow';
+import { SettingsSegments } from './SettingsSegments';
 import { makeSettingsStyles } from './settingsStyles';
 import { haptics } from '../../utils/haptics';
 
 /**
- * Reading Apple Health, and — in a section of its own below — writing exactly
- * one thing to it.
+ * Reading Apple Health, and — in a section of its own below — writing the two
+ * things this app writes to it.
  *
  * **Reading sits beside the calendar read in spirit and not in the index: both
  * only ever look, but the permission models are opposite**, and that
@@ -44,13 +46,20 @@ import { haptics } from '../../utils/haptics';
  * **Writing is the mirror case, and this is the one place in the screen that
  * gets to say "Allowed" or "Not allowed" outright.** `authorizationStatus(for:)`
  * is truthful for share/write types — Apple's own docs draw the line at reads,
- * not at Health generally — so the water-write access row below reads exactly
- * like `CalendarSettings`' access row, not like the read access row above it.
+ * not at Health generally — so the write access rows below read exactly like
+ * `CalendarSettings`' access row, not like the read access row above them.
  * It's a separate `SettingsSection` and a separate switch
- * (`healthWriteEnabled`) on purpose: reading steps and writing water are two
+ * (`healthWriteEnabled`) on purpose: reading steps and writing anything are two
  * different permissions with two different sheets, and folding them into one
- * switch would ask someone who only wanted the steps row about writing water
- * too.
+ * switch would ask someone who only wanted the steps row about writing too.
+ *
+ * **There is one app-level write switch but two access rows under it, and that
+ * asymmetry is deliberate.** "May this app write to my Health record" is asked
+ * once, and the switch answers it. *Which types* it may write is Health's
+ * question rather than this app's, answered in Health's own sheet, and Health
+ * lets somebody allow water and refuse body mass in that one sheet — so the
+ * rows report per type while the switch stays single. A second app-level
+ * toggle would only add a way to be refused twice for the same reason.
  */
 export function HealthSettings() {
   const healthReadEnabled = useSettingsStore(s => s.healthReadEnabled);
@@ -59,6 +68,8 @@ export function HealthSettings() {
   const setHealthWriteEnabled = useSettingsStore(s => s.setHealthWriteEnabled);
   const healthCategory = useSettingsStore(s => s.healthCategory);
   const setHealthCategory = useSettingsStore(s => s.setHealthCategory);
+  const weightUnit = useSettingsStore(s => s.weightUnit);
+  const setWeightUnit = useSettingsStore(s => s.setWeightUnit);
   const categories = useCategoryStore(s => s.categories);
   const today = useHealthStore(s => s.today);
   const refreshing = useHealthStore(s => s.refreshing);
@@ -71,7 +82,11 @@ export function HealthSettings() {
   // data at all cannot change while the screen is open.
   const [supported] = useState(isHealthSupported);
   const [requestStatus, setRequestStatus] = useState<HealthRequestStatus | null>(null);
-  const [writeStatus, setWriteStatus] = useState<HealthWriteStatus | null>(null);
+  // Two statuses, not one, because Health lets somebody allow water and refuse
+  // weight on the same sheet — a single "write access" row would be wrong for
+  // whichever of the two they declined.
+  const [waterWriteStatus, setWaterWriteStatus] = useState<HealthWriteStatus | null>(null);
+  const [weightWriteStatus, setWeightWriteStatus] = useState<HealthWriteStatus | null>(null);
 
   // Re-read on focus *and* on foreground, for the reason the calendar rows
   // give: the access row can send someone to the system Settings app, which
@@ -89,7 +104,8 @@ export function HealthSettings() {
   // plain fact, not a sheet-shaped question, so there's nothing to await.
   const refreshWriteStatus = useCallback(() => {
     const bridge = healthBridge();
-    setWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus() : null);
+    setWaterWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('water') : null);
+    setWeightWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('weight') : null);
   }, []);
 
   useFocusEffect(
@@ -139,7 +155,10 @@ export function HealthSettings() {
     setHealthWriteEnabled(next);
     // Same moment-of-asking rule the read toggle follows: turning this on is
     // the one unambiguous ask, so it's the one moment the sheet may appear.
-    if (next && writeStatus === 'notDetermined') {
+    // One sheet covers both share types (`requestWriteAuthorization` passes the
+    // whole of `writeTypes`), so it is worth raising if *either* is still
+    // unanswered.
+    if (next && (waterWriteStatus === 'notDetermined' || weightWriteStatus === 'notDetermined')) {
       const bridge = healthBridge();
       bridge?.requestHealthWriteAuthorization()
         .then(() => refreshWriteStatus())
@@ -301,58 +320,125 @@ export function HealthSettings() {
 
     <SettingsSection
       label="Log to Health"
-      footer="Writes a dietary water sample to Health when a task you've set up to log it is completed. This is the only thing this app ever writes to Health, and nothing else is touched."
+      footer="Writes a dietary water sample when a task you've set up to log it is completed, and a body mass sample when you record a weight. These are the only two things this app ever writes to Health, and nothing else is touched."
     >
       <SettingsRow
         entryId="healthWrite"
-        icon="water-outline"
+        icon="create-outline"
         iconColor={healthWriteEnabled ? colors.accent : undefined}
-        label="Log water to Health"
+        label="Log to Health"
         hint={healthWriteEnabled
-          ? 'Tasks set up to log water write a sample when completed'
+          ? 'Water from tasks set up to log it, and weights you record'
           : 'Nothing is written to Health'}
         toggle={healthWriteEnabled}
         onPress={onToggleWrite}
-        accessibilityLabel="Log water to Health"
+        accessibilityLabel="Log to Health"
       />
 
       {healthWriteEnabled && (
         <>
           <View style={styles.sep} />
-          <SettingsRow
+          <WriteAccessRow
             entryId="healthWriteAccess"
-            icon={writeStatus === 'sharingAuthorized' ? 'lock-open-outline' : 'lock-closed-outline'}
-            iconColor={writeStatus === 'sharingAuthorized' ? colors.accent : undefined}
             label="Water-write access"
-            // Unlike the read access row above, this one is allowed to say
-            // "Allowed" or "Not allowed" outright — see the file's own note on
-            // why write authorization is truthful where read isn't.
-            hint={
-              writeStatus === 'notDetermined'
-                ? "Not asked yet. Nothing can be written until you allow it in Health"
-                : writeStatus === 'sharingDenied'
-                  ? 'Not allowed. Turn it on in the Health app under Sharing to log water'
-                  : writeStatus === 'sharingAuthorized'
-                    ? 'Allowed'
-                    : writeStatus === 'unavailable'
-                      ? 'Not available on this device'
-                      : 'Checking…'
-            }
-            alwaysShowHint
-            value={
-              writeStatus === 'notDetermined' ? 'Allow'
-                : writeStatus === 'sharingDenied' ? 'Open Settings'
-                  : undefined
-            }
-            onPress={
-              writeStatus === 'notDetermined' ? askForWriteAccess
-                : writeStatus === 'sharingDenied' ? () => Linking.openSettings()
-                  : undefined
-            }
+            deniedHint="Not allowed. Turn it on in the Health app under Sharing to log water"
+            status={waterWriteStatus}
+            colors={colors}
+            onAsk={askForWriteAccess}
+          />
+          <View style={styles.sep} />
+          <WriteAccessRow
+            entryId="healthWeightWriteAccess"
+            label="Weight-write access"
+            deniedHint="Not allowed. Turn it on in the Health app under Sharing to record a weight"
+            status={weightWriteStatus}
+            colors={colors}
+            onAsk={askForWriteAccess}
           />
         </>
       )}
     </SettingsSection>
+
+    <SettingsSection
+      label="Weight"
+      footer="Which unit a weight is shown and typed in. Health always stores kilograms, so this changes what you read and type, not what is recorded."
+    >
+      <SettingsRow
+        entryId="weightUnit"
+        icon="scale-outline"
+        label="Weight unit"
+        value={weightUnit === 'kg' ? 'Kilograms' : 'Pounds'}
+        tight
+      />
+      <SettingsSegments
+        attached
+        label="Weight unit"
+        options={[
+          { value: 'kg' as WeightUnit, label: 'kg' },
+          { value: 'lb' as WeightUnit, label: 'lb' },
+        ]}
+        selected={weightUnit}
+        onSelect={unit => { haptics.tap(); setWeightUnit(unit); }}
+        accessibilityLabelFor={o => (o.value === 'kg' ? 'Kilograms' : 'Pounds')}
+      />
+    </SettingsSection>
     </>
+  );
+}
+
+interface WriteAccessRowProps {
+  entryId: string;
+  label: string;
+  /** What to say, and where to go, when this type was refused. */
+  deniedHint: string;
+  status: HealthWriteStatus | null;
+  colors: ReturnType<typeof useColors>;
+  onAsk: () => void;
+}
+
+/**
+ * One share type's real authorization state.
+ *
+ * Unlike the read access row above, these are allowed to say "Allowed" or "Not
+ * allowed" outright — see the file's own note on why write authorization is
+ * truthful where read isn't.
+ *
+ * A component rather than the row written twice because the two differ only in
+ * their label and in which sharing row to point somebody at: the four-state
+ * ladder, which state offers a button, and which offers the Settings app are
+ * the same decision for every share type, and a second hand-written copy is
+ * how one of them ends up still saying "water" after a third is added.
+ */
+function WriteAccessRow({ entryId, label, deniedHint, status, colors, onAsk }: WriteAccessRowProps) {
+  const allowed = status === 'sharingAuthorized';
+  return (
+    <SettingsRow
+      entryId={entryId}
+      icon={allowed ? 'lock-open-outline' : 'lock-closed-outline'}
+      iconColor={allowed ? colors.accent : undefined}
+      label={label}
+      hint={
+        status === 'notDetermined'
+          ? 'Not asked yet. Nothing can be written until you allow it in Health'
+          : status === 'sharingDenied'
+            ? deniedHint
+            : allowed
+              ? 'Allowed'
+              : status === 'unavailable'
+                ? 'Not available on this device'
+                : 'Checking…'
+      }
+      alwaysShowHint
+      value={
+        status === 'notDetermined' ? 'Allow'
+          : status === 'sharingDenied' ? 'Open Settings'
+            : undefined
+      }
+      onPress={
+        status === 'notDetermined' ? onAsk
+          : status === 'sharingDenied' ? () => Linking.openSettings()
+            : undefined
+      }
+    />
   );
 }

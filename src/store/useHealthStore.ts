@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { addDays } from 'date-fns/addDays';
 import { dayKeyOf, getCurrentDayStart, getLogicalDayKey } from '../utils/dateUtils';
 import type { HealthDayInput } from '../utils/moodInsights';
+import type { WeightPoint } from '../utils/weightLog';
 import { healthBridge } from '../utils/healthBridge';
 import { useSettingsStore } from './useSettingsStore';
 
@@ -99,6 +100,20 @@ export interface HealthDay {
  */
 export const HEALTH_HISTORY_DAYS = 90;
 
+/**
+ * How far back the weight read goes — longer than the readings window above,
+ * on purpose.
+ *
+ * `HEALTH_HISTORY_DAYS` is sized to gather enough *paired* days for the mood
+ * correlations, which need both a mood entry and a reading on the same day.
+ * Weight is drawn rather than correlated, and a body moves slowly: three months
+ * of it is a chart with barely any shape, where half a year shows the thing
+ * somebody weighing themselves is actually watching for. Both are one query and
+ * neither is stored, so the wider window costs nothing but a slightly longer
+ * read.
+ */
+export const WEIGHT_HISTORY_DAYS = 180;
+
 interface HealthState {
   today: HealthDay | null;
   refreshing: boolean;
@@ -109,10 +124,21 @@ interface HealthState {
    */
   history: HealthDayInput[] | null;
   loadingHistory: boolean;
+  /**
+   * The last `WEIGHT_HISTORY_DAYS` of body-mass readings, oldest first, or null
+   * for "not looked yet" — the same third answer `history` carries, and it
+   * matters more here: most people do not weigh themselves daily, so an empty
+   * window is a completely ordinary thing to have read and must not look like a
+   * failure to read.
+   */
+  weightSeries: WeightPoint[] | null;
+  loadingWeight: boolean;
   /** Re-read today's numbers. A no-op when the gate is closed or a read is already running. */
   refresh: () => Promise<void>;
   /** Re-read the trailing window. Only the screens that show a trend call this. */
   refreshHistory: () => Promise<void>;
+  /** Re-read the body-mass window. Only the Weight screen calls this. */
+  refreshWeight: () => Promise<void>;
   clear: () => void;
 }
 
@@ -121,6 +147,8 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   refreshing: false,
   history: null,
   loadingHistory: false,
+  weightSeries: null,
+  loadingWeight: false,
 
   async refresh() {
     // One gate, which is also the demo-mode refusal — see healthBridge.ts.
@@ -219,8 +247,53 @@ export const useHealthStore = create<HealthState>((set, get) => ({
     }
   },
 
+  /**
+   * Read the body-mass window, on demand.
+   *
+   * Its own call rather than a column on `refreshHistory`, matching the split
+   * the native side draws and for the same reasons — a different statistic
+   * (an average, not a sum), a different window, and a reader that is one
+   * screen rather than every foreground.
+   *
+   * Nothing is persisted, here as everywhere else in this store. A weight is
+   * the most personal number the app has ever handled, which makes the
+   * no-copy rule in `docs/arch/health-data.md` more load-bearing rather than
+   * less: Health already holds it, already syncs it, and already lets somebody
+   * delete it in one place and have that mean something.
+   */
+  async refreshWeight() {
+    const bridge = healthBridge();
+    if (!bridge) return;
+    if (get().loadingWeight) return;
+
+    const anchor = addDays(getCurrentDayStart(), -(WEIGHT_HISTORY_DAYS - 1));
+
+    set({ loadingWeight: true });
+    try {
+      const readings = await bridge.readWeightSeries(anchor.toISOString(), WEIGHT_HISTORY_DAYS);
+      const weightSeries: WeightPoint[] = [];
+      for (const reading of readings) {
+        const at = new Date(reading.start);
+        if (Number.isNaN(at.getTime())) continue;
+        weightSeries.push({
+          // Keyed here, not natively, for the reason `refreshHistory` gives:
+          // one implementation of "which day is this", and it is the one that
+          // knows about `dayResetTime`.
+          dayKey: getLogicalDayKey(at),
+          kilograms: reading.kilograms,
+        });
+      }
+      // Written whole, including when every day came back null. Holding the
+      // last good series would keep drawing a chart of somebody's weight after
+      // they revoked access to it, which is the one thing this must not do.
+      set({ weightSeries });
+    } finally {
+      set({ loadingWeight: false });
+    }
+  },
+
   clear() {
-    set({ today: null, history: null });
+    set({ today: null, history: null, weightSeries: null });
   },
 }));
 

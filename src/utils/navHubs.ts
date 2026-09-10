@@ -117,6 +117,7 @@ const HISTORY_HUB: NavHub = {
     { route: 'Logbook', label: 'Logbook', keywords: ['done', 'completed', 'finished'] },
     { route: 'Stats', label: 'Stats', keywords: ['numbers', 'charts', 'streaks', 'progress'] },
     { route: 'Mood', label: 'Mood', keywords: ['feelings', 'symptoms', 'how i feel'] },
+    { route: 'Weight', label: 'Weight', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass', 'weigh'] },
     { route: 'Archived', label: 'Archived', keywords: ['paused', 'filed', 'put away'] },
   ],
 };

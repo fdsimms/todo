@@ -18,6 +18,7 @@ import { ProjectsScreen } from '../screens/ProjectsScreen';
 import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
 import { MoodScreen } from '../screens/MoodScreen';
+import { WeightScreen } from '../screens/WeightScreen';
 import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
 import { SymptomDetailScreen } from '../screens/SymptomDetailScreen';
 import { ArchivedScreen } from '../screens/ArchivedScreen';
@@ -248,6 +249,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Logbook" component={LogbookScreen} options={HIDDEN} />
       <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
       <Tab.Screen name="Mood" component={MoodScreen} options={HIDDEN} />
+      <Tab.Screen name="Weight" component={WeightScreen} options={HIDDEN} />
       <Tab.Screen name="Stuck" component={StuckScreen} options={HIDDEN} />
       <Tab.Screen name="Reminders" component={RemindersScreen} options={HIDDEN} />
       <Tab.Screen name="Archived" component={ArchivedScreen} options={HIDDEN} />

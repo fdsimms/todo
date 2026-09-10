@@ -453,10 +453,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['count', 'reading', 'walked'] },
   { id: 'healthCategory', groupId: 'health', label: 'Show steps under', section: 'Apple Health',
     keywords: ['category', 'section', 'today', 'where', 'hide', 'nowhere'] },
-  { id: 'healthWrite', groupId: 'health', label: 'Log water to Health', section: 'Log to Health',
-    keywords: ['hydration', 'drink', 'write', 'healthkit'] },
+  { id: 'healthWrite', groupId: 'health', label: 'Log to Health', section: 'Log to Health',
+    keywords: ['hydration', 'drink', 'water', 'weight', 'write', 'healthkit'] },
   { id: 'healthWriteAccess', groupId: 'health', label: 'Water-write access', section: 'Log to Health',
     keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing'] },
+  { id: 'healthWeightWriteAccess', groupId: 'health', label: 'Weight-write access', section: 'Log to Health',
+    keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing', 'body', 'mass'] },
+  { id: 'weightUnit', groupId: 'health', label: 'Weight unit', section: 'Weight',
+    keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
 
   // ── Tasks & projects ──────────────────────────────────────────────────────
   // In the order the screen renders them, which the registry's own comment

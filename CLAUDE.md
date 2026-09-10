@@ -280,6 +280,7 @@ exports.
 | a weather rule ("sunny -> sunscreen") and the location/forecast read behind it | `src/utils/weatherTasks.ts` + `src/utils/weatherCondition.ts` + `src/store/useWeatherStore.ts` — see `docs/arch/generated-tasks.md` |
 | anything read out of Apple Health | `src/store/useHealthStore.ts` + `src/utils/healthBridge.ts` + `modules/todo-health-bridge/` — see `docs/arch/health-data.md`. Read it first: three of its four rules are about what a reader may *claim*, and the big one is that a refused read and a day with nothing recorded are one answer |
 | a task that reads as ready when Apple Health reaches a number | `src/utils/healthTarget.ts` + the `health` arm of `src/utils/taskKinds.ts` — `timer.ts` with a reading in place of a clock, and it derives *ready* only. Nothing here completes a task, for the reason `docs/arch/health-data.md` gives at length |
+| your weight over time, and recording one | `src/utils/weightLog.ts` + `src/utils/healthWeightSync.ts` + `src/screens/WeightScreen.tsx` — see `docs/arch/health-data.md`. Health is the record and the app keeps no copy; the rule that let weight in at all is that **nothing derives anything from it** (no rule metric, no BMI, no goal, no "trending") |
 | a meal of the day as a task, and choosing one from Today | `src/utils/mealSlotTasks.ts` — see `docs/arch/generated-tasks.md` |
 | a planned meal you haven't got the ingredients for | `src/utils/mealShortfallTasks.ts` — see `docs/arch/generated-tasks.md` |
 | date math, recurrence | `src/utils/dateUtils.ts` |
@@ -383,7 +384,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **282 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **284 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
