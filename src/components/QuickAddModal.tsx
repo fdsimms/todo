@@ -1449,6 +1449,7 @@ export function QuickAddModal({
               added on top. Scrolling the content keeps the title pinned at
               the top of a sheet that can no longer grow past the screen. */}
           <ScrollView
+            style={styles.scrollBody}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             {...fade.scrollProps}
@@ -1611,7 +1612,7 @@ export function QuickAddModal({
                   </View>
                 ) : (
                   <PressableScale
-                    style={styles.tooltipBubble}
+                    style={[styles.tooltipBubble, tooltipRowW > 0 && { maxWidth: tooltipRowW }]}
                     onPress={applyActiveParse}
                     onLayout={e => setBubbleW(e.nativeEvent.layout.width)}
                   >
@@ -1638,7 +1639,7 @@ export function QuickAddModal({
                       size={14}
                       color={colors.onAccent}
                     />
-                    <Text style={styles.tooltipText}>
+                    <Text style={styles.tooltipText} numberOfLines={1} ellipsizeMode="tail">
                       {parsed
                         ? describeSchedule(parsed.schedule, getLogicalNow(dayResetTime))
                         : categoryTagsParsed
@@ -2481,6 +2482,12 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     paddingBottom: spacing.md,
     maxHeight: sheetMaxHeight,
   },
+  // Without this, the ScrollView's own flexShrink defaults to 0 and it won't
+  // shrink to fit under the sheet's maxHeight — enough open panels (a
+  // handful of set pills, each with its own inline panel) grow past the
+  // screen instead of becoming scrollable, and the sheet is cut off at the
+  // bottom with no way to reach what's below.
+  scrollBody: { flexShrink: 1 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2772,6 +2779,13 @@ const makeStyles = (colors: Colors, sheetMaxHeight: number) => StyleSheet.create
     color: colors.onAccent,
     fontSize: font.sm,
     fontWeight: fontWeight.semibold,
+    // A pasted link's own URL is the value shown here, and unlike the other
+    // parses (dates, priority, category) it has no natural ceiling on
+    // length — without this the bubble grows past the sheet's width and
+    // renders past its edge instead of ellipsizing. flexShrink lets it give
+    // up space to the icon/dot/"Tap to set" hint that share the row rather
+    // than growing the row past the bubble's own maxWidth.
+    flexShrink: 1,
   },
   tooltipDot: {
     width: 3,
