@@ -169,6 +169,26 @@ describe('parseRecipeIngredients', () => {
     expect('optional' in plain[0]).toBe(false);
   });
 
+  it('keeps a permanently dismissed catalog/split suggestion, and writes the key only when it is set', () => {
+    // Same rebuild-field-by-field reasoning as noSwap/optional above — a
+    // dismissal that stopped surviving a reload of the recipe is the bug
+    // this field exists to fix (#2246).
+    const dismissed = JSON.parse(JSON.stringify(parseRecipeIngredients(JSON.stringify([
+      {
+        id: 'a', name: 'Avocados', nameKey: 'avocados', quantity: '2',
+        dismissedCatalogSuggestion: 'Avocado oil', dismissedSplitSuggestion: 'Avocados',
+      },
+    ]))));
+    expect(dismissed[0].dismissedCatalogSuggestion).toBe('Avocado oil');
+    expect(dismissed[0].dismissedSplitSuggestion).toBe('Avocados');
+
+    const plain = parseRecipeIngredients(JSON.stringify([
+      { id: 'a', name: 'Avocados', nameKey: 'avocados', quantity: '2' },
+    ]));
+    expect('dismissedCatalogSuggestion' in plain[0]).toBe(false);
+    expect('dismissedSplitSuggestion' in plain[0]).toBe(false);
+  });
+
   it('reads a stored purpose clause', () => {
     const stored = JSON.stringify([
       { id: 'a', name: 'Limes', nameKey: 'limes', quantity: '3', aisle: 'Produce', prep: null, purpose: 'margaritas' },

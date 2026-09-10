@@ -266,6 +266,28 @@ describe('matchIngredientToCatalog', () => {
     expect(matchIngredientToCatalog('beet', items, NOW).kind).toBe('unknown');
   });
 
+  // ─── word-extension refusal ─────────────────────────────────────────────────
+
+  it('will not suggest a more specific product for a shorter, plain ingredient', () => {
+    // "avocados" ranked-matched "Avocado oil" via matchWeight's plural
+    // tolerance — an oil isn't a stand-in for whole avocados (#2246).
+    const items = [makeItem({ name: 'Avocado oil' })];
+    expect(matchIngredientToCatalog('avocados', items, NOW).kind).toBe('unknown');
+  });
+
+  it('will not suggest a qualified product for its plain singular either', () => {
+    const items = [makeItem({ name: 'Onion powder' })];
+    expect(matchIngredientToCatalog('onion', items, NOW).kind).toBe('unknown');
+  });
+
+  it('still offers a lower tier once the word-extension is excluded', () => {
+    const items = [makeItem({ name: 'Avocado oil' }), makeItem({ name: 'Avocado' })];
+    const match = matchIngredientToCatalog('avocados', items, NOW);
+    expect(match.kind).toBe('linked');
+    expect(match.reason).toBe('plural');
+    expect(match.item?.name).toBe('Avocado');
+  });
+
   it('refuses a one-character correction on a very short name', () => {
     const items = [makeItem({ name: 'Ham' })];
     expect(matchIngredientToCatalog('jam', items, NOW).kind).toBe('unknown');

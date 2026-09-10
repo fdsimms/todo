@@ -1,0 +1,4 @@
+{
+  "message": "Dismissing a recipe's \"did you mean\" or \"split into\" suggestion now sticks for good, instead of coming back the next time you open the recipe. Also stopped suggesting a more specific product (like avocado oil) for a plain ingredient (avocados).",
+  "date": "2026-09-10"
+}
