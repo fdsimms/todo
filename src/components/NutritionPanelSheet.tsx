@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -15,14 +15,20 @@ import { border, font, fontWeight, radius, spacing, type Colors } from '../theme
 import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
 import { NUTRIENT_LABEL, NUTRITION_BASIS_LABEL } from '../utils/foodNutrition';
 import {
+  applyLabelReading,
   buildPanelNutrition,
   invalidPanelFields,
+  labelColumnFieldCount,
   panelFormDirty,
   panelFormFrom,
   type PanelFieldKey,
   type PanelForm,
 } from '../utils/nutritionPanelForm';
+import { canReadTextOnDevice } from '../utils/receiptOcr';
+import { readLabelPhoto, type LabelReading } from '../utils/labelOcr';
+import { pickRecipePhoto } from '../utils/recipePhoto';
 import { haptics } from '../utils/haptics';
+import { InlineAction } from './InlineAction';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
@@ -54,6 +60,16 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * **Nothing is written until Save, so the swipe-down is guarded.** Ten typed
  * fields behind a `pageSheet` is exactly the silent-data-loss case CLAUDE.md
  * documents, and the iOS pull-down calls `onRequestClose` rather than Cancel.
+ *
+ * **The packet can fill the form in, and that changes nothing about the save.**
+ * "Read from a photo" hands a photograph of the panel to `labelOcr.ts` and lays
+ * what it read into these same fields, where the person checks it against the
+ * packet still in their hand and commits it with the Save that was already
+ * here. That is what makes an imperfect read acceptable: there is no path from
+ * a photograph to a stored figure that does not pass through a person looking
+ * at it. The button is absent rather than disabled where Vision cannot run,
+ * since there is no second opinion to offer and a control that would only ever
+ * refuse is worse than no control.
  */
 
 interface Props {
@@ -93,6 +109,9 @@ const PLACEHOLDER: Record<NutrientKey, string> = {
   waterMl: 'e.g. 36',
 };
 
+/** What an unlabelled column is called, by position. A panel never prints more. */
+const COLUMN_ORDINAL = ['First column', 'Second column', 'Third column'];
+
 export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onSave }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
@@ -104,6 +123,19 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
   // Computed on a save attempt rather than as you type: a half-typed "2." is
   // not yet an error, and flagging it mid-keystroke would flicker red.
   const [bad, setBad] = useState<readonly PanelFieldKey[]>([]);
+  const [reading, setReading] = useState(false);
+  // Why the last photograph produced nothing, when it produced nothing. A
+  // successful read says so through the column row below instead.
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  // The last successful read, kept so the person can move between a panel's
+  // columns and watch the fields follow. Cleared on reopen with everything
+  // else: a column control about a packet photographed yesterday is worse
+  // than none.
+  const [label, setLabel] = useState<LabelReading | null>(null);
+  const [column, setColumn] = useState(0);
+  // Resolved once rather than per render: whether Vision is linked cannot
+  // change while the app is running. See `canReadTextOnDevice`.
+  const canPhotograph = useMemo(() => canReadTextOnDevice(), []);
 
   useEffect(() => {
     if (!visible) return;
@@ -111,8 +143,82 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     setForm(opened);
     baseline.current = opened;
     setBad([]);
+    setPhotoError(null);
+    setLabel(null);
+    setColumn(0);
+    setReading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
+
+  const handlePhoto = useCallback(async (source: 'camera' | 'library') => {
+    const picked = await pickRecipePhoto(source);
+    if (picked.status === 'canceled') return;
+    if (picked.status === 'denied') {
+      Alert.alert(
+        source === 'camera' ? 'Camera access is off' : 'Photo access is off',
+        'Turn it on in Settings to read a label from a photo. You can always type the figures in by hand.',
+      );
+      return;
+    }
+    if (picked.status === 'failed') {
+      setPhotoError(picked.message);
+      return;
+    }
+
+    setReading(true);
+    setPhotoError(null);
+    try {
+      // The full-resolution copy, not the downscaled one: Vision reads a local
+      // file for free and a nutrition panel is set in small type, so the long
+      // edge cut lands hardest on exactly the rows worth reading. Same call
+      // `receiptOcr`'s path makes, for the same reason.
+      const read = await readLabelPhoto(picked.photo.sourceUri);
+      if (!read) {
+        haptics.warning();
+        setLabel(null);
+        setPhotoError("That photo didn't read as a nutrition panel. Try again with the whole panel in frame and more light on it, or type the figures in below.");
+        return;
+      }
+      haptics.success();
+      setLabel(read);
+      setColumn(0);
+      setForm(f => applyLabelReading(f, read, 0));
+      // Filling a field can only fix one that wouldn't read, never break one,
+      // so anything flagged from an earlier save attempt is re-judged on the
+      // next rather than left marked red under a figure that is now fine.
+      setBad([]);
+    } finally {
+      setReading(false);
+    }
+  }, []);
+
+  /**
+   * Moving to another of the panel's columns.
+   *
+   * The figures follow immediately rather than on a confirm, because seeing
+   * them change is how a person tells which column they wanted — the two
+   * differ by whatever the serving weighs, which is obvious side by side and
+   * invisible in a menu of headings.
+   */
+  const pickColumn = useCallback((index: number) => {
+    if (!label) return;
+    haptics.tap();
+    setColumn(index);
+    setForm(f => applyLabelReading(f, label, index));
+    setBad([]);
+  }, [label]);
+
+  const startPhoto = useCallback(() => {
+    Alert.alert(
+      'Read the label',
+      'Photograph the nutrition panel and the figures on it will fill in the fields below.',
+      [
+        { text: 'Take a photo', onPress: () => { void handlePhoto('camera'); } },
+        { text: 'Choose a photo', onPress: () => { void handlePhoto('library'); } },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    );
+  }, [handlePhoto]);
 
   const setAmount = (key: NutrientKey, text: string) => {
     setForm(f => ({ ...f, amounts: { ...f.amounts, [key]: text } }));
@@ -130,6 +236,21 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
     onSave(buildPanelNutrition(form, nutrition));
     onClose();
   };
+
+  /**
+   * What to call each column in the picker.
+   *
+   * Its own heading where the panel printed one, and its position where it did
+   * not — "First column" says something true and checkable about where the
+   * figures came from, where a guessed "Per 100g" would not.
+   */
+  const columnOptions = useMemo(
+    () => (label?.columns ?? []).map((col, index) => ({
+      value: String(index),
+      label: col.basis ? NUTRITION_BASIS_LABEL[col.basis] : COLUMN_ORDINAL[index] ?? `Column ${index + 1}`,
+    })),
+    [label],
+  );
 
   const handleCancel = () => {
     if (!panelFormDirty(form, baseline.current)) { onClose(); return; }
@@ -166,6 +287,45 @@ export function NutritionPanelSheet({ visible, foodName, nutrition, onClose, onS
               Copy the figures from the packet. Leave a field blank if the label doesn't
               state it. Blank means unknown, which is not the same as zero.
             </Text>
+
+            {canPhotograph && (
+              <View style={styles.photoRow}>
+                <InlineAction
+                  label={reading ? 'Reading the label…' : 'Read from a photo'}
+                  icon="camera-outline"
+                  onPress={startPhoto}
+                  disabled={reading}
+                />
+              </View>
+            )}
+            {!!photoError && <Text style={styles.photoError}>{photoError}</Text>}
+
+            {!!label && (
+              <View style={styles.photoRead}>
+                {columnOptions.length > 1 ? (
+                  <>
+                    <SegmentedControl
+                      label="Take the figures from"
+                      options={columnOptions}
+                      value={String(column)}
+                      onChange={value => pickColumn(Number(value))}
+                      surface="page"
+                    />
+                    <Text style={styles.photoNote}>
+                      This label prints more than one column. They're the same food against
+                      different portions, so they don't agree. Pick the one you want, then
+                      check a figure or two against the packet before saving.
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.photoNote}>
+                    {`Filled in ${labelColumnFieldCount(label.columns[0])} ${
+                      labelColumnFieldCount(label.columns[0]) === 1 ? 'figure' : 'figures'
+                    }. Check them against the packet before saving.`}
+                  </Text>
+                )}
+              </View>
+            )}
 
             <Text style={styles.groupLabel}>SERVING</Text>
             <View style={styles.card}>
@@ -261,7 +421,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.md,
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
@@ -274,6 +434,17 @@ function makeStyles(colors: Colors) {
     },
     body: { padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.sm },
     intro: { color: colors.textSecondary, fontSize: font.sm, lineHeight: 18, marginBottom: spacing.sm },
+    // Margin on both sides it needs: the group label below has no top margin of
+    // its own, per the spacing note in CLAUDE.md.
+    photoRow: { flexDirection: 'row', marginBottom: spacing.sm },
+    photoRead: { gap: spacing.sm, marginBottom: spacing.sm },
+    photoNote: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16 },
+    photoError: {
+      color: colors.red,
+      fontSize: font.xs,
+      lineHeight: 16,
+      marginBottom: spacing.sm,
+    },
     groupLabel: {
       color: colors.textSecondary,
       fontSize: font.xs,

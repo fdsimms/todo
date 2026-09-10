@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
 import { useShallow } from 'zustand/react/shallow';
 import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
@@ -18,7 +19,7 @@ import {
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { targetProgress } from '../utils/nutritionTargets';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { NUTRIENT_KEYS } from '../types';
+import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -26,6 +27,7 @@ import { nutritionFor } from '../utils/foodNutrition';
 import { describeProduct } from '../utils/groceryProduct';
 import { BarcodeScanSheet, type ScanProductDraft } from '../components/BarcodeScanSheet';
 import { ScanPortionSheet, type ScannedFood } from '../components/ScanPortionSheet';
+import { NutritionPanelSheet } from '../components/NutritionPanelSheet';
 import { EstimateMealSheet } from '../components/EstimateMealSheet';
 import { useAiRoute } from '../hooks/useOnDeviceAi';
 import type { ReceiptAddDraft } from '../components/ReceiptImportSheet';
@@ -35,6 +37,7 @@ import { HubPills } from '../components/HubPills';
 import { InlineAction } from '../components/InlineAction';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
+import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 
 /**
  * A day of eating, read back.
@@ -63,6 +66,7 @@ import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
 export function FoodLogScreen() {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const tabBarHeight = useBottomTabBarHeight();
 
   const entries = useFoodLogStore(useShallow(s => s.entries));
   const loadRange = useFoodLogStore(s => s.loadRange);
@@ -71,6 +75,8 @@ export function FoodLogScreen() {
   const items = useGroceryStore(useShallow(s => s.items));
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
   const addProduct = useGroceryStore(s => s.addProduct);
+  const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
+  const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   const linkScannedGtins = useGroceryStore(s => s.linkScannedGtins);
   const gtinProductFor = useGroceryStore(s => s.gtinProductFor);
   // Gated so the button can't exist for a call that would refuse — the pairing
@@ -85,10 +91,22 @@ export function FoodLogScreen() {
   const [estimateOpen, setEstimateOpen] = useState(false);
   const [seedRecipeId, setSeedRecipeId] = useState<string | null>(null);
   const [scanned, setScanned] = useState<ScannedFood[]>([]);
+  /**
+   * The scanned food whose label is being typed or photographed in, or null.
+   *
+   * Held here rather than pushed onto the grocery screens because this is where
+   * the person hit the wall: a barcode that carried no figures is discovered
+   * while logging, and sending them off to find the catalog row is how a
+   * two-tap fix becomes an errand.
+   */
+  const [panelFor, setPanelFor] = useState<{ itemId: string; productId: string | null; name: string } | null>(null);
   // Which nutrient rows are on screen. Collapsed by default: calories and
   // protein answer the question most days, and ten rows above the meals would
   // push the day itself below the fold.
   const [allNutrients, setAllNutrients] = useState(false);
+  // Which nutrient's contributors are open in the breakdown sheet, or null
+  // while it's closed.
+  const [contributorsKey, setContributorsKey] = useState<NutrientKey | null>(null);
 
   useEffect(() => {
     loadRange(dayKey, dayKey);
@@ -180,6 +198,7 @@ export function FoodLogScreen() {
       [...gtinLinks, ...mintedLinks].map(link => [link.itemId, link.gtin])
     );
     const foods: ScannedFood[] = [];
+    const unpanelled: { itemId: string; productId: string | null; name: string }[] = [];
     for (const [id, item] of resolved) {
       // The box this barcode names, which `linkScannedGtins` has just given the
       // panel to. Its own figures outrank the catalog row's, for the reason
@@ -192,7 +211,13 @@ export function FoodLogScreen() {
       // box to hang them on, and filing a specific loaf's label onto the "Bread"
       // row would make every future helping of bread claim that loaf's numbers.
       // Refuse rather than approximate, same as everywhere else in this tree.
-      if (!panel) continue;
+      if (!panel) {
+        // Remembered rather than merely skipped: this is the exact moment a
+        // person learns the barcode carried no figures, and the packet is
+        // still in their hand. See `unpanelled` below.
+        unpanelled.push({ itemId: id, productId: box?.id ?? null, name: item.name });
+        continue;
+      }
       const boxWords = describeProduct(box);
       foods.push({
         key: id,
@@ -205,9 +230,26 @@ export function FoodLogScreen() {
     }
     setScanOpen(false);
     if (foods.length === 0) {
+      // The packet is in their hand and it has the figures printed on it, so
+      // the honest answer here is an offer rather than only a refusal. It takes
+      // the first, since the panel sheet edits one food and doing several means
+      // doing them one at a time regardless — the copy says so when there are
+      // more.
+      const first = unpanelled[0];
+      const rest = unpanelled.length - 1;
       Alert.alert(
-        'Nothing to log',
-        'None of those has nutrition on it yet. A food can be logged once its figures are the food\'s own rather than a guess.',
+        'No nutrition on it yet',
+        `A food can be logged once its figures are the food's own rather than a guess.${
+          first ? ` You can read them off the packet for ${first.name}${
+            rest > 0 ? `, then the other ${rest === 1 ? 'one' : `${rest}`} the same way` : ''
+          }.` : ''
+        }`,
+        first
+          ? [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Add its label', onPress: () => setPanelFor(first) },
+          ]
+          : undefined,
       );
       return;
     }
@@ -303,7 +345,10 @@ export function FoodLogScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + spacing.xl }]}
+      >
         {dayEntries.length === 0 ? (
           <EmptyState
             icon="restaurant-outline"
@@ -317,7 +362,13 @@ export function FoodLogScreen() {
             <View style={styles.totalsCard}>
               {shownKeys.map(key => (
                 <View key={key} style={styles.totalBlock}>
-                <View style={styles.totalRow}>
+                <TouchableOpacity
+                  style={styles.totalRow}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => { haptics.tap(); setContributorsKey(key); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`See which entries contributed to ${NUTRIENT_LABEL[key].label.toLowerCase()}`}
+                >
                   <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
                   <View style={styles.totalRight}>
                     <Text style={styles.totalValue}>
@@ -342,7 +393,7 @@ export function FoodLogScreen() {
                       </Text>
                     )}
                   </View>
-                </View>
+                </TouchableOpacity>
                 {/* One colour at both ends, because whether being over a target
                     is good or bad is not knowable: somebody tracking protein
                     wants to reach it and somebody tracking sodium wants to stay
@@ -422,6 +473,21 @@ export function FoodLogScreen() {
         onClose={() => setScanOpen(false)}
         onApply={handleScanApply}
       />
+      <NutritionPanelSheet
+        visible={panelFor !== null}
+        foodName={panelFor?.name ?? ''}
+        nutrition={null}
+        onClose={() => setPanelFor(null)}
+        onSave={panel => {
+          if (!panelFor) return;
+          // Onto the box when the scan named one, onto the catalog row when it
+          // didn't — the same precedence `nutritionFor` reads them back in, so
+          // a specific packet's figures never become every future helping of
+          // the generic food's.
+          if (panelFor.productId) setProductNutrition(panelFor.productId, panel);
+          else setItemNutrition(panelFor.itemId, panel);
+        }}
+      />
       <EstimateMealSheet
         visible={estimateOpen}
         slot={addingSlot}
@@ -443,6 +509,12 @@ export function FoodLogScreen() {
         at={loggingAt}
         onClose={() => setScanned([])}
       />
+      <NutrientContributorsSheet
+        visible={contributorsKey !== null}
+        nutrientKey={contributorsKey}
+        entries={dayEntries}
+        onClose={() => setContributorsKey(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -462,7 +534,7 @@ function makeStyles(colors: Colors) {
     dayNavTodayText: { color: colors.accent, fontSize: font.sm },
     dayNavTodayTextOff: { color: colors.textSecondary },
     scroll: { flex: 1 },
-    scrollContent: { flexGrow: 1, paddingHorizontal: spacing.md, paddingBottom: spacing.xl },
+    scrollContent: { flexGrow: 1, paddingHorizontal: spacing.md },
     totalsCard: {
       backgroundColor: colors.bgSecondary,
       borderRadius: radius.lg,

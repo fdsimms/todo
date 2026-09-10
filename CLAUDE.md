@@ -330,6 +330,7 @@ exports.
 | writing down what you ate, and a day's totals | `src/utils/foodLog.ts` + `src/store/useFoodLogStore.ts` (+ `src/utils/nutritionTargets.ts` for the figure a total is read against) |
 | how much of a scanned package was eaten | `src/utils/scanPortion.ts` — one serving or the whole package, and the package option is withheld rather than guessed when the source stated no pack size |
 | what a food is made of, and reading a label panel out of a barcode source | `src/utils/foodNutrition.ts` (the record) + `src/utils/nutritionParse.ts` (the two sources' units, which disagree) |
+| photographing a nutrition panel no barcode source had | `src/utils/labelOcr.ts` — `receiptOcr.ts`'s row geometry over a label, filling `NutritionPanelSheet`'s existing form rather than writing a record |
 | estimating what a restaurant meal contained, from a description | `src/utils/nutritionEstimate.ts` + `estimateMealNutrition` in `src/services/aiSuggestions.ts` — the model proposes and a person confirms; nothing is written unconfirmed, and `source: 'estimated'` is permanent |
 | finding a plain food ("onion", "butter") in a food database by name | `src/services/foodSearch.ts` + `src/utils/foodSearchMatch.ts` (ranks and refuses; the portion table needs a second request) |
 | turning "2 cups chopped onion" into grams | `src/utils/ingredientGrams.ts` — every weight comes from the food's own portion table, never a global density |
@@ -391,7 +392,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **294 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **295 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -784,7 +785,7 @@ Four things follow from that and are worth not re-deriving:
 - **Route sets are derived, not listed twice.** `DRAWER_TABS`, `RESTORABLE_SCREENS` and `KITCHEN_SCREENS` all come off `NAV_MENU_ROWS`/`NAV_HUBS`. Adding a screen to the menu is one edit.
 - **A hub row drops out when every member is gone**, and simplified mode is the only thing that can do that today. Pantry's disappearance under that mode used to be a hand-written special case in `initialScreenFromSettings` plus a second `featureHidden` call inside the pills; it is now just `screen: 'Kitchen'` on the `pantryTracking` feature, so one gate answers for the menu row, the pill and the cold-launch restore alike.
 
-**Two screens are deliberately not in the menu.** `StuckScreen` is the merge of what were the Waiting and Drift rows — both were lists of tasks held out of the daily lists, differing only in whether something else or you are holding them, and `DriftScreen` opened by saying it was "the same shape and same reasoning as WaitingScreen". `BackfillScreen` moved to Settings ("Data & reset" → Fill in) as a pushed `RootStack` card: it is not a task list at all, it fills in empty fields across tasks, categories, projects, people and grocery items, which is maintenance rather than a place to work.
+`StuckScreen` is the merge of what were the Waiting and Drift rows — both were lists of tasks held out of the daily lists, differing only in whether something else or you are holding them, and `DriftScreen` opened by saying it was "the same shape and same reasoning as WaitingScreen". `BackfillScreen` briefly moved to Settings ("Data & reset" → Fill in) as a pushed `RootStack` card, on the reasoning that it fills in empty fields across tasks, categories, projects, people and grocery items rather than being a task list — but that buried a feature people reach for often behind four taps, so it's a standalone menu row again (a hidden tab, same as Stuck and Calendar), shown unconditionally in simplified mode as one of the "lens" screens (see `simpleMode.ts`).
 
 Today, Later, Unscheduled and Inbox are **not** separate screens — they're four `viewMode` sub-views of `TodayScreen`, switched by the pill row under its header, and they share one set of screen state (selection mode, expanded row, quick-add, editor). They're disjoint lenses over the same tasks (`isUnscheduledTask()` excludes inbox tasks, `isTaskVisible()` excludes both), each backed by its own store selector. Keep it that way when adding a fifth: Inbox used to be its own route, and every switch into it had to hand the destination over as a navigation param, which painted a frame of the *previous* sub-view before the param landed. A segmented control shouldn't navigate.
 

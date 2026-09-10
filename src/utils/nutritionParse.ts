@@ -37,7 +37,7 @@ export type NutrientSourceUnit = 'kcal' | 'kj' | 'g' | 'mg' | 'ug' | 'ml' | 'l';
  * What unit each `NutrientKey` is stored in — which its own name already says,
  * that being the point of naming them `sodiumMg` rather than `sodium`.
  */
-const STORED_UNIT: Record<NutrientKey, NutrientSourceUnit> = {
+export const NUTRIENT_STORED_UNIT: Record<NutrientKey, NutrientSourceUnit> = {
   calorieKcal: 'kcal',
   proteinG: 'g',
   carbsG: 'g',
@@ -72,7 +72,7 @@ const KCAL_PER: Partial<Record<NutrientSourceUnit, number>> = { kcal: 1, kj: 1 /
  * the packet: dividing by 2.542 would "correct" a declared figure back to
  * something the label never claimed.
  */
-const SALT_TO_SODIUM = 2.5;
+export const SALT_TO_SODIUM = 2.5;
 
 /**
  * The most of a nutrient that can be in 100g of anything, in that nutrient's
@@ -139,7 +139,7 @@ const SOURCE_UNITS: Record<string, NutrientSourceUnit> = {
 };
 
 /** A unit a source named, in this module's vocabulary, or undefined if it named none this build knows. */
-function readSourceUnit(value: unknown): NutrientSourceUnit | undefined {
+export function readSourceUnit(value: unknown): NutrientSourceUnit | undefined {
   const text = typeof value === 'string' ? value.trim().toUpperCase() : '';
   return text ? SOURCE_UNITS[text] : undefined;
 }
@@ -215,7 +215,7 @@ export function convertNutrientAmount(
   from: NutrientSourceUnit,
   key: NutrientKey,
 ): number | null {
-  const to = STORED_UNIT[key];
+  const to = NUTRIENT_STORED_UNIT[key];
   if (from === to) return roundAmount(value);
 
   if (to === 'kcal') {

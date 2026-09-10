@@ -17,13 +17,15 @@ import { MEAL_SLOTS, MEAL_SLOT_LABELS, type FoodNutrition, type MealSlot } from 
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
-import { nutritionFor } from '../utils/foodNutrition';
+import { addCustomPortion, nutritionFor } from '../utils/foodNutrition';
 import { recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
 import { perServing, recipeNutrition } from '../utils/recipeNutrition';
 import { describeProduct } from '../utils/groceryProduct';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
+import { parseQuantity, rationalToNumber } from '../utils/quantity';
 import { EmptyState } from './EmptyState';
+import { InlineAction } from './InlineAction';
 import { NutritionSearchSheet } from './NutritionSearchSheet';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
@@ -46,6 +48,16 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  *
  * **Nothing is written until Save**, so the swipe-down is guarded. What it
  * would otherwise lose is a picked food and a typed amount.
+ *
+ * **A refused amount can be weighed on the spot, which writes back to the
+ * food itself, not just this entry.** When the typed amount names a unit
+ * ("1 cup") the food's own portion table doesn't have, offering to weigh it
+ * is cheaper than telling someone to go find a different way to say the same
+ * thing they just measured. What's recorded is `{ unit, grams }`, exactly the
+ * shape `FoodPortion` already holds — `addCustomPortion` (`foodNutrition.ts`)
+ * appends it with `custom: true`, and it's written through `setItemNutrition`/
+ * `setProductNutrition` so it's there the next time this food is logged, not
+ * just for this entry.
  */
 
 interface Props {
@@ -88,11 +100,15 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
   const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const recipes = useRecipeStore(useShallow(s => s.recipes));
   const addEntry = useFoodLogStore(s => s.addEntry);
+  const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
+  const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
 
   const [query, setQuery] = useState('');
   const [picked, setPicked] = useState<Candidate | null>(null);
   const [amount, setAmount] = useState('');
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
+  const [weighing, setWeighing] = useState(false);
+  const [weighGrams, setWeighGrams] = useState('');
   const [dbSearchOpen, setDbSearchOpen] = useState(false);
 
   useEffect(() => {
@@ -103,6 +119,14 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
     setChosenSlot(slot);
     setDbSearchOpen(false);
   }, [visible, slot]);
+
+  // Closes the "weigh it" form whenever the picked food or its panel changes
+  // out from under it — including right after a weighed portion is saved,
+  // which is also when it should close.
+  useEffect(() => {
+    setWeighing(false);
+    setWeighGrams('');
+  }, [picked]);
 
 
   // Only foods with a panel, because an entry with no figures records nothing a
@@ -203,6 +227,42 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
     return scalePanelToAmount(picked.panel, amount, null);
   }, [picked, amount, recipes, items, itemProducts]);
 
+  // What's actually offered to weigh: the amount typed has to name a plain
+  // unit ("1 cup") rather than a sized container ("14 oz can", already a
+  // weight) or nothing at all ("a pinch") — the one shape this food's own
+  // portion table could be missing a row for.
+  const weighable = useMemo(() => {
+    if (!picked || picked.kind !== 'food' || built || !amount.trim()) return null;
+    const q = parseQuantity(amount);
+    if (q.amount === null || !q.unit || q.container) return null;
+    return { unit: q.unit, count: rationalToNumber(q.amount) };
+  }, [picked, built, amount]);
+
+  // Listed from the food's own table rather than a fixed "e.g. 1 cup" — that
+  // placeholder was suggesting an amount this specific food often can't
+  // measure, which is the whole complaint. Falls back to a weight, since mass
+  // is the one amount every food can always be logged by.
+  const portionExamples = useMemo(() => {
+    if (!picked || picked.kind !== 'food' || !picked.panel) return [];
+    return picked.panel.portions.slice(0, 3).map(p => {
+      const count = Number.isInteger(p.amount) ? String(p.amount) : p.amount.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+      return `${count} ${p.label}`;
+    });
+  }, [picked]);
+
+  const handleSaveWeighedPortion = () => {
+    if (!picked || !picked.panel || !weighable) return;
+    const grams = Number(weighGrams.trim().replace(',', '.'));
+    if (!Number.isFinite(grams) || grams <= 0) { haptics.error(); return; }
+    const updated = addCustomPortion(picked.panel, weighable.unit, weighable.count, grams);
+    if (!updated) { haptics.error(); return; }
+    if (picked.productId) setProductNutrition(picked.productId, updated);
+    else if (picked.itemId) setItemNutrition(picked.itemId, updated);
+    else { haptics.error(); return; }
+    setPicked({ ...picked, panel: updated });
+    haptics.success();
+  };
+
   const handleSave = () => {
     if (!picked || !built) return;
     const draft: FoodLogDraft = {
@@ -289,7 +349,7 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
               style={styles.input}
               value={amount}
               onChangeText={setAmount}
-              placeholder={picked.kind === 'dish' ? 'e.g. 1.5' : 'e.g. 1 cup'}
+              placeholder={picked.kind === 'dish' ? 'e.g. 1.5' : `e.g. ${portionExamples[0] ?? '100g'}`}
               placeholderTextColor={colors.textTertiary}
               autoFocus
               keyboardType={picked.kind === 'dish' ? 'decimal-pad' : 'default'}
@@ -298,7 +358,9 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
             <Text style={styles.hint}>
               {picked.kind === 'dish'
                 ? 'In servings of the recipe as written.'
-                : 'A weight, a volume, or a portion this food states. Anything it can\'t measure is refused rather than guessed at.'}
+                : portionExamples.length > 0
+                  ? `A weight (like 100g), or one of this food's stated portions: ${portionExamples.join(', ')}. Anything else is refused rather than guessed at.`
+                  : 'A weight, like 100g. This food states no portions to measure by, so a volume or a count can\'t be used yet.'}
             </Text>
 
             {!!amount.trim() && !built && (
@@ -307,6 +369,45 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose }: 
                   ? 'Enter how many servings you had.'
                   : 'This food has no way to weigh that amount, so the figures would be a guess. Try a weight, or an amount it states a portion for.'}
               </Text>
+            )}
+
+            {!!weighable && !weighing && (
+              <InlineAction
+                label={`Weigh ${amount.trim()} and save for next time`}
+                icon="scale-outline"
+                variant="neutral"
+                onPress={() => { haptics.tap(); setWeighing(true); }}
+                style={styles.weighAction}
+              />
+            )}
+
+            {!!weighable && weighing && (
+              <View style={styles.weighForm}>
+                <Text style={styles.weighLabel}>
+                  {`How many grams did ${amount.trim()} of this actually weigh?`}
+                </Text>
+                <View style={styles.weighRow}>
+                  <TextInput
+                    style={styles.weighInput}
+                    value={weighGrams}
+                    onChangeText={setWeighGrams}
+                    placeholder="e.g. 240"
+                    placeholderTextColor={colors.textTertiary}
+                    keyboardType="decimal-pad"
+                    accessibilityLabel="Weight in grams"
+                  />
+                  <Text style={styles.weighUnit}>g</Text>
+                  <InlineAction
+                    label="Save"
+                    onPress={handleSaveWeighedPortion}
+                    disabled={!weighGrams.trim()}
+                    haptic
+                  />
+                </View>
+                <Text style={styles.weighHint}>
+                  Remembered against this food, so the next time you log it, {amount.trim()} resolves on its own.
+                </Text>
+              </View>
             )}
 
             {!!built && (
@@ -396,7 +497,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.md,
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
@@ -427,6 +528,27 @@ function makeStyles(colors: Colors) {
     hint: { color: colors.textSecondary, fontSize: font.xs, lineHeight: 16, marginTop: spacing.xs },
     error: { color: colors.red, fontSize: font.sm, lineHeight: 18, marginTop: spacing.sm },
     preview: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.semibold, marginTop: spacing.sm },
+    weighAction: { alignSelf: 'flex-start', marginTop: spacing.sm },
+    weighForm: {
+      marginTop: spacing.sm,
+      padding: spacing.sm,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      gap: spacing.xs,
+    },
+    weighLabel: { color: colors.text, fontSize: font.sm, lineHeight: 18 },
+    weighRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    weighInput: {
+      flex: 1,
+      color: colors.text,
+      fontSize: font.md,
+      backgroundColor: colors.bg,
+      borderRadius: radius.sm,
+      paddingHorizontal: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    weighUnit: { color: colors.textSecondary, fontSize: font.sm },
+    weighHint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: 14 },
     change: { marginTop: spacing.lg, alignSelf: 'flex-start' },
     changeText: { color: colors.accent, fontSize: font.sm },
     searchRow: {

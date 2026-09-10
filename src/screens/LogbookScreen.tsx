@@ -337,9 +337,14 @@ export function LogbookScreen() {
       ? query.trim().length > 0
       : query.trim().length > 0 || selectedCategory !== null || selectedTag !== null || selectedPerson !== null;
 
+  // The floating tab bar (see AppNavigator's absolutely-positioned
+  // tabBarStyle) covers whatever's behind it rather than pushing content up,
+  // so every list needs this in its bottom padding or its last rows are
+  // unreachable behind the bar.
+  const basePadding = tabBarHeight + spacing.sm;
   // Extra bottom padding so the last rows aren't hidden behind the floating
-  // bulk bar, same as the other bulk-selecting screens.
-  const selectionListPadding = tabBarHeight + spacing.sm + bulkBarHeight + spacing.sm;
+  // bulk bar too, same as the other bulk-selecting screens.
+  const selectionListPadding = basePadding + bulkBarHeight + spacing.sm;
 
   // ==== actions: clearing, bulk uncomplete, delete ====
   const handleClearLogbook = () => {
@@ -557,7 +562,9 @@ export function LogbookScreen() {
           keyExtractor={item => item.key}
           getItemLayout={getItemLayout}
           contentContainerStyle={
-            kitchenSections.length === 0 ? styles.emptyContainer : styles.listContent
+            kitchenSections.length === 0
+              ? styles.emptyContainer
+              : [styles.listContent, { paddingBottom: basePadding }]
           }
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
@@ -618,7 +625,10 @@ export function LogbookScreen() {
         contentContainerStyle={
           sections.length === 0
             ? styles.emptyContainer
-            : [styles.listContent, selectionMode && { paddingBottom: selectionListPadding }]
+            : [
+                styles.listContent,
+                { paddingBottom: selectionMode ? selectionListPadding : basePadding },
+              ]
         }
         renderSectionHeader={({ section }) => (
           <View style={styles.sectionHeader}>
@@ -1186,7 +1196,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: lineHeight.xs,
     fontWeight: fontWeight.semibold,
   },
-  listContent: { paddingBottom: 40 },
+  listContent: {},
   emptyContainer: { flexGrow: 1 },
   rowSwipe: { borderRadius: 0 },
   // Deliberately flat, not the inset-grouped card TaskItem rows use — a
