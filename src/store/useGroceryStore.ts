@@ -1335,9 +1335,9 @@ function newItemRow(fields: {
     lastPurchasedAt: null,
     createdAt: fields.createdAt,
     onHandUntil: fields.onHandUntil ?? null,
-    // Only a genuinely new row gets attributed — see the field's doc comment on
-    // GroceryItem. A row reused via addByName's `existing` branch never reaches
-    // here, so a recipe re-adding a known item can't relabel it.
+    // A genuinely new row is attributed here; a row reused via addByName's
+    // `existing` branch never reaches this factory and is restamped there
+    // instead, per the field's doc comment on GroceryItem.
     choiceGroup: fields.choiceGroup ?? null,
     sourceRecipeId: fields.source?.recipeId ?? null,
     sourceRecipeTitle: fields.source?.recipeTitle ?? null,
@@ -1393,8 +1393,8 @@ export interface PlannedRow {
   /**
    * The recipe this row came from, when unambiguous — null for a week-view
    * row that merged ingredients from more than one recipe, since there's no
-   * single recipe left to credit. Only applied to a row addFromPlan actually
-   * creates; see GroceryItem.sourceRecipeId.
+   * single recipe left to credit. Applied to a row addFromPlan creates or
+   * re-lists from off every list; see GroceryItem.sourceRecipeId.
    */
   sourceRecipeId?: string | null;
   sourceRecipeTitle?: string | null;
@@ -1919,6 +1919,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
         // re-add of apples must not dissolve a pair it's already in.
         choiceGroup: choiceGroup ?? existing.choiceGroup,
         lastAddedAt: now,
+        // A row still on some list is a standing item the user owns, same as
+        // note/quantity above — a recipe re-adding it doesn't relabel it. But a
+        // row that had fallen off every list is functionally a fresh add: the
+        // recipe that put it back on is the reason it's there, and crediting a
+        // stale recipe (possibly cooked and forgotten) is actively misleading.
+        // See GroceryItem.sourceRecipeId.
+        sourceRecipeId: !wasOnList && source ? source.recipeId : existing.sourceRecipeId,
+        sourceRecipeTitle: !wasOnList && source ? source.recipeTitle : existing.sourceRecipeTitle,
       };
       // And the same rule again for the box: GroceryAddField's Brand/Variant
       // chips are the only caller that passes these, and only when the user

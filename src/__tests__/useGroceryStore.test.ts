@@ -2724,9 +2724,25 @@ describe('addFromPlan', () => {
     expect(item.sourceRecipeTitle).toBe('Chili');
   });
 
-  it('never overwrites the source of a row that already existed', () => {
+  it('re-credits a row that had fallen off every list to the recipe that re-lists it', () => {
     const parsley = makeItem({
       name: 'Parsley', onList: false, aisle: 'Produce',
+      sourceRecipeId: 'r-original', sourceRecipeTitle: 'Original recipe',
+    });
+    seed([parsley]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Parsley', quantity: '1 bunch', aisle: 'Produce', sourceRecipeId: 'r-new', sourceRecipeTitle: 'New recipe' },
+    ]);
+
+    const item = useGroceryStore.getState().itemById(parsley.id)!;
+    expect(item.sourceRecipeId).toBe('r-new');
+    expect(item.sourceRecipeTitle).toBe('New recipe');
+  });
+
+  it('never overwrites the source of a row still standing on a list', () => {
+    const parsley = makeItem({
+      name: 'Parsley', onList: true, aisle: 'Produce',
       sourceRecipeId: 'r-original', sourceRecipeTitle: 'Original recipe',
     });
     seed([parsley]);
