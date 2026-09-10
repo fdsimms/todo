@@ -1,4 +1,5 @@
 import {
+  combineFoodNutrition,
   describeFoodLogEntry,
   describeFoodLogTotals,
   foodLogSections,
@@ -135,6 +136,44 @@ describe('recipeHelpingNutrition', () => {
 
   it('is an estimate, since a dish is built from its ingredients through a floor', () => {
     expect(recipeHelpingNutrition(perServing, 1, 'estimated', NOW)?.source).toBe('estimated');
+  });
+});
+
+describe('combineFoodNutrition', () => {
+  const dish = panel({ basis: 'perServing', servingGrams: null, servingText: '1 serving', amounts: { calorieKcal: 300, proteinG: 10 } });
+
+  it('returns the base panel unchanged when there is nothing to fold in', () => {
+    expect(combineFoodNutrition(dish, [], NOW)).toBe(dish);
+  });
+
+  it('sums a key both sides state', () => {
+    const extra = panel({ basis: 'perServing', amounts: { calorieKcal: 45 } });
+    const combined = combineFoodNutrition(dish, [{ nutrition: extra }], NOW);
+    expect(combined.amounts.calorieKcal).toBe(345);
+  });
+
+  it('keeps a key only one side states, rather than treating the other as zero', () => {
+    // The dish states no fibre; the baguette's own panel does. Dropping it
+    // because the dish didn't state it would be a silent-zero, the exact
+    // mistake FoodNutrition.amounts is built to avoid.
+    const extra = panel({ basis: 'perServing', amounts: { fiberG: 2 } });
+    const combined = combineFoodNutrition(dish, [{ nutrition: extra }], NOW);
+    expect(combined.amounts.calorieKcal).toBe(300);
+    expect(combined.amounts.fiberG).toBe(2);
+  });
+
+  it('carries no single weight or provenance once more than one food is involved', () => {
+    const extra = panel({ basis: 'perServing', amounts: { calorieKcal: 45 } });
+    const combined = combineFoodNutrition(dish, [{ nutrition: extra }], NOW);
+    expect(combined.servingGrams).toBeNull();
+    expect(combined.source).toBe('estimated');
+  });
+
+  it('sums across more than one extra', () => {
+    const a = panel({ basis: 'perServing', amounts: { calorieKcal: 45 } });
+    const b = panel({ basis: 'perServing', amounts: { calorieKcal: 12 } });
+    const combined = combineFoodNutrition(dish, [{ nutrition: a }, { nutrition: b }], NOW);
+    expect(combined.amounts.calorieKcal).toBe(357);
   });
 });
 

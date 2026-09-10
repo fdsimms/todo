@@ -1985,6 +1985,7 @@ interface DemoRecipes {
   salad: string;
   oats: string;
   sandwich: string;
+  soup: string;
   stirFry: string;
   salmon: string;
   steak: string;
@@ -2392,6 +2393,37 @@ function seedRecipes(): DemoRecipes {
   // is the whole point of a reference rather than a copy.
   addComponent(salmon.id, mash.id);
 
+  const soup = newRecipe('Weeknight vegetable soup');
+  addIngredientsFromText(
+    soup.id,
+    [
+      '2 tbsp olive oil',
+      '1 onion, diced',
+      '2 carrots, diced',
+      '2 stalks celery, diced',
+      '4 cups vegetable stock',
+      '1 can diced tomatoes',
+      '1 tsp dried thyme',
+    ].join('\n')
+  );
+  setMealType(soup.id, 'dinner');
+  setTags(soup.id, ['weeknight', 'vegetarian']);
+  setServings(soup.id, 4);
+  setEstimatedMinutes(soup.id, 35);
+  // A side with no fixed amount in the recipe — "however much bread was on
+  // the table", not a line `recipeNutrition.ts`'s rollup could ever total
+  // (there's no single right answer to write down once) and not one
+  // `RecipeNutritionSheet` has a remedy for either, since weighing settles a
+  // line that names an amount and this one names none.
+  // `FoodLogEntrySheet`'s "Anything else?" is the only place left to ask, and
+  // it's asked fresh each time the soup is logged rather than fixed on the
+  // recipe. Seeded because otherwise the whole feature reads as invisible in
+  // demo mode — see the seeding rule below. `Bread`'s own nutrition (set
+  // further down, once the item exists) is what turns the empty quantity into
+  // a real question at log time instead of a line demo mode can never answer.
+  const crustyBread = addIngredient(soup.id, 'Bread');
+  if (crustyBread) updateIngredient(soup.id, crustyBread.id, { purpose: 'serving', optional: true });
+
   const steak = newRecipe('Seared steak with potatoes');
   addIngredientsFromText(
     steak.id,
@@ -2440,6 +2472,7 @@ function seedRecipes(): DemoRecipes {
     salad: salad.id,
     oats: oats.id,
     sandwich: sandwich.id,
+    soup: soup.id,
     stirFry: stirFry.id,
     salmon: salmon.id,
     steak: steak.id,
@@ -2744,6 +2777,29 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
       recordedAt: subDays(today, 12).toISOString(),
     });
   }
+
+  /**
+   * The plain item's own panel, not a specific box's.
+   *
+   * `recipeNutrition.ts`'s `productFor` reads only the *preferred* product's
+   * panel (Arnold's, which states none), never any other box on the shelf —
+   * so a recipe line that just says "Bread" needs the figures somewhere
+   * `nutritionFor` will actually fall through to. Per-100g plus a slice
+   * portion, the same generic-label shape `Potatoes`/`Butter`/`Milk` already
+   * use above, rather than the bakery sourdough's per-serving-only panel:
+   * this is a boxed loaf stating a real serving weight, not a bakery tag that
+   * never printed one.
+   */
+  setItemNutrition(bread, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 265, proteinG: 9, carbsG: 49, fatG: 3.2, fiberG: 2.7, sugarG: 5, sodiumMg: 490 },
+    portions: [{ amount: 1, label: 'slice', grams: 28 }],
+    source: 'fdc',
+    sourceId: '172686',
+    recordedAt: subDays(today, 25).toISOString(),
+  });
 
   // A box with the barcode that names it, which is invisible until something
   // uses it: the demo has no camera, so without a seeded link "scanning this

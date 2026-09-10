@@ -178,6 +178,53 @@ export function recipeHelpingNutrition(
   };
 }
 
+/**
+ * One panel with some others folded into it, for an entry made of more than
+ * one measured thing — a dish's own figures plus a side that has no fixed
+ * amount in the recipe, so it was never part of the coverage floor
+ * `recipeNutrition.ts` applies ("1 baguette, warmed, for serving" is not a
+ * gap in that rollup's arithmetic, it is a line with nothing to count). What's
+ * actually eaten still varies every time, which is why this stays a per-entry
+ * question asked at log time rather than a figure fixed on the recipe.
+ *
+ * **Summed key by key, a key present on either side counted.** The dish
+ * states no fibre and the baguette's own panel might be the only source that
+ * does; dropping it because the *dish* didn't state it would be the same
+ * silent-zero mistake `foodLogTotals` is built to avoid, just one level down.
+ *
+ * **`grams` and a single provenance stop meaning one thing once two foods are
+ * involved**, so the merged panel carries neither: `servingGrams` is null and
+ * `source` is `'estimated'`, the same call `recipeHelpingNutrition` already
+ * makes about a dish's own figures and for the same reason — an entry built
+ * from more than one measured amount is an estimate however good each of
+ * those amounts was on its own.
+ */
+export function combineFoodNutrition(
+  base: FoodNutrition,
+  extras: readonly { nutrition: FoodNutrition }[],
+  now: Date = new Date(),
+): FoodNutrition {
+  if (extras.length === 0) return base;
+  const amounts: Partial<Record<NutrientKey, number>> = { ...base.amounts };
+  for (const extra of extras) {
+    for (const key of NUTRIENT_KEYS) {
+      const amount = extra.nutrition.amounts[key];
+      if (amount === undefined) continue;
+      amounts[key] = round((amounts[key] ?? 0) + amount);
+    }
+  }
+  return {
+    basis: 'perServing',
+    servingGrams: null,
+    servingText: base.servingText,
+    amounts,
+    source: 'estimated',
+    sourceId: null,
+    portions: [],
+    recordedAt: now.toISOString(),
+  };
+}
+
 /** What a run of entries came to, absent figures staying absent. */
 export function foodLogTotals(entries: readonly FoodLogEntry[]): FoodLogTotals {
   const total: Partial<Record<NutrientKey, number>> = {};
