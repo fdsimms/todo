@@ -288,6 +288,31 @@ describe('readOffNutrition', () => {
     expect(readOffNutrition(RED_BULL, 'x', RECORDED_AT)!.amounts.calorieKcal).toBe(46);
     expect(readOffNutrition(NUTELLA, 'x', RECORDED_AT)!.amounts.calorieKcal).toBe(539);
   });
+
+  it('leaves a genuinely zero calorie figure alone, whatever the serving size', () => {
+    // Water, black coffee, diet soda: 0 per 100 and 0 per serving report the
+    // same number for any serving size, which is not evidence of a misfiled
+    // row the way a nonzero match is.
+    const water = {
+      serving_quantity: 500,
+      serving_quantity_unit: 'ml',
+      nutriments: { 'energy-kcal_100g': 0, 'energy-kcal_serving': 0 },
+    };
+    expect(readOffNutrition(water, 'x', RECORDED_AT)!.amounts.calorieKcal).toBe(0);
+  });
+
+  it('requires an exact match, not merely a close one, before refusing a calorie figure', () => {
+    // OFF's own `energy-kcal_serving` is generally computed off the per-100
+    // figure and the serving size, so a correct panel never lands the two on
+    // the same number except at ~100 units or zero. A near-miss like this is
+    // not evidence of a misfiled row and should be left alone.
+    const nearMiss = {
+      serving_quantity: 170,
+      serving_quantity_unit: 'g',
+      nutriments: { 'energy-kcal_100g': 100, 'energy-kcal_serving': 101 },
+    };
+    expect(readOffNutrition(nearMiss, 'x', RECORDED_AT)!.amounts.calorieKcal).toBe(100);
+  });
 });
 
 /**
