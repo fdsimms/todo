@@ -1,12 +1,12 @@
 import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
+import { spacing, font, fontWeight, interaction, type Colors } from '../theme';
+import { PillGroup, type PillGroupOption } from './PillGroup';
 import type { ShoppedRecipe } from '../utils/groceryRecipeFilter';
 
 interface Props {
-  /** The planned recipes this trolley has rows for — see `shoppedRecipes`. */
+  /** The recipes this trolley has rows for — see `shoppedRecipes`. */
   recipes: readonly ShoppedRecipe[];
   selected: readonly string[];
   onToggle: (recipeId: string) => void;
@@ -17,25 +17,47 @@ interface Props {
  * "Shopping for: Chili · Ragù" above the grocery list, each one a toggle that
  * narrows the list to the rows that recipe calls for.
  *
- * **Wrapping pills rather than a filter sheet**, which is the one place this
- * departs from the rule CLAUDE.md sets for `RecipeTagFilterSheet` and
- * `LogbookFilterSheet`. That rule is about an *open-ended* vocabulary: a tag box
- * or an aisle list has no ceiling a phone-width row can assume, so hiding the
- * tail behind a swipe loses options nobody is prompted to look for. This set is
- * bounded by the plan — the meals inside the shop window that have anything in
- * the trolley, which is a handful — so the whole of it fits on screen, and a
- * sheet would put a tap and a dismissal in front of a filter whose entire point
- * is being glanceable while you shop. Multi-select, so they are checkboxes
- * rather than a segmented track (see the control table in CLAUDE.md).
+ * **A `PillGroup` rather than a hand-rolled row**, because the set has no
+ * ceiling: it is the planned meals inside the shop window *plus* every recipe
+ * added straight to the list, and nothing bounds how many recipes one shop is
+ * for. That is the case CLAUDE.md names — pills mapped straight into
+ * `TouchableOpacity` are what had the grocery item sheet pushing the fields it
+ * exists to edit off the first screen, and this sits directly above the list it
+ * would push down. Past the cap it collapses to one "N more" with a find field,
+ * and a selected pill is never hidden, both of which come from `PillGroup`.
  *
- * Renders nothing at all when the plan has nothing to offer, which is the common
- * case for anyone not meal planning: an empty caption over an empty row is worse
- * than no strip, and this must not cost height on a list it can say nothing
- * about.
+ * **Not the bottom sheet** `RecipeTagFilterSheet` and `LogbookFilterSheet` use,
+ * though. That rule is for a vocabulary with a long tail worth searching; this
+ * is usually three or four pills, and putting a tap and a dismissal in front of
+ * a filter whose whole point is being glanceable mid-shop would cost more than
+ * it saves. The cap is what handles the tail here instead.
+ *
+ * Renders nothing at all when there is nothing to offer, which is the common
+ * case for anyone neither meal planning nor shopping from a recipe: an empty
+ * caption over an empty row is worse than no strip, and this must not cost
+ * height on a list it can say nothing about.
  */
 export function GroceryRecipeStrip({ recipes, selected, onToggle, onClear }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+
+  const options = useMemo<PillGroupOption[]>(
+    () =>
+      recipes.map(recipe => ({
+        key: recipe.recipeId,
+        label: recipe.title,
+        // A tick rather than a 0 once everything it needs is in the cart: the
+        // count is how much is left to find, and "0" reads as a quantity.
+        suffix: recipe.remaining === 0 ? '✓' : `${recipe.remaining}`,
+        selected: selected.includes(recipe.recipeId),
+        accessibilityLabel:
+          recipe.remaining === 0
+            ? `${recipe.title}, everything in the cart`
+            : `${recipe.title}, ${recipe.remaining} still to buy`,
+        onPress: () => onToggle(recipe.recipeId),
+      })),
+    [recipes, selected, onToggle]
+  );
 
   if (recipes.length === 0) return null;
 
@@ -54,42 +76,9 @@ export function GroceryRecipeStrip({ recipes, selected, onToggle, onClear }: Pro
           </TouchableOpacity>
         )}
       </View>
-      <View style={styles.pills}>
-        {recipes.map(recipe => {
-          const active = selected.includes(recipe.recipeId);
-          const done = recipe.remaining === 0;
-          return (
-            <TouchableOpacity
-              key={recipe.recipeId}
-              style={[styles.pill, active && styles.pillActive]}
-              onPress={() => onToggle(recipe.recipeId)}
-              activeOpacity={interaction.activeOpacity}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: active }}
-              accessibilityLabel={
-                done
-                  ? `${recipe.title}, everything in the cart`
-                  : `${recipe.title}, ${recipe.remaining} still to buy`
-              }
-            >
-              <Text style={[styles.pillText, active && styles.pillTextActive]} numberOfLines={1}>
-                {recipe.title}
-              </Text>
-              {done ? (
-                <Ionicons
-                  name="checkmark"
-                  size={iconSize.xs}
-                  color={active ? colors.onAccent : colors.textSecondary}
-                />
-              ) : (
-                <Text style={[styles.pillCount, active && styles.pillTextActive]}>
-                  {recipe.remaining}
-                </Text>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+      {/* No onCreate: a recipe is not something you can invent from the grocery
+          list, so the grid is pick-only and the create affordance goes with it. */}
+      <PillGroup options={options} noun="recipe" surface="page" />
     </View>
   );
 }
@@ -114,21 +103,4 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase',
   },
   clear: { color: colors.accent, fontSize: font.sm },
-  pills: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    maxWidth: '100%',
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-    borderRadius: radius.full,
-    borderWidth: 1.5,
-    borderColor: colors.bgQuaternary,
-    backgroundColor: colors.bgTertiary,
-  },
-  pillActive: { backgroundColor: colors.accent, borderColor: colors.accent },
-  pillText: { color: colors.text, fontSize: font.sm, flexShrink: 1 },
-  pillTextActive: { color: colors.onAccent },
-  pillCount: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.semibold },
 });

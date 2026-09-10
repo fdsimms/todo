@@ -3,6 +3,7 @@ import { catalogItemForKey } from './groceryPlural';
 import { varietyIndex } from './itemVarieties';
 import { plannedIngredientsForRecipe } from './mealPlanGroceries';
 import { isWithinShopWindow } from './mealShortfallTasks';
+import type { ChoiceResolution } from './recipeComponents';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
 
 /**
@@ -22,13 +23,26 @@ import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
  * the list *now*".
  *
  * So the question is answered the way the rest of the app answers it: flatten
- * what the plan actually calls for (`plannedIngredientsForRecipe`, which
+ * what the recipe actually calls for (`plannedIngredientsForRecipe`, which
  * already handles a composed recipe's components, the entry's own scale and
  * choices, and standing swaps) and resolve each line against the trolley
  * through the catalog bridge. Nothing is stored, so nothing can drift: a recipe
  * dropped from the plan leaves the strip on the next render, and an ingredient
  * two recipes share is correctly claimed by both — the many-to-many a single
  * column could never hold.
+ *
+ * **`sourceRecipeId` does have one job here, and it is the one it is good at.**
+ * Membership is the question it cannot answer; *discovery* — "did this recipe
+ * put something in this trolley" — is exactly what it records, since that is
+ * the moment it is stamped. A recipe added straight to the list with no meal
+ * planned (`RecipeToListSheet`) has no entry to be found by, so the rows it
+ * minted are the only trace it left, and reading them is what keeps the strip
+ * from being meal-plan-only. What that turns into is still a *candidate*: the
+ * pill's rows are derived like every other, so a staple the stamp never
+ * credited is claimed anyway and a stale stamp cannot drag an unrelated row in.
+ * The known cost is a recipe whose stamped row has sat unbought for months
+ * keeping its pill, which is a fair reading of the evidence rather than a bug:
+ * you did add it for that recipe, and you never bought it.
  *
  * **This is also why the `groupBy: 'recipe'` lens keeps reading
  * `sourceRecipeId` and is not "fixed" to use this.** A grouping needs each row
@@ -82,12 +96,22 @@ function rowsForKey(
 /**
  * The recipes worth offering as a filter, in the order the strip shows them.
  *
+ * Candidates come from two places, and a recipe in both is one pill: the meals
+ * planned inside the shop window, and — for a shop nobody planned a meal for —
+ * the recipes that stamped rows currently in the trolley (see the note above on
+ * what `sourceRecipeId` is and isn't good for). The planned pass runs first so
+ * an entry's own scale and choices are what get flattened; the ad-hoc pass only
+ * picks up what it didn't already claim, where a recipe stands for itself at
+ * its written scale, since an ad-hoc add has no entry to carry either.
+ *
  * The three entries skipped are `collectPlannedIngredients`' own refusals, for
  * its reasons: a free-text night ("leftovers") has no ingredient list, a
  * `recipeId` that no longer resolves is resolve-or-shrug like every other
  * cross-row pointer, and a meal already marked cooked has been made — its
  * ingredients were bought or are moot, so offering to filter by it reads as the
- * app not knowing what already happened.
+ * app not knowing what already happened. A cooked meal stays refused through
+ * the ad-hoc pass too, or its stamped rows would hand back the pill the first
+ * rule just declined to give.
  *
  * Attribution is to the **entry's own recipe**, not to the recipe each line is
  * written on, which is why this flattens per entry rather than calling
@@ -116,28 +140,38 @@ export function shoppedRecipes(
   const varieties = varietyIndex(listRows);
   const checked = new Set(listRows.filter(r => r.checked).map(r => r.id));
 
-  // Insertion order is the entry walk; the sort below is what actually decides
-  // the strip's order, so this only has to be stable.
+  // Insertion order is the two walks below; the sort at the end is what actually
+  // decides the strip's order, so this only has to be stable.
   const byRecipe = new Map<string, { title: string; ids: Set<string> }>();
 
-  for (const entry of entries) {
-    if (!entry.recipeId) continue;
-    if (entry.cookedAt) continue;
-    if (!isWithinShopWindow(entry.date, todayKey, leadDays)) continue;
-    const recipe = recipesById.get(entry.recipeId);
-    if (!recipe) continue;
-
+  const claim = (recipe: Recipe, resolution: ChoiceResolution | undefined, scale: number) => {
     const bucket = byRecipe.get(recipe.id) ?? { title: recipe.name, ids: new Set<string>() };
-    for (const line of plannedIngredientsForRecipe(
-      recipe,
-      recipesById,
-      { chosen: entry.recipeChoices },
-      entry.recipeScale,
-      swaps
-    )) {
+    for (const line of plannedIngredientsForRecipe(recipe, recipesById, resolution, scale, swaps)) {
       for (const row of rowsForKey(line.nameKey, listRows, varieties)) bucket.ids.add(row.id);
     }
     byRecipe.set(recipe.id, bucket);
+  };
+
+  // Planned: the meals close enough to shop for.
+  const cookedInWindow = new Set<string>();
+  for (const entry of entries) {
+    if (!entry.recipeId) continue;
+    if (!isWithinShopWindow(entry.date, todayKey, leadDays)) continue;
+    if (entry.cookedAt) { cookedInWindow.add(entry.recipeId); continue; }
+    const recipe = recipesById.get(entry.recipeId);
+    if (!recipe) continue;
+    claim(recipe, { chosen: entry.recipeChoices }, entry.recipeScale);
+  }
+
+  // Ad-hoc: a recipe added straight to the list, found by the rows it minted.
+  for (const row of listRows) {
+    if (!row.sourceRecipeId) continue;
+    if (byRecipe.has(row.sourceRecipeId) || cookedInWindow.has(row.sourceRecipeId)) continue;
+    const recipe = recipesById.get(row.sourceRecipeId);
+    if (!recipe) continue;
+    // No entry, so no picks and no scale to honour: the recipe as written, which
+    // is what `RecipeToListSheet` shopped for unless the user said otherwise.
+    claim(recipe, undefined, 1);
   }
 
   const out: ShoppedRecipe[] = [];

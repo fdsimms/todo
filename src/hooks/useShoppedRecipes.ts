@@ -36,6 +36,10 @@ import { standingSwapMap } from '../utils/standingSwaps';
  * The window is the shop window the meal-shortfall generator already uses
  * (`mealShortfallLeadDays`), so the strip and the "shop for Tuesday" task it
  * sits above can never disagree about which meals are close enough to shop for.
+ * It bounds the *planned* half only: a recipe added straight to the list has no
+ * entry and no date, and `shoppedRecipes` finds it through the rows it stamped
+ * instead. That half needs no refresh trigger of its own, since those rows are
+ * `listRows`, which the caller already re-renders on.
  */
 export function useShoppedRecipes(listRows: readonly GroceryItem[]): ShoppedRecipe[] {
   const leadDays = useSettingsStore(s => s.mealShortfallLeadDays);

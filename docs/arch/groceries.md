@@ -1451,9 +1451,19 @@ holds the derivation, `src/hooks/useShoppedRecipes.ts` feeds it, `GroceryRecipeS
   one recipe keeps that credit for ever. Filtering on it would hide every staple the selected
   recipe needs and attribute other rows to a recipe nobody is cooking. The field is an honest
   provenance snapshot; it just cannot say why a row is on the list *this week*. So the strip
-  flattens what the plan actually calls for (`plannedIngredientsForRecipe`, which already handles
+  flattens what the recipe actually calls for (`plannedIngredientsForRecipe`, which already handles
   components, the entry's scale and choices, and standing swaps) and resolves each line against the
   trolley. Nothing is stored, so nothing can drift.
+- **The stamp does have one job, and it is the one it is good at: discovery.** "Did this recipe put
+  something in this trolley" is exactly what it records, since that is the moment it is written. A
+  recipe added straight to the list (`RecipeToListSheet`) has no plan entry to be found by, so the
+  rows it minted are the only trace it left, and reading them is what keeps the strip from being
+  meal-plan-only. What it yields is still only a *candidate*: the pill's rows are derived like every
+  other, so a staple the stamp never credited is claimed anyway and a stale stamp cannot drag an
+  unrelated row in. The known cost is that a recipe whose stamped row has sat unbought for months
+  keeps its pill, which is a fair reading of the evidence rather than a bug. A meal already cooked
+  stays refused through this pass too, or its stamped rows would hand back the pill the cooked rule
+  just declined to give.
 - **The `groupBy: 'recipe'` lens still reads `sourceRecipeId`, and that is not an oversight.** A
   grouping needs every row in exactly one section; live membership is a set relation, so the onion
   two recipes want has no single bucket. Grouping wants a snapshot and filtering wants the live
@@ -1469,7 +1479,14 @@ holds the derivation, `src/hooks/useShoppedRecipes.ts` feeds it, `GroceryRecipeS
   would split "Steak dinner" into one pill for the steak and another for the mash.
 - **The window is the meal-shortfall shop window** (`mealShortfallLeadDays`, `isWithinShopWindow`),
   so the strip and the "shop for Tuesday" task it sits above can never disagree about which meals
-  are close enough to shop for.
+  are close enough to shop for. It bounds the planned half only; an ad-hoc add has no date to be
+  in or out of a window.
+- **`GroceryRecipeStrip` is a `PillGroup`, not a hand-rolled pill row.** Once ad-hoc adds count,
+  nothing bounds how many recipes one shop is for, and this sits directly above the list it would
+  otherwise push down — the failure `PillGroup` exists to prevent. It is deliberately *not* the
+  bottom sheet the tag filters use: that rule is for a vocabulary with a long tail worth searching,
+  and this is usually three or four pills, where a tap and a dismissal in front of a mid-shop glance
+  would cost more than it saves. The cap handles the tail instead.
 - **Only what is rendered gets filtered.** The header counts, the share text, the estimate and
   finishing the shop all keep reading the whole trolley. Narrowing what a Finish or a receipt import
   applies to because a filter is on would be a filter quietly changing what an action does.

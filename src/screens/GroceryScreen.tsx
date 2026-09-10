@@ -350,14 +350,17 @@ export function GroceryScreen() {
 
   // ==== the recipe strip: which planned meals this trolley is for ====
   /**
-   * The recipes the plan says this shop is for, and the ones tapped to narrow
-   * the list down to them.
+   * The recipes this shop is for — the meals planned inside the shop window, and
+   * the ones added straight to the list — plus whichever have been tapped to
+   * narrow the list down to them.
    *
-   * Membership is derived from the plan every render rather than read off
-   * `GroceryItem.sourceRecipeId` — see `groceryRecipeFilter.ts`, which is where
-   * the reasoning lives. The short version: that column is stamped once, only on
-   * rows `addFromPlan` genuinely creates, so it says nothing about a staple and
-   * nothing about *this* week.
+   * Which rows a recipe claims is derived from its own ingredients every render
+   * rather than read off `GroceryItem.sourceRecipeId` — see
+   * `groceryRecipeFilter.ts`, which is where the reasoning lives. The short
+   * version: that column is stamped once, only on rows `addFromPlan` genuinely
+   * creates, so it says nothing about a staple and nothing about *this* week.
+   * It is used for the one thing it does record, which is that a recipe put
+   * something in this trolley at all.
    */
   const shoppedFor = useShoppedRecipes(listRows);
   const [recipeFilter, setRecipeFilter] = useState<readonly string[]>([]);

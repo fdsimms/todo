@@ -332,6 +332,74 @@ describe('shoppedRecipes', () => {
     const ragu = recipe('Ragù', [ing('Garlic')]);
     expect(shoppedRecipes([entry(TODAY, ragu.id)], index(ragu), [], TODAY, LEAD)).toEqual([]);
   });
+
+  describe('a recipe added straight to the list, with no meal planned', () => {
+    it('is found by the rows it stamped', () => {
+      const tart = recipe('Tart', [ing('Puff pastry'), ing('Apples')]);
+      const pastry = row({ name: 'Puff pastry', sourceRecipeId: tart.id, sourceRecipeTitle: 'Tart' });
+      const apples = row({ name: 'Apples' });
+
+      const shopped = shoppedRecipes([], index(tart), [pastry, apples], TODAY, LEAD);
+
+      expect(shopped).toHaveLength(1);
+      expect(shopped[0].title).toBe('Tart');
+      // Both lines, not just the stamped one: the stamp only says the recipe put
+      // something here, and membership is still derived from the ingredients.
+      expect([...shopped[0].itemIds].sort()).toEqual([pastry.id, apples.id].sort());
+    });
+
+    it('claims the staples the stamp never credited', () => {
+      const tart = recipe('Tart', [ing('Puff pastry'), ing('Butter')]);
+      const pastry = row({ name: 'Puff pastry', sourceRecipeId: tart.id });
+      // Already in the catalog, so addFromPlan stamped nothing on it.
+      const butter = row({ name: 'Butter', isStaple: true });
+
+      const shopped = shoppedRecipes([], index(tart), [pastry, butter], TODAY, LEAD);
+
+      expect(shopped[0].itemIds).toContain(butter.id);
+    });
+
+    it('is not offered once its rows have left the trolley', () => {
+      const tart = recipe('Tart', [ing('Puff pastry')]);
+      const unrelated = row({ name: 'Dish soap' });
+
+      expect(shoppedRecipes([], index(tart), [unrelated], TODAY, LEAD)).toEqual([]);
+    });
+
+    it('does not resurface a meal already cooked in the window', () => {
+      const salmon = recipe('Salmon', [ing('Salmon fillets')]);
+      const fillets = row({ name: 'Salmon fillets', sourceRecipeId: salmon.id });
+
+      const shopped = shoppedRecipes(
+        [entry(TODAY, salmon.id, { cookedAt: '2026-08-12T18:00:00.000Z' })],
+        index(salmon),
+        [fillets],
+        TODAY,
+        LEAD
+      );
+
+      // The stamped row would otherwise hand back the pill the cooked rule just
+      // declined to give.
+      expect(shopped).toEqual([]);
+    });
+
+    it('is one pill, not two, when the same recipe is also planned', () => {
+      const chili = recipe('Chili', [ing('Beans')]);
+      const beans = row({ name: 'Beans', sourceRecipeId: chili.id });
+
+      const shopped = shoppedRecipes([entry(TODAY, chili.id)], index(chili), [beans], TODAY, LEAD);
+
+      expect(shopped).toHaveLength(1);
+      expect(shopped[0].itemIds).toEqual([beans.id]);
+    });
+
+    it('ignores a stamp pointing at a recipe that no longer exists', () => {
+      const tart = recipe('Tart', [ing('Puff pastry')]);
+      const orphan = row({ name: 'Puff pastry', sourceRecipeId: 'r-deleted', sourceRecipeTitle: 'Gone' });
+
+      expect(shoppedRecipes([], index(tart), [orphan], TODAY, LEAD)).toEqual([]);
+    });
+  });
 });
 
 describe('filterRowsByRecipes', () => {
