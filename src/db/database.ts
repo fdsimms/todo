@@ -4773,6 +4773,24 @@ export function dbGetFoodLogEntries(startKey: string, endKey: string): FoodLogEn
   return rows.map(rowToFoodLogEntry).filter((e): e is FoodLogEntry => e !== null);
 }
 
+/**
+ * One entry by id, or null.
+ *
+ * Exists for the Health retraction rather than for any screen: deleting an
+ * entry has to hand its `healthSampleIds` to the delete, and the row may not be
+ * in the range the store happens to have loaded — a meal backdated outside the
+ * current window is the ordinary case, not an edge one. Reading it back is the
+ * difference between retracting those samples and stranding them in somebody's
+ * medical record. See `healthFoodSync.ts`.
+ */
+export function dbGetFoodLogEntry(id: string): FoodLogEntry | null {
+  const row = db.getFirstSync<Record<string, unknown>>(
+    'SELECT * FROM food_logs WHERE id = ?',
+    [id]
+  );
+  return row ? rowToFoodLogEntry(row) : null;
+}
+
 export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
   db.runSync(
     `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,

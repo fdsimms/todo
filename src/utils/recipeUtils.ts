@@ -97,6 +97,12 @@ export function normalizeIngredient(raw: unknown): RecipeIngredient | null {
   if (r.noSwap === true) normalized.noSwap = true;
   // Same rule, same reason: most lines are needed, not a garnish.
   if (r.optional === true) normalized.optional = true;
+  if (typeof r.dismissedCatalogSuggestion === 'string' && r.dismissedCatalogSuggestion) {
+    normalized.dismissedCatalogSuggestion = r.dismissedCatalogSuggestion;
+  }
+  if (typeof r.dismissedSplitSuggestion === 'string' && r.dismissedSplitSuggestion) {
+    normalized.dismissedSplitSuggestion = r.dismissedSplitSuggestion;
+  }
   return normalized;
 }
 

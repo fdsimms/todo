@@ -82,13 +82,19 @@ export type HealthAuthorizationResult = 'unavailable' | 'requested' | 'failed';
 export type HealthWriteStatus = 'unavailable' | 'notDetermined' | 'sharingDenied' | 'sharingAuthorized';
 
 /**
- * Which of the two things this app can write.
+ * Which of the three things this app can write.
  *
  * Every write-side call takes one, because Health asks about share types
  * individually and somebody can allow water and refuse weight in the same
  * sheet. One status for "writing" would be wrong for whoever split them.
+ *
+ * `nutrition` is ten share types behind one key, since a meal is written as
+ * one correlation of ten samples and there is no useful row to draw for each
+ * nutrient separately. Its status is the weakest of the ten — see the native
+ * `writeAuthorizationStatus`, which explains why under-claiming is the right
+ * direction to be wrong in.
  */
-export type HealthWriteKind = 'water' | 'weight';
+export type HealthWriteKind = 'water' | 'weight' | 'nutrition';
 
 /**
  * One logical day's body mass, in kilograms, or null for a day with no
@@ -154,6 +160,8 @@ interface TodoHealthNativeModule {
   requestWriteAuthorization(): Promise<HealthAuthorizationResult>;
   writeWaterSample(milliliters: number): Promise<boolean>;
   writeBodyMassSample(kilograms: number, whenISO: string): Promise<boolean>;
+  writeFoodSamples(label: string, atISO: string, amountsJSON: string): Promise<string>;
+  deleteHealthSamples(idsJSON: string): Promise<boolean>;
 }
 
 let nativeModule: TodoHealthNativeModule | null = null;
@@ -264,6 +272,68 @@ export function writeWaterSample(milliliters: number): Promise<boolean> {
  */
 export function writeBodyMassSample(kilograms: number, whenISO: string): Promise<boolean> {
   return degradeOnReject(() => nativeModule!.writeBodyMassSample(kilograms, whenISO), false);
+}
+
+/**
+ * Writes one logged meal as a food correlation, and resolves the identifiers
+ * of what it saved.
+ *
+ * `amounts` carries only the figures the entry actually states, keyed by
+ * `NutrientKey`. **A nutrient absent from it is not written**, which is the
+ * contract rather than an optimisation: absent means the label never said, and
+ * a zero sample would be this app claiming a meal contained none of something
+ * nobody measured. A present zero is written, since "no fat" is a real thing
+ * for a label to state.
+ *
+ * **This is the only write here that hands back identity, and that is the
+ * reason it exists in this shape.** The other two return a bare boolean and
+ * keep nothing, because Health is the record and neither a logged drink nor a
+ * recorded weight has an edit path in this app. A food log does: an entry
+ * deleted has to retract what it wrote, or a mistyped meal is a permanent
+ * false fact in a medical record. The ids belong on
+ * `FoodLogEntry.healthSampleIds`; pass them back to `deleteHealthSamples` to
+ * retract.
+ *
+ * Resolves an empty array for every kind of nothing-happened, which the caller
+ * treats alike: an entry with no ids simply has nothing to retract.
+ */
+export async function writeFoodSamples(
+  label: string,
+  atISO: string,
+  amounts: Record<string, number>,
+): Promise<string[]> {
+  const raw = await degradeOnReject(
+    () => nativeModule!.writeFoodSamples(label, atISO, JSON.stringify(amounts)),
+    '[]',
+  );
+  // Re-validated rather than trusted, the same rule `readDailyHealth` follows
+  // about its own payload: this crosses a boundary `tsc` cannot see across,
+  // and an id that is not a string is one that would be stored and later
+  // handed back to a delete that could not use it.
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((id): id is string => typeof id === 'string' && id.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Deletes the samples named by `ids`, the retraction half of
+ * `writeFoodSamples`.
+ *
+ * HealthKit only lets an app delete what it itself saved, which is what makes
+ * this safe to expose: no argument can reach a sample somebody's scale or
+ * another food app wrote.
+ *
+ * Resolves true when nothing went wrong, ids matching nothing included — an
+ * entry deleted twice, or one whose samples the person already removed in the
+ * Health app, is not a failure worth reporting.
+ */
+export function deleteHealthSamples(ids: readonly string[]): Promise<boolean> {
+  if (ids.length === 0) return Promise.resolve(true);
+  return degradeOnReject(() => nativeModule!.deleteHealthSamples(JSON.stringify(ids)), false);
 }
 
 /**

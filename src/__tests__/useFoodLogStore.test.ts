@@ -6,13 +6,16 @@ import {
   dbCountFoodLogEntries,
   dbDeleteFoodLogEntry,
   dbGetFoodLogEntries,
+  dbGetFoodLogEntry,
   dbInsertFoodLogEntry,
   dbUpdateFoodLogEntry,
 } from '../db/database';
+import { retractFoodEntryFromHealth } from '../utils/healthFoodSync';
 import type { FoodNutrition } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetFoodLogEntries: jest.fn(() => []),
+  dbGetFoodLogEntry: jest.fn(() => null),
   dbCountFoodLogEntries: jest.fn(() => 0),
   dbInsertFoodLogEntry: jest.fn(),
   dbUpdateFoodLogEntry: jest.fn(),
@@ -20,6 +23,15 @@ jest.mock('../db/database', () => ({
   dbBulkDeleteFoodLogEntries: jest.fn(),
   dbBulkSetFoodLogSlot: jest.fn(),
   dbBulkUpdateFoodLogPlacement: jest.fn(),
+}));
+
+// Real module reaches healthBridge.ts, which imports react-native — irrelevant
+// to what this file tests (store/db plumbing), and Jest's node environment
+// can't parse it anyway. logFoodEntryToHealth resolves 'unavailable' with no
+// bridge in a test environment regardless, so this only saves the import.
+jest.mock('../utils/healthFoodSync', () => ({
+  logFoodEntryToHealth: jest.fn(() => Promise.resolve({ outcome: 'unavailable', sampleIds: [] })),
+  retractFoodEntryFromHealth: jest.fn(() => Promise.resolve(true)),
 }));
 
 jest.mock('../utils/dateUtils', () => ({
@@ -65,6 +77,7 @@ function draft(overrides: Partial<FoodLogDraft> = {}): FoodLogDraft {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (dbGetFoodLogEntry as jest.Mock).mockReturnValue(null);
   useFoodLogStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, totalCount: 0, initialized: false,
   });
@@ -219,6 +232,21 @@ describe('removeEntries', () => {
   it('is a no-op on an empty selection', () => {
     state().removeEntries([]);
     expect(dbBulkDeleteFoodLogEntries).not.toHaveBeenCalled();
+  });
+
+  it('retracts every removed entry\'s Health samples, same rule removeEntry keeps', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) =>
+      id === 'a' ? { healthSampleIds: ['sample-a'] } : { healthSampleIds: [] }
+    );
+    state().loadRange('2026-04-02', '2026-04-02');
+    state().removeEntries(['a', 'b']);
+    expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
+  });
+
+  it('never calls Health when nothing removed wrote a sample', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue({ healthSampleIds: [] });
+    state().removeEntries(['a']);
+    expect(retractFoodEntryFromHealth).not.toHaveBeenCalled();
   });
 });
 

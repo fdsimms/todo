@@ -101,6 +101,10 @@ export function HealthSettings() {
   // whichever of the two they declined.
   const [waterWriteStatus, setWaterWriteStatus] = useState<HealthWriteStatus | null>(null);
   const [weightWriteStatus, setWeightWriteStatus] = useState<HealthWriteStatus | null>(null);
+  // A third, and the only one standing for more than one share type: a meal is
+  // ten of them, and this reads as allowed only when every one is. See the
+  // native `writeAuthorizationStatus`.
+  const [nutritionWriteStatus, setNutritionWriteStatus] = useState<HealthWriteStatus | null>(null);
 
   // Re-read on focus *and* on foreground, for the reason the calendar rows
   // give: the access row can send someone to the system Settings app, which
@@ -120,6 +124,7 @@ export function HealthSettings() {
     const bridge = healthBridge();
     setWaterWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('water') : null);
     setWeightWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('weight') : null);
+    setNutritionWriteStatus(bridge ? bridge.healthWriteAuthorizationStatus('nutrition') : null);
   }, []);
 
   useFocusEffect(
@@ -172,7 +177,8 @@ export function HealthSettings() {
     // One sheet covers both share types (`requestWriteAuthorization` passes the
     // whole of `writeTypes`), so it is worth raising if *either* is still
     // unanswered.
-    if (next && (waterWriteStatus === 'notDetermined' || weightWriteStatus === 'notDetermined')) {
+    if (next && (waterWriteStatus === 'notDetermined' || weightWriteStatus === 'notDetermined'
+      || nutritionWriteStatus === 'notDetermined')) {
       const bridge = healthBridge();
       bridge?.requestHealthWriteAuthorization()
         .then(() => refreshWriteStatus())
@@ -334,7 +340,7 @@ export function HealthSettings() {
 
     <SettingsSection
       label="Log to Health"
-      footer="Writes a dietary water sample when a task you've set up to log it is completed, and a body mass sample when you record a weight. These are the only two things this app ever writes to Health, and nothing else is touched."
+      footer="Writes a dietary water sample when a task you've set up to log it is completed, a body mass sample when you record a weight, and a meal's nutrition when you add it to the food log. These are the only things this app ever writes to Health, and nothing else is touched. Deleting a food log entry removes what it wrote."
     >
       <SettingsRow
         entryId="healthWrite"
@@ -342,7 +348,7 @@ export function HealthSettings() {
         iconColor={healthWriteEnabled ? colors.accent : undefined}
         label="Log to Health"
         hint={healthWriteEnabled
-          ? 'Water from tasks set up to log it, and weights you record'
+          ? 'Water from tasks set up to log it, weights you record, and meals you log'
           : 'Nothing is written to Health'}
         toggle={healthWriteEnabled}
         onPress={onToggleWrite}
@@ -366,6 +372,15 @@ export function HealthSettings() {
             label="Weight-write access"
             deniedHint="Not allowed. Turn it on in the Health app under Sharing to record a weight"
             status={weightWriteStatus}
+            colors={colors}
+            onAsk={askForWriteAccess}
+          />
+          <View style={styles.sep} />
+          <WriteAccessRow
+            entryId="healthNutritionWriteAccess"
+            label="Nutrition-write access"
+            deniedHint="Not allowed. Turn it on in the Health app under Sharing to log what you ate"
+            status={nutritionWriteStatus}
             colors={colors}
             onAsk={askForWriteAccess}
           />

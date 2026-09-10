@@ -948,6 +948,23 @@ describe('extractRecipe', () => {
     ]);
   });
 
+  it('reads the model\'s optional flag, and only carries it when true', async () => {
+    mockFetchOnce(
+      toolUseResponse('extract_recipe', {
+        name: 'Weeknight Chili',
+        items: [
+          { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', optional: false },
+          { name: 'sour cream', quantity: '', aisle: 'Dairy & Eggs', optional: true },
+        ],
+      })
+    );
+    const result = await extractRecipe('some recipe', AISLES);
+    expect(result.ingredients).toEqual([
+      { name: 'ground beef', quantity: '2 lb', aisle: 'Pantry', section: null, prep: null },
+      { name: 'sour cream', quantity: '', aisle: 'Dairy & Eggs', section: null, prep: null, optional: true },
+    ]);
+  });
+
   it('is null for servings and prep time the text did not state', async () => {
     mockFetchOnce(
       toolUseResponse('extract_recipe', { name: 'Chili', servings: 0, prepMinutes: 0, items: [] })

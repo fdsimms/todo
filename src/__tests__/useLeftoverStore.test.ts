@@ -15,6 +15,24 @@ jest.mock('../db/database', () => ({
   dbUpdateLeftover: jest.fn(),
   dbDeleteLeftover: jest.fn(),
   dbPurgeOldLeftovers: jest.fn().mockReturnValue(0),
+  dbGetFoodLogEntries: jest.fn().mockReturnValue([]),
+  dbGetFoodLogEntry: jest.fn().mockReturnValue(null),
+  dbCountFoodLogEntries: jest.fn().mockReturnValue(0),
+  dbInsertFoodLogEntry: jest.fn(),
+  dbUpdateFoodLogEntry: jest.fn(),
+  dbDeleteFoodLogEntry: jest.fn(),
+  dbBulkDeleteFoodLogEntries: jest.fn(),
+  dbBulkSetFoodLogSlot: jest.fn(),
+  dbBulkUpdateFoodLogPlacement: jest.fn(),
+}));
+
+// This store reaches useFoodLogStore only to set a pending meal-log offer
+// (see setPendingMealLog below); it never needs the real Health write path.
+// Mocked because the real module reaches healthBridge.ts → react-native,
+// which Jest's node environment can't parse, and which nothing here tests.
+jest.mock('../utils/healthFoodSync', () => ({
+  logFoodEntryToHealth: jest.fn(() => Promise.resolve({ outcome: 'unavailable', sampleIds: [] })),
+  retractFoodEntryFromHealth: jest.fn(() => Promise.resolve(true)),
 }));
 
 // The store reaches utils/leftovers → dateUtils → the settings store, for

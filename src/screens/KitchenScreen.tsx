@@ -82,7 +82,7 @@ import { resetToGroceries } from '../navigation/navigationRef';
  * (`utils/kitchenInventory.ts`) with one freshness ladder, and what's about to
  * be wasted sorts to the top of whatever heading it's under.
  *
- * The fourth of the Groceries/Recipes/Meal plan hub (`HubPills`),
+ * One of the Groceries/Recipes/Meal plan/Food log hub (`HubPills`),
  * rather than a sheet popped over Groceries — see that component's doc
  * comment for why it moved. Displayed as "Pantry" (`HubPills`'
  * label, and this screen's own `ScreenHeader` title) while the route, this

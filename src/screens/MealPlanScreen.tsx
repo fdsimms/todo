@@ -1524,6 +1524,17 @@ export function MealPlanScreen() {
     // row under the header (see the render). What's left is the three things
     // you do *to* the week on screen rather than to pick which week that is.
     const actions: ScreenHeaderAction[] = [
+      // Straight into Food log's own add sheet rather than just the screen —
+      // the tap is "I ate something", not "take me to my diary". See the
+      // stamped-param handoff in FoodLogScreen (same shape as resetToMood's).
+      {
+        icon: 'nutrition-outline',
+        onPress: () => {
+          haptics.tap();
+          navigation.navigate('FoodLog', { openAdd: Date.now() });
+        },
+        accessibilityLabel: 'Log food',
+      },
       {
         icon: copiedWeek ? 'checkmark' : 'copy-outline',
         onPress: () => copyWeekText(weekShareText),
@@ -1554,7 +1565,7 @@ export function MealPlanScreen() {
       });
     }
     return actions;
-  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, copiedWeek, copyWeekText]);
+  }, [onThisWeek, selectionMode, page, exitSelection, weekStartsOn, handleShareWeek, weekShareText, copiedWeek, copyWeekText, navigation]);
 
   /**
    * The week a "copy" would take from, and only while this one is empty.
