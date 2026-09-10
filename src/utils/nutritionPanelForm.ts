@@ -1,5 +1,5 @@
 import type { FoodNutrition, NutrientKey } from '../types';
-import type { LabelReading } from './labelOcr';
+import type { LabelColumn, LabelReading } from './labelOcr';
 import { NUTRIENT_KEYS } from '../types';
 
 /**
@@ -160,7 +160,7 @@ export function buildPanelNutrition(
 }
 
 /**
- * The form with a photographed label's reading laid over it.
+ * The form with one column of a photographed label laid over it.
  *
  * **It fills fields; it does not save anything.** `labelOcr.ts` reads a panel
  * off a photo and this is where that reading becomes text a person can see and
@@ -178,31 +178,41 @@ export function buildPanelNutrition(
  *
  * **A figure the read did find replaces what was there.** Someone who has just
  * photographed the packet is asking for the packet's numbers, and a read that
- * silently declined to correct a field would be the surprising one. The
- * previous text is not lost in any sense that matters: it is one sheet, still
- * open, still guarded by its own discard prompt, and every changed field is
- * visible.
+ * silently declined to correct a field would be the surprising one. It is also
+ * what lets the person switch columns and watch the fields follow. The previous
+ * text is not lost in any sense that matters: it is one sheet, still open,
+ * still guarded by its own discard prompt, and every changed field is visible.
  *
- * **`basis` is only taken when the panel actually stated a column heading.**
- * It is the field a photograph is least able to settle and the one the record
- * is meaningless without, so a read that found no heading leaves the person's
- * own choice standing rather than resetting it to a default that looks chosen.
+ * **`basis` is only taken when that column actually stated a heading.** It is
+ * the field a photograph is least able to settle and the one the record is
+ * meaningless without, so a column with no heading leaves the person's own
+ * choice standing rather than resetting it to a default that looks chosen.
+ *
+ * An index past the end leaves the form untouched, which is the honest answer
+ * for a column that is not there rather than an occasion to throw at a sheet
+ * mid-render.
  */
-export function applyLabelReading(form: PanelForm, reading: LabelReading): PanelForm {
+export function applyLabelReading(
+  form: PanelForm,
+  reading: LabelReading,
+  columnIndex: number = 0,
+): PanelForm {
+  const column = reading.columns[columnIndex];
+  if (!column) return form;
   const amounts = { ...form.amounts };
   for (const key of NUTRIENT_KEYS) {
-    const amount = reading.amounts[key];
+    const amount = column.amounts[key];
     if (amount !== undefined) amounts[key] = String(amount);
   }
   return {
-    basis: reading.basis ?? form.basis,
+    basis: column.basis ?? form.basis,
     servingText: reading.servingText ?? form.servingText,
     servingGrams: reading.servingGrams === null ? form.servingGrams : String(reading.servingGrams),
     amounts,
   };
 }
 
-/** How many of the form's figures a reading filled in, for the sheet to report. */
-export function labelReadingFieldCount(reading: LabelReading): number {
-  return NUTRIENT_KEYS.filter(key => reading.amounts[key] !== undefined).length;
+/** How many of the form's figures one column would fill, for the sheet to report. */
+export function labelColumnFieldCount(column: LabelColumn): number {
+  return NUTRIENT_KEYS.filter(key => column.amounts[key] !== undefined).length;
 }

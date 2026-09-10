@@ -66,35 +66,43 @@ interface LabelValue {
   unit: NutrientSourceUnit | undefined;
 }
 
-export interface LabelReading {
+/**
+ * One value column of a panel — one portion, and what the label says is in it.
+ *
+ * A US panel prints one of these. A European panel usually prints two, per 100g
+ * and per serving, and which of them a person wants is not something a
+ * photograph can answer: the figures differ by whatever the serving weighs and
+ * nothing about either set says which is which. So both are read and the sheet
+ * asks, rather than one being chosen and the choice reported.
+ */
+export interface LabelColumn {
   /**
-   * Which column the figures describe, when the panel said so, and null when
-   * nothing on it did.
+   * The basis this column's own heading stated, or null when it had none.
    *
-   * A proposal rather than an answer: it lands on the sheet's own basis control
-   * for the person to correct, because the record is meaningless under the
-   * wrong one and this is the field a photograph is least able to settle. See
-   * `FoodNutrition.basis`.
+   * Still a proposal rather than an answer even here, since the heading is
+   * printed text like everything else. It reaches the sheet's basis control for
+   * the person to correct. See `FoodNutrition.basis`.
    */
   basis: FoodNutrition['basis'] | null;
+  /** The figures in this column, in this app's own stored units. Absent stays absent. */
+  amounts: Partial<Record<NutrientKey, number>>;
+}
+
+export interface LabelReading {
   /** The serving as printed, for `FoodNutrition.servingText`. */
   servingText: string | null;
   /** A gram weight the serving line stated in parentheses. */
   servingGrams: number | null;
-  /** The figures read, in this app's own stored units. Absent stays absent. */
-  amounts: Partial<Record<NutrientKey, number>>;
   /**
-   * How many value columns the panel printed.
+   * The panel's value columns, left to right, never empty.
    *
-   * **The one misreading worth telling the user about.** A US panel has one
-   * column and a European one usually has two, per 100g and per serving, and
-   * taking the wrong one is wrong by whatever a serving happens to weigh with
-   * nothing about the number itself to say so. Every figure here comes from the
-   * leftmost column; when this is above 1 the sheet says which column it read,
-   * because that is a thing a person can check in one glance and this cannot
-   * check at all.
+   * More than one and the sheet puts them to the person, because taking the
+   * wrong column is wrong by whatever a serving happens to weigh with nothing
+   * about the number itself to say so — the one misreading here that a person
+   * cannot catch by looking at the figure alone, and can catch instantly by
+   * being told which column it came from.
    */
-  columns: number;
+  columns: LabelColumn[];
 }
 
 /**
@@ -195,12 +203,20 @@ const PAREN_GRAMS = /\((\d+(?:[.,]\d+)?)\s*g\)/i;
 /** How the serving line names itself, either vocabulary. */
 const SERVING_ROW = /\b(serving\s*size|portion\s*size)\b/;
 
-/** The column headings that settle `basis`, most specific first. */
-const BASIS_ROWS: readonly { basis: FoodNutrition['basis']; pattern: RegExp }[] = [
-  { basis: 'per100ml', pattern: /\bper\s*100\s*ml\b/ },
-  { basis: 'per100g', pattern: /\bper\s*100\s*g\b/ },
-  { basis: 'perServing', pattern: /\bper\s*serving\b/ },
-];
+/**
+ * The column headings that settle `basis`, as one scanner rather than three
+ * tests, because their *order along the row* is what maps them onto columns.
+ *
+ * `per 100 ml` is alternated ahead of `per 100 g` so the longer wording wins
+ * where both could start matching at the same place.
+ */
+const BASIS_PHRASE = /per\s*100\s*ml|per\s*100\s*g|per\s*serving/g;
+
+function basisOfPhrase(phrase: string): FoodNutrition['basis'] {
+  if (/ml/.test(phrase)) return 'per100ml';
+  if (/100/.test(phrase)) return 'per100g';
+  return 'perServing';
+}
 
 /**
  * A printed row, lower-cased and stripped of the punctuation a panel sets
@@ -256,6 +272,11 @@ function readRow(text: string): LabelRow | null {
  * two figures per column, in kJ and kcal, so counting it would report a
  * one-column European panel as two-column and warn about a problem it does not
  * have.
+ *
+ * A tie goes to the smaller count, which is the cheaper way to be wrong. Too
+ * few columns costs the person the choice of a column they can still reach by
+ * editing the fields; too many puts a column of figures in front of them that
+ * the packet does not print.
  */
 function countColumns(rows: readonly LabelRow[]): number {
   const votes = new Map<number, number>();
@@ -275,22 +296,38 @@ function countColumns(rows: readonly LabelRow[]): number {
 }
 
 /**
- * Which figure on a row to take, in the unit it was printed in.
+ * A row's figure for one column, in the unit it was printed in, or null when
+ * the row does not speak for that column.
  *
- * **The leftmost, except for energy.** Every other row's columns are the same
- * figure against different portions, and the leftmost is the one whose heading
- * the basis proposal was read from, so they have to agree. Energy's two figures
- * are one column stated twice, in kJ and then kcal, and there the kcal one is
- * taken when it is labelled — not because the conversion would be wrong, which
- * it would not, but because the packet's own kcal figure is what the packet
- * claims and a converted kJ figure differs from it by the rounding.
+ * **The row's figures are split into equal groups, one per column.** That is
+ * the only division a printed panel actually supports: the columns are set at
+ * fixed positions and every row that speaks for all of them prints the same
+ * number of figures. A row whose figure count is not a multiple of the column
+ * count did not print a full set, and it fills the first column alone rather
+ * than having one of its figures copied across the rest — a figure repeated
+ * into a column it was not printed in is exactly the wrong-portion error this
+ * whole shape exists to avoid.
+ *
+ * **Energy is why the group can hold more than one figure.** A European panel
+ * states it twice per column, in kJ and then kcal, so a two-column panel's
+ * energy row prints four figures for two portions. Within a group the kcal one
+ * is taken when it is labelled — not because converting the kJ would be wrong,
+ * which it would not, but because the packet's own kcal figure is what the
+ * packet claims and a converted one differs from it by the rounding. The last
+ * of the group is the fallback, kcal being printed second by convention.
  */
-function chooseValue(row: LabelRow): LabelValue {
-  if (row.target === 'calorieKcal') {
-    const kcal = row.values.find(value => value.unit === 'kcal');
-    if (kcal) return kcal;
+function valueForColumn(row: LabelRow, index: number, count: number): LabelValue | null {
+  const { values } = row;
+  if (count <= 0 || values.length === 0 || values.length % count !== 0) {
+    return index === 0 ? values[0] ?? null : null;
   }
-  return row.values[0];
+  const size = values.length / count;
+  const group = values.slice(index * size, (index + 1) * size);
+  if (group.length === 0) return null;
+  if (row.target === 'calorieKcal') {
+    return group.find(value => value.unit === 'kcal') ?? group[group.length - 1];
+  }
+  return group[0];
 }
 
 /**
@@ -304,8 +341,8 @@ function chooseValue(row: LabelRow): LabelValue {
  * those nutrients and are exactly what `NUTRIENT_STORED_UNIT` records. Where
  * the packet does print a unit, the packet wins.
  */
-function amountFor(row: LabelRow): number | null {
-  const { amount, unit } = chooseValue(row);
+function amountFor(row: LabelRow, value: LabelValue): number | null {
+  const { amount, unit } = value;
   if (row.target === 'salt') {
     // The declared salt figure divided by the regulated factor is the sodium
     // in it, which is the same arithmetic `readOffNutrition` does on the same
@@ -316,12 +353,29 @@ function amountFor(row: LabelRow): number | null {
   return convertNutrientAmount(amount, unit ?? NUTRIENT_STORED_UNIT[row.target], row.target);
 }
 
-/** The basis a heading row states, or null when none of them does. */
-function readBasis(texts: readonly string[]): FoodNutrition['basis'] | null {
-  for (const { basis, pattern } of BASIS_ROWS) {
-    if (texts.some(text => pattern.test(text))) return basis;
-  }
-  return null;
+/**
+ * The basis each column's heading states, in column order.
+ *
+ * **A heading row is taken only when it names exactly as many bases as there
+ * are columns**, which is what makes the mapping positional rather than
+ * guessed: "Typical values | per 100g | per serving" over two columns of
+ * figures is two headings for two columns in the order they were printed. A
+ * row naming three bases over two columns has been misread, and inventing an
+ * alignment for it would put the wrong label on the right numbers, which is
+ * worse than leaving the person's own choice standing.
+ *
+ * A single basis stated anywhere is the fallback and applies to the first
+ * column alone. That is the US panel, whose "Amount per serving" sits on its
+ * own line above a single column.
+ */
+function readColumnBases(texts: readonly string[], count: number): (FoodNutrition['basis'] | null)[] {
+  const stated = texts.map(text => [...text.matchAll(BASIS_PHRASE)].map(m => basisOfPhrase(m[0])));
+  const aligned = stated.find(found => found.length === count);
+  if (aligned) return aligned;
+  const single = stated.find(found => found.length === 1);
+  const bases: (FoodNutrition['basis'] | null)[] = new Array(count).fill(null);
+  if (single) bases[0] = single[0];
+  return bases;
 }
 
 /**
@@ -360,17 +414,31 @@ export function readNutritionLabel(lines: readonly RecognizedLine[]): LabelReadi
   }
   if (rows.length < MIN_LABEL_ROWS) return null;
 
-  const amounts: Partial<Record<NutrientKey, number>> = {};
-  for (const row of rows) {
-    const key = row.target === 'salt' ? 'sodiumMg' : row.target;
-    // First reading wins. A panel prints each nutrient once, so a second row
-    // claiming one is a misread of a line further down rather than a
-    // correction of the line above it.
-    if (amounts[key] !== undefined) continue;
-    const amount = amountFor(row);
-    if (amount !== null) amounts[key] = amount;
+  const count = countColumns(rows);
+  const bases = readColumnBases(normalized, count);
+
+  const columns: LabelColumn[] = [];
+  for (let index = 0; index < count; index++) {
+    const amounts: Partial<Record<NutrientKey, number>> = {};
+    for (const row of rows) {
+      const key = row.target === 'salt' ? 'sodiumMg' : row.target;
+      // First reading wins. A panel prints each nutrient once, so a second row
+      // claiming one is a misread of a line further down rather than a
+      // correction of the line above it.
+      if (amounts[key] !== undefined) continue;
+      const value = valueForColumn(row, index, count);
+      if (!value) continue;
+      const amount = amountFor(row, value);
+      if (amount !== null) amounts[key] = amount;
+    }
+    // A column past the first that came out empty means `countColumns` counted
+    // a column that is not there — a stray figure on enough rows to carry the
+    // vote. Dropping it is better than asking the person to choose between a
+    // set of figures and nothing.
+    if (index > 0 && Object.keys(amounts).length === 0) continue;
+    columns.push({ basis: bases[index] ?? null, amounts });
   }
-  if (Object.keys(amounts).length === 0) return null;
+  if (columns.length === 0 || Object.keys(columns[0].amounts).length === 0) return null;
 
   const servingIndex = normalized.findIndex(text => SERVING_ROW.test(text));
   const serving = servingIndex === -1
@@ -378,11 +446,9 @@ export function readNutritionLabel(lines: readonly RecognizedLine[]): LabelReadi
     : readServing(printed[servingIndex]);
 
   return {
-    basis: readBasis(normalized),
     servingText: serving.text,
     servingGrams: serving.grams !== null && serving.grams > 0 ? serving.grams : null,
-    amounts,
-    columns: countColumns(rows),
+    columns,
   };
 }
 

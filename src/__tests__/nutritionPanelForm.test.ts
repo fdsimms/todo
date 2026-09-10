@@ -2,7 +2,7 @@ import {
   applyLabelReading,
   buildPanelNutrition,
   emptyPanelForm,
-  labelReadingFieldCount,
+  labelColumnFieldCount,
   invalidPanelFields,
   panelFormDirty,
   panelFormFrom,
@@ -174,11 +174,12 @@ describe('buildPanelNutrition', () => {
 
 describe('applyLabelReading', () => {
   const reading = {
-    basis: 'per100g' as const,
     servingText: '2 cookies (30g)',
     servingGrams: 30,
-    amounts: { calorieKcal: 140, fatG: 6, satFatG: 2.5 },
-    columns: 1,
+    columns: [
+      { basis: 'per100g' as const, amounts: { calorieKcal: 140, fatG: 6, satFatG: 2.5 } },
+      { basis: 'perServing' as const, amounts: { calorieKcal: 42, fatG: 1.8 } },
+    ],
   };
 
   it('lays the figures it read into the form as text', () => {
@@ -214,14 +215,33 @@ describe('applyLabelReading', () => {
     expect(form.servingGrams).toBe('30');
   });
 
-  it('keeps the chosen basis when the panel stated no column heading', () => {
-    const chosen = { ...emptyPanelForm(), basis: 'perServing' as const };
-    expect(applyLabelReading(chosen, { ...reading, basis: null }).basis).toBe('perServing');
+  it('takes the first column by default', () => {
+    expect(applyLabelReading(emptyPanelForm(), reading).basis).toBe('per100g');
   });
 
-  it('takes the basis when the panel did state one', () => {
+  it('takes the column it is asked for, with that column own basis', () => {
+    const form = applyLabelReading(emptyPanelForm(), reading, 1);
+    expect(form.amounts.calorieKcal).toBe('42');
+    expect(form.amounts.fatG).toBe('1.8');
+    expect(form.basis).toBe('perServing');
+  });
+
+  it('leaves a figure the chosen column does not state as the other column left it', () => {
+    // Switching columns re-lays only what the new column states, which is what
+    // lets the sheet move between them without blanking the form each time.
+    const first = applyLabelReading(emptyPanelForm(), reading, 0);
+    expect(applyLabelReading(first, reading, 1).amounts.satFatG).toBe('2.5');
+  });
+
+  it('leaves the form untouched for a column that is not there', () => {
+    const form = emptyPanelForm();
+    expect(applyLabelReading(form, reading, 7)).toBe(form);
+  });
+
+  it('keeps the chosen basis when the column stated no heading', () => {
     const chosen = { ...emptyPanelForm(), basis: 'perServing' as const };
-    expect(applyLabelReading(chosen, reading).basis).toBe('per100g');
+    const headless = { ...reading, columns: [{ basis: null, amounts: { fatG: 6 } }] };
+    expect(applyLabelReading(chosen, headless).basis).toBe('perServing');
   });
 
   it('keeps a typed serving weight when the panel stated none', () => {
@@ -238,18 +258,14 @@ describe('applyLabelReading', () => {
   });
 });
 
-describe('labelReadingFieldCount', () => {
-  it('counts the figures a reading filled in', () => {
-    expect(labelReadingFieldCount({
-      basis: null, servingText: null, servingGrams: null, columns: 1,
-      amounts: { calorieKcal: 140, fatG: 6, satFatG: 2.5 },
+describe('labelColumnFieldCount', () => {
+  it('counts the figures a column filled in', () => {
+    expect(labelColumnFieldCount({
+      basis: null, amounts: { calorieKcal: 140, fatG: 6, satFatG: 2.5 },
     })).toBe(3);
   });
 
   it('counts a stated zero, which is a figure', () => {
-    expect(labelReadingFieldCount({
-      basis: null, servingText: null, servingGrams: null, columns: 1,
-      amounts: { fatG: 0 },
-    })).toBe(1);
+    expect(labelColumnFieldCount({ basis: null, amounts: { fatG: 0 } })).toBe(1);
   });
 });

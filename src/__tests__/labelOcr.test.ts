@@ -54,7 +54,7 @@ describe('readNutritionLabel', () => {
   describe('a US panel', () => {
     it('reads every declared nutrient into its own key', () => {
       const reading = readNutritionLabel(panel(US_PANEL))!;
-      expect(reading.amounts).toEqual({
+      expect(reading.columns[0].amounts).toEqual({
         calorieKcal: 140,
         fatG: 6,
         satFatG: 2.5,
@@ -70,20 +70,20 @@ describe('readNutritionLabel', () => {
       // The failure this guards is not a missing figure but a wrong one: read
       // loosely, "Trans Fat 0g" matches fat last and files 0 over the 6.
       const reading = readNutritionLabel(panel(US_PANEL))!;
-      expect(reading.amounts.fatG).toBe(6);
+      expect(reading.columns[0].amounts.fatG).toBe(6);
     });
 
     it('does not let the added sugars row overwrite total sugars', () => {
       const reading = readNutritionLabel(panel(US_PANEL))!;
-      expect(reading.amounts.sugarG).toBe(11);
+      expect(reading.columns[0].amounts.sugarG).toBe(11);
     });
 
     it('files no figure for a nutrient it has no key for', () => {
       // Cholesterol is declared on every US panel and this build cannot store
       // it. The reading has to drop it rather than find it a home.
       const reading = readNutritionLabel(panel(US_PANEL))!;
-      expect(Object.keys(reading.amounts)).not.toContain('cholesterolMg');
-      expect(reading.amounts.sodiumMg).toBe(105);
+      expect(Object.keys(reading.columns[0].amounts)).not.toContain('cholesterolMg');
+      expect(reading.columns[0].amounts.sodiumMg).toBe(105);
     });
 
     it('reads the serving line as printed, with its gram weight', () => {
@@ -94,13 +94,13 @@ describe('readNutritionLabel', () => {
 
     it('proposes per serving, which is the column a US panel prints', () => {
       const reading = readNutritionLabel(panel(US_PANEL))!;
-      expect(reading.basis).toBe('perServing');
+      expect(reading.columns[0].basis).toBe('perServing');
     });
 
     it('reports one column, not two, despite the % Daily Value beside each row', () => {
       // Read as a figure, the percentage would make every US panel claim a
       // second portion column and warn about a problem it does not have.
-      expect(readNutritionLabel(panel(US_PANEL))!.columns).toBe(1);
+      expect(readNutritionLabel(panel(US_PANEL))!.columns).toHaveLength(1);
     });
 
     it('never takes a percentage as the figure itself', () => {
@@ -112,9 +112,9 @@ describe('readNutritionLabel', () => {
         ['Sodium', '105', '5%'],
         ['Protein', '1'],
       ]))!;
-      expect(reading.amounts.fatG).toBe(6);
-      expect(reading.amounts.sodiumMg).toBe(105);
-      expect(reading.columns).toBe(1);
+      expect(reading.columns[0].amounts.fatG).toBe(6);
+      expect(reading.columns[0].amounts.sodiumMg).toBe(105);
+      expect(reading.columns).toHaveLength(1);
     });
   });
 
@@ -134,26 +134,26 @@ describe('readNutritionLabel', () => {
 
     it('reads the indented breakdown rows into their own keys', () => {
       const reading = readNutritionLabel(panel(EU_PANEL))!;
-      expect(reading.amounts.satFatG).toBe(0.6);
-      expect(reading.amounts.sugarG).toBe(5);
-      expect(reading.amounts.fatG).toBe(3.2);
-      expect(reading.amounts.carbsG).toBe(49);
+      expect(reading.columns[0].amounts.satFatG).toBe(0.6);
+      expect(reading.columns[0].amounts.sugarG).toBe(5);
+      expect(reading.columns[0].amounts.fatG).toBe(3.2);
+      expect(reading.columns[0].amounts.carbsG).toBe(49);
     });
 
     it('takes the kcal figure from an energy row printed in both units', () => {
       // Converting the 1105kJ would give 264.1, which is right but is not what
       // the packet claims.
-      expect(readNutritionLabel(panel(EU_PANEL))!.amounts.calorieKcal).toBe(265);
+      expect(readNutritionLabel(panel(EU_PANEL))!.columns[0].amounts.calorieKcal).toBe(265);
     });
 
     it('converts a declared salt figure to the sodium in it', () => {
       // 1.2g of salt is 0.48g of sodium under the regulated 2.5 factor, stored
       // in milligrams.
-      expect(readNutritionLabel(panel(EU_PANEL))!.amounts.sodiumMg).toBe(480);
+      expect(readNutritionLabel(panel(EU_PANEL))!.columns[0].amounts.sodiumMg).toBe(480);
     });
 
     it('proposes per 100g from the column heading', () => {
-      expect(readNutritionLabel(panel(EU_PANEL))!.basis).toBe('per100g');
+      expect(readNutritionLabel(panel(EU_PANEL))!.columns[0].basis).toBe('per100g');
     });
 
     it('has no serving line to read', () => {
@@ -163,7 +163,7 @@ describe('readNutritionLabel', () => {
     });
 
     it('does not count the two-unit energy row as a second column', () => {
-      expect(readNutritionLabel(panel(EU_PANEL))!.columns).toBe(1);
+      expect(readNutritionLabel(panel(EU_PANEL))!.columns).toHaveLength(1);
     });
   });
 
@@ -178,21 +178,70 @@ describe('readNutritionLabel', () => {
       ['Salt', '1.2g', '0.4g'],
     ] as const;
 
-    it('takes every figure from the leftmost column', () => {
+    it('reads both columns rather than choosing one', () => {
       const reading = readNutritionLabel(panel(TWO_COLUMN))!;
-      expect(reading.amounts.fatG).toBe(3.2);
-      expect(reading.amounts.carbsG).toBe(49);
-      expect(reading.amounts.proteinG).toBe(9);
+      expect(reading.columns).toHaveLength(2);
+      expect(reading.columns[0].amounts.fatG).toBe(3.2);
+      expect(reading.columns[1].amounts.fatG).toBe(1);
     });
 
-    it('reports the second column so the sheet can say which one it read', () => {
-      // The whole point of the field: taking the wrong column is wrong by
-      // whatever a serving weighs, with nothing about the number to show it.
-      expect(readNutritionLabel(panel(TWO_COLUMN))!.columns).toBe(2);
+    it('keeps each column whole rather than mixing the two', () => {
+      // The failure worth pinning: one figure taken from the wrong column is
+      // wrong by whatever the serving weighs, with nothing about the number
+      // itself to show it.
+      const reading = readNutritionLabel(panel(TWO_COLUMN))!;
+      expect(reading.columns[0].amounts).toEqual({
+        calorieKcal: 265, fatG: 3.2, satFatG: 0.6, carbsG: 49, proteinG: 9, sodiumMg: 480,
+      });
+      expect(reading.columns[1].amounts).toEqual({
+        calorieKcal: 80, fatG: 1, satFatG: 0.2, carbsG: 15, proteinG: 2.7, sodiumMg: 160,
+      });
     });
 
-    it('takes the leftmost energy figure too, so the columns agree', () => {
-      expect(readNutritionLabel(panel(TWO_COLUMN))!.amounts.calorieKcal).toBe(265);
+    it('maps the heading row onto the columns by the order it printed them', () => {
+      const reading = readNutritionLabel(panel(TWO_COLUMN))!;
+      expect(reading.columns[0].basis).toBe('per100g');
+      expect(reading.columns[1].basis).toBe('perServing');
+    });
+
+    it('splits an energy row printed in both units across both columns', () => {
+      const reading = readNutritionLabel(panel([
+        ['Typical values', 'per 100g', 'per serving'],
+        ['Energy', '1105kJ', '265kcal', '442kJ', '106kcal'],
+        ['Fat', '3.2g', '1.3g'],
+        ['Protein', '9.0g', '3.6g'],
+        ['Salt', '1.2g', '0.5g'],
+      ]))!;
+      expect(reading.columns[0].amounts.calorieKcal).toBe(265);
+      expect(reading.columns[1].amounts.calorieKcal).toBe(106);
+    });
+
+    it('gives a row that printed one figure to the first column alone', () => {
+      // A row short of a full set did not print one, and copying its figure
+      // across is exactly the wrong-portion error the split exists to avoid.
+      const reading = readNutritionLabel(panel([
+        ['Typical values', 'per 100g', 'per serving'],
+        ['Energy', '265kcal', '80kcal'],
+        ['Fat', '3.2g', '1.0g'],
+        ['of which saturates', '0.6g', '0.2g'],
+        ['Carbohydrate', '49g', '15g'],
+        ['Protein', '9.0g'],
+      ]))!;
+      expect(reading.columns[0].amounts.proteinG).toBe(9);
+      expect(reading.columns[1].amounts.proteinG).toBeUndefined();
+    });
+
+    it('leaves both columns without a basis when the heading does not line up', () => {
+      // Three headings over two columns is a misread, and inventing an
+      // alignment would put the wrong label on the right numbers.
+      const reading = readNutritionLabel(panel([
+        ['Values', 'per 100g', 'per serving', 'per 100ml'],
+        ['Energy', '265kcal', '80kcal'],
+        ['Fat', '3.2g', '1.0g'],
+        ['Protein', '9.0g', '2.7g'],
+      ]))!;
+      expect(reading.columns[0].basis).toBeNull();
+      expect(reading.columns[1].basis).toBeNull();
     });
   });
 
@@ -231,7 +280,7 @@ describe('readNutritionLabel', () => {
         ['Protein', '1'],
         ['Total Fat', '6'],
       ]))!;
-      expect(reading.amounts).toEqual({
+      expect(reading.columns[0].amounts).toEqual({
         calorieKcal: 140, sodiumMg: 105, proteinG: 1, fatG: 6,
       });
     });
@@ -243,8 +292,8 @@ describe('readNutritionLabel', () => {
         ['Sodium', '0mg'],
         ['Protein', '2g'],
       ]))!;
-      expect(reading.amounts.fatG).toBe(0);
-      expect(reading.amounts.sodiumMg).toBe(0);
+      expect(reading.columns[0].amounts.fatG).toBe(0);
+      expect(reading.columns[0].amounts.sodiumMg).toBe(0);
     });
 
     it('leaves a nutrient the panel did not print absent rather than zero', () => {
@@ -253,8 +302,8 @@ describe('readNutritionLabel', () => {
         ['Total Fat', '0g'],
         ['Protein', '2g'],
       ]))!;
-      expect(reading.amounts.fiberG).toBeUndefined();
-      expect(reading.amounts.caffeineMg).toBeUndefined();
+      expect(reading.columns[0].amounts.fiberG).toBeUndefined();
+      expect(reading.columns[0].amounts.caffeineMg).toBeUndefined();
     });
 
     it('takes the stated bound of a figure printed below a threshold', () => {
@@ -263,7 +312,7 @@ describe('readNutritionLabel', () => {
         ['Total Fat', '<0.5g'],
         ['Protein', '2g'],
       ]))!;
-      expect(reading.amounts.fatG).toBe(0.5);
+      expect(reading.columns[0].amounts.fatG).toBe(0.5);
     });
 
     it('reads a decimal comma, which is how most of Europe prints one', () => {
@@ -272,8 +321,8 @@ describe('readNutritionLabel', () => {
         ['Fat', '3,2g'],
         ['Protein', '9,0g'],
       ]))!;
-      expect(reading.amounts.fatG).toBe(3.2);
-      expect(reading.amounts.proteinG).toBe(9);
+      expect(reading.columns[0].amounts.fatG).toBe(3.2);
+      expect(reading.columns[0].amounts.proteinG).toBe(9);
     });
 
     it('converts a unit the packet prints that this app does not store in', () => {
@@ -282,8 +331,8 @@ describe('readNutritionLabel', () => {
         ['Fat', '3.2g'],
         ['Sodium', '0.48g'],
       ]))!;
-      expect(reading.amounts.calorieKcal).toBe(264.1013);
-      expect(reading.amounts.sodiumMg).toBe(480);
+      expect(reading.columns[0].amounts.calorieKcal).toBe(264.1013);
+      expect(reading.columns[0].amounts.sodiumMg).toBe(480);
     });
 
     it('ignores a second row claiming a nutrient already read', () => {
@@ -295,7 +344,7 @@ describe('readNutritionLabel', () => {
         ['Protein', '1g'],
         ['Fat content per pack', '18g'],
       ]))!;
-      expect(reading.amounts.fatG).toBe(6);
+      expect(reading.columns[0].amounts.fatG).toBe(6);
     });
 
     it('drops the vitamin and mineral rows a US panel prints below protein', () => {
@@ -308,7 +357,7 @@ describe('readNutritionLabel', () => {
         ['Iron', '0.9mg'],
         ['Potassium', '65mg'],
       ]))!;
-      expect(reading.amounts).toEqual({ calorieKcal: 140, fatG: 6, proteinG: 1 });
+      expect(reading.columns[0].amounts).toEqual({ calorieKcal: 140, fatG: 6, proteinG: 1 });
     });
 
     it('drops the old "Calories from Fat" line rather than reading it as fat', () => {
@@ -318,8 +367,8 @@ describe('readNutritionLabel', () => {
         ['Total Fat', '6g'],
         ['Protein', '1g'],
       ]))!;
-      expect(reading.amounts.calorieKcal).toBe(140);
-      expect(reading.amounts.fatG).toBe(6);
+      expect(reading.columns[0].amounts.calorieKcal).toBe(140);
+      expect(reading.columns[0].amounts.fatG).toBe(6);
     });
   });
 });
