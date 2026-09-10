@@ -2740,7 +2740,23 @@ describe('addFromPlan', () => {
     expect(item.sourceRecipeTitle).toBe('New recipe');
   });
 
-  it('never overwrites the source of a row still standing on a list', () => {
+  it('keeps the source of a row still standing on a list when the same recipe re-adds it', () => {
+    const parsley = makeItem({
+      name: 'Parsley', onList: true, aisle: 'Produce',
+      sourceRecipeId: 'r-original', sourceRecipeTitle: 'Original recipe',
+    });
+    seed([parsley]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Parsley', quantity: '1 bunch', aisle: 'Produce', sourceRecipeId: 'r-original', sourceRecipeTitle: 'Original recipe' },
+    ]);
+
+    const item = useGroceryStore.getState().itemById(parsley.id)!;
+    expect(item.sourceRecipeId).toBe('r-original');
+    expect(item.sourceRecipeTitle).toBe('Original recipe');
+  });
+
+  it('clears the source of a row still standing on a list when a different recipe also wants it', () => {
     const parsley = makeItem({
       name: 'Parsley', onList: true, aisle: 'Produce',
       sourceRecipeId: 'r-original', sourceRecipeTitle: 'Original recipe',
@@ -2751,9 +2767,92 @@ describe('addFromPlan', () => {
       { name: 'Parsley', quantity: '1 bunch', aisle: 'Produce', sourceRecipeId: 'r-new', sourceRecipeTitle: 'New recipe' },
     ]);
 
+    // Two recipes both want it — crediting either would be a lie, same
+    // reasoning mealPlanGroceries applies to an overlapping week.
     const item = useGroceryStore.getState().itemById(parsley.id)!;
-    expect(item.sourceRecipeId).toBe('r-original');
-    expect(item.sourceRecipeTitle).toBe('Original recipe');
+    expect(item.sourceRecipeId).toBeNull();
+    expect(item.sourceRecipeTitle).toBeNull();
+  });
+
+  it('leaves an uncredited row on the list uncredited when a recipe wants it too', () => {
+    const parsley = makeItem({ name: 'Parsley', onList: true, aisle: 'Produce' });
+    seed([parsley]);
+
+    useGroceryStore.getState().addFromPlan([
+      { name: 'Parsley', quantity: '1 bunch', aisle: 'Produce', sourceRecipeId: 'r-new', sourceRecipeTitle: 'New recipe' },
+    ]);
+
+    const item = useGroceryStore.getState().itemById(parsley.id)!;
+    expect(item.sourceRecipeId).toBeNull();
+    expect(item.sourceRecipeTitle).toBeNull();
+  });
+
+  describe('two recipes wanting the same standing item', () => {
+    it('sums a recipe-owned quantity through mergeQuantities rather than dropping the second need', () => {
+      const onions = makeItem({
+        name: 'Onions', onList: true, quantity: '3', quantityFromRecipe: true,
+        sourceRecipeId: 'r-tacos', sourceRecipeTitle: 'Tacos',
+      });
+      seed([onions]);
+
+      useGroceryStore.getState().addFromPlan([
+        { name: 'Onions', quantity: '2', aisle: 'Produce', sourceRecipeId: 'r-soup', sourceRecipeTitle: 'Soup' },
+      ]);
+
+      const item = useGroceryStore.getState().itemById(onions.id)!;
+      expect(item.quantity).toBe('5');
+      expect(item.quantityFromRecipe).toBe(true);
+      expect(item.sourceRecipeId).toBeNull();
+    });
+
+    it('never folds a second recipe\'s amount into a quantity the user set by hand', () => {
+      const onions = makeItem({
+        name: 'Onions', onList: true, quantity: '1 bag', quantityFromRecipe: false,
+        sourceRecipeId: 'r-tacos', sourceRecipeTitle: 'Tacos',
+      });
+      seed([onions]);
+
+      useGroceryStore.getState().addFromPlan([
+        { name: 'Onions', quantity: '2', aisle: 'Produce', sourceRecipeId: 'r-soup', sourceRecipeTitle: 'Soup' },
+      ]);
+
+      const item = useGroceryStore.getState().itemById(onions.id)!;
+      // The user's own "1 bag" outranks any recipe, same as addByName's rule
+      // for an off-list re-add — but the credit still clears, since it's no
+      // longer honestly Tacos-only.
+      expect(item.quantity).toBe('1 bag');
+      expect(item.sourceRecipeId).toBeNull();
+    });
+
+    it('lists rather than guesses when the two needs don\'t share a unit', () => {
+      const cheese = makeItem({
+        name: 'Cheddar', onList: true, quantity: '8 oz', quantityFromRecipe: true,
+        sourceRecipeId: 'r-mac', sourceRecipeTitle: 'Mac and cheese',
+      });
+      seed([cheese]);
+
+      useGroceryStore.getState().addFromPlan([
+        { name: 'Cheddar', quantity: '1 cup', aisle: 'Dairy', sourceRecipeId: 'r-nachos', sourceRecipeTitle: 'Nachos' },
+      ]);
+
+      const item = useGroceryStore.getState().itemById(cheese.id)!;
+      expect(item.quantity).toBe('8 oz · 1 cup');
+    });
+
+    it('sums quantity but keeps credit when the same recipe repeats the same need', () => {
+      const onions = makeItem({
+        name: 'Onions', onList: true, quantity: '3', quantityFromRecipe: true,
+        sourceRecipeId: 'r-tacos', sourceRecipeTitle: 'Tacos',
+      });
+      seed([onions]);
+
+      const result = useGroceryStore.getState().addFromPlan([
+        { name: 'Onions', quantity: '3', aisle: 'Produce', sourceRecipeId: 'r-tacos', sourceRecipeTitle: 'Tacos' },
+      ]);
+
+      expect(result.alreadyOnList[0].sourceRecipeId).toBe('r-tacos');
+      expect(result.alreadyOnList[0].quantity).toBe('6');
+    });
   });
 });
 

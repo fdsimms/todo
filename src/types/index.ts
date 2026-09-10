@@ -3219,10 +3219,14 @@ export interface GroceryItem {
   onHandUntil: string | null;
   // The recipe this item is on the list for, if any. Set when addFromPlan
   // creates a genuinely new catalog row, and restamped when it re-lists a row
-  // that had fallen off every list — a row still standing on a list keeps its
-  // existing credit (typing a known item, or a recipe re-adding one already
-  // on the list, never relabels it), but a row with no list membership left
-  // has nothing to be credited to except the recipe that just put it back. A
+  // that had fallen off every list — a row with no list membership left has
+  // nothing to be credited to except the recipe that just put it back. A row
+  // still standing on the list keeps its existing credit as far as typing a
+  // known item goes, or a recipe re-adding one it already credited — but a
+  // *different* recipe wanting the same standing row (see
+  // `mergeOnListRecipeNeed` in useGroceryStore) drops this to null rather
+  // than keep crediting just one of the two, same reasoning
+  // `mealPlanGroceries` applies to a week's own overlapping ingredients. A
   // snapshot pair rather than a live id lookup: sourceRecipeTitle is captured
   // at each (re)listing and never refreshed in between, resolve-or-shrug like
   // every other cross-row pointer here — a later recipe rename or delete
