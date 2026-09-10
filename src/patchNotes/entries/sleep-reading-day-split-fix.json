@@ -1,0 +1,4 @@
+{
+  "message": "Fixed a bug where a night's sleep reading from Apple Health could be undercounted if you were still asleep when your day reset time passed, since the night was being split between two days instead of filed under the one it ended in",
+  "date": "2026-09-10"
+}
