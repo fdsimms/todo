@@ -193,6 +193,22 @@ export function resetToMood(openLog = false): void {
   });
 }
 
+/**
+ * Where `dundundun://weight[?log=1]` lands — carried by the weigh-in request,
+ * so the row asking for a number opens the thing that records it.
+ *
+ * Exactly `resetToMood`'s shape above, stamp included: a second tap on the same
+ * row has to re-open the sheet rather than read as no change. Without `log=1`
+ * the link lands on the chart, which is what a tap from anywhere else means.
+ */
+export function resetToWeight(openLog = false): void {
+  if (!navigationRef.isReady()) return;
+  navigationRef.navigate({
+    name: 'Weight',
+    params: openLog ? { openLog: Date.now() } : undefined,
+  });
+}
+
 export function resetToPeople(personId?: string | null): void {
   if (!navigationRef.isReady()) return;
   // The list first, always, so the back chevron on the detail screen has

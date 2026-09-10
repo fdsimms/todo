@@ -772,6 +772,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       quotaIntervalMinutes: task ? (task.quotaIntervalMinutes ?? null) : (initialDraft?.quotaIntervalMinutes ?? null),
       quotaReminders: task ? (task.quotaReminders ?? false) : (initialDraft?.quotaReminders ?? false),
       quotaAlwaysVisible: task ? (task.quotaAlwaysVisible ?? false) : (initialDraft?.quotaAlwaysVisible ?? false),
+      quotaPeriod: task?.quotaPeriod ?? 'day',
       supplyCount: task ? (task.supplyCount ?? null) : null,
       supplyUnit: task ? (task.supplyUnit ?? '') : '',
       supplyRefillCount: task ? (task.supplyRefillCount ?? null) : null,
@@ -816,9 +817,8 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
       chainStepOnSchedule: task?.chainStepOnSchedule ?? false,
       vacationPause: task?.vacationPause ?? false,
       excludeFromSuggestions: task?.excludeFromSuggestions ?? false,
-      showStreak: task?.showStreak ?? false,
       polarity: task?.polarity ?? 'positive',
-      quotaPeriod: task?.quotaPeriod ?? 'day',
+      showStreak: task?.showStreak ?? false,
       streakRequiresWindow: task?.streakRequiresWindow ?? false,
       linkUrl: task ? (task.linkUrl ?? null) : (initialDraft?.linkUrl ?? null),
       completionTimerMinutes: task ? (task.completionTimerMinutes ?? null) : (initialDraft?.completionTimerMinutes ?? null),
@@ -2015,7 +2015,7 @@ export function TaskEditor({ visible, task, initialDraft, onClose }: Props) {
     <EditorSheet
       visible={visible}
       onRequestClose={handleCancel}
-      onShow={() => titleRef.current?.focus()}
+      onShow={() => { if (!task) titleRef.current?.focus(); }}
       rootStyle={styles.root}
       headerStyle={styles.header}
       scrollStyle={styles.scroll}
