@@ -26,6 +26,7 @@ import {
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
+import { InlineAction } from './InlineAction';
 import { SegmentedControl } from './SegmentedControl';
 import { SheetHeaderButton } from './SheetHeaderButton';
 
@@ -79,6 +80,8 @@ export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: 
 
   const addEntry = useFoodLogStore(s => s.addEntry);
   const recipes = useRecipeStore(s => s.recipes);
+  const addRecipe = useRecipeStore(s => s.addRecipe);
+  const addIngredientsFromText = useRecipeStore(s => s.addIngredientsFromText);
 
   const [description, setDescription] = useState('');
   const [estimate, setEstimate] = useState<NutritionEstimate | null>(null);
@@ -86,6 +89,11 @@ export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chosenSlot, setChosenSlot] = useState<MealSlot | null>(slot);
+  // Which recipe this estimate was just filed as, so the button can turn into
+  // a confirmation instead of offering to file the same thing twice. Reset
+  // whenever the estimate itself changes, since a re-estimate or a fresh
+  // description is a different candidate recipe.
+  const [savedRecipeId, setSavedRecipeId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!visible) return;
@@ -95,6 +103,7 @@ export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: 
     setLoading(false);
     setError(null);
     setChosenSlot(slot);
+    setSavedRecipeId(null);
   }, [visible, slot]);
 
   // Real data the user already owns beats a guess, so a matching recipe is
@@ -108,6 +117,7 @@ export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: 
   const run = async (text: string) => {
     setLoading(true);
     setError(null);
+    setSavedRecipeId(null);
     try {
       setEstimate(await estimateMealNutrition(text));
     } catch (e) {
@@ -153,6 +163,32 @@ export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: 
     if (!written) { haptics.error(); return; }
     haptics.success();
     onClose();
+  };
+
+  // Files the description as a recipe made of the lines it names, so it can be
+  // logged again later without re-describing it. Deliberately not the
+  // estimate's own total figures: those are a claim about *this* telling
+  // ("typical for this dish", "a rough guess") and refining an existing
+  // recipe's own nutrition every time it's re-logged is exactly what
+  // recipeNutrition.ts already does from its ingredients — same pipeline
+  // every other recipe goes through, not a second one for this sheet.
+  // "Recipe" here means "a filed batch of ingredients", not "cookable": no
+  // steps are written, same as any recipe nobody's added a method to yet.
+  const handleSaveRecipe = () => {
+    if (!estimate || !description.trim()) return;
+    haptics.tap();
+    const key = groceryNameKey(estimate.label);
+    // The box refuses a name it already has (nameKey is UNIQUE) — land on
+    // that recipe rather than failing, the same call InventRecipeSheet makes.
+    const existing = recipes.find(r => r.nameKey === key);
+    const recipe = existing ?? addRecipe(estimate.label);
+    if (!recipe) { haptics.error(); return; }
+    if (!existing) {
+      const lines = description.split(',').map(s => s.trim()).filter(Boolean).join('\n');
+      if (lines) addIngredientsFromText(recipe.id, lines);
+    }
+    setSavedRecipeId(recipe.id);
+    haptics.success();
   };
 
   const handleCancel = () => {
@@ -253,6 +289,16 @@ export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: 
                   ? 'Every nutrient stated.'
                   : `${shown.length} of ${NUTRIENT_KEYS.length} nutrients stated. The rest are unknown rather than zero.`}
               </Text>
+              {savedRecipeId ? (
+                <Text style={styles.hint}>Saved to your recipe box, so you can log this again later.</Text>
+              ) : (
+                <InlineAction
+                  label="Save as a recipe"
+                  onPress={handleSaveRecipe}
+                  variant="neutral"
+                  accessibilityLabel="Save this meal as a recipe you can log again"
+                />
+              )}
             </View>
           )}
 
@@ -331,7 +377,7 @@ function makeStyles(colors: Colors) {
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: spacing.md,
-      paddingVertical: spacing.sm,
+      paddingVertical: spacing.md,
       borderBottomWidth: border.hairline,
       borderBottomColor: colors.separator,
     },
