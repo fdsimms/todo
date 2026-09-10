@@ -88,6 +88,14 @@ jest.mock('../db/database', () => ({
   dbInsertMoodLog: jest.fn(),
   dbUpdateMoodLog: jest.fn(),
   dbDeleteMoodLog: jest.fn(),
+  // The food log rides the same startup fan-out as the mood log, so its reads
+  // have to be here too or `initialize` throws before it reaches anything this
+  // suite is about.
+  dbGetFoodLogEntries: jest.fn().mockReturnValue([]),
+  dbCountFoodLogEntries: jest.fn().mockReturnValue(0),
+  dbInsertFoodLogEntry: jest.fn(),
+  dbUpdateFoodLogEntry: jest.fn(),
+  dbDeleteFoodLogEntry: jest.fn(),
   dbInsertPersonNote: jest.fn(),
   dbUpdatePersonNote: jest.fn(),
   dbDeletePersonNote: jest.fn(),
@@ -397,6 +405,7 @@ const makeGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
   category: null,
   sortOrder: 1,
   collapsed: false,
+  onToday: false,
   projectId: null,
   ...overrides,
 });

@@ -19,6 +19,11 @@ interface TaskGroupStore {
   createGroup: (title: string, category: string | null, projectId?: string | null) => TaskGroup;
   updateGroup: (id: string, patch: Partial<Pick<TaskGroup, 'title' | 'notes' | 'tags' | 'category' | 'sortOrder' | 'projectId'>>) => void;
   setGroupCollapsed: (id: string, collapsed: boolean) => void;
+  // Called by the Today screen with the ids of every stack currently on it,
+  // visible rows and Later Today alike. A stack that wasn't on Today and now
+  // is arrives collapsed; one that's left is just recorded as gone. See
+  // TaskGroup.onToday.
+  syncTodayPresence: (presentIds: Set<string>) => void;
   getGroupById: (id: string) => TaskGroup | null;
   // Deletion lives in useTaskStore since it needs to touch tasks too; these
   // are the low-level row operations it calls once children are handled.
@@ -45,6 +50,10 @@ export const useTaskGroupStore = create<TaskGroupStore>((set, get) => ({
       category,
       sortOrder: maxOrder + 1,
       collapsed: true,
+      // Today marks it the moment it draws it — a stack made from a member
+      // that's on today is one Today is about to render, not one arriving
+      // from somewhere else, and it's created collapsed either way.
+      onToday: false,
       projectId,
     };
     dbInsertTaskGroup(group);
@@ -66,6 +75,22 @@ export const useTaskGroupStore = create<TaskGroupStore>((set, get) => ({
     const updated = { ...group, collapsed };
     dbUpdateTaskGroup(updated);
     set(s => ({ groups: s.groups.map(g => (g.id === id ? updated : g)) }));
+  },
+
+  syncTodayPresence(presentIds) {
+    const changed: TaskGroup[] = [];
+    const groups = get().groups.map(g => {
+      const present = presentIds.has(g.id);
+      if (present === g.onToday) return g;
+      // Arriving collapses; leaving only records that it left, so the state
+      // the user last set is what a stack that never leaves keeps.
+      const updated: TaskGroup = present ? { ...g, onToday: true, collapsed: true } : { ...g, onToday: false };
+      changed.push(updated);
+      return updated;
+    });
+    if (changed.length === 0) return;
+    for (const g of changed) dbUpdateTaskGroup(g);
+    set({ groups });
   },
 
   getGroupById(id) {

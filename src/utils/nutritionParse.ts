@@ -1,4 +1,4 @@
-import type { FoodNutrition, NutrientKey } from '../types';
+import type { FoodNutrition, FoodPortion, NutrientKey } from '../types';
 
 /**
  * Reading a nutrition panel out of the two product databases `productLookup.ts`
@@ -469,4 +469,40 @@ export function readFdcNutrition(
     sourceId: readSourceText(food.fdcId) ?? (readSourceNumber(food.fdcId) !== null ? String(food.fdcId) : null),
     recordedAt,
   };
+}
+
+/**
+ * The portion table off a FoodData Central *detail* response.
+ *
+ * **A second call, and there is no way round it.** `foodPortions` is not on
+ * `/foods/search`, whose `foodMeasures` comes back empty for whole foods, so a
+ * food's gram weights need `/food/{fdcId}` even though its nutrients arrived
+ * with the search hit. That split is why a name search is two requests: the
+ * search to choose from, the detail for the one food chosen.
+ *
+ * **The label is assembled rather than read from one field.** FoodData Central
+ * puts the useful words in `modifier` ("cup, chopped", "medium (2-1/2\" dia)")
+ * and leaves `measureUnit.name` reading "undetermined" on most rows, but not
+ * all of them, so both are taken and joined. A row naming neither is dropped:
+ * a weight with nothing to call it can never be matched against a recipe line.
+ */
+export function readFdcPortions(food: Record<string, unknown>): FoodPortion[] {
+  const rows = Array.isArray(food.foodPortions) ? food.foodPortions : [];
+  const portions: FoodPortion[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const entry = row as Record<string, unknown>;
+    const unit = entry.measureUnit as Record<string, unknown> | undefined;
+    const unitName = readSourceText(unit?.name);
+    const parts = [
+      unitName && unitName.toLowerCase() !== 'undetermined' ? unitName : null,
+      readSourceText(entry.modifier),
+    ].filter((p): p is string => !!p);
+    const label = parts.join(' ').trim();
+    const amount = readSourceNumber(entry.amount);
+    const grams = readSourceNumber(entry.gramWeight);
+    if (!label || amount === null || amount <= 0 || grams === null || grams <= 0) continue;
+    portions.push({ amount, label, grams });
+  }
+  return portions;
 }

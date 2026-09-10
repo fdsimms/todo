@@ -1168,15 +1168,17 @@ export function GroceryScreen() {
             accessibilityState={{ expanded: !collapsed }}
             accessibilityLabel={`${collapsed ? 'Expand' : 'Collapse'} ${label}`}
           >
-            <Text style={styles.sectionTitle}>
-              {label}
-              {collapsed ? ` (${row.count})` : ''}
-            </Text>
-            <Ionicons
-              name={collapsed ? 'chevron-down' : 'chevron-up'}
-              size={iconSize.sm}
-              color={colors.textTertiary}
-            />
+            <View style={styles.groupSectionHeaderLeft}>
+              <Text style={styles.sectionTitle}>
+                {label}
+                {collapsed ? ` (${row.count})` : ''}
+              </Text>
+              <Ionicons
+                name={collapsed ? 'chevron-down' : 'chevron-up'}
+                size={iconSize.sm}
+                color={colors.textTertiary}
+              />
+            </View>
           </TouchableOpacity>
         );
       }
@@ -1626,10 +1628,14 @@ function makeStyles(colors: Colors) {
     groupSectionHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
       paddingHorizontal: spacing.md + spacing.xs,
       paddingTop: spacing.md,
       paddingBottom: spacing.xs,
+    },
+    groupSectionHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
     },
     cartHeader: {
       flexDirection: 'row',

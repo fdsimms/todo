@@ -435,6 +435,22 @@ export interface TaskGroup {
   // it's why a stack could only ever render above every loose task.
   sortOrder: number;
   collapsed: boolean;      // persisted expand/collapse state
+  // Whether this stack was on the Today screen the last time it was looked at
+  // — one bit, rewritten by Today itself as stacks come and go, and read by
+  // nothing else.
+  //
+  // It exists so an expansion doesn't outlive the stack's stay on Today: a
+  // stack expanded on Monday and finished off leaves the list, and coming
+  // back on Tuesday it would otherwise arrive expanded, dropping its whole
+  // roster into the middle of the day. Going from absent to present collapses
+  // it (see syncTodayPresence), which is the same state a stack is created in.
+  // A stack that never leaves keeps whatever the user set, restarts included.
+  //
+  // This is deliberately *not* the dismissed-for-today stamp that used to live
+  // on this row: it gates nothing, so a wrong value costs one tap on the
+  // chevron rather than a stack that won't come back. Today still renders a
+  // stack exactly while it has a visible child.
+  onToday: boolean;
   // The project this stack was built inside, if it was built inside one.
   //
   // Everywhere else a stack is scoped by its children — which project it
@@ -2957,6 +2973,107 @@ export interface FoodNutrition {
   portions: FoodPortion[];
   /** ISO instant these figures were recorded. */
   recordedAt: string;
+}
+
+/**
+ * One thing eaten, at one moment.
+ *
+ * **The app plans meals and tracks cooking and has had no concept of eating.**
+ * `MealPlanEntry.cookedAt` is when a dish was made; `Leftover.outcome` says a
+ * container ended up empty. Neither says a person consumed a known amount, and
+ * both types say so outright. Cooked and eaten are genuinely different: a
+ * dinner cooked for four, eaten by two, with half going in the fridge, is one
+ * cooking and two servings and one leftover.
+ *
+ * **It is a log, not a task and not a quota.** `MoodLog` is the precedent and
+ * the reasoning transfers whole: there is nothing here to complete, schedule or
+ * defer, and `progressCount`/`targetCount` count toward a target within a day
+ * where this records an arbitrary amount with no target to reach. A 2,000
+ * calorie day is not a `targetCount`, which is clamped to 99, and 340 calories
+ * is not a tap. What it is closest to is a Logbook row.
+ *
+ * **It is also not a `MealPlanEntry`.** That is a square on a calendar and is
+ * about intent, which is why it deliberately has no UNIQUE on `(date, slot)`.
+ * This is about what happened. They point at each other and are not the same
+ * row.
+ */
+export interface FoodLogEntry {
+  id: string;
+  /**
+   * The logical day this counts toward (`2026-08-17`), stamped at write time
+   * from `dayResetTime` rather than derived from `atISO` on read.
+   *
+   * Stored for the reason `MoodLog.dayKey` is stored, and the stakes are higher
+   * here: `dayResetTime` is a setting, so deriving on read means moving your
+   * day boundary to 02:00 silently rewrites which day last month's late-night
+   * eating belongs to, shifting every total the screen shows. And it is
+   * `getLogicalDayKey`, never `dayKeyOf(new Date())` — this is the grace-window
+   * rule from CLAUDE.md and a food log is where it bites hardest, since an 11pm
+   * snack recorded at 12:30am belongs to the evening it happened in.
+   */
+  dayKey: string;
+  /**
+   * The real instant, for ordering within a day and for a Health sample's own
+   * timestamp.
+   *
+   * **This and `dayKey` are allowed to disagree, by design.** HealthKit buckets
+   * by wall clock, and the user's own day boundary is this app's idea rather
+   * than Apple's, so the sample belongs at the moment it happened while the
+   * day's total belongs to the logical day. Do not "fix" one to match the
+   * other.
+   */
+  atISO: string;
+  /** Which meal it was, or null for something eaten outside of one. */
+  slot: MealSlot | null;
+  /**
+   * What was eaten, in words. Always captured and always what renders.
+   *
+   * Resolve-or-shrug, the same call `MealPlanEntry.title` and
+   * `TemplateItem.refTemplateName` make: a deleted recipe leaves an entry that
+   * still says what you ate.
+   */
+  label: string;
+  /**
+   * Where it came from, all optional and any of them free to dangle. None of
+   * them is what renders and none of them cascades on delete.
+   */
+  recipeId: string | null;
+  itemId: string | null;
+  productId: string | null;
+  mealPlanEntryId: string | null;
+  /** The amount as entered — "1 serving", "2 cups", "340g". */
+  quantity: string;
+  /** What that amount resolved to in grams, or null when nothing could resolve it. */
+  grams: number | null;
+  /**
+   * What it was made of, **snapshotted at log time and never re-derived**.
+   *
+   * This is the single most important field on the row. Editing a recipe next
+   * month must not silently rewrite what you ate last Tuesday, and a Health
+   * sample already written could not be rewritten by a later recipe edit
+   * anyway. The app already makes this call in exactly this shape twice over:
+   * `MealPlanEntry.title` is captured at plan time so a renamed recipe does not
+   * rewrite history, and `RecipeComponent.name` does the same. Same reasoning,
+   * higher stakes.
+   *
+   * Its `basis` is always `perServing` here and its figures are the amounts
+   * actually eaten, not per 100g: an entry records one helping rather than a
+   * food, so scaling has already happened by the time it is stored. See
+   * `buildFoodLogNutrition`.
+   */
+  nutrition: FoodNutrition;
+  /**
+   * Health sample identifiers this entry wrote, so an edit or a delete can
+   * retract them.
+   *
+   * **Empty on every row today**, because nothing writes nutrients to Health
+   * yet. It is on the schema from the start rather than added later because the
+   * failure it prevents is the one the whole feature is arranged around: a
+   * typo'd entry that cannot be unwritten from a medical record. See
+   * `docs/arch/health-data.md` on why a bad write costs more than a bad read.
+   */
+  healthSampleIds: string[];
+  createdAt: string;
 }
 
 export interface GroceryItem {

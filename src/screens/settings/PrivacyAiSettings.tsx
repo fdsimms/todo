@@ -316,11 +316,11 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
             entryId="productLookupEnabled"
             icon="barcode-outline"
             iconColor={productLookupEnabled ? colors.accent : undefined}
-            label="Look up scanned barcodes"
-            hint="Finds out what a barcode is so a scanned item arrives named."
+            label="Look up food databases"
+            hint="Sends a scanned barcode, or a food name you search for, to find out what it is."
             toggle={productLookupEnabled}
             onPress={() => setProductLookupEnabled(!productLookupEnabled)}
-            accessibilityLabel="Look up scanned barcodes"
+            accessibilityLabel="Look up food databases"
           />
           {/* Only while lookups are on: a key for a service that isn't being
               called is a field that can't do anything. */}
@@ -332,7 +332,7 @@ export function PrivacyAiSettings({ scrollRef }: Props) {
                 icon="key-outline"
                 iconColor={fdcApiKey ? colors.accent : undefined}
                 label="FoodData Central key"
-                hint="Optional. The USDA's own database of US branded foods, asked first when set."
+                hint="Optional. The USDA's own food database. Asked first for a barcode, and it is the only source for searching a food by name."
               >
                 <TextInput
                   style={[styles.apiKeyInput, { color: colors.text, borderBottomColor: colors.separator }]}

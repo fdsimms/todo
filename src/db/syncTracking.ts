@@ -69,6 +69,12 @@ export const SYNC_TRACKED_TABLES: readonly SyncTable[] = [
   // Ids are base36 from generateId(), and an entry is written once and rarely
   // edited, so last-writer-wins is a no-op on almost every row.
   { name: 'mood_logs', key: ['id'] },
+  // The food log. It has to travel for the reason mood entries do, and the
+  // reading it prevents is starker: a day's totals computed off whichever half
+  // of the record happens to be on the phone in your hand. An entry is written
+  // once and edited rarely, and its nutrition is a snapshot nothing recomputes,
+  // so last-writer-wins is a no-op on almost every row.
+  { name: 'food_logs', key: ['id'] },
   { name: 'person_groups', key: ['id'] },
   { name: 'categories', key: ['id'] },
   { name: 'project_categories', key: ['id'] },

@@ -1705,6 +1705,32 @@ export function TodayScreen() {
       .filter(g => g.children.length > 0);
   }, [taskGroups, childrenByGroupId, upcomingTaskIds]);
 
+  // Which stacks are on Today at all — a visible child or a Later Today one,
+  // since both draw a header on this screen and a stack crossing from one to
+  // the other hasn't arrived from anywhere. Built from visibleTasks rather
+  // than `filtered` on purpose: the priority/effort/reminder filters narrow
+  // what's on screen, not what's on the day, and a stack that dropped out of
+  // a filter would otherwise re-collapse the moment the filter cleared.
+  const todayGroupIds = useMemo(() => {
+    if (!showingToday) return null;
+    const ids = new Set<string>();
+    for (const t of visibleTasks) if (t.groupId) ids.add(t.groupId);
+    for (const t of upcomingTodayTasks) if (t.groupId) ids.add(t.groupId);
+    return ids;
+  }, [showingToday, visibleTasks, upcomingTodayTasks]);
+
+  // A stack that has just arrived on Today opens collapsed (see
+  // TaskGroup.onToday). Held until both stores have loaded — mid-load every
+  // stack looks absent, and recording that would collapse the lot on every
+  // cold launch rather than only on a genuine arrival.
+  const syncTodayPresence = useTaskGroupStore(s => s.syncTodayPresence);
+  const tasksLoaded = useTaskStore(s => s.initialized);
+  const groupsLoaded = useTaskGroupStore(s => s.initialized);
+  useEffect(() => {
+    if (!tasksLoaded || !groupsLoaded || !todayGroupIds) return;
+    syncTodayPresence(todayGroupIds);
+  }, [tasksLoaded, groupsLoaded, todayGroupIds, syncTodayPresence]);
+
   // Same pairing again, for the Inbox lens: stacks with at least one Inbox
   // member, each paired with just those members. Being in a stack isn't one
   // of the things isInboxTask() counts as filed (a stack is a label, not a

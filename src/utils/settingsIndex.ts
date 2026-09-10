@@ -633,8 +633,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['on device', 'offline', 'no key', 'free', 'private', 'foundation models',
       'grocery', 'aisle', 'sort', 'siri'] },
 
-  { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up scanned barcodes', section: 'Barcode lookups',
-    keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy'],
+  { id: 'productLookupEnabled', groupId: 'privacyAi', label: 'Look up food databases', section: 'Barcode lookups',
+    keywords: ['upc', 'ean', 'gtin', 'open food facts', 'pantry', 'unpack', 'network', 'privacy',
+      'nutrition', 'calories', 'usda', 'food data central', 'search food'],
     kitchen: true, simple: true },
   { id: 'fdcApiKey', requires: 'productLookupEnabled', groupId: 'privacyAi', label: 'FoodData Central key', section: 'Barcode lookups',
     keywords: ['usda', 'api', 'barcode', 'scan', 'branded', 'nutrition'], kitchen: true, simple: true },

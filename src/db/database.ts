@@ -1,5 +1,5 @@
 import * as SQLite from 'expo-sqlite';
-import type { Cookbook, DeliverableKind, GeneratedKind, LoggedSymptom, MoodLevel, MoodLog, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
+import type { Cookbook, DeliverableKind, FoodLogEntry, GeneratedKind, LoggedSymptom, MoodLevel, MoodLog, Person, PersonGroup, PersonNote, PersonNoteKind, Task, Category, GroceryItem, GroceryList, GroceryListEntry, GtinLookup, ItemProduct, ItemShopLink, ItemSubLink, Leftover, MealPlanEntry, MealSlot, Recipe, RecipeMealType, RecipeSourceType, RecipeVote, ReceiptStyle, Shop, StoreAlias, TaskGroup, FocusSession, FocusSessionRecord, FocusStep, FocusStepRecord, Project, ProjectCategory, TaskTemplate, TemplateCategory, TemplateContainer, TemplateItem, TemplateItemGroup, TemplateQuestion, TemplateSchedule, TimeOfDay } from '../types';
 import { DEFAULT_NUDGE_CADENCE_DAYS, MEAL_SLOTS, PERSON_NOTE_KINDS, RECIPE_MEAL_TYPES, RECIPE_SOURCE_TYPES, isReceiptStyle } from '../types';
 import { generateId } from '../utils/id';
 import { appendPriceObservation, parsePriceHistory } from '../utils/priceHistory';
@@ -304,6 +304,34 @@ export function initDatabase(): void {
       mood INTEGER,
       symptoms TEXT NOT NULL DEFAULT '[]',
       note TEXT
+    );
+
+    -- One thing eaten, at one moment — see FoodLogEntry in types/index.ts and
+    -- src/utils/foodLog.ts. Same shape call mood_logs makes: several rows a day
+    -- is the normal case, so day_key is an indexed column rather than the key,
+    -- and at_iso is the real instant the day is ordered by.
+    --
+    -- nutrition is NOT NULL because an entry with no figures records nothing a
+    -- total could use — the one thing this table exists to hold. The pointers
+    -- beside it are all nullable and all dangle freely: a deleted recipe leaves
+    -- an entry that still says what was eaten and still has its numbers.
+    CREATE TABLE IF NOT EXISTS food_logs (
+      id TEXT PRIMARY KEY NOT NULL,
+      day_key TEXT NOT NULL,
+      at_iso TEXT NOT NULL,
+      -- Nullable: something eaten outside a meal is an ordinary thing to record,
+      -- and inventing a slot for it would put it in a section it wasn't in.
+      slot TEXT,
+      label TEXT NOT NULL,
+      recipe_id TEXT,
+      item_id TEXT,
+      product_id TEXT,
+      meal_plan_entry_id TEXT,
+      quantity TEXT NOT NULL DEFAULT '',
+      grams REAL,
+      nutrition TEXT NOT NULL,
+      health_sample_ids TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS template_categories (
@@ -675,6 +703,9 @@ export function initDatabase(): void {
     // Every insight read groups by day (see src/utils/moodInsights.ts), and the
     // logging sheet asks for one day's entries on open.
     'CREATE INDEX IF NOT EXISTS idx_mood_logs_day ON mood_logs(day_key)',
+    // Every read this table has is one day's entries or a run of days: the day
+    // view opens on one, and a total is defined over a range of them.
+    'CREATE INDEX IF NOT EXISTS idx_food_logs_day ON food_logs(day_key)',
     // Null for every existing row is exactly right: nothing predating this has
     // been asserted as on hand. See GroceryItem.onHandUntil.
     'ALTER TABLE grocery_items ADD COLUMN on_hand_until TEXT',
@@ -1383,6 +1414,12 @@ export function initDatabase(): void {
     // would mean re-asking the network about every barcode ever scanned. See
     // GtinLookup.nutrition.
     'ALTER TABLE gtin_lookups ADD COLUMN nutrition TEXT',
+    // 0 on every existing stack, so the first Today render after upgrading
+    // treats each one that's on the list as newly arrived and collapses it
+    // once. That's the same one-time flattening task_groups_collapsed_default
+    // did above, and it's the honest reading: nothing recorded whether these
+    // stacks were on Today before now. See TaskGroup.onToday.
+    'ALTER TABLE task_groups ADD COLUMN on_today INTEGER NOT NULL DEFAULT 0',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -1725,6 +1762,10 @@ export const BACKUP_TABLES = [
   // Points at nothing at all — a mood entry is a standalone record of a moment,
   // so its position here is only about keeping related rows together.
   'mood_logs',
+  // The food log, for the same reason: standalone rows nothing else points at.
+  // Its pointers all run the other way and all dangle freely, so it has no
+  // ordering requirement against the tables above it.
+  'food_logs',
   'task_groups',
   'grocery_shops',
   // Before grocery_items: an entry points at one, so restoring the lists first
@@ -2923,6 +2964,7 @@ function rowToTaskGroup(row: Record<string, unknown>): TaskGroup {
     category: (row.category as string) ?? null,
     sortOrder: row.sort_order as number,
     collapsed: Boolean(row.collapsed),
+    onToday: Boolean(row.on_today),
     projectId: (row.project_id as string) ?? null,
   };
 }
@@ -2937,22 +2979,22 @@ export function dbInsertTaskGroup(group: TaskGroup): void {
     // completed_at is deliberately absent: it held the old "stack dismissed
     // for today" stamp, which no longer exists (see TaskGroup). The column
     // stays on the table for installs that already have it, and stays null.
-    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, project_id) VALUES (?,?,?,?,?,?,?,?)',
+    'INSERT INTO task_groups (id, title, notes, tags, category, sort_order, collapsed, on_today, project_id) VALUES (?,?,?,?,?,?,?,?,?)',
     [
       group.id, group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
-      group.projectId ?? null,
+      group.onToday ? 1 : 0, group.projectId ?? null,
     ]
   );
 }
 
 export function dbUpdateTaskGroup(group: TaskGroup): void {
   db.runSync(
-    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, project_id=? WHERE id=?',
+    'UPDATE task_groups SET title=?, notes=?, tags=?, category=?, sort_order=?, collapsed=?, on_today=?, project_id=? WHERE id=?',
     [
       group.title, group.notes, JSON.stringify(group.tags),
       group.category ?? null, group.sortOrder, group.collapsed ? 1 : 0,
-      group.projectId ?? null, group.id,
+      group.onToday ? 1 : 0, group.projectId ?? null, group.id,
     ]
   );
 }
@@ -4131,6 +4173,19 @@ export function dbRepointStoreAliases(fromId: string, intoId: string): void {
   db.runSync('UPDATE grocery_store_aliases SET item_id = ? WHERE item_id = ?', [intoId, fromId]);
 }
 
+/**
+ * Points one alias row, by id, back at an item — `mergeItems`' undo, which
+ * has to move back exactly the aliases the merge moved and nothing else
+ * `intoId` has since picked up on its own. `dbRepointStoreAliases` moves
+ * everything currently on an id, which is right for the merge itself but too
+ * broad for reversing it; `dbSetStoreAlias` upserts on `(shop_id, raw_key)`
+ * and bumps `hit_count`, which is right for a confirmation and wrong for
+ * restoring one exactly.
+ */
+export function dbSetStoreAliasItemId(id: string, itemId: string): void {
+  db.runSync('UPDATE grocery_store_aliases SET item_id = ? WHERE id = ?', [itemId, id]);
+}
+
 // ─── Barcode lookups ────────────────────────────────────────────────────────
 
 function rowToGtinLookup(row: Record<string, unknown>): GtinLookup {
@@ -4640,6 +4695,116 @@ export function dbUpdateMoodLog(log: MoodLog): void {
 
 export function dbDeleteMoodLog(id: string): void {
   db.runSync('DELETE FROM mood_logs WHERE id = ?', [id]);
+}
+
+/**
+ * One food log entry, mapped off its row.
+ *
+ * **A row whose nutrition blob will not parse is dropped**, which is the
+ * opposite call `rowToMoodLog` makes one table over and is deliberate: a mood
+ * entry with a corrupt mood still has its symptoms and its note, where an entry
+ * here with no figures contributes nothing to the only thing the table is read
+ * for. Keeping it would put a row on the day view that renders as food eaten
+ * and adds nothing to the day's total, which is a total that is quietly wrong.
+ * The caller drops the null; see `dbGetFoodLogEntries`.
+ *
+ * Everything else degrades rather than failing the row: an unrecognised slot
+ * reads as none, a bad sample-id blob as none written.
+ */
+function rowToFoodLogEntry(row: Record<string, unknown>): FoodLogEntry | null {
+  const nutrition = parseFoodNutrition(row.nutrition as string | null);
+  if (!nutrition) return null;
+  const rawSlot = row.slot as string | null;
+  let healthSampleIds: string[] = [];
+  try {
+    const parsed = JSON.parse((row.health_sample_ids as string) ?? '[]');
+    if (Array.isArray(parsed)) healthSampleIds = parsed.filter((v): v is string => typeof v === 'string');
+  } catch {
+    // Same shrug the other JSON columns take. Losing the ids costs the ability
+    // to retract this entry's samples, which is worse than losing the entry
+    // only if the entry is gone too.
+  }
+  return {
+    id: row.id as string,
+    dayKey: row.day_key as string,
+    atISO: row.at_iso as string,
+    slot: MEAL_SLOTS.find(s => s === rawSlot) ?? null,
+    label: row.label as string,
+    recipeId: (row.recipe_id as string) || null,
+    itemId: (row.item_id as string) || null,
+    productId: (row.product_id as string) || null,
+    mealPlanEntryId: (row.meal_plan_entry_id as string) || null,
+    quantity: (row.quantity as string) ?? '',
+    grams: typeof row.grams === 'number' && Number.isFinite(row.grams) ? row.grams : null,
+    nutrition,
+    healthSampleIds,
+    createdAt: row.created_at as string,
+  };
+}
+
+/**
+ * The entries on a run of logical days, oldest instant first within the range.
+ *
+ * Scoped to a range rather than read wholesale, which is where this parts
+ * company with `dbGetAllMoodLogs`: several rows a day forever is a great many
+ * more rows than a mood log accumulates, each carrying a nutrition blob, and
+ * every screen that wants them wants one day or one week. The keys sort
+ * lexically, so the range is a plain comparison — the same read
+ * `dbGetMealPlanEntries` makes over the same key format.
+ */
+export function dbGetFoodLogEntries(startKey: string, endKey: string): FoodLogEntry[] {
+  const rows = db.getAllSync<Record<string, unknown>>(
+    'SELECT * FROM food_logs WHERE day_key >= ? AND day_key <= ? ORDER BY at_iso ASC',
+    [startKey, endKey]
+  );
+  return rows.map(rowToFoodLogEntry).filter((e): e is FoodLogEntry => e !== null);
+}
+
+export function dbInsertFoodLogEntry(entry: FoodLogEntry): void {
+  db.runSync(
+    `INSERT INTO food_logs (id, day_key, at_iso, slot, label, recipe_id, item_id, product_id,
+       meal_plan_entry_id, quantity, grams, nutrition, health_sample_ids, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      entry.id, entry.dayKey, entry.atISO, entry.slot, entry.label,
+      entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
+      entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
+      JSON.stringify(entry.healthSampleIds), entry.createdAt,
+    ]
+  );
+}
+
+export function dbUpdateFoodLogEntry(entry: FoodLogEntry): void {
+  db.runSync(
+    `UPDATE food_logs SET day_key=?, at_iso=?, slot=?, label=?, recipe_id=?, item_id=?,
+       product_id=?, meal_plan_entry_id=?, quantity=?, grams=?, nutrition=?, health_sample_ids=?
+     WHERE id=?`,
+    [
+      entry.dayKey, entry.atISO, entry.slot, entry.label,
+      entry.recipeId, entry.itemId, entry.productId, entry.mealPlanEntryId,
+      entry.quantity, entry.grams, serializeFoodNutrition(entry.nutrition),
+      JSON.stringify(entry.healthSampleIds), entry.id,
+    ]
+  );
+}
+
+export function dbDeleteFoodLogEntry(id: string): void {
+  db.runSync('DELETE FROM food_logs WHERE id = ?', [id]);
+}
+
+/**
+ * How many entries the log holds in total, across every day.
+ *
+ * Counted rather than derived from the loaded window, which is the whole
+ * reason this exists: the store holds one day at a time, so `entries.length`
+ * answers "did you eat anything today" where simplified mode is asking "is
+ * there a history here at all". Reading the second off the first would hide
+ * the screen, and its months of entries with it, on any day nobody had logged
+ * yet. See `screenShown`.
+ */
+export function dbCountFoodLogEntries(): number {
+  const row = db.getFirstSync<{ n: number }>('SELECT COUNT(*) AS n FROM food_logs');
+  return row?.n ?? 0;
 }
 
 export function dbGetMealPlanEntry(id: string): MealPlanEntry | null {

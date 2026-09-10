@@ -328,6 +328,9 @@ exports.
 | whether a thing got used up or went bad | `src/utils/itemDisposal.ts` — see `docs/arch/groceries.md` |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
 | what a food is made of, and reading a label panel out of a barcode source | `src/utils/foodNutrition.ts` (the record) + `src/utils/nutritionParse.ts` (the two sources' units, which disagree) |
+| finding a plain food ("onion", "butter") in a food database by name | `src/services/foodSearch.ts` + `src/utils/foodSearchMatch.ts` (ranks and refuses; the portion table needs a second request) |
+| turning "2 cups chopped onion" into grams | `src/utils/ingredientGrams.ts` — every weight comes from the food's own portion table, never a global density |
+| a recipe's nutrition estimate, and the line under its cost | `src/utils/recipeNutrition.ts` — `recipeCost.ts` with grams in place of prices, plus a per-nutrient coverage floor |
 | reading a receipt's text on the device before it goes to the model | `src/utils/receiptOcr.ts` + `modules/todo-vision-bridge` |
 | remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
@@ -377,15 +380,15 @@ exports.
 **Read narrowly.** 51 files are over 1,000 lines, 33 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (8.2k), `components/TaskEditor.tsx` (5.4k), `db/database.ts` (5.3k),
-`types/index.ts` (5.2k), `store/useGroceryStore.ts` (4.9k), `screens/TodayScreen.tsx` (4.6k),
+`store/useTaskStore.ts` (8.3k), `db/database.ts` (5.4k), `components/TaskEditor.tsx` (5.4k),
+`types/index.ts` (5.3k), `store/useGroceryStore.ts` (5.1k), `screens/TodayScreen.tsx` (4.6k),
 `components/TaskItem.tsx` (4.3k), `store/useSettingsStore.ts` (3.5k),
-`utils/demoSeed.ts` (3.4k), `components/QuickAddModal.tsx` (3.1k).
+`utils/demoSeed.ts` (3.5k), `components/QuickAddModal.tsx` (3.1k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **285 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **289 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
@@ -750,6 +753,18 @@ Two counts exist and they mean different things, so keep them labelled: the rost
 **`TaskGroup.sortOrder` is in the same number space as `Task.sortOrder`** — a stack holds a slot in its category section exactly like a loose task, and `makeCategoryGroups` merges the two by that number. It used to be a per-category 1..M ranking of stacks alone, with stacks always emitted ahead of the section's tasks, which made "task above stack" unrepresentable: the drag animated and the rebuilt layout put the stack back on top. So `resolveDrop` hands out one running rank across tasks *and* stacks, and `reorderWithCategoryUpdates` persists those ranks verbatim rather than renumbering the tasks 1..N — the gaps where the stacks sit are the point. (Group *children* still carry a private within-stack 1..K order, set by `reorderGroupChildren`; that space is unrelated.)
 
 **A stack has no completion state of its own — stored, derived, or dismissed.** Today renders one exactly while it has a visible child (`visibleGroupItems` in `TodayScreen`: `children.length > 0`, and `children` comes from `visibleTasks`), so it leaves in the same commit its last row does and returns whenever a member is visible again. Two designs preceded that and both are gone: a `TaskGroup.completedAt` "user dismissed this for today" stamp (the stack sat on Today saying "all 6 done for today" until tapped — an extra tap per stack per day to acknowledge what the finished rows already said), and before that, clearing that stamp on every event that could give the stack live work, which took four call sites and still missed one. The `completed_at` column is still on `task_groups`, unread and never written. **Don't reintroduce a hidden-for-today flag** — riding on `visibleTasks` is what makes the header and its rows leave together, since a just-ticked row stays in `visibleTasks` for the completion hold (`completionHoldIds`) and the header rides that window out with it.
+
+**`TaskGroup.onToday` is a presence bit, not that flag coming back.** A stack arriving on Today
+collapses (`syncTodayPresence`, written from `TodayScreen`'s own render of what's on the day), so
+an expansion doesn't outlive the stack's stay: one expanded on Monday and finished off would
+otherwise come back on Tuesday expanded, dropping its whole roster into the middle of the day. A
+stack that never leaves keeps whatever the user set, restarts included. What makes it safe is that
+it gates *nothing* — Today still renders a stack exactly while it has a visible child, and a wrong
+value costs one tap on the chevron rather than a stack that won't come back. Presence is read off
+`visibleTasks` and `upcomingTodayTasks` rather than the filtered list, so a stack the priority
+filter hid hasn't left, and it counts Later Today as being on Today, so crossing from one to the
+other isn't an arrival. The write waits for both stores to report `initialized`: mid-load every
+stack looks absent, and recording that would re-collapse the lot on every cold launch.
 
 Cascades (`completeGroup`, `deferGroup`, `pinGroup`, `deleteGroup`) are roster-scoped so they can't mutate completed history. `deleteGroup({cascade:true})` deletes the live members and merely unfiles the past occurrences — deleting a stack must not erase its Logbook and Stats history.
 

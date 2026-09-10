@@ -4,7 +4,7 @@ import {
 } from '../utils/navHubs';
 import { SIMPLE_HIDDEN_SCREENS } from '../utils/simpleMode';
 
-const FULL = { kitchenEnabled: true, simpleMode: false, counts: { stacks: 3, templates: 2, people: 4, mood: 5 } };
+const FULL = { kitchenEnabled: true, simpleMode: false, counts: { stacks: 3, templates: 2, people: 4, mood: 5, foodLog: 6 } };
 const routesOf = (rows: ReturnType<typeof visibleMenuRows>) => rows.map(rowEntryRoute);
 
 describe('the menu as data', () => {
@@ -136,9 +136,9 @@ describe('the subtitle under a hub row', () => {
   it('stays honest when simplified mode takes members away', () => {
     const row = visibleMenuRows({ ...FULL, simpleMode: true }).find(
       r => r.kind === 'hub' && r.hub.id === 'history');
-    // Stats is a lens and goes unconditionally; Mood is a content screen and
-    // stays only because FULL.counts has entries in it.
-    expect(row && row.kind === 'hub' && hubSubtitle(row.hub)).toBe('Logbook, Mood, Archived');
+    // Stats is a lens and goes unconditionally; Mood and the food log are
+    // content screens and stay only because FULL.counts has entries in both.
+    expect(row && row.kind === 'hub' && hubSubtitle(row.hub)).toBe('Logbook, Mood, Food log, Archived');
   });
 });
 

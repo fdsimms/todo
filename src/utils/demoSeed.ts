@@ -9,6 +9,7 @@ import { useProjectCategoryStore } from '../store/useProjectCategoryStore';
 import { usePersonStore } from '../store/usePersonStore';
 import { usePersonGroupStore } from '../store/usePersonGroupStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -34,6 +35,7 @@ import {
   WEIGH_IN_TITLE,
   weighInNotes,
 } from './weightTasks';
+import { scalePanelToAmount } from './foodLog';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
@@ -1336,12 +1338,68 @@ export function seedDemoData(): void {
     seedMealPlanAndFridge(recipes, today);
   }
 
+  // Rides the same switch as the rest of the kitchen, because everything it can
+  // log lives behind it: a food log with no food to point at is a screen that
+  // can only ever be empty.
+  if (useSettingsStore.getState().kitchenEnabled) seedFoodLog(today);
+
   seedPeople(today);
   // Last, and unlike the people it needs no generator pass afterwards: both
   // mood generators ship off, so a demo relying on them would show the feature
   // only to somebody who had already found it. The history itself is what
   // there is to see.
   seedMoodLog(today);
+}
+
+/**
+ * A day of eating, so the food log reads as a feature the app has.
+ *
+ * **Yesterday rather than today**, which is deliberate on both counts: a day
+ * with entries is what shows the totals, the meal sections and the coverage
+ * clause all working, and leaving today empty means the empty state and the
+ * "log something" path are the first thing a demo actually meets.
+ *
+ * The figures come from the same catalog panels the rest of the seed already
+ * lays down (`seedGroceries` gives Potatoes, Butter and Milk their FoodData
+ * Central rows), scaled through `scalePanelToAmount` exactly as a real entry
+ * is. Nothing is hand-written: an entry whose numbers were typed here rather
+ * than measured could drift from what the same amount of the same food
+ * actually works out to, which is the one thing a demo of this feature must
+ * not show.
+ *
+ * **One entry deliberately states no fibre.** That is the ordinary case rather
+ * than a thin seed, and it is what puts a real coverage clause on the day's
+ * totals: a figure built from two of three entries reads as the day's unless
+ * something says otherwise. See foodLogTotals.
+ */
+function seedFoodLog(today: Date): void {
+  const { addEntry } = useFoodLogStore.getState();
+  const { items } = useGroceryStore.getState();
+  const yesterday = subDays(today, 1);
+
+  const meals: Array<{ name: string; quantity: string; slot: MealSlot; hour: number }> = [
+    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8 },
+    { name: 'Potatoes', quantity: '250 g', slot: 'dinner', hour: 19 },
+    { name: 'Butter', quantity: '1 tbsp', slot: 'dinner', hour: 19 },
+  ];
+
+  for (const meal of meals) {
+    const item = items.find(i => i.name === meal.name);
+    if (!item?.nutrition) continue;
+    const built = scalePanelToAmount(item.nutrition, meal.quantity, null);
+    if (!built) continue;
+    const at = new Date(yesterday);
+    at.setHours(meal.hour, 0, 0, 0);
+    addEntry({
+      label: item.name,
+      quantity: meal.quantity,
+      grams: built.grams,
+      nutrition: built.nutrition,
+      slot: meal.slot,
+      itemId: item.id,
+      at,
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -2232,6 +2290,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     dismissDisposalOffer,
     setExpiresAt,
     setItemNutrition,
+    setProductNutrition,
     setShelfLifeDays,
     setUseUpTask,
     setVarietyOfKey,
@@ -2386,6 +2445,35 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // Already the preference by virtue of being added first — set explicitly so
   // the seed says what it means rather than depending on insertion order.
   if (arnolds) setPreferredProduct(bread, arnolds.id);
+
+  /**
+   * The bakery loaf's panel, typed in by hand — the case no database answers.
+   *
+   * **Put on the brandless one deliberately.** A store's own seeded sourdough
+   * has no barcode either database knows, and Open Food Facts is crowd-sourced
+   * and patchy outside Europe, so the only way this food ever gets figures is
+   * somebody copying them off the tag. `source: 'manual'` is what says so, and
+   * it is a different claim from the manufacturer's declared label on the
+   * Dave's Killer box below: without one of each in the seed, the distinction
+   * the record is built around has nothing showing it.
+   *
+   * No portion table, which is honest rather than thin: a bakery tag prints a
+   * serving and no gram weights per stated portion, so a recipe line written
+   * as "2 slices" of this cannot become a weight. `servingGrams` is the one
+   * number it does state, and it is what a per-serving basis needs.
+   */
+  if (sourdough) {
+    setProductNutrition(sourdough.id, {
+      basis: 'perServing',
+      servingGrams: 50,
+      servingText: '1 slice (50g)',
+      amounts: { calorieKcal: 130, proteinG: 5, carbsG: 25, fatG: 1.5, fiberG: 2, sodiumMg: 260 },
+      portions: [],
+      source: 'manual',
+      sourceId: null,
+      recordedAt: subDays(today, 12).toISOString(),
+    });
+  }
 
   // A box with the barcode that names it, which is invisible until something
   // uses it: the demo has no camera, so without a seeded link "scanning this

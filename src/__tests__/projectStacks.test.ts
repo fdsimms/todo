@@ -9,6 +9,7 @@ const group = (id: string, overrides: Partial<TaskGroup> = {}): TaskGroup => ({
   category: null,
   sortOrder: 1,
   collapsed: true,
+  onToday: false,
   projectId: null,
   ...overrides,
 });

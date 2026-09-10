@@ -1,4 +1,5 @@
 import {
+  describeFoodPanel,
   nutritionFor,
   parseFoodNutrition,
   serializeFoodNutrition,
@@ -239,5 +240,28 @@ describe('the vocabulary lines up with the health rules', () => {
 
   it('lists each key exactly once', () => {
     expect(new Set(NUTRIENT_KEYS).size).toBe(NUTRIENT_KEYS.length);
+  });
+});
+
+describe('describeFoodPanel', () => {
+  it('leads with calories, which is what somebody is looking for', () => {
+    expect(describeFoodPanel(nutrition({ amounts: { calorieKcal: 77, proteinG: 2 } })))
+      .toBe('77 cal per 100g, 2 nutrients');
+  });
+
+  it('names the basis a drink is measured in', () => {
+    expect(describeFoodPanel(nutrition({ basis: 'per100ml', amounts: { calorieKcal: 46 } })))
+      .toBe('46 cal per 100ml, 1 nutrient');
+  });
+
+  it('falls back to a count when the food reports no calories at all', () => {
+    // Real rows do this: FoodData Central's Foundation entry for butter lists
+    // 130 analysed nutrients with no energy among them.
+    expect(describeFoodPanel(nutrition({ amounts: { fatG: 81, satFatG: 51 } })))
+      .toBe('2 nutrients');
+  });
+
+  it('is null for a food with no record, which is not a food containing nothing', () => {
+    expect(describeFoodPanel(null)).toBeNull();
   });
 });

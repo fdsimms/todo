@@ -43,6 +43,7 @@ export interface NavContentCounts {
   templates: number;
   people?: number;
   mood?: number;
+  foodLog?: number;
 }
 
 export type NavHubId = 'kitchen' | 'organize' | 'history';
@@ -118,6 +119,7 @@ const HISTORY_HUB: NavHub = {
     { route: 'Stats', label: 'Stats', keywords: ['numbers', 'charts', 'streaks', 'progress'] },
     { route: 'Mood', label: 'Mood', keywords: ['feelings', 'symptoms', 'how i feel'] },
     { route: 'Weight', label: 'Weight', keywords: ['scale', 'kg', 'lb', 'pounds', 'body', 'mass', 'weigh'] },
+    { route: 'FoodLog', label: 'Food log', keywords: ['ate', 'eaten', 'calories', 'diary', 'nutrition', 'macros'] },
     { route: 'Archived', label: 'Archived', keywords: ['paused', 'filed', 'put away'] },
   ],
 };

@@ -208,8 +208,16 @@ async function fetchFromOff(gtin: string, now: Date): Promise<ProductRecord | nu
  */
 type SourceFetch = (gtin: string, now: Date) => Promise<ProductRecord | null>;
 
-/** Shared GET, with the timeout and the abort mapping every source wants. */
-async function getJson(url: string, headers: Record<string, string>): Promise<unknown | null> {
+/**
+ * Shared GET, with the timeout and the abort mapping every source wants.
+ *
+ * Exported for `foodSearch.ts`, which asks the same service under the same
+ * switch and would otherwise carry a second copy of the timeout, the abort
+ * mapping and the 404-is-an-answer rule. Three near-identical copies of a
+ * fetch wrapper is the drift `SheetHeaderButton` exists to undo, one layer
+ * down.
+ */
+export async function getJson(url: string, headers: Record<string, string>): Promise<unknown | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;

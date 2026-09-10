@@ -1,6 +1,7 @@
 import {
   convertNutrientAmount,
   readFdcNutrition,
+  readFdcPortions,
   readOffNutrition,
   readSourceNumber,
 } from '../utils/nutritionParse';
@@ -384,5 +385,63 @@ describe('readFdcNutrition', () => {
       foodNutrients: [null, 'nope', { nutrientId: 'x' }, fdcNutrient(1003, 'G', 5)],
     };
     expect(readFdcNutrition(messy, RECORDED_AT)!.amounts).toEqual({ proteinG: 5 });
+  });
+});
+
+describe('readFdcPortions', () => {
+  /** Rows copied from FoodData Central's /food/170000, "Onions, raw". */
+  const ONION_DETAIL = {
+    foodPortions: [
+      { amount: 1, gramWeight: 160, modifier: 'cup, chopped', measureUnit: { name: 'undetermined' } },
+      { amount: 10, gramWeight: 60, modifier: 'rings', measureUnit: { name: 'undetermined' } },
+      { amount: 1, gramWeight: 110, modifier: 'medium (2-1/2" dia)', measureUnit: { name: 'undetermined' } },
+    ],
+  };
+
+  it('reads the detail endpoint\'s portion table', () => {
+    expect(readFdcPortions(ONION_DETAIL)).toEqual([
+      { amount: 1, label: 'cup, chopped', grams: 160 },
+      { amount: 10, label: 'rings', grams: 60 },
+      { amount: 1, label: 'medium (2-1/2" dia)', grams: 110 },
+    ]);
+  });
+
+  it('joins a real measure unit onto the modifier', () => {
+    // Most rows read "undetermined" and put the words in `modifier`, but not
+    // all of them, so both are taken.
+    const withUnit = {
+      foodPortions: [{ amount: 1, gramWeight: 240, modifier: 'chopped', measureUnit: { name: 'cup' } }],
+    };
+    expect(readFdcPortions(withUnit)[0].label).toBe('cup chopped');
+  });
+
+  it('drops a row with nothing to call it', () => {
+    // A weight with no label can never be matched against a recipe line.
+    const unnamed = {
+      foodPortions: [
+        { amount: 1, gramWeight: 50, modifier: '', measureUnit: { name: 'undetermined' } },
+        { amount: 1, gramWeight: 160, modifier: 'cup', measureUnit: { name: 'undetermined' } },
+      ],
+    };
+    expect(readFdcPortions(unnamed)).toEqual([{ amount: 1, label: 'cup', grams: 160 }]);
+  });
+
+  it('drops a row that weighs nothing or states no count', () => {
+    const bad = {
+      foodPortions: [
+        { amount: 0, gramWeight: 50, modifier: 'slice' },
+        { amount: 1, gramWeight: 0, modifier: 'slice' },
+        { amount: 1, gramWeight: 9, modifier: 'slice, thin' },
+      ],
+    };
+    expect(readFdcPortions(bad)).toEqual([{ amount: 1, label: 'slice, thin', grams: 9 }]);
+  });
+
+  it('answers empty for a food that states no portions', () => {
+    // Ordinary, not a failure: a food with no table still answers every line
+    // already written as a mass.
+    expect(readFdcPortions({})).toEqual([]);
+    expect(readFdcPortions({ foodPortions: [] })).toEqual([]);
+    expect(readFdcPortions({ foodPortions: 'nope' })).toEqual([]);
   });
 });

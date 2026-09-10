@@ -1,0 +1,4 @@
+{
+  "message": "A grocery item can now be matched to a food in the USDA's database, which records what it contains and what its usual portions weigh. That is what lets a recipe written in cups and counts be turned into a nutrition estimate. Results are offered as a list to pick from, never chosen for you, and it needs a FoodData Central key in Settings",
+  "date": "2026-09-10"
+}

@@ -35,6 +35,7 @@ import {
   dbGetAllItemProducts,
   dbGetAllStoreAliases,
   dbSetStoreAlias,
+  dbSetStoreAliasItemId,
   dbGetGtinLookup,
   dbSetItemProduct,
   dbSetProductGtin,
@@ -441,9 +442,12 @@ interface GroceryStore extends UndoHistoryActions {
    * merge renameItem's own doc comment defers to. `fromId`'s history folds
    * into `intoId` field by field (see the implementation for exactly how),
    * `fromId` is deleted, and the pair's recipes/remembered aisle re-key onto
-   * `intoId` the same way a rename does. Not reversible by shake-to-undo —
-   * the merge sheet confirms first instead. False when either id is unknown
-   * or they're the same row.
+   * `intoId` the same way a rename does. Registers shake-to-undo like almost
+   * everything else in this store — the merge sheet confirms first as well,
+   * the same double coverage `clearList` and `finishShopping` get, since a
+   * merge folds enough state that a confirm before and an undo after both
+   * earn their place. False when either id is unknown or they're the same
+   * row.
    */
   mergeItems: (fromId: string, intoId: string) => boolean;
   setNote: (id: string, note: string) => void;
@@ -828,6 +832,16 @@ interface GroceryStore extends UndoHistoryActions {
    * to whichever of the two rows has an answer. See FoodNutrition.
    */
   setItemNutrition: (id: string, nutrition: FoodNutrition | null) => void;
+  /**
+   * One box's own panel, which outranks the catalog row's — the specific pot
+   * of yogurt rather than yogurt.
+   *
+   * Separate from `updateProduct` rather than another field on its patch,
+   * because that one validates a brand/variant pair and can refuse the whole
+   * write over a clash. A panel has nothing to clash with, and losing typed
+   * nutrition to a duplicate-name refusal would be a confusing way to fail.
+   */
+  setProductNutrition: (id: string, nutrition: FoodNutrition | null) => void;
   /**
    * The per-item answer to "does this get a use-up task" — true, false, or
    * null to hand the question back to the setting. Reconciles immediately, so
@@ -2314,10 +2328,34 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
 
   mergeItems(fromId, intoId) {
     if (fromId === intoId) return false;
-    const { items, itemShops, itemSubs, itemProducts, aisleOverrides } = get();
+    const { items, itemShops, itemSubs, itemProducts, aisleOverrides, storeAliases, cartHoldIds } = get();
     const fromItem = items.find(i => i.id === fromId);
     const intoItem = items.find(i => i.id === intoId);
     if (!fromItem || !intoItem) return false;
+
+    // The undo snapshot, taken before anything below writes. `fromItem` and
+    // `intoItem` above are already exactly this for the item rows themselves
+    // — the store's own objects, from before any patch touches them — so
+    // only the *other* rows this merge folds need their own slice pulled out
+    // ahead of time. The two-directional filter on subs is deliberate: a
+    // link the loser sits on either end of is a link the cascade below takes
+    // with it.
+    const beforeVarietyRepoints = items.filter(
+      i => i.id !== fromId && i.id !== intoId && i.varietyOfKey === fromItem.nameKey
+    );
+    const beforeProducts = itemProducts.filter(p => p.itemId === fromId || p.itemId === intoId);
+    const beforeShopLinks = itemShops.filter(l => l.itemId === fromId || l.itemId === intoId);
+    const beforeSubs = itemSubs.filter(l => l.itemId === fromId || l.subItemId === fromId);
+    const beforeStoreAliases = storeAliases.filter(a => a.itemId === fromId);
+    const wasFromIdCartHeld = cartHoldIds.includes(fromId);
+    // Same filter `remapIngredientKeyIn` runs internally — capturing it here,
+    // before that call, is what lets undo restore these rows exactly rather
+    // than remapping `intoItem.nameKey` back to `fromItem.nameKey`, which
+    // would also catch recipes that already used the survivor's key before
+    // the merge.
+    const beforeRecipesTouched = useRecipeStore
+      .getState()
+      .recipes.filter(r => r.ingredients.some(i => i.nameKey === fromItem.nameKey));
 
     const onList = fromItem.onList || intoItem.onList;
     let quantity: string | null;
@@ -2603,6 +2641,78 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     // fromId's own "Use up X" task would otherwise keep pointing at a
     // catalog row that no longer exists.
     dropUseUpTask(fromId);
+
+    const finalRetargetedSubKeys = new Set(finalRetargetedSubs.map(l => `${l.itemId}|${l.subItemId}`));
+    const beforeStoreAliasesById = new Map(beforeStoreAliases.map(a => [a.id, a]));
+    get().setLastAction({
+      label: `Merged "${fromItem.name}" into "${intoItem.name}"`,
+      destructive: true,
+      redo: () => {
+        get().mergeItems(fromId, intoId);
+      },
+      undo: () => {
+        // Item rows: fromId's was deleted outright, so it needs a fresh
+        // INSERT; intoId's still exists, so a plain UPDATE puts it back.
+        dbInsertGroceryItem(fromItem);
+        dbUpdateGroceryItem(intoItem);
+        for (const row of beforeVarietyRepoints) dbUpdateGroceryItem(row);
+
+        // Products and shop links: the whole slice for both rows, exactly as
+        // it stood. Both db writers upsert by the row's own identity, which
+        // both reinstates whatever the cascade deleted and puts a folded row
+        // back the way it was — nothing merged here ever minted a fresh id.
+        for (const product of beforeProducts) dbSetItemProduct(product);
+        for (const product of beforeProducts) {
+          if (product.gtin) dbSetProductGtin(product.id, product.gtin);
+        }
+        for (const link of beforeShopLinks) dbSetItemShopLink(link);
+
+        // Substitutes: undo just the pair this merge actually wrote — the
+        // links it retargeted onto intoId — rather than trying to reverse
+        // survivingSubs/finalRetargetedSubs by hand, which would also have
+        // to know which collisions were dropped rather than written.
+        for (const link of finalRetargetedSubs) dbDeleteItemSubLink(link.itemId, link.subItemId);
+        for (const link of beforeSubs) dbSetItemSubLink(link);
+
+        // Store aliases: point each of fromId's own phrases back one row at
+        // a time — dbRepointStoreAliases moves everything currently on an
+        // id, which would also drag along whatever intoId has picked up on
+        // its own since the merge.
+        for (const alias of beforeStoreAliases) dbSetStoreAliasItemId(alias.id, fromId);
+
+        if (remembered) dbSetGroceryAisleOverrides(aisleOverrides);
+
+        const byId = new Map<string, GroceryItem>([
+          [intoItem.id, intoItem],
+          ...beforeVarietyRepoints.map((row): [string, GroceryItem] => [row.id, row]),
+        ]);
+        set(s => ({
+          items: [fromItem, ...s.items.map(i => byId.get(i.id) ?? i)],
+          itemProducts: [
+            ...beforeProducts,
+            ...s.itemProducts.filter(p => p.itemId !== fromId && p.itemId !== intoId),
+          ],
+          itemShops: [
+            ...beforeShopLinks,
+            ...s.itemShops.filter(l => l.itemId !== fromId && l.itemId !== intoId),
+          ],
+          itemSubs: [
+            ...beforeSubs,
+            ...s.itemSubs.filter(l => !finalRetargetedSubKeys.has(`${l.itemId}|${l.subItemId}`)),
+          ],
+          storeAliases: s.storeAliases.map(a => beforeStoreAliasesById.get(a.id) ?? a),
+          cartHoldIds: wasFromIdCartHeld ? [...s.cartHoldIds, fromId] : s.cartHoldIds,
+          aisleOverrides: remembered ? aisleOverrides : s.aisleOverrides,
+        }));
+
+        // Recipes and the use-up task are bridged by nameKey/sourceId rather
+        // than by a row this store owns, so they go back through their own
+        // stores rather than the set() above.
+        useRecipeStore.getState().restoreRecipes(beforeRecipesTouched);
+        reconcileUseUpTask(fromItem);
+      },
+    });
+
     return true;
   },
 
@@ -3296,6 +3406,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const updated = { ...item, nutrition };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setProductNutrition(id, nutrition) {
+    const product = get().itemProducts.find(p => p.id === id);
+    if (!product) return;
+    const updated: ItemProduct = { ...product, nutrition };
+    dbSetItemProduct(updated);
+    set(s => ({ itemProducts: s.itemProducts.map(p => (p.id === id ? updated : p)) }));
   },
 
   setVarietyOfKey(id, key) {

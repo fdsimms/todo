@@ -44,6 +44,8 @@ import {
   dbDeleteCategory,
   dbGetAllTaskGroups,
   dbInsertTaskGroup,
+  dbUpdateTaskGroup,
+  dbDeleteTaskGroup,
   dbTableColumns,
   dbExportTables,
   dbReplaceAllData,
@@ -1786,6 +1788,35 @@ describe('Projects', () => {
   });
 });
 
+describe('Task groups', () => {
+  const stack = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
+    id: 'g-round-trip',
+    title: 'Kitchen refresh',
+    notes: '',
+    tags: [],
+    category: null,
+    sortOrder: 1,
+    collapsed: false,
+    onToday: false,
+    projectId: null,
+    ...overrides,
+  });
+
+  it('round-trips onToday through insert and update', () => {
+    dbInsertTaskGroup(stack({ onToday: true }));
+    expect(dbGetAllTaskGroups()[0].onToday).toBe(true);
+
+    dbUpdateTaskGroup(stack({ onToday: false, collapsed: true }));
+    const [saved] = dbGetAllTaskGroups();
+    expect(saved.onToday).toBe(false);
+    expect(saved.collapsed).toBe(true);
+
+    // The describe below asserts on the whole task_groups table, so put this
+    // row back the way it found it.
+    dbDeleteTaskGroup('g-round-trip');
+  });
+});
+
 describe('Categories', () => {
   const makeTaskGroup = (overrides: Partial<TaskGroup> = {}): TaskGroup => ({
     id: 'group-1',
@@ -1795,6 +1826,7 @@ describe('Categories', () => {
     category: null,
     sortOrder: 1,
     collapsed: false,
+    onToday: false,
     projectId: null,
     ...overrides,
   });

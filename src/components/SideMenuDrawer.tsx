@@ -28,6 +28,7 @@ import { useSettingsStore } from '../store/useSettingsStore';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
 import {
   hubSubtitle, menuDestinations, menuSearchTerms, rowEntryRoute, searchMenu, visibleMenuRows,
@@ -94,13 +95,15 @@ export function SideMenuDrawer({ visible, onClose, onNavigate, onOpenSettings, a
   const templateCount = useTemplateStore(s => s.templates.length);
   const peopleCount = usePersonStore(s => s.people.length);
   const moodCount = useMoodStore(s => s.logs.length);
+  // The whole history, not today's rows — see useFoodLogStore.totalCount.
+  const foodLogCount = useFoodLogStore(s => s.totalCount);
 
   const [query, setQuery] = useState('');
   const menuOptions = useMemo(() => ({
     kitchenEnabled,
     simpleMode,
-    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount },
-  }), [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount, moodCount]);
+    counts: { stacks: stackCount, templates: templateCount, people: peopleCount, mood: moodCount, foodLog: foodLogCount },
+  }), [kitchenEnabled, simpleMode, stackCount, templateCount, peopleCount, moodCount, foodLogCount]);
   const menuRows = useMemo(() => visibleMenuRows(menuOptions), [menuOptions]);
   const terms = useMemo(() => menuSearchTerms(query), [query]);
   const results = useMemo(

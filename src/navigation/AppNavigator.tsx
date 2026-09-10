@@ -17,6 +17,7 @@ import { SearchScreen } from '../screens/SearchScreen';
 import { ProjectsScreen } from '../screens/ProjectsScreen';
 import { LogbookScreen } from '../screens/LogbookScreen';
 import { StatsScreen } from '../screens/StatsScreen';
+import { FoodLogScreen } from '../screens/FoodLogScreen';
 import { MoodScreen } from '../screens/MoodScreen';
 import { WeightScreen } from '../screens/WeightScreen';
 import { MoodHistoryScreen } from '../screens/MoodHistoryScreen';
@@ -57,6 +58,7 @@ import { NAV_HUBS, NAV_MENU_ROWS } from '../utils/navHubs';
 import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useTemplateStore } from '../store/useTemplateStore';
 import { usePersonStore } from '../store/usePersonStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useMoodStore } from '../store/useMoodStore';
 
 const Tab = createBottomTabNavigator();
@@ -250,6 +252,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Stats" component={StatsScreen} options={HIDDEN} />
       <Tab.Screen name="Mood" component={MoodScreen} options={HIDDEN} />
       <Tab.Screen name="Weight" component={WeightScreen} options={HIDDEN} />
+      <Tab.Screen name="FoodLog" component={FoodLogScreen} options={HIDDEN} />
       <Tab.Screen name="Stuck" component={StuckScreen} options={HIDDEN} />
       <Tab.Screen name="Reminders" component={RemindersScreen} options={HIDDEN} />
       <Tab.Screen name="Archived" component={ArchivedScreen} options={HIDDEN} />
@@ -278,6 +281,7 @@ function initialScreenFromSettings(): string {
     templates: useTemplateStore.getState().templates.length,
     people: usePersonStore.getState().people.length,
     mood: useMoodStore.getState().logs.length,
+    foodLog: useFoodLogStore.getState().totalCount,
   })) return 'Today';
   return lastVisitedScreen;
 }
