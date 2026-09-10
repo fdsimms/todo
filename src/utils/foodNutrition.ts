@@ -98,7 +98,7 @@ function readPortions(value: unknown): FoodPortion[] {
     const amount = readAmount(raw.amount);
     const grams = readAmount(raw.grams);
     if (!label || amount === null || amount <= 0 || grams === null || grams <= 0) continue;
-    portions.push({ amount, label, grams });
+    portions.push(raw.custom === true ? { amount, label, grams, custom: true } : { amount, label, grams });
   }
   return portions;
 }
@@ -165,6 +165,27 @@ export function parseFoodNutrition(raw: string | null | undefined): FoodNutritio
  */
 export function serializeFoodNutrition(nutrition: FoodNutrition | null): string | null {
   return nutrition ? JSON.stringify(nutrition) : null;
+}
+
+/**
+ * A food's portion table with one self-weighed row added.
+ *
+ * The one place a `FoodPortion` is constructed by hand rather than read off a
+ * source, so it validates the same way `readPortions` refuses a bad stored
+ * row — a zero or negative `amount`/`grams`, or a blank label, is a row that
+ * converts nothing or divides by it, not a portion this app has ever allowed
+ * through the parse. `custom: true` is stamped unconditionally, since a row
+ * built here is by definition somebody's own weighing, never a source's.
+ */
+export function addCustomPortion(
+  nutrition: FoodNutrition,
+  label: string,
+  amount: number,
+  grams: number,
+): FoodNutrition | null {
+  const trimmed = label.trim();
+  if (!trimmed || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(grams) || grams <= 0) return null;
+  return { ...nutrition, portions: [...nutrition.portions, { amount, label: trimmed, grams, custom: true }] };
 }
 
 /**

@@ -2516,7 +2516,15 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     servingGrams: null,
     servingText: null,
     amounts: { calorieKcal: 77, proteinG: 2, carbsG: 17.5, fatG: 0.1, fiberG: 2.1, sugarG: 0.8, sodiumMg: 6 },
-    portions: [{ amount: 1, label: 'cup, diced', grams: 150 }],
+    // FDC states the diced cup; the medium-potato row beside it is the other
+    // kind, a weighing somebody did themselves and saved for next time — see
+    // FoodPortion.custom. Without one of each in the seed, a self-weighed
+    // portion reads identically to the source's own and the distinction the
+    // field exists for has nothing showing it.
+    portions: [
+      { amount: 1, label: 'cup, diced', grams: 150 },
+      { amount: 1, label: 'medium potato', grams: 173, custom: true },
+    ],
     source: 'fdc',
     sourceId: '170026',
     recordedAt: subDays(today, 30).toISOString(),

@@ -1,4 +1,5 @@
 import {
+  addCustomPortion,
   describeFoodPanel,
   nutritionFor,
   parseFoodNutrition,
@@ -90,6 +91,20 @@ describe('parseFoodNutrition', () => {
       expect(withPortions!.portions).toEqual([
         { amount: 1, label: 'cup, chopped', grams: 160 },
         { amount: 10, label: 'rings', grams: 60 },
+      ]);
+    });
+
+    it('carries a self-weighed row\'s `custom` flag through, and never invents one', () => {
+      const parsed = parseFoodNutrition(stored({
+        ...nutrition(),
+        portions: [
+          { amount: 1, label: 'cup', grams: 240, custom: true },
+          { amount: 1, label: 'cup, chopped', grams: 160 },
+        ],
+      }));
+      expect(parsed!.portions).toEqual([
+        { amount: 1, label: 'cup', grams: 240, custom: true },
+        { amount: 1, label: 'cup, chopped', grams: 160 },
       ]);
     });
 
@@ -193,6 +208,42 @@ describe('serializeFoodNutrition', () => {
 
   it('writes something parse can read', () => {
     expect(parseFoodNutrition(serializeFoodNutrition(nutrition()))).toEqual(nutrition());
+  });
+});
+
+describe('addCustomPortion', () => {
+  it('appends a self-weighed row and marks it custom', () => {
+    const base = nutrition({ portions: [{ amount: 1, label: 'container', grams: 150 }] });
+    const updated = addCustomPortion(base, 'cup', 1, 240);
+    expect(updated!.portions).toEqual([
+      { amount: 1, label: 'container', grams: 150 },
+      { amount: 1, label: 'cup', grams: 240, custom: true },
+    ]);
+    // Everything else about the record is untouched.
+    expect(updated!.amounts).toBe(base.amounts);
+    expect(updated!.source).toBe(base.source);
+  });
+
+  it('divides through the amount actually weighed, not just "1"', () => {
+    // "2 cups weighed 480g" is a fact about one cup, same as a stated
+    // FoodPortion row where `amount` isn't always 1 ("10 rings = 60g").
+    const updated = addCustomPortion(nutrition(), 'cup', 2, 480);
+    expect(updated!.portions).toEqual([{ amount: 2, label: 'cup', grams: 480, custom: true }]);
+  });
+
+  it('refuses a blank label, and a zero or negative amount or weight', () => {
+    expect(addCustomPortion(nutrition(), '  ', 1, 240)).toBeNull();
+    expect(addCustomPortion(nutrition(), 'cup', 0, 240)).toBeNull();
+    expect(addCustomPortion(nutrition(), 'cup', -1, 240)).toBeNull();
+    expect(addCustomPortion(nutrition(), 'cup', 1, 0)).toBeNull();
+    expect(addCustomPortion(nutrition(), 'cup', 1, -240)).toBeNull();
+    expect(addCustomPortion(nutrition(), 'cup', NaN, 240)).toBeNull();
+  });
+
+  it('trims the label', () => {
+    expect(addCustomPortion(nutrition(), '  cup  ', 1, 240)!.portions).toEqual([
+      { amount: 1, label: 'cup', grams: 240, custom: true },
+    ]);
   });
 });
 
