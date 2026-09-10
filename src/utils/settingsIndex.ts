@@ -605,9 +605,9 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['meal plan', 'away', 'trip', 'pause'], kitchen: true },
   { id: 'calendarReviewTimeSegment', groupId: 'generated', label: 'Show the task', section: 'Review tomorrow\'s calendar',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when'] },
-  { id: 'moodLogTimeSegment', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
+  { id: 'moodLogTimeSegments', groupId: 'generated', label: 'Show the task', section: 'Daily mood check-in',
     keywords: ['morning', 'afternoon', 'evening', 'night', 'time of day', 'hold back', 'when',
-      'mood', 'feeling'] },
+      'mood', 'feeling', 'multiple', 'several', 'twice'] },
   // Spans both use-up generators, so it sits below the loop rather than inside
   // either one's extras — and so its section can't be one generator's name.
   { id: 'useUpTaskCap', groupId: 'generated', label: 'Limit use-up tasks', section: 'Automatic tasks',

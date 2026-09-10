@@ -7,6 +7,7 @@ import {
   dayMoodAverage,
   daySymptoms,
   hasLogOnDay,
+  hasLoggedSince,
   logsOnDay,
   moodEmoji,
   moodLabel,
@@ -190,6 +191,20 @@ describe('reading a day', () => {
       log({ id: 'b', contextTags: ['vacation', 'Travel'] }),
     ];
     expect(dayContextTags(day, '2026-08-17')).toEqual(['Travel', 'Vacation']);
+  });
+});
+
+describe('logging since an instant', () => {
+  it('answers the narrower "was this slot logged" question a day full of entries needs', () => {
+    const entries = [log({ id: 'a', loggedAt: '2026-08-17T08:00:00.000Z' })];
+    // A morning entry doesn't answer for an evening slot that starts later.
+    expect(hasLoggedSince(entries, '2026-08-17T18:00:00.000Z')).toBe(false);
+    expect(hasLoggedSince(entries, '2026-08-17T06:00:00.000Z')).toBe(true);
+  });
+
+  it('counts an entry made exactly at the threshold', () => {
+    const entries = [log({ id: 'a', loggedAt: '2026-08-17T18:00:00.000Z' })];
+    expect(hasLoggedSince(entries, '2026-08-17T18:00:00.000Z')).toBe(true);
   });
 });
 

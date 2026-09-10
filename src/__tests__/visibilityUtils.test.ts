@@ -32,6 +32,8 @@ import {
   sameTimeSegments,
   isCompletionOnTime,
   isCategoryScheduledDay,
+  currentTimeSegment,
+  timeSegmentThreshold,
 } from '../utils/visibilityUtils';
 import { registerTaskSource } from '../utils/blockerRegistry';
 import { registerAwayProjectSource } from '../utils/awayDates';
@@ -2134,6 +2136,58 @@ describe('sameTimeSegments', () => {
   // nothing guarantees the order two equal sets were written in.
   it('ignores order', () => {
     expect(sameTimeSegments(['morning', 'night'], ['night', 'morning'])).toBe(true);
+  });
+});
+
+// ─── currentTimeSegment ─────────────────────────────────────────────────────
+// The mood log's own reader: not "is this task hidden" (getVisibleAt above)
+// but "which slot is the clock in right now", for a generator holding several
+// check-ins across one day.
+
+describe('currentTimeSegment', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW); // 10:00 AM
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('returns null for an empty list', () => {
+    expect(currentTimeSegment([])).toBeNull();
+  });
+
+  it('returns null when none of the segments have started yet', () => {
+    expect(currentTimeSegment(['afternoon', 'evening'])).toBeNull();
+  });
+
+  it('returns the one segment that has started', () => {
+    expect(currentTimeSegment(['morning', 'evening'])).toBe('morning');
+  });
+
+  it('returns the latest of several that have started, not the earliest', () => {
+    // 10 AM: morning (06:00) has started, afternoon and evening have not.
+    expect(currentTimeSegment(['morning', 'afternoon', 'evening'])).toBe('morning');
+    jest.setSystemTime(new Date(2025, 5, 10, 19, 0, 0)); // 7 PM
+    expect(currentTimeSegment(['morning', 'afternoon', 'evening'])).toBe('evening');
+  });
+
+  it('is order-insensitive, like sameTimeSegments', () => {
+    jest.setSystemTime(new Date(2025, 5, 10, 19, 0, 0));
+    expect(currentTimeSegment(['evening', 'afternoon', 'morning'])).toBe('evening');
+  });
+});
+
+describe('timeSegmentThreshold', () => {
+  it('returns the instant a segment starts on the current logical day', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(NOW);
+    const t = timeSegmentThreshold('evening');
+    expect(t.getHours()).toBe(18);
+    expect(t.getMinutes()).toBe(0);
+    expect(t.getDate()).toBe(10);
+    jest.useRealTimers();
   });
 });
 
