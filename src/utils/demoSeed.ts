@@ -2256,10 +2256,16 @@ function seedRecipes(): DemoRecipes {
   setEstimatedMinutes(tea.id, 10);
   // A serving suggestion, not something the pitcher needs — the escape hatch
   // from "everything on the recipe is something to buy" (RecipeIngredient.optional).
-  // Seeded because it's otherwise invisible: without one, both add-to-list
-  // sheets read exactly as they did before the field existed.
+  // Also excluded from the recipe's own nutrition total: a few sprigs on top
+  // of a garnish don't move the figures, and that's a fact about this line in
+  // this dish rather than about mint itself (RecipeIngredient.excludeFromNutrition).
+  // Seeded because both are otherwise invisible: without one, every reader —
+  // both add-to-list sheets, the recipe page's nutrition sheet — reads exactly
+  // as it did before the fields existed.
   const mintSprigs = addIngredient(tea.id, 'Mint sprigs');
-  if (mintSprigs) updateIngredient(tea.id, mintSprigs.id, { purpose: 'garnish', optional: true });
+  if (mintSprigs) {
+    updateIngredient(tea.id, mintSprigs.id, { purpose: 'garnish', optional: true, excludeFromNutrition: true });
+  }
 
   // --- Dinners -------------------------------------------------------------
   const stirFry = newRecipe('Weeknight chicken stir-fry');
