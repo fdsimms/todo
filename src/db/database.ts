@@ -4131,6 +4131,19 @@ export function dbRepointStoreAliases(fromId: string, intoId: string): void {
   db.runSync('UPDATE grocery_store_aliases SET item_id = ? WHERE item_id = ?', [intoId, fromId]);
 }
 
+/**
+ * Points one alias row, by id, back at an item — `mergeItems`' undo, which
+ * has to move back exactly the aliases the merge moved and nothing else
+ * `intoId` has since picked up on its own. `dbRepointStoreAliases` moves
+ * everything currently on an id, which is right for the merge itself but too
+ * broad for reversing it; `dbSetStoreAlias` upserts on `(shop_id, raw_key)`
+ * and bumps `hit_count`, which is right for a confirmation and wrong for
+ * restoring one exactly.
+ */
+export function dbSetStoreAliasItemId(id: string, itemId: string): void {
+  db.runSync('UPDATE grocery_store_aliases SET item_id = ? WHERE id = ?', [itemId, id]);
+}
+
 // ─── Barcode lookups ────────────────────────────────────────────────────────
 
 function rowToGtinLookup(row: Record<string, unknown>): GtinLookup {

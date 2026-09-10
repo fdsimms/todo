@@ -41,11 +41,10 @@ interface Props {
  * references fold into it, and it's deleted. See useGroceryStore.mergeItems
  * for the field-by-field reconciliation this hands off to.
  *
- * No shake-to-undo here, unlike almost everything else in the grocery list —
- * a merge is confirmed instead, the same discipline GroceryItemSheet's own
- * "Forget this item" uses, and for the same reason: there is no undo
- * anywhere in this store, so a destructive action is behind a confirm rather
- * than a swipe.
+ * Confirmed *and* shake-to-undoable — a merge folds enough state that both
+ * earn their place, the same double coverage clearing the list or finishing
+ * a trip get. The confirm is what "Forget this item" uses on its own for a
+ * plainer delete; this one also gets the safety net.
  */
 export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMerged }: Props) {
   const colors = useColors();
@@ -109,8 +108,8 @@ export function MergeItemSheet({ visible, itemId, initialPickedId, onClose, onMe
   const confirmKeep = (survivor: GroceryItem, loser: GroceryItem) => {
     confirmDelete({
       title: `Merge ${loser.name} into ${survivor.name}?`,
-      message: `${loser.name}’s purchases, store links and recipes combine into ${survivor.name}. ` +
-        `${loser.name} is deleted, and this can’t be undone.`,
+      message: `${loser.name}’s purchases, store links and recipes combine into ${survivor.name}, ` +
+        `and ${loser.name} is deleted.`,
       confirmLabel: 'Merge',
       onConfirm: () => {
         mergeItems(loser.id, survivor.id);
