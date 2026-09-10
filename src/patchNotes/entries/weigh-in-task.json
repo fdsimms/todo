@@ -1,0 +1,4 @@
+{
+  "message": "The app can now ask you to weigh in. Turn on \"Ask for a weigh-in\" under generated tasks and it adds one task when Apple Health has had nothing recorded for a while, with the gap you choose. It stays quiet on any day you already stepped on the scale, and its link opens the sheet that records one.",
+  "date": "2026-09-10"
+}

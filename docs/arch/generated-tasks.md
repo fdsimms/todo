@@ -22,7 +22,7 @@ doesn't already cover.
 
 ---
 
-## Generated tasks — the nineteen things that write a task unattended
+## Generated tasks — the twenty things that write a task unattended
 
 Each meal of the day becomes a task, a perishable grocery and an ageing leftover each become "Use up
 X", an opt-in weekly trigger becomes "Plan meals for…", a project that has gone quiet becomes
@@ -48,6 +48,11 @@ staleness rule is the creation predicate re-run, rather than a list of mutations
 the section below. `birthdayGift` is the eleventh, and costs no rules module of its own at all —
 it lives beside `birthday` in the same file and reuses every rule but the lead time and the title.
 See `docs/arch/people.md`'s "The birthday-gift task" for why it ships off where `birthday` ships on.
+
+`weighIn` is the twentieth, and it is the only one whose trigger is the
+*absence* of data. See its own section at the end of this file: it reads
+Apple Health the way `health` does and is deliberately not part of it, because
+one reacts to a reading and the other asks for one.
 
 `moodLog` and `moodNudge` are the sixteenth and seventeenth, and they share a
 file (`src/utils/moodTasks.ts`) and a firing pass the way `birthday` and
@@ -834,3 +839,63 @@ particular the one this generator would be worst to get wrong.
   absence.
 - **It does not gate on vacation mode**, following `weather` and `screenTime`.
   A short night is sunscreen, not work.
+
+## `weighIn` — the twentieth, and the only one that fires on missing data
+
+Every other generator here fires because something happened: a date arrived, a
+row changed, a reading crossed a rule. This one fires because nothing did.
+`checkWeighInTasks` reads the last few days of body mass out of Apple Health
+and writes "Record your weight" only when none of those days has a reading on
+it. Rules live in `src/utils/weightTasks.ts`, the write path and the chart it
+points at in `docs/arch/health-data.md`.
+
+**It is deliberately not part of `health`, despite reading the same store.**
+That generator watches a metric the user wrote a threshold for and fires when
+the reading crosses it: the data exists, and the task is a response to it. This
+one is the mirror image, and folding them together would put "tell me when my
+sodium is high" and "remind me to weigh myself" behind one switch. They are two
+different permissions, the same way `healthReadEnabled` and `healthTasks`
+already are. `moodLog` is the generator it actually resembles, which is why it
+sits beside that one in the registry rather than beside `health`.
+
+**The gap trigger is the whole design, and it is better than a cadence.** A
+daily check-in that fires whether or not you already logged needs a separate
+"did you log today" suppression, which is what `checkMoodTasks` does. Here the
+absence *is* the trigger, so the suppression is free: somebody who weighs
+themselves every morning unprompted never sees this task, and somebody who has
+drifted for a fortnight sees exactly one. `weighInEveryDays` sets the window,
+from a day to a month.
+
+Four things worth not re-deriving:
+
+- **It is the only async generator pass**, because it takes a Health read of
+  its own rather than judging a snapshot some foreground effect already filled
+  in. `useHealthSync` refreshes today's readings on every foreground, but the
+  weight series is 180 days and belongs to the Weight screen alone, so
+  `readRecentWeights` asks for a short window and stores nothing. The
+  maintenance list fires it and moves on; nothing is ordered after it.
+- **A null read and an empty window are different answers, and conflating them
+  is the bug to avoid.** Null means there was no way to ask (not iOS, no
+  Health, demo mode) and is evidence of nothing. `[]` means Health was asked
+  and had nothing, which is exactly the case that should write a task. The pass
+  returns on null *without spending `weighInLastDayKey`*, so a failed read is
+  retried on the next foreground instead of silently answering "no readings"
+  for the rest of the day.
+- **It needs three switches on, and that is not one too many.**
+  `weighInTasks` is the preference; `healthReadEnabled` is what lets the pass
+  find out whether to ask; `healthWriteEnabled` is what lets the sheet record
+  the answer. A task asking for a weight that the sheet would then refuse to
+  save is worse than no task, so the pass checks all three. The two Health
+  switches are permissions over a medical record and this one is a preference
+  about a task list, so collapsing them would mean granting a data permission
+  by turning on a reminder.
+- **It pauses on vacation, unlike `moodLog` beside it.** A mood log is a
+  personal record that a week away is the interesting part of. Hunting for
+  scales in a hotel is a chore, and standing chores down is what vacation mode
+  is for.
+
+The row carries `dundundun://weight?log=1` so its link button opens the sheet
+that answers it, and `completeWeighInTaskForToday` ticks the request off when a
+weight is saved. Both are copied from `moodLog`, and the reason is sharper
+here: a mood entry recorded late is still roughly true, while a weight that
+was never typed is a number nobody can reconstruct afterwards.

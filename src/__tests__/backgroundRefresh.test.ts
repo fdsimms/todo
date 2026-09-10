@@ -45,6 +45,12 @@ const mockTaskState = {
   checkHealthTasks: mockRecord('checkHealthTasks'),
   checkMoodTasks: mockRecord('checkMoodTasks'),
   checkWeekendNudgeTasks: mockRecord('checkWeekendNudgeTasks'),
+  // Sync-shaped like every other mock here even though the real pass is
+  // async (`checkWeighInTasks(): Promise<void>`) — the caller wraps it as
+  // `() => { void tasks().checkWeighInTasks(); }`, so what runs synchronously
+  // during the pass is this call itself, and that's the only part this file
+  // is testing.
+  checkWeighInTasks: mockRecord('checkWeighInTasks'),
   checkBirthdayTasks: mockRecord('checkBirthdayTasks'),
   checkBirthdayGiftTasks: mockRecord('checkBirthdayGiftTasks'),
   checkReachOutTasks: mockRecord('checkReachOutTasks'),
@@ -129,7 +135,7 @@ describe('runBackgroundRefresh', () => {
       'checkMealPlanNudge', 'checkProjectReviewTasks', 'checkMealSlotTasks',
       'checkPantryReviewTasks', 'checkPantryCheckTasks', 'checkMealShortfallTasks',
       'checkCalendarReviewTasks', 'checkWeatherTasks', 'checkScreenTimeTasks', 'checkHealthTasks',
-      'checkMoodTasks', 'checkWeekendNudgeTasks',
+      'checkMoodTasks', 'checkWeekendNudgeTasks', 'checkWeighInTasks',
       'checkBirthdayTasks', 'checkBirthdayGiftTasks', 'checkReachOutTasks',
       'reconcileAllLeftoverTasks', 'checkScheduledTemplates',
     ];

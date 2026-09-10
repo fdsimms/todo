@@ -17,8 +17,8 @@
       "bundleIdentifier": "com.fdsimms.dundundun",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "NSHealthShareUsageDescription": "Lets dundundun read things like your step count, sleep and nutrition for today, so it can show them beside your tasks and check them against rules you set. Nothing is sent anywhere, and no copy is kept on this phone.",
-        "NSHealthUpdateUsageDescription": "Lets dundundun log a glass of water to Health when you complete a task you've set up to record it. Nothing else is ever written.",
+        "NSHealthShareUsageDescription": "Lets dundundun read things like your step count, sleep and nutrition for today, and your weight over time, so it can show them beside your tasks and check them against rules you set. Nothing is sent anywhere, and no copy is kept on this phone.",
+        "NSHealthUpdateUsageDescription": "Lets dundundun log a glass of water to Health when you complete a task you've set up to record it, and save a weight when you record one. Nothing else is ever written.",
         "NSAlarmKitUsageDescription": "Used to ring reminders as system alarms that break through silent mode.",
         "NSSupportsLiveActivities": true,
         "NSSiriUsageDescription": "Lets you add a task to dundundun by voice, including from the Action Button, without opening the app."

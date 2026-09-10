@@ -29,6 +29,12 @@ import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
 import { awayNoonIso } from './awayDates';
 import { generatedBy } from './generatedTasks';
+import {
+  DEFAULT_WEIGH_IN_EVERY_DAYS,
+  WEIGH_IN_LINK_URL,
+  WEIGH_IN_TITLE,
+  weighInNotes,
+} from './weightTasks';
 import { scalePanelToAmount } from './foodLog';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
@@ -1057,6 +1063,26 @@ export function seedDemoData(): void {
     dueDate: today.toISOString(),
     category: 'Health',
     ...generatedBy('health', healthSourceId(dayKeyOf(today), sleepRule.id)),
+  });
+
+  // The weigh-in request, seeded directly for the same reason the health task
+  // above it is: `checkWeighInTasks` refuses outright in demo mode, and it
+  // could not fire here anyway, since its trigger is a Health read that the
+  // gate declines. Seeding the row is how the feature is visible at all.
+  //
+  // Its notes are the real ones, which say nothing was recorded — true of the
+  // demo database by construction, and the honest thing to show: what cannot
+  // be seeded is a *weight*, because this app stores none (Health is the
+  // record) and inventing one would put a number about a body in a fiction.
+  // Same line the reading above draws, one step further along.
+  useSettingsStore.getState().setWeighInTaskCategory('Health');
+  addTask({
+    title: WEIGH_IN_TITLE,
+    notes: weighInNotes(DEFAULT_WEIGH_IN_EVERY_DAYS),
+    dueDate: today.toISOString(),
+    linkUrl: WEIGH_IN_LINK_URL,
+    category: 'Health',
+    ...generatedBy('weighIn', dayKeyOf(today)),
   });
 
   // A health-target task, the fifth kind. Seeded so the shape is visible even

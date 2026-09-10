@@ -274,6 +274,11 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'planning', 'project', 'generated', 'automatic'],
   weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
     'location', 'temperature', 'generated', 'automatic'],
+  // No bare 'weigh': already a substring of this generator's own label
+  // ("Ask for a weigh-in"). 'scale' and 'weight' are the words somebody
+  // actually types, and neither is in the label.
+  weighIn: ['scale', 'scales', 'weight', 'body', 'mass', 'kg', 'lb', 'pounds',
+    'health', 'track', 'log', 'generated', 'automatic'],
 };
 
 /**
@@ -453,10 +458,14 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['count', 'reading', 'walked'] },
   { id: 'healthCategory', groupId: 'health', label: 'Show steps under', section: 'Apple Health',
     keywords: ['category', 'section', 'today', 'where', 'hide', 'nowhere'] },
-  { id: 'healthWrite', groupId: 'health', label: 'Log water to Health', section: 'Log to Health',
-    keywords: ['hydration', 'drink', 'write', 'healthkit'] },
+  { id: 'healthWrite', groupId: 'health', label: 'Log to Health', section: 'Log to Health',
+    keywords: ['hydration', 'drink', 'water', 'weight', 'write', 'healthkit'] },
   { id: 'healthWriteAccess', groupId: 'health', label: 'Water-write access', section: 'Log to Health',
     keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing'] },
+  { id: 'healthWeightWriteAccess', groupId: 'health', label: 'Weight-write access', section: 'Log to Health',
+    keywords: ['permission', 'allow', 'authorize', 'grant', 'sharing', 'body', 'mass'] },
+  { id: 'weightUnit', groupId: 'health', label: 'Weight unit', section: 'Weight',
+    keywords: ['kg', 'kilograms', 'lb', 'pounds', 'scale', 'body', 'mass', 'metric', 'imperial'] },
 
   // ── Tasks & projects ──────────────────────────────────────────────────────
   // In the order the screen renders them, which the registry's own comment
@@ -597,6 +606,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['birthday', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'weekendNudgeLeadDays', groupId: 'generated', label: 'Show the task', section: 'Nudge for an empty weekend',
     keywords: ['weekend', 'thursday', 'friday', 'days before', 'lead', 'early', 'notice', 'warning'] },
+  { id: 'weighInEveryDays', groupId: 'generated', label: 'Ask after', section: 'Ask for a weigh-in',
+    keywords: ['weight', 'weigh', 'scale', 'days', 'how often', 'cadence', 'gap', 'interval'] },
   { id: 'birthdayGiftLeadDays', groupId: 'generated', label: 'Show the task', section: 'Birthday gift reminders',
     keywords: ['birthday', 'gift', 'present', 'days before', 'lead', 'early', 'notice', 'warning'] },
   { id: 'mealPlanNudgeTime', groupId: 'generated', label: 'Nudge me on', section: 'Plan meals for the week',
