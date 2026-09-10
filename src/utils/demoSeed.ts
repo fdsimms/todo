@@ -1348,6 +1348,15 @@ export function seedDemoData(): void {
  */
 function seedFoodLog(today: Date): void {
   const { addEntry } = useFoodLogStore.getState();
+  // Two targets, because a target is invisible until something reads against
+  // it — the day's totals would otherwise be bare figures and the feature
+  // would read as one the app hasn't got. Two rather than ten: somebody
+  // actually watching what they eat watches a couple of numbers, and a demo
+  // showing all ten set would suggest the app expects that. Nothing here is a
+  // recommendation; see nutritionTargets.ts on why there are no defaults.
+  const { setNutritionTarget } = useSettingsStore.getState();
+  setNutritionTarget('calorieKcal', 2000);
+  setNutritionTarget('proteinG', 60);
   const { items } = useGroceryStore.getState();
   const yesterday = subDays(today, 1);
 

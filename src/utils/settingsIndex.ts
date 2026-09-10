@@ -649,6 +649,8 @@ export const SETTINGS_ENTRIES: SettingsEntry[] = [
     keywords: ['ingredients', 'shopping list', 'offer', 'buy again', 'cooked'] },
   { id: 'mealLogPrompt', groupId: 'kitchen', label: 'Ask what you ate', section: 'Meals on Today',
     keywords: ['food log', 'calories', 'nutrition', 'diary', 'eaten', 'leftovers', 'prompt'] },
+  { id: 'nutritionTargets', groupId: 'kitchen', label: 'Daily targets', section: 'Meals on Today',
+    keywords: ['calories', 'protein', 'goal', 'nutrition', 'food log', 'macros', 'aim'] },
   { id: 'tripLiveActivity', iosOnly: true, groupId: 'kitchen', label: 'Live Activity while shopping', section: 'Shopping trip',
     keywords: ['lock screen', 'dynamic island', 'store', 'trip', 'grocery', 'elapsed', 'timer'],
     simple: true },
