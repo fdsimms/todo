@@ -123,6 +123,7 @@ import { draftFromExtractedEvent } from '../utils/calendarEventImport';
 import type { TaskKind } from '../utils/taskKinds';
 import { TemplatePickerSheet } from '../components/TemplatePickerSheet';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
+import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { SortFilterSheet } from '../components/SortFilterSheet';
 import { TodayOptionsMenu } from '../components/TodayOptionsMenu';
 import { CategoryOrderSheet } from '../components/CategoryOrderSheet';
@@ -739,6 +740,7 @@ export function TodayScreen() {
   // then the apply sheet takes over for anchors and the item checklist.
   const [templatePickerVisible, setTemplatePickerVisible] = useState(false);
   const [applyTemplate, setApplyTemplate] = useState<TaskTemplate | null>(null);
+  const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
 
   // Collapse any expanded task when navigating away from this tab so it
   // isn't still expanded when the user comes back.
@@ -4236,8 +4238,16 @@ export function TodayScreen() {
           visible={applyTemplate !== null}
           template={applyTemplate}
           onClose={() => setApplyTemplate(null)}
-          onApplied={tasks => { if (tasks[0]) openEditor(tasks[0]); }}
+          onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
         />
+
+        {templateAppliedCount !== null && (
+          <TemplateAppliedToast
+            count={templateAppliedCount}
+            bottom={insets.bottom + 64 + FAB_SIZE + spacing.md}
+            onDismiss={() => setTemplateAppliedCount(null)}
+          />
+        )}
 
         <EventImportSheet
           visible={eventImportVisible}

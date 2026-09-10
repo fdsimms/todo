@@ -36,7 +36,7 @@ import { ReorderableList } from '../components/ReorderableList';
 import { SwipeableRow } from '../components/SwipeableRow';
 import { ApplyTemplateSheet } from '../components/ApplyTemplateSheet';
 import { TemplateEditor } from '../components/TemplateEditor';
-import { TaskEditor } from '../components/TaskEditor';
+import { TemplateAppliedToast } from '../components/TemplateAppliedToast';
 import { ListBulkBar } from '../components/ListBulkBar';
 import { useRowSelection } from '../hooks/useRowSelection';
 import { groupTemplatesByCategory, resolveTemplateDrop, type TemplateListItem } from '../utils/templateGrouping';
@@ -46,7 +46,7 @@ import { haptics } from '../utils/haptics';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
 import { templateHasBrokenRefs, templateHasMissingRefs } from '../utils/templateUtils';
-import type { Task, TaskTemplate } from '../types';
+import type { TaskTemplate } from '../types';
 
 // The add button, naming what a release right now would do.
 function AddTemplateFabWithDropLabel({
@@ -86,10 +86,10 @@ export function TemplatesScreen() {
   const [quickAddVisible, setQuickAddVisible] = useState(false);
   const [applyTemplateId, setApplyTemplateId] = useState<string | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<TaskTemplate | null>(null);
-  // Opened straight off a successful apply, to the first task it created —
-  // this screen has no task list of its own to land the created tasks in, so
-  // without this the run's only trace is wherever its container happens to be.
-  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  // Named straight off a successful apply — this screen has no task list of
+  // its own to land the created tasks in, so without this the run leaves no
+  // trace beyond wherever its container happens to be.
+  const [templateAppliedCount, setTemplateAppliedCount] = useState<number | null>(null);
   const [bulkBarHeight, setBulkBarHeight] = useState(0);
 
   // Selection is entered from the header rather than from a row: both of a
@@ -384,7 +384,7 @@ export function TemplatesScreen() {
         visible={applyTemplateObj !== null}
         template={applyTemplateObj}
         onClose={() => setApplyTemplateId(null)}
-        onApplied={tasks => { if (tasks[0]) setEditingTask(tasks[0]); }}
+        onApplied={tasks => { if (tasks.length > 0) setTemplateAppliedCount(tasks.length); }}
       />
 
       <TemplateEditor
@@ -393,11 +393,13 @@ export function TemplatesScreen() {
         onClose={() => setEditingTemplate(null)}
       />
 
-      <TaskEditor
-        visible={editingTask !== null}
-        task={editingTask}
-        onClose={() => setEditingTask(null)}
-      />
+      {templateAppliedCount !== null && (
+        <TemplateAppliedToast
+          count={templateAppliedCount}
+          bottom={insets.bottom + tabBarHeight + FAB_SIZE + spacing.md}
+          onDismiss={() => setTemplateAppliedCount(null)}
+        />
+      )}
     </View>
   );
 }
