@@ -112,6 +112,23 @@ interface FoodLogStore {
   /** Replaces `entries` with the inclusive run of logical days between the keys. */
   loadRange: (startKey: string, endKey: string) => void;
   /**
+   * A second window, for a reader that isn't the day view.
+   *
+   * Kept apart from `entries` rather than widening it, the same split
+   * `useMealPlanStore` keeps for `cookingCounts`: the food log screen owns
+   * `entries` and steps it one day at a time, and Stats wants a month. Sharing
+   * one window would have each screen's read clobber the other's, so stepping
+   * to yesterday would empty a section on a screen nobody had touched.
+   *
+   * Rows rather than a computed tally, because everything derived from them is
+   * pure and lives in `nutritionStats.ts` — a store that also did the
+   * arithmetic would put it somewhere jest can't reach.
+   */
+  windowEntries: FoodLogEntry[];
+  windowStart: string | null;
+  windowEnd: string | null;
+  loadWindow: (startKey: string, endKey: string) => void;
+  /**
    * Record something eaten.
    *
    * The day key is stamped here from `dayResetTime`, never derived from the
@@ -150,6 +167,9 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   entries: [],
   rangeStart: null,
   rangeEnd: null,
+  windowEntries: [],
+  windowStart: null,
+  windowEnd: null,
   totalCount: 0,
   initialized: false,
   pendingMealLog: null,
@@ -172,6 +192,14 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       entries: dbGetFoodLogEntries(startKey, endKey),
       rangeStart: startKey,
       rangeEnd: endKey,
+    });
+  },
+
+  loadWindow(startKey, endKey) {
+    set({
+      windowEntries: dbGetFoodLogEntries(startKey, endKey),
+      windowStart: startKey,
+      windowEnd: endKey,
     });
   },
 
@@ -207,11 +235,15 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // Only into the window on screen. An entry backdated outside it is stored
     // and simply isn't in `entries`, which is the same contract the range read
     // already keeps rather than a gap.
-    const { rangeStart, rangeEnd } = get();
+    const { rangeStart, rangeEnd, windowStart, windowEnd } = get();
+    const byInstant = (a: FoodLogEntry, b: FoodLogEntry) => a.atISO.localeCompare(b.atISO);
     if (rangeStart && rangeEnd && entry.dayKey >= rangeStart && entry.dayKey <= rangeEnd) {
-      set(s => ({
-        entries: [...s.entries, entry].sort((a, b) => a.atISO.localeCompare(b.atISO)),
-      }));
+      set(s => ({ entries: [...s.entries, entry].sort(byInstant) }));
+    }
+    // And into the wider window on the same terms, so a section reading that
+    // one doesn't disagree with the day view until the next time it's focused.
+    if (windowStart && windowEnd && entry.dayKey >= windowStart && entry.dayKey <= windowEnd) {
+      set(s => ({ windowEntries: [...s.windowEntries, entry].sort(byInstant) }));
     }
     return entry;
   },
@@ -225,7 +257,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // happen on. Re-dating means a new entry.
     const updated: FoodLogEntry = { ...entry, ...patch };
     dbUpdateFoodLogEntry(updated);
-    set(s => ({ entries: s.entries.map(e => (e.id === id ? updated : e)) }));
+    set(s => ({
+      entries: s.entries.map(e => (e.id === id ? updated : e)),
+      windowEntries: s.windowEntries.map(e => (e.id === id ? updated : e)),
+    }));
   },
 
   setPendingMealLog(pending) {
@@ -236,6 +271,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     dbDeleteFoodLogEntry(id);
     set(s => ({
       entries: s.entries.filter(e => e.id !== id),
+      windowEntries: s.windowEntries.filter(e => e.id !== id),
       // Floored, so a delete of a row outside the loaded window can't drive the
       // count negative and make the screen vanish while it still holds entries.
       totalCount: Math.max(0, s.totalCount - 1),

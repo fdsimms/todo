@@ -30,6 +30,7 @@ import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
+import { hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
 import { targetedNutrients } from '../utils/nutritionTargets';
 import { NUTRIENT_KEYS } from '../types';
@@ -80,7 +81,7 @@ import { useLeftoverStore } from '../store/useLeftoverStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { shouldNudgePostpone, DEFAULT_POSTPONE_THRESHOLD, driftingTasks } from '../utils/postpone';
 import { isUsingDemoDatabase } from '../db/database';
-import { dayKeyOf, dayKeyToDate, getCurrentDayStart } from '../utils/dateUtils';
+import { dayKeyOf, dayKeyToDate, getCurrentDayStart, getLogicalToday } from '../utils/dateUtils';
 import { differenceInCalendarDays } from 'date-fns/differenceInCalendarDays';
 import { countPlannedSlots, MEAL_PLAN_NUDGE_SLOT_COUNT } from '../utils/mealPlanNudge';
 import { RECIPE_MEAL_TYPES, LEFTOVER_KEEP_DAYS_DEFAULT } from '../types';
@@ -1613,27 +1614,85 @@ describe('demo seed — people', () => {
     expect(entries.every(e => e.dayKey === yesterdayKey)).toBe(true);
   });
 
+  it('seeds several days, since one day averages to itself', () => {
+    // The Stats read averages over days, so a single seeded day gives a section
+    // that can only ever say "1 of 30" — a feature that reads as broken rather
+    // than as unused.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const counts = nutritionCounts(useFoodLogStore.getState().windowEntries, window);
+    expect(counts.daysLogged).toBeGreaterThan(2);
+    expect(hasNutritionData(counts)).toBe(true);
+  });
+
+  it('seeds a ragged log, so the two day counts are different numbers', () => {
+    // An honest log has days somebody stopped after breakfast, and that is the
+    // whole reason days-logged and days-logged-past-one-meal are reported apart.
+    // A seed where every day was complete would hide the distinction.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const counts = nutritionCounts(useFoodLogStore.getState().windowEntries, window);
+    expect(counts.daysComplete).toBeGreaterThan(0);
+    expect(counts.daysComplete < counts.daysLogged).toBe(true);
+  });
+
+  it('leaves today out of the seeded log, so nothing averages a partial day', () => {
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const todayKey = dayKeyOf(getCurrentDayStart());
+    expect(useFoodLogStore.getState().windowEntries.some(e => e.dayKey === todayKey)).toBe(false);
+  });
+
+  it('seeds enough of a log for an average to be worth reading', () => {
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const rows = nutrientAverages(useFoodLogStore.getState().windowEntries, window);
+    const calories = rows.find(r => r.key === 'calorieKcal');
+    expect(calories).toBeDefined();
+    expect(calories!.days).toBeGreaterThan(1);
+  });
+
   it('measures every seeded entry rather than typing its numbers in', () => {
     // An entry whose figures were hand-written could drift from what the same
     // amount of the same food actually works out to, which is the one thing a
-    // demo of this feature must not show.
-    const yesterdayKey = dayKeyOf(subDays(getCurrentDayStart(), 1));
-    useFoodLogStore.getState().loadRange(yesterdayKey, yesterdayKey);
+    // demo of this feature must not show. Read over the whole window rather
+    // than one day, so a seeded day added later can't slip past this.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
     const items = useGroceryStore.getState().items;
     const products = useGroceryStore.getState().itemProducts;
-    for (const e of useFoodLogStore.getState().entries) {
+    let checked = 0;
+    for (const e of useFoodLogStore.getState().windowEntries) {
+      // A cooked dish is measured from its ingredients rather than from any one
+      // panel, and carries a recipe instead of an item. Its own arithmetic is
+      // pinned by the source assertion below.
+      if (e.recipeId) continue;
       const item = items.find(i => i.id === e.itemId);
       const product = products.find(p => p.id === e.productId);
       const panel = nutritionFor(item, product);
       expect(panel).not.toBeNull();
       // A scanned entry is measured in the panel's own servings, since that is
-      // the only amount a label states; everything else is measured against the
-      // food's portion table. Two paths, both arithmetic rather than typing.
+      // the only amount a label states; a catalog food is measured against its
+      // portion table. Two paths, both arithmetic rather than typing.
       const rebuilt = e.productId
         ? packageHelping(panel!, 1, e.quantity)
         : scalePanelToAmount(panel!, e.quantity, null)?.nutrition;
       expect(rebuilt?.amounts).toEqual(e.nutrition.amounts);
+      checked += 1;
     }
+    expect(checked).toBeGreaterThan(0);
+  });
+
+  it('seeds figures from more than one source, so the provenance stat has content', () => {
+    // A dish estimated from its ingredients and a food read off a database are
+    // two different claims, and "where the figures came from" reading as a row
+    // with one number in it is a feature the app appears not to have.
+    const window = cookingWindow(getLogicalToday(), 30);
+    useFoodLogStore.getState().loadWindow(window.startKey, window.endKey);
+    const mix = sourceMix(useFoodLogStore.getState().windowEntries, window);
+    expect(mix.estimated).toBeGreaterThan(0);
+    expect(mix.database).toBeGreaterThan(0);
+    expect(mix.fromRecipe).toBeGreaterThan(0);
   });
 
   it('seeds one entry that came off a barcode, carrying that box’s own figures', () => {
