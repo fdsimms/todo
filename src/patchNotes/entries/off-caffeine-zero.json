@@ -1,0 +1,4 @@
+{
+  "message": "A scanned product no longer shows caffeine as 0 when the barcode source only defaulted the field. It reads as unknown instead, which is what it is.",
+  "date": "2026-09-10"
+}

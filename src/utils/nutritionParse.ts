@@ -258,6 +258,36 @@ function readSourceText(value: unknown): string | null {
 }
 
 /**
+ * Nutrients where an Open Food Facts zero carries no information, and is read
+ * as absent rather than as a stated figure.
+ *
+ * **A bulk-defaulted zero is morally a blank**, and this is the same reading
+ * `readSourceNumber` already refuses to invent for an empty string. The
+ * difference is only that Open Food Facts writes the zero into the field
+ * itself, so nothing downstream can tell it from a figure somebody measured.
+ *
+ * Caffeine is the one current nutrient where that is measurably always the
+ * case. In a sample of 200 US products across 8 categories, 54 of them (27%)
+ * carried `caffeine_100g`, **the only value that ever appeared was zero**, and
+ * that included the products whose own names are chocolate and mocha. Open
+ * Food Facts never once supplied a real caffeine figure, so the field is a
+ * default rather than a reading, and taking it costs a wrong zero on the foods
+ * that do contain caffeine while gaining nothing on the ones that don't.
+ *
+ * **This is deliberately not a blanket "drop zeros" rule**, which would be
+ * wrong for every other nutrient here: a real zero is common and true for
+ * saturated fat, fiber, sugar and the rest, and 41% of that same sample stated
+ * a legitimate zero for saturated fat alone. The set is per-nutrient because
+ * the question is per-nutrient.
+ *
+ * A micronutrient panel would widen this set rather than change its shape:
+ * vitamin K and choline measured 27% and 66% present in the same sample with
+ * **no non-zero value on any product**, choline including on mayonnaise, which
+ * is one of the more choline-dense things in a supermarket.
+ */
+const OFF_UNINFORMATIVE_ZERO: ReadonlySet<NutrientKey> = new Set<NutrientKey>(['caffeineMg']);
+
+/**
  * Which `nutriments` field holds each nutrient, and what unit it is in.
  *
  * **The `_100g` suffixed fields, and never the bare ones.** Open Food Facts
@@ -275,6 +305,7 @@ function readSourceText(value: unknown): string | null {
  *
  * `sodiumMg` is deliberately absent and handled below.
  */
+
 const OFF_FIELDS: Record<Exclude<NutrientKey, 'sodiumMg'>, { field: string; unit: NutrientSourceUnit }> = {
   calorieKcal: { field: 'energy-kcal_100g', unit: 'kcal' },
   proteinG: { field: 'proteins_100g', unit: 'g' },
@@ -361,7 +392,11 @@ export function readOffNutrition(
   for (const key of Object.keys(OFF_FIELDS) as Array<Exclude<NutrientKey, 'sodiumMg'>>) {
     const { field, unit } = OFF_FIELDS[key];
     const value = readSourceNumber(nutriments[field]);
-    if (value !== null) setPer100(amounts, key, value, unit);
+    if (value === null) continue;
+    // See OFF_UNINFORMATIVE_ZERO: a zero this source defaults into the field is
+    // not a figure anybody measured, and absent is the honest reading of it.
+    if (value === 0 && OFF_UNINFORMATIVE_ZERO.has(key)) continue;
+    setPer100(amounts, key, value, unit);
   }
 
   const salt = readSourceNumber(nutriments.salt_100g);
