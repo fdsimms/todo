@@ -1,19 +1,7 @@
 import { format } from 'date-fns/format';
-import type { HealthRule, Task } from '../types';
+import type { HealthRule, HealthRuleMetric, Task } from '../types';
 import { generateId } from './id';
 import { generatedSourceOf } from './generatedTasks';
-
-/**
- * The metrics a health rule can watch — a superset of `HealthMetric`
- * (`moodInsights.ts`'s steps/sleep axis) plus eight nutrients, none of which
- * have a mood axis of their own since `MoodDay` carries no nutrient fields.
- * Kept as its own type rather than widening `HealthMetric` itself, so
- * `moodInsights.ts`'s axis functions — written against `MoodDay`'s actual
- * fields — don't gain a case they can't answer.
- */
-export type HealthRuleMetric =
-  | 'steps' | 'sleepHours'
-  | 'sodiumMg' | 'proteinG' | 'satFatG' | 'fiberG' | 'sugarG' | 'caffeineMg' | 'waterMl' | 'calorieKcal';
 
 /** Every metric but steps and sleep — the ones with a per-rule checkpoint hour and direction. See `HEALTH_METRIC_EARLIEST_HOUR`'s comment. */
 export const HEALTH_NUTRIENT_METRICS: readonly HealthRuleMetric[] =
