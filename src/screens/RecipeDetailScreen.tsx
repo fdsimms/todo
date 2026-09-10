@@ -86,6 +86,7 @@ import {
 } from '../utils/recipeComponents';
 import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
+import { describeRecipeNutrition, recipeNutrition } from '../utils/recipeNutrition';
 import { formatOffsetLabel } from '../utils/templateUtils';
 import { splitAlternativeNames, splitGroceryLines } from '../utils/groceryParse';
 
@@ -136,6 +137,9 @@ export function RecipeDetailScreen() {
   const aisleOrder = useGroceryStore(useShallow(s => s.aisleOrder));
   const addAisle = useGroceryStore(s => s.addAisle);
   const groceryItems = useGroceryStore(useShallow(s => s.items));
+  // For the nutrition line only: a scanned box's own panel beats the generic
+  // catalog row's, and `nutritionFor` is where that precedence lives.
+  const itemProducts = useGroceryStore(useShallow(s => s.itemProducts));
   const itemSubs = useGroceryStore(useShallow(s => s.itemSubs));
 
   // The user's standing swaps — "always use oat milk for milk" (#1571). Shown
@@ -198,6 +202,20 @@ export function RecipeDetailScreen() {
   const costLine = useMemo(
     () => describeRecipeCost(costEstimate, currencySymbol, new Date()),
     [costEstimate, currencySymbol]
+  );
+
+  // The same flattening again, with grams in place of prices — null while too
+  // little of the recipe resolves to a food whose panel is known, which is
+  // most recipes until their ingredients have been matched (see
+  // recipeNutrition.ts). Deliberately absent rather than an empty state: there
+  // is nowhere to send someone yet, and a dead end reads worse than silence.
+  const nutritionLine = useMemo(
+    () => describeRecipeNutrition(
+      recipe
+        ? recipeNutrition(recipe, groceryItems, itemProducts, recipesById, undefined, scale, standingSwaps)
+        : null
+    ),
+    [recipe, groceryItems, itemProducts, recipesById, scale, standingSwaps]
   );
 
   // ==== local state (drafts, the sheets this screen opens) ====
@@ -1393,6 +1411,7 @@ export function RecipeDetailScreen() {
             doubled cost. Renders nothing rather than a guess while too few
             lines are priced to say (see recipeCost.ts's coverage floor). */}
         {!!costLine && <Text style={styles.summary}>{costLine}</Text>}
+        {!!nutritionLine && <Text style={styles.summary}>{nutritionLine}</Text>}
 
         {/* Where a well-matched recipe says so. The per-row badge is reserved
             for lines with something to act on, so without this line a recipe

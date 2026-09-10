@@ -293,3 +293,62 @@ export function perServing(
   }
   return out;
 }
+
+/**
+ * The nutrients a one-line summary leads with.
+ *
+ * **Two, not ten, and the number was decided in a mock rather than guessed.**
+ * This sits directly under the cost estimate, which carries a coverage clause
+ * of its own, so a nutrition line that wraps puts two ragged two-line captions
+ * on top of each other. Calories and protein fit one line at 390pt with the
+ * coverage clause still attached; adding carbohydrate wrapped it and orphaned
+ * the word "ingredients".
+ *
+ * The rest of the panel is in `total` and unshown, waiting for a surface with
+ * room for it. Nothing is lost, only not led with.
+ */
+const SUMMARY_KEYS: readonly NutrientKey[] = ['calorieKcal', 'proteinG'];
+
+/** How each summarised nutrient is written. Calories carry no unit suffix, the way a label prints them. */
+const SUMMARY_LABEL: Record<string, (amount: number) => string> = {
+  calorieKcal: n => `${Math.round(n)} cal`,
+  proteinG: n => `${Math.round(n)}g protein`,
+};
+
+/**
+ * "≈ 520 cal, 31g protein per serving, from 6 of 9 ingredients", or null while
+ * there is nothing worth saying.
+ *
+ * Three moves, the same three `describeRecipeCost` makes and for the same
+ * reasons: the approximation marker, the coverage clause, and no claim beyond
+ * what the data supports.
+ *
+ * **Per serving leads when the recipe has a servings count, and the whole
+ * recipe when it doesn't.** Never both at once, because two totals differing by
+ * a factor nobody stated is how a reader ends up quoting the wrong one.
+ *
+ * **The coverage clause is not optional**, and is what stops the number reading
+ * as a fact. It drops only at full coverage, exactly as `describeCostEstimate`
+ * drops it when everything is priced.
+ *
+ * No daily-value percentages, no grading, no colour. Those need an RDA the app
+ * has never asked for, and `cookingStats.ts`'s rule holds here too: counts,
+ * never a score.
+ */
+export function describeRecipeNutrition(nutrition: RecipeNutrition | null): string | null {
+  if (!nutrition) return null;
+  const per = perServing(nutrition);
+  const figures = per ?? nutrition.total;
+
+  const parts = SUMMARY_KEYS
+    .filter(key => figures[key] !== undefined)
+    .map(key => SUMMARY_LABEL[key](figures[key] as number));
+  if (parts.length === 0) return null;
+
+  const basis = per ? ' per serving' : '';
+  const coverage =
+    nutrition.covered === nutrition.lines
+      ? ''
+      : `, from ${nutrition.covered} of ${nutrition.lines} ingredients`;
+  return `≈ ${parts.join(', ')}${basis}${coverage}`;
+}

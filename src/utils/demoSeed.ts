@@ -2205,6 +2205,7 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     recordDisposal,
     dismissDisposalOffer,
     setExpiresAt,
+    setItemNutrition,
     setShelfLifeDays,
     setUseUpTask,
     setVarietyOfKey,
@@ -2263,6 +2264,52 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // example of a recipe cost actually clearing recipeCost.ts's coverage floor
   // (see estimateRecipeCost in useDemoStore.test.ts).
   setQuantity(itemNamed('Potatoes').id, '5 lb');
+
+  /**
+   * The three foods Mashed potatoes is made of, given the panels that make it
+   * the demo's one recipe with a nutrition estimate.
+   *
+   * **Chosen so the dish clears the coverage floor honestly**, which took all
+   * three: its potatoes are written as a mass and need nothing but a panel,
+   * while its butter and milk lines are volumes and reach grams only through
+   * the portion tables below. Salt is a staple and drops out of both sides of
+   * the fraction. Without a recipe that actually answers, the whole rollup
+   * reads as a feature the app hasn't got (see recipeNutrition.ts).
+   *
+   * Figures are FoodData Central's, per 100g, and deliberately partial: none
+   * of the three states caffeine or water, which is the ordinary case and is
+   * what keeps an absent nutrient visibly absent rather than zero.
+   */
+  setItemNutrition(itemNamed('Potatoes').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 77, proteinG: 2, carbsG: 17.5, fatG: 0.1, fiberG: 2.1, sugarG: 0.8, sodiumMg: 6 },
+    portions: [{ amount: 1, label: 'cup, diced', grams: 150 }],
+    source: 'fdc',
+    sourceId: '170026',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
+  setItemNutrition(itemNamed('Butter').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 717, proteinG: 0.9, carbsG: 0.1, fatG: 81.1, satFatG: 51.4, sugarG: 0.1, sodiumMg: 643 },
+    portions: [{ amount: 1, label: 'tbsp', grams: 14.2 }],
+    source: 'fdc',
+    sourceId: '173410',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
+  setItemNutrition(itemNamed('Milk').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 61, proteinG: 3.2, carbsG: 4.8, fatG: 3.3, satFatG: 1.9, sugarG: 5.1, sodiumMg: 43 },
+    portions: [{ amount: 1, label: 'cup', grams: 244 }],
+    source: 'fdc',
+    sourceId: '171265',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
   // Lemon garlic salmon calls for a lemon, and without a fact of its own here
   // Lemons is a bare CATALOG name — nothing else in the seed ever touches it —
   // so clearList below sweeps it and the recipe's own "lemon" line reads as an
