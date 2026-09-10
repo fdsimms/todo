@@ -44,6 +44,7 @@ import { normalizePlu, pluNameFor } from '../utils/plu';
 import {
   matchScans,
   pluScannedItem,
+  nameFromScanFor,
   scannedItemFor,
   sourceLabelFor,
   variantFor,
@@ -613,6 +614,10 @@ export function BarcodeScanSheet({ visible, onClose, onApply, context }: Props) 
         // Only read for a row this mints — a promoted one was linked above,
         // where its id was already known. See `Props.onApply`.
         gtin: row.gtin,
+        // Also only read for a row this mints. A name left exactly as the
+        // lookup proposed it is the source's words, not the user's — see
+        // `nameFromScanFor`, which is where that test lives.
+        nameFromScan: nameFromScanFor(row),
       });
     });
     // Only rows whose label came off a lookup are worth remembering. A typed

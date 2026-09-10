@@ -57,6 +57,7 @@ function subLink(itemId: string, subItemId: string, createdAt: string): ItemSubL
  */
 function item(id: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
+    nameFromScan: false,
     id,
     name: id,
     nameKey: id,

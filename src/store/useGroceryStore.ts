@@ -398,6 +398,16 @@ interface GroceryStore extends UndoHistoryActions {
        * lexicon knows.
        */
       aisle?: string | null;
+      /**
+       * Whether `name` is still the barcode source's own words rather than
+       * words a person chose — see `GroceryItem.nameFromScan`.
+       *
+       * **Only ever applied to a row this call mints.** A row the catalog
+       * already had was named by whoever named it, and a scan landing on it
+       * says nothing about that; overwriting the flag there would put somebody's
+       * own spelling into a rename queue on the strength of an unrelated scan.
+       */
+      nameFromScan?: boolean;
     },
     source?: { recipeId: string; recipeTitle: string },
     /** `registerUndo: false` suppresses the per-call shake-to-undo entry — batch
@@ -627,7 +637,21 @@ interface GroceryStore extends UndoHistoryActions {
    * presented as a native `Modal` sits above `UndoBar` too) can still offer
    * an immediate, local way back without reimplementing the revert itself.
    */
-  addToPantry: (raw: string, opts?: { registerUndo?: boolean; onUndo?: (undo: () => void) => void }) => GroceryItem | null;
+  addToPantry: (
+    raw: string,
+    opts?: {
+      registerUndo?: boolean;
+      onUndo?: (undo: () => void) => void;
+      /**
+       * Files a row this call *mints* as still wearing a barcode source's own
+       * words — see `GroceryItem.nameFromScan`. Ignored for a name that
+       * resolved to a row the catalog already had, exactly as `addByName`'s
+       * own option is and for the same reason: that row was named by whoever
+       * named it.
+       */
+      nameFromScan?: boolean;
+    }
+  ) => GroceryItem | null;
   /**
    * `addToPantry`, for a whole scan session at once — the barcode sheet's
    * "Add" button on the Pantry screen. Loops `addToPantry` with its undo
@@ -679,7 +703,14 @@ interface GroceryStore extends UndoHistoryActions {
     frozenNames?: ReadonlySet<string>,
     products?: ReadonlyMap<
       string,
-      { brand: string | null; variant: string | null; gtin?: string | null; aisle?: string | null }
+      {
+        brand: string | null;
+        variant: string | null;
+        gtin?: string | null;
+        aisle?: string | null;
+        /** Rides through to `addToPantry`'s option of the same name. */
+        nameFromScan?: boolean;
+      }
     >,
     prices?: { byName: ReadonlyMap<string, number>; shopId: string | null }
   ) => number;
@@ -878,6 +909,19 @@ interface GroceryStore extends UndoHistoryActions {
    * since items already have one.
    */
   setItemBackfillDismissedFields: (id: string, fields: string[]) => void;
+
+  /**
+   * Puts `GroceryItem.nameFromScan` back, for undoing a rename.
+   *
+   * **The only writer besides the insert paths, and deliberately a narrow
+   * one.** `renameItem` clears the flag and nothing sets it again, which is
+   * what makes it mean "still wearing the barcode's words" — but the Backfill
+   * screen's undo has to restore the row it changed, flag included, or an
+   * undone rename would leave the item out of the rename queue it came from.
+   * Restoring is not deciding, which is why this may say `true` where nothing
+   * else can.
+   */
+  setNameFromScan: (id: string, nameFromScan: boolean) => void;
 
   /**
    * Picks this row at the shelf: it stays (no longer an either/or) and every
@@ -1124,7 +1168,13 @@ interface GroceryStore extends UndoHistoryActions {
    * naming something to record a standing fact about it is not a plan to buy
    * it this week.
    */
-  ensureCatalogItem: (name: string) => GroceryItem | null;
+  ensureCatalogItem: (
+    name: string,
+    /** Files a row this call *mints* as still wearing a barcode source's own
+     * words, exactly as `addByName`/`addToPantry`'s option of the same name
+     * does. Ignored when the name resolved to a row that already existed. */
+    opts?: { nameFromScan?: boolean }
+  ) => GroceryItem | null;
   /** Drops one direction. The reverse row, if there is one, is left alone. */
   unlinkItemSub: (itemId: string, subItemId: string) => void;
   /** The caveat — "fine for frying, not for baking". Blank clears it. */
@@ -1298,6 +1348,8 @@ function newItemRow(fields: {
   quantity?: string | null;
   note?: string | null;
   choiceGroup?: string | null;
+  /** See GroceryItem.nameFromScan. Only the barcode path passes this. */
+  nameFromScan?: boolean;
   source?: { recipeId: string; recipeTitle: string };
   onHandUntil?: string | null;
 }): GroceryItem {
@@ -1382,6 +1434,10 @@ function newItemRow(fields: {
     // Nobody has dismissed a Backfill screen field on a row that didn't exist
     // a moment ago.
     backfillDismissedFields: [],
+    // False for every path but the barcode one, and false there too unless the
+    // user left the proposed name alone — a name somebody typed is a name
+    // somebody chose. See GroceryItem.nameFromScan.
+    nameFromScan: fields.nameFromScan ?? false,
   };
 }
 
@@ -2042,6 +2098,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       createdAt: now,
       choiceGroup,
       source,
+      nameFromScan: override?.nameFromScan === true,
     });
     // After the row exists, because a product hangs off an item id. Nothing
     // is ever parsed out of the typed name to get here — see ItemProduct.brand.
@@ -2358,6 +2415,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // A rename that lands the row on its own declared generic clears the
       // declaration — a thing is not a variety of itself.
       varietyOfKey: item.varietyOfKey === key ? null : item.varietyOfKey,
+      // Somebody has now chosen this name, whatever it was called before, so
+      // the row is no longer wearing a barcode source's words. Cleared even
+      // when the trimmed name is identical to the stored one: reaching this
+      // function at all means a person typed it and meant it, and the flag's
+      // only job is to stop asking. See GroceryItem.nameFromScan.
+      nameFromScan: false,
     };
     dbUpdateGroceryItem(updated);
     // Variety declarations point at the generic's key, so ones aimed at this
@@ -3137,6 +3200,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       onList: false,
       sortOrder: nextSortOrder(get().items),
       createdAt: nowIso,
+      nameFromScan: opts?.nameFromScan === true,
     });
     // Stamped off the finished row rather than a literal fortnight, so this
     // and "Got it" can't drift — with no purchases yet it lands on the same
@@ -3163,7 +3227,15 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       // a row it merely updated would look freshly minted and undo would
       // delete a catalog row the user already had.
       const before = catalogItemForKey(key, get().items) ?? undefined;
-      const item = get().addToPantry(raw, { registerUndo: false });
+      // Read ahead of the add rather than beside the `addProduct` call below,
+      // because `nameFromScan` is a fact about the row being *minted* and so
+      // has to travel into the insert itself. `!before` is the same "this
+      // batch created it" test the aisle write further down already makes.
+      const product = products?.get(raw);
+      const item = get().addToPantry(raw, {
+        registerUndo: false,
+        nameFromScan: !before && product?.nameFromScan === true,
+      });
       if (!item) continue;
       count++;
       if (before) revertRows.push(before);
@@ -3174,7 +3246,6 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       if (frozenNames?.has(raw)) get().setFrozen(item.id, true);
       // Same reasoning: not part of the undo snapshot, matching addProduct's
       // own callers everywhere else — a box named is never itself undoable.
-      const product = products?.get(raw);
       if (product && (product.brand || product.variant)) {
         get().addProduct(item.id, { brand: product.brand, variant: product.variant });
       }
@@ -3501,6 +3572,14 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     const item = get().items.find(i => i.id === id);
     if (!item) return;
     const updated = { ...item, backfillDismissedFields: fields };
+    dbUpdateGroceryItem(updated);
+    set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
+  },
+
+  setNameFromScan(id, nameFromScan) {
+    const item = get().items.find(i => i.id === id);
+    if (!item || item.nameFromScan === nameFromScan) return;
+    const updated = { ...item, nameFromScan };
     dbUpdateGroceryItem(updated);
     set(s => ({ items: s.items.map(i => (i.id === id ? updated : i)) }));
   },
@@ -4776,7 +4855,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     }));
   },
 
-  ensureCatalogItem(raw) {
+  ensureCatalogItem(raw, opts) {
     // Parsed like every other typed name, so "2 lb margarine" keys on
     // "margarine" rather than minting a row no purchase can ever match. The
     // quantity is dropped: this is a name being named, not an amount to buy.
@@ -4800,6 +4879,7 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       onList: false,
       sortOrder: nextSortOrder(get().items),
       createdAt: nowIso,
+      nameFromScan: opts?.nameFromScan === true,
     });
     dbInsertGroceryItem(item);
     set(s => ({ items: [...s.items, item] }));

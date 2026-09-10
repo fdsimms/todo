@@ -49,6 +49,7 @@ function makeProduct(overrides: Partial<ItemProduct> & { itemId: string }): Item
 function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   const name = overrides.name;
   return {
+    nameFromScan: false,
     id: `id-${++seq}`,
     nameKey: groceryNameKey(name),
     preferredProductId: null,

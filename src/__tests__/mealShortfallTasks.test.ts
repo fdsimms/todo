@@ -112,6 +112,7 @@ function entry(date: string, recipeId: string | null, overrides: Partial<MealPla
 
 function item(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   return {
+    nameFromScan: false,
     id: `gi-${++seq}`,
     nameKey: groceryNameKey(overrides.name),
     preferredProductId: null,

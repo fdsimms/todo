@@ -2104,6 +2104,7 @@ function insertListedGroceryItem(item: GroceryItem): void {
 
 function makeGroceryItem(overrides: Partial<GroceryItem> & { id: string; name: string }): GroceryItem {
   return {
+    nameFromScan: false,
     nameKey: overrides.name.toLowerCase(),
     preferredProductId: null,
     productStrict: false,
@@ -2234,11 +2235,13 @@ describe('grocery items', () => {
       backfillDismissedFields: ['substitutes'],
       preferredProductId: 'p1',
       productStrict: true,
+      nameFromScan: true,
     });
     insertListedGroceryItem(item);
 
     expect(dbGetAllGroceryItems()).toEqual([item]);
   });
+
 
   // A trip is the only thing that writes the rolling window, and it has to land
   // at both levels — the item's run is the fallback for a trip that named no

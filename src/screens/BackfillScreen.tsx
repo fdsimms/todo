@@ -20,6 +20,8 @@ import { CategoryPickerList } from '../components/CategoryPicker';
 import { CountStepper } from '../components/CountStepper';
 import { PillGroup } from '../components/PillGroup';
 import { SubstituteSheet } from '../components/SubstituteSheet';
+import { NutritionPanelSheet } from '../components/NutritionPanelSheet';
+import { NutritionSearchSheet } from '../components/NutritionSearchSheet';
 import { NumberPadAccessory, NUMBER_PAD_ACCESSORY_ID } from '../components/NumberPadAccessory';
 import { RemindMePicker } from '../components/RemindMePicker';
 import { BirthdayPicker } from '../components/BirthdayPicker';
@@ -63,7 +65,12 @@ import { observedCadenceDays, describeObservedCadence } from '../utils/reachOutT
 import { genericNameSuggestions } from '../utils/itemVarieties';
 import { substitutesFor, describeSubstitutes } from '../utils/itemSubs';
 import { groceryNameKey } from '../utils/groceryParse';
-import { EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH, type Effort, type Person, type ReminderKind, type Task } from '../types';
+import { shorterNameSuggestions } from '../utils/scanResolve';
+import { describeFoodPanel } from '../utils/foodNutrition';
+import {
+  EFFORT_LABELS, GROCERY_NAME_MAX_LENGTH,
+  type Effort, type FoodNutrition, type Person, type ReminderKind, type Task,
+} from '../types';
 
 const FIELD_ICONS: Record<BackfillFieldId, keyof typeof Ionicons.glyphMap> = {
   estimate: 'time-outline',
@@ -104,13 +111,16 @@ const PERSON_FIELD_ICONS: Record<PersonBackfillFieldId, keyof typeof Ionicons.gl
   location: 'airplane-outline',
 };
 
-// Neither item field is a plain toggle either — `variety` opens a name
-// picker, `substitutes` opens the same sheet the grocery row's swap glyph
-// does — so, like the project/person maps above, there's no filled/outline
-// pair to switch between.
+// No item field is a plain toggle — `variety` opens a name picker,
+// `substitutes` opens the same sheet the grocery row's swap glyph does,
+// `nutrition` opens either of the two the item sheet offers, and
+// `scannedName` is a text field — so, like the project/person maps above,
+// there's no filled/outline pair to switch between.
 const ITEM_FIELD_ICONS: Record<ItemBackfillFieldId, keyof typeof Ionicons.glyphMap> = {
+  scannedName: 'pricetag-outline',
   substitutes: 'swap-horizontal-outline',
   variety: 'layers-outline',
+  nutrition: 'nutrition-outline',
 };
 
 type EntityKind = 'task' | 'category' | 'project' | 'person' | 'item';
@@ -167,8 +177,8 @@ const DURATION_UNIT_SEGMENTS = [
  * your own history, which is rule 5 and the reason declaring a frequency for a
  * friend never has to be the only way in.
  *
- * **The Items pool's two fields aren't toggles either**, same shape as the
- * project/person value-picker fields: `variety` opens the same generic-name
+ * **None of the Items pool's fields is a toggle either**, same shape as the
+ * project/person value-picker fields. `variety` opens the same generic-name
  * grid `GroceryItemSheet`'s own Variety of field does (`genericNameSuggestions`),
  * and `substitutes` opens the actual `SubstituteSheet` rather than reproducing
  * its search-and-link flow inline. Because that sheet writes to the store
@@ -178,6 +188,25 @@ const DURATION_UNIT_SEGMENTS = [
  * whether anything was actually added — a cancel leaves the card exactly where
  * it was, and only a real add logs a session entry and lets the live queue
  * drop the item.
+ *
+ * `nutrition` reuses that pool's other two real sheets the same way
+ * (`NutritionSearchSheet` and `NutritionPanelSheet`, the pair the item sheet's
+ * own Nutrition field offers), but both of those *return* a value, so
+ * `applyNutrition` is an ordinary apply. The pair is deliberately kept rather
+ * than reduced to the lookup: the lookup needs `productLookupEnabled` and a key
+ * and can still not know the food, and a queue whose only answer is one that
+ * may refuse is a queue you cannot finish.
+ *
+ * **`scannedName` is the one field in any pool that is already filled in.**
+ * Everything else here queues on an absent value; this queues on
+ * `GroceryItem.nameFromScan`, which says the row is wearing a barcode
+ * database's words rather than anybody's choice — recorded at the scan, never
+ * read out of the text (see that field, and `nameFromScanFor`). Two things
+ * follow. Its "Don't ask again" is worded as keeping the name rather than
+ * leaving a field unset, because there is nothing unset. And a rename that
+ * collides with an existing row is offered as a merge instead of refused:
+ * `renameItem` returns false there, and the collision is the *common* case in
+ * a queue full of rows that all want to be called "Yogurt". See `applyRename`.
  *
  * The header's redo icon (task fields only, for now) starts the same loop
  * over from scratch — every live task for the field, including ones already
@@ -243,6 +272,10 @@ export function BackfillScreen() {
   const setVarietyOfKey = useGroceryStore(s => s.setVarietyOfKey);
   const unlinkItemSub = useGroceryStore(s => s.unlinkItemSub);
   const setItemBackfillDismissedFields = useGroceryStore(s => s.setItemBackfillDismissedFields);
+  const renameItem = useGroceryStore(s => s.renameItem);
+  const mergeItems = useGroceryStore(s => s.mergeItems);
+  const setNameFromScan = useGroceryStore(s => s.setNameFromScan);
+  const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
 
   const [entityKind, setEntityKind] = useState<EntityKind>('task');
   const [active, setActive] = useState<ActiveField | null>(null);
@@ -297,6 +330,15 @@ export function BackfillScreen() {
   // Snapshot of the current item's substitute ids, taken when the sheet
   // opens — see openSubstituteSheet/closeSubstituteSheet.
   const subsBeforeRef = useRef<Set<string>>(new Set());
+  // The items pool's two `nutrition` pickers, which are the same pair
+  // GroceryItemSheet's own Nutrition field offers: look the food up, or type
+  // its label in. Both are real sheets for the reason the substitutes one is.
+  const [nutritionSearchOpen, setNutritionSearchOpen] = useState(false);
+  const [nutritionPanelOpen, setNutritionPanelOpen] = useState(false);
+  // The `scannedName` field's draft. Seeded from the item's current name
+  // rather than left blank, because most of the work here is deleting words
+  // somebody else wrote rather than typing a name from nothing.
+  const [renameText, setRenameText] = useState('');
 
   const taskCounts = useMemo(() => backfillFieldCounts(tasks, categories), [tasks, categories]);
   const categoryCounts = useMemo(() => categoryBackfillFieldCounts(categories), [categories]);
@@ -396,6 +438,8 @@ export function BackfillScreen() {
     setBirthdayPickerOpen(false);
     setApplyCadenceToGroup(false);
     setSubSheetOpen(false);
+    setNutritionSearchOpen(false);
+    setNutritionPanelOpen(false);
   }, [currentId]);
 
   // Whatever is already on file, so the field shows what's actually there
@@ -410,6 +454,14 @@ export function BackfillScreen() {
     setAskAboutText(currentPerson.askAbout);
     setLocationText(currentPerson.location ?? '');
   }, [currentPerson?.id]);
+
+  // Same reasoning one pool over: show what the row actually says. Keyed on
+  // the item rather than on `currentId` so it re-seeds when the card changes
+  // and not when some other pool's card does.
+  useEffect(() => {
+    if (!currentItem) return;
+    setRenameText(currentItem.name);
+  }, [currentItem?.id]);
 
   // Same default RemindMePicker's own caller (TaskEditor) opens with: 9am on
   // the date being scheduled against. Every card reaching this field has a
@@ -977,6 +1029,115 @@ export function BackfillScreen() {
       title: currentItem.name,
       valueText: describeSubstitutes(nowSubs)!,
       undo: () => addedIds.forEach(subId => unlinkItemSub(itemId, subId)),
+    });
+  };
+
+  // The item pool's `nutrition` field. Both pickers land here, so the session
+  // entry and the undo are written once rather than per sheet. No advance()
+  // for the same reason applyVariety has none: a row with figures no longer
+  // satisfies isItemFieldMissing and leaves the queue by itself.
+  const applyNutrition = (nutrition: FoodNutrition | null, description?: string) => {
+    if (!currentItem || active?.kind !== 'item') return;
+    // Null is a real answer from the panel sheet — every figure cleared — and
+    // is written rather than dropped. Reachable only through the Previous
+    // button, since a row with no figures is what put the item in this queue,
+    // and the card simply stays put afterwards: the gap is still a gap.
+    if (nutrition === null && currentItem.nutrition === null) return;
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    const itemId = currentItem.id;
+    const title = currentItem.name;
+    // Snapshotted rather than assumed null: the Previous button can land on an
+    // item that already has a panel, and undo has to put that one back.
+    const before = currentItem.nutrition;
+    setItemNutrition(itemId, nutrition);
+    logSession({
+      itemId,
+      title,
+      // The database's own name for the food when the search supplied one,
+      // since "Milk, whole, 3.25% milkfat" is what tells you which of the
+      // twelve hits got picked. A typed panel has no such name, so it falls
+      // back to the same one-line summary the item sheet's row shows.
+      valueText: nutrition
+        ? description ?? describeFoodPanel(nutrition) ?? 'Figures saved'
+        : 'Figures cleared',
+      undo: () => setItemNutrition(itemId, before),
+    });
+  };
+
+  /**
+   * The item pool's `scannedName` field: the row keeps its id and history and
+   * only its words change.
+   *
+   * **A collision is offered as a merge rather than refused.** `renameItem`
+   * returns false when the new key belongs to another row, and that case is
+   * the common one here rather than an edge: three scanned yogurts all want to
+   * be called "Yogurt", and the second and third would otherwise hit a dead
+   * end in the middle of a queue built to clear exactly them. `mergeItems`
+   * confirms first (its own doc comment argues for the double coverage) and
+   * files its revert under the store's shake-to-undo, which is what the
+   * session entry borrows so this card's Undo does the same thing every other
+   * card's does.
+   */
+  const applyRename = (name: string) => {
+    if (!currentItem || active?.kind !== 'item') return;
+    const trimmed = name.trim();
+    const key = groceryNameKey(trimmed);
+    if (!trimmed || !key) return;
+    const itemId = currentItem.id;
+    const title = currentItem.name;
+    const clash = groceryItems.find(i => i.id !== itemId && i.nameKey === key);
+    if (clash) {
+      Alert.alert(
+        `Merge into "${clash.name}"?`,
+        `You already have an item called "${clash.name}". Merging keeps that one and folds this row's history, boxes and stores into it.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Merge',
+            style: 'destructive',
+            onPress: () => {
+              haptics.success();
+              animateLayout();
+              recordVisited();
+              setManualCurrentId(null);
+              if (!mergeItems(itemId, clash.id)) return;
+              // The revert mergeItems just filed for itself. Read straight
+              // back out rather than rebuilt here: folding two rows together
+              // touches products, store links, substitutes, aliases and
+              // recipe keys, and a second, thinner undo written at this call
+              // site would put back less than the merge took.
+              const revert = useGroceryStore.getState().lastAction?.undo;
+              logSession({
+                itemId,
+                title,
+                valueText: `Merged into "${clash.name}"`,
+                undo: () => revert?.(),
+              });
+            },
+          },
+        ]
+      );
+      return;
+    }
+    haptics.tap();
+    animateLayout();
+    recordVisited();
+    setManualCurrentId(null);
+    if (!renameItem(itemId, trimmed)) return;
+    logSession({
+      itemId,
+      title,
+      valueText: trimmed,
+      // Both halves, because renameItem clears nameFromScan on its way past
+      // (that is what takes a row out of this queue) and an undone rename has
+      // to land back in it. See setNameFromScan.
+      undo: () => {
+        renameItem(itemId, title);
+        setNameFromScan(itemId, true);
+      },
     });
   };
 
@@ -1905,6 +2066,20 @@ export function BackfillScreen() {
         onPress: () => applyVariety(key),
       }))
     : [];
+  // Suffixes of the row's own name, one tap each — see shorterNameSuggestions
+  // for why they can only ever be words already printed on the box.
+  const renameOptions = currentItem
+    ? shorterNameSuggestions(currentItem.name).map(label => ({
+        key: label,
+        label,
+        selected: false,
+        onPress: () => applyRename(label),
+      }))
+    : [];
+  // Blank, or the name it already has: neither is an answer, so the button
+  // that commits them is off rather than doing nothing when tapped.
+  const renameReady =
+    !!currentItem && !!renameText.trim() && renameText.trim() !== currentItem.name;
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -1957,7 +2132,7 @@ export function BackfillScreen() {
             )}
           </View>
 
-          {active.id === 'variety' ? (
+          {active.id === 'variety' && (
             <PillGroup
               options={varietyOptions}
               noun="name"
@@ -1965,7 +2140,9 @@ export function BackfillScreen() {
               createMaxLength={GROCERY_NAME_MAX_LENGTH}
               filterPlaceholder="Find or type a general name…"
             />
-          ) : (
+          )}
+
+          {active.id === 'substitutes' && (
             <PressableScale
               style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
               onPress={openSubstituteSheet}
@@ -1979,12 +2156,82 @@ export function BackfillScreen() {
             </PressableScale>
           )}
 
+          {active.id === 'scannedName' && (
+            <View style={styles.renameField}>
+              {renameOptions.length > 0 && (
+                <>
+                  <Text style={styles.renameHint}>
+                    Tap a shorter name, or edit the full one below.
+                  </Text>
+                  <PillGroup options={renameOptions} noun="name" />
+                </>
+              )}
+              <View style={styles.askAboutRow}>
+                <TextInput
+                  style={styles.askAboutInput}
+                  value={renameText}
+                  onChangeText={text => setRenameText(text.slice(0, GROCERY_NAME_MAX_LENGTH))}
+                  placeholder="e.g. Milk"
+                  placeholderTextColor={colors.textTertiary}
+                  returnKeyType="done"
+                  onSubmitEditing={() => applyRename(renameText)}
+                  accessibilityLabel={`New name for ${currentItem.name}`}
+                />
+                <PressableScale
+                  style={[
+                    styles.toggleButton,
+                    { backgroundColor: colors.accentFill },
+                    !renameReady && styles.toggleButtonIdle,
+                  ]}
+                  onPress={() => applyRename(renameText)}
+                  disabled={!renameReady}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Rename ${currentItem.name}`}
+                >
+                  <Ionicons name="pricetag" size={iconSize.md} color={colors.onAccent} />
+                  <Text style={styles.toggleButtonText}>Rename</Text>
+                </PressableScale>
+              </View>
+            </View>
+          )}
+
+          {active.id === 'nutrition' && (
+            <View style={styles.nutritionField}>
+              <Text style={styles.renameHint}>
+                Look the food up, or copy the figures off the packet. Either way you
+                confirm what gets saved.
+              </Text>
+              <PressableScale
+                style={[styles.toggleButton, { backgroundColor: colors.accentFill }]}
+                onPress={() => { haptics.tap(); setNutritionSearchOpen(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Find ${currentItem.name} in the food database`}
+              >
+                <Ionicons name="search" size={iconSize.md} color={colors.onAccent} />
+                <Text style={styles.toggleButtonText}>Find this food</Text>
+              </PressableScale>
+              {/* The quieter half of the pair, and neutral rather than a dimmed
+                  accent: two accent buttons stacked read as one control drawn
+                  twice, and typing a label is the answer whenever the lookup
+                  can't be asked (no key, no network) or doesn't know the food. */}
+              <PressableScale
+                style={styles.neutralButton}
+                onPress={() => { haptics.tap(); setNutritionPanelOpen(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={`Type in a nutrition label for ${currentItem.name}`}
+              >
+                <Ionicons name="create-outline" size={iconSize.md} color={colors.text} />
+                <Text style={styles.neutralButtonText}>Type in a label</Text>
+              </PressableScale>
+            </View>
+          )}
+
           <View style={styles.actionRow}>
             <PressableScale
               style={styles.skipButton}
               onPress={skip}
               accessibilityRole="button"
-              accessibilityLabel="Skip this project for now"
+              accessibilityLabel="Skip this item for now"
             >
               <Text style={styles.skipText}>Skip for now</Text>
             </PressableScale>
@@ -1992,7 +2239,13 @@ export function BackfillScreen() {
               style={styles.skipButton}
               onPress={dismiss}
               accessibilityRole="button"
-              accessibilityLabel={`Leave "${itemField.label}" unset for this item and don't ask again`}
+              accessibilityLabel={
+                // `scannedName` is the one field here that already has a value,
+                // so "leave it unset" would describe the wrong thing.
+                active.id === 'scannedName'
+                  ? `Keep the name "${currentItem.name}" and don't ask again`
+                  : `Leave "${itemField.label}" unset for this item and don't ask again`
+              }
             >
               <Text style={styles.skipText}>Don't ask again</Text>
             </PressableScale>
@@ -2023,6 +2276,19 @@ export function BackfillScreen() {
         visible={subSheetOpen}
         itemId={currentItem?.id ?? null}
         onClose={closeSubstituteSheet}
+      />
+      <NutritionSearchSheet
+        visible={nutritionSearchOpen}
+        itemName={currentItem?.name ?? ''}
+        onClose={() => setNutritionSearchOpen(false)}
+        onPick={(nutrition, description) => applyNutrition(nutrition, description)}
+      />
+      <NutritionPanelSheet
+        visible={nutritionPanelOpen}
+        foodName={currentItem?.name ?? ''}
+        nutrition={currentItem?.nutrition ?? null}
+        onClose={() => setNutritionPanelOpen(false)}
+        onSave={nutrition => applyNutrition(nutrition)}
       />
     </View>
   );
@@ -2461,6 +2727,30 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   // and reads back what it's waiting for rather than disappearing, so the card
   // doesn't reflow as the field is filled in.
   toggleButtonIdle: { opacity: 0.4 },
+
+  // toggleButton's neutral twin, for the second of a pair of actions — same
+  // box, a surface instead of the accent fill. See `InlineAction`'s own
+  // neutral variant, which makes the same distinction one component over.
+  neutralButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
+    // One surface step up from the page, which is the same call `PillGroup`
+    // makes for its own controls on a `page` surface. `bgTertiary` was the
+    // first guess and is nearly invisible in light: #EFEFF4 on a #F2F2F7 page.
+    backgroundColor: colors.bgSecondary,
+  },
+  neutralButtonText: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },
+
+  // Both item fields whose control is more than one button. The gap is
+  // spacing.md between stacked blocks, per the design-system note on giving a
+  // new element margin on both sides it needs.
+  renameField: { gap: spacing.md },
+  nutritionField: { gap: spacing.md },
+  renameHint: { color: colors.textSecondary, fontSize: font.sm, lineHeight: lineHeight.sm },
 
   // The cadence offer built from this person's own history — see rule 5 in
   // docs/arch/people.md. Same treatment PersonEditor gives the identical offer,

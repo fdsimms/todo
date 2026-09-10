@@ -3102,6 +3102,33 @@ export interface GroceryItem {
   // Normalised identity, from groceryNameKey(). UNIQUE in SQLite, which is
   // where the no-duplicates guarantee actually lives.
   nameKey: string;
+  /**
+   * Whether `name` is still the words a barcode lookup supplied, rather than
+   * words a person chose.
+   *
+   * A scan mints a row named after whatever the product database calls it, and
+   * `shopperNameFor` deliberately only tidies that text rather than
+   * understanding it: knowing "Great Value 2% Reduced Fat Milk" means milk
+   * means knowing what the words mean, which is the guess that whole path
+   * refuses to make offline. The review step is where a person is meant to fix
+   * it, and in practice a lot of rows go through untouched, so the catalog
+   * fills up with a product database's phrasing.
+   *
+   * **It is recorded, never inferred.** There is no reading of a name that
+   * tells you who wrote it, and guessing from length or capitalisation would
+   * queue up rows a person typed on purpose. So the scan path sets it on the
+   * rows it mints, and only on the ones whose proposed name was left alone.
+   *
+   * **`renameItem` clears it**, which is what makes it mean "still wearing the
+   * barcode's words" rather than "arrived by scan once". Nothing else writes
+   * it; a merge keeps the survivor's own answer, since the survivor's name is
+   * the one that stays.
+   *
+   * False on every row that predates the column, which is the honest reading:
+   * nothing recorded how those were named, and a queue is a worse place to
+   * find that out than the item sheet is.
+   */
+  nameFromScan: boolean;
   // Which of this item's products the user wants — the one to reach for. Null
   // (the common case) means no opinion: any bread is bread.
   //
