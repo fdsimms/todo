@@ -2821,19 +2821,20 @@ export interface FoodNutrition {
    * assumed because a source that changed its mind would otherwise rewrite
    * every stored figure's meaning without touching a byte of it.
    *
-   * Both barcode sources happen to answer per 100g today, and each says so in
-   * its own payload rather than being taken on trust: Open Food Facts is read
-   * from its `_100g` fields with `nutrition_data_per: "100g"` beside them, and
-   * FoodData Central's Branded rows carry the derivation "given by information
-   * provider as an approximate value per 100 unit measure". A typed or
-   * estimated record is whatever its writer measured.
+   * **`per100ml` is separate from `per100g` because a drink is not the same
+   * weight as its volume**, and both barcode sources blur exactly that: they
+   * label a beverage's panel "per 100g" and mean per 100ml. Folding the two
+   * together would make every drink wrong by its own density, silently and
+   * with nothing on screen to say so. Which one a barcode record gets is
+   * decided by the unit the source states the *product* is sold in, not by any
+   * guess about the food — see `basisFor` in `nutritionParse.ts`. Nothing here
+   * converts between the two, since that needs a density this app does not
+   * have; a reader wanting grams from a `per100ml` record has to refuse, the
+   * same way `servingGrams` being null makes it refuse.
    *
-   * One caveat that this field cannot express: a source's "per 100g" figures
-   * for a drink are in practice per 100ml, so a beverage's record is off by
-   * whatever its density differs from water by — a few percent. There is no
-   * `per100ml` here to say so.
+   * A typed or estimated record is whatever its writer measured.
    */
-  basis: 'per100g' | 'perServing';
+  basis: 'per100g' | 'per100ml' | 'perServing';
   /**
    * What one serving weighs, when the source said so. Null when it didn't.
    *
@@ -2841,6 +2842,12 @@ export interface FoodNutrition {
    * serving, so such a record without it can answer "one serving of this" and
    * nothing else. That refusal belongs to whichever reader wants the grams;
    * nothing here guesses a serving weight.
+   *
+   * **A product sold by volume has none**, and that is the honest answer rather
+   * than a gap: this is a mass, a 250ml can states a volume, and converting the
+   * one to the other needs a density nothing here knows. Such a record carries
+   * its serving in `servingText` for a person to read, and `per100ml` figures
+   * to compute with.
    */
   servingGrams: number | null;
   /**

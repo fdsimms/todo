@@ -58,6 +58,19 @@ describe('parseFoodNutrition', () => {
       expect(parseFoodNutrition(stored({ ...nutrition(), basis: undefined }))).toBeNull();
     });
 
+    it('reads per100ml back, which is a drink and not a mistyped per100g', () => {
+      // The two are not interchangeable: a beverage's panel is per 100ml, and
+      // reading it as per 100g would be wrong by the drink's own density. A
+      // record measured by volume also has no serving *weight* to carry.
+      const drink = nutrition({
+        basis: 'per100ml',
+        servingGrams: null,
+        servingText: '250ml',
+        amounts: { calorieKcal: 46, sugarG: 11, caffeineMg: 32 },
+      });
+      expect(parseFoodNutrition(serializeFoodNutrition(drink))).toEqual(drink);
+    });
+
     it('refuses a basis it does not recognise rather than picking one', () => {
       expect(parseFoodNutrition(stored({ ...nutrition(), basis: 'perOunce' }))).toBeNull();
     });

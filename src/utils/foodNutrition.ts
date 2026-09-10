@@ -32,7 +32,7 @@ import { NUTRIENT_KEYS } from '../types';
  * screen that won't load.
  */
 
-const NUTRITION_BASES: readonly FoodNutrition['basis'][] = ['per100g', 'perServing'];
+const NUTRITION_BASES: readonly FoodNutrition['basis'][] = ['per100g', 'per100ml', 'perServing'];
 
 const NUTRITION_SOURCES: readonly FoodNutritionSource[] = ['fdc', 'openFoodFacts', 'manual', 'estimated'];
 

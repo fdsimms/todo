@@ -86,12 +86,18 @@ const SALT_TO_SODIUM = 2.5;
  * rather than merely surprising — so it is dropped on the same grounds a
  * negative one is.
  *
+ * It is applied to a `per100ml` record too, where it is looser by whatever the
+ * liquid's density is. That is fine and deliberate: this is a bound on the
+ * absurd, and stretching it by a few percent for a drink costs nothing, where
+ * tightening it per basis would mean knowing the density this module refuses
+ * to guess at.
+ *
  * It is deliberately not tighter than that. Anything narrower would be this
  * module deciding which real foods are too unusual to record, which is a
  * judgement it has no business making and would silently drop the honest
  * outliers (pure oil at 900, salt, a caffeine tablet).
  */
-const PER_100G_CEILING: Record<NutrientKey, number> = {
+const PER_100_CEILING: Record<NutrientKey, number> = {
   calorieKcal: 900,
   proteinG: 100,
   carbsG: 100,
@@ -103,6 +109,62 @@ const PER_100G_CEILING: Record<NutrientKey, number> = {
   caffeineMg: 100_000,
   waterMl: 100,
 };
+
+/**
+ * Every unit spelling either source uses, mapped onto one vocabulary.
+ *
+ * **One table for both**, because they are not one convention and neither is
+ * internally consistent. FoodData Central's nutrient list uses upper-case
+ * abbreviations (`G`, `MG`, `UG`, `KCAL`) while `servingSizeUnit` on the same
+ * food says `GRM` on one row and a lower-case `ml` on the next; Open Food Facts
+ * writes its unit fields lower-case. Everything is upper-cased before it is
+ * looked up here.
+ *
+ * Anything absent converts to nothing, which is the refusal doing its job.
+ * `IU` is the one worth naming: an International Unit has no fixed mass
+ * equivalent, because the factor differs per vitamin.
+ */
+const SOURCE_UNITS: Record<string, NutrientSourceUnit> = {
+  G: 'g',
+  GRM: 'g',
+  MG: 'mg',
+  UG: 'ug',
+  MCG: 'ug',
+  KCAL: 'kcal',
+  KJ: 'kj',
+  ML: 'ml',
+  MLT: 'ml',
+  L: 'l',
+  LTR: 'l',
+};
+
+/** A unit a source named, in this module's vocabulary, or undefined if it named none this build knows. */
+function readSourceUnit(value: unknown): NutrientSourceUnit | undefined {
+  const text = typeof value === 'string' ? value.trim().toUpperCase() : '';
+  return text ? SOURCE_UNITS[text] : undefined;
+}
+
+/**
+ * Which per-100 basis a product's figures carry, from the unit the source
+ * states the product itself is measured in.
+ *
+ * **Both sources label a drink's figures "per 100g" and mean per 100ml**, and
+ * that is a real error rather than a rounding one: Red Bull's panel is per
+ * 100ml, and storing it as per 100g overstates a can by whatever the drink's
+ * density differs from water by. Open Food Facts' own `nutrition_data_per`
+ * cannot settle it, since it reads `"100g"` for Red Bull and `"serving"` for
+ * Coca-Cola whose figures are in the same `_100g` fields as everything else.
+ *
+ * **So the product's own quantity unit answers instead, which is a reading and
+ * not a guess.** A pack sold as 250ml with a 250ml serving is measured by
+ * volume, and the per-100 column of a thing measured by volume is per 100ml.
+ * That asks nothing about density and nothing about what the food *is*: the
+ * source states the unit, and this believes it. A source naming neither unit
+ * leaves the figures per 100g, which is what it labelled them.
+ */
+function basisFor(measured: NutrientSourceUnit | undefined): FoodNutrition['basis'] {
+  return measured === 'ml' || measured === 'l' ? 'per100ml' : 'per100g';
+}
 
 /**
  * Trims the floating-point tail a unit conversion leaves behind.
@@ -175,18 +237,18 @@ export function convertNutrientAmount(
 /**
  * Records one converted figure against `key`, unless it is impossible.
  *
- * Everything reaching here is per 100g, which is what makes the ceiling
- * checkable at all — a per-serving figure has no bound, since a serving can be
- * any size.
+ * Everything reaching here is per 100 units of the product, which is what makes
+ * the ceiling checkable at all — a per-serving figure has no bound, since a
+ * serving can be any size.
  */
-function setPer100g(
+function setPer100(
   amounts: Partial<Record<NutrientKey, number>>,
   key: NutrientKey,
   value: number,
   unit: NutrientSourceUnit,
 ): void {
   const converted = convertNutrientAmount(value, unit, key);
-  if (converted === null || converted > PER_100G_CEILING[key]) return;
+  if (converted === null || converted > PER_100_CEILING[key]) return;
   amounts[key] = converted;
 }
 
@@ -237,10 +299,21 @@ const OFF_FIELDS: Record<Exclude<NutrientKey, 'sodiumMg'>, { field: string; unit
  * the honest answer.
  */
 function readOffServingGrams(product: Record<string, unknown>): number | null {
-  const unit = readSourceText(product.serving_quantity_unit)?.toLowerCase();
-  if (unit !== 'g') return null;
+  if (readSourceUnit(product.serving_quantity_unit) !== 'g') return null;
   const grams = readSourceNumber(product.serving_quantity);
   return grams !== null && grams > 0 ? grams : null;
+}
+
+/**
+ * The unit Open Food Facts states this product's own quantity in.
+ *
+ * `product_quantity_unit` first, because the pack as sold is what the per-100
+ * column describes, with the serving's unit filling in for a row that has no
+ * pack size. The two agree wherever both are present.
+ */
+function readOffMeasuredUnit(product: Record<string, unknown>): NutrientSourceUnit | undefined {
+  return readSourceUnit(product.product_quantity_unit)
+    ?? readSourceUnit(product.serving_quantity_unit);
 }
 
 /**
@@ -281,16 +354,16 @@ export function readOffNutrition(
   for (const key of Object.keys(OFF_FIELDS) as Array<Exclude<NutrientKey, 'sodiumMg'>>) {
     const { field, unit } = OFF_FIELDS[key];
     const value = readSourceNumber(nutriments[field]);
-    if (value !== null) setPer100g(amounts, key, value, unit);
+    if (value !== null) setPer100(amounts, key, value, unit);
   }
 
   const salt = readSourceNumber(nutriments.salt_100g);
-  if (salt !== null) setPer100g(amounts, 'sodiumMg', salt / SALT_TO_SODIUM, 'g');
+  if (salt !== null) setPer100(amounts, 'sodiumMg', salt / SALT_TO_SODIUM, 'g');
 
   if (Object.keys(amounts).length === 0) return null;
 
   return {
-    basis: 'per100g',
+    basis: basisFor(readOffMeasuredUnit(product)),
     servingGrams: readOffServingGrams(product),
     servingText: readSourceText(product.serving_size),
     amounts,
@@ -321,32 +394,9 @@ const FDC_NUTRIENT_KEYS: Record<number, NutrientKey> = {
   1051: 'waterMl',
 };
 
-/**
- * FoodData Central's unit spellings, which are not one convention.
- *
- * The nutrient list uses upper-case abbreviations (`G`, `MG`, `UG`, `KCAL`),
- * while `servingSizeUnit` on the same food may say `GRM` on one row and a
- * lower-case `ml` on the next. Everything is upper-cased before it is looked up
- * here, and anything absent from this table — `IU`, most obviously, which has no
- * fixed mass equivalent because it differs per vitamin — converts to nothing.
- */
-const FDC_UNITS: Record<string, NutrientSourceUnit> = {
-  G: 'g',
-  GRM: 'g',
-  MG: 'mg',
-  UG: 'ug',
-  MCG: 'ug',
-  KCAL: 'kcal',
-  KJ: 'kj',
-  ML: 'ml',
-  MLT: 'ml',
-  LTR: 'l',
-};
-
 /** What one serving of an FDC food weighs, or null. Grams only, same rule as OFF's. */
 function readFdcServingGrams(food: Record<string, unknown>): number | null {
-  const unit = FDC_UNITS[readSourceText(food.servingSizeUnit)?.toUpperCase() ?? ''];
-  if (unit !== 'g') return null;
+  if (readSourceUnit(food.servingSizeUnit) !== 'g') return null;
   const grams = readSourceNumber(food.servingSize);
   return grams !== null && grams > 0 ? grams : null;
 }
@@ -392,15 +442,18 @@ export function readFdcNutrition(
     const key = FDC_NUTRIENT_KEYS[Number(row.nutrientId)];
     if (!key || claimed.has(key)) continue;
     claimed.add(key);
-    const unit = FDC_UNITS[readSourceText(row.unitName)?.toUpperCase() ?? ''];
+    const unit = readSourceUnit(row.unitName);
     const value = readSourceNumber(row.value);
-    if (unit && value !== null) setPer100g(amounts, key, value, unit);
+    if (unit && value !== null) setPer100(amounts, key, value, unit);
   }
 
   if (Object.keys(amounts).length === 0) return null;
 
   return {
-    basis: 'per100g',
+    // The Branded dataset has no pack-level unit, so the serving's is what says
+    // whether this food is measured by volume. A cold brew's servingSizeUnit is
+    // `ml` where a cereal's is `GRM`.
+    basis: basisFor(readSourceUnit(food.servingSizeUnit)),
     servingGrams: readFdcServingGrams(food),
     servingText: readSourceText(food.householdServingFullText),
     amounts,

@@ -17,6 +17,8 @@ const RECORDED_AT = '2026-09-10T12:00:00.000Z';
 /** Nutella, whose `sodium_100g` is in grams and agrees with its salt figure. */
 const NUTELLA = {
   serving_size: null,
+  product_quantity_unit: 'g',
+  serving_quantity_unit: 'g',
   nutriments: {
     'energy-kcal_100g': 539,
     energy_100g: 2252,
@@ -41,6 +43,7 @@ const RED_BULL = {
   serving_size: '250ml',
   serving_quantity: 250,
   serving_quantity_unit: 'ml',
+  product_quantity_unit: 'ml',
   nutriments: {
     'energy-kcal_100g': 46,
     proteins_100g: 0,
@@ -170,6 +173,26 @@ describe('readOffNutrition', () => {
     // Nutella's panel has no fibre row at all, which is unknown and not zero.
     expect(readOffNutrition(NUTELLA, 'x', RECORDED_AT)!.amounts.fiberG).toBeUndefined();
     expect('fiberG' in readOffNutrition(NUTELLA, 'x', RECORDED_AT)!.amounts).toBe(false);
+  });
+
+  it('calls a product sold by volume per100ml, not per100g', () => {
+    // Both sources label a drink's panel "per 100g" and mean per 100ml. The
+    // pack's own unit is what settles it, and Open Food Facts' own
+    // `nutrition_data_per` cannot: it reads "100g" on this very can.
+    expect(readOffNutrition(RED_BULL, 'x', RECORDED_AT)!.basis).toBe('per100ml');
+    expect(readOffNutrition(NUTELLA, 'x', RECORDED_AT)!.basis).toBe('per100g');
+  });
+
+  it('falls back to the serving unit, and to per100g when neither is stated', () => {
+    const servingOnly = {
+      serving_quantity_unit: 'ml',
+      nutriments: { proteins_100g: 1 },
+    };
+    expect(readOffNutrition(servingOnly, 'x', RECORDED_AT)!.basis).toBe('per100ml');
+
+    // A source naming no unit leaves the figures as it labelled them.
+    const noUnits = { nutriments: { proteins_100g: 1 } };
+    expect(readOffNutrition(noUnits, 'x', RECORDED_AT)!.basis).toBe('per100g');
   });
 
   it('takes a serving weight only when the source measured one in grams', () => {
@@ -334,6 +357,19 @@ describe('readFdcNutrition', () => {
       foodNutrients: [fdcNutrient(1008, 'KCAL', 5)],
     };
     expect(readFdcNutrition(coldBrew, RECORDED_AT)!.servingGrams).toBeNull();
+  });
+
+  it('calls a food served by volume per100ml', () => {
+    // The Branded dataset has no pack-level unit, so the serving's is the one
+    // that says a cold brew is measured by volume where a cereal is not.
+    const coldBrew = {
+      fdcId: 1917786,
+      servingSize: 355,
+      servingSizeUnit: 'ml',
+      foodNutrients: [fdcNutrient(1008, 'KCAL', 5)],
+    };
+    expect(readFdcNutrition(coldBrew, RECORDED_AT)!.basis).toBe('per100ml');
+    expect(readFdcNutrition(CHEERIOS, RECORDED_AT)!.basis).toBe('per100g');
   });
 
   it('answers null when the hit carried no nutrients', () => {
