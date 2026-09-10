@@ -845,7 +845,6 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
     textTransform: 'uppercase',
     paddingHorizontal: spacing.md,
     paddingTop: spacing.sm,
-    paddingBottom: spacing.xs,
   },
   card: {
     backgroundColor: colors.bgSecondary,
