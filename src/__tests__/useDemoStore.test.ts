@@ -2220,6 +2220,20 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(row?.category).toBe('needToBuy');
   });
 
+  it('seeds an ingredient excluded from its recipe\'s nutrition total', () => {
+    // Invisible without a seeded instance, same as the optional case above:
+    // nothing infers "this line doesn't move the total" from the text of a
+    // recipe.
+    const recipes = useRecipeStore.getState().recipes;
+    const excludedLine = recipes.flatMap(r => r.ingredients).find(i => i.excludeFromNutrition);
+    expect(excludedLine).toBeDefined();
+
+    const owner = recipes.find(r => r.ingredients.some(i => i.id === excludedLine!.id))!;
+    const { items, itemProducts } = useGroceryStore.getState();
+    const lines = recipeNutritionLines(owner, items, itemProducts);
+    expect(lines.some(l => l.id === excludedLine!.id)).toBe(false);
+  });
+
   it('seeds substitutes in both directions', () => {
     const { items, itemSubs } = useGroceryStore.getState();
 

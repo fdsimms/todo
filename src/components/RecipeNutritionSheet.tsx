@@ -3,6 +3,7 @@ import { View, Text, TextInput, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -49,11 +50,19 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * against the amount asked for get a scale, and only when `weighableLine` has
  * confirmed that weighing would actually settle it.
  *
- * **Every write goes to the grocery catalog, never to the recipe.** What is
- * missing is a fact about a food, not about this dish, so filling it in here
- * fixes every other recipe calling for the same thing and the food log with it.
- * That is also why nothing here is undone when the sheet closes.
+ * **Filling in figures writes to the grocery catalog, never to the recipe.**
+ * What is missing is a fact about a food, not about this dish, so filling it
+ * in here fixes every other recipe calling for the same thing and the food
+ * log with it. That is also why nothing here is undone when the sheet closes.
  *
+ * **"Don't count this" is the one write that goes the other way**, onto
+ * `RecipeIngredient.excludeFromNutrition` rather than the catalog — what it
+ * says isn't a fact about the food (a handful of basil has real figures), it's
+ * that this dish's total doesn't need them. So it's scoped to this recipe's
+ * own line, the same way `noSwap` and `optional` already are, and every other
+ * recipe calling for basil keeps counting it.
+ *
+
  * **Rows leave as they are answered**, because the list is recomputed from the
  * store on every write rather than held in state. The row disappearing is the
  * confirmation, the way it is in `IngredientCatalogMatchSheet` and the way a
@@ -88,6 +97,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const setItemNutrition = useGroceryStore(s => s.setItemNutrition);
   const setProductNutrition = useGroceryStore(s => s.setProductNutrition);
   const ensureCatalogItem = useGroceryStore(s => s.ensureCatalogItem);
+  const updateIngredient = useRecipeStore(s => s.updateIngredient);
 
   // Which line each nested sheet is open for, rather than a boolean and a
   // separate id: the two can't disagree if there is only one of them.
@@ -146,6 +156,18 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
     if (item) setNewItemId(item.id);
   };
 
+  /**
+   * Leaves a line out of this recipe's total for good, same as a staple —
+   * for an amount too small to matter, like a garnish. Writes to the
+   * ingredient itself (RecipeIngredient.excludeFromNutrition), not the
+   * catalog, since what's being said is "this dish doesn't need this
+   * counted", not a fact about the food.
+   */
+  const excludeLine = (line: NutritionLine) => {
+    haptics.tap();
+    updateIngredient(line.recipeId, line.id, { excludeFromNutrition: true });
+  };
+
   const startWeighing = (line: NutritionLine) => {
     haptics.tap();
     setWeighingId(line.id);
@@ -172,7 +194,7 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const countLine =
     gaps.total === 0
       ? null
-      : `Counted from ${gaps.covered} of ${gaps.total} ingredients. Staples aren't counted on either side.`;
+      : `Counted from ${gaps.covered} of ${gaps.total} ingredients. Staples, and any ingredient marked not to count, aren't counted on either side.`;
 
   return (
     <EditorSheet
@@ -315,6 +337,12 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
                         onPress={() => { haptics.tap(); setPanelLine(line); }}
                       />
                     )}
+                    <InlineAction
+                      label="Don't count this"
+                      variant="neutral"
+                      onPress={() => excludeLine(line)}
+                      accessibilityLabel={`Leave ${line.name} out of this recipe's nutrition total`}
+                    />
                   </View>
                 )}
               </View>
@@ -340,6 +368,12 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
                   variant="neutral"
                   onPress={() => addToCatalog(line)}
                   accessibilityLabel={`Add ${line.name} to your grocery catalog`}
+                />
+                <InlineAction
+                  label="Don't count this"
+                  variant="neutral"
+                  onPress={() => excludeLine(line)}
+                  accessibilityLabel={`Leave ${line.name} out of this recipe's nutrition total`}
                 />
               </View>
             ))}
@@ -437,6 +471,7 @@ function makeStyles(colors: Colors) {
     plainRow: {
       flexDirection: 'row',
       alignItems: 'center',
+      flexWrap: 'wrap',
       gap: spacing.sm,
       paddingVertical: spacing.sm,
     },
