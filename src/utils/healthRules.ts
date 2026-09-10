@@ -1,10 +1,18 @@
 import { format } from 'date-fns/format';
-import type { HealthRule, HealthRuleMetric, Task } from '../types';
+import type { HealthNutrientMetric, HealthRule, HealthRuleMetric, Task } from '../types';
 import { generateId } from './id';
 import { generatedSourceOf } from './generatedTasks';
 
-/** Every metric but steps and sleep — the ones with a per-rule checkpoint hour and direction. See `HEALTH_METRIC_EARLIEST_HOUR`'s comment. */
-export const HEALTH_NUTRIENT_METRICS: readonly HealthRuleMetric[] =
+/**
+ * Every metric but steps and sleep — the ones with a per-rule checkpoint hour
+ * and direction. See `HEALTH_METRIC_EARLIEST_HOUR`'s comment.
+ *
+ * Typed as `HealthNutrientMetric` rather than `HealthRuleMetric` so the list
+ * carries that type's constraint: a ninth entry here with no home in
+ * `NutrientKey` fails the build, because a rule watching a nutrient this app
+ * cannot record is one it could never satisfy from its own food data.
+ */
+export const HEALTH_NUTRIENT_METRICS: readonly HealthNutrientMetric[] =
   ['sodiumMg', 'proteinG', 'satFatG', 'fiberG', 'sugarG', 'caffeineMg', 'waterMl', 'calorieKcal'];
 
 /** Whether `metric` uses a per-rule checkpoint hour and direction, rather than steps/sleep's fixed pair. */

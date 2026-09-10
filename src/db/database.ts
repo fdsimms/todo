@@ -1376,6 +1376,13 @@ export function initDatabase(): void {
     // The same column on a box rather than on the catalog row, and the one that
     // a barcode's label panel lands in. See ItemProduct.nutrition.
     'ALTER TABLE grocery_item_products ADD COLUMN nutrition TEXT',
+    // What the barcode source said the product is made of, so a code already in
+    // the cache doesn't have to be asked again to get it. Null on every row
+    // cached before this shipped and deliberately never backfilled, exactly as
+    // the category column above is — a hit never expires, so filling these in
+    // would mean re-asking the network about every barcode ever scanned. See
+    // GtinLookup.nutrition.
+    'ALTER TABLE gtin_lookups ADD COLUMN nutrition TEXT',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4134,6 +4141,7 @@ function rowToGtinLookup(row: Record<string, unknown>): GtinLookup {
     brand: (row.brand as string) ?? null,
     quantity: (row.quantity as string) ?? null,
     category: (row.category as string) ?? null,
+    nutrition: parseFoodNutrition(row.nutrition as string | null),
     source: (row.source as string) ?? '',
     fetchedAt: row.fetched_at as string,
   };
@@ -4164,14 +4172,15 @@ export function dbGetGtinLookup(gtin: string): GtinLookup | null {
  */
 export function dbSetGtinLookup(entry: GtinLookup): void {
   db.runSync(
-    `INSERT INTO gtin_lookups (gtin, found, name, brand, quantity, category, source, fetched_at)
-     VALUES (?,?,?,?,?,?,?,?)
+    `INSERT INTO gtin_lookups (gtin, found, name, brand, quantity, category, nutrition, source, fetched_at)
+     VALUES (?,?,?,?,?,?,?,?,?)
      ON CONFLICT(gtin) DO UPDATE SET
        found = excluded.found,
        name = excluded.name,
        brand = excluded.brand,
        quantity = excluded.quantity,
        category = excluded.category,
+       nutrition = excluded.nutrition,
        source = excluded.source,
        fetched_at = excluded.fetched_at`,
     [
@@ -4181,6 +4190,7 @@ export function dbSetGtinLookup(entry: GtinLookup): void {
       entry.brand,
       entry.quantity,
       entry.category,
+      serializeFoodNutrition(entry.nutrition),
       entry.source,
       entry.fetchedAt,
     ]

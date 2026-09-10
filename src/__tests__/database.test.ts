@@ -3897,6 +3897,7 @@ describe('the barcode cache', () => {
 
   const entry = (gtin: string, found = true) => ({
     gtin, found, name: found ? 'Milk' : '', brand: null, quantity: null, category: null,
+    nutrition: null,
     source: found ? 'openfoodfacts' : '', fetchedAt: '2026-08-21T12:00:00.000Z',
   });
 

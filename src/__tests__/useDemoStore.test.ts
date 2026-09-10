@@ -35,6 +35,7 @@ import { substituteQuantity, substitutesFor } from '../utils/itemSubs';
 import { standingSwapMap } from '../utils/standingSwaps';
 import { coveringVariety, varietyIndex } from '../utils/itemVarieties';
 import { normalizeGtin } from '../utils/gtin';
+import { nutritionFor } from '../utils/foodNutrition';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
 import { flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
 import { catalogMatchSummary, matchIngredientsToCatalog } from '../utils/ingredientCatalogMatch';
@@ -1710,6 +1711,21 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     const scannedItem = items.find(i => i.id === scanned!.itemId)!;
     expect(scannedItem.nameKey).not.toContain(scanned!.brand!.toLowerCase());
     expect(useGroceryStore.getState().gtinItemFor(scanned!.gtin)).toBe(scannedItem.id);
+    // ...carrying the nutrition panel that barcode's own lookup fetched, which
+    // is the half a scan used to throw away. It arrives by the real route —
+    // seedGroceries writes the cache row and `linkScannedGtins` transfers it —
+    // so this pins the transfer and not just the presence of some figures.
+    const panel = nutritionFor(scannedItem, scanned);
+    expect(panel).not.toBeNull();
+    expect(panel!.basis).toBe('per100g');
+    // A manufacturer's label rather than a guess: FoodNutrition.source decides
+    // what a reader is allowed to claim about these numbers.
+    expect(panel!.source).toBe('fdc');
+    expect(panel!.amounts.calorieKcal).toBeGreaterThan(0);
+    expect(panel!.amounts.sodiumMg).toBeGreaterThan(0);
+    // ...and the keys the label never declared stay absent rather than
+    // arriving as a confident zero. See FoodNutrition.amounts.
+    expect('caffeineMg' in panel!.amounts).toBe(false);
     // ...and a rating, on a box that isn't the preferred one — "the one I
     // avoid" and "the one I want" being the same row would read as a bug.
     const avoided = itemProducts.find(p => p.rating === 'avoid');

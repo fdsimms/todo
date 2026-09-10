@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
+import type { FoodNutrition, GroceryItem, GroceryList, GroceryListEntry, ItemProduct, ItemShopLink, ItemSubLink, ProductRating, ReceiptStyle, Shop, StoreAlias } from '../types';
 import {
   dbGetAllGroceryItems,
   dbInsertGroceryItem,
@@ -35,6 +35,7 @@ import {
   dbGetAllItemProducts,
   dbGetAllStoreAliases,
   dbSetStoreAlias,
+  dbGetGtinLookup,
   dbSetItemProduct,
   dbSetProductGtin,
   dbDeleteItemProduct,
@@ -4329,6 +4330,12 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (links.length === 0) return;
     const { items, itemProducts } = get();
     const claimed: Array<{ productId: string; gtin: string }> = [];
+    /**
+     * Boxes that are about to be given the nutrition panel their own barcode
+     * already fetched. See the loop below for why it is read here rather than
+     * carried in on the link.
+     */
+    const panels: Array<{ productId: string; nutrition: FoodNutrition }> = [];
     const aliasDrafts: AliasDraft[] = [];
 
     for (const link of links) {
@@ -4340,7 +4347,34 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
       const product = productKey
         ? itemProducts.find(p => p.itemId === link.itemId && p.productKey === productKey)
         : undefined;
-      if (product) claimed.push({ productId: product.id, gtin: link.gtin });
+      if (product) {
+        claimed.push({ productId: product.id, gtin: link.gtin });
+        /**
+         * The label panel the lookup already fetched for this exact code, read
+         * out of the barcode cache rather than threaded down from the scan
+         * sheet.
+         *
+         * **This is the one point both scan paths pass through**, which is the
+         * whole reason it is here: a row matched to an existing item gets its
+         * box from `addProduct` and a minted row gets one from `addByName`, so
+         * carrying a panel down either would mean adding a field to
+         * `ScannedItem`, `ScanProductDraft` and `ReceiptAddDraft` alike and
+         * writing it in two screens. The cache is keyed by the same barcode the
+         * link carries and was written moments ago by the lookup that produced
+         * this row, so reading it back here is the same fact by a shorter route.
+         *
+         * **Only ever fills a box that hasn't got one.** A panel already on the
+         * row may be a figure the user typed, and a rescan silently overwriting
+         * a person's own correction with a crowd-sourced one is the wrong way
+         * round — see `FoodNutrition.source` on why those two are not
+         * interchangeable. A code the cache has never seen leaves it null,
+         * which is unknown rather than empty.
+         */
+        if (!product.nutrition) {
+          const cached = dbGetGtinLookup(link.gtin)?.nutrition;
+          if (cached) panels.push({ productId: product.id, nutrition: cached });
+        }
+      }
       // Written whether or not a box was found. The two are different facts and
       // the item-level one is the durable half: deleting a box should send the
       // barcode back to naming its row, not to naming nothing.
@@ -4350,15 +4384,26 @@ export const useGroceryStore = create<GroceryStore>((set, get) => ({
     if (claimed.length > 0) {
       dbTransaction(() => {
         for (const { productId, gtin } of claimed) dbSetProductGtin(productId, gtin);
+        // After the barcode claims, and off the in-memory row rather than the
+        // one just written: `dbSetProductGtin` touches only the gtin column, so
+        // the rest of this row is unchanged and the upsert can carry it.
+        for (const { productId, nutrition } of panels) {
+          const product = itemProducts.find(p => p.id === productId);
+          if (product) dbSetItemProduct({ ...product, nutrition });
+        }
       });
       set(s => ({
         itemProducts: s.itemProducts.map(p => {
+          const panel = panels.find(n => n.productId === p.id);
+          const withPanel = panel ? { ...p, nutrition: panel.nutrition } : p;
           const claim = claimed.find(c => c.productId === p.id);
-          if (claim) return { ...p, gtin: claim.gtin };
+          if (claim) return { ...withPanel, gtin: claim.gtin };
           // Mirrors the release half of the write: a box that held one of these
           // barcodes has just lost it, and leaving the old value in memory
           // would have two rows claiming one code until the next reload.
-          return p.gtin && claimed.some(c => c.gtin === p.gtin) ? { ...p, gtin: null } : p;
+          return withPanel.gtin && claimed.some(c => c.gtin === withPanel.gtin)
+            ? { ...withPanel, gtin: null }
+            : withPanel;
         }),
       }));
     }

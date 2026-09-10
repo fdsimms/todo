@@ -2764,6 +2764,31 @@ export const NUTRIENT_KEYS: readonly NutrientKey[] = [
   'calorieKcal', 'fatG', 'satFatG', 'carbsG', 'fiberG', 'sugarG', 'proteinG', 'sodiumMg', 'caffeineMg', 'waterMl',
 ];
 
+/**
+ * Nothing but an identity, whose constraint does the work: it accepts a union
+ * only if every member of it is a `NutrientKey`, and fails the build naming the
+ * member that isn't.
+ */
+type WithNutrientKeyHome<M extends NutrientKey> = M;
+
+/**
+ * The health-rule metrics that name a nutrient rather than an activity reading
+ * — `HealthRuleMetric` less steps and sleep.
+ *
+ * **The alignment `NutrientKey`'s own note describes, enforced by the
+ * compiler.** A figure recorded here has to be able to answer a rule the user
+ * already set up against Apple Health, so a ninth nutrient metric over there
+ * with no home in `NutrientKey` would be a rule this app could never satisfy
+ * from its own data. Adding one now fails `tsc` on this line, pointing at the
+ * metric that has nowhere to live, rather than failing a test that has to be
+ * remembered and run.
+ *
+ * It sits here rather than in `healthRules.ts` because it is the join between
+ * the two vocabularies, and both of them are declared in this file — which is
+ * the reason `HealthRuleMetric` was moved here in the first place.
+ */
+export type HealthNutrientMetric = WithNutrientKeyHome<Exclude<HealthRuleMetric, 'steps' | 'sleepHours'>>;
+
 /** Where a `FoodNutrition` record's figures came from. See that type's `source`. */
 export type FoodNutritionSource = 'fdc' | 'openFoodFacts' | 'manual' | 'estimated';
 
@@ -2792,12 +2817,24 @@ export interface FoodNutrition {
    * **Not optional and not defaultable.** "240 calories" means nothing until you
    * know whether it is per 100g or per serving, and the two differ by whatever a
    * serving happens to weigh — so a record that lost this would be wrong by an
-   * unknown factor while looking entirely ordinary. The two sources this app
-   * already talks to disagree about which they use, which is why it has to be
-   * carried rather than assumed: FoodData Central's Foundation foods are per
-   * 100g, its Branded ones and Open Food Facts are per serving.
+   * unknown factor while looking entirely ordinary. It is carried rather than
+   * assumed because a source that changed its mind would otherwise rewrite
+   * every stored figure's meaning without touching a byte of it.
+   *
+   * **`per100ml` is separate from `per100g` because a drink is not the same
+   * weight as its volume**, and both barcode sources blur exactly that: they
+   * label a beverage's panel "per 100g" and mean per 100ml. Folding the two
+   * together would make every drink wrong by its own density, silently and
+   * with nothing on screen to say so. Which one a barcode record gets is
+   * decided by the unit the source states the *product* is sold in, not by any
+   * guess about the food — see `basisFor` in `nutritionParse.ts`. Nothing here
+   * converts between the two, since that needs a density this app does not
+   * have; a reader wanting grams from a `per100ml` record has to refuse, the
+   * same way `servingGrams` being null makes it refuse.
+   *
+   * A typed or estimated record is whatever its writer measured.
    */
-  basis: 'per100g' | 'perServing';
+  basis: 'per100g' | 'per100ml' | 'perServing';
   /**
    * What one serving weighs, when the source said so. Null when it didn't.
    *
@@ -2805,6 +2842,12 @@ export interface FoodNutrition {
    * serving, so such a record without it can answer "one serving of this" and
    * nothing else. That refusal belongs to whichever reader wants the grams;
    * nothing here guesses a serving weight.
+   *
+   * **A product sold by volume has none**, and that is the honest answer rather
+   * than a gap: this is a mass, a 250ml can states a volume, and converting the
+   * one to the other needs a density nothing here knows. Such a record carries
+   * its serving in `servingText` for a person to read, and `per100ml` figures
+   * to compute with.
    */
   servingGrams: number | null;
   /**
@@ -3686,6 +3729,23 @@ export interface GtinLookup {
    * exactly what they did before.
    */
   category: string | null;
+  /**
+   * The nutrition panel the source stated, or null when it stated none this
+   * build could read.
+   *
+   * **Null on every barcode cached before this column existed, and nothing
+   * refetches to fill it in** — the same call `category` made one column over,
+   * for the same reason. A hit never expires (see `found`), so a backfill would
+   * mean re-asking the network about every code the user has ever scanned, on
+   * the first launch after an upgrade, unprompted. Those rows read as a product
+   * whose nutrition is simply unknown, and rescanning the box fills them in.
+   *
+   * **Unknown here is not zero**, which matters more than it does for the
+   * fields above: a null `brand` renders as no brand and a null panel must
+   * render as no panel, never as a food containing none of anything. See
+   * `FoodNutrition.amounts`.
+   */
+  nutrition: FoodNutrition | null;
   /** Which source answered, for telling a thin record from a good one later. Empty on a miss. */
   source: string;
   /** ISO. When this was asked, which is what expires a miss. */

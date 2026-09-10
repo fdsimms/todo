@@ -58,6 +58,19 @@ describe('parseFoodNutrition', () => {
       expect(parseFoodNutrition(stored({ ...nutrition(), basis: undefined }))).toBeNull();
     });
 
+    it('reads per100ml back, which is a drink and not a mistyped per100g', () => {
+      // The two are not interchangeable: a beverage's panel is per 100ml, and
+      // reading it as per 100g would be wrong by the drink's own density. A
+      // record measured by volume also has no serving *weight* to carry.
+      const drink = nutrition({
+        basis: 'per100ml',
+        servingGrams: null,
+        servingText: '250ml',
+        amounts: { calorieKcal: 46, sugarG: 11, caffeineMg: 32 },
+      });
+      expect(parseFoodNutrition(serializeFoodNutrition(drink))).toEqual(drink);
+    });
+
     it('refuses a basis it does not recognise rather than picking one', () => {
       expect(parseFoodNutrition(stored({ ...nutrition(), basis: 'perOunce' }))).toBeNull();
     });
@@ -180,11 +193,18 @@ describe('nutritionFor', () => {
 });
 
 describe('the vocabulary lines up with the health rules', () => {
-  // The whole reason NutrientKey spells its keys the way it does: a figure
-  // logged here has to be able to answer a rule the user already set up
-  // against Apple Health. A ninth metric over there with no home here would
-  // be a rule this app could never satisfy from its own data.
-  it('has a home for every nutrient a health rule can watch', () => {
+  // The containment itself — a home in NutrientKey for every nutrient a health
+  // rule can watch — is enforced by the compiler now, by HealthNutrientMetric's
+  // own constraint in types/index.ts. A ninth metric with nowhere to live fails
+  // `tsc` on that line rather than failing here, which is the stronger place
+  // for it: the build can't be skipped and it names the offending metric.
+  //
+  // What is still worth asserting at runtime is that NUTRIENT_KEYS actually
+  // lists what the type declares. The array is hand-written beside the union,
+  // and nothing about the type stops it going stale — a key added to one and
+  // not the other type-checks perfectly and silently drops that nutrient from
+  // every walk over the list, which is how a panel loses a row.
+  it('lists every metric a health rule can watch', () => {
     for (const metric of HEALTH_NUTRIENT_METRICS) {
       expect(NUTRIENT_KEYS).toContain(metric);
     }

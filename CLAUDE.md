@@ -325,6 +325,7 @@ exports.
 | going through the whole pantry a card at a time | `src/utils/pantryReview.ts` + `src/components/PantryReviewSheet.tsx` — see `docs/arch/groceries.md` |
 | whether a thing got used up or went bad | `src/utils/itemDisposal.ts` — see `docs/arch/groceries.md` |
 | scanning a barcode into the list | `src/utils/gtin.ts` + `src/services/productLookup.ts` + `src/utils/scanResolve.ts` |
+| what a food is made of, and reading a label panel out of a barcode source | `src/utils/foodNutrition.ts` (the record) + `src/utils/nutritionParse.ts` (the two sources' units, which disagree) |
 | reading a receipt's text on the device before it goes to the model | `src/utils/receiptOcr.ts` + `modules/todo-vision-bridge` |
 | remembering which item a barcode is | `ItemProduct.gtin` + `gtinAliasText` in `src/utils/storeAliases.ts` — see `docs/arch/groceries.md` |
 | what a store's receipt shorthand means | `src/utils/storeAliases.ts` (+ the `remembered` tier in `receiptMatch.ts`) |
@@ -374,15 +375,15 @@ exports.
 **Read narrowly.** 51 files are over 1,000 lines, 33 of
 them source rather than tests. The ten biggest source files:
 
-`store/useTaskStore.ts` (8.1k), `components/TaskEditor.tsx` (5.4k), `db/database.ts` (5.2k),
-`types/index.ts` (5.1k), `store/useGroceryStore.ts` (4.9k), `screens/TodayScreen.tsx` (4.6k),
+`store/useTaskStore.ts` (8.1k), `components/TaskEditor.tsx` (5.4k), `db/database.ts` (5.3k),
+`types/index.ts` (5.2k), `store/useGroceryStore.ts` (4.9k), `screens/TodayScreen.tsx` (4.6k),
 `components/TaskItem.tsx` (4.3k), `store/useSettingsStore.ts` (3.4k),
-`utils/demoSeed.ts` (3.2k), `components/QuickAddModal.tsx` (3.1k).
+`utils/demoSeed.ts` (3.3k), `components/QuickAddModal.tsx` (3.1k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **279 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **280 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->
