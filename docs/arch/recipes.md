@@ -515,6 +515,11 @@ to figures `recipeNutrition.ts` already produced.
   and a helping ten times the dish is the write-side failure `docs/arch/health-data.md` describes:
   nothing downstream would ever question it. Same posture as the rest of the nutrition tree —
   refuse rather than approximate.
+- **The Backfill screen carries it as a fourth recipe field** (`recipeBackfill.ts`), and it is the
+  odd one of the four: a serving count and a cook time are things you know about a recipe, while
+  what the finished dish weighs is something you find out with the pan on a scale. It is in the
+  pool anyway, because a queue is the only way to fill in the dishes you have already weighed
+  once, and "Don't ask again" is one tap for the ones you never will.
 - **A container in the fridge gets the same treatment** (`Leftover.weightG`). Weighing a tub on
   the way in is the container's half of this: the tub against the dish's own cooked weight is the
   fraction of the recipe it holds, so finishing it as eaten opens the log offer on that weight
