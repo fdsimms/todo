@@ -1,7 +1,9 @@
 import { dbGetGtinLookup, dbSetGtinLookup } from '../db/database';
 import { isCacheEntryFresh, normalizeGtin } from '../utils/gtin';
+import { readFdcNutrition, readOffNutrition } from '../utils/nutritionParse';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { GROCERY_NAME_MAX_LENGTH, GROCERY_QUANTITY_MAX_LENGTH } from '../types';
+import type { FoodNutrition } from '../types';
 
 /**
  * Turning a barcode into a product, over the network, once per barcode ever.
@@ -71,6 +73,20 @@ export interface ProductRecord {
    * `aisleForProductCategory`, which is what normalises the three.
    */
   category: string | null;
+  /**
+   * What the source says the product is made of, or null when it said nothing
+   * this build could read.
+   *
+   * **Free, and previously discarded.** Both keyless sources already carry a
+   * full label panel for packaged food — Open Food Facts one query parameter
+   * away, FoodData Central already in the response body — so keeping it costs
+   * no extra request and does not change what leaves the device. The reading
+   * and all of its unit arithmetic is `src/utils/nutritionParse.ts`, which is
+   * where a test can reach it.
+   *
+   * Null is unknown and never an empty panel, per `FoodNutrition.amounts`.
+   */
+  nutrition: FoodNutrition | null;
   source: string;
 }
 
@@ -104,7 +120,7 @@ function trimField(value: unknown, max: number): string {
  * hit would make it permanent (hits never expire), which is exactly the wrong
  * answer for a record that is waiting to be filled in.
  */
-function readOffProduct(gtin: string, payload: unknown): ProductRecord | null {
+function readOffProduct(gtin: string, payload: unknown, now: Date): ProductRecord | null {
   const product = (payload as { product?: Record<string, unknown> })?.product;
   if (!product) return null;
   // `generic_name` is what the thing *is* ("semi-skimmed milk") where
@@ -122,6 +138,7 @@ function readOffProduct(gtin: string, payload: unknown): ProductRecord | null {
     brand: brands ? brands.split(',')[0].trim() || null : null,
     quantity: trimField(product.quantity, GROCERY_QUANTITY_MAX_LENGTH) || null,
     category: lastCategoryTag(product.categories_tags),
+    nutrition: readOffNutrition(product, gtin, now.toISOString()),
     source: 'openfoodfacts',
   };
 }
@@ -146,14 +163,19 @@ function lastCategoryTag(value: unknown): string | null {
 }
 
 /** One GET, with a timeout, distinguishing "no such product" from "couldn't ask". */
-async function fetchFromOff(gtin: string): Promise<ProductRecord | null> {
+async function fetchFromOff(gtin: string, now: Date): Promise<ProductRecord | null> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
     response = await fetch(
       `${OFF_URL}/${encodeURIComponent(gtin)}.json`
-      + `?fields=product_name,generic_name,brands,quantity,categories_tags`,
+      // `nutriments` is the label panel, and the three serving fields are what
+      // relates it to a portion — none of them arrive unless they are named
+      // here, which is why this was free to add and not free to omit. See
+      // `readOffNutrition`.
+      + `?fields=product_name,generic_name,brands,quantity,categories_tags`
+      + `,nutriments,serving_size,serving_quantity,serving_quantity_unit`,
       { headers: { 'User-Agent': USER_AGENT, Accept: 'application/json' }, signal: controller.signal }
     );
   } catch (e) {
@@ -176,7 +198,7 @@ async function fetchFromOff(gtin: string): Promise<ProductRecord | null> {
     throw new ProductLookupError('Lookup failed');
   }
   if ((payload as { status?: number })?.status === 0) return null;
-  return readOffProduct(gtin, payload);
+  return readOffProduct(gtin, payload, now);
 }
 
 /**
@@ -184,7 +206,7 @@ async function fetchFromOff(gtin: string): Promise<ProductRecord | null> {
  * A throw means nobody could be asked, which is a different thing entirely and
  * is what stops a miss being cached — see `lookupGtin`.
  */
-type SourceFetch = (gtin: string) => Promise<ProductRecord | null>;
+type SourceFetch = (gtin: string, now: Date) => Promise<ProductRecord | null>;
 
 /** Shared GET, with the timeout and the abort mapping every source wants. */
 async function getJson(url: string, headers: Record<string, string>): Promise<unknown | null> {
@@ -221,7 +243,7 @@ async function getJson(url: string, headers: Record<string, string>): Promise<un
  * resolve to an unrelated product.
  */
 function fdcSource(apiKey: string): SourceFetch {
-  return async gtin => {
+  return async (gtin, now) => {
     const url = `${FDC_URL}?query=${encodeURIComponent(gtin)}&dataType=Branded&pageSize=1`
       + `&api_key=${encodeURIComponent(apiKey)}`;
     const payload = await getJson(url, {});
@@ -243,6 +265,7 @@ function fdcSource(apiKey: string): SourceFetch {
       category: trimField(food.brandedFoodCategory, GROCERY_NAME_MAX_LENGTH)
         || trimField(food.foodCategory, GROCERY_NAME_MAX_LENGTH)
         || null,
+      nutrition: readFdcNutrition(food, now.toISOString()),
       source: 'usda',
     };
   };
@@ -264,6 +287,9 @@ function goUpcSource(apiKey: string): SourceFetch {
       brand: trimField(product.brand, GROCERY_NAME_MAX_LENGTH) || null,
       quantity: null,
       category: trimField(product.category, GROCERY_NAME_MAX_LENGTH) || null,
+      // Go-UPC is a barcode directory rather than a food database and returns
+      // no nutrition, so this is a real "it didn't say" and not an omission.
+      nutrition: null,
       source: 'go-upc',
     };
   };
@@ -288,6 +314,16 @@ function sourcesFor(fdcApiKey: string, goUpcApiKey: string): SourceFetch[] {
  * miss would turn a bad minute on the train into a barcode this app refuses to
  * look up again for a month. A *hit* is cached even if an earlier source failed
  * on the way — the answer is right regardless of who couldn't be reached.
+ *
+ * **A hit cached before nutrition was kept answers "unknown", and is not
+ * re-fetched.** The cache is read here before `productLookupEnabled` is even
+ * consulted, so treating a missing panel as a reason to go back to the network
+ * would do two things nobody asked for: re-ask every barcode the user has ever
+ * scanned on the first launch after the upgrade, and do it on a path that
+ * hasn't checked whether lookups are switched on. So an old row keeps reading
+ * as a product whose nutrition nobody knows — which is what it is — and
+ * rescanning the box is what fills it in. Same call `category` made when it was
+ * added, for the same reason.
  */
 export async function lookupGtin(gtin: string, now: Date = new Date()): Promise<ProductRecord | null> {
   const cached = dbGetGtinLookup(gtin);
@@ -299,6 +335,7 @@ export async function lookupGtin(gtin: string, now: Date = new Date()): Promise<
       brand: cached.brand,
       quantity: cached.quantity,
       category: cached.category,
+      nutrition: cached.nutrition,
       source: cached.source,
     };
   }
@@ -320,7 +357,7 @@ export async function lookupGtin(gtin: string, now: Date = new Date()): Promise<
 
   for (const source of sourcesFor(fdcApiKey, goUpcApiKey)) {
     try {
-      record = await source(gtin);
+      record = await source(gtin, now);
     } catch (e) {
       definitive = false;
       lastError = e;
@@ -340,6 +377,7 @@ export async function lookupGtin(gtin: string, now: Date = new Date()): Promise<
       brand: record?.brand ?? null,
       quantity: record?.quantity ?? null,
       category: record?.category ?? null,
+      nutrition: record?.nutrition ?? null,
       source: record?.source ?? '',
       fetchedAt: now.toISOString(),
     });

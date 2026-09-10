@@ -100,6 +100,7 @@ describe('scannedItemFor', () => {
       brand: 'Great Value',
       quantity: '1 gal',
       category: null,
+      nutrition: null,
       source: 'openfoodfacts',
     });
     expect(item.label).toBe('Great Value 2% Reduced Fat Milk, 1 Gallon');

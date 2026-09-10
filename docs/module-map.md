@@ -149,6 +149,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/notifications.ts` — isWithinQuietHours, deferPastQuietHours, TASK_REMINDER_CATEGORY, COMPLETE_ACTION_IDENTIFIER, SNOOZE_ACTION_IDENTIFIER, SNOOZE_MINUTES, requestNotificationPermissions, NotificationPermission, getNotificationPermission, scheduleTaskReminder, +30 more
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — NudgeMode, NUDGE_MODES, nudgeModeOf, nudgeFieldsFor, FALLBACK_CADENCE_DAYS, NUDGE_MODE_LABEL, describeNudge, CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, +7 more
+- `src/utils/nutritionParse.ts` — NutrientSourceUnit, readSourceNumber, convertNutrientAmount, readOffNutrition, readFdcNutrition
 - `src/utils/ordinal.ts` — ordinal
 - `src/utils/paintSelect.ts` — PaintRowRect, PAINT_GUTTER_WIDTH, ROW_HIT_SLOP, isInPaintGutter, rowIdAtY, rowIdsBetween
 - `src/utils/pantryCheckTasks.ts` — MAX_PANTRY_CHECK_TASKS, PANTRY_CHECK_GRACE_DAYS, pantryCheckTitle, pantryCheckItemId, pantryCheckLinkUrl, pantryCheckLapse, pantryCheckAnswers, PantryCheckWant, wantedPantryChecks, stalePantryCheckTasks

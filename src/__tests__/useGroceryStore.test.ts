@@ -28,6 +28,7 @@ import {
   dbSetItemSubLink,
   dbSetItemProduct,
   dbSetProductGtin,
+  dbGetGtinLookup,
   dbDeleteItemProduct,
   dbDeleteItemSubLink,
   dbGetLastShopId,
@@ -87,6 +88,7 @@ jest.mock('../db/database', () => ({
   dbRepointStoreAliases: jest.fn(),
   dbSetItemProduct: jest.fn(),
   dbSetProductGtin: jest.fn(),
+  dbGetGtinLookup: jest.fn().mockReturnValue(null),
   dbDeleteItemProduct: jest.fn(),
   dbGetLastShopId: jest.fn().mockReturnValue(null),
   dbSetLastShopId: jest.fn(),
@@ -326,6 +328,9 @@ beforeEach(() => {
   (dbGetGroceryHiddenAisles as jest.Mock).mockReturnValue([]);
   (dbGetGroceryAisleOverrides as jest.Mock).mockReturnValue({});
   (dbGetGroceryGroupBy as jest.Mock).mockReturnValue('aisle');
+  // clearAllMocks clears calls but not implementations, so a case that stubs a
+  // cached panel would otherwise hand it to every case after it.
+  (dbGetGtinLookup as jest.Mock).mockReturnValue(null);
   (dbFinishGroceryShopping as jest.Mock).mockReturnValue([]);
   (dbClearGroceryList as jest.Mock).mockReturnValue([]);
   (dbDeleteGroceryList as jest.Mock).mockReturnValue([]);
@@ -5945,6 +5950,56 @@ describe('linking a barcode to what it turned out to be', () => {
     expect(dbSetProductGtin).toHaveBeenCalledWith(box.id, GTIN);
     expect(useGroceryStore.getState().gtinProductFor(GTIN)?.id).toBe(box.id);
     expect(useGroceryStore.getState().gtinItemFor(GTIN)).toBe(sausage.id);
+  });
+
+  /** The panel a lookup of this barcode would have left in the cache. */
+  const cachedPanel = {
+    basis: 'per100g' as const,
+    servingGrams: 45,
+    servingText: '1 slice',
+    amounts: { calorieKcal: 267, sodiumMg: 400 },
+    source: 'fdc' as const,
+    sourceId: '2674263',
+    recordedAt: '2026-09-10T00:00:00.000Z',
+  };
+
+  it('carries the nutrition its own barcode fetched onto the box', () => {
+    // The transfer is the point: the lookup wrote the panel into the barcode
+    // cache, and this is the one place both scan paths pass through on the way
+    // to a box, so it is where the panel lands.
+    (dbGetGtinLookup as jest.Mock).mockReturnValue({ nutrition: cachedPanel });
+    const sausage = makeItem({ name: 'Sausage' });
+    seed([sausage]);
+    const box = useGroceryStore.getState().addProduct(sausage.id, {
+      brand: 'Beyond Meat', variant: 'Cajun',
+    })!;
+
+    useGroceryStore.getState().linkScannedGtins([
+      { gtin: GTIN, itemId: sausage.id, brand: 'Beyond Meat', variant: 'Cajun' },
+    ]);
+
+    expect(useGroceryStore.getState().gtinProductFor(GTIN)?.nutrition).toEqual(cachedPanel);
+    expect(dbSetItemProduct).toHaveBeenCalledWith(
+      expect.objectContaining({ id: box.id, nutrition: cachedPanel })
+    );
+    // The barcode claim is untouched by the panel write, which goes through an
+    // upsert that deliberately leaves the gtin column alone.
+    expect(useGroceryStore.getState().gtinProductFor(GTIN)?.id).toBe(box.id);
+  });
+
+  it('leaves a box alone when the barcode has no cached panel', () => {
+    // Unknown rather than empty: a code nobody has looked up says nothing
+    // about what is in the box.
+    (dbGetGtinLookup as jest.Mock).mockReturnValue(null);
+    const sausage = makeItem({ name: 'Sausage' });
+    seed([sausage]);
+    useGroceryStore.getState().addProduct(sausage.id, { brand: 'Beyond Meat', variant: 'Cajun' });
+
+    useGroceryStore.getState().linkScannedGtins([
+      { gtin: GTIN, itemId: sausage.id, brand: 'Beyond Meat', variant: 'Cajun' },
+    ]);
+
+    expect(useGroceryStore.getState().gtinProductFor(GTIN)?.nutrition).toBeNull();
   });
 
   // The case the whole feature is for: rename the row to something that shares

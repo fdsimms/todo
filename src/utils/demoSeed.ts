@@ -22,7 +22,7 @@ import { useTemplateStore } from '../store/useTemplateStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { useSharedLinkStore } from '../store/useSharedLinkStore';
 import type { DeliverableKind, FocusSession, GroceryItem, MealSlot, MoodLevel, Recipe, Shop, SymptomSeverity, TemplateItem } from '../types';
-import { dbGetFocusSessionLog, dbInsertFocusSessionRecord } from '../db/database';
+import { dbGetFocusSessionLog, dbInsertFocusSessionRecord, dbSetGtinLookup } from '../db/database';
 import { advanceFocusSession, buildFocusPlan, closeFocusSession } from './focusPlan';
 import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
@@ -2325,6 +2325,55 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
   // A real GTIN-14 for Dave's Killer Bread 21 Whole Grains, check digit and
   // all, so it round-trips through normalizeGtin exactly as a scan would.
   if (daves) {
+    /**
+     * The barcode cache row a real scan would have left behind, seeded so the
+     * link below can do what a scan does with it: carry the label panel onto
+     * the box.
+     *
+     * **Written rather than faked onto the product**, because the transfer is
+     * the part worth showing — `linkScannedGtins` reads the panel out of this
+     * cache, so seeding the product directly would show the result while
+     * leaving the mechanism untested by the demo. The `dbSetGtinLookup` call is
+     * the only writer this table has (there is no store over it), the same
+     * reason the focus log above is seeded through a db function.
+     *
+     * Figures are the real per-100g panel FoodData Central holds for this loaf.
+     * A demo product with no nutrition would read as a feature the app hasn't
+     * got, which is exactly what it did before this shipped.
+     */
+    dbSetGtinLookup({
+      gtin: '00013764000315',
+      found: true,
+      name: "Dave's Killer Bread 21 Whole Grains and Seeds Organic Bread",
+      brand: "Dave's Killer",
+      quantity: '27 oz',
+      category: 'Bread',
+      nutrition: {
+        basis: 'per100g',
+        servingGrams: 45,
+        servingText: '1 slice',
+        // No caffeine or water row, and that is the ordinary case rather than a
+        // thin seed: a US label declares a short list, and the absent keys are
+        // unknown rather than zero. See FoodNutrition.amounts.
+        amounts: {
+          calorieKcal: 267,
+          proteinG: 11.1,
+          carbsG: 48.9,
+          fatG: 4.44,
+          satFatG: 0,
+          fiberG: 11.1,
+          sugarG: 11.1,
+          sodiumMg: 400,
+        },
+        // A manufacturer's declared label, which is a different claim from the
+        // estimate a model would make — see FoodNutrition.source.
+        source: 'fdc',
+        sourceId: '2674263',
+        recordedAt: subDays(today, 3).toISOString(),
+      },
+      source: 'usda',
+      fetchedAt: subDays(today, 3).toISOString(),
+    });
     linkScannedGtins([
       { gtin: '00013764000315', itemId: bread, brand: "Dave's Killer", variant: '21 whole grains' },
     ]);
