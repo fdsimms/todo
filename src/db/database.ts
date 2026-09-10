@@ -1428,6 +1428,18 @@ export function initDatabase(): void {
     // Hand-set position within the day, one number space across every meal
     // slot — see FoodLogEntry.sortOrder.
     'ALTER TABLE food_logs ADD COLUMN sort_order REAL NOT NULL DEFAULT 0',
+    // 0 on every existing row, which is the only honest reading: nothing
+    // recorded who named a row before this column, and defaulting to 1 would
+    // queue the whole catalog up to be renamed. Only the scan path writes it,
+    // and only for a name it proposed and the user left alone — see
+    // GroceryItem.nameFromScan.
+    'ALTER TABLE grocery_items ADD COLUMN name_from_scan INTEGER NOT NULL DEFAULT 0',
+    // Same mechanism as tasks/categories/projects/people/grocery_items'
+    // backfill_dismissed_fields above, for the Backfill screen's recipe pool
+    // (servings, cook time, prep time). Empty on every existing row, which
+    // reads as "nothing dismissed yet" — the only honest state before this
+    // column existed. See Recipe.backfillDismissedFields.
+    "ALTER TABLE recipes ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
     // NULL for every existing recipe, which is the honest reading: nothing
     // before this ever weighed a finished dish, and there is no figure to
     // derive one from. REAL rather than INTEGER because a scaled cooking
@@ -3176,6 +3188,7 @@ function rowToGroceryItem(row: Record<string, unknown>): GroceryItem {
     spoiledCount: (row.spoiled_count as number) ?? 0,
     lastSpoiledAt: (row.last_spoiled_at as string) ?? null,
     varietyOfKey: (row.variety_of_key as string) ?? null,
+    nameFromScan: Boolean(row.name_from_scan),
     priceHistory: parsePriceHistory(row.price_history as string | null),
     nutrition: parseFoodNutrition(row.nutrition as string | null),
     backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
@@ -3197,8 +3210,8 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
        source_recipe_id, source_recipe_title, choice_group, is_staple, expires_at, frozen_at, opened_at, running_low_at, shelf_life_days, use_up_task,
        pantry_check_declined_at, pantry_reviewed_at, used_up_count, spoiled_count, last_spoiled_at,
        last_price_minor, last_priced_at, last_price_quantity, preferred_product_id, brand_strict, variety_of_key,
-       backfill_dismissed_fields, nutrition)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       backfill_dismissed_fields, nutrition, name_from_scan)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       item.id, item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
       item.onList ? 1 : 0, item.checked ? 1 : 0, 1, item.sortOrder,
@@ -3215,6 +3228,7 @@ export function dbInsertGroceryItem(item: GroceryItem): void {
       item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,
       JSON.stringify(item.backfillDismissedFields),
       serializeFoodNutrition(item.nutrition),
+      item.nameFromScan ? 1 : 0,
     ]
   );
 }
@@ -3228,7 +3242,8 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
        expires_at=?, frozen_at=?, opened_at=?, running_low_at=?, shelf_life_days=?, use_up_task=?,
        pantry_check_declined_at=?, pantry_reviewed_at=?, used_up_count=?, spoiled_count=?, last_spoiled_at=?,
        last_price_minor=?, last_priced_at=?, last_price_quantity=?,
-       preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?, nutrition=?
+       preferred_product_id=?, brand_strict=?, variety_of_key=?, backfill_dismissed_fields=?, nutrition=?,
+       name_from_scan=?
      WHERE id=?`,
     [
       item.name, item.nameKey, item.aisle, item.quantity ?? null, item.quantityFromRecipe ? 1 : 0, item.note,
@@ -3246,6 +3261,7 @@ export function dbUpdateGroceryItem(item: GroceryItem): void {
       item.preferredProductId ?? null, item.productStrict ? 1 : 0, item.varietyOfKey ?? null,
       JSON.stringify(item.backfillDismissedFields),
       serializeFoodNutrition(item.nutrition),
+      item.nameFromScan ? 1 : 0,
       item.id,
     ]
   );
@@ -4423,6 +4439,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     lastPrepMinutes: (row.last_prep_minutes as number) ?? null,
     prepTimeCount: (row.prep_time_count as number) ?? 0,
     totalPrepMinutes: (row.total_prep_minutes as number) ?? 0,
+    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
 
@@ -4438,8 +4455,9 @@ export function dbInsertRecipe(recipe: Recipe): void {
     `INSERT INTO recipes
       (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, cooked_weight_g, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, sort_order, created_at, cook_count, last_cooked_at, vote,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
-       prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes,
+       backfill_dismissed_fields)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
@@ -4457,6 +4475,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
       recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
       recipe.prepMinutes ?? null, recipe.prepTimerStartedAt ?? null, recipe.prepTimerElapsedSeconds,
       recipe.lastPrepMinutes ?? null, recipe.prepTimeCount, recipe.totalPrepMinutes,
+      JSON.stringify(recipe.backfillDismissedFields),
     ]
   );
 }
@@ -4467,7 +4486,8 @@ export function dbUpdateRecipe(recipe: Recipe): void {
        name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, cookbook_id=?, servings=?, servings_max=?, recipe_yield=?, cooked_weight_g=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
        sort_order=?, cook_count=?, last_cooked_at=?, vote=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
-       prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?
+       prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?,
+       backfill_dismissed_fields=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
@@ -4486,6 +4506,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
       recipe.prepMinutes ?? null, recipe.prepTimerStartedAt ?? null, recipe.prepTimerElapsedSeconds,
       recipe.lastPrepMinutes ?? null, recipe.prepTimeCount, recipe.totalPrepMinutes,
+      JSON.stringify(recipe.backfillDismissedFields),
       recipe.id,
     ]
   );

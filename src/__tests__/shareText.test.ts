@@ -35,6 +35,7 @@ function link(recipeId: string, name: string): RecipeComponent {
 
 function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id,
     name,
     nameKey: name.toLowerCase(),
@@ -82,6 +83,7 @@ function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Reci
 
 function item(name: string, overrides: Partial<GroceryItem> = {}): GroceryItem {
   return {
+    nameFromScan: false,
     id: `i-${++seq}`, name, nameKey: name.toLowerCase(), preferredProductId: null, productStrict: false,
     aisle: 'Other', quantity: null, quantityFromRecipe: false, note: '',
     onList: true, checked: false, sortOrder: seq, purchaseCount: 0,

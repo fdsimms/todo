@@ -4064,6 +4064,7 @@ describe('checkPantryCheckTasks', () => {
    * over a year (a 122-day cadence) and last bought 125 days ago.
    */
   const lapsedItem = (overrides: Partial<GroceryItem> = {}): GroceryItem => ({
+    nameFromScan: false,
     id: 'g-1', name: 'Flour', nameKey: 'flour', preferredProductId: null, productStrict: false,
     aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: 1,
@@ -4301,6 +4302,7 @@ describe('checkPantryReviewTasks', () => {
 
   /** A row still inside its purchase window: a `guessed` card, the common case. */
   const guessedItem = (i: number, overrides: Partial<GroceryItem> = {}): GroceryItem => ({
+    nameFromScan: false,
     id: `g-${i}`, name: `Thing ${i}`, nameKey: `thing ${i}`, preferredProductId: null, productStrict: false,
     aisle: 'Baking', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: i,
@@ -5575,6 +5577,7 @@ describe('checkMealSlotTasks', () => {
 
   function recipe(id: string, over: Partial<Recipe> = {}): Recipe {
     return {
+      backfillDismissedFields: [],
       id, name: 'Chili', nameKey: 'chili', notes: '', sourceUrl: null, sourceName: null,
       author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [], ingredients: [],
@@ -5897,6 +5900,7 @@ describe('checkMealShortfallTasks', () => {
 
   function shortfallRecipe(id: string, name: string, ingredientNames: string[]): Recipe {
     return {
+      backfillDismissedFields: [],
       id, name, nameKey: name.toLowerCase(), notes: '', sourceUrl: null, sourceName: null,
       author: null, source: null, servings: null, servingsMax: null, recipeYield: null, cookedWeightG: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [],
@@ -5978,6 +5982,7 @@ describe('checkMealShortfallTasks', () => {
   it('writes nothing for a meal it has everything for', () => {
     useGroceryStore.setState({
       items: [{
+        nameFromScan: false,
         id: 'g-1', name: 'Onions', nameKey: 'onions', preferredProductId: null, productStrict: false,
         aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
         onList: true, checked: false, sortOrder: 1,
@@ -12486,6 +12491,7 @@ describe('postponeCount', () => {
 
 describe('deleting a use-up task', () => {
   const item = {
+    nameFromScan: false,
     id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',
@@ -12539,6 +12545,7 @@ describe('deleting a use-up task', () => {
 
 describe('completing a use-up task', () => {
   const groceryItem = {
+    nameFromScan: false,
     id: 'g-1', name: 'Spinach', nameKey: 'spinach', preferredProductId: null, productStrict: false, variant: null, aisle: 'Produce', quantity: null, quantityFromRecipe: false, note: '',
     onList: false, checked: false, sortOrder: 1, purchaseCount: 3,
     lastAddedAt: null, lastPurchasedAt: null, createdAt: '2026-01-01T00:00:00.000Z',

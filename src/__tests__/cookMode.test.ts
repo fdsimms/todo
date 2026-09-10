@@ -15,6 +15,7 @@ function step(text: string): RecipeStep {
 
 function recipe(id: string, name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id,
     name,
     nameKey: name.toLowerCase(),

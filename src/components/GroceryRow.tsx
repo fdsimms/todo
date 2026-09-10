@@ -376,7 +376,7 @@ export const GroceryRow = React.memo(function GroceryRow({
           ) : (
             <Text
               style={[styles.name, item.checked && styles.nameChecked]}
-              numberOfLines={1}
+              numberOfLines={2}
             >
               {item.name}
             </Text>
@@ -427,7 +427,7 @@ export const GroceryRow = React.memo(function GroceryRow({
               somewhere else. A note is never suppressed — "the blue cap one"
               is shelf information, which is exactly what you're here for. */}
           {!item.note && !storeMarker && !!item.sourceRecipeTitle && (
-            <Text style={styles.note} numberOfLines={1}>
+            <Text style={styles.note} numberOfLines={2}>
               For “{item.sourceRecipeTitle}”
             </Text>
           )}
@@ -747,7 +747,7 @@ function makeStyles(colors: Colors) {
       borderRadius: radius.sm,
       paddingHorizontal: spacing.sm,
       paddingVertical: 3,
-      maxWidth: 96,
+      maxWidth: 160,
     },
     qtyPillChecked: {
       backgroundColor: 'transparent',

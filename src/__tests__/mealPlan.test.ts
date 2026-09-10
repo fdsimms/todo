@@ -62,6 +62,7 @@ function entry(
 
 function recipe(id: string, name: string): Recipe {
   return {
+    backfillDismissedFields: [],
     id,
     name,
     nameKey: name.toLowerCase(),

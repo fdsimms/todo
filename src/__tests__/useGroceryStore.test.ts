@@ -216,6 +216,7 @@ function makeProduct(itemId: string, brand: string | null, variant: string | nul
 function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   const name = overrides.name;
   return {
+    nameFromScan: false,
     id: `id-${++seq}`,
     nameKey: groceryNameKey(name),
     preferredProductId: null,
@@ -604,6 +605,28 @@ describe('addByName', () => {
     const again = useGroceryStore.getState().addByName('milk');
     expect(again.onList).toBe(true);
     expect(useGroceryStore.getState().items).toHaveLength(1);
+  });
+
+  // See GroceryItem.nameFromScan. The second of these is the one worth
+  // pinning: a scan landing on a row somebody else named says nothing about
+  // who named it, so it must not put their spelling in a rename queue.
+  it('files a minted row as named by the scan when the override says so', () => {
+    const item = useGroceryStore.getState().addByName('Great Value 2% Reduced Fat Milk', {
+      name: '2% Reduced Fat Milk', quantity: null, nameFromScan: true,
+    });
+    expect(item.nameFromScan).toBe(true);
+  });
+
+  it('leaves an existing row alone when a scan lands on it', () => {
+    seed([makeItem({ name: 'Milk', onList: false })]);
+    const again = useGroceryStore.getState().addByName('milk', {
+      name: 'Milk', quantity: null, nameFromScan: true,
+    });
+    expect(again.nameFromScan).toBe(false);
+  });
+
+  it('files a row nobody scanned as named by the user', () => {
+    expect(useGroceryStore.getState().addByName('Halloumi').nameFromScan).toBe(false);
   });
 
   it('files an unrecognised item under Other rather than leaving it aisle-less', () => {
@@ -1114,6 +1137,24 @@ describe('renameItem', () => {
 
     expect(useGroceryStore.getState().renameItem(milk.id, 'Whole milk')).toBe(true);
     expect(useGroceryStore.getState().items[0].nameKey).toBe('whole milk');
+  });
+
+  // The flag is what puts a row in the Backfill screen's rename queue, so a
+  // rename has to be what takes it back out — see GroceryItem.nameFromScan.
+  it('clears nameFromScan, so the row stops being one to rename', () => {
+    const milk = makeItem({ name: '2% Reduced Fat Milk', nameFromScan: true });
+    seed([milk]);
+
+    useGroceryStore.getState().renameItem(milk.id, 'Milk');
+    expect(useGroceryStore.getState().items[0].nameFromScan).toBe(false);
+  });
+
+  it('clears nameFromScan even when the name it was given is the one it had', () => {
+    const milk = makeItem({ name: 'Milk', nameFromScan: true });
+    seed([milk]);
+
+    useGroceryStore.getState().renameItem(milk.id, 'Milk');
+    expect(useGroceryStore.getState().items[0].nameFromScan).toBe(false);
   });
 
   it('refuses a collision rather than merging two catalog rows', () => {

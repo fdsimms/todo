@@ -1,8 +1,10 @@
 import {
   alreadyScanned,
   matchScans,
+  nameFromScanFor,
   scannedItemFor,
   shopperNameFor,
+  shorterNameSuggestions,
   sourceLabelFor,
   unknownScannedItem,
   variantFor,
@@ -15,6 +17,7 @@ let seq = 0;
 function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryItem {
   const name = overrides.name;
   return {
+    nameFromScan: false,
     id: `id-${++seq}`,
     nameKey: groceryNameKey(name),
     preferredProductId: null,
@@ -58,6 +61,60 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
 function scan(overrides: Partial<ScannedItem> & { name: string }): ScannedItem {
   return { gtin: null, label: '', brand: null, quantity: '', aisle: null, ...overrides };
 }
+
+describe('nameFromScanFor', () => {
+  it('is true for a proposal nobody edited', () => {
+    const record = scan({
+      gtin: '1',
+      label: 'Great Value 2% Reduced Fat Milk, 1 Gallon',
+      brand: 'Great Value',
+      name: '2% Reduced Fat Milk',
+    });
+    expect(nameFromScanFor(record)).toBe(true);
+  });
+
+  it('is false once the name has been edited away from the proposal', () => {
+    const record = scan({
+      gtin: '1',
+      label: 'Great Value 2% Reduced Fat Milk, 1 Gallon',
+      brand: 'Great Value',
+      name: 'Milk',
+    });
+    expect(nameFromScanFor(record)).toBe(false);
+  });
+
+  it('is false with no barcode, however the row was named', () => {
+    expect(nameFromScanFor(scan({ name: 'Bananas' }))).toBe(false);
+  });
+
+  it('is false for a miss the user named themselves', () => {
+    expect(nameFromScanFor({ ...unknownScannedItem('1'), name: 'Halloumi' })).toBe(false);
+  });
+
+  it('is false for a row still sitting blank', () => {
+    expect(nameFromScanFor(unknownScannedItem('1'))).toBe(false);
+  });
+});
+
+describe('shorterNameSuggestions', () => {
+  it('offers each suffix, longest first', () => {
+    expect(shorterNameSuggestions('2% Reduced Fat Milk'))
+      .toEqual(['Reduced Fat Milk', 'Fat Milk', 'Milk']);
+  });
+
+  it('never offers the name it was given', () => {
+    expect(shorterNameSuggestions('Milk')).toEqual([]);
+  });
+
+  it('drops a one-character tail rather than offering it', () => {
+    expect(shorterNameSuggestions('Vitamin D')).toEqual([]);
+  });
+
+  it('collapses runs of whitespace instead of emitting a blank', () => {
+    expect(shorterNameSuggestions('Organic   Riced  Cauliflower'))
+      .toEqual(['Riced Cauliflower', 'Cauliflower']);
+  });
+});
 
 describe('shopperNameFor', () => {
   it('drops a leading brand the source already named separately', () => {

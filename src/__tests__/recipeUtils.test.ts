@@ -78,6 +78,7 @@ function component(recipeId: string, name: string, choiceGroup: string | null = 
 
 function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id: `r-${++seq}`,
     name,
     nameKey: name.toLowerCase(),

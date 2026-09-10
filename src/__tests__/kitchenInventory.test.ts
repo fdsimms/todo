@@ -38,6 +38,7 @@ function makeItem(overrides: Partial<GroceryItem> & { name: string }): GroceryIt
   const name = overrides.name;
   seq += 1;
   return {
+    nameFromScan: false,
     id: `gi-${seq}`,
     nameKey: groceryNameKey(name),
     preferredProductId: null,

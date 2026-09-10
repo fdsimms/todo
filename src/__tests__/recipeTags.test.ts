@@ -14,6 +14,7 @@ import type { Recipe } from '../types';
 let seq = 0;
 function recipe(name: string, tags: string[] = []): Recipe {
   return {
+    backfillDismissedFields: [],
     id: `r-${++seq}`,
     name,
     nameKey: name.toLowerCase(),

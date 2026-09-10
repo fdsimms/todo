@@ -23,6 +23,7 @@ jest.mock('../store/useSettingsStore', () => ({
 let seq = 0;
 function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id: `r-${++seq}`,
     name,
     nameKey: name.toLowerCase(),

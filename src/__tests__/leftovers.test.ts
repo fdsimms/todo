@@ -71,6 +71,7 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
 /** Just enough of a Recipe for the component walk leftoverPartsFor takes. */
 function makeRecipe(id: string, name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id,
     name,
     nameKey: name.toLowerCase(),

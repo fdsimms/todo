@@ -144,6 +144,7 @@ let recipeSeq = 0;
 function makeRecipe(overrides: Partial<Recipe> = {}): Recipe {
   recipeSeq += 1;
   return {
+    backfillDismissedFields: [],
     id: `recipe-${recipeSeq}`,
     name: 'Chili',
     nameKey: 'chili',

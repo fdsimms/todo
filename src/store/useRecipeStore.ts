@@ -154,6 +154,13 @@ interface RecipeStore {
    */
   setCookedWeight: (id: string, grams: number | null) => void;
   /**
+   * Persists the Backfill screen's "don't ask again" list for one recipe —
+   * same mechanism as `setItemBackfillDismissedFields` one store over, and
+   * through the generic recipe save for the same reason: recipes already have
+   * one, so there is no dedicated column setter to add.
+   */
+  setRecipeBackfillDismissedFields: (id: string, fields: string[]) => void;
+  /**
    * How long this dish's leftovers keep. null hands the question back to the
    * standard window, which is what every recipe says until told otherwise.
    *
@@ -503,6 +510,9 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       lastPrepMinutes: null,
       prepTimeCount: 0,
       totalPrepMinutes: 0,
+      // Nobody has dismissed a Backfill screen field on a recipe that didn't
+      // exist a moment ago.
+      backfillDismissedFields: [],
     };
     dbInsertRecipe(recipe);
     set(s => ({ recipes: [...s.recipes, recipe] }));
@@ -674,6 +684,12 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
     // `servings` or a max that doesn't beat it collapses back to a plain count.
     const nextMax = next !== null && clampedMax !== null && clampedMax > next ? clampedMax : null;
     save(set, { ...recipe, servings: next, servingsMax: nextMax });
+  },
+
+  setRecipeBackfillDismissedFields(id, fields) {
+    const recipe = get().recipes.find(r => r.id === id);
+    if (!recipe) return;
+    save(set, { ...recipe, backfillDismissedFields: fields });
   },
 
   setRecipeYield(id, recipeYield) {

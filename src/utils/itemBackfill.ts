@@ -10,13 +10,29 @@ import { substitutesFor } from './itemSubs';
  * to `streak`), and `substitutes` isn't a single value at all but a list, so
  * "missing" means "the list is empty" rather than "the field is unset".
  *
- * Deliberately just these two. The catalog carries other gaps (no preferred
- * product, no shelf life) but those are choices made *at* the item — a
- * product picked in the product sheet, a shelf life corrected after the fact
+ * `nutrition` and `scannedName` join them on the same test. Neither is a
+ * toggle either, and both are facts every row is expected to eventually have
+ * rather than choices made at the item:
+ *
+ * - **`nutrition`** is null on most of the catalog and stays null until a
+ *   barcode, a lookup or a person supplies figures, which is exactly a gap a
+ *   walk-through closes. A box's own panel (`ItemProduct.nutrition`) does not
+ *   excuse it: the two answer different questions, and the item's generic
+ *   figures are what a recipe line resolves to and what the food log offers
+ *   when no particular box is being eaten.
+ * - **`scannedName`** is the one field here that is filled in *already* and
+ *   still wants answering — the row is named, just named by a product
+ *   database. It reads `GroceryItem.nameFromScan`, which is recorded at the
+ *   scan rather than guessed from the text, so this queue only ever holds
+ *   rows nobody has renamed.
+ *
+ * Still deliberately not covering the rest. The catalog carries other gaps (no
+ * preferred product, no shelf life) but those are choices made *at* the item —
+ * a product picked in the product sheet, a shelf life corrected after the fact
  * — rather than facts every item is expected to eventually have, which is
  * what makes a walk-through worth it.
  */
-export type ItemBackfillFieldId = 'variety' | 'substitutes';
+export type ItemBackfillFieldId = 'variety' | 'substitutes' | 'nutrition' | 'scannedName';
 
 export interface ItemBackfillFieldDef {
   id: ItemBackfillFieldId;
@@ -29,8 +45,14 @@ export interface ItemBackfillFieldDef {
 }
 
 // Order matters: the order these render in on the field-picker step. Same
-// order GroceryItemSheet's own Substitutes/Variety of fields appear in.
+// order GroceryItemSheet's own fields appear in, which is why the name comes
+// first and Nutrition last.
 export const ITEM_BACKFILL_FIELDS: ItemBackfillFieldDef[] = [
+  {
+    id: 'scannedName',
+    label: 'Scanned name',
+    hint: 'Rename items that still have the name a barcode lookup gave them, like "Great Value 2% Reduced Fat Milk".',
+  },
   {
     id: 'substitutes',
     label: 'Substitutes',
@@ -40,6 +62,11 @@ export const ITEM_BACKFILL_FIELDS: ItemBackfillFieldDef[] = [
     id: 'variety',
     label: 'Variety of',
     hint: 'The general ingredient this item counts as, like white onion for onion, so a recipe naming the general ingredient accepts it.',
+  },
+  {
+    id: 'nutrition',
+    label: 'Nutrition',
+    hint: 'What this food is made of, so a recipe or a logged meal can be counted.',
   },
 ];
 
@@ -60,6 +87,20 @@ export function isItemFieldMissing(
       return item.varietyOfKey == null;
     case 'substitutes':
       return substitutesFor(item.id, links, items).length === 0;
+    // The item's own generic figures, deliberately read raw rather than
+    // through `nutritionFor`. A preferred product carrying a panel answers
+    // for that box and outranks this one wherever both are in play, but it is
+    // not this value: the food log offers the plain item as its own row (see
+    // FoodLogEntrySheet), and a recipe line resolves to the item whenever the
+    // box in question isn't the preferred one. Reading the pair here would
+    // hide a real gap behind an answer to a different question.
+    case 'nutrition':
+      return item.nutrition == null;
+    // Not a missing value at all but a name nobody has chosen — see
+    // `GroceryItem.nameFromScan`, and note that `renameItem` clearing the flag
+    // is what takes a row out of this queue.
+    case 'scannedName':
+      return item.nameFromScan;
   }
 }
 
@@ -88,7 +129,7 @@ export function itemBackfillCandidates(
 
 /** How many items are still missing each field, for the field-picker step's counts. */
 export function itemBackfillFieldCounts(items: GroceryItem[], links: ItemSubLink[] = []): Record<ItemBackfillFieldId, number> {
-  const counts = { variety: 0, substitutes: 0 } as Record<ItemBackfillFieldId, number>;
+  const counts = { variety: 0, substitutes: 0, nutrition: 0, scannedName: 0 } as Record<ItemBackfillFieldId, number>;
   for (const i of items) {
     for (const field of ITEM_BACKFILL_FIELDS) {
       if (isItemFieldMissing(i, field.id, links, items) && !isItemBackfillDismissed(i, field.id)) counts[field.id]++;

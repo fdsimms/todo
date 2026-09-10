@@ -23,6 +23,7 @@ jest.mock('../db/database', () => ({
 let seq = 0;
 function makeRecipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
   return {
+    backfillDismissedFields: [],
     id: `r-${++seq}`,
     name,
     nameKey: name.toLowerCase(),
@@ -176,6 +177,22 @@ describe('field setters', () => {
 
     useRecipeStore.getState().setSourceName(r.id, '   ');
     expect(useRecipeStore.getState().recipeById(r.id)!.sourceName).toBeNull();
+  });
+
+  it('persists the Backfill screen\'s don\'t-ask-again list', () => {
+    const r = makeRecipe('Ragu');
+    seed([r]);
+
+    useRecipeStore.getState().setRecipeBackfillDismissedFields(r.id, ['prepTime']);
+    expect(useRecipeStore.getState().recipeById(r.id)!.backfillDismissedFields).toEqual(['prepTime']);
+    expect(dbUpdateRecipe).toHaveBeenCalled();
+  });
+
+  it('ignores a dismissal for a recipe that is not there', () => {
+    seed([makeRecipe('Ragu')]);
+    expect(() =>
+      useRecipeStore.getState().setRecipeBackfillDismissedFields('nope', ['servings'])
+    ).not.toThrow();
   });
 
   it('clamps servings into range and allows clearing it', () => {

@@ -52,6 +52,7 @@ function leftover(overrides: Partial<Leftover> & { id: string }): Leftover {
 
 function recipe(id: string, name: string): Recipe {
   return {
+    backfillDismissedFields: [],
     id,
     name,
     nameKey: name.toLowerCase(),
