@@ -2139,6 +2139,11 @@ function parseExtractedCalendarEvents(raw: unknown): ExtractedCalendarEvent[] {
  * second. This is world knowledge plus judgment, which `aiRouting.ts` rules
  * out for the on-device model on a criterion it calls a measurement rather
  * than a judgement call, and the ~4k shared window would not hold it anyway.
+ *
+ * **It's also asked to split the total across whatever it named**, when the
+ * description names more than one thing — see `NutritionEstimate.breakdown`.
+ * A total is one figure to trust or not; the pieces it's made of are each
+ * something a person can actually eyeball against what they know.
  */
 export async function estimateMealNutrition(description: string): Promise<NutritionEstimate> {
   const { apiKey, model } = requireFeature('nutritionEstimate');
@@ -2146,12 +2151,30 @@ export async function estimateMealNutrition(description: string): Promise<Nutrit
   const asked = description.trim().slice(0, ESTIMATE_DESCRIPTION_MAX_LENGTH);
   if (!asked) throw new Error('No estimate returned');
 
+  const amountsSchema = {
+    type: 'object' as const,
+    description: 'Only the nutrients you have a view on. Omit the rest rather than sending zero.',
+    properties: {
+      calorieKcal: { type: 'number', description: 'Calories (kcal)' },
+      fatG: { type: 'number', description: 'Total fat in grams' },
+      satFatG: { type: 'number', description: 'Saturated fat in grams' },
+      carbsG: { type: 'number', description: 'Total carbohydrate in grams' },
+      fiberG: { type: 'number', description: 'Dietary fiber in grams' },
+      sugarG: { type: 'number', description: 'Total sugars in grams' },
+      proteinG: { type: 'number', description: 'Protein in grams' },
+      sodiumMg: { type: 'number', description: 'Sodium in milligrams' },
+      caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
+      waterMl: { type: 'number', description: 'Water in millilitres' },
+    },
+  };
+
   const data = await callAnthropic({
     max_tokens: 900,
     system: [
       'You estimate what one described meal contains, for somebody writing it down in a food diary.',
       'Give figures for the whole thing described, as one helping. Do not give per-100g figures.',
       'State only the nutrients you actually have a view on. Omit a field entirely rather than guessing a zero: an omitted nutrient reads as unknown, and a zero reads as a measurement that the food contains none.',
+      'When the description names more than one component (separate foods, or an item plus a side), also split the total across a breakdown array, one entry per component named. Each entry states only the nutrients you have a view on for that component, same rule as the total. Skip the breakdown entirely for a single named item, or when you cannot split it sensibly.',
       'Set basis to "published" only when you are recalling figures a specific chain or manufacturer publishes, and name them in attribution. Otherwise set it to "typical" and leave attribution empty.',
       'Set confidence honestly. A named chain item you know is high; a common dish described plainly is medium; anything vague is low.',
       'You may ask at most two questions, and only where the answer would move the figures a lot: the size, whether a side was regular or large, whether a dressing or sauce was on it. Each question needs at least two options to tap. Ask nothing if the description already settles it.',
@@ -2165,22 +2188,7 @@ export async function estimateMealNutrition(description: string): Promise<Nutrit
         properties: {
           label: { type: 'string', description: 'What to call this in a food diary, e.g. "Cheeseburger and fries, Five Guys"' },
           quantity: { type: 'string', description: 'The amount these figures are for, in words, e.g. "1 burger and a regular fries"' },
-          amounts: {
-            type: 'object',
-            description: 'Only the nutrients you have a view on. Omit the rest rather than sending zero.',
-            properties: {
-              calorieKcal: { type: 'number', description: 'Calories (kcal)' },
-              fatG: { type: 'number', description: 'Total fat in grams' },
-              satFatG: { type: 'number', description: 'Saturated fat in grams' },
-              carbsG: { type: 'number', description: 'Total carbohydrate in grams' },
-              fiberG: { type: 'number', description: 'Dietary fiber in grams' },
-              sugarG: { type: 'number', description: 'Total sugars in grams' },
-              proteinG: { type: 'number', description: 'Protein in grams' },
-              sodiumMg: { type: 'number', description: 'Sodium in milligrams' },
-              caffeineMg: { type: 'number', description: 'Caffeine in milligrams' },
-              waterMl: { type: 'number', description: 'Water in millilitres' },
-            },
-          },
+          amounts: amountsSchema,
           basis: { type: 'string', enum: ['published', 'typical'], description: 'Where the figures come from' },
           confidence: { type: 'string', enum: ['high', 'medium', 'low'], description: 'How sure you are' },
           attribution: { type: 'string', description: 'Who publishes them, for basis "published". Empty otherwise.' },
@@ -2194,6 +2202,18 @@ export async function estimateMealNutrition(description: string): Promise<Nutrit
                 options: { type: 'array', items: { type: 'string' } },
               },
               required: ['prompt', 'options'],
+            },
+          },
+          breakdown: {
+            type: 'array',
+            description: 'The total split across the components named in the description, one entry per component. Omit entirely for a single named item, or when it cannot be split sensibly.',
+            items: {
+              type: 'object',
+              properties: {
+                label: { type: 'string', description: 'The component in your own words, e.g. "salted butter"' },
+                amounts: amountsSchema,
+              },
+              required: ['label', 'amounts'],
             },
           },
         },

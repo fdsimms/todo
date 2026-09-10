@@ -302,6 +302,31 @@ export function EstimateMealSheet({ visible, slot, at, onClose, onPickRecipe }: 
             </View>
           )}
 
+          {/* The same total, split into pieces small enough to check against
+              what you'd guess yourself rather than taken whole. */}
+          {estimate && estimate.breakdown.length > 0 && (
+            <View style={styles.card}>
+              <Text style={styles.cardTitle}>By ingredient</Text>
+              {estimate.breakdown.map((item, index) => {
+                const stated = NUTRIENT_KEYS.filter(k => item.amounts[k] !== undefined);
+                return (
+                  <View key={`${item.label}-${index}`} style={styles.ingredient}>
+                    <Text style={styles.ingredientLabel}>{item.label}</Text>
+                    {stated.map(key => (
+                      <View key={key} style={styles.figure}>
+                        <Text style={styles.figureLabel}>{NUTRIENT_LABEL[key].label}</Text>
+                        <Text style={styles.figureValue}>
+                          {Math.round(item.amounts[key] as number).toLocaleString()}
+                          {NUTRIENT_LABEL[key].unit === 'cal' ? ' cal' : NUTRIENT_LABEL[key].unit}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
           {estimate && estimate.questions.length > 0 && (
             <View style={styles.card}>
               <Text style={styles.cardTitle}>These would change the figures</Text>
@@ -414,6 +439,14 @@ function makeStyles(colors: Colors) {
     figure: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
     figureLabel: { color: colors.text, fontSize: font.sm },
     figureValue: { color: colors.text, fontSize: font.sm, fontWeight: fontWeight.medium },
+    ingredient: { gap: 2 },
+    ingredientLabel: {
+      color: colors.textSecondary,
+      fontSize: font.xs,
+      fontWeight: fontWeight.semibold,
+      letterSpacing: 0.4,
+      marginTop: spacing.xs,
+    },
     question: { gap: spacing.sm },
     questionPrompt: { color: colors.text, fontSize: font.sm },
     options: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
