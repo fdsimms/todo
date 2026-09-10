@@ -220,7 +220,13 @@ function visionBridge(): typeof import('todo-vision-bridge') {
 }
 
 /**
- * Whether this device can read a receipt on its own.
+ * Whether this device can read printed text on its own.
+ *
+ * Named for the capability rather than for the receipt, because it is not the
+ * receipt's: `labelOcr.ts` photographs a nutrition panel through the same
+ * bridge and asks the same question, and a second cached copy of one boolean
+ * is the drift this repo keeps having to undo. It lives here because this is
+ * where the bridge wrapper was written, not because receipts own it.
  *
  * Fed to `routeForFeature` as `visionAvailable`, which is what decides whether
  * the scanner's entry points render at all when there is no API key.
@@ -233,7 +239,7 @@ function visionBridge(): typeof import('todo-vision-bridge') {
  */
 let visionAvailable: boolean | null = null;
 
-export function canReadReceiptOnDevice(): boolean {
+export function canReadTextOnDevice(): boolean {
   if (visionAvailable === null) {
     try {
       visionAvailable = visionBridge().isVisionAvailable();

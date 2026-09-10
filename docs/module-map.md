@@ -124,6 +124,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/kitchenHistory.ts` — KitchenEventKind, KitchenEvent, KitchenHistoryDay, kitchenEvents, kitchenHistoryDays, filterKitchenEvents
 - `src/utils/kitchenInventory.ts` — KitchenKind, kitchenEntryId, parseKitchenEntryId, KITCHEN_LINK_URL, kitchenLinkUrl, FRIDGE_SECTION, FREEZER_SECTION, KitchenEntry, KitchenSection, compareKitchenEntries, +4 more
 - `src/utils/kitchenReorder.ts` — KitchenRow, kitchenRowKey, KitchenDestination, KitchenMove, buildKitchenRows, resolveKitchenDrop, kitchenDragRange
+- `src/utils/labelOcr.ts` — LabelColumn, LabelReading, readNutritionLabel, readLabelPhoto
 - `src/utils/layoutAnimation.ts` — animateLayout
 - `src/utils/leftoverTasks.ts` — wantsUseUpTask, useUpTaskTitle, useUpTaskFields, useUpTaskDraft, useUpTaskDrift
 - `src/utils/leftovers.ts` — cleanLeftoverTitle, LeftoverPart, WHOLE_PART_KEY, LeftoverDestination, LeftoverPick, leftoverContainersFor, leftoverPartsFor, clampKeepDays, leftoverKeepDaysFor, describeKeepDays, +25 more
@@ -155,8 +156,8 @@ render, so listing them adds lines without adding answers.
 - `src/utils/nowTick.ts` — NOW_TICK_MS, subscribeToNowTick, emitNowTick
 - `src/utils/nudgeCadence.ts` — NudgeMode, NUDGE_MODES, nudgeModeOf, nudgeFieldsFor, FALLBACK_CADENCE_DAYS, NUDGE_MODE_LABEL, describeNudge, CadenceUnit, CADENCE_UNITS, CADENCE_UNIT_DAYS, +7 more
 - `src/utils/nutritionEstimate.ts` — ESTIMATE_DESCRIPTION_MAX_LENGTH, MAX_ESTIMATE_QUESTIONS, EstimateBasis, EstimateConfidence, EstimateQuestion, NutritionEstimate, RawNutritionEstimate, readNutritionEstimate, describeEstimate, estimateToPanel, +1 more
-- `src/utils/nutritionPanelForm.ts` — PanelForm, PanelFieldKey, emptyPanelForm, panelFormFrom, readPanelNumber, invalidPanelFields, panelFormDirty, buildPanelNutrition
-- `src/utils/nutritionParse.ts` — NutrientSourceUnit, readSourceNumber, convertNutrientAmount, readOffNutrition, readFdcNutrition, readFdcPortions
+- `src/utils/nutritionPanelForm.ts` — PanelForm, PanelFieldKey, emptyPanelForm, panelFormFrom, readPanelNumber, invalidPanelFields, panelFormDirty, buildPanelNutrition, applyLabelReading, labelColumnFieldCount
+- `src/utils/nutritionParse.ts` — NutrientSourceUnit, NUTRIENT_STORED_UNIT, SALT_TO_SODIUM, readSourceUnit, readSourceNumber, convertNutrientAmount, readOffNutrition, readFdcNutrition, readFdcPortions
 - `src/utils/nutritionStats.ts` — NutritionCounts, NutrientAverage, LoggedFood, SourceMix, EMPTY_NUTRITION_COUNTS, EMPTY_SOURCE_MIX, nutritionCounts, nutrientAverages, mostLoggedFoods, sourceMix, +1 more
 - `src/utils/nutritionTargets.ts` — NUTRITION_TARGET_RANGES, NutritionTargets, parseNutritionTargets, serializeNutritionTargets, targetedNutrients, describeAgainstTarget, targetProgress
 - `src/utils/ordinal.ts` — ordinal
@@ -196,7 +197,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/ranges.ts` — mergeRanges, scoreSubstring
 - `src/utils/reachOutTasks.ts` — MAX_REACH_OUT_TASKS, REACH_OUT_DECLINE_DAYS, declineHoldDays, declinedRecently, offerDeclinedRecently, reachOutPersonId, reachOutTitle, reachOutsHandledRecently, ReachOutWant, ReachOutCandidate, +7 more
 - `src/utils/receiptMatch.ts` — ReceiptMatchConfidence, ReceiptMatch, receiptMatchConfidence, AliasResolver, ReceiptScope, matchReceiptLines, matchReceiptShop, ReceiptCaution, receiptCautionsFor, acceptedByDefault, +1 more
-- `src/utils/receiptOcr.ts` — OcrReceiptRow, OcrReceipt, groupRecognizedRows, splitRowPrice, reconstructReceipt, shouldUseOcrText, canReadReceiptOnDevice, readReceipt
+- `src/utils/receiptOcr.ts` — OcrReceiptRow, OcrReceipt, groupRecognizedRows, splitRowPrice, reconstructReceipt, shouldUseOcrText, canReadTextOnDevice, readReceipt
 - `src/utils/receiptOffline.ts` — isNonItemRow, findPrintedDate, findPrintedTotal, guessStoreName, extractReceiptOffline
 - `src/utils/recentSearches.ts` — RECENT_SEARCH_LIMIT, addRecentSearch, parseRecentSearches
 - `src/utils/recipeComponents.ts` — parseRecipeComponents, normalizeComponent, parseRecipeChoices, makeComponent, ChoiceResolution, choiceGroupKey, activeComponents, activeIngredients, recipeMap, ResolvedComponent, +19 more

@@ -1,6 +1,8 @@
 import {
+  applyLabelReading,
   buildPanelNutrition,
   emptyPanelForm,
+  labelColumnFieldCount,
   invalidPanelFields,
   panelFormDirty,
   panelFormFrom,
@@ -167,5 +169,103 @@ describe('buildPanelNutrition', () => {
     );
     expect(built?.servingText).toBe('1 cup (240ml)');
     expect(built?.basis).toBe('per100ml');
+  });
+});
+
+describe('applyLabelReading', () => {
+  const reading = {
+    servingText: '2 cookies (30g)',
+    servingGrams: 30,
+    columns: [
+      { basis: 'per100g' as const, amounts: { calorieKcal: 140, fatG: 6, satFatG: 2.5 } },
+      { basis: 'perServing' as const, amounts: { calorieKcal: 42, fatG: 1.8 } },
+    ],
+  };
+
+  it('lays the figures it read into the form as text', () => {
+    const form = applyLabelReading(emptyPanelForm(), reading);
+    expect(form.amounts.calorieKcal).toBe('140');
+    expect(form.amounts.fatG).toBe('6');
+    expect(form.amounts.satFatG).toBe('2.5');
+  });
+
+  it('leaves a nutrient the panel did not state blank rather than zero', () => {
+    // The rule the whole record is shaped around: blank is "the label didn't
+    // say", and a 0 written here would be the app claiming the label did.
+    const form = applyLabelReading(emptyPanelForm(), reading);
+    expect(form.amounts.fiberG).toBe('');
+    expect(form.amounts.sodiumMg).toBe('');
+  });
+
+  it('does not blank a figure already typed that the read did not find', () => {
+    const typed = { ...emptyPanelForm() };
+    typed.amounts = { ...typed.amounts, fiberG: '2.7' };
+    expect(applyLabelReading(typed, reading).amounts.fiberG).toBe('2.7');
+  });
+
+  it('replaces a figure the read did find', () => {
+    const typed = { ...emptyPanelForm() };
+    typed.amounts = { ...typed.amounts, fatG: '99' };
+    expect(applyLabelReading(typed, reading).amounts.fatG).toBe('6');
+  });
+
+  it('takes the serving line and its weight', () => {
+    const form = applyLabelReading(emptyPanelForm(), reading);
+    expect(form.servingText).toBe('2 cookies (30g)');
+    expect(form.servingGrams).toBe('30');
+  });
+
+  it('takes the first column by default', () => {
+    expect(applyLabelReading(emptyPanelForm(), reading).basis).toBe('per100g');
+  });
+
+  it('takes the column it is asked for, with that column own basis', () => {
+    const form = applyLabelReading(emptyPanelForm(), reading, 1);
+    expect(form.amounts.calorieKcal).toBe('42');
+    expect(form.amounts.fatG).toBe('1.8');
+    expect(form.basis).toBe('perServing');
+  });
+
+  it('leaves a figure the chosen column does not state as the other column left it', () => {
+    // Switching columns re-lays only what the new column states, which is what
+    // lets the sheet move between them without blanking the form each time.
+    const first = applyLabelReading(emptyPanelForm(), reading, 0);
+    expect(applyLabelReading(first, reading, 1).amounts.satFatG).toBe('2.5');
+  });
+
+  it('leaves the form untouched for a column that is not there', () => {
+    const form = emptyPanelForm();
+    expect(applyLabelReading(form, reading, 7)).toBe(form);
+  });
+
+  it('keeps the chosen basis when the column stated no heading', () => {
+    const chosen = { ...emptyPanelForm(), basis: 'perServing' as const };
+    const headless = { ...reading, columns: [{ basis: null, amounts: { fatG: 6 } }] };
+    expect(applyLabelReading(chosen, headless).basis).toBe('perServing');
+  });
+
+  it('keeps a typed serving weight when the panel stated none', () => {
+    const typed = { ...emptyPanelForm(), servingGrams: '45' };
+    expect(applyLabelReading(typed, { ...reading, servingGrams: null }).servingGrams).toBe('45');
+  });
+
+  it('round-trips through the builder without inventing a figure', () => {
+    // The two halves together are what the sheet actually does, so the
+    // absent-is-not-zero rule is worth pinning across both rather than in each.
+    const panel = buildPanelNutrition(applyLabelReading(emptyPanelForm(), reading), null)!;
+    expect(panel.amounts).toEqual({ calorieKcal: 140, fatG: 6, satFatG: 2.5 });
+    expect(panel.source).toBe('manual');
+  });
+});
+
+describe('labelColumnFieldCount', () => {
+  it('counts the figures a column filled in', () => {
+    expect(labelColumnFieldCount({
+      basis: null, amounts: { calorieKcal: 140, fatG: 6, satFatG: 2.5 },
+    })).toBe(3);
+  });
+
+  it('counts a stated zero, which is a figure', () => {
+    expect(labelColumnFieldCount({ basis: null, amounts: { fatG: 0 } })).toBe(1);
   });
 });
