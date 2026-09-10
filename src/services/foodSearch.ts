@@ -162,3 +162,15 @@ export function describeFoodSearchError(error: unknown): string {
   if (message === 'No food database key') return 'Add a FoodData Central key in Settings to search for foods.';
   return 'Couldn\'t reach the food database. Try again in a moment.';
 }
+
+/**
+ * Which Settings row fixes this error, if any — the "Barcode lookups" entry
+ * a caller should jump to rather than leaving someone to hunt for it. `null`
+ * for anything that isn't a Settings problem (a timeout, a bad response).
+ */
+export function foodSearchErrorSettingsEntryId(error: unknown): string | null {
+  const message = error instanceof Error ? error.message : '';
+  if (message === 'Lookups are off') return 'productLookupEnabled';
+  if (message === 'No food database key') return 'fdcApiKey';
+  return null;
+}
