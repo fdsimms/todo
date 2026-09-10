@@ -3348,7 +3348,11 @@ describe('mergeItems undo', () => {
     const beforeCoriander = useGroceryStore.getState().itemById(coriander.id)!;
 
     expect(useGroceryStore.getState().mergeItems(cilantro.id, coriander.id)).toBe(true);
-    expect(useGroceryStore.getState().itemById(cilantro.id)).toBeUndefined();
+    // `itemById` answers null for a row that isn't there, which its own
+    // declared return type says: `GroceryItem | null`. Asserting undefined here
+    // reads as `.find()`'s answer rather than this selector's, and it is what
+    // made the suite red on main.
+    expect(useGroceryStore.getState().itemById(cilantro.id)).toBeNull();
     expect(useGroceryStore.getState().lastAction?.label).toBe('Merged "Cilantro" into "Coriander"');
     expect(useGroceryStore.getState().lastAction?.destructive).toBe(true);
 
@@ -3372,7 +3376,8 @@ describe('mergeItems undo', () => {
 
     useGroceryStore.getState().redoLastUndone();
 
-    expect(useGroceryStore.getState().itemById(cilantro.id)).toBeUndefined();
+    // Same call as above: null, not undefined.
+    expect(useGroceryStore.getState().itemById(cilantro.id)).toBeNull();
     expect(useGroceryStore.getState().itemById(coriander.id)!.purchaseCount).toBe(6);
     expect(useRecipeStore.getState().recipeById('r1')!.ingredients[0].nameKey).toBe('coriander');
   });
