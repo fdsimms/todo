@@ -187,3 +187,22 @@ export function nutritionFor(
 ): FoodNutrition | null {
   return product?.nutrition ?? item?.nutrition ?? null;
 }
+
+/**
+ * A one-line summary of a stored panel, for a row that shows what it has.
+ *
+ * Calories lead because they are what somebody is looking for, and the count
+ * that follows is how many of the ten this food actually reports — a figure
+ * worth showing because plenty of real rows carry a great many nutrients and
+ * no energy at all. Null for no record, which a caller renders as the field
+ * being empty rather than as a food containing nothing.
+ */
+export function describeFoodPanel(nutrition: FoodNutrition | null): string | null {
+  if (!nutrition) return null;
+  const count = Object.keys(nutrition.amounts).length;
+  const calories = nutrition.amounts.calorieKcal;
+  const per = nutrition.basis === 'per100ml' ? 'per 100ml' : nutrition.basis === 'perServing' ? 'per serving' : 'per 100g';
+  const counted = `${count} ${count === 1 ? 'nutrient' : 'nutrients'}`;
+  if (calories === undefined) return counted;
+  return `${Math.round(calories)} cal ${per}, ${counted}`;
+}
