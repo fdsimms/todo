@@ -26,6 +26,8 @@ import { useTaskGroupStore } from '../store/useTaskGroupStore';
 import { useFocusStore } from '../store/useFocusStore';
 import { isFocusRunning } from '../utils/focusPlan';
 import { itemsOnList } from '../utils/groceryLists';
+import { filterRowsByRecipes, shoppedRecipes } from '../utils/groceryRecipeFilter';
+import { recipeIndex } from '../utils/mealPlan';
 import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
@@ -2081,6 +2083,42 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // Each option is its own clean catalog name, never one row called
     // "serrano or jalapeño".
     expect(grouped.every(i => !/\bor\b/.test(i.nameKey))).toBe(true);
+  });
+
+  it('seeds a trolley the recipe strip can actually name and filter by', () => {
+    const { items, listEntries, activeListId } = useGroceryStore.getState();
+    const listRows = itemsOnList(items, listEntries, activeListId);
+    const todayKey = dayKeyOf(getLogicalToday());
+    const leadDays = useSettingsStore.getState().mealShortfallLeadDays;
+
+    // Through the store's own snapshot rather than a direct db read, so the
+    // path the screen uses is the path under test.
+    useMealPlanStore.getState().refreshShopWindowEntries(todayKey, leadDays);
+    const shopped = shoppedRecipes(
+      useMealPlanStore.getState().shopWindowEntries,
+      recipeIndex(useRecipeStore.getState().recipes),
+      listRows,
+      todayKey,
+      leadDays
+    );
+
+    // Without a meal planned inside the shop window whose ingredients are
+    // genuinely in the trolley, the strip renders nothing at all and reads as a
+    // feature the app doesn't have.
+    expect(shopped.length).toBeGreaterThanOrEqual(1);
+    expect(shopped[0].itemIds.length).toBeGreaterThan(0);
+
+    // And it has to actually narrow something, or the filter is a control that
+    // does nothing to the list it sits above.
+    const filtered = filterRowsByRecipes(listRows, shopped, [shopped[0].recipeId]);
+    expect(filtered.length).toBeGreaterThan(0);
+    expect(filtered.length).toBeLessThan(listRows.length);
+
+    // The membership is derived from the plan, not read off the stamp: at least
+    // one claimed row is one `addFromPlan` never credited to this recipe, which
+    // is the case the stored column cannot answer (see groceryRecipeFilter.ts).
+    const claimed = listRows.filter(r => shopped[0].itemIds.includes(r.id));
+    expect(claimed.some(r => r.sourceRecipeId !== shopped[0].recipeId)).toBe(true);
   });
 
   it('seeds an optional ingredient, unticked by default when its recipe goes on the list', () => {

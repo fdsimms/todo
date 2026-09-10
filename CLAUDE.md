@@ -315,6 +315,7 @@ exports.
 | where the Anthropic API key is kept | `src/utils/secureApiKey.ts` — see `docs/arch/app-lock.md` |
 | the grocery list / catalog | `src/store/useGroceryStore.ts` + `src/screens/GroceryScreen.tsx` |
 | a separate list for a week away, and a row in two trolleys at once | `src/utils/groceryLists.ts` + `GroceryListEntry` — see `docs/arch/groceries.md` |
+| which planned recipes a trolley is for, and filtering it down to one | `src/utils/groceryRecipeFilter.ts` + `src/hooks/useShoppedRecipes.ts` — see `docs/arch/groceries.md`. Derived from the plan every render; `GroceryItem.sourceRecipeId` is a provenance snapshot and deliberately not the source |
 | which aisle an item lands in | `src/utils/groceryAisles.ts` (offline lexicon) — see `docs/arch/groceries.md` |
 | which engine answers an AI feature, and the keyless floor under one of them | `src/utils/aiRouting.ts` + `src/services/onDeviceModel.ts` |
 | grocery autocomplete, catalog ranking | `src/utils/grocerySuggest.ts` |
@@ -393,7 +394,7 @@ them source rather than tests. The ten biggest source files:
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **296 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **297 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

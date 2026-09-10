@@ -1438,3 +1438,47 @@ so this is the wire between them, not a third system.
 - **Nothing about it is written back to the recipe**, the same rule the existing picks follow: an
   ad-hoc shop isn't attached to a meal, so there's nothing for "I'll decide later" to be a fact
   about. It lives in sheet state and dies with the sheet.
+
+## The recipe strip — "which of tonight's dinners is this row for"
+
+A row of pills above the grocery list naming the planned meals the trolley is being shopped for;
+tapping them narrows the list to the rows those meals call for. `src/utils/groceryRecipeFilter.ts`
+holds the derivation, `src/hooks/useShoppedRecipes.ts` feeds it, `GroceryRecipeStrip` draws it.
+
+- **Membership is derived, never read off `GroceryItem.sourceRecipeId`.** That column is the
+  obvious source and it is the wrong one: it is stamped only when `addFromPlan` mints a genuinely
+  new catalog row, so a staple that already existed carries nothing, and a row first created for
+  one recipe keeps that credit for ever. Filtering on it would hide every staple the selected
+  recipe needs and attribute other rows to a recipe nobody is cooking. The field is an honest
+  provenance snapshot; it just cannot say why a row is on the list *this week*. So the strip
+  flattens what the plan actually calls for (`plannedIngredientsForRecipe`, which already handles
+  components, the entry's scale and choices, and standing swaps) and resolves each line against the
+  trolley. Nothing is stored, so nothing can drift.
+- **The `groupBy: 'recipe'` lens still reads `sourceRecipeId`, and that is not an oversight.** A
+  grouping needs every row in exactly one section; live membership is a set relation, so the onion
+  two recipes want has no single bucket. Grouping wants a snapshot and filtering wants the live
+  relation. They legitimately read different things.
+- **Only the `linked` half of the catalog bridge counts** — an exact `nameKey`, the row it is a
+  plural of, or the declared varieties of a generic. The suggestion tiers `matchIngredientToCatalog`
+  also offers are things a person is asked to confirm, and a filter is no place to act on a guess:
+  silently hiding a row because "lime" scored near "line" is worse than showing it. Every matching
+  variety comes back rather than the first, for the same reason.
+- **Attribution is to the entry's own recipe, not to the recipe each line is written on.** This is
+  why it flattens per entry instead of calling `collectPlannedIngredients` over the window: that
+  function credits the component so a breakdown can say which part wants the butter, which here
+  would split "Steak dinner" into one pill for the steak and another for the mash.
+- **The window is the meal-shortfall shop window** (`mealShortfallLeadDays`, `isWithinShopWindow`),
+  so the strip and the "shop for Tuesday" task it sits above can never disagree about which meals
+  are close enough to shop for.
+- **Only what is rendered gets filtered.** The header counts, the share text, the estimate and
+  finishing the shop all keep reading the whole trolley. Narrowing what a Finish or a receipt import
+  applies to because a filter is on would be a filter quietly changing what an action does.
+- **A selection is pruned at read time, not only in an effect.** Cook the meal or take its last row
+  off the list and its pill goes; a selection that outlived its pill for even one frame would filter
+  against a recipe with no rows, flashing an empty state with nothing on screen explaining it.
+  Dropping it is silent on purpose, since the pill disappearing is the explanation.
+- **The snapshot of planned meals is outside `useMealPlanStore`'s window contract**, alongside
+  `plannedSlotCounts` and for its reasons: Groceries is its own tab, the week Meal plan has loaded
+  is routinely not the next two days, and calling `loadRange` to fix that would clobber whichever
+  week that screen has open. Pulled by the reader rather than pushed by the plan's writes, which
+  also covers the writes no mutator sees at all (a restored backup, a demo swap, a sync).
