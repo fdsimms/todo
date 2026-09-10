@@ -816,6 +816,12 @@ export function KitchenScreen() {
           setOpenItemId(null);
           setOpenItemField('pantry');
         }}
+        onOpenRecipe={recipeId => {
+          setOpenItemId(null);
+          setOpenItemField('pantry');
+          navigation.navigate('RecipeDetail', { recipeId });
+        }}
+        recipeExists={recipeId => recipes.some(r => r.id === recipeId)}
         // Opened on the Pantry pills, since that's what a catalog row here is:
         // the sheet is dense enough that a collapsed "Pantry" field halfway
         // down it was, in practice, no way to say you're out of something. The

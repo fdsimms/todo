@@ -7,6 +7,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import type { RecipeIngredient } from '../types';
 import {
@@ -74,6 +75,7 @@ interface Props {
 export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation<any>();
 
   const updateIngredient = useRecipeStore(s => s.updateIngredient);
   const splitIngredientAlternatives = useRecipeStore(s => s.splitIngredientAlternatives);
@@ -953,6 +955,12 @@ export function RecipeIngredientSheet({ visible, recipeId, ingredient, onClose }
         visible={editingItemId !== null}
         itemId={editingItemId}
         onClose={() => setEditingItemId(null)}
+        onOpenRecipe={openRecipeId => {
+          setEditingItemId(null);
+          onClose();
+          navigation.navigate('RecipeDetail', { recipeId: openRecipeId });
+        }}
+        recipeExists={openRecipeId => allRecipes.some(r => r.id === openRecipeId)}
       />
     </EditorSheet>
   );

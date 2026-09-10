@@ -10,6 +10,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useNavigation } from '@react-navigation/native';
 import { useShallow } from 'zustand/react/shallow';
 import { useColors } from '../theme/ThemeContext';
 import {
@@ -25,6 +26,7 @@ import {
 } from '../theme';
 import { trolleyStateFor, itemsOnList, listedAnywhere } from '../utils/groceryLists';
 import { useGroceryStore } from '../store/useGroceryStore';
+import { useRecipeStore } from '../store/useRecipeStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { rankedCatalogItems, catalogPruneCandidates, rankGrocerySuggestions } from '../utils/grocerySuggest';
 import { linkCounts } from '../utils/groceryFacts';
@@ -59,7 +61,9 @@ interface Props {
 export function GroceryCatalogSheet({ visible, onClose }: Props) {
   const colors = useColors();
   const styles = useMemo(() => makeStyles(colors), [colors]);
+  const navigation = useNavigation<any>();
 
+  const recipes = useRecipeStore(useShallow(s => s.recipes));
   const items = useGroceryStore(useShallow(s => s.items));
   const listEntries = useGroceryStore(useShallow(s => s.listEntries));
   const activeListId = useGroceryStore(s => s.activeListId);
@@ -409,6 +413,12 @@ export function GroceryCatalogSheet({ visible, onClose }: Props) {
           visible={!!editingId}
           itemId={editingId}
           onClose={() => setEditingId(null)}
+          onOpenRecipe={recipeId => {
+            setEditingId(null);
+            onClose();
+            navigation.navigate('RecipeDetail', { recipeId });
+          }}
+          recipeExists={recipeId => recipes.some(r => r.id === recipeId)}
         />
       </View>
     </Modal>
