@@ -1,0 +1,4 @@
+{
+  "message": "An ingredient and a component recipe can now share the same alternatives group, so \"buy corn tortillas\" and \"make Tortillas de Maíz instead\" show as one choice instead of two separate lines. Join an existing ingredient's group from a component's long-press sheet, or vice versa from the ingredient's Alternatives field.",
+  "date": "2026-09-10"
+}
