@@ -1,0 +1,4 @@
+{
+  "message": "The food log can now write what you ate to Apple Health, as a meal rather than as loose numbers. It is off until you turn on \"Log to Health\" in Settings, and deleting an entry removes what it wrote. A nutrient the entry doesn't state is left unknown rather than recorded as zero.",
+  "date": "2026-09-10"
+}

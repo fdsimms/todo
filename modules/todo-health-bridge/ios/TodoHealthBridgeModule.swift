@@ -135,8 +135,44 @@ public class TodoHealthBridgeModule: Module {
     if let bodyMass = HKQuantityType.quantityType(forIdentifier: .bodyMass) {
       types.insert(bodyMass)
     }
+    for entry in Self.nutrientWriteTable {
+      if let type = HKQuantityType.quantityType(forIdentifier: entry.identifier) {
+        types.insert(type)
+      }
+    }
     return types
   }
+
+  /// Every nutrient a logged meal writes, with the identifier and unit each one
+  /// is recorded in. The keys are `NutrientKey` from `src/types/index.ts`, so a
+  /// figure crosses the bridge under the same name it has on both sides.
+  ///
+  /// **Ten, not the eight `readTypes` collects.** Carbohydrate and total fat
+  /// are written but never read: nothing in this app watches them, no rule
+  /// fires on them, and no screen shows them from Health. They are here because
+  /// the consumer isn't this app — a meal that reaches the Health app with no
+  /// carbohydrate line reads as incomplete rather than as deliberate, and every
+  /// other app reading this record expects the macros together. That is a
+  /// decision made out loud rather than by whatever the write loop happened to
+  /// iterate over; see `docs/arch/health-data.md`.
+  ///
+  /// The units are each nutrient's own, matching what `NutrientKey`'s name
+  /// already says it stores — the JS side does no conversion on the way here,
+  /// because `nutritionParse.ts` already did it once and a second opinion about
+  /// units in a second language is how a sodium figure lands a thousand times
+  /// too high.
+  private static let nutrientWriteTable: [(key: String, identifier: HKQuantityTypeIdentifier, unit: HKUnit)] = [
+    ("calorieKcal", .dietaryEnergyConsumed, HKUnit.kilocalorie()),
+    ("proteinG", .dietaryProtein, HKUnit.gram()),
+    ("carbsG", .dietaryCarbohydrates, HKUnit.gram()),
+    ("fatG", .dietaryFatTotal, HKUnit.gram()),
+    ("satFatG", .dietaryFatSaturated, HKUnit.gram()),
+    ("fiberG", .dietaryFiber, HKUnit.gram()),
+    ("sugarG", .dietarySugar, HKUnit.gram()),
+    ("sodiumMg", .dietarySodium, HKUnit.gramUnit(with: .milli)),
+    ("caffeineMg", .dietaryCaffeine, HKUnit.gramUnit(with: .milli)),
+    ("waterMl", .dietaryWater, HKUnit.literUnit(with: .milli)),
+  ]
 
   /// The share type a write-side call is asking about, resolved from the key
   /// the JS side passes.
@@ -147,11 +183,21 @@ public class TodoHealthBridgeModule: Module {
   /// permissions are genuinely independent in Health, and a single status for
   /// "writing" would be a lie as soon as somebody allowed one and refused the
   /// other.
-  private static func writeType(for key: String) -> HKQuantityType? {
+  ///
+  /// A list rather than one type, because `"nutrition"` is ten of them: a meal
+  /// is written as one correlation of ten samples, and Health asks about each
+  /// share type separately inside that one sheet. What the settings row does
+  /// with ten answers is `writeAuthorizationStatus`'s problem, not this one's.
+  private static func writeTypes(for key: String) -> [HKQuantityType] {
     switch key {
-    case "water": return HKQuantityType.quantityType(forIdentifier: .dietaryWater)
-    case "weight": return HKQuantityType.quantityType(forIdentifier: .bodyMass)
-    default: return nil
+    case "water":
+      return [HKQuantityType.quantityType(forIdentifier: .dietaryWater)].compactMap { $0 }
+    case "weight":
+      return [HKQuantityType.quantityType(forIdentifier: .bodyMass)].compactMap { $0 }
+    case "nutrition":
+      return nutrientWriteTable.compactMap { HKQuantityType.quantityType(forIdentifier: $0.identifier) }
+    default:
+      return []
     }
   }
 
@@ -348,20 +394,33 @@ public class TodoHealthBridgeModule: Module {
     /// something false.
     Function("writeAuthorizationStatus") { (kind: String) -> String in
       #if canImport(HealthKit)
-      guard HKHealthStore.isHealthDataAvailable(),
-            let type = Self.writeType(for: kind) else {
+      let types = Self.writeTypes(for: kind)
+      guard HKHealthStore.isHealthDataAvailable(), !types.isEmpty else {
         return "unavailable"
       }
-      var status = "unavailable"
+      var resolved = false
+      // The weakest answer across the types wins, which matters only for
+      // `"nutrition"` and is the same "never claim more than is true" call
+      // `bestSum` makes on the read side. Somebody who allowed nine nutrients
+      // and refused sugar has a row that should send them to the Health app,
+      // not one saying "Allowed" over a meal that will land incomplete.
+      var denied = false
+      var undetermined = false
       TodoHealthExceptionCatcher.runCatchingExceptions {
-        switch self.store.authorizationStatus(for: type) {
-        case .notDetermined: status = "notDetermined"
-        case .sharingDenied: status = "sharingDenied"
-        case .sharingAuthorized: status = "sharingAuthorized"
-        @unknown default: status = "notDetermined"
+        for type in types {
+          switch self.store.authorizationStatus(for: type) {
+          case .sharingDenied: denied = true
+          case .notDetermined: undetermined = true
+          case .sharingAuthorized: break
+          @unknown default: undetermined = true
+          }
         }
+        resolved = true
       }
-      return status
+      if !resolved { return "unavailable" }
+      if denied { return "sharingDenied" }
+      if undetermined { return "notDetermined" }
+      return "sharingAuthorized"
       #else
       return "unavailable"
       #endif
@@ -469,6 +528,175 @@ public class TodoHealthBridgeModule: Module {
       #endif
     }
 
+    /// Writes one logged meal as an `HKCorrelation` of type `.food`, and
+    /// resolves the UUIDs of everything it saved as a JSON array of strings.
+    ///
+    /// `amountsJSON` is a `{"proteinG": 12.4, …}` object keyed by
+    /// `NutrientKey`, carrying only the figures the entry actually states.
+    /// **A nutrient absent from it is not written**, and that is the whole
+    /// contract rather than an optimisation: absent means the label never said,
+    /// and a zero sample would be this app claiming on somebody's behalf that a
+    /// meal contained none of something nobody measured. A figure that *is*
+    /// present and zero is written, because "no fat" is a real thing for a
+    /// label to state. See `FoodNutrition.amounts`.
+    ///
+    /// **A correlation rather than ten loose samples**, because a meal is one
+    /// thing. Saved loose they appear in the Health app as ten unrelated
+    /// numbers at 12:47; correlated they appear as the meal, named by
+    /// `HKMetadataKeyFoodType`, with its figures underneath.
+    ///
+    /// **The UUIDs are the point of this function.** `writeWaterSample` and
+    /// `writeBodyMassSample` return a bare `Bool` and keep nothing, because
+    /// Health is the record and neither has an edit path here. A food log does:
+    /// an entry deleted must retract what it wrote, or a mistyped meal is a
+    /// permanent false fact in a medical record that nobody would know to go
+    /// looking for. So the saved objects' identifiers come back and are stored
+    /// on `FoodLogEntry.healthSampleIds`.
+    ///
+    /// The correlation's own UUID is returned alongside its members'. Deleting
+    /// the correlation is what actually retracts the meal; the members are
+    /// carried so a partial save still leaves something to clean up.
+    ///
+    /// Resolves `"[]"` for every reason there is nothing to report: no native
+    /// half, no readable amounts, no correlation type, or the save failing.
+    /// The caller treats them alike — an entry with no sample ids simply has
+    /// nothing to retract later.
+    AsyncFunction("writeFoodSamples") { (label: String, atISO: String, amountsJSON: String, promise: Promise) in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable(),
+            let correlationType = HKObjectType.correlationType(forIdentifier: .food),
+            let data = amountsJSON.data(using: .utf8),
+            let parsed = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+        promise.resolve("[]")
+        return
+      }
+
+      let when = Self.parseISO(atISO) ?? Date()
+      var samples = Set<HKSample>()
+      for entry in Self.nutrientWriteTable {
+        // `as? Double` alone would drop a whole number, which JSONSerialization
+        // hands back as an NSNumber that bridges to Int — and a meal stating
+        // "12g protein" is the ordinary case, not an edge one.
+        guard let number = parsed[entry.key] as? NSNumber else { continue }
+        let value = number.doubleValue
+        guard value.isFinite, value >= 0,
+              let type = HKQuantityType.quantityType(forIdentifier: entry.identifier) else { continue }
+        let quantity = HKQuantity(unit: entry.unit, doubleValue: value)
+        samples.insert(HKQuantitySample(type: type, quantity: quantity, start: when, end: when))
+      }
+      guard !samples.isEmpty else {
+        promise.resolve("[]")
+        return
+      }
+
+      let trimmed = label.trimmingCharacters(in: .whitespacesAndNewlines)
+      let metadata: [String: Any]? = trimmed.isEmpty ? nil : [HKMetadataKeyFoodType: trimmed]
+      let meal = HKCorrelation(
+        type: correlationType,
+        start: when,
+        end: when,
+        objects: samples,
+        metadata: metadata
+      )
+
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        self.store.save(meal) { success, _ in
+          guard success else {
+            promise.resolve("[]")
+            return
+          }
+          var ids = [meal.uuid.uuidString]
+          ids.append(contentsOf: samples.map { $0.uuid.uuidString })
+          let encoded = (try? JSONSerialization.data(withJSONObject: ids))
+            .flatMap { String(data: $0, encoding: .utf8) }
+          promise.resolve(encoded ?? "[]")
+        }
+        started = true
+      }
+      if !started { promise.resolve("[]") }
+      #else
+      promise.resolve("[]")
+      #endif
+    }
+
+    /// Deletes the samples named by `idsJSON`, a JSON array of UUID strings.
+    ///
+    /// The retraction half of `writeFoodSamples`, and the first delete this
+    /// bridge has ever had. HealthKit only lets an app delete what it itself
+    /// saved, which is the guarantee that makes this safe to expose at all: no
+    /// argument to this function can reach a sample somebody's scale or another
+    /// food app wrote.
+    ///
+    /// Deletes per type rather than by fetching the objects first, because
+    /// `deleteObjects(of:predicate:)` matches on the same UUIDs without a round
+    /// trip and without needing the objects to still be readable. The
+    /// correlation type is included alongside the ten quantity types, since the
+    /// correlation is its own object and deleting only its members would leave
+    /// an empty meal in the Health app.
+    ///
+    /// Resolves true when nothing went wrong, including when the ids matched
+    /// nothing — an entry deleted twice, or one whose samples the person
+    /// already removed in the Health app, is not a failure to report.
+    AsyncFunction("deleteHealthSamples") { (idsJSON: String, promise: Promise) in
+      #if canImport(HealthKit)
+      guard HKHealthStore.isHealthDataAvailable(),
+            let data = idsJSON.data(using: .utf8),
+            let raw = try? JSONSerialization.jsonObject(with: data) as? [String] else {
+        promise.resolve(false)
+        return
+      }
+      let uuids = Set(raw.compactMap { UUID(uuidString: $0) })
+      guard !uuids.isEmpty else {
+        promise.resolve(true)
+        return
+      }
+
+      var types: [HKObjectType] = Self.nutrientWriteTable.compactMap {
+        HKQuantityType.quantityType(forIdentifier: $0.identifier)
+      }
+      if let correlationType = HKObjectType.correlationType(forIdentifier: .food) {
+        types.append(correlationType)
+      }
+      guard !types.isEmpty else {
+        promise.resolve(false)
+        return
+      }
+
+      let predicate = HKQuery.predicateForObjects(with: uuids)
+      // Eleven deletes report back on arbitrary background queues, so the
+      // tally is kept on a serial queue of its own rather than touched from
+      // whichever thread finished — the same treatment `readDailyHealth`'s own
+      // fan-out gets, and needed more sharply here: getting the count wrong
+      // means telling the app a retraction succeeded when it did not, and the
+      // thing left behind is a sample in somebody's medical record.
+      let tally = DispatchQueue(label: "TodoHealthBridge.deleteHealthSamples")
+      var remaining = types.count
+      var allSucceeded = true
+      var started = false
+      TodoHealthExceptionCatcher.runCatchingExceptions {
+        for type in types {
+          self.store.deleteObjects(of: type, predicate: predicate) { success, _, error in
+            tally.async {
+              // "No objects matched" is reported as a failure by HealthKit and
+              // is not one here: a type this meal never wrote is the ordinary
+              // case, since a given entry states some of the ten, not all.
+              if !success, (error as NSError?)?.code != HKError.errorNoData.rawValue {
+                allSucceeded = false
+              }
+              remaining -= 1
+              if remaining == 0 { promise.resolve(allSucceeded) }
+            }
+          }
+        }
+        started = true
+      }
+      if !started { promise.resolve(false) }
+      #else
+      promise.resolve(false)
+      #endif
+    }
+
     // ─── Reading ────────────────────────────────────────────────────────────
 
     /// One entry per logical day, as JSON:
@@ -528,19 +756,31 @@ public class TodoHealthBridgeModule: Module {
       // Ten queries, one promise. `resolve` is called by whichever finishes
       // last, and `pending` is only ever touched on the health store's own
       // serial callback queue, so the count needs no lock.
+      // The ten queries report back on arbitrary background queues, so the
+      // countdown runs on a serial queue of its own rather than on whichever
+      // thread finished. It does two jobs and both are needed: the decrements
+      // cannot interleave (a lost one leaves the promise unresolved for ever,
+      // which reads as Health simply never answering, and a doubled one
+      // resolves it twice), and every per-day array written before a query's
+      // own `finish` is enqueued is therefore visible to the final block that
+      // reads all ten. Each array has exactly one writer, so this is the whole
+      // of the sharing.
+      let tally = DispatchQueue(label: "TodoHealthBridge.readDailyHealth")
       var pending = 10
       let finish = {
-        pending -= 1
-        guard pending == 0 else { return }
-        let entries: [String] = (0..<days).map { i in
-          let part: (Double?) -> String = { $0.map { "\(Int($0.rounded()))" } ?? "null" }
-          return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"steps\":\(part(steps[i])),"
-            + "\"sleepMinutes\":\(part(sleepMinutes[i])),\"sodiumMg\":\(part(sodiumMg[i])),"
-            + "\"proteinG\":\(part(proteinG[i])),\"satFatG\":\(part(satFatG[i])),\"fiberG\":\(part(fiberG[i])),"
-            + "\"sugarG\":\(part(sugarG[i])),\"caffeineMg\":\(part(caffeineMg[i])),\"waterMl\":\(part(waterMl[i])),"
-            + "\"calorieKcal\":\(part(calorieKcal[i]))}"
+        tally.async {
+          pending -= 1
+          guard pending == 0 else { return }
+          let entries: [String] = (0..<days).map { i in
+            let part: (Double?) -> String = { $0.map { "\(Int($0.rounded()))" } ?? "null" }
+            return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"steps\":\(part(steps[i])),"
+              + "\"sleepMinutes\":\(part(sleepMinutes[i])),\"sodiumMg\":\(part(sodiumMg[i])),"
+              + "\"proteinG\":\(part(proteinG[i])),\"satFatG\":\(part(satFatG[i])),\"fiberG\":\(part(fiberG[i])),"
+              + "\"sugarG\":\(part(sugarG[i])),\"caffeineMg\":\(part(caffeineMg[i])),\"waterMl\":\(part(waterMl[i])),"
+              + "\"calorieKcal\":\(part(calorieKcal[i]))}"
+          }
+          promise.resolve("[" + entries.joined(separator: ",") + "]")
         }
-        promise.resolve("[" + entries.joined(separator: ",") + "]")
       }
 
       var started = false
