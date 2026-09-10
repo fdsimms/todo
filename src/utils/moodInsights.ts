@@ -64,10 +64,31 @@ export interface MoodDay {
   symptomKeys: string[];
   /** Context tag names logged that day, lowercased for matching. */
   contextTagKeys: string[];
-  /** Top-level real completions that day. Subtasks and missed rows excluded. */
-  completed: number;
-  /** Categories completed that day, each counted once — the "kind" of work. */
+  /**
+   * Top-level real completions that day, or null when the task record for the
+   * day is gone. Subtasks and missed rows excluded.
+   *
+   * **Null is a purged day, and it is not a zero.** `completedRetentionDays`
+   * deletes completed rows past its window while the mood log keeps every
+   * entry forever, so a year of logging under a three-month window leaves nine
+   * months of days that really were worked and now hold no rows to prove it.
+   * Counted as zeros, those days would drag every completion read toward "you
+   * finish nothing when you feel like that" — rule 3 of this file's header,
+   * breached by the app's own housekeeping rather than by a gap in the data.
+   * See `completionsKnownFrom` in `buildMoodDays`.
+   */
+  completed: number | null;
+  /** Categories completed that day, each counted once — the "kind" of work. Empty on a purged day. */
   categories: string[];
+  /**
+   * The recurring tasks completed that day, by series identity rather than by
+   * row id — see `taskIdentityKey`. Empty on a purged day.
+   *
+   * One key per *task*, not per occurrence: "Take the tablets" completed every
+   * morning is one thing you do, and keying on the row would make every day's
+   * completion a different label with one day behind it.
+   */
+  taskKeys: string[];
   /**
    * Steps recorded for that day, or null. Apple Health's, never this app's.
    *
@@ -80,6 +101,35 @@ export interface MoodDay {
   steps: number | null;
   /** Hours asleep recorded for that day, or null. Same rules as `steps`. */
   sleepHours: number | null;
+}
+
+/**
+ * The identity a task keeps across its occurrences.
+ *
+ * A series first, then the root of the `previousOccurrenceId` chain, then the
+ * row's own id — the same collapse `projectProgress` makes and for the same
+ * reason: completing a recurring task spawns a *new row*, so the raw ids of
+ * "Take the tablets" over a fortnight are fourteen different tasks unless
+ * something walks them back to one.
+ *
+ * Resolve-or-shrug at every step, like every other chain walk in the app: a
+ * pointer at a row that has been purged or deleted stops the walk where it is
+ * rather than throwing, which leaves the surviving rows keyed on the oldest
+ * ancestor still present. That splits one long-running task into a couple of
+ * identities across a purge boundary, which is the honest answer — the rows
+ * that would have joined them are gone.
+ */
+export function taskIdentityKey(task: Task, byId: ReadonlyMap<string, Task>): string {
+  if (task.seriesId) return `series:${task.seriesId}`;
+  const seen = new Set<string>([task.id]);
+  let current = task;
+  while (current.previousOccurrenceId) {
+    const previous = byId.get(current.previousOccurrenceId);
+    if (!previous || seen.has(previous.id)) break;
+    seen.add(previous.id);
+    current = previous;
+  }
+  return current.id;
 }
 
 /** A health reading the day builder can decorate a day with. */
@@ -112,12 +162,23 @@ export function completionDayKey(completedAt: string, dayResetTime: string): str
  * present in only one dataset is kept here and dropped there — which is what
  * makes rule 3 above a property of the data rather than a thing every caller
  * has to remember.
+ *
+ * `completionsKnownFrom` is the first day the task record is complete for,
+ * which is `completedRetentionDays`' cutoff (see `retentionCutoff`) and null
+ * when retention is off. Days before it keep their mood and their symptoms and
+ * lose their completions, because the rows that would have answered for them
+ * have been deleted. It is a parameter rather than a read of the setting for
+ * the reason the whole module is store-free, and it is not optional politeness:
+ * the mood log is kept forever and the task history is not, so any install with
+ * a retention window accumulates days where one half of every join is missing
+ * and nothing else in the app would notice.
  */
 export function buildMoodDays(
   logs: readonly MoodLog[],
   tasks: readonly Task[],
   dayResetTime: string,
   readings: readonly HealthDayInput[] = [],
+  completionsKnownFrom: string | null = null,
 ): MoodDay[] {
   const days = new Map<string, MoodDay>();
   const dayFor = (dayKey: string): MoodDay => {
@@ -125,7 +186,7 @@ export function buildMoodDays(
     if (!day) {
       day = {
         dayKey, mood: null, symptomKeys: [], contextTagKeys: [], completed: 0,
-        categories: [], steps: null, sleepHours: null,
+        categories: [], taskKeys: [], steps: null, sleepHours: null,
       };
       days.set(dayKey, day);
     }
@@ -153,19 +214,41 @@ export function buildMoodDays(
   }
 
   const categoriesByDay = new Map<string, Set<string>>();
+  const taskKeysByDay = new Map<string, Set<string>>();
+  const byId = new Map(tasks.map(t => [t.id, t]));
   for (const task of tasks) {
     if (task.parentId || !isRealCompletion(task) || !task.completedAt) continue;
     const dayKey = completionDayKey(task.completedAt, dayResetTime);
     const day = dayFor(dayKey);
-    day.completed++;
+    day.completed = (day.completed ?? 0) + 1;
     if (task.category) {
       let set = categoriesByDay.get(dayKey);
       if (!set) categoriesByDay.set(dayKey, (set = new Set()));
       set.add(task.category);
     }
+    let keys = taskKeysByDay.get(dayKey);
+    if (!keys) taskKeysByDay.set(dayKey, (keys = new Set()));
+    keys.add(taskIdentityKey(task, byId));
   }
   for (const [dayKey, set] of categoriesByDay) {
     dayFor(dayKey).categories = [...set].sort();
+  }
+  for (const [dayKey, set] of taskKeysByDay) {
+    dayFor(dayKey).taskKeys = [...set].sort();
+  }
+
+  // Days whose completed rows have been purged say nothing about what was
+  // done, and must say *nothing* rather than "none" — see `MoodDay.completed`.
+  // Applied after the count so a row that survived the window (an archived
+  // one, or a decision task holding an answer) can't make a purged day look
+  // like a fully recorded one with a single completion on it.
+  if (completionsKnownFrom !== null) {
+    for (const day of days.values()) {
+      if (day.dayKey >= completionsKnownFrom) continue;
+      day.completed = null;
+      day.categories = [];
+      day.taskKeys = [];
+    }
   }
 
   // Health readings **decorate days that already exist and never create one.**
@@ -191,6 +274,19 @@ export function buildMoodDays(
 /** Only the days that can actually be compared: a mood *and* a task count. */
 export function pairedDays(days: readonly MoodDay[]): MoodDay[] {
   return days.filter(d => d.mood !== null);
+}
+
+/**
+ * The paired days whose task record survived, for the reads that are about
+ * what got done.
+ *
+ * Separate from `pairedDays` because the symptom and context contrasts only
+ * ever touch the mood side, and narrowing those to the retention window would
+ * throw away years of perfectly good symptom history to fix a problem they
+ * don't have.
+ */
+export function taskPairedDays(days: readonly MoodDay[]): MoodDay[] {
+  return days.filter(d => d.mood !== null && d.completed !== null);
 }
 
 /** Pearson's r over two equal-length series, or null when it is undefined. */
@@ -255,7 +351,7 @@ export interface MoodCompletionInsight {
  * somebody wondering whether it is broken.
  */
 export function moodCompletionInsight(days: readonly MoodDay[]): MoodCompletionInsight {
-  const paired = pairedDays(days);
+  const paired = taskPairedDays(days);
   const base: MoodCompletionInsight = {
     dayCount: paired.length,
     r: null,
@@ -266,7 +362,7 @@ export function moodCompletionInsight(days: readonly MoodDay[]): MoodCompletionI
   };
   if (paired.length < MIN_PAIRED_DAYS) return base;
 
-  const r = correlation(paired.map(d => d.mood as number), paired.map(d => d.completed));
+  const r = correlation(paired.map(d => d.mood as number), paired.map(d => d.completed as number));
   const good = paired.filter(d => (d.mood as number) > 3);
   const low = paired.filter(d => (d.mood as number) <= LOW_MOOD_AT_OR_BELOW);
   return {
@@ -274,8 +370,8 @@ export function moodCompletionInsight(days: readonly MoodDay[]): MoodCompletionI
     r,
     strength: r === null ? null : correlationStrength(r),
     direction: r === null ? null : r >= 0 ? 'more' : 'fewer',
-    completedOnGoodDays: good.length > 0 ? mean(good.map(d => d.completed)) : null,
-    completedOnLowDays: low.length > 0 ? mean(low.map(d => d.completed)) : null,
+    completedOnGoodDays: good.length > 0 ? mean(good.map(d => d.completed as number)) : null,
+    completedOnLowDays: low.length > 0 ? mean(low.map(d => d.completed as number)) : null,
   };
 }
 
@@ -309,7 +405,7 @@ export interface GroupContrast {
  * one-sided sort would only ever show good news.
  */
 export function categoryMoodContrasts(days: readonly MoodDay[]): GroupContrast[] {
-  const paired = pairedDays(days);
+  const paired = taskPairedDays(days);
   if (paired.length < MIN_PAIRED_DAYS) return [];
   const labels = new Set<string>();
   for (const day of paired) for (const c of day.categories) labels.add(c);
@@ -348,6 +444,60 @@ export function contextTagMoodContrasts(days: readonly MoodDay[]): GroupContrast
   const labels = new Set<string>();
   for (const day of paired) for (const t of day.contextTagKeys) labels.add(t);
   return contrastsFor(paired, [...labels], (day, label) => day.contextTagKeys.includes(label));
+}
+
+/**
+ * For each recurring task: how your mood ran on the days you completed it,
+ * against the days you didn't.
+ *
+ * The same contrast the category read makes, one level down, and it is the
+ * answer this app gives to the thing every symptom tracker builds a separate
+ * feature for: **a medication, a supplement, a stretch or a walk is already a
+ * repeating task here**, so "how do the days I take it compare" needs no
+ * schema, no second vocabulary and no pill-shaped UI. A tracker that asks you
+ * to log the tablets *again*, in its own list, next to the task reminding you
+ * to take them, is asking for the same fact twice.
+ *
+ * One-offs cannot reach the screen and are not filtered out by hand: a task
+ * completed once has one "with" day, and `contrastsFor` needs
+ * `MIN_CONTRAST_DAYS` on both sides. That is the honest gate rather than
+ * `recurrenceType !== 'none'` — a task repeated by hand every morning is
+ * exactly as real as one carrying a rule, and a rule the user added yesterday
+ * says nothing about the fortnight behind it.
+ *
+ * Labelled by identity key (see `taskIdentityKey`), which the caller resolves
+ * back to a title through `taskContrastTitles` — the same key-to-display step
+ * the symptom rows already make.
+ */
+export function taskMoodContrasts(days: readonly MoodDay[]): GroupContrast[] {
+  const paired = taskPairedDays(days);
+  if (paired.length < MIN_PAIRED_DAYS) return [];
+  const labels = new Set<string>();
+  for (const day of paired) for (const key of day.taskKeys) labels.add(key);
+  return contrastsFor(paired, [...labels], (day, label) => day.taskKeys.includes(label));
+}
+
+/**
+ * Identity key -> the title to show for it, taken from the most recent
+ * occurrence.
+ *
+ * The most recent rather than the oldest, because a task the user has since
+ * renamed should read under the name they use now — the identity is the chain,
+ * not the wording. `displayTitleFor` is deliberately not used: a chain step's
+ * title is the step, and a contrast is about the whole repeating thing.
+ */
+export function taskContrastTitles(tasks: readonly Task[]): Map<string, string> {
+  const byId = new Map(tasks.map(t => [t.id, t]));
+  const newest = new Map<string, { title: string; at: string }>();
+  for (const task of tasks) {
+    if (task.parentId || !isRealCompletion(task) || !task.completedAt) continue;
+    const key = taskIdentityKey(task, byId);
+    const seen = newest.get(key);
+    if (!seen || task.completedAt > seen.at) {
+      newest.set(key, { title: task.title, at: task.completedAt });
+    }
+  }
+  return new Map([...newest].map(([key, v]) => [key, v.title]));
 }
 
 function contrastsFor(
@@ -409,9 +559,12 @@ function axisValue(day: MoodDay, axis: HealthMetric | HealthAgainst): number | n
     case 'steps': return day.steps;
     case 'sleepHours': return day.sleepHours;
     case 'mood': return day.mood;
-    // Always a number, and a real zero: a day is only in the set at all
+    // A real zero where it is a number: a day is only in the set at all
     // because something was logged or finished on it, so "none finished" is
-    // something that happened rather than something missing.
+    // something that happened rather than something missing. Null is the one
+    // case that isn't — a day whose completed rows have been purged (see
+    // `MoodDay.completed`), which drops out of the pairing like a missing
+    // reading does.
     case 'completed': return day.completed;
   }
 }

@@ -2,8 +2,10 @@
 
 What #1223 asked for, and the decisions it deliberately left open, resolved.
 Read this before changing anything under `src/utils/moodLog.ts`,
-`src/utils/moodInsights.ts`, `src/utils/moodTasks.ts`, `src/store/useMoodStore.ts`,
-`src/screens/MoodScreen.tsx` or `src/components/MoodLogSheet.tsx`.
+`src/utils/moodInsights.ts`, `src/utils/moodHistory.ts`, `src/utils/moodExport.ts`,
+`src/utils/moodTasks.ts`, `src/store/useMoodStore.ts`, `src/screens/MoodScreen.tsx`,
+`src/screens/MoodHistoryScreen.tsx`, `src/screens/SymptomDetailScreen.tsx` or
+`src/components/MoodLogSheet.tsx`.
 
 The rules here are settled decisions with the reasoning attached. Don't
 re-derive them from the code, and don't re-open one without a reason this note
@@ -214,6 +216,136 @@ wrong about a person rather than about their data. Three rules:
 `LOW_MOOD_AT_OR_BELOW` is 2, not 3: "OK" is not a bad day, and a threshold
 catching it would have the app offering to cheer up somebody who said they were
 fine.
+
+## The log has to be readable back, and for a while it wasn't
+
+The Mood screen shows the newest twenty entries and used to show *only* those.
+An entry past that was unreachable — not viewable, not editable, not deletable
+— and for anybody logging morning and evening that is ten days, in a feature
+whose entire value is the months behind it. `MoodHistoryScreen` is the whole of
+it, grouped by day, and it is a `SectionList` rather than the Mood screen's
+`ScrollView` because it is the one mood surface with no ceiling on its length.
+
+**The filter is a sheet of wrapping chips**, per CLAUDE.md's rule, and the
+symptom vocabulary is the clearest case that rule has: it is whatever the user
+has ever typed, so no phone-width scroll row can assume a ceiling for it. The
+chips are multi-select and `ChipFilterSheet` is the shared shell they live in —
+`LogbookFilterSheet` and `RecipeTagFilterSheet` predate it and still carry their
+own copies of the same 150 lines of sheet chrome.
+
+Two rules on the filtering itself, both in `moodHistory.ts`:
+
+- **It filters entries, not days.** Several entries a day is the normal case, so
+  a day holding a cheerful morning and a rough evening is a day you want shown
+  as its rough evening when you have asked for the low ones. Collapsing to the
+  day first would answer with `dayMoodAverage`, which is a number nobody logged.
+- **An entry with no mood never matches a mood filter.** It is not a 3, the same
+  rule `dayMoodAverage` already holds one file over.
+
+## The symptom page, and why it has no threshold
+
+A symptom had no page. It appeared in the log sheet's pill grid, and — only past
+`MIN_PAIRED_DAYS`, and only if it made the top four by gap size — as one row of
+`symptomMoodContrasts`. So the ordinary question a person tracking a symptom has
+("how often is this happening, and is it getting worse?") had no answer anywhere,
+while the far stronger claim about its relationship to their mood did.
+
+`SymptomDetailScreen` answers it: days, last logged, worst it reached, a
+fortnight strip at the day's worst severity, the severity breakdown, and every
+entry carrying it. The Mood screen reaches it two ways, and it needs both — the
+contrast rows (top four, gated), and a plain `SYMPTOMS` directory built from
+`symptomStats`, without which a symptom logged three times is on no screen at
+all.
+
+**Everything on that page above the contrast card is a tally, and a tally has no
+minimum.** `moodInsights.ts`'s three rules govern *comparisons between two
+variables*; counting one variable is not a comparison, so `MIN_PAIRED_DAYS` has
+no business gating it and does not. A person who has logged a headache twice is
+entitled to see both of those days. The one card that is a comparison comes
+straight out of `symptomMoodContrasts` with its own gates intact, rather than
+being recomputed loosely because the page is about one symptom.
+
+## A purged task record is absent, not zero
+
+`completedRetentionDays` deletes completed rows on a schedule. The mood log is
+never purged. So an install with a retention window accumulates days that carry
+a real mood and no rows to say what was done on them — and counted as zeros,
+those days drag every completion read toward "you finish nothing when you feel
+like that". It is rule 3 of `moodInsights.ts` breached by the app's own
+housekeeping rather than by a gap in the data, and nothing else in the app would
+have noticed: the numbers stay plausible, they just quietly stop being true.
+
+`buildMoodDays` takes `completionsKnownFrom` (the retention cutoff as a day key,
+null when retention is off) and nulls `completed`, `categories` and `taskKeys`
+for every day before it. Three consequences worth not re-deriving:
+
+- **`MoodDay.completed` is `number | null`**, and the null is only ever this.
+  Zero stays a real zero: a day is in the set at all because something was
+  logged or finished on it, so "none finished" is something that happened.
+- **`taskPairedDays` is separate from `pairedDays`**, and only the reads about
+  what got done use it. Narrowing the symptom and context contrasts to the
+  retention window would throw away years of good symptom history to fix a
+  problem they do not have — they only ever touch the mood side.
+- **The clearing happens after the count**, so a row that outlived the window
+  (an archived one, or a decision task holding an answer) cannot make a purged
+  day look like a fully recorded one with a single completion on it.
+
+The Mood screen says how many logged days this drops, under the card it affects.
+A correlation drawn over half a record is a different claim from one drawn over
+all of it, and the person who set the window is the only one who can decide
+whether that matters.
+
+## Mood against one repeating task — the medication question, answered without a medication feature
+
+`taskMoodContrasts` is `categoryMoodContrasts` one level down: your mood on the
+days you finished a particular repeating task, against the days you didn't. It
+is the app's answer to the thing every symptom tracker builds a separate feature
+for. **A tablet, a supplement, a stretch or a walk is already a repeating task
+here**, so "how do the days I take it compare" needs no schema, no second
+vocabulary and no pill-shaped UI — and a tracker that asks you to log the
+tablets again, in its own list, next to the task reminding you to take them, is
+asking for the same fact twice.
+
+- **Membership is a task *series*, not a row.** Completing a recurring task
+  spawns a new row, so a fortnight of "Take the tablets" is fourteen ids unless
+  something walks them back to one. `taskIdentityKey` does that — series first,
+  then the root of the `previousOccurrenceId` chain — the same collapse
+  `projectProgress` makes, resolve-or-shrug at every step like every other chain
+  walk in the app.
+- **One-offs are excluded by the existing gate rather than by hand.** A task
+  completed once has one "with" day and `contrastsFor` needs
+  `MIN_CONTRAST_DAYS` on both sides. Filtering on `recurrenceType` instead would
+  be wrong twice: a task repeated by hand every morning is exactly as real as
+  one carrying a rule, and a rule added yesterday says nothing about the
+  fortnight behind it.
+- **It is labelled by the most recent occurrence's title**, so a task since
+  renamed reads under the name in use now. The identity is the chain, not the
+  wording.
+
+## Getting it off the device
+
+`moodExport.ts` writes the log as CSV and hands it to the share sheet. This note
+says elsewhere that the app must not fold two spellings of a symptom together
+because the chart is one somebody may be about to show a doctor — and until this
+existed there was no way to show anybody anything. A backup is the wrong shape
+twice over: it is JSON for `parseBackup` to restore from, and it is the whole
+database, so handing one to a clinician means handing over the shopping list and
+everybody's birthday too.
+
+- **One row per entry, and no day is collapsed.** A screen averages a day
+  because a screen has to show one number. A record has no such excuse, and the
+  morning that was fine is part of what happened.
+- **Oldest first**, unlike every list in the app. A record is read forwards.
+- **Nothing derived, and above all nothing from `moodInsights.ts`.** Those are
+  associations that carry their sample size and their hedging in the UI around
+  them; a spreadsheet cell holding "moderate" with none of that is exactly the
+  overclaim the association-not-cause rule exists to prevent. What leaves the
+  device is what the user typed.
+- **The scale is spelled out** — the number and its label, severity as its word
+  — because "2" means nothing on a page on its own.
+- The file goes to the cache and is deleted the moment the share sheet closes,
+  exactly as the backup export does. A health record accumulating silently in
+  the app's own storage would be a second copy of the most sensitive thing here.
 
 ## Backdating, and the picker's new ceiling
 

@@ -1,13 +1,12 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useShallow } from 'zustand/react/shallow';
-import type { HealthRule } from '../types';
+import type { HealthRule, HealthRuleMetric } from '../types';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing } from '../theme';
 import { haptics } from '../utils/haptics';
 import { generateId } from '../utils/id';
-import type { HealthRuleMetric } from '../utils/healthRules';
 import {
   HEALTH_METRICS,
   HEALTH_METRIC_DIRECTION,

@@ -62,7 +62,7 @@ import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRe
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
-import { buildMoodDays, contextTagMoodContrasts, moodCompletionInsight, symptomMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { buildMoodDays, contextTagMoodContrasts, moodCompletionInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
@@ -1548,6 +1548,19 @@ describe('demo seed — people', () => {
     expect(contextTagVocabulary(logs).length).toBeGreaterThan(0);
     const days = buildMoodDays(logs, [], '00:00');
     expect(contextTagMoodContrasts(days).length).toBeGreaterThan(0);
+  });
+
+  it('seeds a repeated task finished on some logged days and not others', () => {
+    // The app's answer to medication tracking is a repeating task plus the
+    // contrast (see taskMoodContrasts), and it is invisible until something has
+    // actually been repeated across the days the mood log covers — so with no
+    // seeded row the card never draws and the capability reads as missing.
+    const tasks = useTaskStore.getState().tasks;
+    const days = buildMoodDays(useMoodStore.getState().logs, tasks, '00:00');
+    const rows = taskMoodContrasts(days);
+    expect(rows.length).toBeGreaterThan(0);
+    const titles = taskContrastTitles(tasks);
+    expect(rows.map(r => titles.get(r.label))).toContain('Take the vitamin D');
   });
 
   it('leaves today unlogged, so the check-in is still worth answering', () => {

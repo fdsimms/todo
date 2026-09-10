@@ -27,20 +27,25 @@ function documentPicker(): typeof import('expo-document-picker') {
 }
 
 /**
- * Writes the backup to the cache directory and returns its file:// URI.
+ * Writes text to the cache directory and returns its file:// URI.
  *
  * The cache directory, not documents: the file only has to survive long enough
- * for the share sheet to copy it wherever the user is sending it, and a backup
+ * for the share sheet to copy it wherever the user is sending it, and an export
  * that also accumulated silently on the device would be a second copy of all
  * their data that nothing ever cleans up. iOS reclaims this on its own.
+ *
+ * Named for the file rather than for the backup because the mood log's CSV
+ * export goes out the same way (`moodExport.ts`), and the write, the share and
+ * the tidy-up are identical for both — only the mime type differs, which is
+ * why that is the one thing `shareExportFile` takes.
  */
-export function writeBackupFile(json: string, fileName: string): string {
+export function writeExportFile(text: string, fileName: string): string {
   const file = new (fileSystem().File)(fileSystem().Paths.cache, fileName);
   // A backup taken twice in the same minute lands on the same name, and the
   // second one is the one the user just asked for.
   if (file.exists) file.delete();
   file.create();
-  file.write(json);
+  file.write(text);
   return file.uri;
 }
 
@@ -49,15 +54,31 @@ export async function canShare(): Promise<boolean> {
   return sharing().isAvailableAsync();
 }
 
+export async function shareExportFile(
+  uri: string,
+  options: { mimeType: string; UTI: string; dialogTitle: string },
+): Promise<void> {
+  await sharing().shareAsync(uri, options);
+}
+
 export async function shareBackupFile(uri: string): Promise<void> {
-  await sharing().shareAsync(uri, {
+  await shareExportFile(uri, {
     mimeType: 'application/json',
     UTI: 'public.json',
     dialogTitle: 'Save your backup',
   });
 }
 
-/** Deletes a backup left in the cache once it's been handed off. */
+/** The mood log's CSV, through the same three calls the backup makes. */
+export async function shareCsvFile(uri: string, dialogTitle: string): Promise<void> {
+  await shareExportFile(uri, {
+    mimeType: 'text/csv',
+    UTI: 'public.comma-separated-values-text',
+    dialogTitle,
+  });
+}
+
+/** Deletes a file left in the cache once it's been handed off. */
 export function discardBackupFile(uri: string): void {
   try {
     const file = new (fileSystem().File)(uri);
