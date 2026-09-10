@@ -1,6 +1,6 @@
 import type { GroceryItem } from '../types';
 import { groceryNameKey, suggestShorterCatalogName } from './groceryParse';
-import { resolvePluralKey } from './groceryPlural';
+import { pluralKeyVariants, resolvePluralKey } from './groceryPlural';
 import { rankGrocerySuggestions } from './grocerySuggest';
 import { varietyIndex } from './itemVarieties';
 
@@ -172,6 +172,22 @@ function longestPrefixItem(
 }
 
 /**
+ * True when `itemKey` is `key` (or its singular/plural, per `pluralKeyVariants`
+ * — "avocados" reaching "avocado oil") plus one or more trailing words. The
+ * ranked/similar tiers below exist to catch a line spelled a little
+ * differently from the *same* product ("bananas" for "banana", "skir" for
+ * "Skyr"), not to guess a more specific, different product from a shorter
+ * one: a recipe calling for whole avocados isn't asking for avocado oil, and
+ * an "onion" line isn't asking for onion powder. Same word-boundary
+ * discipline `longestPrefixItem` already applies in the opposite direction,
+ * where the catalog name is the shorter one.
+ */
+function isWordExtension(key: string, itemKey: string): boolean {
+  if (itemKey.startsWith(`${key} `)) return true;
+  return pluralKeyVariants(key).some(variant => itemKey.startsWith(`${variant} `));
+}
+
+/**
  * The one catalog row within a single edit, or null when there is none — or
  * when there are several.
  *
@@ -264,11 +280,13 @@ function matchOne(
   // nothing saying the other exists. Same refusal `uniqueSimilarItem` makes one
   // tier down, for the same reason — and the tiers below still get their turn,
   // which is the point of refusing rather than returning NO_MATCH here.
-  const ranked = rankGrocerySuggestions(name, items, now, 2);
+  const candidates = items.filter(item => !isWordExtension(key, item.nameKey));
+
+  const ranked = rankGrocerySuggestions(name, candidates, now, 2);
   const decisive = ranked.length > 0 && (ranked.length === 1 || ranked[0].score > ranked[1].score);
   if (decisive) return suggest(ranked[0].item, 'ranked');
 
-  const similar = uniqueSimilarItem(key, items);
+  const similar = uniqueSimilarItem(key, candidates);
   if (similar) return suggest(similar, 'similar');
 
   return NO_MATCH;

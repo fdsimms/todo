@@ -19,6 +19,14 @@ jest.mock('../db/database', () => ({
   dbPurgeOldLeftovers: jest.fn().mockReturnValue(0),
 }));
 
+// useLeftoverStore reaches useFoodLogStore → healthFoodSync, which imports
+// react-native — not transformed by babel-jest, so left unmocked it fails
+// every test in this file at module load. Nothing here calls into Health.
+jest.mock('../utils/healthFoodSync', () => ({
+  logFoodEntryToHealth: jest.fn(() => Promise.resolve({ outcome: 'unavailable', sampleIds: [] })),
+  retractFoodEntryFromHealth: jest.fn(() => Promise.resolve(true)),
+}));
+
 // The store reaches utils/leftovers → dateUtils → the settings store, for
 // dayResetTime a calendar day key doesn't use — and now reconcileLeftoverTask
 // reaches it directly for leftoverUseUpTasks/leftoverUseUpTaskCategory. Off

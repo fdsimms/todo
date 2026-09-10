@@ -150,6 +150,12 @@ interface Props {
   onReopen: () => void;
   onDelete: () => void;
   onClose: () => void;
+  /**
+   * Set only when `leftover.recipeId` still resolves to a recipe that exists —
+   * a leftover's link is resolve-or-shrug, same as MealPlanEntry's, so a
+   * deleted recipe just leaves this row off rather than opening a dead one.
+   */
+  onOpenRecipe?: () => void;
 }
 
 /**
@@ -178,7 +184,7 @@ interface Props {
  */
 export function LeftoverSheet({
   visible, leftover, seed, onLog, onRename, onSetStoredAt, onSetKeepDays,
-  onFinish, onSetFrozen, onSplit, onReopen, onDelete, onClose,
+  onFinish, onSetFrozen, onSplit, onReopen, onDelete, onClose, onOpenRecipe,
 }: Props) {
   const colors = useColors();
   const { isDark } = useTheme();
@@ -553,6 +559,19 @@ export function LeftoverSheet({
               describeValue={n => (n === 0 ? 'Use today' : `${n} days`)}
             />
           </View>
+
+          {editing && !!onOpenRecipe && (
+            <>
+              <View style={styles.sep} />
+              <SheetActionRow
+                icon="restaurant-outline"
+                color={colors.accent}
+                label="Open recipe"
+                onPress={() => { haptics.tap(); dismiss(onOpenRecipe); }}
+                accessibilityLabel="Open the recipe this leftover was made from"
+              />
+            </>
+          )}
 
           {editing && live && (
             <>

@@ -44,7 +44,7 @@ import { coveringVariety, varietyIndex } from '../utils/itemVarieties';
 import { normalizeGtin } from '../utils/gtin';
 import { nutritionFor } from '../utils/foodNutrition';
 import { classifyPlanned, plannedIngredientsForRecipe } from '../utils/mealPlanGroceries';
-import { flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
+import { activeComponents, activeIngredients, flattenRecipeIngredients, recipeMap } from '../utils/recipeComponents';
 import { catalogMatchSummary, matchIngredientsToCatalog } from '../utils/ingredientCatalogMatch';
 import { cookSteps, stepsFromNotes } from '../utils/cookMode';
 import { kitchenEvents, kitchenHistoryDays } from '../utils/kitchenHistory';
@@ -2503,6 +2503,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(recipes.some(r => r.components.filter(c => c.choiceGroup).length >= 2)).toBe(true);
     expect(recipes.some(r => r.ingredients.filter(i => i.choiceGroup).length >= 2)).toBe(true);
     expect(recipes.every(r => r.ingredients.every(i => !/\bor\b/.test(i.name)))).toBe(true);
+
+    // A choice group crossing the two lists: the stir-fry's own rice line and
+    // its Steamed rice component share one label, and the ingredient — not
+    // the component — is what an unresolved read still buys by default.
+    const stirFry = recipes.find(r => r.name === 'Weeknight chicken stir-fry')!;
+    const riceIngredient = stirFry.ingredients.find(i => i.choiceGroup === 'Rice');
+    expect(riceIngredient).toBeTruthy();
+    expect(stirFry.components.some(c => c.choiceGroup === 'Rice')).toBe(true);
+    expect(activeIngredients(stirFry).some(i => i.id === riceIngredient!.id)).toBe(true);
+    expect(activeComponents(stirFry).some(c => c.choiceGroup === 'Rice')).toBe(false);
 
     // The ingredient-line detail the parser splits out, and the editor's labels.
     expect(recipes.some(r => r.ingredients.some(i => i.section))).toBe(true);

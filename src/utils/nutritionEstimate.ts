@@ -36,6 +36,15 @@ import { NUTRIENT_KEYS } from '../types';
  * it. `describeEstimate` is a pure function precisely so that rule is
  * checkable, the same reason `describeHealthInsight` is one and
  * `moodTasks.test.ts` asserts directly that the nudge never names a feeling.
+ *
+ * **A whole-meal total is one number to either trust or not; a breakdown is
+ * several smaller ones a person actually has a prior for.** `breakdown` exists
+ * so "51 cal for baguette and butter" can be checked as "40 for the bread, 11
+ * for the butter" instead — the same total, made of pieces somebody can
+ * eyeball. It carries no `basis`/`confidence` of its own: the claim being
+ * graded is still the meal's, and a per-line confidence would let the
+ * breakdown read as independently verified when it is the same estimate
+ * split apart.
  */
 
 /** What somebody can type as a description of what they ate. */
@@ -45,6 +54,8 @@ const FIELD_MAX_LENGTH = 80;
 /** One or two questions, never an interrogation. */
 export const MAX_ESTIMATE_QUESTIONS = 2;
 const MAX_QUESTION_OPTIONS = 4;
+/** More than this and it stops being a meal, it's a shopping list. */
+const MAX_BREAKDOWN_ITEMS = 12;
 
 /**
  * Where the figures come from.
@@ -74,6 +85,21 @@ export interface EstimateQuestion {
   options: string[];
 }
 
+/**
+ * What one line of the description contributed, so the total can be checked
+ * against something smaller than itself rather than taken whole.
+ *
+ * Not a second estimate: there is no `basis`/`confidence` per ingredient,
+ * because the claim being made is still the meal's, not this line's alone,
+ * and letting each row grade itself would let a breakdown read as more
+ * separately-verified than it is.
+ */
+export interface EstimateIngredient {
+  /** The ingredient in the model's own words, e.g. "salted butter". */
+  label: string;
+  amounts: Partial<Record<NutrientKey, number>>;
+}
+
 /** A proposal, not an entry. Nothing is stored until somebody confirms it. */
 export interface NutritionEstimate {
   /** What the entry would be called. */
@@ -86,6 +112,14 @@ export interface NutritionEstimate {
   /** Who publishes them, when the model named a chain. Null otherwise. */
   attribution: string | null;
   questions: EstimateQuestion[];
+  /**
+   * The total split across what was named, so a total that's hard to eyeball
+   * can be checked one line at a time instead. Empty when the description
+   * named one thing already, or the model didn't split it — the total stands
+   * on its own either way, this is a way to double-check it, not a
+   * requirement to render one.
+   */
+  breakdown: EstimateIngredient[];
 }
 
 /** The reply shape, before any of it is believed. */
@@ -97,6 +131,7 @@ export interface RawNutritionEstimate {
   confidence?: unknown;
   attribution?: unknown;
   questions?: unknown;
+  breakdown?: unknown;
 }
 
 function text(value: unknown, max = FIELD_MAX_LENGTH): string | null {
@@ -145,6 +180,37 @@ function readQuestions(value: unknown): EstimateQuestion[] {
 }
 
 /**
+ * Reads the per-ingredient split, or drops it entirely rather than showing a
+ * partial one.
+ *
+ * A row with a label but no figures is dropped (nothing to check against),
+ * same as a row with figures the model attached to nothing nameable. Amounts
+ * are read through the same `amount()` an absent-stays-absent, no-negative
+ * rule the total obeys, so a line can't claim a figure the total itself
+ * would have refused.
+ */
+function readBreakdown(value: unknown): EstimateIngredient[] {
+  if (!Array.isArray(value)) return [];
+  const out: EstimateIngredient[] = [];
+  for (const raw of value) {
+    if (out.length >= MAX_BREAKDOWN_ITEMS) break;
+    const row = raw as { label?: unknown; amounts?: unknown };
+    const label = text(row?.label);
+    if (!label) continue;
+    const source = row?.amounts;
+    if (typeof source !== 'object' || source === null || Array.isArray(source)) continue;
+    const amounts: Partial<Record<NutrientKey, number>> = {};
+    for (const key of NUTRIENT_KEYS) {
+      const value = amount((source as Record<string, unknown>)[key]);
+      if (value !== undefined) amounts[key] = value;
+    }
+    if (Object.keys(amounts).length === 0) continue;
+    out.push({ label, amounts });
+  }
+  return out;
+}
+
+/**
  * What a reply actually carries, or null when it carries nothing usable.
  *
  * Refuses rather than repairs. An estimate with no figures at all is not a
@@ -181,6 +247,7 @@ export function readNutritionEstimate(raw: RawNutritionEstimate | null | undefin
     // model admits are generic would attribute a guess to somebody.
     attribution: raw.basis === 'published' ? text(raw.attribution) : null,
     questions: readQuestions(raw.questions),
+    breakdown: readBreakdown(raw.breakdown),
   };
 }
 
