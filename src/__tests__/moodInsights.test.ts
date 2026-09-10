@@ -11,8 +11,19 @@ import {
   correlation,
   correlationStrength,
   describeHealthInsight,
-  healthAverage,
+  describeNutrientInsight,
+  foodMoodContrasts,
+  foodPairedDays,
+  symptomFoodContrasts,
+  symptomFoodDays,
+  contrastBarPercent,
+  moodBarFraction,
+  CONTRAST_BAR_MIN_PERCENT,
+  metricAverage,
   healthInsight,
+  nutrientFindings,
+  nutrientInsight,
+  NUTRIENT_INSIGHT_KEYS,
   loggingStreak,
   lowMoodRun,
   moodByTimeOfDay,
@@ -22,6 +33,7 @@ import {
   symptomMoodContrasts,
   type HealthInsight,
   type MoodDay,
+  type NutrientInsight,
 } from '../utils/moodInsights';
 import type { MoodLog, Task } from '../types';
 
@@ -64,6 +76,8 @@ function daysWithMoods(moods: (number | null)[], completed: number[] = []): Mood
     taskKeys: [],
     steps: null,
     sleepHours: null,
+    nutrients: null,
+    foodKeys: [],
   }));
 }
 
@@ -208,6 +222,8 @@ describe('contrasts', () => {
       taskKeys: r.taskKeys ?? [],
       steps: null,
       sleepHours: null,
+      nutrients: null,
+      foodKeys: [],
     }));
 
   it('compares mood on days with a category against days without it', () => {
@@ -306,8 +322,8 @@ describe('the summary', () => {
 
   it('counts a symptom-only day as logged but not toward the average', () => {
     const days: MoodDay[] = [
-      { dayKey: '2026-08-01', mood: null, symptomKeys: ['headache'], contextTagKeys: [], completed: 0, categories: [], taskKeys: [], steps: null, sleepHours: null },
-      { dayKey: '2026-08-02', mood: 4, symptomKeys: [], contextTagKeys: [], completed: 0, categories: [], taskKeys: [], steps: null, sleepHours: null },
+      { dayKey: '2026-08-01', mood: null, symptomKeys: ['headache'], contextTagKeys: [], completed: 0, categories: [], taskKeys: [], steps: null, sleepHours: null, nutrients: null, foodKeys: [] },
+      { dayKey: '2026-08-02', mood: 4, symptomKeys: [], contextTagKeys: [], completed: 0, categories: [], taskKeys: [], steps: null, sleepHours: null, nutrients: null, foodKeys: [] },
     ];
     const summary = moodSummary(days, '2026-08-02');
     expect(summary.loggedDays).toBe(2);
@@ -320,7 +336,7 @@ describe('the logging streak', () => {
   const dayRows = (keys: string[]): MoodDay[] =>
     keys.map(dayKey => ({
       dayKey, mood: 3, symptomKeys: [], contextTagKeys: [], completed: 0, categories: [], taskKeys: [],
-      steps: null, sleepHours: null,
+      steps: null, sleepHours: null, nutrients: null, foodKeys: [],
     }));
 
   it('counts consecutive logged days ending today', () => {
@@ -356,9 +372,11 @@ describe('the health axis', () => {
       contextTagKeys: [],
       completed: opts.completed?.[i] ?? 0,
       categories: [],
-    taskKeys: [],
+      taskKeys: [],
       steps: s,
       sleepHours: opts.sleepHours ? (opts.sleepHours[i] ?? null) : null,
+      nutrients: null,
+      foodKeys: [],
     }));
 
   const rising = [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000];
@@ -425,11 +443,11 @@ describe('the health axis', () => {
   });
 
   it('averages over the days that have a reading, not over the window', () => {
-    expect(healthAverage(rows([1000, 3000, null]), 'steps')).toBe(2000);
+    expect(metricAverage(rows([1000, 3000, null]), 'steps')).toBe(2000);
   });
 
   it('has no average to give when nothing was recorded', () => {
-    expect(healthAverage(rows([null, null]), 'steps')).toBeNull();
+    expect(metricAverage(rows([null, null]), 'steps')).toBeNull();
   });
 });
 
@@ -661,5 +679,434 @@ describe('mood against one repeating task', () => {
       id: 'b', title: 'Take the tablets', previousOccurrenceId: 'a',
     } as Partial<Task>);
     expect(taskContrastTitles([first, second]).get('a')).toBe('Take the tablets');
+  });
+});
+
+describe('the food axis', () => {
+  /** N consecutive August days, each carrying a mood and a day of eating. */
+  const rows = (
+    calories: (number | null)[],
+    opts: { mood?: (number | null)[]; completed?: number[]; foods?: string[][] } = {},
+  ): MoodDay[] =>
+    calories.map((c, i) => ({
+      dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
+      mood: opts.mood ? (opts.mood[i] ?? null) : 3,
+      symptomKeys: [],
+      contextTagKeys: [],
+      completed: opts.completed?.[i] ?? 0,
+      categories: [],
+      taskKeys: [],
+      steps: null,
+      sleepHours: null,
+      // Null is a day the food log could not speak for, which is the whole
+      // point of the axis — see FoodDayInput.
+      nutrients: c === null ? null : { calorieKcal: c },
+      foodKeys: c === null ? [] : (opts.foods?.[i] ?? []),
+    }));
+
+  const rising = [1200, 1400, 1600, 1800, 2000, 2200, 2400, 2600, 2800, 3000];
+
+  it('reports a direction and a strength once there are enough paired days', () => {
+    const insight = nutrientInsight(
+      rows(rising, { completed: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] }),
+      'calorieKcal',
+      'completed',
+    );
+    expect(insight.dayCount).toBe(MIN_PAIRED_DAYS);
+    expect(insight.direction).toBe('more');
+    expect(insight.strength).toBe('strong');
+  });
+
+  it('says nothing below the paired-day floor', () => {
+    const insight = nutrientInsight(rows(rising.slice(0, 4)), 'calorieKcal', 'mood');
+    expect(insight.dayCount).toBe(4);
+    expect(insight.strength).toBeNull();
+  });
+
+  it('drops a day the food log could not speak for rather than scoring it zero', () => {
+    // The failure this axis exists to avoid: a half-logged day arrives looking
+    // like a small number rather than like a hole, and counted it would invent
+    // "you eat less when you feel worse" out of days somebody stopped logging.
+    const days = rows([null, ...rising], { mood: [1, ...rising.map(() => 4)] });
+    expect(nutrientInsight(days, 'calorieKcal', 'mood').dayCount).toBe(MIN_PAIRED_DAYS);
+  });
+
+  it('has no opinion about a nutrient no day stated', () => {
+    expect(nutrientInsight(rows(rising), 'caffeineMg', 'mood').dayCount).toBe(0);
+  });
+
+  it('averages a nutrient over the days that carried it', () => {
+    expect(metricAverage(rows([1000, 3000, null]), 'calorieKcal')).toBe(2000);
+  });
+
+  it('keeps the nutrient vocabulary short, because the width is the risk', () => {
+    // Ten nutrients against two outcomes is twenty comparisons over the same
+    // thirty-odd days, and at that width a couple land at something
+    // eye-catching by arithmetic alone. Each key must also have a phrase, or
+    // the app says "the days you have more calorie kcal".
+    expect(NUTRIENT_INSIGHT_KEYS.length).toBeLessThanOrEqual(3);
+    for (const key of NUTRIENT_INSIGHT_KEYS) {
+      const insight: NutrientInsight = {
+        metric: key, against: 'mood', dayCount: 20, r: 0.5, strength: 'moderate', direction: 'more',
+      };
+      const text = describeNutrientInsight(insight);
+      expect(text).toBeTruthy();
+      expect(text).not.toContain(key);
+    }
+  });
+});
+
+describe('what a food finding is allowed to say', () => {
+  const insight = (over: Partial<NutrientInsight> = {}): NutrientInsight => ({
+    metric: 'calorieKcal',
+    against: 'mood',
+    dayCount: 20,
+    r: 0.5,
+    strength: 'moderate',
+    direction: 'more',
+    ...over,
+  });
+
+  it('describes and never advises', () => {
+    const text = describeNutrientInsight(insight()) ?? '';
+    expect(text).toBe('Your mood runs higher on the days you eat more.');
+    // The gap between a description and "Eat more." is a claim about cause,
+    // and on this axis it is also telling somebody what to eat. Advice is a
+    // sentence in the imperative, so that is what this looks for — "the days
+    // you eat more" is the same verb doing the opposite job.
+    for (const sentence of text.split(/(?<=\.)\s*/).filter(Boolean)) {
+      expect(sentence).not.toMatch(/^(try|eat|cut|avoid|consider|drink|keep|stick)\b/i);
+    }
+    expect(text).not.toMatch(/\bshould\b|\bought to\b/i);
+  });
+
+  it('never prints a coefficient', () => {
+    for (const against of ['mood', 'completed'] as const) {
+      for (const metric of NUTRIENT_INSIGHT_KEYS) {
+        const text = describeNutrientInsight(insight({ metric, against })) ?? '';
+        expect(text).not.toContain('0.5');
+        expect(text).not.toMatch(/\br\s*=/);
+      }
+    }
+  });
+
+  it('says out loud that it found nothing', () => {
+    expect(describeNutrientInsight(insight({ strength: 'none' })))
+      .toBe('No clear pattern between how much you eat and your mood.');
+    expect(describeNutrientInsight(insight({ strength: 'none', against: 'completed', metric: 'sugarG' })))
+      .toBe('No clear pattern between your sugar and what you finish.');
+  });
+
+  it('has nothing to say about a nutrient outside the vocabulary', () => {
+    // Caffeine is the one that would be here if it could be, and this is what
+    // stops it appearing half-built: `nutrientInsight` will compute any
+    // NutrientKey, so the copy is where the cap is enforced. See
+    // NUTRIENT_INSIGHT_KEYS on why the coverage rule rules caffeine out.
+    expect(NUTRIENT_INSIGHT_KEYS).not.toContain('caffeineMg');
+    expect(describeNutrientInsight(insight({ metric: 'caffeineMg' }))).toBeNull();
+  });
+
+  it('says nothing at all when there was not enough to go on', () => {
+    expect(describeNutrientInsight(insight({ strength: null, direction: null }))).toBeNull();
+  });
+
+  it('leads the completions pairing with what you finished', () => {
+    expect(describeNutrientInsight(insight({ against: 'completed', direction: 'fewer' })))
+      .toBe('You finish fewer tasks on the days you eat more.');
+  });
+});
+
+describe('mood by what you ate', () => {
+  /** Ten paired days: the first `withIt` of them carry the food. */
+  const build = (withIt: number, moodWith: number, moodWithout: number): MoodDay[] =>
+    Array.from({ length: 10 }, (_, i) => ({
+      dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
+      mood: i < withIt ? moodWith : moodWithout,
+      symptomKeys: [],
+      contextTagKeys: [],
+      completed: 0,
+      categories: [],
+      taskKeys: [],
+      steps: null,
+      sleepHours: null,
+      nutrients: { calorieKcal: 2000 },
+      foodKeys: i < withIt ? ['coffee'] : ['porridge'],
+    }));
+
+  it('compares the days you ate it against the days you did not', () => {
+    const [row] = foodMoodContrasts(build(5, 4, 2));
+    expect(row.label).toBe('coffee');
+    expect(row.withDays).toBe(5);
+    expect(row.withoutDays).toBe(5);
+    expect(row.delta).toBe(2);
+  });
+
+  it('keeps a food eaten once off the screen through the existing gate', () => {
+    const days = build(1, 5, 3);
+    expect(foodMoodContrasts(days).map(r => r.label)).toEqual([]);
+  });
+
+  it('counts as "without" only the days the log would have mentioned it', () => {
+    // Otherwise this read is really "the days I logged my food against the days
+    // I didn't", with a food's name on it.
+    const days = build(5, 4, 2).map((d, i) =>
+      // The last three days lose their food log entirely.
+      i >= 7 ? { ...d, nutrients: null, foodKeys: [] } : d);
+    expect(foodPairedDays(days)).toHaveLength(7);
+    // Seven paired days is under the floor, so nothing is claimed at all —
+    // rather than the three stripped days being counted as coffee-free.
+    expect(foodMoodContrasts(days)).toEqual([]);
+  });
+
+  it('leaves the symptom contrasts alone, which never touch the food side', () => {
+    const days = build(5, 4, 2).map(d => ({
+      ...d, nutrients: null, foodKeys: [], symptomKeys: d.mood === 4 ? ['headache'] : [],
+    }));
+    expect(foodPairedDays(days)).toHaveLength(0);
+    expect(symptomMoodContrasts(days)).toHaveLength(1);
+  });
+});
+
+describe('a day of eating decorates a day and never creates one', () => {
+  it('ignores a food day nothing else knows about', () => {
+    const days = buildMoodDays(
+      [log('2026-08-17', 4)], [], '00:00', [], null,
+      [
+        { dayKey: '2026-08-17', nutrients: { calorieKcal: 2000 }, labels: ['coffee'] },
+        { dayKey: '2026-07-01', nutrients: { calorieKcal: 1800 }, labels: ['toast'] },
+      ],
+    );
+    // The July day was never a day this person logged a mood or finished
+    // anything on. Admitting it would charge it `completed: 0`.
+    expect(days.map(d => d.dayKey)).toEqual(['2026-08-17']);
+    expect(days[0].nutrients).toEqual({ calorieKcal: 2000 });
+    expect(days[0].foodKeys).toEqual(['coffee']);
+  });
+
+  it('leaves a day with no food row unable to speak to the axis', () => {
+    const days = buildMoodDays([log('2026-08-17', 4)], [], '00:00');
+    expect(days[0].nutrients).toBeNull();
+    expect(days[0].foodKeys).toEqual([]);
+  });
+});
+
+describe('the lines the eating card says', () => {
+  /** N days carrying a nutrient and a paired value. */
+  const rows = (
+    amounts: Partial<Record<'calorieKcal' | 'sugarG' | 'caffeineMg', number>>[],
+    opts: { mood?: number[]; completed?: number[] } = {},
+  ): MoodDay[] =>
+    amounts.map((a, i) => ({
+      dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
+      mood: opts.mood?.[i] ?? 3,
+      symptomKeys: [],
+      contextTagKeys: [],
+      completed: opts.completed?.[i] ?? 0,
+      categories: [],
+      taskKeys: [],
+      steps: null,
+      sleepHours: null,
+      nutrients: a,
+      foodKeys: [],
+    }));
+
+  const flat = Array.from({ length: 10 }, () => ({ sugarG: 40 }));
+  // Sugar varies with nothing, which is what "no clear pattern" is made of.
+  const noisy = [20, 90, 30, 85, 25, 95, 35, 80, 22, 88].map(sugarG => ({ sugarG }));
+
+  it('says it found nothing once per nutrient, not once per pairing', () => {
+    // The card was looked at before this existed: half of it was the same six
+    // words with a different noun on the end, which teaches somebody to skip
+    // the paragraph the real findings are in.
+    const days = rows(noisy, {
+      mood: [3, 3, 4, 3, 3, 4, 3, 3, 4, 3],
+      completed: [2, 2, 3, 2, 2, 3, 2, 2, 3, 2],
+    });
+    const sugar = nutrientFindings(days).filter(r => r.key.startsWith('sugarG'));
+    expect(sugar).toHaveLength(1);
+    expect(sugar[0].text).toBe('No clear pattern between your sugar and your mood or what you finish.');
+  });
+
+  it('still says it found nothing, rather than showing only what landed', () => {
+    // Rule: hiding it leaves only the findings that happened to land, which is
+    // how a screen of associations starts looking like a screen of results.
+    const days = rows(noisy, { mood: [3, 3, 4, 3, 3, 4, 3, 3, 4, 3] });
+    expect(nutrientFindings(days).some(r => r.text.startsWith('No clear pattern'))).toBe(true);
+  });
+
+  it('keeps both lines for a nutrient that found something one way', () => {
+    const rising = [1200, 1400, 1600, 1800, 2000, 2200, 2400, 2600, 2800, 3000];
+    const days = rows(rising.map(calorieKcal => ({ calorieKcal })), {
+      completed: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      mood: [3, 4, 3, 4, 3, 4, 3, 4, 3, 4],
+    });
+    const calories = nutrientFindings(days).filter(r => r.key.startsWith('calorieKcal'));
+    expect(calories).toHaveLength(2);
+    expect(calories[0].text).toBe('You finish more tasks on the days you eat more.');
+  });
+
+  it('leads each nutrient with what you finished, the join no food logger can make', () => {
+    const rising = [1200, 1400, 1600, 1800, 2000, 2200, 2400, 2600, 2800, 3000];
+    const days = rows(rising.map(calorieKcal => ({ calorieKcal })), {
+      completed: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      mood: [1, 2, 3, 4, 5, 1, 2, 3, 4, 5],
+    });
+    expect(nutrientFindings(days)[0].key).toBe('calorieKcal-completed');
+  });
+
+  it('leaves out a nutrient there was never enough of to compare', () => {
+    expect(nutrientFindings(rows(flat)).some(r => r.key.startsWith('caffeineMg'))).toBe(false);
+  });
+
+  it('holds a stable order, so a finding is not promoted by the layout', () => {
+    const days = rows(noisy, { mood: [3, 3, 4, 3, 3, 4, 3, 3, 4, 3] });
+    expect(nutrientFindings(days).map(r => r.key))
+      .toEqual(nutrientFindings(days).map(r => r.key));
+  });
+});
+
+describe('a symptom against what you ate', () => {
+  /**
+   * `n` days that can answer: each fully logged for food, each carrying a mood
+   * entry. `food` says which carry the food, `hit` which carry the symptom.
+   */
+  const rows = (n: number, food: number[], hit: number[]): MoodDay[] =>
+    Array.from({ length: n }, (_, i) => ({
+      dayKey: `2026-08-${String(i + 1).padStart(2, '0')}`,
+      mood: 3,
+      symptomKeys: hit.includes(i) ? ['headache'] : [],
+      contextTagKeys: [],
+      completed: 0,
+      categories: [],
+      taskKeys: [],
+      steps: null,
+      sleepHours: null,
+      nutrients: { calorieKcal: 2000 },
+      foodKeys: food.includes(i) ? ['bread'] : ['porridge'],
+    }));
+
+  it('counts the days it turned up on each side', () => {
+    const [row] = symptomFoodContrasts(rows(12, [0, 1, 2, 3], [0, 1, 2, 8]), 'headache');
+    expect(row.label).toBe('bread');
+    expect(row.withDays).toBe(4);
+    expect(row.withHits).toBe(3);
+    expect(row.withoutDays).toBe(8);
+    expect(row.withoutHits).toBe(1);
+    expect(row.rateWith).toBeCloseTo(0.75);
+    expect(row.rateWithout).toBeCloseTo(0.125);
+  });
+
+  it('reports the counts alongside the rates, so a caller cannot show one without the other', () => {
+    // "67% against 14%" hides that the first number is six days.
+    const [row] = symptomFoodContrasts(rows(12, [0, 1, 2, 3], [0, 1, 2, 8]), 'headache');
+    for (const field of ['withDays', 'withoutDays', 'withHits', 'withoutHits'] as const) {
+      expect(typeof row[field]).toBe('number');
+    }
+  });
+
+  it('never counts a day nobody logged as a day without the symptom', () => {
+    // The rule this read would most easily breach: absence of a record and
+    // absence of a symptom look identical unless something insists otherwise.
+    const days = rows(12, [0, 1, 2, 3], [0, 1, 2, 8]).map((d, i) =>
+      // Four food-logged days lose their mood entry entirely.
+      i >= 8 ? { ...d, mood: null, symptomKeys: [] } : d);
+    expect(symptomFoodDays(days)).toHaveLength(8);
+    // Eight is under the floor, so nothing is claimed — rather than those four
+    // silently counting as headache-free days on the "without" side.
+    expect(symptomFoodContrasts(days, 'headache')).toEqual([]);
+  });
+
+  it('counts a day logged with a mood and no symptom as a day without it', () => {
+    // The other half of the same rule: that day *is* a record, and it says the
+    // symptom did not happen.
+    const days = rows(12, [0, 1, 2, 3], [0]);
+    expect(symptomFoodDays(days)).toHaveLength(12);
+    expect(symptomFoodContrasts(days, 'headache')[0].withHits).toBe(1);
+  });
+
+  it('counts a symptoms-only day, which carries no mood at all', () => {
+    const days = rows(12, [0, 1, 2, 3], [0, 1, 2, 8]).map(d => ({ ...d, mood: null }));
+    expect(symptomFoodDays(days)).toHaveLength(4);
+  });
+
+  it('drops a day the food log could not speak for', () => {
+    const days = rows(12, [0, 1, 2, 3], [0, 1, 2, 8]).map((d, i) =>
+      i >= 10 ? { ...d, nutrients: null, foodKeys: [] } : d);
+    expect(symptomFoodDays(days)).toHaveLength(10);
+  });
+
+  it('says nothing below the paired-day floor', () => {
+    expect(symptomFoodContrasts(rows(9, [0, 1, 2], [0]), 'headache')).toEqual([]);
+  });
+
+  it('keeps a food eaten twice off the screen through the existing gate', () => {
+    expect(symptomFoodContrasts(rows(12, [0, 1], [0]), 'headache').map(r => r.label))
+      .toEqual([]);
+  });
+
+  it('sorts by the size of the gap in either direction', () => {
+    // "It happens less on the days I eat that" is exactly as interesting as the
+    // reverse, and a one-sided sort would only ever show bad news.
+    const days = rows(12, [0, 1, 2, 3], [4, 5, 6, 7, 8, 9, 10, 11]);
+    const [row] = symptomFoodContrasts(days, 'headache');
+    expect(row.delta).toBeLessThan(0);
+  });
+
+  it('has nothing to say about a symptom that never happened', () => {
+    const [row] = symptomFoodContrasts(rows(12, [0, 1, 2, 3], []), 'headache');
+    expect(row.withHits).toBe(0);
+    expect(row.delta).toBe(0);
+  });
+});
+
+describe('how wide a rate draws', () => {
+  it('is the rate as a percentage', () => {
+    expect(contrastBarPercent(0.5)).toBe(50);
+    expect(contrastBarPercent(0.75)).toBe(75);
+    expect(contrastBarPercent(1)).toBe(100);
+  });
+
+  it('never draws a rate above zero as nothing', () => {
+    // 1 day in 30 is 3% of a track, which at a phone's width is an empty bar —
+    // and an empty bar says the symptom never happened on those days, which is
+    // a different fact from the one it holds.
+    expect(contrastBarPercent(1 / 30)).toBe(CONTRAST_BAR_MIN_PERCENT);
+    expect(contrastBarPercent(0.001)).toBe(CONTRAST_BAR_MIN_PERCENT);
+  });
+
+  it('draws nothing for a rate of nothing', () => {
+    // The floor is for a small number, not for none. A stub on zero would be
+    // the same error pointed the other way.
+    expect(contrastBarPercent(0)).toBe(0);
+  });
+
+  it('never overflows its track', () => {
+    expect(contrastBarPercent(1.4)).toBe(100);
+  });
+});
+
+describe('how full a mood draws its bar', () => {
+  it('is the mood as a share of the whole scale', () => {
+    expect(moodBarFraction(5)).toBeCloseTo(1);
+    expect(moodBarFraction(2.5)).toBeCloseTo(0.5);
+  });
+
+  it('never truncates the axis to make a gap look bigger', () => {
+    // `(mood - 1) / 4` is the tempting scale and it is the one that lies: it
+    // turns the gap between 3.9 and 4.1 into a fifth of the track when it is a
+    // twentieth of the scale. This file spends its length refusing to overstate
+    // a comparison in words; a bar may not do it in pixels either.
+    const gap = moodBarFraction(4.1) - moodBarFraction(3.9);
+    expect(gap).toBeCloseTo(0.04);
+  });
+
+  it('draws the bottom of the scale as something, since 1 is an answer', () => {
+    expect(moodBarFraction(1)).toBeCloseTo(0.2);
+    expect(contrastBarPercent(moodBarFraction(1))).toBe(20);
+  });
+
+  it('stays inside its track for anything out of range', () => {
+    expect(moodBarFraction(6)).toBe(1);
+    expect(moodBarFraction(-1)).toBe(0);
   });
 });

@@ -26,6 +26,8 @@ const days = (moods: (number | null)[]): MoodDay[] =>
     taskKeys: [],
     steps: null,
     sleepHours: null,
+    nutrients: null,
+    foodKeys: [],
   }));
 
 const generated = (kind: string, sourceId: string): Pick<Task, 'generatedKind' | 'generatedSourceId'> =>

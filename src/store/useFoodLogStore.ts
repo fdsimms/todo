@@ -42,6 +42,24 @@ import { logFoodEntryToHealth, retractFoodEntryFromHealth } from '../utils/healt
  */
 
 /**
+ * How far back `loadInsightWindow` reads for the mood pairings.
+ *
+ * `HEALTH_HISTORY_DAYS`' span, matched to it on purpose: both are the same kind
+ * of second dataset paired against the same days, and two windows would mean a
+ * finding about steps and a finding about calories on one screen quietly
+ * speaking for different stretches of somebody's life.
+ *
+ * It is a ceiling on the read rather than on what counts. The thin-day rule
+ * (see `foodDayInputs`) drops most of what comes back for anybody logging
+ * casually, which is why the window is wide: ninety days of ordinary logging is
+ * what it takes to clear `MIN_PAIRED_DAYS` of days complete enough to pair.
+ *
+ * Here rather than on a screen because two screens read this window now, the
+ * same reason `HEALTH_HISTORY_DAYS` sits in the store that fetches it.
+ */
+export const FOOD_INSIGHT_DAYS = 90;
+
+/**
  * A new entry, before the store stamps the parts only it can decide.
  *
  * `nutrition` arrives already built and already scaled — see
@@ -141,6 +159,24 @@ interface FoodLogStore {
   windowEnd: string | null;
   loadWindow: (startKey: string, endKey: string) => void;
   /**
+   * A third window, for the Mood screen's insight reads.
+   *
+   * The same argument that split `windowEntries` off from `entries`, applied
+   * once more rather than stretched: Stats owns that one and steps it to its
+   * own span, and a Mood screen sharing it would empty a section on a screen
+   * nobody had touched. Both are blurred tabs that stay mounted for the life
+   * of the session, so a clobbered window is not a frame of wrongness — it
+   * lasts until that screen is focused again.
+   *
+   * Deliberately not a fourth: three named windows is where this stops being
+   * worth a keyed map, and a fourth reader is the moment to build one rather
+   * than to paste this again.
+   */
+  insightEntries: FoodLogEntry[];
+  insightStart: string | null;
+  insightEnd: string | null;
+  loadInsightWindow: (startKey: string, endKey: string) => void;
+  /**
    * Record something eaten.
    *
    * The day key is stamped here from `dayResetTime`, never derived from the
@@ -192,6 +228,9 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
   windowEntries: [],
   windowStart: null,
   windowEnd: null,
+  insightEntries: [],
+  insightStart: null,
+  insightEnd: null,
   totalCount: 0,
   initialized: false,
   pendingMealLog: null,
@@ -222,6 +261,14 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       windowEntries: dbGetFoodLogEntries(startKey, endKey),
       windowStart: startKey,
       windowEnd: endKey,
+    });
+  },
+
+  loadInsightWindow(startKey, endKey) {
+    set({
+      insightEntries: dbGetFoodLogEntries(startKey, endKey),
+      insightStart: startKey,
+      insightEnd: endKey,
     });
   },
 
@@ -269,15 +316,19 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     // Only into the window on screen. An entry backdated outside it is stored
     // and simply isn't in `entries`, which is the same contract the range read
     // already keeps rather than a gap.
-    const { rangeStart, rangeEnd, windowStart, windowEnd } = get();
+    const { rangeStart, rangeEnd, windowStart, windowEnd, insightStart, insightEnd } = get();
     const byInstant = (a: FoodLogEntry, b: FoodLogEntry) => a.atISO.localeCompare(b.atISO);
     if (rangeStart && rangeEnd && entry.dayKey >= rangeStart && entry.dayKey <= rangeEnd) {
       set(s => ({ entries: [...s.entries, entry].sort(byInstant) }));
     }
-    // And into the wider window on the same terms, so a section reading that
-    // one doesn't disagree with the day view until the next time it's focused.
+    // And into the wider windows on the same terms, so a section reading either
+    // of them doesn't disagree with the day view until the next time it's
+    // focused.
     if (windowStart && windowEnd && entry.dayKey >= windowStart && entry.dayKey <= windowEnd) {
       set(s => ({ windowEntries: [...s.windowEntries, entry].sort(byInstant) }));
+    }
+    if (insightStart && insightEnd && entry.dayKey >= insightStart && entry.dayKey <= insightEnd) {
+      set(s => ({ insightEntries: [...s.insightEntries, entry].sort(byInstant) }));
     }
 
     // The one trigger. `logFoodEntryToHealth` is called from here and from
@@ -300,7 +351,11 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
       // the entry this closure already holds, so no read is needed either.
       dbUpdateFoodLogEntry({ ...entry, healthSampleIds: sampleIds });
       const stamp = (e: FoodLogEntry) => (e.id === entry.id ? { ...e, healthSampleIds: sampleIds } : e);
-      set(s => ({ entries: s.entries.map(stamp), windowEntries: s.windowEntries.map(stamp) }));
+      set(s => ({
+        entries: s.entries.map(stamp),
+        windowEntries: s.windowEntries.map(stamp),
+        insightEntries: s.insightEntries.map(stamp),
+      }));
     });
 
     return entry;
@@ -331,6 +386,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     set(s => ({
       entries: s.entries.map(e => (e.id === id ? updated : e)),
       windowEntries: s.windowEntries.map(e => (e.id === id ? updated : e)),
+      insightEntries: s.insightEntries.map(e => (e.id === id ? updated : e)),
     }));
   },
 
@@ -356,6 +412,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     set(s => ({
       entries: s.entries.filter(e => e.id !== id),
       windowEntries: s.windowEntries.filter(e => e.id !== id),
+      insightEntries: s.insightEntries.filter(e => e.id !== id),
       // Floored, so a delete of a row outside the loaded window can't drive the
       // count negative and make the screen vanish while it still holds entries.
       totalCount: Math.max(0, s.totalCount - 1),
@@ -377,6 +434,7 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     set(s => ({
       entries: s.entries.filter(e => !idSet.has(e.id)),
       windowEntries: s.windowEntries.filter(e => !idSet.has(e.id)),
+      insightEntries: s.insightEntries.filter(e => !idSet.has(e.id)),
       totalCount: Math.max(0, s.totalCount - idSet.size),
     }));
   },
@@ -388,6 +446,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
     set(s => ({
       entries: s.entries.map(e => (idSet.has(e.id) ? { ...e, slot } : e)),
       windowEntries: s.windowEntries.map(e => (idSet.has(e.id) ? { ...e, slot } : e)),
+      // The insight window too. A slot change is not cosmetic to it: the
+      // thin-day rule counts *distinct meals*, so moving two entries into one
+      // slot can drop a day out of every mood pairing.
+      insightEntries: s.insightEntries.map(e => (idSet.has(e.id) ? { ...e, slot } : e)),
     }));
   },
 
@@ -401,6 +463,10 @@ export const useFoodLogStore = create<FoodLogStore>((set, get) => ({
         return u ? { ...e, slot: u.slot, sortOrder: u.sortOrder } : e;
       }),
       windowEntries: s.windowEntries.map(e => {
+        const u = byId.get(e.id);
+        return u ? { ...e, slot: u.slot, sortOrder: u.sortOrder } : e;
+      }),
+      insightEntries: s.insightEntries.map(e => {
         const u = byId.get(e.id);
         return u ? { ...e, slot: u.slot, sortOrder: u.sortOrder } : e;
       }),

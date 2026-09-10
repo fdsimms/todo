@@ -1390,30 +1390,65 @@ function seedFoodLog(today: Date): void {
   const { items } = useGroceryStore.getState();
 
   /**
-   * Several days rather than one, because the Stats read averages over days
-   * and a single day averages to itself — a section that can only ever say
-   * "1 of 30" reads as a feature that doesn't work rather than one nobody has
-   * used yet. Yesterday backwards, never today: today's emptiness is what makes
-   * the day view's own empty state and its add button the first thing a demo
-   * meets.
+   * A fortnight and a half rather than a few days, and the length is the point
+   * for the same reason `seedMoodLog`'s is.
    *
-   * **Deliberately ragged.** Two of these days are one meal only, which is what
-   * an honest log looks like and is the whole reason `nutritionCounts` reports
-   * days logged and days logged past one meal as two different numbers. A seed
-   * where every day was complete would hide that distinction.
+   * Stats only needed several days: an average over one day averages to itself,
+   * and a section that can only say "1 of 30" reads as a feature that doesn't
+   * work. The mood screen's food pairings need considerably more — they refuse
+   * anything under `MIN_PAIRED_DAYS` (10) of days that are *both* logged for
+   * mood and logged past one meal (see `foodDayInputs`), so a five-day seed
+   * left "Eating" and "Mood by what you ate" invisible and the join reading as
+   * a feature the app hasn't got. This runs the same 17 days back the mood log
+   * does, which is what puts the two datasets over the same stretch of life.
+   *
+   * Yesterday backwards, never today: today's emptiness is what makes the day
+   * view's own empty state and its add button the first thing a demo meets.
+   *
+   * **Deliberately ragged, still.** Two days are one meal only, which is what
+   * an honest log looks like, and they now earn their place twice over: they
+   * are why `nutritionCounts` reports days logged and days logged past one meal
+   * as two different numbers, *and* they are the days the mood pairing quietly
+   * declines to use.
+   *
+   * **The pattern is deliberate rather than flat**, on `seedMoodLog`'s own
+   * argument: identical days every day correlate with nothing, which is honest
+   * of the code and useless as a demo. The deadline week in the middle of the
+   * mood seed — the one carrying "Long day, skipped lunch" — eats plainly and
+   * lightly here, and the better days either side have butter on the potatoes.
+   * That gives the screen one real calorie pairing and one real food contrast
+   * to report, off figures that are still every one of them measured rather
+   * than typed.
    */
-  const meals: Array<{ name: string; quantity: string; slot: MealSlot; hour: number; daysAgo: number }> = [
-    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo: 1 },
-    { name: 'Potatoes', quantity: '250 g', slot: 'dinner', hour: 19, daysAgo: 1 },
-    { name: 'Butter', quantity: '1 tbsp', slot: 'dinner', hour: 19, daysAgo: 1 },
-    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo: 2 },
-    { name: 'Potatoes', quantity: '200 g', slot: 'lunch', hour: 13, daysAgo: 2 },
-    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo: 3 },
-    { name: 'Butter', quantity: '1 tbsp', slot: 'dinner', hour: 19, daysAgo: 3 },
+  const meals: Array<{ name: string; quantity: string; slot: MealSlot; hour: number; daysAgo: number }> = [];
+  for (let daysAgo = 1; daysAgo <= 17; daysAgo++) {
+    meals.push({ name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo });
     // The two thin days: somebody logged breakfast and got on with their life.
-    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo: 5 },
-    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo: 6 },
-  ];
+    if (daysAgo === 5 || daysAgo === 6) continue;
+    // The low patch in `seedMoodLog` runs 8 to 11 days back. Plainer, smaller
+    // dinners through it.
+    const lean = daysAgo >= 8 && daysAgo <= 11;
+    meals.push({
+      name: 'Potatoes',
+      quantity: lean ? '150 g' : '250 g',
+      slot: 'dinner',
+      hour: 19,
+      daysAgo,
+    });
+    if (!lean) {
+      meals.push({ name: 'Butter', quantity: '1 tbsp', slot: 'dinner', hour: 19, daysAgo });
+    }
+    // Coffee on three of the four hard days and on three ordinary ones, which
+    // is the shape the symptom read on `SymptomDetailScreen` needs to show
+    // anything honest. All four would make it a clean sweep — "4 of 4 days
+    // against 0 of 11" — and a demo of an association has no business looking
+    // like a proof, least of all the one read in the app somebody might act on
+    // medically. Three of six against one of nine is a pattern you can see and
+    // still doubt, which is the whole posture of that card.
+    if ([8, 9, 10, 13, 15, 17].includes(daysAgo)) {
+      meals.push({ name: 'Coffee', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo });
+    }
+  }
 
   /**
    * One helping of something cooked, so the log isn't all catalog foods.
@@ -2579,6 +2614,24 @@ function seedGroceries(recipes: DemoRecipes, today: Date): void {
     portions: [{ amount: 1, label: 'cup', grams: 244 }],
     source: 'fdc',
     sourceId: '171265',
+    recordedAt: subDays(today, 30).toISOString(),
+  });
+  // **The one panel here that states caffeine**, and the only food in the seed
+  // that does — which is the ordinary case rather than a thin seed, and is
+  // exactly why caffeine is not one of `NUTRIENT_INSIGHT_KEYS`. A day of coffee
+  // and two other things has one entry out of three carrying a caffeine figure,
+  // so `foodDayInputs`' coverage rule drops it for the day and the mood pairing
+  // never sees it. Worth having in the seed anyway: it is what the panel on the
+  // day's card actually looks like, and it is what makes the demo's food
+  // contrasts about something a person recognises.
+  setItemNutrition(itemNamed('Coffee').id, {
+    basis: 'per100g',
+    servingGrams: null,
+    servingText: null,
+    amounts: { calorieKcal: 1, proteinG: 0.1, carbsG: 0, fatG: 0, sugarG: 0, sodiumMg: 2, caffeineMg: 40 },
+    portions: [{ amount: 1, label: 'cup', grams: 237 }],
+    source: 'fdc',
+    sourceId: '171890',
     recordedAt: subDays(today, 30).toISOString(),
   });
   /**

@@ -345,6 +345,142 @@ asking for the same fact twice.
   renamed reads under the name in use now. The identity is the chain, not the
   wording.
 
+## Mood against what you ate
+
+The food log is the third dataset the insights read, after the task history and
+Apple Health, and it arrives on the same terms as Health: `foodDayInputs`
+(`nutritionStats.ts`) hands `buildMoodDays` a row per day, and those rows
+**decorate days that already exist and never create one**.
+
+The reason differs from Health's and is worth having written down, because the
+obvious objection is a good one. A step count is ambient — recorded whether or
+not anybody was paying attention — which is exactly why folding ninety of them
+in must not conjure ninety days into the set. A food entry is nothing of the
+sort: somebody typed it. It still stays out of the union, because the union is
+what `completed: 0` is charged against, and a day somebody logged lunch on and
+finished nothing is not evidence about their task load. Nothing is lost by it:
+every read needs a mood or a completion beside it anyway, so a food-only day has
+nothing to be paired with.
+
+**Two rules decide whether a day gets a row at all**, both enforced in
+`foodDayInputs` and both about the same thing — a figure that looks like a
+measurement and isn't.
+
+- **A day logged past one meal, or no row.** This is the one that matters.
+  `nutritionStats.ts` already refuses a one-meal day from its own averages
+  ("a smaller number that is not a smaller day"); paired against a mood, that
+  same wrong number does considerably more damage, because it is how "your mood
+  is lower on the days you eat less" gets manufactured out of the days somebody
+  stopped logging at 11am. It is rule 3 above with a second face: an unlogged day
+  is an obvious hole, where a half-logged day arrives looking like a small
+  number. One constant (`COMPLETE_DAY_SLOTS`) answers for both readers, because
+  a day either stands for a day's eating or it doesn't.
+- **A nutrient only counts for a day every entry stated.** A total covering five
+  of seven entries is fine on the day's own card, where `describeFoodLogTotals`
+  prints the clause saying so. Across days there is nowhere to print one and the
+  coverage varies day to day, so the variation reads as variation in the food.
+
+Unlike the averages on Stats, **today is kept**: that window stops at yesterday
+because a partial day drags a mean down, and this one is paired rather than
+averaged with the two-meal bar already asking that question.
+
+**The vocabulary is four nutrients and that is a cap, not a starting point.**
+`NUTRIENT_INSIGHT_KEYS` is calories, caffeine, sugar and protein. Ten nutrients
+against two outcomes would be twenty comparisons over the same thirty-odd days,
+and at that width a couple land at something eye-catching by arithmetic alone —
+`MIN_PAIRED_DAYS` guards each comparison from being built on too little, and
+nothing guards a screenful of them from the one that happened to hit. Widening
+it is a real feature decision each time, on the same terms this note sets for
+the log sheet's one auto-suggestion.
+
+`nutrientInsight` and `healthInsight` are two typed doors onto one body
+(`insightFor`), which is what stops the rules drifting apart between an activity
+reading and a nutrient. Two cautions are particular to this axis, neither
+fixable and both reasons the copy stays descriptive: the day is one bucket, so
+an evening mood entry sits inside a total that includes the dinner eaten after
+it; and what somebody logs is not what somebody ate, so a person who logs more
+carefully when they feel better has a correlation here that is about their
+logging.
+
+**`foodMoodContrasts` is the medication argument pointed at the plate.** That
+section above exists because a tablet or a walk is already a repeating task
+here, so "how do the days I take it compare" needs no second vocabulary. A food
+you ate is already a food log entry here, for the same reason and with the same
+payoff: this is the elimination-diet question, and every symptom tracker that
+asks it makes you keep a whole separate food diary next to the log you were
+already keeping. Grouped by the entry's own label, which is `mostLoggedFoods`'
+choice and made for its reason — `itemId` and `recipeId` are null for anything
+typed in.
+
+Its second gate is the one that makes the answer mean anything: it runs over
+`foodPairedDays`, not `pairedDays`, so "the days you didn't eat it" is days the
+log would have said so. Against every mood day, this read would really be "the
+days I logged my food against the days I didn't", with a food's name on it.
+
+**It is behind `kitchenEnabled`**, which the Mood screen checks exactly as it
+checks `healthReadEnabled` for the readings: the whole food half of the app is
+behind that switch, and reading a log somebody has switched away from to tell
+them about their eating is the same mistake as reading Health without
+permission.
+
+**The nutrient vocabulary has one deliberate hole, and caffeine is it.**
+Caffeine has the best same-day mechanism of anything on the list and it is what
+people actually wonder about, so it is the first thing anybody will try to add.
+It cannot work: the coverage rule needs every entry on a day to state a nutrient,
+and almost nothing states caffeine, so a day of coffee, toast and pasta carries
+one figure out of three. `nutritionParse.ts` reaches the same conclusion from the
+other end, throwing away a *stated* caffeine zero from Open Food Facts
+(`OFF_UNINFORMATIVE_ZERO`) as untrustworthy. Adding the key back ships a row that
+silently never appears; making it appear means summing absent caffeine as zero,
+which `foodLog.ts` refuses outright. The demo seed keeps a coffee panel that
+states caffeine precisely so this is visible rather than theoretical.
+
+## A symptom against what you ate
+
+`symptomFoodContrasts` is the elimination-diet question, and **the most loaded
+read in the app.** It is one step past `foodMoodContrasts` in what somebody might
+do about it: a mood comparison invites a shrug, and "you logged a headache on
+most of the days you ate bread" invites somebody to stop eating bread. Which is
+the reason it exists rather than the reason to leave it out. A person tracking a
+symptom is already forming that hypothesis, and every symptom tracker that
+supports it makes them keep a second food diary next to the log they already
+keep. Four things hold it:
+
+- **It is scoped to one symptom somebody opened.** It lives on
+  `SymptomDetailScreen` and takes the symptom as an argument, rather than
+  searching every symptom against every food for whatever pair happens to land.
+  Ten symptoms against twenty foods is two hundred comparisons and a guaranteed
+  finding; this is one question a person asked.
+- **`symptomFoodDays`, not `foodPairedDays`.** The food-log bar is the same, but
+  the day must also carry a log entry (`hasMoodEntry`) or its silence reads as a
+  day without the symptom. This is rule 3 in the place it does the most damage:
+  a symptom is a *presence*, so absence-of-record and absence-of-symptom look
+  identical unless something insists on the difference. Every other read here is
+  safe by accident, because `pairedDays` needs a number. What stays unfixable is
+  self-report itself: a day somebody logged a mood on and did not bother
+  recording a headache reads as headache-free.
+- **Days, never percentages.** `RateContrast` carries `withHits`/`withDays`
+  alongside the rates so a caller cannot render "67% against 14%" without the
+  sample it came from. It is its own type rather than a `GroupContrast` with a
+  frequency in `moodWith`, because a mean and a rate rendered by the same code is
+  how one gets shown as the other.
+- **It is drawn as a pair of bars, and that decided how every other contrast
+  here is drawn too.** A rate on each side meant a row reading "3 of 6 vs 1 of
+  9", and four numbers on a line is arithmetic the eye cannot do. `ContrastBars`
+  (see CLAUDE.md's primitives list) is the answer, and the five mood contrasts
+  moved onto it so the whole feature reads one way. `moodBarFraction` is
+  anchored at zero rather than at 1, because the scale that starts at the bottom
+  of the mood range turns a twentieth of the scale into a fifth of the track —
+  this file refuses to overstate a comparison in words, so a bar may not do it in
+  pixels.
+- **It counts and never causes**, and the card says so in those words: it cannot
+  tell a food apart from everything else about the days that food was eaten on.
+
+The demo seeds coffee on three of the four hard days and three ordinary ones,
+deliberately not all four. A clean sweep ("4 of 4 against 0 of 11") would read as
+a proof, and a demo of an association has no business looking like one, least of
+all for the read somebody might act on medically.
+
 ## Getting it off the device
 
 `moodExport.ts` writes the log as CSV and hands it to the share sheet. This note
