@@ -3082,6 +3082,15 @@ export interface FoodLogEntry {
    * `docs/arch/health-data.md` on why a bad write costs more than a bad read.
    */
   healthSampleIds: string[];
+  /**
+   * Hand-set position within the day, in the same running-number-space `Task.sortOrder`
+   * uses across a whole category list rather than one per section — a drag that
+   * re-slots an entry needs one number space it can carry across the boundary.
+   * Defaults to `0` for every row that predates the column, so an existing
+   * install reads as unordered (falling back to `atISO`) until something is
+   * actually dragged.
+   */
+  sortOrder: number;
   createdAt: string;
 }
 

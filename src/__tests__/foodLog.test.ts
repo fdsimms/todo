@@ -5,7 +5,9 @@ import {
   foodLogTotals,
   nutrientContributions,
   recipeHelpingNutrition,
+  resolveFoodLogDrop,
   scalePanelToAmount,
+  type FoodLogListItem,
 } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition, NutrientKey } from '../types';
 
@@ -42,6 +44,7 @@ function entry(overrides: Partial<FoodLogEntry> = {}): FoodLogEntry {
     grams: 244,
     nutrition: panel({ basis: 'perServing', amounts: { calorieKcal: 100, proteinG: 5 } }),
     healthSampleIds: [],
+    sortOrder: 0,
     createdAt: '2026-04-02T00:00:00.000Z',
     ...overrides,
   };
@@ -203,6 +206,53 @@ describe('foodLogSections', () => {
     ]);
     expect(sections[0].totals.total.calorieKcal).toBe(300);
     expect(sections[1].totals.total.calorieKcal).toBe(700);
+  });
+
+  it('orders a hand-dragged meal by sortOrder rather than by when it was eaten', () => {
+    const sections = foodLogSections([
+      entry({ slot: 'snack', label: 'Second', atISO: '2026-04-02T11:00:00.000Z', sortOrder: 2 }),
+      entry({ slot: 'snack', label: 'First', atISO: '2026-04-02T16:00:00.000Z', sortOrder: 1 }),
+    ]);
+    expect(sections[0].entries.map(e => e.label)).toEqual(['First', 'Second']);
+  });
+});
+
+describe('resolveFoodLogDrop', () => {
+  it('assigns one running rank across every section, in drop order', () => {
+    const a = entry({ slot: 'breakfast', label: 'A' });
+    const b = entry({ slot: 'breakfast', label: 'B' });
+    const c = entry({ slot: 'lunch', label: 'C' });
+    const items: FoodLogListItem[] = [
+      { type: 'header', slot: 'breakfast' },
+      { type: 'entry', entry: a },
+      { type: 'entry', entry: b },
+      { type: 'add', slot: 'breakfast' },
+      { type: 'header', slot: 'lunch' },
+      { type: 'entry', entry: c },
+      { type: 'add', slot: 'lunch' },
+    ];
+    const resolved = resolveFoodLogDrop(items);
+    expect(resolved.map(e => [e.label, e.sortOrder])).toEqual([['A', 1], ['B', 2], ['C', 3]]);
+  });
+
+  it('re-slots an entry dragged past a header into the section it lands in', () => {
+    const a = entry({ slot: 'breakfast', label: 'A' });
+    const items: FoodLogListItem[] = [
+      { type: 'header', slot: 'lunch' },
+      { type: 'entry', entry: a },
+    ];
+    const resolved = resolveFoodLogDrop(items);
+    expect(resolved[0].slot).toBe('lunch');
+  });
+
+  it('re-slots into the unslotted "Other" section, not just a named meal', () => {
+    const a = entry({ slot: 'breakfast', label: 'A' });
+    const items: FoodLogListItem[] = [
+      { type: 'header', slot: null },
+      { type: 'entry', entry: a },
+    ];
+    const resolved = resolveFoodLogDrop(items);
+    expect(resolved[0].slot).toBeNull();
   });
 });
 

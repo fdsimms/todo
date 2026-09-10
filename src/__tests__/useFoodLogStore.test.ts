@@ -1,5 +1,8 @@
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import {
+  dbBulkDeleteFoodLogEntries,
+  dbBulkSetFoodLogSlot,
+  dbBulkUpdateFoodLogPlacement,
   dbCountFoodLogEntries,
   dbDeleteFoodLogEntry,
   dbGetFoodLogEntries,
@@ -7,17 +10,27 @@ import {
   dbInsertFoodLogEntry,
   dbUpdateFoodLogEntry,
 } from '../db/database';
+import { retractFoodEntryFromHealth } from '../utils/healthFoodSync';
 import type { FoodNutrition } from '../types';
 
 jest.mock('../db/database', () => ({
   dbGetFoodLogEntries: jest.fn(() => []),
-  dbGetFoodLogEntry: jest.fn(() => undefined),
+  // Matches the real dbGetFoodLogEntry's own miss case (a null row reads as
+  // null, never undefined) — see database.ts.
+  dbGetFoodLogEntry: jest.fn(() => null),
   dbCountFoodLogEntries: jest.fn(() => 0),
   dbInsertFoodLogEntry: jest.fn(),
   dbUpdateFoodLogEntry: jest.fn(),
   dbDeleteFoodLogEntry: jest.fn(),
+  dbBulkDeleteFoodLogEntries: jest.fn(),
+  dbBulkSetFoodLogSlot: jest.fn(),
+  dbBulkUpdateFoodLogPlacement: jest.fn(),
 }));
 
+// Real module reaches healthBridge.ts, which imports react-native — irrelevant
+// to what this file tests (store/db plumbing), and Jest's node environment
+// can't parse it anyway. logFoodEntryToHealth resolves 'unavailable' with no
+// bridge in a test environment regardless, so this only saves the import.
 jest.mock('../utils/healthFoodSync', () => ({
   logFoodEntryToHealth: jest.fn(() => Promise.resolve({ outcome: 'unavailable', sampleIds: [] })),
   retractFoodEntryFromHealth: jest.fn(() => Promise.resolve(true)),
@@ -66,6 +79,7 @@ function draft(overrides: Partial<FoodLogDraft> = {}): FoodLogDraft {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (dbGetFoodLogEntry as jest.Mock).mockReturnValue(null);
   useFoodLogStore.setState({
     entries: [], rangeStart: null, rangeEnd: null, totalCount: 0, initialized: false,
   });
@@ -180,5 +194,88 @@ describe('removeEntry', () => {
     // screen vanish while it still held entries.
     state().removeEntry('nope');
     expect(state().totalCount).toBe(0);
+  });
+});
+
+describe('addEntry sortOrder', () => {
+  it('starts the day at 0', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const entry = state().addEntry(draft())!;
+    expect(entry.sortOrder).toBe(0);
+  });
+
+  it('appends to the bottom of the day rather than restarting at 0', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    state().addEntry(draft({ label: 'First' }));
+    const second = state().addEntry(draft({ label: 'Second' }))!;
+    expect(second.sortOrder).toBe(1);
+  });
+
+  it('does not let a different day\'s rows push this one down the order', () => {
+    state().loadRange('2026-04-01', '2026-04-02');
+    state().addEntry(draft({ label: 'Yesterday', at: new Date(2026, 3, 1, 9, 0) }));
+    const today = state().addEntry(draft({ label: 'Today' }))!;
+    expect(today.sortOrder).toBe(0);
+  });
+});
+
+describe('removeEntries', () => {
+  it('forgets every id at once, and drops the count by that many', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ label: 'A' }))!;
+    const b = state().addEntry(draft({ label: 'B' }))!;
+    state().addEntry(draft({ label: 'C' }));
+    state().removeEntries([a.id, b.id]);
+    expect(dbBulkDeleteFoodLogEntries).toHaveBeenCalledWith([a.id, b.id]);
+    expect(state().entries.map(e => e.label)).toEqual(['C']);
+    expect(state().totalCount).toBe(1);
+  });
+
+  it('is a no-op on an empty selection', () => {
+    state().removeEntries([]);
+    expect(dbBulkDeleteFoodLogEntries).not.toHaveBeenCalled();
+  });
+
+  it('retracts every removed entry\'s Health samples, same rule removeEntry keeps', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockImplementation((id: string) =>
+      id === 'a' ? { healthSampleIds: ['sample-a'] } : { healthSampleIds: [] }
+    );
+    state().loadRange('2026-04-02', '2026-04-02');
+    state().removeEntries(['a', 'b']);
+    expect(retractFoodEntryFromHealth).toHaveBeenCalledWith(['sample-a']);
+  });
+
+  it('never calls Health when nothing removed wrote a sample', () => {
+    (dbGetFoodLogEntry as jest.Mock).mockReturnValue({ healthSampleIds: [] });
+    state().removeEntries(['a']);
+    expect(retractFoodEntryFromHealth).not.toHaveBeenCalled();
+  });
+});
+
+describe('moveEntries', () => {
+  it('re-slots every selected entry, leaving the rest alone', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ label: 'A', slot: 'breakfast' }))!;
+    const b = state().addEntry(draft({ label: 'B', slot: 'breakfast' }))!;
+    state().moveEntries([a.id], 'lunch');
+    expect(dbBulkSetFoodLogSlot).toHaveBeenCalledWith([a.id], 'lunch');
+    expect(state().entries.find(e => e.id === a.id)?.slot).toBe('lunch');
+    expect(state().entries.find(e => e.id === b.id)?.slot).toBe('breakfast');
+  });
+});
+
+describe('reorderEntries', () => {
+  it('persists a drop\'s new slot and rank together', () => {
+    state().loadRange('2026-04-02', '2026-04-02');
+    const a = state().addEntry(draft({ label: 'A', slot: 'breakfast' }))!;
+    const b = state().addEntry(draft({ label: 'B', slot: 'lunch' }))!;
+    const updates = [
+      { id: b.id, slot: 'lunch' as const, sortOrder: 1 },
+      { id: a.id, slot: 'lunch' as const, sortOrder: 2 },
+    ];
+    state().reorderEntries(updates);
+    expect(dbBulkUpdateFoodLogPlacement).toHaveBeenCalledWith(updates);
+    expect(state().entries.find(e => e.id === a.id)).toMatchObject({ slot: 'lunch', sortOrder: 2 });
+    expect(state().entries.find(e => e.id === b.id)).toMatchObject({ slot: 'lunch', sortOrder: 1 });
   });
 });

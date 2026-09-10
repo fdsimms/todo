@@ -61,6 +61,7 @@ function entry(
       recordedAt: `${dayKey}T${hour}:00:00.000Z`,
     },
     healthSampleIds: [],
+    sortOrder: 0,
     createdAt: `${dayKey}T${hour}:00:00.000Z`,
   };
 }
