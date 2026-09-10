@@ -460,6 +460,10 @@ export function LeftoverSheet({
               // shouldn't summon itself on top of it.
               autoFocus={!editing && !seed?.title}
               returnKeyType={editing ? 'done' : 'go'}
+              // A food name, and one whose rename commits on blur — the same
+              // autocorrect trap GroceryRow's inline rename describes.
+              autoCorrect={false}
+              spellCheck={false}
               maxLength={LEFTOVER_NAME_MAX_LENGTH}
               accessibilityLabel="Leftover name"
             />
