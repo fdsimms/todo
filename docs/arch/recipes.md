@@ -571,6 +571,69 @@ a **read plus one timer**, no schema change and nothing written — `cookSteps` 
   offered greyed out. Its arrival is why the primary shortened to "Add to list": three buttons
   don't fit a 390pt line at the old label.
 
+### Asking about a step (`cookQuestions.ts`) — the question the method raised
+
+A method sentence is also where the questions come from. "Cook until the edges look dry" raises
+"how dry?", "Fold the butter in" raises "what does fold mean?", and until now every cook read
+that, picked up the same phone, and typed it into a different app — the same thing step timers
+were built to stop. Cook mode asks it in place instead, with the one thing a general chat app
+cannot have: the context.
+
+- **The context is the feature, not the model.** `cookQuestionContext` carries the step, the steps
+  either side of it, which component it belongs to, and the ingredient list *as this cook is
+  working with it* — scaled then converted through the same pipeline the ingredient panel draws,
+  with a standing swap named rather than hidden. Someone cooking at 0.5x asking "how long?" is
+  asking a different question than the recipe answers, and someone whose milk line is already oat
+  milk is owed that fact when the sauce won't thicken.
+- **It asks; it never writes.** The answer is screen state, gone with the step — the same call
+  cook mode already makes about the position and the panel's fold. Nothing rewrites the step,
+  nothing starts a timer off the answer (a parse that *acted* is what `stepDurations` refuses, and
+  a model sentence is a weaker source than the recipe's own), and the recipe gains nothing until
+  someone presses Keep.
+- **One question, one answer, no transcript.** A scrolling log of turns is the shape this screen
+  was built to avoid, and the kept note is what a second cooking actually wants. Moving off the
+  step clears the answer *and* a half-typed question, which on the next step would be a question
+  about something else.
+- **It lives in the step's own scroll view, not a sheet of its own.** A running step timer and the
+  Back/Next controls must not leave the screen to make room for a question, which is the same rule
+  that put the timer stack in the footer. It also means there's no `pageSheet` swipe to guard
+  against, and the question field is why that `ScrollView` now goes through
+  `useKeyboardInsetScroll` rather than passing `automaticallyAdjustKeyboardInsets` bare.
+- **The suggested questions are derived locally and deliberately dumb.** Two that almost any step
+  can raise, plus a substitute question only when the step names something in the ingredient
+  list — longest name first, so "brown sugar" wins over "sugar", and whole-word only, so
+  "Butterfly the chicken" doesn't offer a substitute for butter. Generating them would cost a
+  request to save a request, and a wrong chip costs a chip nobody presses.
+- **The answer is capped at four lines, and the ceiling is the note cap itself.**
+  `COOK_ANSWER_MAX_CHARS` *is* `RECIPE_STEP_NOTE_MAX_LENGTH` rather than a number of its own, so
+  what was read is exactly what Keep can store; two clamps would file a shortened copy of the
+  answer someone decided to keep. The prompt asks for two or three sentences and `max_tokens` is
+  the backstop — not streaming, deliberately: a stream shows the model's first sentence before its
+  last one exists, which for "is this chicken done?" means an answer that qualifies itself has
+  already been read. The clamp cuts at a sentence end, then a word boundary, then with an ellipsis.
+- **Nothing may *require* an answer, and nothing claims food is safe.** The system prompt has the
+  model decline anything that isn't about the step on screen, refuse to invent an instruction the
+  recipe doesn't give, and answer a doneness question with the temperature to check for rather
+  than with reassurance.
+- **`RecipeStep.note` is the one thing that persists, and only on purpose.** It's a plain note
+  rather than a field naming where the text came from: by the third cooking, what matters is that
+  the answer is there. Stored absent rather than null when cleared, like `timerSeconds`, so a step
+  nobody kept one on round-trips byte for byte. A step read out of `notes` has no row to hold one,
+  for the same reason its id is synthesized, so Keep isn't offered there. Cook mode shows a kept
+  note without being asked (not having to ask again is why it was kept); the recipe screen's step
+  row shows it too, and the field it is **typed and edited in** lives in that row's
+  open-for-editing block beside the timer length. Keep is the commoner writer, but a note that
+  could only ever arrive from an answer would be unwritable without an API key, and it is an
+  ordinary note about the step either way. That field commits on blur rather than per keystroke,
+  unlike the length stepper next to it, because a press is one discrete value and typed prose is
+  not.
+- **`cookHelp` takes Sonnet by default**, the third feature to do so, and for the reason
+  `receiptImport` gives: the cost difference per question is a fraction of a cent and the expensive
+  failure is a confident wrong answer about whether something is cooked through. It has no
+  on-device arm — a free question over a whole ingredient list wants world knowledge and more
+  window than the ~4k on-device model has — so no key means no Ask button rather than a button
+  that apologises, through the same `useAiRoute` pairing the grocery entry points use.
+
 ### Step timers (`stepTimers.ts`) — the time the step already names
 
 A method sentence is where the number lives. "Cook, stirring occasionally, until mostly golden,

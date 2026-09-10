@@ -1794,6 +1794,7 @@ function seedRecipes(): DemoRecipes {
     startCookTimer,
     addStep,
     setStepTimerSeconds,
+    setStepNote,
   } = useRecipeStore.getState();
 
   // --- Sides, first: the two dinners below reference them as components ----
@@ -2018,6 +2019,18 @@ function seedRecipes(): DemoRecipes {
   // without this.
   const searStep = useRecipeStore.getState().recipeById(stirFry.id)?.steps[1];
   if (searStep) setStepTimerSeconds(stirFry.id, searStep.id, 4 * 60);
+  // A note kept on a step from a previous cooking — what cook mode's "ask about
+  // this step" leaves behind when an answer is worth keeping. The asking itself
+  // needs an API key nobody hands a demo phone, and the note is the half that
+  // outlives it, so without a seeded one that whole exchange reads as absent
+  // rather than as unused.
+  if (searStep) {
+    setStepNote(
+      stirFry.id,
+      searStep.id,
+      'Dry the chicken first and leave it alone for a minute. Crowding the pan steams it.',
+    );
+  }
   // Cooked often enough to have a history worth reading.
   [0, 1, 2, 3, 4].forEach(() => markCooked(stirFry.id));
   // Tonight's dinner, mid-cook — the one place a live timer shows up.

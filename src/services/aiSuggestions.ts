@@ -22,6 +22,10 @@ import {
   dedupeSuggestedSubstitutes, MAX_SUGGESTED_SUBSTITUTES,
   type RawSuggestedSubstitute, type SuggestedSubstitute,
 } from '../utils/substituteSuggestions';
+import {
+  clampCookAnswer, COOK_QUESTION_MAX_LENGTH, type CookQuestionContext,
+} from '../utils/cookQuestions';
+import { isUnscaled } from '../utils/recipeScale';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { getLogicalToday, dayKeyOf } from '../utils/dateUtils';
 import type { AiFeatureId, AiModelId } from '../utils/aiFeatures';
@@ -1516,6 +1520,102 @@ export async function suggestSubstitutes(
   if (!input?.substitutes) throw new Error('No suggestions returned');
 
   return dedupeSuggestedSubstitutes(input.substitutes, [name, ...excluded]);
+}
+
+/**
+ * Answers one question about the step a cook is standing in front of (#2241).
+ *
+ * The short answer is the whole feature: someone is holding a phone with wet
+ * hands, so what comes back is two or three sentences, clamped by
+ * `clampCookAnswer` before it reaches the screen. `max_tokens` is a backstop
+ * rather than the mechanism — a completion that runs past it means the brevity
+ * instruction was ignored, and `callAnthropic` already reads a truncation as an
+ * error rather than showing half an instruction.
+ *
+ * Forced tool use like every other call in this file, even though the payload is
+ * prose: it keeps one parse path for all of them, and the schema description is
+ * where the rest of these features state their constraints too.
+ *
+ * What the model may *not* do is the half worth reading. It answers about the
+ * method in front of it and declines anything else; it never rewrites the step,
+ * and nothing it says is written to the recipe unless the cook presses Keep.
+ */
+export async function askCookQuestion(
+  context: CookQuestionContext,
+  question: string,
+): Promise<string> {
+  const { apiKey, model } = requireFeature('cookHelp');
+
+  const asked = question.trim().slice(0, COOK_QUESTION_MAX_LENGTH);
+  if (!asked) throw new Error('No question asked');
+
+  const ingredientLines = context.ingredients.map(i => {
+    const amount = i.quantity ? `${i.quantity} ` : '';
+    // The swap is named rather than hidden: someone asking why the sauce won't
+    // thicken is owed the fact that the milk in front of them is oat milk.
+    const swap = i.swappedFrom ? ` (standing in for ${i.swappedFrom})` : '';
+    return `- ${amount}${i.name}${swap}`;
+  });
+
+  const unitNote = context.unitSystem === 'metric'
+    ? 'The cook is reading amounts in metric units.'
+    : context.unitSystem === 'us'
+      ? 'The cook is reading amounts in US units.'
+      : '';
+
+  const data = await callAnthropic({
+    max_tokens: 400,
+    system: [
+      'You are helping someone who is cooking right now, mid-recipe, reading one step off a phone with their hands full.',
+      'Answer in at most three short sentences. No preamble, no restating the question, no lists, no markdown.',
+      'Answer about this recipe and this step. If the question is about something else, say you can only help with the step on screen.',
+      'Use the amounts given, which are what this cook is actually working with: they may be scaled up or down from the recipe as written, and an ingredient may have been swapped for another.',
+      'Never rewrite the step or invent an instruction the recipe does not give. If the recipe genuinely does not say, say that, and say what you would do.',
+      'For doneness on meat, poultry, fish, eggs or anything else where undercooking is a safety question, give the internal temperature to check for rather than telling the cook it is probably fine.',
+    ].join('\n'),
+    tools: [{
+      name: 'answer_cook_question',
+      description: 'Answer a cook\'s question about the recipe step they are working on',
+      input_schema: {
+        type: 'object',
+        properties: {
+          answer: {
+            type: 'string',
+            description: 'At most three short sentences, plain text. Put a genuine break between two parts of an answer on its own line; otherwise one paragraph.',
+          },
+        },
+        required: ['answer'],
+      },
+    }],
+    tool_choice: { type: 'tool', name: 'answer_cook_question' },
+    messages: [{
+      role: 'user',
+      content: [
+        `Recipe: ${context.recipeName}`,
+        context.componentName ? `This step belongs to a part of the meal: ${context.componentName}` : '',
+        isUnscaled(context.scale) ? '' : `The recipe is being cooked at ${context.scale}x the written quantities.`,
+        unitNote,
+        '',
+        `Step ${context.stepNumber} of ${context.stepCount}, which is the step on screen:`,
+        context.stepText,
+        '',
+        context.previousStepText ? `The step before it: ${context.previousStepText}` : '',
+        context.nextStepText ? `The step after it: ${context.nextStepText}` : '',
+        '',
+        ingredientLines.length > 0
+          ? `Ingredients, in the amounts this cook is working with:\n${ingredientLines.join('\n')}`
+          : '',
+        '',
+        `The cook asks: ${asked}`,
+      ].filter(Boolean).join('\n'),
+    }],
+  }, apiKey, model);
+
+  const toolUse = data.content?.find(c => c.type === 'tool_use');
+  const input = toolUse?.input as { answer?: unknown } | undefined;
+  const answer = typeof input?.answer === 'string' ? clampCookAnswer(input.answer) : '';
+  if (!answer) throw new Error('No answer returned');
+  return answer;
 }
 
 /**

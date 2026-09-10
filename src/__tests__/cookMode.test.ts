@@ -140,6 +140,20 @@ describe('cookSteps', () => {
     expect(out.map(s => s.id)).toEqual(['r1:notes:0', 'r1:notes:1']);
   });
 
+  it('carries a step’s kept note, and never one for a step read out of notes', () => {
+    const r = recipe('r1', 'Salmon', {
+      steps: [{ ...step('Heat the pan'), note: 'Hotter than feels right.' }, step('Cook the fish')],
+    });
+    const out = cookSteps(r, recipeMap([r]));
+    expect(out[0].note).toBe('Hotter than feels right.');
+    expect(out[1].note).toBeNull();
+
+    // A notes step has no row to hold one, the same reason its id is
+    // synthesized — see CookStep.note.
+    const blob = recipe('r2', 'Steak', { notes: 'Get the pan hot.\nSear it.' });
+    expect(cookSteps(blob, recipeMap([blob])).every(s => s.note === null)).toBe(true);
+  });
+
   it('prefers structured steps over notes on the same recipe', () => {
     const r = recipe('r1', 'Steak', { notes: 'Old method blob.', steps: [step('Sear it')] });
     expect(cookSteps(r, recipeMap([r])).map(s => s.text)).toEqual(['Sear it']);

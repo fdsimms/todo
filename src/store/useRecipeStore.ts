@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Cookbook, Recipe, RecipeIngredient, RecipeMealType, RecipePrepTask, RecipeSourceType, RecipeStep, RecipeVote } from '../types';
-import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
+import { GROCERY_NAME_MAX_LENGTH, RECIPE_PAGE_MAX_LENGTH, RECIPE_SECTION_MAX_LENGTH, RECIPE_STEP_NOTE_MAX_LENGTH, TITLE_MAX_LENGTH } from '../types';
 import {
   dbGetAllRecipes,
   dbInsertRecipe,
@@ -393,6 +393,14 @@ interface RecipeStore {
    * reads wrong. Out of range is treated as a clear — see RecipeStep.timerSeconds.
    */
   setStepTimerSeconds: (recipeId: string, stepId: string, seconds: number | null) => void;
+  /**
+   * Keeps a note on one step, or clears it with null/empty.
+   *
+   * The one writer of `RecipeStep.note` — cook mode's "keep this" on an answer
+   * it was given, and the recipe screen's own clear. Asking a question writes
+   * nothing; only this does.
+   */
+  setStepNote: (recipeId: string, stepId: string, note: string | null) => void;
   removeStep: (recipeId: string, stepId: string) => void;
   /**
    * The new order. An id missing from `ids` keeps its place at the end rather
@@ -1172,6 +1180,24 @@ export const useRecipeStore = create<RecipeStore>((set, get) => ({
       // existed.
       const { timerSeconds: _dropped, ...rest } = s;
       return value === null ? rest : { ...rest, timerSeconds: value };
+    });
+    if (!touched) return;
+    save(set, { ...recipe, steps });
+  },
+
+  setStepNote(recipeId, stepId, note) {
+    const recipe = get().recipes.find(r => r.id === recipeId);
+    if (!recipe) return;
+    const value = (note ?? '').trim().slice(0, RECIPE_STEP_NOTE_MAX_LENGTH);
+    let touched = false;
+    const steps = recipe.steps.map(s => {
+      if (s.id !== stepId) return s;
+      if ((s.note ?? '') === value) return s;
+      touched = true;
+      // Cleared back to absent rather than stored as an empty string, same as
+      // the duration above — see RecipeStep.note.
+      const { note: _dropped, ...rest } = s;
+      return value ? { ...rest, note: value } : rest;
     });
     if (!touched) return;
     save(set, { ...recipe, steps });

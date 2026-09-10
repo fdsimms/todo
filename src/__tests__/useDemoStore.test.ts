@@ -1829,6 +1829,16 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(parsed.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('seeds a note kept on a step, so cook mode\'s answers aren\'t invisible without a key', () => {
+    const steps = useRecipeStore.getState().recipes.flatMap(r => r.steps);
+    const noted = steps.filter(step => !!step.note);
+
+    // One is the point: a note is what keeping an answer leaves behind, and the
+    // asking itself needs an API key nobody handed a demo phone.
+    expect(noted).toHaveLength(1);
+    expect(noted[0].note!.length).toBeGreaterThan(20);
+  });
+
   it('seeds an either/or on the list, from a recipe choice left for the shelf', () => {
     const { items } = useGroceryStore.getState();
     const grouped = items.filter(i => i.onList && i.choiceGroup);
