@@ -1,8 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { useBottomTabBarHeight } from '@react-navigation/bottom-tabs';
+import { addDays } from 'date-fns/addDays';
 import { format } from 'date-fns/format';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useShallow } from 'zustand/react/shallow';
@@ -11,6 +12,7 @@ import { useMoodStore } from '../store/useMoodStore';
 import { useTaskStore } from '../store/useTaskStore';
 import { useSettingsStore } from '../store/useSettingsStore';
 import { useHealthStore, HEALTH_HISTORY_DAYS } from '../store/useHealthStore';
+import { useFoodLogStore } from '../store/useFoodLogStore';
 import { useColors } from '../theme/ThemeContext';
 import { spacing, radius, font, fontWeight, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
@@ -23,17 +25,20 @@ import {
   symptomVocabulary,
 } from '../utils/moodLog';
 import { symptomStats } from '../utils/moodHistory';
+import { foodDayInputs } from '../utils/nutritionStats';
 import { retentionCutoff, retentionLabel } from '../utils/retention';
 import {
   buildMoodDays,
   categoryMoodContrasts,
   contextTagMoodContrasts,
   describeHealthInsight,
-  healthAverage,
+  foodMoodContrasts,
   healthInsight,
+  metricAverage,
   moodByTimeOfDay,
   moodCompletionInsight,
   moodSummary,
+  nutrientFindings,
   symptomMoodContrasts,
   taskContrastTitles,
   taskMoodContrasts,
@@ -48,6 +53,21 @@ import { MoodExportSheet } from '../components/MoodExportSheet';
 
 /** How many days the chart shows. Two weeks fits a phone width at a readable bar. */
 const CHART_DAYS = 14;
+
+/**
+ * How far back the food log is read for the insight pairings.
+ *
+ * `HEALTH_HISTORY_DAYS`' span, and matched to it on purpose: both are the same
+ * kind of second dataset paired against the same days, and two windows would
+ * mean a finding about steps and a finding about calories on one screen quietly
+ * speaking for different stretches of somebody's life.
+ *
+ * It is a ceiling on the read rather than on what counts. The thin-day rule
+ * (see `foodDayInputs`) drops most of what comes back for anybody logging
+ * casually, which is why the window is wide: ninety days of ordinary logging is
+ * what it takes to clear `MIN_PAIRED_DAYS` of days complete enough to pair.
+ */
+const FOOD_INSIGHT_DAYS = HEALTH_HISTORY_DAYS;
 
 const BAR_HEIGHT = 90;
 
@@ -85,6 +105,30 @@ export function MoodScreen() {
   useEffect(() => {
     if (healthReadEnabled) void refreshHealthHistory();
   }, [healthReadEnabled, refreshHealthHistory]);
+  // The food log's own window, kept apart from the day view's and from Stats'
+  // — see `loadInsightWindow`. Loaded on focus rather than on mount for the
+  // reason Stats loads its own that way: a blurred tab stays mounted for the
+  // life of the session, so a window computed at mount would still end on the
+  // day the app was opened.
+  //
+  // Gated on `kitchenEnabled` exactly as `healthReadEnabled` gates the readings
+  // above. The whole food half of the app is behind that switch, and reading a
+  // log the user has switched away from to tell them about their eating is the
+  // same mistake as reading Health without permission.
+  const kitchenEnabled = useSettingsStore(s => s.kitchenEnabled);
+  const foodEntries = useFoodLogStore(s => s.insightEntries);
+  const loadFoodInsightWindow = useFoodLogStore(s => s.loadInsightWindow);
+  useFocusEffect(
+    useCallback(() => {
+      if (!kitchenEnabled) return;
+      const today = getCurrentDayStart();
+      loadFoodInsightWindow(
+        dayKeyOf(addDays(today, -(FOOD_INSIGHT_DAYS - 1))),
+        dayKeyOf(today),
+      );
+    }, [kitchenEnabled, loadFoodInsightWindow]),
+  );
+
   const settings = useSettingsStore(useShallow(s => ({
     dayResetTime: s.dayResetTime,
     completedRetentionDays: s.completedRetentionDays,
@@ -125,11 +169,20 @@ export function MoodScreen() {
     return cutoff === null ? null : dayKeyOf(cutoff);
   }, [settings.completedRetentionDays, settings.dayResetTime]);
 
+  // Only the days the log can speak for — `foodDayInputs` drops the rest, and
+  // the switch drops the lot. Empty rather than absent when the kitchen half is
+  // off, so every food read below reports nothing to say rather than being
+  // asked not to look.
+  const foodDays = useMemo(
+    () => (kitchenEnabled ? foodDayInputs(foodEntries) : []),
+    [kitchenEnabled, foodEntries],
+  );
+
   const days = useMemo(
     () => buildMoodDays(
-      logs, tasks, settings.dayResetTime, healthHistory ?? [], completionsKnownFrom,
+      logs, tasks, settings.dayResetTime, healthHistory ?? [], completionsKnownFrom, foodDays,
     ),
-    [logs, tasks, settings.dayResetTime, healthHistory, completionsKnownFrom],
+    [logs, tasks, settings.dayResetTime, healthHistory, completionsKnownFrom, foodDays],
   );
 
   // Days the mood log covers that the task history no longer does. Said out
@@ -165,12 +218,52 @@ export function MoodScreen() {
   // The two averages, over the days that carry a reading rather than over the
   // window — an absent day is absent here as everywhere else.
   const averageSteps = useMemo(
-    () => (healthReadEnabled ? healthAverage(days, 'steps') : null),
+    () => (healthReadEnabled ? metricAverage(days, 'steps') : null),
     [days, healthReadEnabled],
   );
   const averageSleep = useMemo(
-    () => (healthReadEnabled ? healthAverage(days, 'sleepHours') : null),
+    () => (healthReadEnabled ? metricAverage(days, 'sleepHours') : null),
     [days, healthReadEnabled],
+  );
+
+  // Ordering, and the one-line collapse for a nutrient with nothing to report,
+  // both live in `nutrientFindings` — it is copy, so it is testable there
+  // rather than assembled here. Anything under MIN_PAIRED_DAYS drops out, so a
+  // nutrient nobody's entries state consistently leaves no empty row behind.
+  const foodFindings = useMemo(
+    () => (kitchenEnabled ? nutrientFindings(days) : []),
+    [days, kitchenEnabled],
+  );
+
+  // The two figures the food log itself leads with (see `SUMMARY_KEYS`), over
+  // the days that could speak for themselves rather than over the window.
+  const averageCalories = useMemo(
+    () => (kitchenEnabled ? metricAverage(days, 'calorieKcal') : null),
+    [days, kitchenEnabled],
+  );
+  const averageProtein = useMemo(
+    () => (kitchenEnabled ? metricAverage(days, 'proteinG') : null),
+    [days, kitchenEnabled],
+  );
+
+  // A contrast is keyed on the lowercased label, which is not what the user
+  // typed — same resolution the symptom rows make, and the same reason: showing
+  // "porridge" to somebody who has been writing "Porridge" all month reads as
+  // the app having rewritten their entry.
+  const foodNames = useMemo(() => {
+    const names = new Map<string, string>();
+    for (const entry of foodEntries) {
+      const label = entry.label.trim();
+      if (label) names.set(label.toLowerCase(), label);
+    }
+    return names;
+  }, [foodEntries]);
+  const foodRows = useMemo(
+    () => (kitchenEnabled ? foodMoodContrasts(days).slice(0, 4).map(row => ({
+      ...row,
+      label: foodNames.get(row.label) ?? row.label,
+    })) : []),
+    [days, foodNames, kitchenEnabled],
   );
   const summary = useMemo(() => moodSummary(days, todayKey), [days, todayKey]);
   const completion = useMemo(() => moodCompletionInsight(days), [days]);
@@ -462,6 +555,70 @@ export function MoodScreen() {
                 <Text style={styles.chartCaption}>
                   From Apple Health, over the last {HEALTH_HISTORY_DAYS} days, counting only the
                   {' '}days you logged. These are patterns between two numbers, not causes.
+                </Text>
+              </View>
+            </>
+          )}
+
+          {(foodFindings.length > 0 || averageCalories !== null || averageProtein !== null) && (
+            <>
+              <Text style={styles.sectionTitle}>EATING</Text>
+              <View style={styles.card}>
+                <View style={styles.findings}>
+                  {foodFindings.map(finding => (
+                    <Text key={finding.key} style={styles.finding}>{finding.text}</Text>
+                  ))}
+                </View>
+                {(averageCalories !== null || averageProtein !== null) && (
+                  <View style={styles.splitRow}>
+                    {averageCalories !== null && (
+                      <View style={styles.splitCell}>
+                        <Text style={styles.splitValue}>{Math.round(averageCalories).toLocaleString()}</Text>
+                        <Text style={styles.splitLabel}>calories a day</Text>
+                      </View>
+                    )}
+                    {averageProtein !== null && (
+                      <View style={styles.splitCell}>
+                        <Text style={styles.splitValue}>{Math.round(averageProtein)}g</Text>
+                        <Text style={styles.splitLabel}>protein a day</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+                {/* The two-meal bar is said out loud rather than left as an
+                    invisible filter. It is the one gate here somebody could
+                    otherwise be surprised by, and it is also the answer to "why
+                    does this say fewer days than my food log does". */}
+                <Text style={styles.chartCaption}>
+                  From your food log, over the last {FOOD_INSIGHT_DAYS} days, counting only the days
+                  {' '}you logged at least two meals. A day logged more thinly says less about what
+                  {' '}you ate than it looks like it does. These are patterns between two numbers,
+                  {' '}not causes.
+                </Text>
+              </View>
+            </>
+          )}
+
+          {foodRows.length > 0 && (
+            <>
+              <Text style={styles.sectionTitle}>MOOD BY WHAT YOU ATE</Text>
+              <View style={styles.card}>
+                {foodRows.map(row => (
+                  <View
+                    key={row.label}
+                    style={styles.contrastRow}
+                    accessible
+                    accessibilityLabel={`${row.label}, average mood ${row.moodWith.toFixed(1)} on days you ate it, ${row.moodWithout.toFixed(1)} on days you didn't`}
+                  >
+                    <Text style={styles.contrastLabel} numberOfLines={1}>{row.label}</Text>
+                    <Text style={styles.contrastValue}>
+                      {row.moodWith.toFixed(1)} vs {row.moodWithout.toFixed(1)}
+                    </Text>
+                  </View>
+                ))}
+                <Text style={styles.chartCaption}>
+                  Your average mood on days you logged that food, against days you logged food
+                  {' '}without it. Both sides are days you logged at least two meals.
                 </Text>
               </View>
             </>

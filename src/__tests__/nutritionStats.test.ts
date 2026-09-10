@@ -2,6 +2,7 @@ import type { FoodLogEntry, FoodNutritionSource, NutrientKey } from '../types';
 import { cookingWindow } from '../utils/cookingStats';
 import {
   EMPTY_NUTRITION_COUNTS,
+  foodDayInputs,
   hasNutritionData,
   mostLoggedFoods,
   nutrientAverages,
@@ -283,5 +284,74 @@ describe('hasNutritionData', () => {
     expect(hasNutritionData(null)).toBe(false);
     expect(hasNutritionData(nutritionCounts([], WINDOW))).toBe(false);
     expect(hasNutritionData(nutritionCounts(fullDay('2026-09-08'), WINDOW))).toBe(true);
+  });
+});
+
+describe('foodDayInputs', () => {
+  it('gives a day that reached two meals a row of its totals', () => {
+    const [row] = foodDayInputs(fullDay('2026-09-08'));
+    expect(row.dayKey).toBe('2026-09-08');
+    expect(row.nutrients).toEqual({ calorieKcal: 600, proteinG: 20 });
+  });
+
+  it('refuses a day logged too thinly to stand for a day of eating', () => {
+    // The rule the whole pairing rests on. Somebody who logged breakfast and
+    // got on with their life did not eat 300 calories, and a correlation fed
+    // that figure manufactures "your mood is lower on the days you eat less"
+    // out of the days somebody stopped logging at 11am.
+    expect(foodDayInputs([entry('2026-09-08')])).toEqual([]);
+  });
+
+  it('pools every unslotted entry into one bucket, so two snacks are not two meals', () => {
+    expect(foodDayInputs([
+      entry('2026-09-08', { slot: null, hour: 11 }),
+      entry('2026-09-08', { slot: null, hour: 16 }),
+    ])).toEqual([]);
+  });
+
+  it('keeps today, unlike the averages', () => {
+    // Averaging stops at yesterday because a partial day drags a mean down.
+    // This is paired rather than averaged, and the two-meal bar already asks
+    // that question — so dropping today would cost somebody the day they are
+    // most likely to be looking at.
+    const todayKey = WINDOW.todayKey;
+    expect(foodDayInputs(fullDay(todayKey)).map(r => r.dayKey)).toEqual([todayKey]);
+  });
+
+  it('drops a nutrient that only some of the day stated, rather than reporting a partial total', () => {
+    // Perfectly good on the day's own card, where a coverage clause travels
+    // with it. Across days there is nowhere to print one, and the coverage
+    // varies day to day, so the variation reads as variation in the food.
+    const [row] = foodDayInputs([
+      entry('2026-09-08', { slot: 'breakfast', amounts: { calorieKcal: 300, fiberG: 4 } }),
+      entry('2026-09-08', { slot: 'dinner', amounts: { calorieKcal: 500 } }),
+    ]);
+    expect(row.nutrients.calorieKcal).toBe(800);
+    expect(row.nutrients.fiberG).toBeUndefined();
+  });
+
+  it('never sums an absent nutrient as a zero', () => {
+    const [row] = foodDayInputs([
+      entry('2026-09-08', { slot: 'breakfast', amounts: { calorieKcal: 300 } }),
+      entry('2026-09-08', { slot: 'dinner', amounts: { calorieKcal: 500 } }),
+    ]);
+    expect('proteinG' in row.nutrients).toBe(false);
+  });
+
+  it('folds two spellings of one food into a single label', () => {
+    // Two groups built from one habit halve the days on each side of every
+    // contrast that reads them.
+    const [row] = foodDayInputs([
+      entry('2026-09-08', { slot: 'breakfast', label: 'Coffee' }),
+      entry('2026-09-08', { slot: 'dinner', label: 'coffee' }),
+    ]);
+    expect(row.labels).toEqual(['coffee']);
+  });
+
+  it('comes back oldest first', () => {
+    expect(foodDayInputs([
+      ...fullDay('2026-09-09'),
+      ...fullDay('2026-09-07'),
+    ]).map(r => r.dayKey)).toEqual(['2026-09-07', '2026-09-09']);
   });
 });

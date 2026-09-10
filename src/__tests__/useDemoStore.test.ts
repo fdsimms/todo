@@ -30,7 +30,7 @@ import { OTHER_AISLE } from '../utils/groceryAisles';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useFoodLogStore } from '../store/useFoodLogStore';
 import { describeFoodLogEntry, foodLogTotals, scalePanelToAmount } from '../utils/foodLog';
-import { hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
+import { foodDayInputs, hasNutritionData, nutrientAverages, nutritionCounts, sourceMix } from '../utils/nutritionStats';
 import { packageHelping } from '../utils/scanPortion';
 import { targetedNutrients } from '../utils/nutritionTargets';
 import { NUTRIENT_KEYS } from '../types';
@@ -70,7 +70,7 @@ import { isStepTimerRunning, parseStepDurations, stepDurationOffers, stepTimerRe
 import { useMealPlanStore } from '../store/useMealPlanStore';
 import { usePersonNoteStore } from '../store/usePersonNoteStore';
 import { useMoodStore } from '../store/useMoodStore';
-import { buildMoodDays, contextTagMoodContrasts, moodCompletionInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
+import { buildMoodDays, contextTagMoodContrasts, describeNutrientInsight, foodMoodContrasts, foodPairedDays, moodCompletionInsight, nutrientInsight, symptomMoodContrasts, taskContrastTitles, taskMoodContrasts, MIN_PAIRED_DAYS } from '../utils/moodInsights';
 import { contextTagVocabulary, symptomVocabulary } from '../utils/moodLog';
 import { isStaleNote } from '../utils/personNotes';
 import { personBackfillFieldCounts, PERSON_BACKFILL_FIELDS } from '../utils/peopleBackfill';
@@ -1623,6 +1623,28 @@ describe('demo seed — people', () => {
     const counts = nutritionCounts(useFoodLogStore.getState().windowEntries, window);
     expect(counts.daysLogged).toBeGreaterThan(2);
     expect(hasNutritionData(counts)).toBe(true);
+  });
+
+  it('seeds enough overlap for the food and mood logs to actually be read together', () => {
+    // The join is the whole feature, and it is invisible below MIN_PAIRED_DAYS
+    // of days that were both logged for mood and logged past one meal. A seed
+    // shorter than that leaves the two cards off the Mood screen entirely,
+    // which reads as an app that cannot do this rather than as one nobody has
+    // used yet — the same call `seedMoodLog`'s own length makes.
+    const window = cookingWindow(getLogicalToday(), 90);
+    useFoodLogStore.getState().loadInsightWindow(window.startKey, window.endKey);
+    const days = buildMoodDays(
+      useMoodStore.getState().logs,
+      useTaskStore.getState().tasks,
+      '00:00',
+      [],
+      null,
+      foodDayInputs(useFoodLogStore.getState().insightEntries),
+    );
+    expect(foodPairedDays(days).length).toBeGreaterThanOrEqual(MIN_PAIRED_DAYS);
+    // Something sayable on both cards, rather than a pair of empty ones.
+    expect(describeNutrientInsight(nutrientInsight(days, 'calorieKcal', 'mood'))).toBeTruthy();
+    expect(foodMoodContrasts(days).length).toBeGreaterThan(0);
   });
 
   it('seeds a ragged log, so the two day counts are different numbers', () => {

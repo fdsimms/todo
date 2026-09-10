@@ -3,6 +3,7 @@ import type { FoodLogEntry, FoodNutritionSource, NutrientKey } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { dayKeyToDate } from './dateUtils';
 import type { CookingWindow } from './cookingStats';
+import type { FoodDayInput } from './moodInsights';
 
 /**
  * What the Stats screen can say about eating, derived from food log entries
@@ -288,6 +289,86 @@ export function sourceMix(
     if (entry.recipeId) mix.fromRecipe += 1;
   }
   return mix;
+}
+
+/**
+ * A day's eating in the shape the mood insights can pair against, for the days
+ * the log can actually speak for.
+ *
+ * This is the one function in the file that hands its answer to another
+ * feature, and it lives here rather than in `moodInsights.ts` because both
+ * rules it enforces are the food log's own and are already written down on
+ * this side. `FoodDayInput` states them from the reader's end; this is where
+ * they are applied.
+ *
+ * **The completeness bar is `nutrientAverages`' bar, deliberately the same
+ * one.** A day with breakfast alone in it is already refused from the average
+ * day on this screen, for the reason that it is "a smaller number that is not a
+ * smaller day". Pairing it against a mood would be that same wrong number doing
+ * considerably more damage: not a slightly low average, but a low-calorie day
+ * fed to a correlation, which is how "your mood is lower on the days you eat
+ * less" gets manufactured out of the days somebody stopped logging at 11am. One
+ * constant answers for both, because a day either stands for a day's eating or
+ * it doesn't, and that question has one answer per day rather than one per
+ * reader.
+ *
+ * **Unlike the averages here, today is kept.** That window stops at yesterday
+ * because a partial day drags an average down; this one is paired rather than
+ * averaged, and the completeness bar already asks the question that would have
+ * excluded a half-eaten day. A day that reached two meals is a day whose mood
+ * entry is worth pairing, and dropping today would silently cost a person the
+ * day they are most likely to be looking at.
+ *
+ * **The coverage rule is stricter here than anywhere else in the file**, and it
+ * is the difference between a figure and a comparable one. A total covering
+ * five of seven entries is perfectly good on the day's own card, where
+ * `describeFoodLogTotals` prints the clause that says so. Across days there is
+ * nowhere to print it, and the coverage varies day to day, so the variation
+ * reads as variation in the food. A nutrient not stated by every entry that day
+ * is therefore absent for the day rather than partial: the same refuse-rather-
+ * than-approximate posture `scalePanelToAmount` takes one file over.
+ */
+export function foodDayInputs(entries: readonly FoodLogEntry[]): FoodDayInput[] {
+  const byDay = new Map<string, FoodLogEntry[]>();
+  for (const entry of entries) {
+    const list = byDay.get(entry.dayKey);
+    if (list) list.push(entry);
+    else byDay.set(entry.dayKey, [entry]);
+  }
+
+  const out: FoodDayInput[] = [];
+  for (const [dayKey, dayEntries] of byDay) {
+    // An unslotted entry is its own bucket rather than being pooled, exactly
+    // as `nutritionCounts` treats it: two snacks outside any meal are one
+    // moment of logging, not two.
+    const slots = new Set(dayEntries.map(e => e.slot ?? 'none'));
+    if (slots.size < COMPLETE_DAY_SLOTS) continue;
+
+    const nutrients: Partial<Record<NutrientKey, number>> = {};
+    for (const key of NUTRIENT_KEYS) {
+      let total = 0;
+      let stated = 0;
+      for (const entry of dayEntries) {
+        const amount = entry.nutrition.amounts[key];
+        if (amount === undefined) continue;
+        total += amount;
+        stated += 1;
+      }
+      if (stated === dayEntries.length) nutrients[key] = round(total);
+    }
+
+    const labels = new Set<string>();
+    for (const entry of dayEntries) {
+      // Lowercased for matching, the same call `symptomKey` makes and for the
+      // same reason: "Coffee" and "coffee" are one food, and two groups built
+      // from one habit halve the days on each side of every contrast.
+      const label = entry.label.trim().toLowerCase();
+      if (label) labels.add(label);
+    }
+
+    out.push({ dayKey, nutrients, labels: [...labels].sort() });
+  }
+  return out.sort((a, b) => a.dayKey.localeCompare(b.dayKey));
 }
 
 /**
