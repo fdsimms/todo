@@ -16,6 +16,8 @@ import {
   foodPairedDays,
   symptomFoodContrasts,
   symptomFoodDays,
+  rateBarPercent,
+  RATE_BAR_MIN_PERCENT,
   metricAverage,
   healthInsight,
   nutrientFindings,
@@ -1053,5 +1055,31 @@ describe('a symptom against what you ate', () => {
     const [row] = symptomFoodContrasts(rows(12, [0, 1, 2, 3], []), 'headache');
     expect(row.withHits).toBe(0);
     expect(row.delta).toBe(0);
+  });
+});
+
+describe('how wide a rate draws', () => {
+  it('is the rate as a percentage', () => {
+    expect(rateBarPercent(0.5)).toBe(50);
+    expect(rateBarPercent(0.75)).toBe(75);
+    expect(rateBarPercent(1)).toBe(100);
+  });
+
+  it('never draws a rate above zero as nothing', () => {
+    // 1 day in 30 is 3% of a track, which at a phone's width is an empty bar —
+    // and an empty bar says the symptom never happened on those days, which is
+    // a different fact from the one it holds.
+    expect(rateBarPercent(1 / 30)).toBe(RATE_BAR_MIN_PERCENT);
+    expect(rateBarPercent(0.001)).toBe(RATE_BAR_MIN_PERCENT);
+  });
+
+  it('draws nothing for a rate of nothing', () => {
+    // The floor is for a small number, not for none. A stub on zero would be
+    // the same error pointed the other way.
+    expect(rateBarPercent(0)).toBe(0);
+  });
+
+  it('never overflows its track', () => {
+    expect(rateBarPercent(1.4)).toBe(100);
   });
 });

@@ -1081,6 +1081,32 @@ export interface RateContrast {
 }
 
 /**
+ * The shortest bar a rate above zero is allowed to draw, as a percentage.
+ *
+ * A rate of 1 day in 30 is 3% of a track, which at a phone's width is a couple
+ * of pixels and reads as an empty bar — as *none*, which is a different fact
+ * from the one it holds. So a nonzero rate never draws nothing.
+ */
+export const RATE_BAR_MIN_PERCENT = 4;
+
+/**
+ * How wide a rate's bar should be, 0..100.
+ *
+ * **The floor overstates a very small rate slightly, and that is the lesser of
+ * the two errors.** Rounding 3% up to 4% moves a bar by a pixel; drawing it as
+ * empty says the symptom never happened on those days, which is wrong rather
+ * than imprecise. The counts sit beside the bar in text and are the record,
+ * so the bar is an aid to comparison and not the figure itself.
+ *
+ * Zero stays zero. A day count of none is exactly what an empty track means,
+ * and giving it a stub would be the same error pointed the other way.
+ */
+export function rateBarPercent(rate: number): number {
+  if (!(rate > 0)) return 0;
+  return Math.min(100, Math.max(RATE_BAR_MIN_PERCENT, Math.round(rate * 100)));
+}
+
+/**
  * The days that can answer a symptom-against-food question at all.
  *
  * Two conditions, and the second is the one a naive version drops.

@@ -17,7 +17,7 @@ import {
   logsWithSymptom, symptomSeverityOnDay, symptomStatFor,
 } from '../utils/moodHistory';
 import {
-  MIN_PAIRED_DAYS, buildMoodDays, symptomFoodContrasts, symptomMoodContrasts,
+  MIN_PAIRED_DAYS, buildMoodDays, rateBarPercent, symptomFoodContrasts, symptomMoodContrasts,
 } from '../utils/moodInsights';
 import { foodDayInputs } from '../utils/nutritionStats';
 import { useFoodLogStore, FOOD_INSIGHT_DAYS } from '../store/useFoodLogStore';
@@ -297,22 +297,41 @@ export function SymptomDetailScreen() {
           <>
             <Text style={styles.sectionTitle}>BY WHAT YOU ATE</Text>
             <View style={styles.card}>
-              {foodRows.map(row => (
+              {/* Two bars on one scale rather than "3 of 6 vs 1 of 9" on a
+                  line. Four numbers in a row is arithmetic the eye cannot do:
+                  whether 1-in-11 is more or less than 3-in-4 takes a moment,
+                  and comparing that against the row above it takes another. A
+                  pair of bars makes both instant, and the counts stay beside
+                  them because they, not the bars, are the record — the sample
+                  is what stops "67% against 14%" reading as a finding when the
+                  first number is three days. */}
+              {foodRows.map((row, i) => (
                 <View
                   key={row.label}
-                  style={styles.severityRow}
+                  style={[styles.foodRow, i > 0 && styles.foodRowGap]}
                   accessible
                   accessibilityLabel={`${foodNames.get(row.label) ?? row.label}: logged on ${row.withHits} of the ${row.withDays} days you ate it, and ${row.withoutHits} of the ${row.withoutDays} days you didn't`}
                 >
-                  <Text style={styles.severityLabel} numberOfLines={1}>
+                  <Text style={styles.foodName} numberOfLines={1}>
                     {foodNames.get(row.label) ?? row.label}
                   </Text>
-                  {/* Days rather than percentages, so the sample travels with
-                      the figure. "67% against 14%" hides that the first number
-                      is six days. */}
-                  <Text style={styles.severityCount}>
-                    {row.withHits} of {row.withDays} vs {row.withoutHits} of {row.withoutDays}
-                  </Text>
+                  {([
+                    { key: 'Ate it', rate: row.rateWith, hits: row.withHits, days: row.withDays, muted: false },
+                    { key: 'Didn’t', rate: row.rateWithout, hits: row.withoutHits, days: row.withoutDays, muted: true },
+                  ] as const).map(side => (
+                    <View key={side.key} style={styles.rateLine}>
+                      <Text style={[styles.rateKey, side.muted && styles.rateMuted]}>{side.key}</Text>
+                      {/* Decoration: the row above carries the whole
+                          comparison for VoiceOver, so a bar announcing itself
+                          would read the same figures a second time. */}
+                      <View style={styles.rateTrack} accessible={false} importantForAccessibility="no">
+                        <View style={[styles.rateFill, { width: `${rateBarPercent(side.rate)}%` }]} />
+                      </View>
+                      <Text style={[styles.rateCount, side.muted && styles.rateMuted]}>
+                        {side.hits} of {side.days}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
               ))}
               <Text style={styles.caption}>
@@ -408,6 +427,36 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   severityDot: { width: 8, height: 8, borderRadius: radius.full },
   severityLabel: { flex: 1, fontSize: font.sm, color: colors.text },
   severityCount: { fontSize: font.sm, color: colors.textSecondary, fontWeight: fontWeight.medium },
+  // A food's pair of bars: 3px between the two lines, which belong together,
+  // against `spacing.md` between one food and the next. Without that
+  // difference the card reads as one block of eight bars rather than as four
+  // foods — the two gaps have to be told apart at a glance, since the pairing
+  // is what the whole comparison rests on.
+  foodRow: { gap: 3 },
+  foodRowGap: { marginTop: spacing.md },
+  foodName: { fontSize: font.sm, color: colors.text, marginBottom: 3 },
+  rateLine: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  // Fixed widths on both ends so every track starts and finishes on the same
+  // x, which is what lets one food's bars be compared against another's.
+  rateKey: { width: 46, fontSize: font.xs, color: colors.textSecondary },
+  rateCount: {
+    width: 62,
+    textAlign: 'right',
+    fontSize: font.xs,
+    color: colors.textSecondary,
+    fontVariant: ['tabular-nums'],
+  },
+  rateMuted: { color: colors.textTertiary },
+  rateTrack: {
+    flex: 1,
+    height: 7,
+    borderRadius: radius.full,
+    backgroundColor: colors.separator,
+    overflow: 'hidden',
+  },
+  // One colour for both sides on purpose: length is the whole of the data, and
+  // a second colour would rank the two groups the way this card must not.
+  rateFill: { height: 7, borderRadius: radius.full, backgroundColor: colors.accent },
   splitRow: { flexDirection: 'row' },
   splitCell: { flex: 1, alignItems: 'center' },
   splitValue: { fontSize: font.lg, fontWeight: fontWeight.bold, color: colors.text },
