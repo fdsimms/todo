@@ -122,11 +122,6 @@ const KITCHEN_SCREENS: ReadonlySet<string> = new Set(
 const PUSHED_ROUTES = new Set([
   'Settings', 'SettingsGroup', 'TemplateDetail', 'ProjectDetail', 'CategoryDetail',
   'RecipeDetail', 'PersonDetail', 'CookbookDetail',
-  // Reached from Settings rather than from the menu — it fills in empty fields
-  // across tasks, categories, projects, people and grocery items, which is
-  // maintenance rather than a place to work. A pushed card like SettingsGroup,
-  // so it needs no tab and can't be restored onto at launch.
-  'Backfill',
   // Reached from the Mood screen rather than from the menu. Both are the mood
   // log read at a narrower grain — every entry there is, and one symptom —
   // which is a place you go *from* Mood rather than a destination of its own,
@@ -255,6 +250,7 @@ const MainTabs = React.memo(function MainTabs({
       <Tab.Screen name="Weight" component={WeightScreen} options={HIDDEN} />
       <Tab.Screen name="FoodLog" component={FoodLogScreen} options={HIDDEN} />
       <Tab.Screen name="Stuck" component={StuckScreen} options={HIDDEN} />
+      <Tab.Screen name="Backfill" component={BackfillScreen} options={HIDDEN} />
       <Tab.Screen name="Reminders" component={RemindersScreen} options={HIDDEN} />
       <Tab.Screen name="Archived" component={ArchivedScreen} options={HIDDEN} />
       <Tab.Screen name="Tips" component={TipsScreen} options={HIDDEN} />
@@ -394,11 +390,6 @@ export default function AppNavigator() {
           <RootStack.Screen
             name="SettingsGroup"
             component={SettingsGroupScreen}
-            options={{ presentation: 'card' }}
-          />
-          <RootStack.Screen
-            name="Backfill"
-            component={BackfillScreen}
             options={{ presentation: 'card' }}
           />
           <RootStack.Screen
