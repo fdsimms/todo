@@ -36,6 +36,8 @@ import {
   weighInNotes,
 } from './weightTasks';
 import { scalePanelToAmount } from './foodLog';
+import { packageHelping } from './scanPortion';
+import { describeProduct } from './groceryProduct';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
@@ -1391,6 +1393,40 @@ function seedFoodLog(today: Date): void {
     { name: 'Potatoes', quantity: '250 g', slot: 'dinner', hour: 19 },
     { name: 'Butter', quantity: '1 tbsp', slot: 'dinner', hour: 19 },
   ];
+
+  /**
+   * The one entry that came off a barcode rather than the picker.
+   *
+   * Its figures are the *box's* panel — the one `linkScannedGtins` carried off
+   * the seeded barcode cache — rather than the catalog row's, which is the
+   * whole reason a scan is worth having: a specific loaf states its own label,
+   * where "bread" can only state an average. Logged as one of the panel's own
+   * servings, which is the answer `packageChoices` offers first and the only
+   * amount a label supports without somebody typing one.
+   */
+  const { itemProducts } = useGroceryStore.getState();
+  const scannedBox = itemProducts.find(p => p.gtin && p.nutrition);
+  if (scannedBox?.nutrition) {
+    const item = items.find(i => i.id === scannedBox.itemId);
+    const label = scannedBox.nutrition.servingText
+      ? `1 serving (${scannedBox.nutrition.servingText})`
+      : '1 serving';
+    const helping = packageHelping(scannedBox.nutrition, 1, label);
+    if (item && helping) {
+      const at = new Date(yesterday);
+      at.setHours(8, 0, 0, 0);
+      addEntry({
+        label: `${item.name}, ${describeProduct(scannedBox) ?? 'scanned'}`,
+        quantity: label,
+        grams: helping.servingGrams,
+        nutrition: helping,
+        slot: 'breakfast',
+        itemId: item.id,
+        productId: scannedBox.id,
+        at,
+      });
+    }
+  }
 
   for (const meal of meals) {
     const item = items.find(i => i.name === meal.name);
