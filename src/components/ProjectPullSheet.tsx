@@ -602,7 +602,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   applyBtnTextDisabled: { color: colors.textTertiary },
   skipBtn: {
     alignItems: 'center',
-    paddingBottom: spacing.md,
+    paddingVertical: spacing.md,
   },
   skipBtnText: { color: colors.textSecondary, fontSize: font.sm, fontWeight: fontWeight.medium },
   cancelCard: {
