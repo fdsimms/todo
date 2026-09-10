@@ -16,6 +16,8 @@ import {
   foodLogTotals,
 } from '../utils/foodLog';
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
+import { targetProgress } from '../utils/nutritionTargets';
+import { useSettingsStore } from '../store/useSettingsStore';
 import { NUTRIENT_KEYS } from '../types';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -51,6 +53,7 @@ export function FoodLogScreen() {
   const entries = useFoodLogStore(useShallow(s => s.entries));
   const loadRange = useFoodLogStore(s => s.loadRange);
   const removeEntry = useFoodLogStore(s => s.removeEntry);
+  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
 
   const [dayKey, setDayKey] = useState(() => dayKeyOf(getCurrentDayStart()));
   const [addingSlot, setAddingSlot] = useState<MealSlot | null>(null);
@@ -175,20 +178,47 @@ export function FoodLogScreen() {
           <>
             <View style={styles.totalsCard}>
               {shownKeys.map(key => (
-                <View key={key} style={styles.totalRow}>
+                <View key={key} style={styles.totalBlock}>
+                <View style={styles.totalRow}>
                   <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
                   <View style={styles.totalRight}>
                     <Text style={styles.totalValue}>
-                      {Math.round(totals.total[key] as number)}{NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}
+                      {Math.round(totals.total[key] as number)}{nutritionTargets[key] !== undefined || NUTRIENT_LABEL[key].unit === 'cal' ? '' : NUTRIENT_LABEL[key].unit}
                     </Text>
+                    {/* The target, when there is one, and nothing suggested when
+                        there isn't — see nutritionTargets.ts. Reported flat
+                        beside the figure rather than as a percentage or a
+                        verdict: counts, never a score. */}
+                    {nutritionTargets[key] !== undefined && (
+                      <Text style={styles.totalTarget}>
+                        of {nutritionTargets[key]!.toLocaleString()}{NUTRIENT_LABEL[key].unit === 'cal' ? ' cal' : NUTRIENT_LABEL[key].unit}
+                      </Text>
+                    )}
                     {/* What the figure speaks for. Without it a total built from
-                        three of seven entries reads as the day's. */}
+                        three of seven entries reads as the day's — and against a
+                        target it would overstate the day rather than merely
+                        being vague. */}
                     {(totals.reported[key] ?? 0) < totals.entries && (
                       <Text style={styles.totalCoverage}>
                         from {totals.reported[key] ?? 0} of {totals.entries}
                       </Text>
                     )}
                   </View>
+                </View>
+                {/* One colour at both ends, because whether being over a target
+                    is good or bad is not knowable: somebody tracking protein
+                    wants to reach it and somebody tracking sodium wants to stay
+                    under, and nothing here is told which. */}
+                {nutritionTargets[key] !== undefined && (
+                  <View style={styles.targetTrack}>
+                    <View
+                      style={[
+                        styles.targetFill,
+                        { width: `${targetProgress(key, totals.total[key], nutritionTargets) * 100}%` },
+                      ]}
+                    />
+                  </View>
+                )}
                 </View>
               ))}
               <InlineAction
@@ -274,7 +304,11 @@ function makeStyles(colors: Colors) {
       gap: spacing.sm,
       marginBottom: spacing.lg,
     },
+    totalBlock: { gap: spacing.xs },
     totalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    totalTarget: { color: colors.textSecondary, fontSize: font.sm },
+    targetTrack: { height: 4, borderRadius: 2, backgroundColor: colors.separator, overflow: 'hidden' },
+    targetFill: { height: '100%', borderRadius: 2, backgroundColor: colors.accent },
     totalLabel: { color: colors.text, fontSize: font.sm },
     totalRight: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
     totalValue: { color: colors.text, fontSize: font.md, fontWeight: fontWeight.semibold },

@@ -10,6 +10,8 @@ import { SettingsRow } from './SettingsRow';
 import { SettingsSegments } from './SettingsSegments';
 import { type SegmentOption } from '../../components/SegmentedControl';
 import { PillGroup } from '../../components/PillGroup';
+import { NutritionTargetsSheet } from '../../components/NutritionTargetsSheet';
+import { targetedNutrients } from '../../utils/nutritionTargets';
 import { StandingSwapsSheet } from '../../components/StandingSwapsSheet';
 import { standingSwaps } from '../../utils/standingSwaps';
 import { makeSettingsStyles } from './settingsStyles';
@@ -46,6 +48,9 @@ export function KitchenSettings() {
   const setKitchenOnToday = useSettingsStore(s => s.setKitchenOnToday);
   const cookRecapEnabled = useSettingsStore(s => s.cookRecapEnabled);
   const mealLogPrompt = useSettingsStore(s => s.mealLogPrompt);
+  const nutritionTargets = useSettingsStore(useShallow(s => s.nutritionTargets));
+  const targetCount = targetedNutrients(nutritionTargets).length;
+  const [targetsOpen, setTargetsOpen] = useState(false);
   const setCookRecapEnabled = useSettingsStore(s => s.setCookRecapEnabled);
   const setMealLogPrompt = useSettingsStore(s => s.setMealLogPrompt);
   const restockOfferEnabled = useSettingsStore(s => s.restockOfferEnabled);
@@ -110,6 +115,17 @@ export function KitchenSettings() {
           accessibilityLabel="Show what needs using up"
         />
         )}
+        <SettingsRow
+          entryId="nutritionTargets"
+          icon="flag-outline"
+          iconColor={targetCount > 0 ? colors.accent : undefined}
+          label="Daily targets"
+          hint={targetCount === 0
+            ? 'Nothing set. A figure to read the day\'s food log total against, if you want one.'
+            : `${targetCount} set. Read against the day's total in the food log.`}
+          onPress={() => setTargetsOpen(true)}
+          accessibilityLabel="Daily nutrition targets"
+        />
         <SettingsRow
           entryId="mealLogPrompt"
           icon="nutrition-outline"
@@ -264,6 +280,10 @@ export function KitchenSettings() {
       <StandingSwapsSheet
         visible={standingSwapsVisible}
         onClose={() => setStandingSwapsVisible(false)}
+      />
+      <NutritionTargetsSheet
+        visible={targetsOpen}
+        onClose={() => setTargetsOpen(false)}
       />
     </>
   );
