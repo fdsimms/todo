@@ -2460,8 +2460,11 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     expect(oats.item).not.toBeNull();
 
     // Figures with no portion table, against a line written in tablespoons:
-    // the "weigh it" row, and the offer has to survive its own probe.
-    const oil = recipeNutritionLines(byName('Roast potatoes'), items, itemProducts)
+    // the "weigh it" row, and the offer has to survive its own probe. Roast
+    // potatoes' own oil line moved to "neutral oil, such as avocado oil" for
+    // the "such as" clause example (see addIngredientsFromText there), so the
+    // plain olive-oil line this case needs now lives on the salad instead.
+    const oil = recipeNutritionLines(byName('Simple green salad'), items, itemProducts)
       .find(l => l.name.toLowerCase().includes('olive oil'))!;
     expect(oil.state).toBe('unmeasured');
     expect(weighableLine(oil.quantity, oil.prep, oil.nutrition!, oil.item!.name))
