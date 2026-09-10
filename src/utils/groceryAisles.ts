@@ -58,6 +58,14 @@ export const AISLE_LEXICON: Record<string, string> = {
   nectarines: 'Produce', onion: 'Produce', onions: 'Produce', orange: 'Produce',
   oranges: 'Produce', parsley: 'Produce', parsnip: 'Produce', peach: 'Produce',
   peaches: 'Produce', pear: 'Produce', pears: 'Produce', peppers: 'Produce',
+  // Explicit multi-word overrides: 'pepper' alone is Baking & Spices (ground
+  // pepper), so "bell pepper" etc. would otherwise resolve via the last-token
+  // fallback to the wrong aisle entirely, same as "ice cream" needs its own
+  // entry to beat plain "cream".
+  'bell pepper': 'Produce', 'red pepper': 'Produce', 'green pepper': 'Produce',
+  'yellow pepper': 'Produce', 'orange pepper': 'Produce', 'chili pepper': 'Produce',
+  'jalapeno pepper': 'Produce', 'poblano pepper': 'Produce', 'serrano pepper': 'Produce',
+  'habanero pepper': 'Produce', 'banana pepper': 'Produce', 'sweet pepper': 'Produce',
   pineapple: 'Produce', plums: 'Produce', potato: 'Produce', potatoes: 'Produce',
   pumpkin: 'Produce', radish: 'Produce', raspberries: 'Produce', rosemary: 'Produce',
   salad: 'Produce', scallions: 'Produce', shallot: 'Produce', shallots: 'Produce',

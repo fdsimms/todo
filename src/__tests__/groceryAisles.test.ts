@@ -58,6 +58,9 @@ describe('aisleForName', () => {
     // "ice cream" is Frozen even though "cream" alone is Dairy & Eggs.
     expect(aisleForName('ice cream')).toBe('Frozen');
     expect(aisleForName('cream')).toBe('Dairy & Eggs');
+    // "bell pepper" is Produce even though "pepper" alone is Baking & Spices.
+    expect(aisleForName('bell pepper')).toBe('Produce');
+    expect(aisleForName('pepper')).toBe('Baking & Spices');
   });
 
   it('falls back to any token when the last one is unknown', () => {
