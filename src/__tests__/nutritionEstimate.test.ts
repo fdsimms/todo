@@ -15,6 +15,7 @@ function reply(over: Record<string, unknown> = {}) {
     confidence: 'high',
     attribution: 'Five Guys',
     questions: [],
+    breakdown: [],
     ...over,
   };
 }
@@ -28,6 +29,7 @@ function estimate(over: Partial<NutritionEstimate> = {}): NutritionEstimate {
     confidence: 'medium',
     attribution: null,
     questions: [],
+    breakdown: [],
     ...over,
   };
 }
@@ -42,6 +44,7 @@ describe('readNutritionEstimate', () => {
       confidence: 'high',
       attribution: 'Five Guys',
       questions: [],
+      breakdown: [],
     });
   });
 
@@ -131,6 +134,50 @@ describe('readNutritionEstimate questions', () => {
   it('treats a missing or malformed question list as no questions', () => {
     expect(readNutritionEstimate(reply({ questions: undefined }))?.questions).toEqual([]);
     expect(readNutritionEstimate(reply({ questions: 'ask about size' }))?.questions).toEqual([]);
+  });
+});
+
+describe('readNutritionEstimate breakdown', () => {
+  it('keeps a component with figures', () => {
+    const read = readNutritionEstimate(reply({
+      breakdown: [
+        { label: 'baguette', amounts: { calorieKcal: 40, carbsG: 6 } },
+        { label: 'salted butter', amounts: { calorieKcal: 11, fatG: 1 } },
+      ],
+    }));
+    expect(read?.breakdown).toEqual([
+      { label: 'baguette', amounts: { calorieKcal: 40, carbsG: 6 } },
+      { label: 'salted butter', amounts: { calorieKcal: 11, fatG: 1 } },
+    ]);
+  });
+
+  it('drops a component with nothing to call it', () => {
+    expect(readNutritionEstimate(reply({
+      breakdown: [{ label: '   ', amounts: { calorieKcal: 40 } }],
+    }))?.breakdown).toEqual([]);
+  });
+
+  it('drops a component with no figures, same as the total would', () => {
+    expect(readNutritionEstimate(reply({
+      breakdown: [{ label: 'baguette', amounts: {} }],
+    }))?.breakdown).toEqual([]);
+  });
+
+  it('applies the same absent/negative rules a top-level amount does', () => {
+    const read = readNutritionEstimate(reply({
+      breakdown: [{ label: 'baguette', amounts: { calorieKcal: 40, fatG: -3, carbsG: Infinity } }],
+    }));
+    expect(read?.breakdown).toEqual([{ label: 'baguette', amounts: { calorieKcal: 40 } }]);
+  });
+
+  it('treats a missing or malformed breakdown as none', () => {
+    expect(readNutritionEstimate(reply({ breakdown: undefined }))?.breakdown).toEqual([]);
+    expect(readNutritionEstimate(reply({ breakdown: 'bread, butter' }))?.breakdown).toEqual([]);
+  });
+
+  it('caps how many components it keeps', () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ label: `item ${i}`, amounts: { calorieKcal: 1 } }));
+    expect(readNutritionEstimate(reply({ breakdown: many }))?.breakdown.length).toBeLessThan(20);
   });
 });
 
