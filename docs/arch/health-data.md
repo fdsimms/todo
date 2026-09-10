@@ -426,10 +426,18 @@ looking for. So:
   correlation is what retracts the meal; the members are carried so a partial
   save still leaves something to clean up.
 - **The delete tallies its results on a serial queue.** Eleven deletes report
-  back on arbitrary background queues. The read side's own fan-out counts on a
-  bare variable; this one does not, because getting the count wrong means
-  telling the app a retraction succeeded when it did not, and what is left
-  behind is a sample in a medical record.
+  back on arbitrary background queues, and getting the count wrong means
+  telling the app a retraction succeeded when it did not, leaving a sample in a
+  medical record.
+
+  `readDailyHealth`'s own ten-way fan-out was counting down on a bare variable
+  and got the same treatment in the same change. It had shipped that way and
+  never been seen to fail, most likely because HealthKit happens to deliver
+  those callbacks serially — but nothing documents that, and the failure it
+  invites is silent in both directions: a lost decrement leaves the promise
+  unresolved for ever, which reads as Health simply never answering, and a
+  doubled one resolves it twice. The queue also supplies the memory ordering
+  the final block needs to see ten arrays written on ten other threads.
 
 ### A correlation, not ten loose samples
 

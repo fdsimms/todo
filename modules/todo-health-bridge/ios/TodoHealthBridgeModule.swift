@@ -666,8 +666,8 @@ public class TodoHealthBridgeModule: Module {
       let predicate = HKQuery.predicateForObjects(with: uuids)
       // Eleven deletes report back on arbitrary background queues, so the
       // tally is kept on a serial queue of its own rather than touched from
-      // whichever thread finished. The read side's own fan-out counts on the
-      // bare variable; this one does not, because getting the count wrong here
+      // whichever thread finished — the same treatment `readDailyHealth`'s own
+      // fan-out gets, and needed more sharply here: getting the count wrong
       // means telling the app a retraction succeeded when it did not, and the
       // thing left behind is a sample in somebody's medical record.
       let tally = DispatchQueue(label: "TodoHealthBridge.deleteHealthSamples")
@@ -756,19 +756,31 @@ public class TodoHealthBridgeModule: Module {
       // Ten queries, one promise. `resolve` is called by whichever finishes
       // last, and `pending` is only ever touched on the health store's own
       // serial callback queue, so the count needs no lock.
+      // The ten queries report back on arbitrary background queues, so the
+      // countdown runs on a serial queue of its own rather than on whichever
+      // thread finished. It does two jobs and both are needed: the decrements
+      // cannot interleave (a lost one leaves the promise unresolved for ever,
+      // which reads as Health simply never answering, and a doubled one
+      // resolves it twice), and every per-day array written before a query's
+      // own `finish` is enqueued is therefore visible to the final block that
+      // reads all ten. Each array has exactly one writer, so this is the whole
+      // of the sharing.
+      let tally = DispatchQueue(label: "TodoHealthBridge.readDailyHealth")
       var pending = 10
       let finish = {
-        pending -= 1
-        guard pending == 0 else { return }
-        let entries: [String] = (0..<days).map { i in
-          let part: (Double?) -> String = { $0.map { "\(Int($0.rounded()))" } ?? "null" }
-          return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"steps\":\(part(steps[i])),"
-            + "\"sleepMinutes\":\(part(sleepMinutes[i])),\"sodiumMg\":\(part(sodiumMg[i])),"
-            + "\"proteinG\":\(part(proteinG[i])),\"satFatG\":\(part(satFatG[i])),\"fiberG\":\(part(fiberG[i])),"
-            + "\"sugarG\":\(part(sugarG[i])),\"caffeineMg\":\(part(caffeineMg[i])),\"waterMl\":\(part(waterMl[i])),"
-            + "\"calorieKcal\":\(part(calorieKcal[i]))}"
+        tally.async {
+          pending -= 1
+          guard pending == 0 else { return }
+          let entries: [String] = (0..<days).map { i in
+            let part: (Double?) -> String = { $0.map { "\(Int($0.rounded()))" } ?? "null" }
+            return "{\"start\":\"\(Self.formatISO(starts[i]))\",\"steps\":\(part(steps[i])),"
+              + "\"sleepMinutes\":\(part(sleepMinutes[i])),\"sodiumMg\":\(part(sodiumMg[i])),"
+              + "\"proteinG\":\(part(proteinG[i])),\"satFatG\":\(part(satFatG[i])),\"fiberG\":\(part(fiberG[i])),"
+              + "\"sugarG\":\(part(sugarG[i])),\"caffeineMg\":\(part(caffeineMg[i])),\"waterMl\":\(part(waterMl[i])),"
+              + "\"calorieKcal\":\(part(calorieKcal[i]))}"
+          }
+          promise.resolve("[" + entries.joined(separator: ",") + "]")
         }
-        promise.resolve("[" + entries.joined(separator: ",") + "]")
       }
 
       var started = false
