@@ -18,8 +18,8 @@ import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import { addCustomPortion, nutritionFor } from '../utils/foodNutrition';
-import { recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
-import { perServing, recipeNutrition } from '../utils/recipeNutrition';
+import { combineFoodNutrition, recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
+import { perServing, recipeNutrition, recipeNutritionLines, type NutritionLine } from '../utils/recipeNutrition';
 import { describeProduct } from '../utils/groceryProduct';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
@@ -63,6 +63,17 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * appends it with `custom: true`, and it's written through `setItemNutrition`/
  * `setProductNutrition` so it's there the next time this food is logged, not
  * just for this entry.
+ *
+ * **A dish can carry lines nothing will ever fix for it.** "1 baguette,
+ * warmed, for serving" has no amount to weigh and no figures to correct —
+ * `recipeNutrition.ts`'s rollup already leaves it out, and `RecipeNutritionSheet`
+ * has nothing to offer it either, because there is no single right answer to
+ * write down once. What varies is how much of it this particular plate had,
+ * which is a fact about this entry, not about the recipe — so it's asked for
+ * here instead, per line, every time the dish is logged, and answering is
+ * always optional. `combineFoodNutrition` folds whichever lines got an answer
+ * into the dish's own figures; the rest are left out exactly as the recipe
+ * page already leaves them out.
  */
 
 interface Props {
@@ -122,6 +133,9 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
   const [weighing, setWeighing] = useState(false);
   const [weighGrams, setWeighGrams] = useState('');
   const [dbSearchOpen, setDbSearchOpen] = useState(false);
+  // What was typed for each of a dish's amount-varies lines, keyed by the
+  // recipe ingredient's own id. See `varyingLines` below.
+  const [varyingAmounts, setVaryingAmounts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (!visible) return;
@@ -138,6 +152,12 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
   useEffect(() => {
     setWeighing(false);
     setWeighGrams('');
+  }, [picked]);
+
+  // A fresh dish starts with none of its varying lines answered, same as a
+  // fresh food starts with no weighed portion above.
+  useEffect(() => {
+    setVaryingAmounts({});
   }, [picked]);
 
 
@@ -219,6 +239,33 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
     return candidates.filter(c => groceryNameKey(c.label).includes(key)).slice(0, 40);
   }, [candidates, query]);
 
+  // The dish's own lines with no fixed amount to count them by — a serving
+  // suggestion like "1 baguette, warmed, for serving" rather than an
+  // ingredient nobody's weighed yet. Excludes anything `weighableLine` could
+  // settle with a one-time catalog weighing (RecipeNutritionSheet's own
+  // remedy for that): what's left is genuinely different every time the dish
+  // is made, so asking here — for this one helping — is the only place left
+  // to ask it, rather than a fact `recipeNutrition.ts`'s static rollup could
+  // ever hold for the recipe as a whole.
+  const varyingLines = useMemo<NutritionLine[]>(() => {
+    if (!picked || picked.kind !== 'dish') return [];
+    const recipe = recipes.find(r => r.id === picked.recipeId);
+    if (!recipe) return [];
+    return recipeNutritionLines(recipe, items, itemProducts).filter(line => {
+      if (line.state !== 'unmeasured' || !line.nutrition || !line.item) return false;
+      return weighableLine(line.quantity, line.prep, line.nutrition, line.item.name) === null;
+    });
+  }, [picked, recipes, items, itemProducts]);
+
+  const varyingResolved = useMemo(
+    () => varyingLines.map(line => {
+      const typed = varyingAmounts[line.id]?.trim() ?? '';
+      const resolved = typed && line.nutrition ? scalePanelToAmount(line.nutrition, typed, line.prep) : null;
+      return { line, typed, resolved };
+    }),
+    [varyingLines, varyingAmounts],
+  );
+
   const built = useMemo(() => {
     if (!picked) return null;
     if (picked.kind === 'dish') {
@@ -232,12 +279,15 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
         itemProducts,
       );
       if (!dish) return null;
-      const nutrition = recipeHelpingNutrition(perServing(dish), helpings);
-      return nutrition ? { nutrition, grams: null as number | null } : null;
+      const base = recipeHelpingNutrition(perServing(dish), helpings);
+      if (!base) return null;
+      const extras = varyingResolved.filter(r => r.resolved).map(r => ({ nutrition: r.resolved!.nutrition }));
+      const nutrition = extras.length > 0 ? combineFoodNutrition(base, extras) : base;
+      return { nutrition, grams: null as number | null };
     }
     if (!picked.panel) return null;
     return scalePanelToAmount(picked.panel, amount, null);
-  }, [picked, amount, recipes, items, itemProducts]);
+  }, [picked, amount, recipes, items, itemProducts, varyingResolved]);
 
   // What's actually offered to weigh, which `weighableLine` decides rather
   // than the shape of the typed amount alone.
@@ -282,9 +332,13 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
 
   const handleSave = () => {
     if (!picked || !built) return;
+    const answeredExtras = varyingResolved.filter(r => r.resolved).map(r => r.line.name);
+    const quantity = answeredExtras.length > 0
+      ? `${amount.trim()}, plus ${answeredExtras.join(', ')}`
+      : amount.trim();
     const draft: FoodLogDraft = {
       label: picked.label,
-      quantity: amount.trim(),
+      quantity,
       grams: built.grams,
       nutrition: built.nutrition,
       slot: chosenSlot,
@@ -437,6 +491,32 @@ export function FoodLogEntrySheet({ visible, slot, at, seedRecipeId, onClose, on
               </Text>
             )}
 
+            {varyingLines.length > 0 && (
+              <>
+                <Text style={[styles.label, styles.labelSpaced]}>ANYTHING ELSE?</Text>
+                <Text style={styles.hint}>
+                  These have no fixed amount in the recipe, so they're not in the figures
+                  above. Say how much you had of any you want counted — skip the rest.
+                </Text>
+                {varyingResolved.map(({ line, typed, resolved }) => (
+                  <View key={line.id} style={styles.varyingRow}>
+                    <Text style={styles.varyingName} numberOfLines={1}>{line.name}</Text>
+                    <TextInput
+                      style={styles.varyingInput}
+                      value={varyingAmounts[line.id] ?? ''}
+                      onChangeText={text => setVaryingAmounts(a => ({ ...a, [line.id]: text }))}
+                      placeholder="e.g. 2 slices"
+                      placeholderTextColor={colors.textTertiary}
+                      accessibilityLabel={`How much ${line.name} you had`}
+                    />
+                    {!!typed && !resolved && (
+                      <Text style={styles.error}>Can't measure that against this food's own figures.</Text>
+                    )}
+                  </View>
+                ))}
+              </>
+            )}
+
             <Text style={[styles.label, styles.labelSpaced]}>WHICH MEAL</Text>
             <SegmentedControl<MealSlot | null>
               options={[
@@ -577,6 +657,16 @@ function makeStyles(colors: Colors) {
     },
     weighUnit: { color: colors.textSecondary, fontSize: font.sm },
     weighHint: { color: colors.textTertiary, fontSize: font.xs, lineHeight: 14 },
+    varyingRow: { marginTop: spacing.sm },
+    varyingName: { color: colors.text, fontSize: font.sm, marginBottom: spacing.xs },
+    varyingInput: {
+      color: colors.text,
+      fontSize: font.md,
+      backgroundColor: colors.bgSecondary,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
     change: { marginTop: spacing.lg, alignSelf: 'flex-start' },
     changeText: { color: colors.accent, fontSize: font.sm },
     searchRow: {
