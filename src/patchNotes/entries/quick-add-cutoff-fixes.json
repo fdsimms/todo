@@ -1,0 +1,4 @@
+{
+  "message": "Fixed the quick add sheet: a pasted link's suggestion bubble no longer runs off the edge for a long URL, and the sheet now scrolls instead of getting cut off when several fields are set at once",
+  "date": "2026-09-10"
+}
