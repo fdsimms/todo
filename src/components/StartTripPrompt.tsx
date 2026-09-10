@@ -124,7 +124,10 @@ function makeStyles(colors: Colors) {
       backgroundColor: colors.accent + '1A',
       borderRadius: radius.md,
       marginHorizontal: spacing.md,
-      marginTop: spacing.md,
+      // Small rather than spacing.md: whatever precedes this (the recipe
+      // strip, the trip banner, a tip card) already carries its own bottom
+      // margin, so a full spacing.md here on top of that doubled the gap.
+      marginTop: spacing.xs,
       marginBottom: spacing.sm,
       paddingHorizontal: spacing.md,
       paddingVertical: spacing.sm + 2,
