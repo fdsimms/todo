@@ -368,7 +368,7 @@ exports.
 | a task that was missed, and the grace it gets | `src/utils/missed.ts` + `src/utils/expiredTaskGrace.ts` |
 | the iOS Live Activity | `src/utils/liveActivity.ts` (+ `tripLiveActivity.ts`) |
 | search ranking and the quick-search sheet | `src/utils/fuzzySearch.ts` + `src/utils/quickSearch.ts` |
-| the numbers on the Stats screen | `src/utils/stats.ts` (+ `cookingStats.ts`) |
+| the numbers on the Stats screen | `src/utils/stats.ts` (+ `cookingStats.ts`, `nutritionStats.ts`) |
 | planning a week of work | `src/utils/weekPlan.ts` |
 | anything not listed here | `docs/module-map.md` — every logic module and what it exports |
 
@@ -380,13 +380,13 @@ them source rather than tests. The ten biggest source files:
 
 `store/useTaskStore.ts` (8.2k), `db/database.ts` (5.4k), `components/TaskEditor.tsx` (5.4k),
 `types/index.ts` (5.4k), `store/useGroceryStore.ts` (5.1k), `screens/TodayScreen.tsx` (4.6k),
-`components/TaskItem.tsx` (4.3k), `store/useSettingsStore.ts` (3.5k),
-`utils/demoSeed.ts` (3.4k), `components/QuickAddModal.tsx` (3.1k).
+`components/TaskItem.tsx` (4.3k), `utils/demoSeed.ts` (3.5k),
+`store/useSettingsStore.ts` (3.5k), `components/QuickAddModal.tsx` (3.1k).
 
 Grep for the symbol and read the surrounding range; reading any of them end to end costs more
 context than the rest of the task will. `docs/module-map.md` says which file owns what.
 
-The suite is **288 test files**, and `npm test` runs all of them in about half a minute.
+The suite is **289 test files**, and `npm test` runs all of them in about half a minute.
 `npx tsc --noEmit` is a few seconds once `.tsbuildinfo` exists, so run both, every time.
 
 <!-- END GENERATED: repo-stats -->

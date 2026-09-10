@@ -29,7 +29,9 @@ import { buildWeekDays } from './calendarGrid';
 import { getCurrentDayStart, dayKeyOf } from './dateUtils';
 import { awayNoonIso } from './awayDates';
 import { generatedBy } from './generatedTasks';
-import { scalePanelToAmount } from './foodLog';
+import { recipeHelpingNutrition, scalePanelToAmount } from './foodLog';
+import { perServing, recipeNutrition } from './recipeNutrition';
+import { recipeMap } from './recipeComponents';
 import { focusPlanOptionsFrom } from './focusSettings';
 import { projectReviewLinkUrl, projectReviewTitle } from './projectReviewTasks';
 import { pantryCheckLinkUrl, pantryCheckTitle } from './pantryCheckTasks';
@@ -1358,20 +1360,73 @@ function seedFoodLog(today: Date): void {
   setNutritionTarget('calorieKcal', 2000);
   setNutritionTarget('proteinG', 60);
   const { items } = useGroceryStore.getState();
-  const yesterday = subDays(today, 1);
 
-  const meals: Array<{ name: string; quantity: string; slot: MealSlot; hour: number }> = [
-    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8 },
-    { name: 'Potatoes', quantity: '250 g', slot: 'dinner', hour: 19 },
-    { name: 'Butter', quantity: '1 tbsp', slot: 'dinner', hour: 19 },
+  /**
+   * Several days rather than one, because the Stats read averages over days
+   * and a single day averages to itself — a section that can only ever say
+   * "1 of 30" reads as a feature that doesn't work rather than one nobody has
+   * used yet. Yesterday backwards, never today: today's emptiness is what makes
+   * the day view's own empty state and its add button the first thing a demo
+   * meets.
+   *
+   * **Deliberately ragged.** Two of these days are one meal only, which is what
+   * an honest log looks like and is the whole reason `nutritionCounts` reports
+   * days logged and days logged past one meal as two different numbers. A seed
+   * where every day was complete would hide that distinction.
+   */
+  const meals: Array<{ name: string; quantity: string; slot: MealSlot; hour: number; daysAgo: number }> = [
+    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo: 1 },
+    { name: 'Potatoes', quantity: '250 g', slot: 'dinner', hour: 19, daysAgo: 1 },
+    { name: 'Butter', quantity: '1 tbsp', slot: 'dinner', hour: 19, daysAgo: 1 },
+    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo: 2 },
+    { name: 'Potatoes', quantity: '200 g', slot: 'lunch', hour: 13, daysAgo: 2 },
+    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo: 3 },
+    { name: 'Butter', quantity: '1 tbsp', slot: 'dinner', hour: 19, daysAgo: 3 },
+    // The two thin days: somebody logged breakfast and got on with their life.
+    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo: 5 },
+    { name: 'Milk', quantity: '1 cup', slot: 'breakfast', hour: 8, daysAgo: 6 },
   ];
+
+  /**
+   * One helping of something cooked, so the log isn't all catalog foods.
+   *
+   * **The provenance stat is the reason this is here rather than a fourth
+   * bowl of potatoes.** A dish's figures are built from its ingredients'
+   * panels and are an estimate however good those were, which is a different
+   * claim from a label — see `FoodNutrition.source`. A seed where every entry
+   * came from one source would leave "where the figures came from" reading as
+   * a row with one number in it, which is a feature the app appears not to
+   * have.
+   */
+  const { recipes } = useRecipeStore.getState();
+  const { itemProducts } = useGroceryStore.getState();
+  const byId = recipeMap(recipes);
+  for (const recipe of recipes) {
+    const perHelping = perServing(recipeNutrition(recipe, items, itemProducts, byId));
+    const helping = perHelping ? recipeHelpingNutrition(perHelping, 1) : null;
+    if (!helping) continue;
+    const at = subDays(today, 2);
+    at.setHours(19, 0, 0, 0);
+    addEntry({
+      label: recipe.name,
+      quantity: '1 serving',
+      grams: null,
+      nutrition: helping,
+      slot: 'dinner',
+      recipeId: recipe.id,
+      at,
+    });
+    // One is the point. A week of cooked dinners would be a different seed and
+    // would drown the catalog foods the picker's own half is meant to show.
+    break;
+  }
 
   for (const meal of meals) {
     const item = items.find(i => i.name === meal.name);
     if (!item?.nutrition) continue;
     const built = scalePanelToAmount(item.nutrition, meal.quantity, null);
     if (!built) continue;
-    const at = new Date(yesterday);
+    const at = subDays(today, meal.daysAgo);
     at.setHours(meal.hour, 0, 0, 0);
     addEntry({
       label: item.name,
