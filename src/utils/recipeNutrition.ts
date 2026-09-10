@@ -1,14 +1,12 @@
 import type { FoodNutrition, GroceryItem, ItemProduct, MealPlanEntry, NutrientKey, Recipe } from '../types';
 import { NUTRIENT_KEYS } from '../types';
 import { nutritionFor } from './foodNutrition';
-import { gramsForLine } from './ingredientGrams';
+import { panelMultiplier } from './ingredientGrams';
 import { resolvePluralKey } from './groceryPlural';
 import { collectPlannedIngredients } from './mealPlanGroceries';
-import { parseQuantity } from './quantity';
 import { flattenRecipeIngredients, type ChoiceResolution } from './recipeComponents';
 import { normalizeScale, scaleQuantity } from './recipeScale';
 import { NO_STANDING_SWAPS, type StandingSwapMap } from './standingSwaps';
-import { measureParsedQuantity } from './unitConvert';
 
 /**
  * What a recipe, or a week of planned meals, is made of.
@@ -78,44 +76,6 @@ const MIN_LINE_COVERAGE = 0.5;
  * "not enough of this is known" consistent.
  */
 const MIN_NUTRIENT_COVERAGE = 0.5;
-
-/**
- * How many hundred units of a food's panel one line amounts to, or null.
- *
- * Exported because the food log needs exactly this and must not grow a second
- * copy of it: a helping scaled by one rule here and another rule there is two
- * different calorie counts for one plate of food.
- *
- * **The line is measured in the panel's own unit, never converted into it.**
- * A per-100g panel wants grams, a per-100ml panel wants millilitres, and
- * turning one into the other needs a density this app does not have. So a
- * volume line against a per-100g food goes through the food's own portion
- * table (`gramsForLine`), and a per-100ml food is answered only by a line that
- * is itself a volume. Anything else refuses, which is the whole posture.
- *
- * A per-serving panel needs a serving to weigh something, since otherwise
- * "how many servings is 300g" has no answer.
- */
-export function panelMultiplier(
-  quantity: string,
-  prep: string | null,
-  nutrition: FoodNutrition,
-): number | null {
-  const parsed = parseQuantity(quantity);
-
-  if (nutrition.basis === 'per100ml') {
-    const single = parsed.rangeMax ? { ...parsed, rangeMax: null } : parsed;
-    const measured = measureParsedQuantity(single);
-    if (!measured || measured.dimension !== 'volume') return null;
-    return measured.base / 100;
-  }
-
-  const grams = gramsForLine(parsed, prep, nutrition.portions);
-  if (grams === null) return null;
-  if (nutrition.basis === 'per100g') return grams / 100;
-  // perServing
-  return nutrition.servingGrams ? grams / nutrition.servingGrams : null;
-}
 
 interface Accumulator {
   total: Partial<Record<NutrientKey, number>>;

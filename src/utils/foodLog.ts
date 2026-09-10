@@ -1,7 +1,6 @@
 import type { FoodLogEntry, FoodNutrition, MealSlot, NutrientKey } from '../types';
 import { MEAL_SLOTS, NUTRIENT_KEYS } from '../types';
-import { panelMultiplier, perServing, type RecipeNutrition } from './recipeNutrition';
-import { gramsForLine } from './ingredientGrams';
+import { gramsForLine, panelMultiplier } from './ingredientGrams';
 import { parseQuantity } from './quantity';
 
 /**
@@ -31,6 +30,14 @@ import { parseQuantity } from './quantity';
  * The scaling half deliberately reuses `panelMultiplier` rather than repeating
  * it. A helping measured by one rule here and another rule in the recipe
  * rollup would be two different calorie counts for one plate of food.
+ *
+ * **Nothing here imports `recipeNutrition.ts`, and that is load-bearing rather
+ * than tidiness.** That module reaches the meal plan and through it the
+ * settings store and SQLite, so importing it would make this one impossible to
+ * exercise without standing up a database, which is exactly the split
+ * `foodSearchMatch` keeps against the service it ranks for. So the per-serving
+ * figures of a cooked dish are *passed in* rather than computed here: the
+ * caller already holds a `RecipeNutrition` and can divide it.
  */
 
 /** A day's figures, and how much of the day each one actually speaks for. */
@@ -124,31 +131,33 @@ export function scalePanelToAmount(
 }
 
 /**
- * What some number of helpings of a cooked recipe works out to.
+ * What some number of helpings of a cooked dish works out to.
  *
- * **Null when the recipe never said how many servings it makes**, rather than
- * treating the whole dish as one helping. "How much of this did you eat" has no
- * answer without that, and a whole tray of lasagne logged as one serving is the
- * kind of wrong that looks plausible on the screen and is out by a factor of
- * six.
+ * **Takes the dish's per-serving figures, not the dish**, so this module needs
+ * nothing from `recipeNutrition.ts` at runtime. The caller has a
+ * `RecipeNutrition` already and `perServing` is what turns one into these; the
+ * coverage floor has been applied by the time it answers at all, so anything
+ * reaching here is a dish whose figures were worth stating.
  *
- * The coverage floor has already been applied upstream: `recipeNutrition`
- * answers null for a dish it could not measure enough of, so anything reaching
- * here is a dish whose figures were worth stating.
+ * **Null when the caller had no per-serving figures**, which is what
+ * `perServing` answers for a recipe that never said how many servings it makes.
+ * Treating the whole dish as one helping instead is the failure worth refusing:
+ * "how much of this did you eat" has no answer without a servings count, and a
+ * whole tray of lasagne logged as one serving is out by a factor of six while
+ * looking entirely plausible on the screen.
  */
 export function recipeHelpingNutrition(
-  nutrition: RecipeNutrition,
+  perServingAmounts: Partial<Record<NutrientKey, number>> | null,
   helpings: number,
   source: FoodNutrition['source'] = 'estimated',
   now: Date = new Date(),
 ): FoodNutrition | null {
+  if (!perServingAmounts) return null;
   if (!(helpings > 0)) return null;
-  const per = perServing(nutrition);
-  if (!per) return null;
 
   const amounts: Partial<Record<NutrientKey, number>> = {};
   for (const key of NUTRIENT_KEYS) {
-    const amount = per[key];
+    const amount = perServingAmounts[key];
     if (amount !== undefined) amounts[key] = round(amount * helpings);
   }
   if (Object.keys(amounts).length === 0) return null;

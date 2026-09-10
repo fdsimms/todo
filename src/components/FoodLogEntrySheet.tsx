@@ -19,7 +19,7 @@ import { useRecipeStore } from '../store/useRecipeStore';
 import { useFoodLogStore, type FoodLogDraft } from '../store/useFoodLogStore';
 import { nutritionFor } from '../utils/foodNutrition';
 import { recipeHelpingNutrition, scalePanelToAmount } from '../utils/foodLog';
-import { recipeNutrition } from '../utils/recipeNutrition';
+import { perServing, recipeNutrition } from '../utils/recipeNutrition';
 import { describeProduct } from '../utils/groceryProduct';
 import { groceryNameKey } from '../utils/groceryParse';
 import { haptics } from '../utils/haptics';
@@ -132,7 +132,7 @@ export function FoodLogEntrySheet({ visible, slot, at, onClose }: Props) {
     for (const recipe of recipes) {
       const dish = recipeNutrition(recipe, items, itemProducts);
       if (!dish) continue;
-      const serving = recipeHelpingNutrition(dish, 1);
+      const serving = recipeHelpingNutrition(perServing(dish), 1);
       if (!serving) continue;
       out.push({
         key: `r:${recipe.id}`,
@@ -173,7 +173,7 @@ export function FoodLogEntrySheet({ visible, slot, at, onClose }: Props) {
         itemProducts,
       );
       if (!dish) return null;
-      const nutrition = recipeHelpingNutrition(dish, helpings);
+      const nutrition = recipeHelpingNutrition(perServing(dish), helpings);
       return nutrition ? { nutrition, grams: null as number | null } : null;
     }
     if (!picked.panel) return null;

@@ -7,7 +7,6 @@ import {
   scalePanelToAmount,
 } from '../utils/foodLog';
 import type { FoodLogEntry, FoodNutrition, NutrientKey } from '../types';
-import type { RecipeNutrition } from '../utils/recipeNutrition';
 
 const NOW = new Date('2026-04-02T18:30:00.000Z');
 
@@ -104,38 +103,34 @@ describe('scalePanelToAmount', () => {
 });
 
 describe('recipeHelpingNutrition', () => {
-  const dish: RecipeNutrition = {
-    total: { calorieKcal: 1200, proteinG: 40 },
-    reported: { calorieKcal: 4, proteinG: 4 },
-    covered: 4,
-    lines: 4,
-    servings: 4,
-  };
+  // What `perServing` hands back for a dish of 1200 cal across four servings.
+  const perServing = { calorieKcal: 300, proteinG: 10 };
 
   it('takes one serving from a dish that says how many it makes', () => {
-    const built = recipeHelpingNutrition(dish, 1, 'estimated', NOW);
+    const built = recipeHelpingNutrition(perServing, 1, 'estimated', NOW);
     expect(built?.amounts.calorieKcal).toBe(300);
     expect(built?.servingText).toBe('1 serving');
   });
 
   it('scales to several helpings', () => {
-    const built = recipeHelpingNutrition(dish, 2, 'estimated', NOW);
+    const built = recipeHelpingNutrition(perServing, 2, 'estimated', NOW);
     expect(built?.amounts.calorieKcal).toBe(600);
     expect(built?.servingText).toBe('2 servings');
   });
 
   it('refuses a dish that never said how many servings it makes', () => {
-    // A whole tray of lasagne logged as one serving is out by a factor of six
-    // and looks entirely plausible on screen.
-    expect(recipeHelpingNutrition({ ...dish, servings: null }, 1, 'estimated', NOW)).toBeNull();
+    // That is what `perServing` answers null for, and a whole tray of lasagne
+    // logged as one serving is out by a factor of six while looking entirely
+    // plausible on screen.
+    expect(recipeHelpingNutrition(null, 1, 'estimated', NOW)).toBeNull();
   });
 
   it('refuses a helping of nothing', () => {
-    expect(recipeHelpingNutrition(dish, 0, 'estimated', NOW)).toBeNull();
+    expect(recipeHelpingNutrition(perServing, 0, 'estimated', NOW)).toBeNull();
   });
 
   it('is an estimate, since a dish is built from its ingredients through a floor', () => {
-    expect(recipeHelpingNutrition(dish, 1, 'estimated', NOW)?.source).toBe('estimated');
+    expect(recipeHelpingNutrition(perServing, 1, 'estimated', NOW)?.source).toBe('estimated');
   });
 });
 
