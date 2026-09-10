@@ -4373,6 +4373,22 @@ export interface RecipeIngredient {
   // mealPlanGroceries.ts), where an optional line starts unticked instead of
   // ticked. Same optional-boolean convention as noSwap, for the same reason.
   optional?: boolean;
+  // A worked example of the name, not an instruction or a name of its own —
+  // "avocado oil" from "neutral oil, such as avocado oil". Split out by
+  // splitExample() for the same reason prep/purpose are: left in `name`, it
+  // reads as neither the generic thing the recipe asked for nor a shoppable
+  // item of its own. Optional rather than `string | null` like prep/purpose,
+  // same convention noSwap/dismissedCatalogSuggestion use and the same
+  // reason: most lines never have one, so requiring the key would mean a
+  // backfill through every construction site for a value that's absent
+  // almost everywhere.
+  //
+  // Read by RecipeIngredientSheet to offer declaring the example a variety of
+  // this line's own name (GroceryItem.varietyOfKey, see itemVarieties.ts) —
+  // "is avocado oil a kind of neutral oil?" — the same offer varietyOfferFor
+  // makes from a catalog-name collision, just sourced from the recipe's own
+  // wording instead of an existing row's name.
+  example?: string;
   // "Not now" on the catalog-match signpost pill (see ingredientCatalogMatch.ts
   // and RecipeDetailScreen), remembered permanently rather than for the
   // current screen visit. Holds the *suggested name* that was turned down, not

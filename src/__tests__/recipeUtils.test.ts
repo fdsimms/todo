@@ -269,6 +269,37 @@ describe('normalizeIngredient', () => {
     const long = 'x'.repeat(100);
     expect(normalizeIngredient({ name: 'Flour', section: long })!.section).toHaveLength(40);
   });
+
+  it('splits a "such as" clause out of a raw name — an AI extraction or a scraped page never split it itself', () => {
+    const result = normalizeIngredient({ name: 'neutral oil, such as avocado oil' })!;
+    expect(result.name).toBe('neutral oil');
+    expect(result.example).toBe('avocado oil');
+    expect(result.nameKey).toBe('neutral oil');
+  });
+
+  it('splits a "such as" clause an extraction folded into prep instead', () => {
+    const result = normalizeIngredient({ name: 'neutral oil', prep: 'such as avocado oil' })!;
+    expect(result.name).toBe('neutral oil');
+    expect(result.example).toBe('avocado oil');
+    expect(result.prep).toBeNull();
+  });
+
+  it('leaves example undefined when there is no such clause', () => {
+    expect(normalizeIngredient({ name: 'Garlic' })!.example).toBeUndefined();
+  });
+
+  it('keeps a stored example rather than reparsing the (already clean) name', () => {
+    const result = normalizeIngredient({ name: 'neutral oil', example: 'avocado oil' })!;
+    expect(result.name).toBe('neutral oil');
+    expect(result.example).toBe('avocado oil');
+  });
+
+  it('is idempotent — normalizing an already-split ingredient a second time changes nothing', () => {
+    const once = normalizeIngredient({ name: 'neutral oil, such as avocado oil' })!;
+    const twice = normalizeIngredient(once)!;
+    expect(twice.name).toBe('neutral oil');
+    expect(twice.example).toBe('avocado oil');
+  });
 });
 
 describe('splitPrep', () => {
@@ -385,6 +416,35 @@ describe('makeIngredient', () => {
 
   it('returns null for a line that parses to nothing', () => {
     expect(makeIngredient('   ')).toBeNull();
+  });
+
+  it('splits a "such as" clause into example, out of the comma clause splitPrep already took', () => {
+    const result = makeIngredient('6 tbsp neutral oil, such as avocado oil')!;
+    expect(result.name).toBe('neutral oil');
+    expect(result.quantity).toBe('6 tbsp');
+    expect(result.example).toBe('avocado oil');
+    expect(result.prep).toBeNull();
+    expect(result.nameKey).toBe('neutral oil');
+  });
+
+  it('splits an "e.g." clause the same way', () => {
+    expect(makeIngredient('hard cheese, e.g. parmesan')!.example).toBe('parmesan');
+  });
+
+  it('splits a "such as" clause with no comma at all', () => {
+    const result = makeIngredient('neutral oil such as avocado oil')!;
+    expect(result.name).toBe('neutral oil');
+    expect(result.example).toBe('avocado oil');
+  });
+
+  it('leaves example undefined when there is no such clause', () => {
+    expect(makeIngredient('2 lb chicken thighs')!.example).toBeUndefined();
+  });
+
+  it('does not read an ordinary comma-prep clause as an example', () => {
+    const result = makeIngredient('garlic, peeled and sliced')!;
+    expect(result.prep).toBe('peeled and sliced');
+    expect(result.example).toBeUndefined();
   });
 });
 

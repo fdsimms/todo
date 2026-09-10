@@ -2061,7 +2061,17 @@ function seedRecipes(): DemoRecipes {
   const roasties = newRecipe('Roast potatoes');
   addIngredientsFromText(
     roasties.id,
-    ['2 lb potatoes, peeled and halved', '3 tbsp olive oil', '1 bunch rosemary', '1 tsp salt'].join('\n')
+    // The oil line is the demo's example of a "such as" clause — the offer
+    // to declare avocado oil a kind of neutral oil (RecipeIngredient.example,
+    // see splitExample / itemVarieties.ts) is only visible from inside this
+    // one ingredient's sheet, so it has to be seeded deliberately or the
+    // badge reads as a feature the app doesn't have.
+    [
+      '2 lb potatoes, peeled and halved',
+      '3 tbsp neutral oil, such as avocado oil',
+      '1 bunch rosemary',
+      '1 tsp salt',
+    ].join('\n')
   );
   setMealType(roasties.id, 'side');
   setServings(roasties.id, 4);
