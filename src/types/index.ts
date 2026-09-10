@@ -4788,6 +4788,13 @@ export interface Recipe {
   lastPrepMinutes: number | null;
   prepTimeCount: number;
   totalPrepMinutes: number;
+  /**
+   * Which Backfill screen fields the user has said not to ask about again on
+   * this recipe — "this one genuinely has no serving count", not "not right
+   * now" (that's the screen's own session-only skip). Same mechanism as
+   * `Task.backfillDismissedFields`, holding `RecipeBackfillFieldId` values.
+   */
+  backfillDismissedFields: string[];
 }
 
 // One prep step on a recipe — TemplateItem's anchor-relative offset model

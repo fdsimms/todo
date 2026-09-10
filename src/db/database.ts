@@ -1434,6 +1434,12 @@ export function initDatabase(): void {
     // and only for a name it proposed and the user left alone — see
     // GroceryItem.nameFromScan.
     'ALTER TABLE grocery_items ADD COLUMN name_from_scan INTEGER NOT NULL DEFAULT 0',
+    // Same mechanism as tasks/categories/projects/people/grocery_items'
+    // backfill_dismissed_fields above, for the Backfill screen's recipe pool
+    // (servings, cook time, prep time). Empty on every existing row, which
+    // reads as "nothing dismissed yet" — the only honest state before this
+    // column existed. See Recipe.backfillDismissedFields.
+    "ALTER TABLE recipes ADD COLUMN backfill_dismissed_fields TEXT NOT NULL DEFAULT '[]'",
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -4422,6 +4428,7 @@ function rowToRecipe(row: Record<string, unknown>): Recipe {
     lastPrepMinutes: (row.last_prep_minutes as number) ?? null,
     prepTimeCount: (row.prep_time_count as number) ?? 0,
     totalPrepMinutes: (row.total_prep_minutes as number) ?? 0,
+    backfillDismissedFields: JSON.parse((row.backfill_dismissed_fields as string) ?? '[]') as string[],
   };
 }
 
@@ -4437,8 +4444,9 @@ export function dbInsertRecipe(recipe: Recipe): void {
     `INSERT INTO recipes
       (id, name, name_key, notes, source_url, source_name, author, source, source_type, source_page, cookbook_id, servings, servings_max, recipe_yield, leftover_keep_days, image_path, meal_type, tags, ingredients, empty_sections, components, prep_tasks, steps, sort_order, created_at, cook_count, last_cooked_at, vote,
        estimated_minutes, timer_started_at, timer_elapsed_seconds, last_cook_minutes, cook_time_count, total_cook_minutes,
-       prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+       prep_minutes, prep_timer_started_at, prep_timer_elapsed_seconds, last_prep_minutes, prep_time_count, total_prep_minutes,
+       backfill_dismissed_fields)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       recipe.id, recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
       recipe.sourceName ?? null, recipe.author ?? null, recipe.source ?? null,
@@ -4456,6 +4464,7 @@ export function dbInsertRecipe(recipe: Recipe): void {
       recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
       recipe.prepMinutes ?? null, recipe.prepTimerStartedAt ?? null, recipe.prepTimerElapsedSeconds,
       recipe.lastPrepMinutes ?? null, recipe.prepTimeCount, recipe.totalPrepMinutes,
+      JSON.stringify(recipe.backfillDismissedFields),
     ]
   );
 }
@@ -4466,7 +4475,8 @@ export function dbUpdateRecipe(recipe: Recipe): void {
        name=?, name_key=?, notes=?, source_url=?, source_name=?, author=?, source=?, source_type=?, source_page=?, cookbook_id=?, servings=?, servings_max=?, recipe_yield=?, leftover_keep_days=?, image_path=?, meal_type=?, tags=?, ingredients=?, empty_sections=?, components=?, prep_tasks=?, steps=?,
        sort_order=?, cook_count=?, last_cooked_at=?, vote=?,
        estimated_minutes=?, timer_started_at=?, timer_elapsed_seconds=?, last_cook_minutes=?, cook_time_count=?, total_cook_minutes=?,
-       prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?
+       prep_minutes=?, prep_timer_started_at=?, prep_timer_elapsed_seconds=?, last_prep_minutes=?, prep_time_count=?, total_prep_minutes=?,
+       backfill_dismissed_fields=?
      WHERE id=?`,
     [
       recipe.name, recipe.nameKey, recipe.notes, recipe.sourceUrl ?? null,
@@ -4485,6 +4495,7 @@ export function dbUpdateRecipe(recipe: Recipe): void {
       recipe.lastCookMinutes ?? null, recipe.cookTimeCount, recipe.totalCookMinutes,
       recipe.prepMinutes ?? null, recipe.prepTimerStartedAt ?? null, recipe.prepTimerElapsedSeconds,
       recipe.lastPrepMinutes ?? null, recipe.prepTimeCount, recipe.totalPrepMinutes,
+      JSON.stringify(recipe.backfillDismissedFields),
       recipe.id,
     ]
   );

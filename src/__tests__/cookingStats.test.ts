@@ -70,6 +70,7 @@ function leftover(overrides: Partial<Leftover> = {}): Leftover {
 function recipe(name: string, overrides: Partial<Recipe> = {}): Recipe {
   seq += 1;
   return {
+    backfillDismissedFields: [],
     id: `r-${seq}`,
     name,
     nameKey: name.toLowerCase(),

@@ -5577,6 +5577,7 @@ describe('checkMealSlotTasks', () => {
 
   function recipe(id: string, over: Partial<Recipe> = {}): Recipe {
     return {
+      backfillDismissedFields: [],
       id, name: 'Chili', nameKey: 'chili', notes: '', sourceUrl: null, sourceName: null,
       author: null, source: null, servings: null, servingsMax: null, recipeYield: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [], ingredients: [],
@@ -5899,6 +5900,7 @@ describe('checkMealShortfallTasks', () => {
 
   function shortfallRecipe(id: string, name: string, ingredientNames: string[]): Recipe {
     return {
+      backfillDismissedFields: [],
       id, name, nameKey: name.toLowerCase(), notes: '', sourceUrl: null, sourceName: null,
       author: null, source: null, servings: null, servingsMax: null, recipeYield: null,
       leftoverKeepDays: null, imagePath: null, mealType: null, tags: [],

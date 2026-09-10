@@ -56,6 +56,9 @@ import {
   BACKUP_TABLES,
   BACKUP_EXCLUDED_TABLES,
   dbGetAllGroceryItems,
+  dbInsertRecipe,
+  dbUpdateRecipe,
+  dbGetAllRecipes,
   dbInsertGroceryItem,
   dbUpdateGroceryItem,
   dbDeleteGroceryItem,
@@ -114,7 +117,7 @@ import {
 } from '../db/syncTracking';
 import { buildBackup, serializeBackup, parseBackup } from '../utils/backup';
 import { OUT_OF_IT_UNTIL } from '../utils/grocerySuggest';
-import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot } from '../types';
+import type { Task, TaskTemplate, TemplateItem, Project, Category, TaskGroup, GroceryItem, ItemProduct, ItemShopLink, Shop, Leftover, MealPlanEntry, MealSlot, Recipe } from '../types';
 
 // ---------------------------------------------------------------------------
 // Mock expo-sqlite with an in-memory better-sqlite3 database.
@@ -3971,5 +3974,97 @@ describe('the barcode cache', () => {
     dbClearGtinLookups();
     expect(dbCountGtinLookups()).toBe(0);
     expect(dbGetGtinLookup('00036000291452')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Recipes
+// ---------------------------------------------------------------------------
+
+// A recipe's INSERT and UPDATE each list forty-one columns by hand, so the
+// thing worth pinning is that the column list, the placeholders and the
+// argument array still agree — a mismatch there is a runtime throw with no
+// type error in front of it, and nothing else in the suite exercises this SQL.
+describe('recipe rows', () => {
+  // Recipes aren't in the shared beforeEach's list, and every read here is a
+  // `dbGetAllRecipes()[0]`, so they clear here instead.
+  beforeEach(() => {
+    mockRawDb.exec('DELETE FROM recipes;');
+  });
+
+  const makeRecipe = (overrides: Partial<Recipe> & { id: string; name: string }): Recipe => ({
+    nameKey: overrides.name.toLowerCase(),
+    notes: '',
+    sourceUrl: null,
+    sourceName: null,
+    author: null,
+    source: null,
+    sourceType: null,
+    sourcePage: null,
+    cookbookId: null,
+    servings: null,
+    servingsMax: null,
+    recipeYield: null,
+    leftoverKeepDays: null,
+    imagePath: null,
+    mealType: null,
+    tags: [],
+    ingredients: [],
+    emptySections: [],
+    components: [],
+    prepTasks: [],
+    steps: [],
+    sortOrder: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    cookCount: 0,
+    lastCookedAt: null,
+    vote: null,
+    estimatedMinutes: null,
+    timerStartedAt: null,
+    timerElapsedSeconds: 0,
+    lastCookMinutes: null,
+    cookTimeCount: 0,
+    totalCookMinutes: 0,
+    prepMinutes: null,
+    prepTimerStartedAt: null,
+    prepTimerElapsedSeconds: 0,
+    lastPrepMinutes: null,
+    prepTimeCount: 0,
+    totalPrepMinutes: 0,
+    backfillDismissedFields: [],
+    ...overrides,
+  });
+
+  it('round-trips a recipe, backfill dismissals included', () => {
+    const recipe = makeRecipe({
+      id: 'r1',
+      name: 'Chili',
+      servings: 6,
+      servingsMax: 8,
+      estimatedMinutes: 45,
+      prepMinutes: 20,
+      recipeYield: '1 big pot',
+      backfillDismissedFields: ['prepTime'],
+    });
+    dbInsertRecipe(recipe);
+
+    expect(dbGetAllRecipes()).toEqual([recipe]);
+  });
+
+  it('round-trips an update, so the SET list and its arguments stay in step', () => {
+    const recipe = makeRecipe({ id: 'r1', name: 'Chili' });
+    dbInsertRecipe(recipe);
+
+    const answered = { ...recipe, servings: 4, estimatedMinutes: 30, backfillDismissedFields: ['prepTime'] };
+    dbUpdateRecipe(answered);
+
+    expect(dbGetAllRecipes()).toEqual([answered]);
+  });
+
+  // Empty on every row that predates the column, which is what "nothing
+  // dismissed yet" has to read as. See Recipe.backfillDismissedFields.
+  it('reads a recipe that never dismissed anything as an empty list', () => {
+    dbInsertRecipe(makeRecipe({ id: 'r1', name: 'Dal' }));
+    expect(dbGetAllRecipes()[0].backfillDismissedFields).toEqual([]);
   });
 });
