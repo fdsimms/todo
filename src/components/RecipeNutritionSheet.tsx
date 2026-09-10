@@ -1,15 +1,16 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, TextInput, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { NUTRIENT_KEYS, type FoodNutrition, type NutrientKey } from '../types';
 import { useGroceryStore } from '../store/useGroceryStore';
 import { useRecipeStore } from '../store/useRecipeStore';
 import { useColors } from '../theme/ThemeContext';
-import { spacing, radius, font, fontWeight, iconSize, type Colors } from '../theme';
+import { spacing, radius, font, fontWeight, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
 import { addCustomPortion, NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { weighableLine, type LineWeighing } from '../utils/ingredientGrams';
 import {
+  lineContribution,
   perServing,
   type NutritionLine,
   type RecipeNutritionReading,
@@ -69,6 +70,15 @@ import { SheetHeaderButton } from './SheetHeaderButton';
  * ticked task leaves Today. It is also what makes a refused weighing safe: a
  * portion that turns out not to settle the line leaves the row where it was,
  * saying so, instead of reporting a success the total doesn't share.
+ *
+ * **The COUNTED section names what each ingredient that reached the total
+ * actually added to it.** `lineContribution` is the same arithmetic `fold`
+ * already sums, read back per line instead of summed — nothing new is
+ * computed, only shown. A row collapses to the ingredient and its calories,
+ * matching the density of a gap row; expanding it shows the rest of that
+ * line's panel and the same "Edit these figures" action the gap rows offer,
+ * so correcting a covered ingredient's figures is the identical write to
+ * correcting an uncovered one's — the grocery catalog, not the recipe.
  */
 
 interface Props {
@@ -105,6 +115,8 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
   const [searchLine, setSearchLine] = useState<NutritionLine | null>(null);
   const [weighingId, setWeighingId] = useState<string | null>(null);
   const [weighGrams, setWeighGrams] = useState('');
+  // Which COUNTED row is showing its full breakdown, one at a time.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   // The catalog row `addToCatalog` just minted, so `GroceryItemSheet` can open
   // straight onto it — off-list, exactly as `ensureCatalogItem` leaves it,
   // until the person fills something in.
@@ -133,6 +145,15 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
           : null,
     })),
     [gaps.fillable],
+  );
+
+  // What each ingredient that reached the total actually added to it, in the
+  // same order the ingredient list itself shows them.
+  const covered = useMemo(
+    () => reading.lines
+      .filter(line => line.state === 'covered')
+      .map(line => ({ line, contribution: lineContribution(line) })),
+    [reading.lines],
   );
 
   /**
@@ -265,6 +286,63 @@ export function RecipeNutritionSheet({ visible, reading, onClose }: Props) {
             below and the panel appears here.
           </Text>
         </View>
+      )}
+
+      {covered.length > 0 && (
+        <>
+          <Text style={styles.groupLabel}>COUNTED</Text>
+          <View style={styles.card}>
+            {covered.map(({ line, contribution }, index) => {
+              const expanded = expandedId === line.id;
+              return (
+                <View key={line.id} style={[styles.countedRow, index > 0 && styles.gapRowRuled]}>
+                  <TouchableOpacity
+                    style={styles.countedHeader}
+                    activeOpacity={interaction.activeOpacity}
+                    onPress={() => { haptics.tap(); setExpandedId(expanded ? null : line.id); }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${expanded ? 'Hide' : 'Show'} what ${line.name} contributes`}
+                    accessibilityState={{ expanded }}
+                  >
+                    <Text style={styles.gapName} numberOfLines={1}>
+                      {line.quantity ? `${line.quantity} ${line.name}` : line.name}
+                    </Text>
+                    {contribution?.calorieKcal !== undefined && (
+                      <Text style={styles.nutrientAmount}>
+                        {formatAmount('calorieKcal', contribution.calorieKcal)} cal
+                      </Text>
+                    )}
+                    <Ionicons
+                      name={expanded ? 'chevron-up' : 'chevron-down'}
+                      size={iconSize.xs}
+                      color={colors.textTertiary}
+                    />
+                  </TouchableOpacity>
+                  {expanded && contribution && (
+                    <View style={styles.countedDetail}>
+                      {NUTRIENT_KEYS.filter(key => contribution[key] !== undefined).map(key => (
+                        <View key={key} style={styles.countedDetailRow}>
+                          <Text style={styles.countedDetailLabel}>{NUTRIENT_LABEL[key].label}</Text>
+                          <Text style={styles.countedDetailAmount}>
+                            {formatAmount(key, contribution[key] as number)} {NUTRIENT_LABEL[key].unit}
+                          </Text>
+                        </View>
+                      ))}
+                      <View style={styles.countedDetailActions}>
+                        <InlineAction
+                          label="Edit these figures"
+                          variant="neutral"
+                          onPress={() => { haptics.tap(); setPanelLine(line); }}
+                          accessibilityLabel={`Edit nutrition figures for ${line.name}`}
+                        />
+                      </View>
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+        </>
       )}
 
       {fillable.length > 0 && (
@@ -440,6 +518,23 @@ function makeStyles(colors: Colors) {
     nutrientLabel: { flex: 1, fontSize: font.md, color: colors.text },
     nutrientAmount: { fontSize: font.md, fontWeight: fontWeight.medium, color: colors.text },
     emptyTotal: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 18 },
+    countedRow: { paddingVertical: spacing.xs },
+    countedHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingVertical: spacing.xs,
+    },
+    countedDetail: { marginTop: spacing.xs, marginBottom: spacing.xs },
+    countedDetailRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 2,
+    },
+    countedDetailLabel: { fontSize: font.sm, color: colors.textSecondary },
+    countedDetailAmount: { fontSize: font.sm, fontWeight: fontWeight.medium, color: colors.text },
+    countedDetailActions: { flexDirection: 'row', marginTop: spacing.xs },
     gapRow: { gap: spacing.xs, paddingVertical: spacing.sm },
     // A gap row is three stacked lines rather than the one an ordinary list
     // row is, so without a rule between them two of them read as one row with

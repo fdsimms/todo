@@ -392,6 +392,26 @@ export function recipeNutritionLines(
 }
 
 /**
+ * What one covered line actually added to the total, or null for a line that
+ * didn't reach it.
+ *
+ * The same `amount * multiplier` the fold sums, read back per line instead of
+ * summed — so a screen naming each ingredient's share and the total it adds up
+ * to can't disagree about the arithmetic. Rounded the same way `finish` rounds
+ * the total, for the same reason: tenths, calories whole.
+ */
+export function lineContribution(line: NutritionLine): Partial<Record<NutrientKey, number>> | null {
+  if (line.state !== 'covered' || !line.nutrition || line.multiplier === null) return null;
+  const out: Partial<Record<NutrientKey, number>> = {};
+  for (const key of NUTRIENT_KEYS) {
+    const amount = line.nutrition.amounts[key];
+    if (amount === undefined) continue;
+    out[key] = Math.round(amount * line.multiplier * 10) / 10;
+  }
+  return out;
+}
+
+/**
  * What the planned meals in `range` are made of, or null when too little of the
  * week is known.
  *
