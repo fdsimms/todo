@@ -109,6 +109,18 @@ export interface PendingMealLog {
   scale: number;
   /** The either/or answers that cooking used, so the figures match what went in. */
   choices: string[];
+  /**
+   * What the plate or the container weighed, when something already knows —
+   * today only a finished leftover, which was weighed when it went in the
+   * fridge (`Leftover.weightG`).
+   *
+   * **The figure the prompt opens on, never one it writes.** The offer is
+   * still an offer: a container finished off after somebody picked at it held
+   * less than it was logged with, so this is a starting number to correct
+   * rather than an answer. Null for every meal that has nothing to say, which
+   * is the ordinary case.
+   */
+  grams: number | null;
 }
 
 /** What an edit may change. The instant and its day key are deliberately not on it. */

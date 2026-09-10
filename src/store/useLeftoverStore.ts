@@ -18,6 +18,7 @@ import {
   sortLeftovers,
 } from '../utils/leftovers';
 import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftoverTasks';
+import { clampCookedWeight } from '../utils/mealLog';
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
@@ -45,6 +46,11 @@ export interface LeftoverDraft {
    * "both" answer is turned into two of these.
    */
   frozen?: boolean;
+  /**
+   * What the container holds, in grams. Omitted for the containers nobody
+   * weighs, which is most of them. See `Leftover.weightG`.
+   */
+  weightG?: number | null;
 }
 
 /**
@@ -112,6 +118,14 @@ interface LeftoverStore extends UndoHistoryActions {
   setStoredAt: (id: string, storedAt: string) => void;
   /** Re-resolves `keepUntil` from the row's own `storedAt`. */
   setKeepDays: (id: string, days: number) => void;
+  /**
+   * What the container holds, in grams. null clears it back to unweighed.
+   *
+   * Clamped through `clampCookedWeight`, the same call `setCookedWeight`
+   * makes: it is the same measurement of the same food, and a container
+   * weighing zero would be a fraction of nothing. See `Leftover.weightG`.
+   */
+  setLeftoverWeight: (id: string, grams: number | null) => void;
   /**
    * Puts this container in the freezer, or takes it back out.
    *
@@ -294,6 +308,7 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
       // sees the fridge at all: logging it and then freezing it was two steps
       // to record one, and the fridge clock it ran in between was a lie.
       frozenAt: draft.frozen ? storedAt : null,
+      weightG: clampCookedWeight(draft.weightG ?? null),
       createdAt: new Date().toISOString(),
       useUpTask: null,
     };
@@ -377,6 +392,12 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     });
   },
 
+  setLeftoverWeight(id, grams) {
+    const leftover = get().leftovers.find(l => l.id === id);
+    if (!leftover) return;
+    save(set, { ...leftover, weightG: clampCookedWeight(grams) });
+  },
+
   finishLeftover(id, outcome) {
     const leftover = get().leftovers.find(l => l.id === id);
     if (!leftover || leftover.finishedAt) return;
@@ -408,6 +429,13 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
         // written and the person corrects it.
         scale: 1,
         choices: [],
+        // What this container weighed, when it was weighed — the container
+        // against the dish's own cooked weight is the fraction of the recipe
+        // that was in it, and finishing it as eaten means that fraction was
+        // eaten. Offered as the figure the prompt opens on rather than written:
+        // a container is finished off after somebody picked at it too, and the
+        // whole posture here is offer, never write.
+        grams: leftover.weightG,
       });
     }
     // Not `destructive` — this is a completion, the same call completeTask

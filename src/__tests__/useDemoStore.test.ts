@@ -3504,6 +3504,13 @@ describe('demo seed — groceries, recipes, meals and the fridge', () => {
     // "We ate it" and "it went off" are the two things the feature tells apart.
     expect(leftovers.some(l => l.outcome === 'eaten')).toBe(true);
     expect(leftovers.some(l => l.outcome === 'tossed')).toBe(true);
+    // One container weighed on the way in, and its recipe weighed too — a
+    // container weight is measured against the dish's own, so seeding one
+    // without the other would show a number nothing can use.
+    const weighed = live.find(l => l.weightG !== null);
+    expect(weighed).toBeDefined();
+    const dish = useRecipeStore.getState().recipes.find(r => r.id === weighed!.recipeId);
+    expect(dish?.cookedWeightG).not.toBeNull();
   });
 
   it("fills every row of Stats' cooking section", () => {

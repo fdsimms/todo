@@ -5247,6 +5247,21 @@ export interface Leftover {
    * (`needsAttention`).
    */
   frozenAt: string | null;
+  /**
+   * What's in the container, in grams, or null when nobody weighed it, which
+   * is most containers.
+   *
+   * **The container's half of `Recipe.cookedWeightG`.** A weight is only worth
+   * having where something can divide by it: this one is measured against the
+   * dish's own cooked weight, so eating the container works out to the
+   * fraction of the recipe it held. Without the recipe's weight it measures
+   * nothing, which is why nothing asks for it on a container logged by hand
+   * off a takeaway.
+   *
+   * Per container rather than per cooking, because that is what a scale can
+   * answer: two tubs off one pot are rarely halves.
+   */
+  weightG: number | null;
   createdAt: string;
   /**
    * The per-leftover answer to "does this get a use-up task" — true, false, or

@@ -213,6 +213,38 @@ export function cookedDishGrams(cookedWeightG: number | null, scale: number): nu
   return Math.round(cookedWeightG * scale);
 }
 
+/**
+ * "900 g cooked, about 450 g a serving", or null for a dish nobody has weighed.
+ *
+ * The recipe page's own line, next to the cost and nutrition captions. It
+ * carries no "≈": the weight was read off a scale rather than summed through a
+ * coverage floor, so hedging it would be the wrong claim. The serving half
+ * does say "about", because dividing a dish by four assumes four equal plates,
+ * which is the assumption weighing a plate exists to avoid.
+ *
+ * Scaled like every other figure on that page, and the serving weight is
+ * deliberately unmoved by the chips: a doubled batch is twice as much food in
+ * twice as many servings.
+ */
+export function describeCookedWeight(
+  cookedWeightG: number | null,
+  servings: number | null,
+  scale = 1,
+): string | null {
+  const dish = cookedDishGrams(cookedWeightG, scale);
+  if (dish === null) return null;
+  // The serving half is worked out from the recipe as written against the
+  // servings count it states, so the scale cancels rather than being divided
+  // back out of a number it was just multiplied into.
+  const per = servingGrams({
+    total: {},
+    perServing: null,
+    servings,
+    cookedGrams: cookedDishGrams(cookedWeightG, 1),
+  });
+  return `${dish} g cooked${per !== null ? `, about ${per} g a serving` : ''}`;
+}
+
 /** The lightest and heaviest finished dish anyone can record. */
 export const COOKED_WEIGHT_MIN_G = 1;
 export const COOKED_WEIGHT_MAX_G = 50000;

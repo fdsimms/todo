@@ -3345,6 +3345,7 @@ describe('leftovers', () => {
       finishedAt: null,
       outcome: null,
       frozenAt: null,
+      weightG: null,
       createdAt: '2026-08-10T09:00:00.000Z',
       useUpTask: null,
       ...overrides,

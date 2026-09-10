@@ -61,6 +61,7 @@ function makeLeftover(overrides: Partial<Leftover> = {}): Leftover {
     finishedAt: null,
     outcome: null,
     frozenAt: null,
+    weightG: null,
     createdAt: new Date(2026, 7, 13, 9, 0, 0).toISOString(),
     useUpTask: null,
     ...overrides,

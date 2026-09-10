@@ -1,5 +1,6 @@
 import {
   asWrittenCookedWeight,
+  describeCookedWeight,
   clampCookedWeight,
   cookedDishGrams,
   defaultHelpings,
@@ -177,6 +178,26 @@ describe('cookedDishGrams', () => {
     const stored = asWrittenCookedWeight(1450, 2);
     expect(stored).toBe(725);
     expect(cookedDishGrams(stored, 2)).toBe(1450);
+  });
+});
+
+describe('describeCookedWeight', () => {
+  it('says what the dish weighs and what that makes a serving', () => {
+    expect(describeCookedWeight(900, 2)).toBe('900 g cooked, about 450 g a serving');
+  });
+
+  it('says only the dish when the recipe never named a servings count', () => {
+    expect(describeCookedWeight(900, null)).toBe('900 g cooked');
+  });
+
+  it('scales the dish and leaves the serving alone', () => {
+    // Twice as much food in twice as many servings, so a serving is the same
+    // size. That the second figure does not move is the check on the first.
+    expect(describeCookedWeight(900, 2, 2)).toBe('1800 g cooked, about 450 g a serving');
+  });
+
+  it('has nothing to say about a dish nobody weighed', () => {
+    expect(describeCookedWeight(null, 4)).toBeNull();
   });
 });
 

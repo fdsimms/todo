@@ -515,11 +515,25 @@ to figures `recipeNutrition.ts` already produced.
   and a helping ten times the dish is the write-side failure `docs/arch/health-data.md` describes:
   nothing downstream would ever question it. Same posture as the rest of the nutrition tree —
   refuse rather than approximate.
+- **A container in the fridge gets the same treatment** (`Leftover.weightG`). Weighing a tub on
+  the way in is the container's half of this: the tub against the dish's own cooked weight is the
+  fraction of the recipe it holds, so finishing it as eaten opens the log offer on that weight
+  rather than on "1 serving". It is per container rather than per cooking, because that is what a
+  scale can answer (two tubs off one pot are rarely halves), and the sheet asks for it only where
+  it would be used: one container at a time, and only one that came off a recipe. Half a takeaway
+  has nothing to divide by. The weight rides `PendingMealLog.grams` as the figure the prompt
+  **opens on**, never one it writes: a container picked at by somebody else held less than it was
+  logged with, and the whole posture of that prompt is to offer.
 - **Servings do not go away.** A dish nobody has weighed is logged in servings exactly as before,
   and a weighed dish that also states servings offers both, weight first (`LogMealPrompt`,
   `FoodLogEntrySheet`). What changed for the servings path is that it now records grams too when
   the dish has been weighed, since the dish's weight over its servings count says what one of
   them weighed.
+- **The recipe page says what the dish weighs** (`describeCookedWeight`), beside the cost and
+  nutrition captions and scaled with the same chips. It carries no "≈": that figure came off a
+  scale rather than through a coverage floor. The serving half of the line does say "about",
+  because dividing a dish by four assumes four equal plates, which is the assumption weighing a
+  plate exists to avoid.
 
 ## Unit conversion (`unitConvert.ts`) — showing amounts in the reader's units
 

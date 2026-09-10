@@ -204,12 +204,15 @@ export function CookRecap() {
           visible={leftoverVisible}
           leftover={null}
           seed={seed}
-          onLog={(picks, storedAt, keepDays) => picks.forEach(pick => logLeftover({
+          onLog={(picks, storedAt, keepDays, weightG) => picks.forEach(pick => logLeftover({
             title: pick.title,
             storedAt,
             keepDays,
             frozen: pick.frozen,
             recipeId: pick.recipeId,
+            // Set only where the sheet wrote one container, which is the only
+            // case it asks for a weight in.
+            weightG,
             // The one thing the sheet can't have changed: every container here
             // came out of that cooking, whichever part of it it is.
             sourceEntryId: recap.entryId,
@@ -219,6 +222,7 @@ export function CookRecap() {
           onRename={() => {}}
           onSetStoredAt={() => {}}
           onSetKeepDays={() => {}}
+          onSetWeight={() => {}}
           onFinish={() => {}}
           onSetFrozen={() => {}}
           onSplit={() => {}}

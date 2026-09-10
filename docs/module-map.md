@@ -137,7 +137,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/mealCalendarSync.ts` — mealEventTitle, mealEventFields, syncMealEvent
 - `src/utils/mealGuests.ts` — guestsOn, describeGuests, hasGuests, GuestMeal, upcomingMealsWithGuest
 - `src/utils/mealIdeas.ts` — MIN_MEAL_IDEAS, MAX_MEAL_IDEAS, RECENT_MEAL_DAYS, MealIdea, RawMealIdea, mealTitleKey, clampIdeaCount, dedupeMealIdeas, MealSuggestion, mergeMealSuggestions, +6 more
-- `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, COOKED_WEIGHT_MIN_G, COOKED_WEIGHT_MAX_G, +3 more
+- `src/utils/mealLog.ts` — DishFigures, MealHelping, wantsMealLogPrompt, defaultHelpings, mealHelping, servingGrams, weighedHelping, cookedDishGrams, describeCookedWeight, COOKED_WEIGHT_MIN_G, +4 more
 - `src/utils/mealPlan.ts` — slotRank, slotLabel, sortMealEntries, entriesForDay, cookEntryForRecipe, earliestUnplannedSlot, entriesForSlot, nextSortOrder, upcomingDays, daysWithoutMeal, +16 more
 - `src/utils/mealPlanGroceries.ts` — PlannedIngredient, collectPlannedIngredients, hasShoppableMeals, plannedIngredientsForRecipe, parseQuantityAmount, mergeQuantities, describeQuantities, PlanCategory, ClassifiedIngredient, classifyPlanned, +4 more
 - `src/utils/mealPlanNudge.ts` — DEFAULT_MEAL_PLAN_NUDGE_WEEKDAY, DEFAULT_MEAL_PLAN_NUDGE_TIME, MEAL_PLAN_NUDGE_LINK_URL, mealPlanNudgeLinkUrl, MEAL_PLAN_NUDGE_SLOTS, MEAL_PLAN_NUDGE_SLOT_COUNT, countPlannedSlots, mealPlanNudgeDayKey, MealPlanNudgeDue, MealPlanNudgeDay, +3 more

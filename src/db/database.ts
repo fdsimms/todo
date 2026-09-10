@@ -1434,6 +1434,10 @@ export function initDatabase(): void {
     // divides on the way in — a 1,450g double batch stores 725. See
     // Recipe.cookedWeightG.
     'ALTER TABLE recipes ADD COLUMN cooked_weight_g REAL',
+    // NULL for every existing container, same as the recipe column above and
+    // for the same reason: nothing before this weighed one, and there is no
+    // figure to derive one from. See Leftover.weightG.
+    'ALTER TABLE leftovers ADD COLUMN weight_g REAL',
   ];
   for (const sql of migrations) {
     try { db.runSync(sql); } catch (_) { /* column already exists */ }
@@ -5009,6 +5013,7 @@ function rowToLeftover(row: Record<string, unknown>): Leftover {
       : null,
     createdAt: row.created_at as string,
     frozenAt: (row.frozen_at as string) ?? null,
+    weightG: (row.weight_g as number) ?? null,
     useUpTask: row.use_up_task === null || row.use_up_task === undefined
       ? null
       : Boolean(row.use_up_task),
@@ -5032,25 +5037,27 @@ export function dbGetAllLeftovers(): Leftover[] {
 
 export function dbInsertLeftover(leftover: Leftover): void {
   db.runSync(
-    `INSERT INTO leftovers (id, title, recipe_id, source_entry_id, stored_at, keep_until, finished_at, outcome, created_at, frozen_at, use_up_task)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+    `INSERT INTO leftovers (id, title, recipe_id, source_entry_id, stored_at, keep_until, finished_at, outcome, created_at, frozen_at, use_up_task, weight_g)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       leftover.id, leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
       leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
       leftover.outcome ?? null, leftover.createdAt, leftover.frozenAt ?? null,
       leftover.useUpTask === null || leftover.useUpTask === undefined ? null : (leftover.useUpTask ? 1 : 0),
+      leftover.weightG ?? null,
     ]
   );
 }
 
 export function dbUpdateLeftover(leftover: Leftover): void {
   db.runSync(
-    `UPDATE leftovers SET title=?, recipe_id=?, source_entry_id=?, stored_at=?, keep_until=?, finished_at=?, outcome=?, frozen_at=?, use_up_task=? WHERE id=?`,
+    `UPDATE leftovers SET title=?, recipe_id=?, source_entry_id=?, stored_at=?, keep_until=?, finished_at=?, outcome=?, frozen_at=?, use_up_task=?, weight_g=? WHERE id=?`,
     [
       leftover.title, leftover.recipeId ?? null, leftover.sourceEntryId ?? null,
       leftover.storedAt, leftover.keepUntil, leftover.finishedAt ?? null,
       leftover.outcome ?? null, leftover.frozenAt ?? null,
       leftover.useUpTask === null || leftover.useUpTask === undefined ? null : (leftover.useUpTask ? 1 : 0),
+      leftover.weightG ?? null,
       leftover.id,
     ]
   );

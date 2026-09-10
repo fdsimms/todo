@@ -80,7 +80,10 @@ export function LogMealPrompt() {
   useEffect(() => {
     if (pending) {
       setHelpings(defaultHelpings());
-      setPlatedText('');
+      // What the container weighed, when something already knows — finishing a
+      // leftover that was weighed on the way into the fridge. A figure to
+      // correct, not an answer: see PendingMealLog.grams.
+      setPlatedText(pending.grams === null ? '' : String(pending.grams));
     }
   }, [pending]);
 
@@ -214,8 +217,10 @@ export function LogMealPrompt() {
                 <Text style={styles.weightUnit}>g</Text>
               </View>
               <Text style={styles.hint}>
-                {`What was on your plate. The whole dish weighs ${figures.cookedGrams} g` +
-                  (oneServing !== null ? `, so a serving is about ${oneServing} g.` : '.')}
+                {pending.grams !== null
+                  ? `What the container weighed when you put it away. Change it if you didn't finish it all. The whole dish weighs ${figures.cookedGrams} g.`
+                  : `What was on your plate. The whole dish weighs ${figures.cookedGrams} g`
+                    + (oneServing !== null ? `, so a serving is about ${oneServing} g.` : '.')}
               </Text>
             </>
           ) : (

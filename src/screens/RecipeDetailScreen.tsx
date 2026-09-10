@@ -91,6 +91,7 @@ import {
 } from '../utils/recipeComponents';
 import { applyStandingSwap, describeStandingSwap, standingSwapMap } from '../utils/standingSwaps';
 import { describeRecipeCost, estimateRecipeCost } from '../utils/recipeCost';
+import { describeCookedWeight } from '../utils/mealLog';
 import {
   describeNutritionCoverage,
   describeRecipeNutrition,
@@ -232,6 +233,11 @@ export function RecipeDetailScreen() {
   const costLine = useMemo(
     () => describeRecipeCost(costEstimate, currencySymbol, new Date()),
     [costEstimate, currencySymbol]
+  );
+
+  const weightLine = useMemo(
+    () => (recipe ? describeCookedWeight(recipe.cookedWeightG, recipe.servings, scale) : null),
+    [recipe, scale]
   );
 
   // The same flattening again, with grams in place of prices. One reading
@@ -1535,6 +1541,12 @@ export function RecipeDetailScreen() {
             doubled cost. Renders nothing rather than a guess while too few
             lines are priced to say (see recipeCost.ts's coverage floor). */}
         {!!costLine && <Text style={styles.summary}>{costLine}</Text>}
+        {/* What the finished dish weighs, when somebody has weighed it (see
+            Recipe.cookedWeightG). It sits with the cost and nutrition captions
+            because it is the third thing measured about the dish rather than
+            written in it, and it carries no "≈": this one came off a scale.
+            Scaled with the chips, like the cost above. */}
+        {!!weightLine && <Text style={styles.summary}>{weightLine}</Text>}
         {/* The one summary here that opens onto something. Its coverage clause
             names how many ingredients were left out, which was a number with
             nowhere to go until the sheet behind it existed — so it takes the

@@ -3627,6 +3627,18 @@ function seedMealPlanAndFridge(recipes: DemoRecipes, today: Date): void {
     storedAt: subDays(today, 4).toISOString(),
     keepDays: 5,
   });
+  // Weighed on the way into the fridge, which is the fridge half of
+  // Recipe.cookedWeightG and is only worth doing on a dish that has one: this
+  // container is 300 g of a salmon tray that came to 900 g, so finishing it
+  // logs a third of the dish rather than a guess at "one serving". Salmon
+  // because it is the seeded recipe that has been weighed.
+  logLeftover({
+    title: 'Lemon garlic salmon',
+    recipeId: recipes.salmon,
+    storedAt: subDays(today, 1).toISOString(),
+    keepDays: 1,
+    weightG: 300,
+  });
   logLeftover({
     title: 'Carrot cake',
     recipeId: recipes.cake,
