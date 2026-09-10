@@ -3,6 +3,7 @@ import {
   describeFoodLogTotals,
   foodLogSections,
   foodLogTotals,
+  nutrientContributions,
   recipeHelpingNutrition,
   scalePanelToAmount,
 } from '../utils/foodLog';
@@ -254,6 +255,28 @@ describe('describeFoodLogEntry', () => {
       nutrition: panel({ source: 'openFoodFacts', amounts: { calorieKcal: 300 } }),
     }));
     expect(described.includes('estimated')).toBe(false);
+  });
+});
+
+describe('nutrientContributions', () => {
+  it('pairs each entry with its stated amount, highest first', () => {
+    const a = entry({ label: 'Toast', nutrition: panel({ amounts: { calorieKcal: 120 } }) });
+    const b = entry({ label: 'Eggs', nutrition: panel({ amounts: { calorieKcal: 300 } }) });
+    const contributions = nutrientContributions([a, b], 'calorieKcal');
+    expect(contributions).toEqual([
+      { entry: b, amount: 300 },
+      { entry: a, amount: 120 },
+    ]);
+  });
+
+  it('sorts an entry that never stated the nutrient to the bottom, not out', () => {
+    const stated = entry({ label: 'Toast', nutrition: panel({ amounts: { fiberG: 2 } }) });
+    const unstated = entry({ label: 'Mystery soup', nutrition: panel({ amounts: { calorieKcal: 200 } }) });
+    const contributions = nutrientContributions([unstated, stated], 'fiberG');
+    expect(contributions).toEqual([
+      { entry: stated, amount: 2 },
+      { entry: unstated, amount: null },
+    ]);
   });
 });
 

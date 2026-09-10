@@ -19,7 +19,7 @@ import {
 import { NUTRIENT_LABEL } from '../utils/foodNutrition';
 import { targetProgress } from '../utils/nutritionTargets';
 import { useSettingsStore } from '../store/useSettingsStore';
-import { NUTRIENT_KEYS } from '../types';
+import { NUTRIENT_KEYS, type NutrientKey } from '../types';
 import { haptics } from '../utils/haptics';
 import { animateLayout } from '../utils/layoutAnimation';
 import { useGroceryStore } from '../store/useGroceryStore';
@@ -36,6 +36,7 @@ import { HubPills } from '../components/HubPills';
 import { InlineAction } from '../components/InlineAction';
 import { ScreenHeader, type ScreenHeaderAction } from '../components/ScreenHeader';
 import { FoodLogEntrySheet } from '../components/FoodLogEntrySheet';
+import { NutrientContributorsSheet } from '../components/NutrientContributorsSheet';
 
 /**
  * A day of eating, read back.
@@ -91,6 +92,9 @@ export function FoodLogScreen() {
   // protein answer the question most days, and ten rows above the meals would
   // push the day itself below the fold.
   const [allNutrients, setAllNutrients] = useState(false);
+  // Which nutrient's contributors are open in the breakdown sheet, or null
+  // while it's closed.
+  const [contributorsKey, setContributorsKey] = useState<NutrientKey | null>(null);
 
   useEffect(() => {
     loadRange(dayKey, dayKey);
@@ -322,7 +326,13 @@ export function FoodLogScreen() {
             <View style={styles.totalsCard}>
               {shownKeys.map(key => (
                 <View key={key} style={styles.totalBlock}>
-                <View style={styles.totalRow}>
+                <TouchableOpacity
+                  style={styles.totalRow}
+                  activeOpacity={interaction.activeOpacity}
+                  onPress={() => { haptics.tap(); setContributorsKey(key); }}
+                  accessibilityRole="button"
+                  accessibilityLabel={`See which entries contributed to ${NUTRIENT_LABEL[key].label.toLowerCase()}`}
+                >
                   <Text style={styles.totalLabel}>{NUTRIENT_LABEL[key].label}</Text>
                   <View style={styles.totalRight}>
                     <Text style={styles.totalValue}>
@@ -347,7 +357,7 @@ export function FoodLogScreen() {
                       </Text>
                     )}
                   </View>
-                </View>
+                </TouchableOpacity>
                 {/* One colour at both ends, because whether being over a target
                     is good or bad is not knowable: somebody tracking protein
                     wants to reach it and somebody tracking sodium wants to stay
@@ -447,6 +457,12 @@ export function FoodLogScreen() {
         slot={addingSlot}
         at={loggingAt}
         onClose={() => setScanned([])}
+      />
+      <NutrientContributorsSheet
+        visible={contributorsKey !== null}
+        nutrientKey={contributorsKey}
+        entries={dayEntries}
+        onClose={() => setContributorsKey(null)}
       />
     </SafeAreaView>
   );
