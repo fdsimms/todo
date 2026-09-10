@@ -14,17 +14,24 @@ import { isDemoModeActive } from './demoState';
  * it is a real read the demo has no business making, and anything derived from
  * it is a claim about someone that outlives the demo only by luck.
  *
- * This gate now covers one write as well as every read — a dietary-water
+ * This gate now covers two writes as well as every read — a dietary-water
  * sample, logged when a task that opted into it completes (see
- * `healthCompletionSync.ts`) — and demo mode is the sharper case for that
- * half, not the milder one the note above still describes for reads. A read
- * leak shows a true number in a fictional context; a write leak would put a
- * *real* sample in the person's *real* Health record, sourced from a
- * demo-seeded completion that never happened. Nothing here drains a queue the
- * way the Screen Time/widget gates' writes do, but "worse than a read leak"
- * is still the operative comparison, not "as harmless as one". The gate is
- * also what keeps either permission sheet — read or write — from ever being
- * raised by a demo session, which is the visible half.
+ * `healthCompletionSync.ts`), and a body-mass sample when somebody records a
+ * weight — and demo mode is the sharper case for that half, not the milder one
+ * the note above still describes for reads. A read leak shows a true number in
+ * a fictional context; a write leak would put a *real* sample in the person's
+ * *real* Health record, sourced from a demo-seeded completion that never
+ * happened. Nothing here drains a queue the way the Screen Time/widget gates'
+ * writes do, but "worse than a read leak" is still the operative comparison,
+ * not "as harmless as one". The gate is also what keeps either permission
+ * sheet — read or write — from ever being raised by a demo session, which is
+ * the visible half.
+ *
+ * The weight write is the milder of the two against demo mode, and only by
+ * accident: it is reached from a screen rather than from a completion, so a
+ * demo session would have to be driven there by hand rather than writing on
+ * its own. The gate is unconditional anyway, because "you would have to mean
+ * it" is not a guarantee and this is somebody's medical record.
  *
  * Returns null for every reason a caller has nothing to do — not iOS, demo mode
  * on, or no native module in the binary — so a caller is one `if` rather than a

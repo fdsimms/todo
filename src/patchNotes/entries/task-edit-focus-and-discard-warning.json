@@ -1,0 +1,4 @@
+{
+  "message": "Opening a task to edit it no longer auto-focuses the title, and the discard-changes warning no longer fires when you leave without changing anything",
+  "date": "2026-09-10"
+}

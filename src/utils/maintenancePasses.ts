@@ -167,6 +167,13 @@ export function catchUpPasses(): MaintenanceStep[] {
     // and is close to a no-op here; the task half is answered either way, and
     // an unreadable calendar is deliberately not a reason to stay silent.
     ['check weekend nudge tasks', () => tasks().checkWeekendNudgeTasks()],
+    // Beside the health pass in spirit, listed here because it shares the mood
+    // check-in's shape rather than the rule generators'. The only pass that
+    // takes a Health read of its own instead of judging a snapshot some
+    // foreground effect filled in, so it is the only async one — nothing is
+    // ordered after it, and the void return is deliberate: the sweep fires it
+    // and moves on rather than waiting on the health daemon.
+    ['check weigh-in tasks', () => { void tasks().checkWeighInTasks(); }],
     // Birthdays, which share the same trigger — a date arriving rather than a
     // source changing — and read the people initTasks' fan-out has loaded.
     // After initSettings for the same reason the meal pass is: the day a task

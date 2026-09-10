@@ -64,7 +64,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/dayLoad.ts` — BUSY_DAY_MINUTES, FULL_DAY_MINUTES, ASSUMED_TASK_MINUTES, DayWeight, DayLoad, BuildDayLoadsOptions, buildDayLoads, weightFor, describeDayWeight, describeDayLoad
 - `src/utils/daySegments.ts` — DAY_SEGMENT_KEYS, DaySegmentKey, DaySegmentTimes, applyDaySegmentTime, daySegmentsInOrder
 - `src/utils/deadlineCalendarSync.ts` — syncDeadlineEvent
-- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, recipeUrlId, +24 more
+- `src/utils/deepLinks.ts` — AddTaskLink, parseAddTaskUrl, handleIncomingUrl, isQuickAddUrl, isOpenAppUrl, isGroceriesUrl, groceriesUrlFinish, isRecipesUrl, isRecipeUrl, recipeUrlId, +26 more
 - `src/utils/deliverables.ts` — DELIVERABLE_TEXT_MAX_LENGTH, DELIVERABLE_META, deliverableMeta, DeliverableSource, deliverableKindFor, asksOnCompletion, chainStepDatedByAnswer, deliverableDate, normalizeDeliverableValue, formatDeliverableValue, +1 more
 - `src/utils/deloadPlan.ts` — DeloadDestination, DeloadProposal, DeloadPlan, buildDeloadPlan
 - `src/utils/demoSeed.ts` — seedDemoData
@@ -112,6 +112,7 @@ render, so listing them adds lines without adding answers.
 - `src/utils/healthCompletionSync.ts` — logTaskWaterToHealth
 - `src/utils/healthRules.ts` — HEALTH_NUTRIENT_METRICS, usesCheckpoint, HEALTH_RULE_TITLE_MAX_LENGTH, HEALTH_THRESHOLDS, HEALTH_METRIC_DIRECTION, healthRuleDirection, HEALTH_METRIC_EARLIEST_HOUR, HEALTH_METRICS, healthRuleCheckpointHour, HealthRuleReading, +19 more
 - `src/utils/healthTarget.ts` — HealthTargetState, HealthTargetReading, HEALTH_TARGET_RANGES, hasHealthTarget, healthTargetValue, healthTargetProgress, isHealthTargetReady, describeHealthTarget
+- `src/utils/healthWeightSync.ts` — WeightWriteResult, logWeightToHealth
 - `src/utils/hiddenEvents.ts` — HiddenEvent, hiddenEventKey, hiddenEventFromEvent, isHiddenEventStale, pruneStaleHiddenEvents
 - `src/utils/id.ts` — generateId
 - `src/utils/ingredientCatalogMatch.ts` — IngredientMatchReason, IngredientMatchKind, IngredientCatalogMatch, withinOneEdit, matchIngredientToCatalog, matchIngredientsToCatalog, CatalogMatchSummary, catalogMatchSummary
@@ -283,6 +284,8 @@ render, so listing them adds lines without adding answers.
 - `src/utils/weatherTasks.ts` — WEATHER_RULE_TITLE_MAX_LENGTH, WEATHER_CONDITIONS, weatherConditionLabel, defaultWeatherRules, parseWeatherRules, weatherSourceId, parseWeatherSourceId, weatherRuleIdOf, ruleMatchesToday
 - `src/utils/weekPlan.ts` — WeekNight, weekNights, decidableNights
 - `src/utils/weekendTasks.ts` — WEEKEND_NUDGE_TITLE, WEEKEND_EVENING_SEGMENTS, WeekendWindow, upcomingWeekend, isWeekendNudgeLeadDay, clampWeekendNudgeLeadDays, describeWeekendNudgeLead, weekendNudgeWeekendKey, isWeekendEvening, weekendPlanCount, +7 more
+- `src/utils/weightLog.ts` — WeightUnit, MAX_WEIGHT_KG, WeightPoint, WeightReading, kgToUnit, unitToKg, formatWeight, parseWeightInput, weightReadings, latestWeight, +13 more
+- `src/utils/weightTasks.ts` — WEIGH_IN_TITLE, DEFAULT_WEIGH_IN_EVERY_DAYS, WEIGH_IN_EVERY_DAYS_MIN, WEIGH_IN_EVERY_DAYS_MAX, clampWeighInEveryDays, WEIGH_IN_LINK_URL, weighInDayKey, wantsWeighIn, weighInNotes
 - `src/utils/widgetBridge.ts` — WidgetBridge, widgetBridge
 - `src/utils/widgetSync.ts` — writeWidgetSnapshotNow, useWidgetSync
 
@@ -297,7 +300,7 @@ render, so listing them adds lines without adding answers.
 - `src/store/useFocusStore.ts` — useFocusStore
 - `src/store/useFoodLogStore.ts` — FoodLogDraft, PendingMealLog, FoodLogPatch, useFoodLogStore
 - `src/store/useGroceryStore.ts` — PlannedRow, PlanAddResult, useGroceryStore
-- `src/store/useHealthStore.ts` — HealthDay, HEALTH_HISTORY_DAYS, useHealthStore, useHealthSync
+- `src/store/useHealthStore.ts` — HealthDay, HEALTH_HISTORY_DAYS, WEIGHT_HISTORY_DAYS, useHealthStore, useHealthSync
 - `src/store/useHiddenEventsStore.ts` — useHiddenEventsStore
 - `src/store/useLeftoverStore.ts` — LeftoverDraft, useLeftoverStore
 - `src/store/useMealPlanStore.ts` — MealPlanDraft, CookRecap, useMealPlanStore

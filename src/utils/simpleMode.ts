@@ -74,6 +74,7 @@ export type SimpleFeatureId =
   | 'calendarScreen'
   | 'statsScreen'
   | 'moodScreen'
+  | 'weightScreen'
   | 'foodLogScreen'
   | 'backfillScreen'
   | 'stuckScreen'
@@ -165,6 +166,12 @@ export const SIMPLE_FEATURES: readonly SimpleFeature[] = [
   // mood entries that live nowhere else in the app, so hiding it while it holds
   // any would strand them with no way back to them.
   { id: 'moodScreen', label: 'Mood', area: 'screens', screen: 'Mood', contentScreen: true },
+  // Deliberately *not* a content screen, unlike Mood right above it, and the
+  // difference is the whole reason: a mood entry lives nowhere but the mood
+  // screen, so hiding that screen strands it. Every weight this screen draws
+  // lives in Apple Health, which the app only ever reads — hiding the screen
+  // hides a view of somebody else's data and loses nothing at all.
+  { id: 'weightScreen', label: 'Weight', area: 'screens', screen: 'Weight' },
   // A content screen for the same reason Mood is one: a food log's entries live
   // nowhere else in the app, so hiding the screen while it holds any would
   // strand them with no way back.

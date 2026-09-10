@@ -344,6 +344,8 @@ function generatedCategorySetting(kind: GeneratedKind): {
       return { key: 'moodNudgeTaskCategory', current: s.moodNudgeTaskCategory, assign: s.setMoodNudgeTaskCategory };
     case 'weekendNudge':
       return { key: 'weekendNudgeTaskCategory', current: s.weekendNudgeTaskCategory, assign: s.setWeekendNudgeTaskCategory };
+    case 'weighIn':
+      return { key: 'weighInTaskCategory', current: s.weighInTaskCategory, assign: s.setWeighInTaskCategory };
   }
 }
 

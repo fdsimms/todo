@@ -1,20 +1,23 @@
-# Reading (mostly) and writing (once) Apple Health
+# Reading (mostly) and writing (twice) Apple Health
 
 The whole of it: the bridge, the store, the Settings section, the row on Today,
 the Mood screen's health axis, the `health` generator, the short-night line
-under "Lighten today", and the one thing this app writes back — a
-dietary-water sample, on completion of a task that opted into it — plus the
+under "Lighten today", the Weight screen and its chart, and the two things this
+app writes back — a dietary-water sample, on completion of a task that opted
+into it, and a body-mass sample, when somebody records a weight — plus the
 rules any further reader or writer has to be built against.
 
 Read this before touching `modules/todo-health-bridge/`,
 `src/utils/healthBridge.ts`, `src/utils/healthCompletionSync.ts`,
+`src/utils/healthWeightSync.ts`, `src/utils/weightLog.ts`,
 `src/store/useHealthStore.ts`, `src/screens/settings/HealthSettings.tsx`,
-`healthContextRows` in `src/utils/dayContextRows.ts` or the health half of
+`src/screens/WeightScreen.tsx`, `healthContextRows` in
+`src/utils/dayContextRows.ts` or the health half of
 `src/utils/moodInsights.ts` — and before adding any reader *or writer* of a
 health figure anywhere else. Most of what follows is about what a reader is
-allowed to claim rather than about how to get the number; the "Writing
-exactly one thing" section is the one place the concerns are about a writer
-instead.
+allowed to claim rather than about how to get the number; the "Writing exactly
+one thing" and "The second write" sections are where the concerns are about a
+writer instead.
 
 The rules here are settled decisions with the reasoning attached. Don't
 re-derive them from the code, and don't re-open one without a reason this note
@@ -209,6 +212,141 @@ one place.
   Connect's Info.plist validator scans for the `requestAuthorization
   (toShare:read:)` selector being linked at all, whether or not anything is
   ever passed in `toShare`) even back when it was never truly exercised.
+
+## The second write: body mass
+
+Everything the water section says about writing being a different kind of risk
+from reading holds here unchanged, and more so: a weight is the most personal
+number this app touches. What follows is only where body mass *differs* from
+water, because everywhere it doesn't, the rules above are the rules.
+
+- **It is licensed by the read argument, not by the water one.** Water earned
+  its write by being the one thing a task has an unambiguous amount to record.
+  A weight is not written by a task at all; it is written because somebody
+  typed a number that is already true. That is the nutrients' argument applied
+  to a write, and it is why "there's no equivalent obvious number for, say, a
+  stretching task" is still correct and still not an objection to this one.
+- **The write carries its own date; the water write stamps `Date()`.** Water is
+  logged by completing a task, so the logging and the drinking are one event.
+  A weight is typed, and this morning's weigh-in is quite often entered in the
+  evening. `writeBodyMassSample` therefore takes an instant, and the sheet
+  sends the actual moment for today and noon of the chosen day for a backdated
+  one. Backwards is allowed, forwards is not — the same asymmetry `MoodLogSheet`
+  applies, for the same reason.
+- **Authorization is per type, and that changed an existing signature.**
+  `writeAuthorizationStatus` now takes `"water" | "weight"`, because Health lets
+  somebody allow one and refuse the other in the same sheet and a single
+  "write access" answer would be false for whichever they declined. There are
+  two access rows in Settings and still **one** app-level switch: "may this app
+  put samples in my Health record" is asked once, and which types is Health's
+  question rather than this app's.
+- **Failures are surfaced rather than swallowed.** `logTaskWaterToHealth`
+  returns a bare boolean because nobody is watching a completion and no failure
+  is worth interrupting them over. `logWeightToHealth` returns which failure it
+  was, because a person is standing there having just typed a number, and the
+  most likely failure by far is that Health's sharing permission was never
+  granted — which they can fix, if they are told.
+- **Still no local copy, and still no edit or delete.** Health is the record.
+  Correcting or removing a weight happens in the Health app, with the person's
+  other sources in view; a mirror here would be a second, worse editor for data
+  this app does not own. The screen says so in as many words rather than
+  leaving somebody hunting for an edit button.
+
+### Reading it back is a separate call, and had to be
+
+`readWeightSeries` is its own native function rather than an eleventh column on
+`readDailyHealth`, and the three reasons are all disqualifying on their own:
+
+- **The statistics are the wrong kind.** Every metric the daily read collects is
+  cumulative, and `runDietQuery` hardcodes `.cumulativeSum`. On body mass that
+  *adds up* the day's weigh-ins: step on the scale twice and you weigh 145kg.
+  The weight query uses `.discreteAverage` instead.
+- **The wire format rounds.** `readDailyHealth` puts every value through
+  `Int($0.rounded())`, which lands 72.4kg as 72. The weight read carries whole
+  **grams as an integer** and divides back on the JS side — 0.001kg of
+  precision, three digits finer than any bathroom scale, and no `Double` in
+  hand-built JSON for a comma-decimal locale to break.
+- **The daily read runs on every foreground.** It refreshes today's snapshot at
+  each foreground and again over 90 days for the mood correlations, so a column
+  there would cost a query on every foreground for a number one screen reads.
+
+It also drops `.separateBySource`, which every cumulative read above uses.
+That option exists there because a phone and a watch counting one walk get
+*summed* into double the steps, so the reading must be pinned to a single
+source. An average has no such failure: two apps reporting the same morning's
+weight average to that weight, and a scale and a manual entry that genuinely
+disagree average to something between them, which beats a coin flip on which
+source is "best". `bestSum`'s reasoning does not transfer, and copying it here
+would have been cargo cult.
+
+The window is 180 days rather than the readings window's 90. That one is sized
+to gather enough *paired* days for the mood correlations; weight is drawn
+rather than correlated, and a body moves slowly enough that three months has
+barely any shape in it.
+
+### What the chart may draw
+
+`WeightChart` is the app's first line chart, and the three rules that make it
+honest are each a choice against an easier drawing:
+
+- **The y-domain never starts at zero** (`weightDomain`). The four bar charts
+  elsewhere plot counts, where zero is real and a bar's length is the quantity.
+  A body sits in a narrow band a long way from zero, so a zero-based drawing is
+  180 identical columns. The domain is windowed to the data and floored at a
+  2kg span, so 200g of ordinary variation is drawn as a nearly flat line rather
+  than as a mountain range.
+- **The line breaks across gaps over a fortnight** (`weightSegments`). Somebody
+  who stopped weighing in over the summer did not glide between the two figures
+  either side, and a straight line across the gap asserts every day nobody
+  measured. Weekly weigh-ins still join, because joining two readings a week
+  apart is a fair drawing of them.
+- **Every reading is a dot**, so the chart shows how much of itself is data and
+  how much is interpolation — the duty `MoodScreen`'s "a flat line is a day with
+  nothing logged" caption discharges for its own gaps.
+
+It is one accessibility element with a spoken summary, not one per reading:
+365 of those is a wall to swipe through rather than a chart to read.
+
+**A second, fainter line is a 7-day trailing average** (`weightTrendPoints`),
+drawn dotless underneath the raw one so it reads as background shape rather
+than a second set of measurements. It breaks at the same gaps the raw line
+does (`weightTrendSegments`, sharing `groupByGap` with `weightSegments` so the
+two cannot silently disagree), and it is one point per actual reading rather
+than one per calendar day — a day with no weigh-in has nothing to average and
+does not get one invented for it. This does not reopen the "nothing here
+interprets a body" line: it is arithmetic over the same dots already on
+screen, no slope is fitted, and nothing is said about direction.
+
+**The screen reads once and lets the chart re-zoom for free.** `useHealthStore`
+fetches `WEIGHT_HISTORY_DAYS` (365, under the native 400-day ceiling) in one
+query; `WeightScreen`'s four-way range picker (1M/3M/6M/1Y, a closed set and so
+`SegmentedControl` rather than a `PillGroup`) just slices the array already in
+memory, so switching ranges costs nothing further from Health. "Latest" always
+reads the true most-recent weigh-in regardless of which range is selected —
+that is what "latest" means — while the chart, the change figure and the
+weigh-in count all scope to whichever range is currently zoomed to.
+
+### The task that asks for one
+
+`weighIn` (`src/utils/weightTasks.ts`) is the generator that writes "Record
+your weight" when Health has had nothing for a while. It is written up in
+`docs/arch/generated-tasks.md`; two things about it belong here rather than
+there.
+
+**It reads whether a weight exists, never what it was.** That is the same
+fence this file draws everywhere else, applied to the one part of the feature
+that could most easily cross it. The app may notice you have not recorded a
+number, which is a fact about your logging and one you can check. It may not
+notice that the number went up, which is a fact about your body and is exactly
+the kind of claim that kept weight off the read list for years.
+
+**It is deliberately not a `health` rule.** Everything in the rules half of
+this file is about a reading crossing a threshold somebody wrote down.
+`weighIn` fires on the absence of a reading, so it needs no threshold, has
+nothing to compare, and cannot be wrong about a body. Adding it as an
+eleventh `HealthRuleMetric` would have been the obvious shape and would have
+put it back on the wrong side of the line: a rule metric is a thing the app
+judges, and there is no judgement here.
 
 ## The row on Today, and where it files
 
@@ -449,16 +587,41 @@ greater/less toggle available everywhere.
 
 ## What is deliberately not built yet
 
-Steps, sleep, and eight nutrients (sodium, protein, saturated fat, fiber,
-sugar, caffeine, water, calories) — nothing past those ten. The read-type list
-is one place (`readTypes`) and the note beside it says what adding to it
-costs; every metric this file still rules out — resting heart rate, HRV,
-weight, glucose, cycle tracking — stays ruled out for the reason given there,
-which is that a generator firing on one of them can be wrong about a body
-rather than about a day. The set of read types is one list in the Swift
+Steps, sleep, eight nutrients (sodium, protein, saturated fat, fiber, sugar,
+caffeine, water, calories) and body mass — nothing past those eleven. The
+read-type list is one place (`readTypes`) and the note beside it says what
+adding to it costs; every metric this file still rules out — resting heart
+rate, HRV, glucose, cycle tracking — stays ruled out for the reason given
+there, which is that a generator firing on one of them can be wrong about a
+body rather than about a day. The set of read types is one list in the Swift
 module (`readTypes`) because the permission sheet is shown once for whatever
 is asked for, and a type added there is a type the sheet will list — so
 nothing goes in until something reads it.
+
+**Weight was on that ruled-out list for a long time and has moved, which is
+worth explaining rather than quietly editing.** It was grouped with HRV and
+glucose on the reasoning that a reading a device produces is one the app would
+have to interpret. That grouping was wrong, and the nutrients section below
+already contains the argument that shows why: what makes HRV unusable is not
+that a device recorded it but that *nobody chose the number*, so an app cannot
+say whether a given value is meaningfully low for a given person without
+inventing a diagnosis. A weight is the opposite case and the same case as the
+nutrients — it exists only because somebody stepped on a scale or typed it in,
+and it means exactly what they already know it means. Reading it back and
+drawing it claims nothing they did not already record.
+
+What replaced the ban is a narrower rule that does the same work: **nothing
+derives anything from a weight.** It is not a `HealthRuleMetric`, so no
+generator fires on it and no task is written from it; there is no goal weight,
+no BMI, no healthy range, and no "trending up". `weightLog.ts` reports the
+first and last readings in a window and the gap between them, with the number
+of weigh-ins printed beside it, and stops. The moment something here wants to
+*judge* a weight rather than draw one, it is back on the ruled-out list.
+
+The type-level constraint helps hold this. `HealthRuleMetric`'s nutrient arm is
+checked against `NutrientKey` (`WithNutrientKeyHome`), so adding weight as a
+rule metric would not typecheck without deliberately carving an exception —
+the fence is structural rather than a comment asking nicely.
 
 **The eight nutrients are not an exception to that reasoning; they sit on the
 other side of the line it draws.** The ruled-out metrics are all a device's
@@ -509,13 +672,14 @@ once the checkpoint-hour and direction mechanisms both already generalized
 past three, which is why `HEALTH_METRIC_INFO` exists as a table rather than
 five more hand-written switch branches.
 
-**None of this bears on `writeTypes`, which stays at exactly one and follows a
-stricter version of the same "don't add until earned" rule.** A sixth read
-metric costs a bigger permission sheet; a second write type costs a real
-sample landing in somebody's actual Health record if anything about it is
-wrong. See "Writing exactly one thing: dietary water" above for the argument
-in full — it is deliberately not summarized here, because collapsing it to a
-sentence is exactly the kind of thing that invites re-deriving it wrong later.
+**None of this bears on `writeTypes`, which is at two and follows a stricter
+version of the same "don't add until earned" rule.** A twelfth read metric
+costs a bigger permission sheet; a third write type costs a real sample
+landing in somebody's actual Health record if anything about it is wrong. See
+"Writing exactly one thing: dietary water" and "The second write: body mass"
+above for the arguments in full — they are deliberately not summarized here,
+because collapsing them to a sentence is exactly the kind of thing that
+invites re-deriving them wrong later.
 
 ## One thing worth knowing before scoping the background half
 
