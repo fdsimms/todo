@@ -83,6 +83,9 @@ import { resolveGroceryDrop, groceryDragRange, placeNewGroceryItems } from '../u
 import { useColors } from '../theme/ThemeContext';
 import { spacing, font, fontWeight, radius, iconSize, interaction, type Colors } from '../theme';
 import { haptics } from '../utils/haptics';
+import { GroceryRecipeStrip } from '../components/GroceryRecipeStrip';
+import { useShoppedRecipes } from '../hooks/useShoppedRecipes';
+import { filterRowsByRecipes, pruneRecipeSelection } from '../utils/groceryRecipeFilter';
 import { generateId } from '../utils/id';
 import { confirmDelete } from '../utils/confirmDelete';
 import { animateLayout } from '../utils/layoutAnimation';
@@ -345,20 +348,87 @@ export function GroceryScreen() {
   const simpleMode = useSettingsStore(s => s.simpleMode);
   const currencySymbol = useSettingsStore(s => s.currencySymbol);
 
+  // ==== the recipe strip: which planned meals this trolley is for ====
+  /**
+   * The recipes this shop is for — the meals planned inside the shop window, and
+   * the ones added straight to the list — plus whichever have been tapped to
+   * narrow the list down to them.
+   *
+   * Which rows a recipe claims is derived from its own ingredients every render
+   * rather than read off `GroceryItem.sourceRecipeId` — see
+   * `groceryRecipeFilter.ts`, which is where the reasoning lives. The short
+   * version: that column is stamped once, only on rows `addFromPlan` genuinely
+   * creates, so it says nothing about a staple and nothing about *this* week.
+   * It is used for the one thing it does record, which is that a recipe put
+   * something in this trolley at all.
+   */
+  const shoppedFor = useShoppedRecipes(listRows);
+  const [recipeFilter, setRecipeFilter] = useState<readonly string[]>([]);
+  /**
+   * The selection with anything that has left the strip dropped — cook the meal,
+   * or take its last row off the list, and its pill goes. Pruned *at read time*
+   * rather than only in the effect below, so every render is self-consistent: a
+   * selection that outlived its pill for the one frame before an effect could
+   * fix it would filter against a recipe with no rows, which is an empty list
+   * and an empty state, flashed for a frame with nothing explaining it.
+   *
+   * Dropping it is silent on purpose. The pill disappearing is the explanation,
+   * and an empty list then means the list is empty rather than filtered.
+   */
+  const activeRecipeFilter = useMemo(
+    () => pruneRecipeSelection(recipeFilter, shoppedFor),
+    [recipeFilter, shoppedFor]
+  );
+  // And collapse the stored selection to match, so a recipe that has gone stops
+  // being carried around for the rest of the session.
+  useEffect(() => {
+    setRecipeFilter(prev => {
+      const next = pruneRecipeSelection(prev, shoppedFor);
+      return next.length === prev.length ? prev : next;
+    });
+  }, [shoppedFor]);
+  const toggleRecipeFilter = useCallback((recipeId: string) => {
+    haptics.tap();
+    animateLayout();
+    setRecipeFilter(prev =>
+      prev.includes(recipeId) ? prev.filter(id => id !== recipeId) : [...prev, recipeId]
+    );
+  }, []);
+  const clearRecipeFilter = useCallback(() => {
+    haptics.tap();
+    animateLayout();
+    setRecipeFilter([]);
+  }, []);
+
   // Two mutually exclusive lenses over the same rows — see the ListRow doc
   // comment above for why grouping is a `kind` rather than two independent
   // toggles. `sections`' shape follows `kind`, so every reader below narrows
   // on it rather than assuming aisle's.
+  //
+  // Fed the *filtered* rows, so the sections, the flat row list and what a bulk
+  // selection can reach all follow from one filter. Everything that means the
+  // whole trolley — the header counts, the share text, the estimate, finishing
+  // the shop — deliberately keeps reading `listRows`: narrowing what a Finish
+  // or a receipt import applies to because a filter is on would be a filter
+  // quietly changing what an action does.
   // ==== the list: items grouped into aisle sections ====
+  const visibleRows = useMemo(
+    () => filterRowsByRecipes(listRows, shoppedFor, activeRecipeFilter),
+    [listRows, shoppedFor, activeRecipeFilter]
+  );
   const grouped = useMemo(() => {
     if (groupBy === 'recipe') {
-      const r = buildGroceryRecipeSections(listRows, cartHoldIds);
-      return { kind: 'recipe' as const, sections: r.sections, inCart: r.inCart, remaining: r.remaining };
+      const r = buildGroceryRecipeSections(visibleRows, cartHoldIds);
+      return { kind: 'recipe' as const, sections: r.sections, inCart: r.inCart };
     }
-    const r = buildGrocerySections(listRows, aisleOrder, cartHoldIds);
-    return { kind: 'aisle' as const, sections: r.sections, inCart: r.inCart, remaining: r.remaining };
-  }, [listRows, aisleOrder, cartHoldIds, groupBy]);
-  const { inCart, remaining } = grouped;
+    const r = buildGrocerySections(visibleRows, aisleOrder, cartHoldIds);
+    return { kind: 'aisle' as const, sections: r.sections, inCart: r.inCart };
+  }, [visibleRows, aisleOrder, cartHoldIds, groupBy]);
+  const { inCart } = grouped;
+  // The whole trolley's, not the filtered view's — see the note above. It feeds
+  // the header subtitle and `listCount`, which gates the receipt import and the
+  // rest of the footer actions.
+  const remaining = useMemo(() => listRows.filter(i => !i.checked).length, [listRows]);
 
   // The store you're standing in, if you've said. Everything the trip changes
   // on this screen hangs off this one value being non-null.
@@ -1236,7 +1306,22 @@ export function GroceryScreen() {
           // reorders within an aisle or moves a row to another one (see
           // resolveGroceryDrop), neither of which recipe grouping has a
           // section to receive.
-          drag={selectionMode || row.inCart || row.unavailableHere || grouped.kind === 'recipe' ? undefined : drag}
+          //
+          // Off while the recipe strip is filtering, for a sharper version of
+          // the same problem: `resolveGroceryDrop` walks the *rendered* rows and
+          // hands out one dense running rank, so a drag over a subset renumbers
+          // that subset into the same number space every hidden row still sits
+          // in, and takes its aisle from the nearest visible header. The order
+          // you'd get back on clearing the filter is not the one you dragged.
+          drag={
+            selectionMode ||
+            row.inCart ||
+            row.unavailableHere ||
+            grouped.kind === 'recipe' ||
+            activeRecipeFilter.length > 0
+              ? undefined
+              : drag
+          }
           isActive={isActive}
           selectionMode={selectionMode}
           selected={selectedIds.has(row.item.id)}
@@ -1319,6 +1404,20 @@ export function GroceryScreen() {
       />
       <HubPills hub="kitchen" active="Groceries" />
       <TipHost screen="groceries" />
+      {/* A sibling above the list rather than its ListHeaderComponent: that prop
+          is taken by `startCard`, and a second header hung in the container
+          silently offsets ReorderableList's drag math. Staying put while you
+          scroll is also what a filter wants — the way out of one shouldn't have
+          to be scrolled back to, the same call the trip banner below makes.
+          Hidden while selecting, like every header action. */}
+      {!selectionMode && (
+        <GroceryRecipeStrip
+          recipes={shoppedFor}
+          selected={activeRecipeFilter}
+          onToggle={toggleRecipeFilter}
+          onClear={clearRecipeFilter}
+        />
+      )}
       {/* A sibling of the list, not its header: the one thing on screen saying
           why rows have started naming other stores has to still be there when
           you're looking at such a row, and a way out of a mode shouldn't have
@@ -1465,7 +1564,12 @@ export function GroceryScreen() {
           onSelect={handleAddMenuSelect}
           bottom={insets.bottom + tabBarHeight + spacing.md}
           accessibilityLabel="Add groceries"
-          drag={fabDrag}
+          // No drag-to-a-seam while the recipe strip is filtering, for the
+          // reason the row drag is off too: `placeNewGroceryItems` splices into
+          // the *rendered* rows and runs resolveGroceryDrop's dense renumber
+          // over them, which a filtered subset shares with every hidden row.
+          // Tapping the button still adds, at the list's own end.
+          drag={activeRecipeFilter.length > 0 ? undefined : fabDrag}
           dragHint="Drag onto the list to add an item there, or back to the button to cancel"
         />
       )}
