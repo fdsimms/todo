@@ -399,7 +399,7 @@ export function AddMealsToListSheet({
                               // to apply and the row has no room to spare.
                               const subtitle = [
                                 row.reason ?? (row.sources.length > 1 ? row.sources.join(' · ') : null),
-                                row.optional ? 'Optional' : null,
+                                row.optional ? 'optional' : null,
                               ].filter(Boolean).join(' · ') || null;
                               // Shown in the reader's units; what gets written to
                               // the list is still row.quantity, as the recipes

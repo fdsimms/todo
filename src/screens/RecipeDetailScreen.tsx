@@ -834,7 +834,7 @@ export function RecipeDetailScreen() {
             )}
             {(!!ingredient.prep || !!ingredient.purpose || !!ingredient.optional) && (
               <Text style={styles.ingredientPrep}>
-                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'Optional']
+                {[ingredient.prep, ingredient.purpose && `for ${ingredient.purpose}`, ingredient.optional && 'optional']
                   .filter(Boolean).join(' · ')}
               </Text>
             )}
