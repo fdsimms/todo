@@ -274,9 +274,10 @@ const GENERATED_KEYWORDS: Record<GeneratedKind, string[]> = {
     'planning', 'project', 'generated', 'automatic'],
   weather: ['sunny', 'rainy', 'snowy', 'cold', 'hot', 'sunscreen', 'umbrella', 'coat', 'forecast',
     'location', 'temperature', 'generated', 'automatic'],
-  // No 'weigh-in': already in this generator's label. 'scale' and 'weight' are
-  // the words somebody actually types, and neither is.
-  weighIn: ['scale', 'scales', 'weight', 'weigh', 'body', 'mass', 'kg', 'lb', 'pounds',
+  // No bare 'weigh': already a substring of this generator's own label
+  // ("Ask for a weigh-in"). 'scale' and 'weight' are the words somebody
+  // actually types, and neither is in the label.
+  weighIn: ['scale', 'scales', 'weight', 'body', 'mass', 'kg', 'lb', 'pounds',
     'health', 'track', 'log', 'generated', 'automatic'],
 };
 
