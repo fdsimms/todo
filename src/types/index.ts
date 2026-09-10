@@ -5032,6 +5032,27 @@ export interface MealPlanEntry {
    */
   shopTask: boolean | null;
   /**
+   * Whether finishing this meal offers to log what was eaten — `true`/`false`
+   * when the user has said so for this meal, `null` when they haven't and
+   * `mealLogPrompt` decides (see utils/mealLog.ts).
+   *
+   * `cookTask`'s tri-state a third time, for its reasons, and a separate field
+   * for the reason `shopTask` is separate from `cookTask`: these answer
+   * different questions about the same night. A meal you want reminding to
+   * cook is not necessarily one you want counted, and a takeaway you never
+   * cook at all is exactly one you might.
+   *
+   * **It gates an offer, not a write.** A plan is a plan and plans go wrong:
+   * the dinner was cooked and then everyone went out. Nothing here ever logs
+   * unasked, so a `true` means "ask me", never "record it" — see
+   * `docs/arch/health-data.md` on why a false entry in a health record costs
+   * more than a missing one.
+   *
+   * `null` for every meal planned before this shipped, which reads as "follow
+   * the setting".
+   */
+  logMeal: boolean | null;
+  /**
    * The device calendar event mirroring this meal, or null when there isn't
    * one (#1494) — the household's shared answer to "what's for dinner
    * Thursday", which a local task can't give.

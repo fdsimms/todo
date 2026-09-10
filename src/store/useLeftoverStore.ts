@@ -21,6 +21,7 @@ import { useUpTaskDraft, useUpTaskDrift, wantsUseUpTask } from '../utils/leftove
 import { dropGeneratedTask, reconcileGeneratedTask } from './generatedTaskSync';
 import { useTaskStore } from './useTaskStore';
 import { useSettingsStore } from './useSettingsStore';
+import { useFoodLogStore } from './useFoodLogStore';
 
 import {
   UndoableAction,
@@ -384,6 +385,31 @@ export const useLeftoverStore = create<LeftoverStore>((set, get) => ({
     // directly rather than through reconcile, same call dropUseUpTask makes:
     // this is a row that won't be live any more, not a correction to one.
     dropLeftoverTask(id);
+    // Eating it is the second free logging moment, and unlike the meal task's
+    // it is the *only* one for a container: the five UI paths that finish a
+    // leftover all come through here, so this is where the offer belongs
+    // rather than on any one of them. Only 'eaten' — a leftover thrown out
+    // fed nobody, which is the whole distinction LeftoverOutcome exists to
+    // keep. Offer, never write; see mealLog.ts.
+    if (
+      outcome === 'eaten' &&
+      leftover.recipeId &&
+      useSettingsStore.getState().mealLogPrompt
+    ) {
+      useFoodLogStore.getState().setPendingMealLog({
+        label: leftover.title,
+        // A container has no meal of the day: it was eaten whenever it was
+        // eaten, and inventing a slot would file it under one it wasn't in.
+        slot: null,
+        recipeId: leftover.recipeId,
+        mealPlanEntryId: null,
+        // The stored portion is whatever was left over, which the recipe's own
+        // scale says nothing about, so this is one helping of the dish as
+        // written and the person corrects it.
+        scale: 1,
+        choices: [],
+      });
+    }
     // Not `destructive` — this is a completion, the same call completeTask
     // makes about its own lastAction, not a delete. reopenLeftover is the
     // exact reverse (see its own doc comment on why this one, unlike

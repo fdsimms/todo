@@ -220,6 +220,7 @@ export const SYNCED_SETTING_KEYS: readonly string[] = [
   // Automatic tasks. Per-generator, matching the settings keys themselves
   // (see the note on GeneratedTasksSection — these were never merged).
   'mealCookTasks',
+  'mealLogPrompt',
   'mealCookTaskCategory',
   'groceryUseUpTasks',
   'groceryUseUpTaskCategory',

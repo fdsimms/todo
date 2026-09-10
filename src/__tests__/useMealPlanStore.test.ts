@@ -149,6 +149,7 @@ function entry(
     recipeScale: 1,
     cookTask: null,
     shopTask: null,
+    logMeal: null,
     calendarEventId: null,
     ...overrides,
   };
@@ -1892,6 +1893,29 @@ describe('meal tasks', () => {
     useMealPlanStore.getState().moveEntry(cooked.id, { date: '2026-08-07' });
     // The night has happened; re-dating its row at that point edits history.
     expect(mockTaskState.updateTask).not.toHaveBeenCalled();
+  });
+
+  it('setLogMeal writes the per-meal answer and touches no task', () => {
+    // Unlike setCookTask there is nothing to reconcile: what this gates is an
+    // offer made when the meal is finished, not a row on a list.
+    loadWeek();
+    const meal = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
+    })!;
+    expect(meal.logMeal).toBeNull();
+
+    useMealPlanStore.getState().setLogMeal(meal.id, false);
+    expect(useMealPlanStore.getState().entries.find(e => e.id === meal.id)!.logMeal).toBe(false);
+  });
+
+  it('setLogMeal hands the question back to the setting with null', () => {
+    loadWeek();
+    const meal = useMealPlanStore.getState().planMeal({
+      date: '2026-08-05', slot: 'dinner', recipeId: 'r1', title: 'Ragu',
+    })!;
+    useMealPlanStore.getState().setLogMeal(meal.id, false);
+    useMealPlanStore.getState().setLogMeal(meal.id, null);
+    expect(useMealPlanStore.getState().entries.find(e => e.id === meal.id)!.logMeal).toBeNull();
   });
 
   it('setCookTask(false) removes the row and stops it coming back', () => {

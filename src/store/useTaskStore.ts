@@ -134,6 +134,7 @@ import {
 import { getNextDueDate, getCurrentDayStart, getLogicalToday, getLogicalTomorrow, getTaskDayStart, getEffectiveTaskDate, dayKeyOf, dayKeyToDate, getDeadlineFromOffset, getDeadlineFromMonthDay, getReminderOffsetDate, getStreakOutcome, getNextSeriesDates, recurrenceAnchorDayFor, captureReminderOffset, reanchorReminderToWallClock } from '../utils/dateUtils';
 import { entriesForSlot, shiftDayKey } from '../utils/mealPlan';
 import { MEAL_SLOT_TASK_DAYS, completesMealSlot, mealSlotSourceId, mealSlotStepTimeSegments, mealSlotTaskDraft, parseMealSlotSource } from '../utils/mealSlotTasks';
+import { wantsMealLogPrompt } from '../utils/mealLog';
 import { quotaRunSpan, quotaTargetForInterval, quotaDueTimesAfter, isQuotaRunOver, quotaWeekStart } from '../utils/quotaSchedule';
 import { MIN_TARGET_COUNT, MAX_TARGET_COUNT, taskKindOf } from '../utils/taskKinds';
 import { nextStreakRecord } from '../utils/streakRecord';
@@ -3776,6 +3777,34 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
       }
     }
 
+    // ...and the same tick is the cheapest logging moment the app will ever
+    // have: the step that finished a meal-slot chain is literally "Eat", and
+    // the entry behind it already names the dish, the scale it was cooked at
+    // and the either/or answers that went into it.
+    //
+    // An offer, never a write — see mealLog.ts. A plan can diverge from
+    // reality (the dinner was cooked, then everyone went out), which is the
+    // same reason mealSlotDrift withholds the chain once it is under way.
+    // Never on a miss, matching the cook pairing above: a missed deadline did
+    // not feed anybody.
+    if (!missed && cookedEntryId) {
+      const loggable = dbGetMealPlanEntry(cookedEntryId);
+      if (
+        loggable &&
+        loggable.recipeId &&
+        wantsMealLogPrompt(loggable, useSettingsStore.getState().mealLogPrompt)
+      ) {
+        useFoodLogStore.getState().setPendingMealLog({
+          label: loggable.title,
+          slot: loggable.slot,
+          recipeId: loggable.recipeId,
+          mealPlanEntryId: loggable.id,
+          scale: loggable.recipeScale,
+          choices: loggable.recipeChoices,
+        });
+      }
+    }
+
     // Ticking a "Use up X" task off is the moment the user can say what
     // actually happened to the thing it's about — surfaced immediately as
     // that item's own resolve sheet (UseUpResolveSheet, mounted in
@@ -4025,6 +4054,11 @@ export const useTaskStore = create<TaskStore>((set, get) => ({
     // harmless, same reasoning the Use-up clears below rely on.
     if (uncookedEntryId && dbGetMealPlanEntry(uncookedEntryId)?.leftoverId) {
       useLeftoverStore.getState().setPendingFinishLeftover(null);
+    }
+    // Taking the tick back takes the offer back with it: the meal did not
+    // happen after all, so there is nothing to be asked about.
+    if (uncookedEntryId && useFoodLogStore.getState().pendingMealLog?.mealPlanEntryId === uncookedEntryId) {
+      useFoodLogStore.getState().setPendingMealLog(null);
     }
 
     // Un-ticking a "Use up X" task retracts whatever resolve prompt it just
