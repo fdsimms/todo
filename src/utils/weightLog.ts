@@ -226,6 +226,31 @@ export function weightPlotPoints(points: WeightPoint[]): WeightPlotPoint[] {
 }
 
 /**
+ * Splits an already-sorted run of indexed points into segments, breaking
+ * wherever consecutive points are more than `maxGapDays` apart.
+ *
+ * Shared by `weightSegments` and `weightTrendSegments` below, which draw two
+ * different lines (raw readings, a trailing average) but must break at
+ * exactly the same gaps — a smoothed line that stayed continuous across a
+ * span the raw line had already broken would draw a trend through days
+ * neither line has any data for.
+ */
+function groupByGap<T extends { index: number }>(points: T[], maxGapDays: number): T[][] {
+  const segments: T[][] = [];
+  let current: T[] = [];
+  for (const point of points) {
+    const previous = current[current.length - 1];
+    if (previous && point.index - previous.index > maxGapDays) {
+      segments.push(current);
+      current = [];
+    }
+    current.push(point);
+  }
+  if (current.length > 0) segments.push(current);
+  return segments;
+}
+
+/**
  * The readings split into runs that may be joined by a line, breaking wherever
  * more than `maxGapDays` passed without a weigh-in.
  *
@@ -239,19 +264,77 @@ export function weightSegments(
   points: WeightPoint[],
   maxGapDays: number = MAX_JOINED_GAP_DAYS,
 ): WeightPlotPoint[][] {
-  const plotted = weightPlotPoints(points);
-  const segments: WeightPlotPoint[][] = [];
-  let current: WeightPlotPoint[] = [];
-  for (const point of plotted) {
-    const previous = current[current.length - 1];
-    if (previous && point.index - previous.index > maxGapDays) {
-      segments.push(current);
-      current = [];
+  return groupByGap(weightPlotPoints(points), maxGapDays);
+}
+
+/**
+ * How many trailing days of readings a trend point averages over.
+ *
+ * A week, because that is enough to smooth out the water-weight swing an
+ * ordinary day-to-day reading carries without also smoothing out a real
+ * change — the same window most weight trackers use for exactly this reason.
+ */
+export const TREND_WINDOW_DAYS = 7;
+
+/** A trend point: the trailing average as of one particular reading. */
+export interface WeightTrendPoint {
+  /** The day offset of the *reading* this average is centred on. */
+  index: number;
+  dayKey: string;
+  kilograms: number;
+}
+
+/**
+ * A trailing moving average, one point per actual reading.
+ *
+ * **Deliberately not one point per calendar day.** A day with no weigh-in has
+ * nothing to average from that day, and manufacturing a value for it — by
+ * carrying the last average forward, say — would be drawing a reading nobody
+ * took. So the average is recomputed at each real reading, over whichever
+ * readings from the trailing `windowDays` actually exist; a person who weighs
+ * in twice a week gets an average that moves twice a week, not one that
+ * pretends to move daily.
+ *
+ * **This does not widen what the app may claim about a weight.** The rule in
+ * this file's own header — nothing here interprets a body — still holds: a
+ * trailing average is arithmetic over numbers already on the raw line, drawn
+ * a second time with the day-to-day noise averaged out. It says nothing a
+ * careful reader of the dots couldn't already work out; it just makes the
+ * shape easier to see. No slope is fitted, no direction is named, and nothing
+ * here decides whether the trend is "good".
+ */
+export function weightTrendPoints(
+  points: WeightPoint[],
+  windowDays: number = TREND_WINDOW_DAYS,
+): WeightTrendPoint[] {
+  const readings = weightPlotPoints(points);
+  const out: WeightTrendPoint[] = [];
+  for (let i = 0; i < readings.length; i++) {
+    const current = readings[i];
+    let sum = 0;
+    let count = 0;
+    for (let j = i; j >= 0; j--) {
+      const reading = readings[j];
+      if (current.index - reading.index >= windowDays) break;
+      sum += reading.kilograms;
+      count++;
     }
-    current.push(point);
+    out.push({ index: current.index, dayKey: current.dayKey, kilograms: sum / count });
   }
-  if (current.length > 0) segments.push(current);
-  return segments;
+  return out;
+}
+
+/**
+ * The trend line split into runs that may be joined, using the same gap rule
+ * `weightSegments` does — see `groupByGap`'s own note for why the two must
+ * agree.
+ */
+export function weightTrendSegments(
+  points: WeightPoint[],
+  windowDays: number = TREND_WINDOW_DAYS,
+  maxGapDays: number = MAX_JOINED_GAP_DAYS,
+): WeightTrendPoint[][] {
+  return groupByGap(weightTrendPoints(points, windowDays), maxGapDays);
 }
 
 /** Two readings and the distance between them. Not a trend, and not a verdict. */

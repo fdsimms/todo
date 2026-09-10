@@ -305,7 +305,26 @@ honest are each a choice against an easier drawing:
   nothing logged" caption discharges for its own gaps.
 
 It is one accessibility element with a spoken summary, not one per reading:
-180 of those is a wall to swipe through rather than a chart to read.
+365 of those is a wall to swipe through rather than a chart to read.
+
+**A second, fainter line is a 7-day trailing average** (`weightTrendPoints`),
+drawn dotless underneath the raw one so it reads as background shape rather
+than a second set of measurements. It breaks at the same gaps the raw line
+does (`weightTrendSegments`, sharing `groupByGap` with `weightSegments` so the
+two cannot silently disagree), and it is one point per actual reading rather
+than one per calendar day — a day with no weigh-in has nothing to average and
+does not get one invented for it. This does not reopen the "nothing here
+interprets a body" line: it is arithmetic over the same dots already on
+screen, no slope is fitted, and nothing is said about direction.
+
+**The screen reads once and lets the chart re-zoom for free.** `useHealthStore`
+fetches `WEIGHT_HISTORY_DAYS` (365, under the native 400-day ceiling) in one
+query; `WeightScreen`'s four-way range picker (1M/3M/6M/1Y, a closed set and so
+`SegmentedControl` rather than a `PillGroup`) just slices the array already in
+memory, so switching ranges costs nothing further from Health. "Latest" always
+reads the true most-recent weigh-in regardless of which range is selected —
+that is what "latest" means — while the chart, the change figure and the
+weigh-in count all scope to whichever range is currently zoomed to.
 
 ### The task that asks for one
 

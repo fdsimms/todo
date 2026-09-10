@@ -8,6 +8,7 @@ import {
   weightDomain,
   weightFraction,
   weightSegments,
+  weightTrendSegments,
   type WeightPoint,
   type WeightUnit,
 } from '../utils/weightLog';
@@ -42,16 +43,33 @@ import {
  *   actually data — the same duty `MoodScreen`'s "a flat line is a day with
  *   nothing logged" caption discharges for its own gaps.
  *
+ * A second, fainter line underneath is `weightTrendPoints`' 7-day trailing
+ * average — dotless, so it reads as background shape rather than as a second
+ * set of measurements, and broken at the same gaps the raw line is (see that
+ * function's own note on why the two must agree). It is arithmetic over the
+ * same dots already on screen, not a new claim: no slope is fitted and no
+ * direction is named, which keeps it on the right side of the "nothing here
+ * interprets a body" rule `weightLog.ts` states at its top.
+ *
  * It is one accessibility element with a spoken summary rather than one per
- * reading, unlike the mood chart's fourteen columns: a six-month window is up
- * to 180 of them, which is a wall to swipe through rather than a chart to read.
- * The summary names the count and the range, which is what the drawing says.
+ * reading, unlike the mood chart's fourteen columns: a year's window is up to
+ * 365 of them, which is a wall to swipe through rather than a chart to read.
+ * The summary names the count and the range, which is what the drawing says,
+ * and says nothing about the trend line — it is a smoothing of the same
+ * numbers the summary already covers, not a second reading.
  */
 
 const CHART_HEIGHT = 160;
 const DOT_RADIUS = 2.5;
 /** Keeps a dot at the very top or bottom of the domain from being clipped. */
 const VERTICAL_INSET = DOT_RADIUS + 1;
+/**
+ * How faint the trend line is drawn, as an SVG `opacity` on the same accent
+ * stroke the raw line uses — not a second color, so there is no new hex value
+ * to keep in step with the theme. Faint enough to read as background shape
+ * under the raw line's dots, not faint enough to disappear against `bg`.
+ */
+const TREND_LINE_OPACITY = 0.35;
 
 interface Props {
   /** One entry per day in the window, oldest first, null where nothing was logged. */
@@ -66,6 +84,7 @@ export function WeightChart({ points, unit }: Props) {
 
   const domain = useMemo(() => weightDomain(points), [points]);
   const segments = useMemo(() => weightSegments(points), [points]);
+  const trendSegments = useMemo(() => weightTrendSegments(points), [points]);
 
   const summary = useMemo(() => {
     const all = segments.flat();
@@ -100,6 +119,18 @@ export function WeightChart({ points, unit }: Props) {
       <View style={styles.plot} onLayout={onLayout}>
         {width > 0 && (
           <Svg width={width} height={CHART_HEIGHT}>
+            {trendSegments.map((segment, i) => segment.length > 1 && (
+              <Polyline
+                key={`trend-${i}`}
+                points={segment.map(p => `${xFor(p.index)},${yFor(p.kilograms)}`).join(' ')}
+                fill="none"
+                stroke={colors.accent}
+                strokeOpacity={TREND_LINE_OPACITY}
+                strokeWidth={1.5}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+            ))}
             {segments.map((segment, i) => (
               <React.Fragment key={`segment-${i}`}>
                 {segment.length > 1 && (

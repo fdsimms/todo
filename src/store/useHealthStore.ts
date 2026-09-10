@@ -102,17 +102,24 @@ export const HEALTH_HISTORY_DAYS = 90;
 
 /**
  * How far back the weight read goes — longer than the readings window above,
- * on purpose.
+ * and longer than the Weight screen's default display range, on purpose.
  *
  * `HEALTH_HISTORY_DAYS` is sized to gather enough *paired* days for the mood
  * correlations, which need both a mood entry and a reading on the same day.
  * Weight is drawn rather than correlated, and a body moves slowly: three months
- * of it is a chart with barely any shape, where half a year shows the thing
+ * of it is a chart with barely any shape, where a year shows the thing
  * somebody weighing themselves is actually watching for. Both are one query and
  * neither is stored, so the wider window costs nothing but a slightly longer
  * read.
+ *
+ * **This is the fetch ceiling, not the chart's default zoom.** The Weight
+ * screen reads this many days once and lets somebody pick a shorter range to
+ * look at (`WEIGHT_CHART_RANGES` in `WeightScreen.tsx`) without a second
+ * Health query — the native side's own ceiling is 400 days
+ * (`readWeightSeries`'s `days <= 400` guard), so 365 leaves margin and still
+ * reads as an honest "a year".
  */
-export const WEIGHT_HISTORY_DAYS = 180;
+export const WEIGHT_HISTORY_DAYS = 365;
 
 interface HealthState {
   today: HealthDay | null;

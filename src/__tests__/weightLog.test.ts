@@ -11,6 +11,8 @@ import {
   weightPlotPoints,
   weightReadings,
   weightSegments,
+  weightTrendPoints,
+  weightTrendSegments,
   type WeightPoint,
 } from '@/utils/weightLog';
 
@@ -235,6 +237,67 @@ describe('weightSegments', () => {
     expect(weightSegments(series([null, 72, null]))).toEqual([
       [{ index: 1, dayKey: '2026-09-02', kilograms: 72 }],
     ]);
+  });
+});
+
+describe('weightTrendPoints', () => {
+  it('is a single reading’s own value with nothing to average with', () => {
+    const trend = weightTrendPoints(series([72]));
+    expect(trend).toEqual([{ index: 0, dayKey: '2026-09-01', kilograms: 72 }]);
+  });
+
+  it('averages readings within the trailing window', () => {
+    // Three readings a day apart, all inside a 7-day window.
+    const trend = weightTrendPoints(series([72, 74, 73]));
+    expect(trend[0].kilograms).toBe(72);
+    expect(trend[1].kilograms).toBeCloseTo(73, 10); // (72+74)/2
+    expect(trend[2].kilograms).toBeCloseTo(73, 10); // (72+74+73)/3
+  });
+
+  it('drops a reading from the average once it falls outside the window', () => {
+    // Day 0 and day 8 are 8 days apart — outside the default 7-day window —
+    // so day 8's average must not include day 0's reading.
+    const values: (number | null)[] = [80, ...Array(7).fill(null), 70];
+    const trend = weightTrendPoints(series(values));
+    expect(trend).toHaveLength(2);
+    expect(trend[1].kilograms).toBe(70);
+  });
+
+  it('one point per reading, not one per calendar day', () => {
+    // A day with no weigh-in has nothing to average and must not appear.
+    const trend = weightTrendPoints(series([72, null, null, 71]));
+    expect(trend.map(p => p.index)).toEqual([0, 3]);
+  });
+
+  it('honours a custom window', () => {
+    const values: (number | null)[] = [80, null, null, 70];
+    // A 2-day window excludes day 0 from day 3's average.
+    expect(weightTrendPoints(series(values), 2)[1].kilograms).toBe(70);
+    // A 4-day window includes it.
+    expect(weightTrendPoints(series(values), 4)[1].kilograms).toBeCloseTo(75, 10);
+  });
+
+  it('is empty for a window with no readings', () => {
+    expect(weightTrendPoints(series([null, null]))).toEqual([]);
+  });
+});
+
+describe('weightTrendSegments', () => {
+  it('breaks at the same gap the raw line breaks at', () => {
+    const values: (number | null)[] = [72, ...Array(20).fill(null), 71];
+    const rawSegments = weightSegments(series(values));
+    const trendSegments = weightTrendSegments(series(values));
+    expect(trendSegments).toHaveLength(2);
+    expect(trendSegments.map(s => s.length)).toEqual(rawSegments.map(s => s.length));
+  });
+
+  it('joins across a gap the raw line would join across', () => {
+    const values: (number | null)[] = [72, null, null, null, null, null, null, 71];
+    expect(weightTrendSegments(series(values))).toHaveLength(1);
+  });
+
+  it('is empty for a window with no readings', () => {
+    expect(weightTrendSegments(series([null, null]))).toEqual([]);
   });
 });
 

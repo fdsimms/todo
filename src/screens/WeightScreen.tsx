@@ -22,9 +22,40 @@ import { HubPills } from '../components/HubPills';
 import { EmptyState } from '../components/EmptyState';
 import { WeightChart } from '../components/WeightChart';
 import { LogWeightSheet } from '../components/LogWeightSheet';
+import { SegmentedControl } from '../components/SegmentedControl';
 
 /**
- * Body weight over the last six months, read from Apple Health.
+ * How much of the fetched window the chart actually draws.
+ *
+ * `WEIGHT_HISTORY_DAYS` (`useHealthStore.ts`) is the fetch ceiling — one
+ * Health query, taken once — and this is purely a display zoom over the
+ * points already in memory, so switching ranges costs nothing. A closed set of
+ * four is `SegmentedControl`'s job per CLAUDE.md's picker table, not a
+ * `PillGroup`: there is no open-ended vocabulary here, just one of four fixed
+ * spans.
+ */
+type WeightChartRangeDays = 30 | 90 | 180 | 365;
+
+const WEIGHT_CHART_RANGES: readonly {
+  days: WeightChartRangeDays;
+  label: string;
+  sectionTitle: string;
+}[] = [
+  { days: 30, label: '1M', sectionTitle: 'THE LAST MONTH' },
+  { days: 90, label: '3M', sectionTitle: 'THE LAST 3 MONTHS' },
+  { days: 180, label: '6M', sectionTitle: 'THE LAST 6 MONTHS' },
+  { days: 365, label: '1Y', sectionTitle: 'THE LAST YEAR' },
+];
+
+/**
+ * Six months by default — a middle ground wide enough to show real movement
+ * and narrow enough that a year's worth of daily dots isn't the first thing
+ * anybody sees.
+ */
+const DEFAULT_RANGE_DAYS: WeightChartRangeDays = 180;
+
+/**
+ * Body weight over a selectable window, read from Apple Health.
  *
  * **This screen owns no data.** Everything on it is a read of HealthKit,
  * re-taken on mount and after a weigh-in is recorded, and nothing is stored —
@@ -58,6 +89,8 @@ export function WeightScreen() {
   const refreshWeight = useHealthStore(s => s.refreshWeight);
 
   const [logOpen, setLogOpen] = useState(false);
+  const [rangeDays, setRangeDays] = useState<WeightChartRangeDays>(DEFAULT_RANGE_DAYS);
+  const activeRange = WEIGHT_CHART_RANGES.find(r => r.days === rangeDays) ?? WEIGHT_CHART_RANGES[2];
 
   // `dundundun://weight?log=1` — the weigh-in request's link button. Stamped
   // with the arrival time rather than a boolean, and tracked against what has
@@ -76,9 +109,23 @@ export function WeightScreen() {
   }, [healthReadEnabled, refreshWeight]);
 
   const points = weightSeries ?? [];
+  // Whether Health has anything at all, over the full fetch window — this is
+  // what decides between the empty state and the chart, independent of which
+  // range is currently zoomed to. "Latest" reads the same way: the most recent
+  // weigh-in is the most recent one full stop, not "the most recent one inside
+  // whatever span happens to be selected".
   const readings = useMemo(() => weightReadings(points), [points]);
   const latest = useMemo(() => latestWeight(points), [points]);
-  const change = useMemo(() => weightChange(points), [points]);
+
+  // The selected range is purely a slice of what's already in memory — no
+  // second Health query. `slice`'s negative-safe `Math.max` handles a range
+  // wider than the data actually fetched.
+  const visiblePoints = useMemo(
+    () => points.slice(Math.max(0, points.length - rangeDays)),
+    [points, rangeDays],
+  );
+  const visibleReadings = useMemo(() => weightReadings(visiblePoints), [visiblePoints]);
+  const change = useMemo(() => weightChange(visiblePoints), [visiblePoints]);
 
   const openLog = () => { haptics.tap(); setLogOpen(true); };
 
@@ -161,24 +208,42 @@ export function WeightScreen() {
             value={changeValue}
             label={`Change (${unit})`}
             accessibilityLabel={change === null
-              ? 'Change, not enough readings'
+              ? 'Change, not enough readings in this range'
               : `Change, ${kgToUnit(change.deltaKg, unit).toFixed(1)} ${unit} across ${change.readings} readings`}
           />
           <Stat
             styles={styles}
-            value={String(readings.length)}
+            value={String(visibleReadings.length)}
             label="Weigh-ins"
-            accessibilityLabel={`${readings.length} weigh-ins`}
+            accessibilityLabel={`${visibleReadings.length} weigh-ins in this range`}
           />
         </View>
 
-        <Text style={styles.sectionTitle}>THE LAST SIX MONTHS</Text>
+        <View style={styles.rangeRow}>
+          <SegmentedControl
+            options={WEIGHT_CHART_RANGES.map(r => ({ value: r.days, label: r.label }))}
+            value={rangeDays}
+            onChange={next => { haptics.tap(); setRangeDays(next); }}
+            label="Chart range"
+            accessibilityLabelFor={r => `Show the last ${
+              r.value === 30 ? 'month' : r.value === 365 ? 'year' : `${r.value / 30} months`
+            }`}
+          />
+        </View>
+
+        <Text style={styles.sectionTitle}>{activeRange.sectionTitle}</Text>
         <View style={styles.card}>
-          <WeightChart points={points} unit={unit} />
-          <Text style={styles.chartCaption}>
-            Each dot is a day you weighed in. The line breaks where more than two
-            weeks passed without one.
-          </Text>
+          {visibleReadings.length === 0 ? (
+            <Text style={styles.finding}>Nothing recorded in this range.</Text>
+          ) : (
+            <>
+              <WeightChart points={visiblePoints} unit={unit} />
+              <Text style={styles.chartCaption}>
+                Each dot is a day you weighed in. The line breaks where more than
+                two weeks passed without one. The fainter line is a 7-day average.
+              </Text>
+            </>
+          )}
         </View>
 
         {change !== null && (
@@ -236,6 +301,7 @@ const makeStyles = (colors: Colors) => StyleSheet.create({
   },
   statValue: { fontSize: font.xl, fontWeight: fontWeight.bold, color: colors.text },
   statLabel: { fontSize: font.xs, color: colors.textSecondary, marginTop: 2, textAlign: 'center' },
+  rangeRow: { marginBottom: spacing.md },
   sectionTitle: {
     fontSize: font.xs,
     fontWeight: fontWeight.semibold,
