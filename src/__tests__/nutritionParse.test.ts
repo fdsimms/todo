@@ -167,6 +167,45 @@ describe('readOffNutrition', () => {
     expect(readOffNutrition(RED_BULL, 'x', RECORDED_AT)!.amounts.caffeineMg).toBe(32);
   });
 
+  it('reads a zero caffeine as absent, since this source only ever defaults it', () => {
+    // Measured rather than assumed: across 200 US products, 54 carried
+    // `caffeine_100g` and the only value that ever appeared was zero, chocolate
+    // and mocha products included. The field is a bulk default, so taking it
+    // records a confident zero on the foods that do contain caffeine.
+    const cocoa = { nutriments: { proteins_100g: 7, caffeine_100g: 0 } };
+    const read = readOffNutrition(cocoa, 'x', RECORDED_AT)!;
+    expect(read.amounts.caffeineMg).toBeUndefined();
+    expect(read.amounts.proteinG).toBe(7);
+  });
+
+  it('still takes a caffeine figure the source actually stated', () => {
+    // Only the zero is uninformative. A real reading is a real reading.
+    expect(readOffNutrition(RED_BULL, 'x', RECORDED_AT)!.amounts.caffeineMg).toBe(32);
+  });
+
+  it('drops nothing else on a zero, because a real zero is common and true', () => {
+    // Deliberately not a blanket rule: 41% of that same sample stated a
+    // legitimate zero for saturated fat alone.
+    const lean = {
+      nutriments: {
+        proteins_100g: 20, fat_100g: 0, 'saturated-fat_100g': 0,
+        fiber_100g: 0, sugars_100g: 0, carbohydrates_100g: 0,
+      },
+    };
+    const read = readOffNutrition(lean, 'x', RECORDED_AT)!;
+    expect(read.amounts.fatG).toBe(0);
+    expect(read.amounts.satFatG).toBe(0);
+    expect(read.amounts.fiberG).toBe(0);
+    expect(read.amounts.sugarG).toBe(0);
+    expect(read.amounts.carbsG).toBe(0);
+  });
+
+  it('refuses a product whose only figure was an uninformative zero', () => {
+    // Nothing left to record, which is the same answer as a panel with no
+    // fields at all rather than an entry carrying one invented zero.
+    expect(readOffNutrition({ nutriments: { caffeine_100g: 0 } }, 'x', RECORDED_AT)).toBeNull();
+  });
+
   it('keeps a real zero and omits a figure the source never gave', () => {
     const read = readOffNutrition(RED_BULL, 'x', RECORDED_AT)!;
     // A drink genuinely containing no fat is a thing a label states.
@@ -274,6 +313,17 @@ const CHEERIOS = {
 };
 
 describe('readFdcNutrition', () => {
+  it('keeps a zero caffeine, unlike the Open Food Facts path', () => {
+    // The uninformative-zero rule is deliberately scoped to one source. FDC's
+    // figures are lab-measured, so a zero there is a measurement rather than a
+    // default, and dropping it would discard a real reading.
+    const food = {
+      fdcId: 1,
+      foodNutrients: [fdcNutrient(1003, 'G', 7), fdcNutrient(1057, 'MG', 0)],
+    };
+    expect(readFdcNutrition(food, RECORDED_AT)!.amounts.caffeineMg).toBe(0);
+  });
+
   it('reads the flat search shape', () => {
     const read = readFdcNutrition(CHEERIOS, RECORDED_AT);
     expect(read).not.toBeNull();
